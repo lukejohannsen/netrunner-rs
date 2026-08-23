@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::CardId;
+use crate::dsl::{CardId, DamageType};
 use crate::rules::run::ServerId;
 use crate::rules::state::Side;
 
@@ -29,5 +29,7 @@ pub enum GameEvent {
     DiscardPending { side: Side, required: usize },
     CardDiscarded { side: Side, card: CardId },
     AgendaStolen { card: CardId, agenda_points: u32 },
+    DamageTaken { damage_type: DamageType, amount: usize },
+    RunnerFlatlined,
     GameOver { winner: Side },
 }

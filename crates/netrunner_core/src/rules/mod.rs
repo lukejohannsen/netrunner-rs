@@ -1,4 +1,5 @@
 mod action;
+mod damage;
 mod engine;
 mod error;
 mod event;
@@ -9,6 +10,7 @@ mod turn;
 mod win;
 
 pub use action::{PlayerAction, ServerTarget, TargetZone};
+pub use damage::apply_damage;
 pub use engine::apply_action;
 pub use error::RulesError;
 pub use event::GameEvent;

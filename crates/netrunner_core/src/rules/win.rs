@@ -73,6 +73,7 @@ mod tests {
                     agenda_points: AgendaPoints(runner_agenda_points),
                 },
                 memory_units: MemoryUnits(0),
+                brain_damage: 0,
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),

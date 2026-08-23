@@ -20,10 +20,12 @@ fn clicks_for(side: Side) -> u32 {
     }
 }
 
-fn max_hand_size(side: Side) -> usize {
+/// `state` is needed for the Runner arm — `RUNNER_MAX_HAND_SIZE` is reduced
+/// by `state.runner.brain_damage`, which never heals.
+fn max_hand_size(state: &GameState, side: Side) -> usize {
     match side {
         Side::Corp => CORP_MAX_HAND_SIZE,
-        Side::Runner => RUNNER_MAX_HAND_SIZE,
+        Side::Runner => RUNNER_MAX_HAND_SIZE.saturating_sub(state.runner.brain_damage),
     }
 }
 
@@ -104,7 +106,7 @@ pub fn end_turn(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesE
     let mut next = state.clone();
     let mut events = vec![GameEvent::TurnEnded { side }];
 
-    let over_by = hand_size(&next, side).saturating_sub(max_hand_size(side));
+    let over_by = hand_size(&next, side).saturating_sub(max_hand_size(&next, side));
     if over_by > 0 {
         next.phase = GamePhase::Discard { side, required: over_by };
         events.push(GameEvent::DiscardPending { side, required: over_by });
@@ -218,6 +220,7 @@ mod tests {
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
+                brain_damage: 0,
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),

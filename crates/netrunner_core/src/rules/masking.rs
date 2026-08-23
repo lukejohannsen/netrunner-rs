@@ -39,6 +39,9 @@ pub struct PublicCorpState {
 pub struct PublicRunnerState {
     pub resources: PlayerResources,
     pub memory_units: MemoryUnits,
+    /// Never masked — Brain damage count, like `memory_units`, is plain
+    /// public information (it visibly shrinks the Runner's max hand size).
+    pub brain_damage: usize,
     pub grip: MaskedZone,
     pub stack: MaskedZone,
     /// Never masked — Rig cards are always face-up once installed.
@@ -105,6 +108,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
     PublicRunnerState {
         resources: runner.resources.clone(),
         memory_units: runner.memory_units,
+        brain_damage: runner.brain_damage,
         grip: mask_zone(&runner.grip, owner_view),
         stack: mask_zone(&runner.stack, owner_view),
         rig: runner.rig.clone(),
@@ -127,6 +131,7 @@ mod tests {
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
+                brain_damage: 0,
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),
@@ -232,6 +237,7 @@ mod tests {
                 agenda_points: AgendaPoints(0),
             },
             memory_units: MemoryUnits(4),
+            brain_damage: 0,
             grip: vec![CardId("sure_gamble".to_string())],
             stack: vec![CardId("modded".to_string()), CardId("clone_chip".to_string())],
             rig: vec![CardId("gordian_blade".to_string())],

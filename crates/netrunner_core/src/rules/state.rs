@@ -108,6 +108,10 @@ pub struct RunnerState {
     pub resources: PlayerResources,
     /// Unspent memory units available for installing programs.
     pub memory_units: MemoryUnits,
+    /// Cumulative Brain damage taken. Permanently reduces the Runner's max
+    /// hand size (see `turn::max_hand_size`) — unlike Net/Meat damage, which
+    /// only discards cards once, Brain damage never heals.
+    pub brain_damage: usize,
     /// Runner's hand.
     pub grip: Vec<CardId>,
     /// Runner's deck — ordered outermost-to-innermost; drawing pops the end.
@@ -192,6 +196,7 @@ impl GameState {
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
+                brain_damage: 0,
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),
