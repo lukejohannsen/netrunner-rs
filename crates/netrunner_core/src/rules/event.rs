@@ -23,4 +23,7 @@ pub enum GameEvent {
     EventPlayed { side: Side, card: CardId },
     HardwareInstalled { side: Side, card: CardId },
     ProgramInstalled { side: Side, card: CardId, memory_cost: u8 },
+    CardAccessed { card: CardId, server: ServerId },
+    TurnEnded { side: Side },
+    TurnStarted { side: Side, clicks: u32 },
 }

@@ -48,4 +48,7 @@ pub enum RulesError {
 
     #[error("subroutine index {index} is out of range: only {pending} subroutine(s) pending")]
     InvalidSubroutineIndex { index: usize, pending: u32 },
+
+    #[error("cannot end turn while a run is active")]
+    CannotEndTurnWhileRunActive,
 }

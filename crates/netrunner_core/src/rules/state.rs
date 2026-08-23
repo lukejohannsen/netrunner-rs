@@ -67,6 +67,11 @@ pub struct CorpState {
     pub hq: Vec<CardId>,
     /// Corp's deck — hidden from the Runner in the masked view.
     pub r_and_d: Vec<CardId>,
+    /// Corp's discard pile. Unlike `hq`/`r_and_d`, Archives is fully public —
+    /// never masked in the masked view (see `RunnerState::rig`'s doc comment
+    /// for the same pattern). Nothing currently populates this (no
+    /// discard/trash mechanic exists yet); starts empty.
+    pub archives: Vec<CardId>,
     pub installed: Vec<InstalledCard>,
 }
 

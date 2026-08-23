@@ -4,6 +4,7 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, RunAction, RunPhase, RunState};
 use crate::rules::state::{GameState, InstalledCard, Side};
+use crate::rules::turn;
 
 pub fn apply_action(
     state: &GameState,
@@ -26,6 +27,7 @@ pub fn apply_action(
         PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
             break_subroutine(state, ice_id, subroutine_index)
         }
+        PlayerAction::EndTurn => turn::end_turn(state),
     }
 }
 
@@ -214,7 +216,10 @@ fn complete_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesE
     let mut next = state.clone();
     next.active_run = None;
 
-    Ok((next, vec![GameEvent::RunCompleted { server }]))
+    let mut events = run::access_server(&next.corp, server);
+    events.push(GameEvent::RunCompleted { server });
+
+    Ok((next, events))
 }
 
 fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result<(), RulesError> {
@@ -344,6 +349,7 @@ mod tests {
                 },
                 hq: Vec::new(),
                 r_and_d: Vec::new(),
+                archives: Vec::new(),
                 installed: Vec::new(),
             },
             runner: crate::rules::state::RunnerState {
@@ -374,6 +380,7 @@ mod tests {
                 },
                 hq: Vec::new(),
                 r_and_d: Vec::new(),
+                archives: Vec::new(),
                 installed: Vec::new(),
             },
             runner: crate::rules::state::RunnerState {
@@ -877,6 +884,49 @@ mod tests {
                 ice: Vec::new(),
                 position: 0,
             })
+        );
+    }
+
+    #[test]
+    fn runner_complete_run_against_hq_surfaces_card_accessed_event_before_run_completed() {
+        let mut state = runner_state(3, 5, 3);
+        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::Success,
+            ice: Vec::new(),
+            position: 0,
+        });
+        let (next, events) =
+            apply_action(&state, PlayerAction::CompleteRun).expect("action should succeed");
+
+        assert_eq!(next.active_run, None);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CardAccessed {
+                    card: CardId("hedge_fund".to_string()),
+                    server: ServerId::Hq
+                },
+                GameEvent::RunCompleted { server: ServerId::Hq },
+            ]
+        );
+    }
+
+    #[test]
+    fn corp_end_turn_via_apply_action_hands_control_to_runner() {
+        let state = corp_state(0, 5);
+        let (next, events) =
+            apply_action(&state, PlayerAction::EndTurn).expect("action should succeed");
+
+        assert_eq!(next.active_turn, Side::Runner);
+        assert_eq!(next.runner.resources.clicks, Clicks(4));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::TurnEnded { side: Side::Corp },
+                GameEvent::TurnStarted { side: Side::Runner, clicks: 4 },
+            ]
         );
     }
 

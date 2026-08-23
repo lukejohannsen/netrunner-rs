@@ -28,6 +28,8 @@ pub struct PublicCorpState {
     pub resources: PlayerResources,
     pub hq: MaskedZone,
     pub r_and_d: MaskedZone,
+    /// Never masked — Archives is a fully public zone in the real game.
+    pub archives: Vec<CardId>,
     pub installed: Vec<PublicInstalledCard>,
 }
 
@@ -85,6 +87,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
         resources: corp.resources.clone(),
         hq: mask_zone(&corp.hq, owner_view),
         r_and_d: mask_zone(&corp.r_and_d, owner_view),
+        archives: corp.archives.clone(),
         installed: corp
             .installed
             .iter()
@@ -136,6 +139,7 @@ mod tests {
             },
             hq: vec![CardId("hedge_fund".to_string())],
             r_and_d: vec![CardId("ice_wall".to_string()), CardId("enigma".to_string())],
+            archives: vec![CardId("cyberdex_trial".to_string())],
             installed: vec![
                 InstalledCard {
                     card: CardId("ice_wall".to_string()),
@@ -257,6 +261,17 @@ mod tests {
 
         assert_eq!(masked.runner.grip, MaskedZone::Hidden { count: 1 });
         assert_eq!(masked.runner.stack, MaskedZone::Hidden { count: 2 });
+    }
+
+    #[test]
+    fn corp_archives_is_never_masked() {
+        let state = game_state(corp_state_with_cards());
+        let masked_for_corp = mask_state_for_player(&state, Side::Corp);
+        let masked_for_runner = mask_state_for_player(&state, Side::Runner);
+
+        let expected = vec![CardId("cyberdex_trial".to_string())];
+        assert_eq!(masked_for_corp.corp.archives, expected);
+        assert_eq!(masked_for_runner.corp.archives, expected);
     }
 
     #[test]

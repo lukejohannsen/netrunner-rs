@@ -78,4 +78,12 @@ pub enum PlayerAction {
     /// individually addressable subroutines, this is a bounds check rather
     /// than a break-this-exact-one operation.
     BreakSubroutine { ice_id: CardId, subroutine_index: usize },
+    /// End the active side's turn, handing control to the other side and
+    /// refilling their clicks to the fixed per-turn allotment (Corp 3 / Runner
+    /// 4). Symmetric — no `side` field; the side that ends is simply whichever
+    /// side is currently `active_turn`. Errors with
+    /// `RulesError::CannotEndTurnWhileRunActive` if a run is in progress.
+    /// Deliberately does NOT model mandatory draw or end-of-turn hand-size
+    /// discard/cleanup — see `turn::end_turn`'s doc comment.
+    EndTurn,
 }
