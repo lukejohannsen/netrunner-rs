@@ -31,5 +31,10 @@ pub enum GameEvent {
     AgendaStolen { card: CardId, agenda_points: u32 },
     DamageTaken { damage_type: DamageType, amount: usize },
     RunnerFlatlined,
+    CreditsSpent { side: Side, amount: u32 },
+    TagsGiven { side: Side, amount: u32 },
+    TagsPurged { side: Side },
+    CardTrashed { side: Side, card: CardId },
+    RunEndedByEffect { server: ServerId },
     GameOver { winner: Side },
 }

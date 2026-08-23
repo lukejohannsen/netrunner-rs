@@ -77,6 +77,7 @@ mod tests {
                 },
                 memory_units: MemoryUnits(0),
                 brain_damage,
+                tags: 0,
                 grip,
                 stack: Vec::new(),
                 rig: Vec::new(),

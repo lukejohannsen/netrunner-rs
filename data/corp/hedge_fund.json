@@ -5,6 +5,6 @@
   "card_type": "Operation",
   "cost": 5,
   "triggers": [
-    { "trigger": "OnPlay", "effects": [ { "GainCredits": 9 } ] }
+    { "trigger": "OnPlay", "effects": [ { "GainCredits": ["Corp", 9] } ] }
   ]
 }

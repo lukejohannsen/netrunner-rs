@@ -112,6 +112,10 @@ pub struct RunnerState {
     /// hand size (see `turn::max_hand_size`) — unlike Net/Meat damage, which
     /// only discards cards once, Brain damage never heals.
     pub brain_damage: usize,
+    /// Runner's tag count. Public information in the real game (visibly
+    /// affects Corp trace/meat-damage abilities) — never masked, same
+    /// treatment as `brain_damage`.
+    pub tags: u32,
     /// Runner's hand.
     pub grip: Vec<CardId>,
     /// Runner's deck — ordered outermost-to-innermost; drawing pops the end.
@@ -197,6 +201,7 @@ impl GameState {
                 },
                 memory_units: MemoryUnits(0),
                 brain_damage: 0,
+                tags: 0,
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),

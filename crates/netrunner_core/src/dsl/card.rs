@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 
+use crate::dsl::ability::AbilityDef;
 use crate::dsl::effect::Effect;
 use crate::dsl::trigger::Trigger;
 use crate::rules::Side;
@@ -40,6 +41,33 @@ pub struct Card {
     pub card_type: CardType,
     pub cost: u32,
     pub triggers: Vec<TriggeredEffect>,
+
+    /// Costed / manually-activated abilities. Additive to the JSON schema —
+    /// an absent `"abilities"` key parses to an empty `Vec`.
+    #[serde(default)]
+    pub abilities: Vec<AbilityDef>,
+
+    /// Runner-paid cost to trash this card off the table. `None` for the
+    /// common case of cards that aren't trashable this way.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trash_cost: Option<u32>,
+
+    /// Advancement tokens required before an agenda can be scored/stolen.
+    /// `Some` only for `CardType::Agenda`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub advancement_requirement: Option<u32>,
+
+    /// Agenda point value when scored/stolen. `Some` only for
+    /// `CardType::Agenda` — the eventual data-driven replacement input for
+    /// `win::agenda_value`'s current hardcoded lookup.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agenda_points: Option<u32>,
+
+    /// Minimum deck size this card's identity/format imposes. Pure
+    /// deckbuilding metadata — nothing in the runtime state machine reads
+    /// this yet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_deck_size: Option<u32>,
 }
 
 #[cfg(test)]
@@ -66,9 +94,10 @@ mod tests {
             card.triggers,
             vec![TriggeredEffect {
                 trigger: Trigger::OnPlay,
-                effects: vec![Effect::GainCredits(9)],
+                effects: vec![Effect::GainCredits(Side::Corp, 9)],
             }]
         );
+        assert!(card.abilities.is_empty());
     }
 
     #[test]
@@ -84,8 +113,9 @@ mod tests {
             card.triggers,
             vec![TriggeredEffect {
                 trigger: Trigger::OnPlay,
-                effects: vec![Effect::GainCredits(9)],
+                effects: vec![Effect::GainCredits(Side::Runner, 9)],
             }]
         );
+        assert!(card.abilities.is_empty());
     }
 }

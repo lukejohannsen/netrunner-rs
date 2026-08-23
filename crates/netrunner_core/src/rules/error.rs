@@ -57,4 +57,16 @@ pub enum RulesError {
 
     #[error("cannot end turn while a run is active")]
     CannotEndTurnWhileRunActive,
+
+    #[error("{side:?} attempted to spend {requested} credit(s) but only has {available}")]
+    NotEnoughCredits { side: Side, available: u32, requested: u32 },
+
+    #[error("{side:?} has no card {card:?} in the rig")]
+    CardNotInRig { side: Side, card: CardId },
+
+    #[error("{side:?}'s {zone:?} is empty, nothing to trash from the top")]
+    EmptyZone { side: Side, zone: crate::dsl::StackZone },
+
+    #[error("CardTarget::ThisCard/Cost::TrashSelf must be resolved to a concrete card before evaluation")]
+    UnresolvedCardTarget,
 }

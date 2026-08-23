@@ -42,6 +42,8 @@ pub struct PublicRunnerState {
     /// Never masked — Brain damage count, like `memory_units`, is plain
     /// public information (it visibly shrinks the Runner's max hand size).
     pub brain_damage: usize,
+    /// Never masked — tags are plain public information in the real game.
+    pub tags: u32,
     pub grip: MaskedZone,
     pub stack: MaskedZone,
     /// Never masked — Rig cards are always face-up once installed.
@@ -109,6 +111,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         resources: runner.resources.clone(),
         memory_units: runner.memory_units,
         brain_damage: runner.brain_damage,
+        tags: runner.tags,
         grip: mask_zone(&runner.grip, owner_view),
         stack: mask_zone(&runner.stack, owner_view),
         rig: runner.rig.clone(),
@@ -132,6 +135,7 @@ mod tests {
                 },
                 memory_units: MemoryUnits(0),
                 brain_damage: 0,
+                tags: 0,
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),
@@ -238,6 +242,7 @@ mod tests {
             },
             memory_units: MemoryUnits(4),
             brain_damage: 0,
+            tags: 0,
             grip: vec![CardId("sure_gamble".to_string())],
             stack: vec![CardId("modded".to_string()), CardId("clone_chip".to_string())],
             rig: vec![CardId("gordian_blade".to_string())],
@@ -314,5 +319,21 @@ mod tests {
         let expected = vec![CardId("easy_mark".to_string())];
         assert_eq!(masked_for_corp.runner.heap, expected);
         assert_eq!(masked_for_runner.runner.heap, expected);
+    }
+
+    #[test]
+    fn runner_tags_and_brain_damage_are_never_masked() {
+        let mut runner = runner_state_with_cards();
+        runner.tags = 2;
+        runner.brain_damage = 1;
+        let state = game_state_with_runner(runner);
+
+        let masked_for_corp = mask_state_for_player(&state, Side::Corp);
+        let masked_for_runner = mask_state_for_player(&state, Side::Runner);
+
+        assert_eq!(masked_for_corp.runner.tags, 2);
+        assert_eq!(masked_for_runner.runner.tags, 2);
+        assert_eq!(masked_for_corp.runner.brain_damage, 1);
+        assert_eq!(masked_for_runner.runner.brain_damage, 1);
     }
 }
