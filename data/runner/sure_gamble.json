@@ -1,0 +1,10 @@
+{
+  "id": "sure_gamble",
+  "title": "Sure Gamble",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 5,
+  "triggers": [
+    { "trigger": "OnPlay", "effects": [ { "GainCredits": 9 } ] }
+  ]
+}
