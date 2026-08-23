@@ -80,6 +80,10 @@ pub fn access_server(state: &mut GameState, server: ServerId) -> Vec<GameEvent> 
             check_win_conditions(state);
             if let GamePhase::GameOver(winner) = state.phase {
                 events.push(GameEvent::GameOver { winner });
+                // The game just ended — don't keep accessing/stealing
+                // further cards in this same batch (e.g. a second Agenda in
+                // Archives or a Remote's Root).
+                break;
             }
         }
     }
@@ -382,6 +386,42 @@ mod tests {
 
         let events = access_server(&mut state, ServerId::Archives);
 
+        assert_eq!(state.runner.resources.agenda_points, AgendaPoints(7));
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Runner));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CardAccessed {
+                    card: CardId("priority_requisition".to_string()),
+                    server: ServerId::Archives,
+                },
+                GameEvent::AgendaStolen {
+                    card: CardId("priority_requisition".to_string()),
+                    agenda_points: 3,
+                },
+                GameEvent::GameOver { winner: Side::Runner },
+            ]
+        );
+    }
+
+    #[test]
+    fn stealing_a_second_agenda_in_the_same_batch_after_winning_is_never_processed() {
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![
+                CardId("priority_requisition".to_string()),
+                CardId("hostile_takeover".to_string()),
+            ],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.agenda_points = AgendaPoints(4);
+
+        let events = access_server(&mut state, ServerId::Archives);
+
+        // Capped at the winning threshold, not 8 — the second agenda
+        // (worth 1 more point) was never reached.
         assert_eq!(state.runner.resources.agenda_points, AgendaPoints(7));
         assert_eq!(state.phase, GamePhase::GameOver(Side::Runner));
         assert_eq!(
