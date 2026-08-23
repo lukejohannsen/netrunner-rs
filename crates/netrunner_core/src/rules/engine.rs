@@ -15,6 +15,7 @@ pub fn apply_action(
         PlayerAction::InstallCard { card_id, zone } => install_card(state, card_id, zone),
         PlayerAction::RezIce { ice_id } => rez_ice(state, ice_id),
         PlayerAction::InitiateRun { server } => initiate_run(state, server),
+        PlayerAction::ContinueRun => continue_run(state),
         PlayerAction::JackOut => jack_out(state),
         PlayerAction::PlayEvent { card_id } => play_event(state, card_id),
         PlayerAction::InstallHardware { card_id } => install_hardware(state, card_id),
@@ -122,7 +123,11 @@ fn install_card(
 
 fn rez_ice(state: &GameState, ice_id: CardId) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
-    require_active_turn(state, side)?;
+    let rez_window_open =
+        matches!(&state.active_run, Some(run) if run.phase == RunPhase::ApproachIce);
+    if !rez_window_open {
+        require_active_turn(state, side)?;
+    }
     let mut next = state.clone();
 
     let server = {
@@ -172,6 +177,18 @@ fn initiate_run(
     ))
 }
 
+fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_active_turn(state, side)?;
+    let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+    let (next_run, events) = run::advance_run(active_run, RunAction::Continue)?;
+
+    let mut next = state.clone();
+    next.active_run = Some(next_run);
+
+    Ok((next, events))
+}
+
 fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_active_turn(state, side)?;
@@ -185,16 +202,18 @@ fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError
 }
 
 fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result<(), RulesError> {
-    let position = state
-        .runner
-        .grip
+    let hand = match side {
+        Side::Runner => &mut state.runner.grip,
+        Side::Corp => &mut state.corp.hq,
+    };
+    let position = hand
         .iter()
         .position(|c| c == card_id)
         .ok_or_else(|| RulesError::CardNotInHand {
             side,
             card: card_id.clone(),
         })?;
-    state.runner.grip.remove(position);
+    hand.remove(position);
     Ok(())
 }
 
@@ -598,6 +617,35 @@ mod tests {
     }
 
     #[test]
+    fn corp_can_rez_ice_during_run_approach_ice_even_though_active_turn_is_runner() {
+        let card_id = CardId("ice_wall".to_string());
+        let installed = vec![InstalledCard {
+            card: card_id.clone(),
+            server: ServerId::Hq,
+            rezzed: false,
+        }];
+        let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
+        state.active_turn = Side::Runner;
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::ApproachIce,
+            ice: vec![RunIce { subroutines_pending: 1 }],
+            position: 0,
+        });
+
+        let (next, events) = apply_action(&state, PlayerAction::RezIce { ice_id: card_id.clone() })
+            .expect("Corp should be able to rez ICE during the Runner's run");
+
+        assert!(next.corp.installed[0].rezzed);
+        assert_eq!(next.corp.resources.clicks, Clicks(3));
+        assert_eq!(next.corp.resources.credits, Credits(5));
+        assert_eq!(
+            events,
+            vec![GameEvent::IceRezzed { card: card_id, server: ServerId::Hq }]
+        );
+    }
+
+    #[test]
     fn runner_initiate_run_starts_run_and_spends_click() {
         let state = runner_state(3, 5, 3);
         let (next, events) = apply_action(&state, PlayerAction::InitiateRun { server: ServerId::Hq })
@@ -735,6 +783,75 @@ mod tests {
                 position: 0,
             })
         );
+    }
+
+    #[test]
+    fn runner_continue_run_steps_through_phases_with_no_click_cost() {
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::Initiation,
+            ice: vec![RunIce { subroutines_pending: 0 }],
+            position: 0,
+        });
+
+        // Initiation -> ApproachIce
+        let (state, events) =
+            apply_action(&state, PlayerAction::ContinueRun).expect("continue should succeed");
+        assert_eq!(state.runner.resources.clicks, Clicks(3));
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::ApproachIce);
+        assert_eq!(events, vec![GameEvent::IceApproached { server: ServerId::Hq, position: 0 }]);
+
+        // ApproachIce -> EncounterIce
+        let (state, events) =
+            apply_action(&state, PlayerAction::ContinueRun).expect("continue should succeed");
+        assert_eq!(state.runner.resources.clicks, Clicks(3));
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::EncounterIce);
+        assert_eq!(events, vec![GameEvent::IceEncountered { server: ServerId::Hq, position: 0 }]);
+
+        // EncounterIce (0 pending) -> Success
+        let (state, events) =
+            apply_action(&state, PlayerAction::ContinueRun).expect("continue should succeed");
+        assert_eq!(state.runner.resources.clicks, Clicks(3));
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
+                GameEvent::RunSucceeded { server: ServerId::Hq },
+            ]
+        );
+    }
+
+    #[test]
+    fn runner_continue_run_with_subroutines_pending_propagates_error() {
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce { subroutines_pending: 1 }],
+            position: 0,
+        });
+
+        let result = apply_action(&state, PlayerAction::ContinueRun);
+
+        assert_eq!(result, Err(RulesError::SubroutinesStillPending { pending: 1 }));
+    }
+
+    #[test]
+    fn corp_turn_continue_run_returns_not_your_turn() {
+        let state = corp_state(3, 5);
+        let result = apply_action(&state, PlayerAction::ContinueRun);
+
+        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+    }
+
+    #[test]
+    fn runner_continue_run_with_no_active_run_returns_no_active_run() {
+        let state = runner_state(3, 0, 0);
+        let result = apply_action(&state, PlayerAction::ContinueRun);
+
+        assert_eq!(result, Err(RulesError::NoActiveRun));
     }
 
     #[test]
