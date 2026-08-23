@@ -109,7 +109,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::state::{AgendaPoints, Clicks, Credits};
+    use crate::rules::state::{AgendaPoints, Clicks, Credits, InstallSlot};
 
     fn game_state(corp: CorpState) -> GameState {
         GameState {
@@ -127,6 +127,8 @@ mod tests {
             },
             active_turn: Side::Corp,
             active_run: None,
+            seed: 0,
+            rng_step: 0,
         }
     }
 
@@ -144,11 +146,13 @@ mod tests {
                 InstalledCard {
                     card: CardId("ice_wall".to_string()),
                     server: ServerId::Hq,
+                    slot: InstallSlot::Ice,
                     rezzed: false,
                 },
                 InstalledCard {
                     card: CardId("enigma".to_string()),
                     server: ServerId::RnD,
+                    slot: InstallSlot::Ice,
                     rezzed: true,
                 },
             ],
@@ -233,6 +237,8 @@ mod tests {
             runner,
             active_turn: Side::Runner,
             active_run: None,
+            seed: 0,
+            rng_step: 0,
         }
     }
 

@@ -49,6 +49,17 @@ pub struct PlayerResources {
     pub agenda_points: AgendaPoints,
 }
 
+/// Whether an installed card occupies a server's ICE-protection slot or its
+/// "root" (content) slot. Lets `run::access_server` correctly exclude ICE
+/// from what a successful run accesses without needing a full `CardRegistry`
+/// lookup of the card's `dsl::CardType` — the installing action declares
+/// this explicitly at install time.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum InstallSlot {
+    Ice,
+    Root,
+}
+
 /// A Corp card installed on a server (ICE or a non-ICE install like an
 /// Asset/Agenda). `rezzed` gates card-identity visibility in the masked view:
 /// an unrezzed card's identity is hidden from the Runner, but its presence
@@ -57,6 +68,7 @@ pub struct PlayerResources {
 pub struct InstalledCard {
     pub card: CardId,
     pub server: ServerId,
+    pub slot: InstallSlot,
     pub rezzed: bool,
 }
 
@@ -95,9 +107,55 @@ pub struct GameState {
     pub runner: RunnerState,
     pub active_turn: Side,
     pub active_run: Option<RunState>,
+    /// Fixed seed for this game's deterministic pseudo-randomness (e.g.
+    /// which HQ card a run accesses). Never mutated after construction —
+    /// only `rng_step` advances — so replaying the same `(GameState,
+    /// PlayerAction)` history always produces bit-identical results.
+    pub seed: u64,
+    /// How many pseudo-random values have been drawn so far. Advanced by
+    /// `next_u64`; part of `GameState` (rather than living outside it, or
+    /// being threaded through `PlayerAction`) so `apply_action` stays a pure
+    /// function of its two explicit inputs even when it needs "randomness".
+    pub rng_step: u64,
 }
 
 impl GameState {
+    /// A fresh game state seeded for deterministic pseudo-randomness. Corp
+    /// and Runner zones start empty and resources start at zero — real game
+    /// setup (starting hands/decks/credits) isn't modeled by this engine yet;
+    /// callers populate `corp`/`runner` after construction. Corp is `Side`'s
+    /// `active_turn` value, matching the real game's turn order.
+    pub fn new(seed: u64) -> Self {
+        GameState {
+            corp: CorpState {
+                resources: PlayerResources {
+                    credits: Credits(0),
+                    clicks: Clicks(0),
+                    agenda_points: AgendaPoints(0),
+                },
+                hq: Vec::new(),
+                r_and_d: Vec::new(),
+                archives: Vec::new(),
+                installed: Vec::new(),
+            },
+            runner: RunnerState {
+                resources: PlayerResources {
+                    credits: Credits(0),
+                    clicks: Clicks(0),
+                    agenda_points: AgendaPoints(0),
+                },
+                memory_units: MemoryUnits(0),
+                grip: Vec::new(),
+                stack: Vec::new(),
+                rig: Vec::new(),
+            },
+            active_turn: Side::Corp,
+            active_run: None,
+            seed,
+            rng_step: 0,
+        }
+    }
+
     pub fn resources(&self, side: Side) -> &PlayerResources {
         match side {
             Side::Corp => &self.corp.resources,
@@ -110,5 +168,22 @@ impl GameState {
             Side::Corp => &mut self.corp.resources,
             Side::Runner => &mut self.runner.resources,
         }
+    }
+
+    /// Deterministically advances `rng_step` and returns a pseudo-random
+    /// `u64` derived purely from `(seed, rng_step)`. Uses a fixed SplitMix64
+    /// finalizer rather than `std`'s `DefaultHasher` — `DefaultHasher`'s
+    /// algorithm is explicitly unspecified and not guaranteed stable across
+    /// Rust versions/platforms, whereas this needs to keep producing
+    /// bit-identical results everywhere `netrunner_core` runs (client,
+    /// server, gym) forever, not just within one process/build.
+    pub fn next_u64(&mut self) -> u64 {
+        self.rng_step = self.rng_step.wrapping_add(1);
+        let mut z = self
+            .seed
+            .wrapping_add(self.rng_step.wrapping_mul(0x9E37_79B9_7F4A_7C15));
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
     }
 }

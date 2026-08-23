@@ -17,7 +17,7 @@ pub use masking::{
 };
 pub use run::{access_server, advance_run, RunAction, RunIce, RunPhase, RunState, ServerId};
 pub use state::{
-    AgendaPoints, Clicks, CorpState, Credits, GameState, InstalledCard, MemoryUnits,
+    AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard, MemoryUnits,
     PlayerResources, RunnerState, Side,
 };
 pub use turn::end_turn;

@@ -3,7 +3,7 @@ use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, RunAction, RunPhase, RunState};
-use crate::rules::state::{GameState, InstalledCard, Side};
+use crate::rules::state::{GameState, InstallSlot, InstalledCard, Side};
 use crate::rules::turn;
 
 pub fn apply_action(
@@ -13,7 +13,9 @@ pub fn apply_action(
     match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
         PlayerAction::DrawCardClick => draw_card_click(state),
-        PlayerAction::InstallCard { card_id, zone } => install_card(state, card_id, zone),
+        PlayerAction::InstallCard { card_id, zone, slot } => {
+            install_card(state, card_id, zone, slot)
+        }
         PlayerAction::RezIce { ice_id } => rez_ice(state, ice_id),
         PlayerAction::InitiateRun { server } => initiate_run(state, server),
         PlayerAction::ContinueRun => continue_run(state),
@@ -89,6 +91,7 @@ fn install_card(
     state: &GameState,
     card_id: CardId,
     zone: TargetZone,
+    slot: InstallSlot,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     require_active_turn(state, side)?;
@@ -108,6 +111,7 @@ fn install_card(
     next.corp.installed.push(InstalledCard {
         card: card_id.clone(),
         server: zone,
+        slot,
         rezzed: false,
     });
 
@@ -216,7 +220,7 @@ fn complete_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesE
     let mut next = state.clone();
     next.active_run = None;
 
-    let mut events = run::access_server(&next.corp, server);
+    let mut events = run::access_server(&mut next, server);
     events.push(GameEvent::RunCompleted { server });
 
     Ok((next, events))
@@ -365,6 +369,8 @@ mod tests {
             },
             active_turn: Side::Corp,
             active_run: None,
+            seed: 0,
+            rng_step: 0,
         }
     }
 
@@ -396,6 +402,8 @@ mod tests {
             },
             active_turn: Side::Runner,
             active_run: None,
+            seed: 0,
+            rng_step: 0,
         }
     }
 
@@ -510,6 +518,7 @@ mod tests {
             PlayerAction::InstallCard {
                 card_id: card_id.clone(),
                 zone: ServerId::Hq,
+                slot: InstallSlot::Ice,
             },
         )
         .expect("action should succeed");
@@ -521,6 +530,7 @@ mod tests {
             vec![InstalledCard {
                 card: card_id.clone(),
                 server: ServerId::Hq,
+                slot: InstallSlot::Ice,
                 rezzed: false,
             }]
         );
@@ -547,7 +557,7 @@ mod tests {
         let state = runner_state(3, 5, 3);
         let result = apply_action(
             &state,
-            PlayerAction::InstallCard { card_id, zone: ServerId::Hq },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice },
         );
 
         assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Corp }));
@@ -562,6 +572,7 @@ mod tests {
             PlayerAction::InstallCard {
                 card_id: card_id.clone(),
                 zone: ServerId::Hq,
+                slot: InstallSlot::Ice,
             },
         );
 
@@ -577,7 +588,7 @@ mod tests {
         let state = corp_state_with_hq_and_installed(0, 5, vec![card_id.clone()], Vec::new());
         let result = apply_action(
             &state,
-            PlayerAction::InstallCard { card_id, zone: ServerId::Hq },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice },
         );
 
         assert_eq!(
@@ -592,6 +603,7 @@ mod tests {
         let installed = vec![InstalledCard {
             card: card_id.clone(),
             server: ServerId::Hq,
+            slot: InstallSlot::Ice,
             rezzed: false,
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
@@ -631,6 +643,7 @@ mod tests {
         let installed = vec![InstalledCard {
             card: card_id.clone(),
             server: ServerId::Hq,
+            slot: InstallSlot::Ice,
             rezzed: true,
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
@@ -645,6 +658,7 @@ mod tests {
         let installed = vec![InstalledCard {
             card: card_id.clone(),
             server: ServerId::Hq,
+            slot: InstallSlot::Ice,
             rezzed: false,
         }];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
