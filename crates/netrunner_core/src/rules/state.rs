@@ -9,6 +9,15 @@ pub enum Side {
     Runner,
 }
 
+impl Side {
+    pub fn other(self) -> Side {
+        match self {
+            Side::Corp => Side::Runner,
+            Side::Runner => Side::Corp,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct Clicks(pub u32);
 
@@ -31,6 +40,13 @@ impl Credits {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct AgendaPoints(pub u32);
+
+impl AgendaPoints {
+    /// Gains never fail in the rules; saturate rather than ever panicking on overflow.
+    pub fn gain(self, amount: u32) -> Self {
+        AgendaPoints(self.0.saturating_add(amount))
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct MemoryUnits(pub u32);
@@ -99,13 +115,44 @@ pub struct RunnerState {
     /// Installed Hardware/Programs. Unlike Corp's `installed`, Rig cards have
     /// no hidden/unrezzed state — they're always face-up once installed.
     pub rig: Vec<CardId>,
+    /// Runner's discard pile. Like Corp's `archives`, this is fully public —
+    /// never masked in the masked view.
+    pub heap: Vec<CardId>,
+}
+
+/// Which sub-phase of a turn is currently active. `StartOfTurn`/`Action`/
+/// `Discard` all carry the `Side` whose turn it is; `GameOver` carries the
+/// winning `Side` instead (there's no "active side" once the game has ended).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GamePhase {
+    /// Entered momentarily on a turn handoff; phase-entry triggers
+    /// (mandatory Corp draw) resolve here, then the engine auto-advances to
+    /// `Action(side)` before returning control to a `PlayerAction`. No
+    /// `PlayerAction` ever targets `StartOfTurn` directly.
+    StartOfTurn(Side),
+    /// The bulk of a turn: clicks are spent here (`GainCreditClick`,
+    /// `InstallCard`, `InitiateRun`, etc.). Ends via `PlayerAction::EndTurn`.
+    Action(Side),
+    /// Mandatory hand-size cleanup before control passes to the other side.
+    /// `required` is how many more cards `side` must discard — set once on
+    /// entry (`hand_size - max_hand_size`) and decremented by each
+    /// `PlayerAction::DiscardCard`, rather than recomputed from hand size
+    /// each time.
+    Discard { side: Side, required: usize },
+    /// Terminal phase; carries the winning side. Not yet reachable — no
+    /// win-condition checks (agenda-point threshold, deck-out, flatline)
+    /// exist in the engine yet. Included now so a future win-condition check
+    /// only needs to set `state.phase = GamePhase::GameOver(winner)`: no
+    /// `PlayerAction` handler matches `Action(_)`/`Discard { .. }` once
+    /// phase is `GameOver`, so every action is rejected automatically.
+    GameOver(Side),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameState {
     pub corp: CorpState,
     pub runner: RunnerState,
-    pub active_turn: Side,
+    pub phase: GamePhase,
     pub active_run: Option<RunState>,
     /// Fixed seed for this game's deterministic pseudo-randomness (e.g.
     /// which HQ card a run accesses). Never mutated after construction —
@@ -123,8 +170,8 @@ impl GameState {
     /// A fresh game state seeded for deterministic pseudo-randomness. Corp
     /// and Runner zones start empty and resources start at zero — real game
     /// setup (starting hands/decks/credits) isn't modeled by this engine yet;
-    /// callers populate `corp`/`runner` after construction. Corp is `Side`'s
-    /// `active_turn` value, matching the real game's turn order.
+    /// callers populate `corp`/`runner` after construction. `phase` starts at
+    /// `GamePhase::Action(Side::Corp)`, matching the real game's turn order.
     pub fn new(seed: u64) -> Self {
         GameState {
             corp: CorpState {
@@ -148,8 +195,9 @@ impl GameState {
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),
+                heap: Vec::new(),
             },
-            active_turn: Side::Corp,
+            phase: GamePhase::Action(Side::Corp),
             active_run: None,
             seed,
             rng_step: 0,

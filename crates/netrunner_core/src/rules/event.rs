@@ -26,4 +26,8 @@ pub enum GameEvent {
     CardAccessed { card: CardId, server: ServerId },
     TurnEnded { side: Side },
     TurnStarted { side: Side, clicks: u32 },
+    DiscardPending { side: Side, required: usize },
+    CardDiscarded { side: Side, card: CardId },
+    AgendaStolen { card: CardId, agenda_points: u32 },
+    GameOver { winner: Side },
 }

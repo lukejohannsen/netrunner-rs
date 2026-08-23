@@ -6,6 +6,7 @@ mod masking;
 mod run;
 mod state;
 mod turn;
+mod win;
 
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use engine::apply_action;

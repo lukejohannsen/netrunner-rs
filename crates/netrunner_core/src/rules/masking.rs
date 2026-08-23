@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::dsl::CardId;
 use crate::rules::run::{RunState, ServerId};
-use crate::rules::state::{CorpState, GameState, InstalledCard, MemoryUnits, PlayerResources, RunnerState, Side};
+use crate::rules::state::{
+    CorpState, GamePhase, GameState, InstalledCard, MemoryUnits, PlayerResources, RunnerState, Side,
+};
 
 /// A card zone whose contents are secret to everyone but its owner. The
 /// count is always public (both players can see how many cards are in HQ or
@@ -41,16 +43,19 @@ pub struct PublicRunnerState {
     pub stack: MaskedZone,
     /// Never masked — Rig cards are always face-up once installed.
     pub rig: Vec<CardId>,
+    /// Never masked — like Corp's `archives`, a Runner's discard pile is a
+    /// fully public zone in the real game.
+    pub heap: Vec<CardId>,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
 /// count, and unrezzed installed cards have their identity stripped unless
-/// the viewer owns them.
+/// the viewer owns them. `phase` is never masked — turn structure is public.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicGameState {
     pub corp: PublicCorpState,
     pub runner: PublicRunnerState,
-    pub active_turn: Side,
+    pub phase: GamePhase,
     pub active_run: Option<RunState>,
 }
 
@@ -58,7 +63,7 @@ pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState
     PublicGameState {
         corp: mask_corp_state(&state.corp, player == Side::Corp),
         runner: mask_runner_state(&state.runner, player == Side::Runner),
-        active_turn: state.active_turn,
+        phase: state.phase,
         active_run: state.active_run.clone(),
     }
 }
@@ -103,6 +108,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         grip: mask_zone(&runner.grip, owner_view),
         stack: mask_zone(&runner.stack, owner_view),
         rig: runner.rig.clone(),
+        heap: runner.heap.clone(),
     }
 }
 
@@ -124,8 +130,9 @@ mod tests {
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),
+                heap: Vec::new(),
             },
-            active_turn: Side::Corp,
+            phase: GamePhase::Action(Side::Corp),
             active_run: None,
             seed: 0,
             rng_step: 0,
@@ -228,6 +235,7 @@ mod tests {
             grip: vec![CardId("sure_gamble".to_string())],
             stack: vec![CardId("modded".to_string()), CardId("clone_chip".to_string())],
             rig: vec![CardId("gordian_blade".to_string())],
+            heap: vec![CardId("easy_mark".to_string())],
         }
     }
 
@@ -235,7 +243,7 @@ mod tests {
         GameState {
             corp: corp_state_with_cards(),
             runner,
-            active_turn: Side::Runner,
+            phase: GamePhase::Action(Side::Runner),
             active_run: None,
             seed: 0,
             rng_step: 0,
@@ -289,5 +297,16 @@ mod tests {
         let expected = vec![CardId("gordian_blade".to_string())];
         assert_eq!(masked_for_corp.runner.rig, expected);
         assert_eq!(masked_for_runner.runner.rig, expected);
+    }
+
+    #[test]
+    fn runner_heap_is_never_masked() {
+        let state = game_state_with_runner(runner_state_with_cards());
+        let masked_for_corp = mask_state_for_player(&state, Side::Corp);
+        let masked_for_runner = mask_state_for_player(&state, Side::Runner);
+
+        let expected = vec![CardId("easy_mark".to_string())];
+        assert_eq!(masked_for_corp.runner.heap, expected);
+        assert_eq!(masked_for_runner.runner.heap, expected);
     }
 }

@@ -3,7 +3,7 @@ use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, RunAction, RunPhase, RunState};
-use crate::rules::state::{GameState, InstallSlot, InstalledCard, Side};
+use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side};
 use crate::rules::turn;
 
 pub fn apply_action(
@@ -30,12 +30,13 @@ pub fn apply_action(
             break_subroutine(state, ice_id, subroutine_index)
         }
         PlayerAction::EndTurn => turn::end_turn(state),
+        PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id),
     }
 }
 
-fn require_active_turn(state: &GameState, side: Side) -> Result<(), RulesError> {
-    if state.active_turn != side {
-        return Err(RulesError::NotYourTurn { side });
+fn require_phase(state: &GameState, expected: GamePhase) -> Result<(), RulesError> {
+    if state.phase != expected {
+        return Err(RulesError::WrongPhase { expected, actual: state.phase });
     }
     Ok(())
 }
@@ -58,7 +59,7 @@ fn gain_credit_click(
     state: &GameState,
     side: Side,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     next.resources_mut(side).credits = next.resources(side).credits.gain(1);
@@ -74,7 +75,7 @@ fn gain_credit_click(
 
 fn draw_card_click(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
 
@@ -94,7 +95,7 @@ fn install_card(
     slot: InstallSlot,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
 
@@ -133,7 +134,7 @@ fn rez_ice(state: &GameState, ice_id: CardId) -> Result<(GameState, Vec<GameEven
     let rez_window_open =
         matches!(&state.active_run, Some(run) if run.phase == RunPhase::ApproachIce);
     if !rez_window_open {
-        require_active_turn(state, side)?;
+        require_phase(state, GamePhase::Action(side))?;
     }
     let mut next = state.clone();
 
@@ -161,7 +162,7 @@ fn initiate_run(
     server: ServerTarget,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     if state.active_run.is_some() {
         return Err(RulesError::RunAlreadyInProgress);
     }
@@ -186,7 +187,7 @@ fn initiate_run(
 
 fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
     let (next_run, events) = run::advance_run(active_run, RunAction::Continue)?;
 
@@ -198,7 +199,7 @@ fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesE
 
 fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
     let (_, events) = run::advance_run(active_run, RunAction::JackOut)?;
 
@@ -210,7 +211,7 @@ fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError
 
 fn complete_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
     if active_run.phase != RunPhase::Success {
         return Err(RulesError::RunNotConcluded { phase: active_run.phase });
@@ -244,7 +245,7 @@ fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result
 
 fn play_event(state: &GameState, card_id: CardId) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
@@ -263,7 +264,7 @@ fn install_hardware(
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
@@ -284,7 +285,7 @@ fn install_program(
     memory_cost: u8,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
@@ -314,7 +315,7 @@ fn break_subroutine(
     subroutine_index: usize,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
-    require_active_turn(state, side)?;
+    require_phase(state, GamePhase::Action(side))?;
     let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
 
     let pending = active_run
@@ -366,8 +367,9 @@ mod tests {
                 grip: Vec::new(),
                 stack: Vec::new(),
                 rig: Vec::new(),
+                heap: Vec::new(),
             },
-            active_turn: Side::Corp,
+            phase: GamePhase::Action(Side::Corp),
             active_run: None,
             seed: 0,
             rng_step: 0,
@@ -399,8 +401,9 @@ mod tests {
                 grip: (0..grip_size).map(|i| CardId(format!("grip_card_{i}"))).collect(),
                 stack: (0..stack_size).map(|i| CardId(format!("stack_card_{i}"))).collect(),
                 rig: Vec::new(),
+                heap: Vec::new(),
             },
-            active_turn: Side::Runner,
+            phase: GamePhase::Action(Side::Runner),
             active_run: None,
             seed: 0,
             rng_step: 0,
@@ -494,7 +497,13 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(&state, PlayerAction::GainCreditClick { side: Side::Runner });
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -560,7 +569,13 @@ mod tests {
             PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice },
         );
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Corp }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Corp),
+                actual: GamePhase::Action(Side::Runner),
+            })
+        );
     }
 
     #[test]
@@ -625,7 +640,13 @@ mod tests {
         let state = runner_state(3, 5, 3);
         let result = apply_action(&state, PlayerAction::RezIce { ice_id: card_id });
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Corp }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Corp),
+                actual: GamePhase::Action(Side::Runner),
+            })
+        );
     }
 
     #[test]
@@ -653,7 +674,7 @@ mod tests {
     }
 
     #[test]
-    fn corp_can_rez_ice_during_run_approach_ice_even_though_active_turn_is_runner() {
+    fn corp_can_rez_ice_during_run_approach_ice_even_though_phase_is_runner_action() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
             card: card_id.clone(),
@@ -662,7 +683,7 @@ mod tests {
             rezzed: false,
         }];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
-        state.active_turn = Side::Runner;
+        state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
@@ -715,7 +736,13 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(&state, PlayerAction::InitiateRun { server: ServerId::Hq });
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -765,7 +792,13 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(&state, PlayerAction::JackOut);
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -861,7 +894,13 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(&state, PlayerAction::CompleteRun);
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -933,7 +972,7 @@ mod tests {
         let (next, events) =
             apply_action(&state, PlayerAction::EndTurn).expect("action should succeed");
 
-        assert_eq!(next.active_turn, Side::Runner);
+        assert_eq!(next.phase, GamePhase::Action(Side::Runner));
         assert_eq!(next.runner.resources.clicks, Clicks(4));
         assert_eq!(
             events,
@@ -1002,7 +1041,13 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(&state, PlayerAction::ContinueRun);
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -1040,7 +1085,13 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(&state, PlayerAction::PlayEvent { card_id });
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -1095,7 +1146,13 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(&state, PlayerAction::InstallHardware { card_id });
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -1146,7 +1203,13 @@ mod tests {
             PlayerAction::InstallProgram { card_id, memory_cost: 3 },
         );
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -1224,7 +1287,13 @@ mod tests {
             PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
         );
 
-        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
     }
 
     #[test]
@@ -1276,5 +1345,34 @@ mod tests {
         );
 
         assert_eq!(result, Err(RulesError::NoSubroutinesPending));
+    }
+
+    #[test]
+    fn actions_issued_during_game_over_fail_with_wrong_phase() {
+        let mut state = corp_state(3, 5);
+        state.phase = GamePhase::GameOver(Side::Runner);
+
+        let result = apply_action(&state, PlayerAction::GainCreditClick { side: Side::Corp });
+
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Corp),
+                actual: GamePhase::GameOver(Side::Runner),
+            })
+        );
+    }
+
+    #[test]
+    fn end_turn_issued_during_game_over_fails_with_not_in_action_phase() {
+        let mut state = corp_state(3, 5);
+        state.phase = GamePhase::GameOver(Side::Runner);
+
+        let result = apply_action(&state, PlayerAction::EndTurn);
+
+        assert_eq!(
+            result,
+            Err(RulesError::NotInActionPhase { actual: GamePhase::GameOver(Side::Runner) })
+        );
     }
 }

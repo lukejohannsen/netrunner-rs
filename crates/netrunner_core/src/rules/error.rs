@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::dsl::CardId;
 use crate::rules::run::RunPhase;
-use crate::rules::state::Side;
+use crate::rules::state::{GamePhase, Side};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RulesError {
@@ -13,8 +13,14 @@ pub enum RulesError {
         requested: u32,
     },
 
-    #[error("action requires it to be {side:?}'s turn")]
-    NotYourTurn { side: Side },
+    #[error("action requires phase {expected:?} but game is in {actual:?}")]
+    WrongPhase { expected: GamePhase, actual: GamePhase },
+
+    #[error("action requires an Action phase but game is in {actual:?}")]
+    NotInActionPhase { actual: GamePhase },
+
+    #[error("action requires a Discard phase but game is in {actual:?}")]
+    NotInDiscardPhase { actual: GamePhase },
 
     #[error("cannot continue past ICE while {pending} subroutine(s) are still pending")]
     SubroutinesStillPending { pending: u32 },

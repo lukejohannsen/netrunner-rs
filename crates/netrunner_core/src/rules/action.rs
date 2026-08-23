@@ -28,9 +28,10 @@ pub enum PlayerAction {
     /// Flip an already-installed card face-up. Corp-only. No click cost (rez is
     /// not a click action) and no credit cost yet — rez cost is data-driven
     /// per-card via `dsl::Card`, and no `CardRegistry` is wired into the engine
-    /// yet. Permitted either on the Corp's own active turn, or — regardless of
-    /// whose turn it is — while a run is active and in `RunPhase::ApproachIce`
-    /// (the rez window), since `active_turn` never flips mid-run.
+    /// yet. Permitted either during the Corp's own `GamePhase::Action`, or —
+    /// regardless of whose turn it is — while a run is active and in
+    /// `RunPhase::ApproachIce` (the rez window), since `phase` never changes
+    /// mid-run.
     RezIce { ice_id: CardId },
     /// Spend 1 click, start a run on `server`. Runner-only. The resulting
     /// `RunState::ice` is left empty — populating real ICE requires a
@@ -84,10 +85,22 @@ pub enum PlayerAction {
     BreakSubroutine { ice_id: CardId, subroutine_index: usize },
     /// End the active side's turn, handing control to the other side and
     /// refilling their clicks to the fixed per-turn allotment (Corp 3 / Runner
-    /// 4). Symmetric — no `side` field; the side that ends is simply whichever
-    /// side is currently `active_turn`. Errors with
+    /// 4). Symmetric — no `side` field; the acting side is whichever side
+    /// `GameState::phase` is currently `Action(_)` for. Errors with
     /// `RulesError::CannotEndTurnWhileRunActive` if a run is in progress.
-    /// Deliberately does NOT model mandatory draw or end-of-turn hand-size
-    /// discard/cleanup — see `turn::end_turn`'s doc comment.
+    /// If the ending side's hand is over its max hand size, transitions to
+    /// `GamePhase::Discard { side, required }` instead of handing control
+    /// over immediately — see `turn::end_turn`'s doc comment. Otherwise,
+    /// control passes to the Corp, `turn::end_turn` also performs their
+    /// mandatory start-of-turn draw from R&D into HQ automatically.
     EndTurn,
+    /// Discard `card_id` from hand to satisfy a pending mandatory discard.
+    /// Symmetric — no `side` field; the acting side is whichever side
+    /// `GameState::phase` is currently `Discard { side, .. }` for. Errors if
+    /// the phase isn't `Discard` (`RulesError::NotInDiscardPhase`) or the
+    /// card isn't in that side's hand (`RulesError::CardNotInHand`). Once the
+    /// phase's `required` count reaches zero, transitions to the other
+    /// side's `GamePhase::StartOfTurn` — see `turn::discard_card`'s doc
+    /// comment.
+    DiscardCard { card_id: CardId },
 }
