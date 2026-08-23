@@ -16,6 +16,14 @@ pub fn apply_action(
         PlayerAction::RezIce { ice_id } => rez_ice(state, ice_id),
         PlayerAction::InitiateRun { server } => initiate_run(state, server),
         PlayerAction::JackOut => jack_out(state),
+        PlayerAction::PlayEvent { card_id } => play_event(state, card_id),
+        PlayerAction::InstallHardware { card_id } => install_hardware(state, card_id),
+        PlayerAction::InstallProgram { card_id, memory_cost } => {
+            install_program(state, card_id, memory_cost)
+        }
+        PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
+            break_subroutine(state, ice_id, subroutine_index)
+        }
     }
 }
 
@@ -65,9 +73,8 @@ fn draw_card_click(state: &GameState) -> Result<(GameState, Vec<GameEvent>), Rul
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    if next.runner.stack_size > 0 {
-        next.runner.stack_size -= 1;
-        next.runner.grip_size += 1;
+    if let Some(card) = next.runner.stack.pop() {
+        next.runner.grip.push(card);
         events.push(GameEvent::CardDrawn { side });
     }
 
@@ -177,6 +184,115 @@ fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError
     Ok((next, events))
 }
 
+fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result<(), RulesError> {
+    let position = state
+        .runner
+        .grip
+        .iter()
+        .position(|c| c == card_id)
+        .ok_or_else(|| RulesError::CardNotInHand {
+            side,
+            card: card_id.clone(),
+        })?;
+    state.runner.grip.remove(position);
+    Ok(())
+}
+
+fn play_event(state: &GameState, card_id: CardId) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_active_turn(state, side)?;
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+    take_from_grip(&mut next, side, &card_id)?;
+
+    Ok((
+        next,
+        vec![
+            GameEvent::ClickSpent { side },
+            GameEvent::EventPlayed { side, card: card_id },
+        ],
+    ))
+}
+
+fn install_hardware(
+    state: &GameState,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_active_turn(state, side)?;
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+    take_from_grip(&mut next, side, &card_id)?;
+    next.runner.rig.push(card_id.clone());
+
+    Ok((
+        next,
+        vec![
+            GameEvent::ClickSpent { side },
+            GameEvent::HardwareInstalled { side, card: card_id },
+        ],
+    ))
+}
+
+fn install_program(
+    state: &GameState,
+    card_id: CardId,
+    memory_cost: u8,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_active_turn(state, side)?;
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+    take_from_grip(&mut next, side, &card_id)?;
+
+    let available = next.runner.memory_units.0;
+    let requested = memory_cost as u32;
+    next.runner.memory_units = next
+        .runner
+        .memory_units
+        .spend(requested)
+        .ok_or(RulesError::InsufficientMemory { available, requested })?;
+    next.runner.rig.push(card_id.clone());
+
+    Ok((
+        next,
+        vec![
+            GameEvent::ClickSpent { side },
+            GameEvent::ProgramInstalled { side, card: card_id, memory_cost },
+        ],
+    ))
+}
+
+fn break_subroutine(
+    state: &GameState,
+    // Not cross-checked against `RunState::ice` — see `PlayerAction::BreakSubroutine`'s doc comment.
+    _ice_id: CardId,
+    subroutine_index: usize,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_active_turn(state, side)?;
+    let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+
+    let pending = active_run
+        .ice
+        .get(active_run.position)
+        .map(|ice| ice.subroutines_pending)
+        .unwrap_or(0);
+    if subroutine_index as u32 >= pending {
+        return Err(RulesError::InvalidSubroutineIndex {
+            index: subroutine_index,
+            pending,
+        });
+    }
+
+    let (next_run, events) = run::advance_run(active_run, RunAction::BreakSubroutine)?;
+
+    let mut next = state.clone();
+    next.active_run = Some(next_run);
+
+    Ok((next, events))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,14 +318,17 @@ mod tests {
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: crate::rules::state::MemoryUnits(0),
-                grip_size: 0,
-                stack_size: 0,
+                grip: Vec::new(),
+                stack: Vec::new(),
+                rig: Vec::new(),
             },
             active_turn: Side::Corp,
             active_run: None,
         }
     }
 
+    /// `stack_size`/`grip_size` are filled with distinct placeholder `CardId`s
+    /// (identity doesn't matter for the tests using this — only counts do).
     fn runner_state(clicks: u32, stack_size: u32, grip_size: u32) -> GameState {
         GameState {
             corp: crate::rules::state::CorpState {
@@ -229,8 +348,9 @@ mod tests {
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: crate::rules::state::MemoryUnits(0),
-                grip_size,
-                stack_size,
+                grip: (0..grip_size).map(|i| CardId(format!("grip_card_{i}"))).collect(),
+                stack: (0..stack_size).map(|i| CardId(format!("stack_card_{i}"))).collect(),
+                rig: Vec::new(),
             },
             active_turn: Side::Runner,
             active_run: None,
@@ -246,6 +366,19 @@ mod tests {
         let mut state = corp_state(clicks, credits);
         state.corp.hq = hq;
         state.corp.installed = installed;
+        state
+    }
+
+    fn runner_state_with_grip(
+        clicks: u32,
+        credits: u32,
+        memory_units: u32,
+        grip: Vec<CardId>,
+    ) -> GameState {
+        let mut state = runner_state(clicks, 0, 0);
+        state.runner.resources.credits = Credits(credits);
+        state.runner.memory_units = crate::rules::state::MemoryUnits(memory_units);
+        state.runner.grip = grip;
         state
     }
 
@@ -280,8 +413,8 @@ mod tests {
             apply_action(&state, PlayerAction::DrawCardClick).expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(3));
-        assert_eq!(next.runner.stack_size, 9);
-        assert_eq!(next.runner.grip_size, 6);
+        assert_eq!(next.runner.stack.len(), 9);
+        assert_eq!(next.runner.grip.len(), 6);
         assert_eq!(
             events,
             vec![
@@ -320,8 +453,8 @@ mod tests {
         let (next, events) =
             apply_action(&state, PlayerAction::DrawCardClick).expect("action should succeed");
 
-        assert_eq!(next.runner.stack_size, 0);
-        assert_eq!(next.runner.grip_size, 3);
+        assert_eq!(next.runner.stack.len(), 0);
+        assert_eq!(next.runner.grip.len(), 3);
         assert_eq!(next.runner.resources.clicks, Clicks(1));
         assert_eq!(events, vec![GameEvent::ClickSpent { side: Side::Runner }]);
     }
@@ -602,5 +735,270 @@ mod tests {
                 position: 0,
             })
         );
+    }
+
+    #[test]
+    fn runner_play_event_removes_card_from_grip_and_spends_click() {
+        let card_id = CardId("sure_gamble".to_string());
+        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let (next, events) = apply_action(&state, PlayerAction::PlayEvent { card_id: card_id.clone() })
+            .expect("action should succeed");
+
+        assert_eq!(next.runner.resources.clicks, Clicks(2));
+        assert!(next.runner.grip.is_empty());
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id },
+            ]
+        );
+
+        // Original state is untouched.
+        assert_eq!(state.runner.grip, vec![CardId("sure_gamble".to_string())]);
+    }
+
+    #[test]
+    fn corp_turn_play_event_returns_not_your_turn() {
+        let card_id = CardId("sure_gamble".to_string());
+        let state = corp_state(3, 5);
+        let result = apply_action(&state, PlayerAction::PlayEvent { card_id });
+
+        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+    }
+
+    #[test]
+    fn runner_play_event_with_card_not_in_grip_returns_card_not_in_hand() {
+        let card_id = CardId("sure_gamble".to_string());
+        let state = runner_state_with_grip(3, 5, 0, Vec::new());
+        let result = apply_action(&state, PlayerAction::PlayEvent { card_id: card_id.clone() });
+
+        assert_eq!(
+            result,
+            Err(RulesError::CardNotInHand { side: Side::Runner, card: card_id })
+        );
+    }
+
+    #[test]
+    fn runner_play_event_with_zero_clicks_returns_not_enough_clicks() {
+        let card_id = CardId("sure_gamble".to_string());
+        let state = runner_state_with_grip(0, 5, 0, vec![card_id.clone()]);
+        let result = apply_action(&state, PlayerAction::PlayEvent { card_id });
+
+        assert_eq!(
+            result,
+            Err(RulesError::NotEnoughClicks { side: Side::Runner, available: 0, requested: 1 })
+        );
+    }
+
+    #[test]
+    fn runner_install_hardware_moves_card_from_grip_to_rig_and_spends_click() {
+        let card_id = CardId("clone_chip".to_string());
+        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let (next, events) = apply_action(
+            &state,
+            PlayerAction::InstallHardware { card_id: card_id.clone() },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.resources.clicks, Clicks(2));
+        assert!(next.runner.grip.is_empty());
+        assert_eq!(next.runner.rig, vec![card_id.clone()]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::HardwareInstalled { side: Side::Runner, card: card_id },
+            ]
+        );
+    }
+
+    #[test]
+    fn corp_turn_install_hardware_returns_not_your_turn() {
+        let card_id = CardId("clone_chip".to_string());
+        let state = corp_state(3, 5);
+        let result = apply_action(&state, PlayerAction::InstallHardware { card_id });
+
+        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+    }
+
+    #[test]
+    fn runner_install_hardware_with_card_not_in_grip_returns_card_not_in_hand() {
+        let card_id = CardId("clone_chip".to_string());
+        let state = runner_state_with_grip(3, 5, 0, Vec::new());
+        let result = apply_action(&state, PlayerAction::InstallHardware { card_id: card_id.clone() });
+
+        assert_eq!(
+            result,
+            Err(RulesError::CardNotInHand { side: Side::Runner, card: card_id })
+        );
+    }
+
+    #[test]
+    fn runner_install_program_moves_card_and_reserves_memory() {
+        let card_id = CardId("gordian_blade".to_string());
+        let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
+        let (next, events) = apply_action(
+            &state,
+            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.resources.clicks, Clicks(2));
+        assert!(next.runner.grip.is_empty());
+        assert_eq!(next.runner.rig, vec![card_id.clone()]);
+        assert_eq!(next.runner.memory_units, crate::rules::state::MemoryUnits(1));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::ProgramInstalled {
+                    side: Side::Runner,
+                    card: card_id,
+                    memory_cost: 3,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn corp_turn_install_program_returns_not_your_turn() {
+        let card_id = CardId("gordian_blade".to_string());
+        let state = corp_state(3, 5);
+        let result = apply_action(
+            &state,
+            PlayerAction::InstallProgram { card_id, memory_cost: 3 },
+        );
+
+        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+    }
+
+    #[test]
+    fn runner_install_program_with_card_not_in_grip_returns_card_not_in_hand() {
+        let card_id = CardId("gordian_blade".to_string());
+        let state = runner_state_with_grip(3, 5, 4, Vec::new());
+        let result = apply_action(
+            &state,
+            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
+        );
+
+        assert_eq!(
+            result,
+            Err(RulesError::CardNotInHand { side: Side::Runner, card: card_id })
+        );
+    }
+
+    #[test]
+    fn runner_install_program_with_insufficient_memory_returns_insufficient_memory() {
+        let card_id = CardId("gordian_blade".to_string());
+        let state = runner_state_with_grip(3, 5, 2, vec![card_id.clone()]);
+        let result = apply_action(
+            &state,
+            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
+        );
+
+        assert_eq!(
+            result,
+            Err(RulesError::InsufficientMemory { available: 2, requested: 3 })
+        );
+
+        // Original state is untouched: the card is still in the grip.
+        assert_eq!(state.runner.grip, vec![card_id]);
+    }
+
+    #[test]
+    fn runner_break_subroutine_decrements_pending_on_current_ice() {
+        let ice_id = CardId("ice_wall".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce { subroutines_pending: 2 }],
+            position: 0,
+        });
+        let (next, events) = apply_action(
+            &state,
+            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
+        )
+        .expect("action should succeed");
+
+        // No click cost: breaking a subroutine isn't a click action.
+        assert_eq!(next.runner.resources.clicks, Clicks(3));
+        assert_eq!(
+            next.active_run,
+            Some(RunState {
+                server: ServerId::Hq,
+                phase: RunPhase::EncounterIce,
+                ice: vec![RunIce { subroutines_pending: 1 }],
+                position: 0,
+            })
+        );
+        assert_eq!(
+            events,
+            vec![GameEvent::SubroutineBroken { server: ServerId::Hq, position: 0, remaining: 1 }]
+        );
+    }
+
+    #[test]
+    fn corp_turn_break_subroutine_returns_not_your_turn() {
+        let ice_id = CardId("ice_wall".to_string());
+        let state = corp_state(3, 5);
+        let result = apply_action(
+            &state,
+            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
+        );
+
+        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+    }
+
+    #[test]
+    fn runner_break_subroutine_with_no_active_run_returns_no_active_run() {
+        let ice_id = CardId("ice_wall".to_string());
+        let state = runner_state(3, 0, 0);
+        let result = apply_action(
+            &state,
+            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
+        );
+
+        assert_eq!(result, Err(RulesError::NoActiveRun));
+    }
+
+    #[test]
+    fn runner_break_subroutine_with_index_out_of_range_returns_invalid_subroutine_index() {
+        let ice_id = CardId("ice_wall".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce { subroutines_pending: 1 }],
+            position: 0,
+        });
+        let result = apply_action(
+            &state,
+            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 1 },
+        );
+
+        assert_eq!(
+            result,
+            Err(RulesError::InvalidSubroutineIndex { index: 1, pending: 1 })
+        );
+    }
+
+    #[test]
+    fn runner_break_subroutine_outside_encounter_ice_returns_no_subroutines_pending() {
+        let ice_id = CardId("ice_wall".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::ApproachIce,
+            ice: vec![RunIce { subroutines_pending: 1 }],
+            position: 0,
+        });
+        let result = apply_action(
+            &state,
+            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
+        );
+
+        assert_eq!(result, Err(RulesError::NoSubroutinesPending));
     }
 }

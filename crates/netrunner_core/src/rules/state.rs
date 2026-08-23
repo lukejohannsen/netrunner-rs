@@ -35,6 +35,13 @@ pub struct AgendaPoints(pub u32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default, Serialize, Deserialize)]
 pub struct MemoryUnits(pub u32);
 
+impl MemoryUnits {
+    /// Returns `None` (never goes negative) if `amount` exceeds what's available.
+    pub fn spend(self, amount: u32) -> Option<Self> {
+        self.0.checked_sub(amount).map(MemoryUnits)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlayerResources {
     pub credits: Credits,
@@ -66,11 +73,15 @@ pub struct CorpState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunnerState {
     pub resources: PlayerResources,
+    /// Unspent memory units available for installing programs.
     pub memory_units: MemoryUnits,
-    /// Placeholder Grip (hand) count — no card identity yet.
-    pub grip_size: u32,
-    /// Placeholder Stack (deck) count — no card identity yet.
-    pub stack_size: u32,
+    /// Runner's hand.
+    pub grip: Vec<CardId>,
+    /// Runner's deck — ordered outermost-to-innermost; drawing pops the end.
+    pub stack: Vec<CardId>,
+    /// Installed Hardware/Programs. Unlike Corp's `installed`, Rig cards have
+    /// no hidden/unrezzed state — they're always face-up once installed.
+    pub rig: Vec<CardId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

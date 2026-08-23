@@ -39,4 +39,10 @@ pub enum RulesError {
 
     #[error("no active run to act on")]
     NoActiveRun,
+
+    #[error("attempted to spend {requested} memory unit(s) but only has {available}")]
+    InsufficientMemory { available: u32, requested: u32 },
+
+    #[error("subroutine index {index} is out of range: only {pending} subroutine(s) pending")]
+    InvalidSubroutineIndex { index: usize, pending: u32 },
 }

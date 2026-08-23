@@ -35,8 +35,10 @@ pub struct PublicCorpState {
 pub struct PublicRunnerState {
     pub resources: PlayerResources,
     pub memory_units: MemoryUnits,
-    pub grip_size: u32,
-    pub stack_size: u32,
+    pub grip: MaskedZone,
+    pub stack: MaskedZone,
+    /// Never masked — Rig cards are always face-up once installed.
+    pub rig: Vec<CardId>,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -53,7 +55,7 @@ pub struct PublicGameState {
 pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState {
     PublicGameState {
         corp: mask_corp_state(&state.corp, player == Side::Corp),
-        runner: mask_runner_state(&state.runner),
+        runner: mask_runner_state(&state.runner, player == Side::Runner),
         active_turn: state.active_turn,
         active_run: state.active_run.clone(),
     }
@@ -91,15 +93,13 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
     }
 }
 
-// RunnerState currently only tracks placeholder grip/stack counts (no card
-// identity), so there is nothing to mask here yet — this is a pass-through
-// until Runner hand/deck contents gain real card identity.
-fn mask_runner_state(runner: &RunnerState) -> PublicRunnerState {
+fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerState {
     PublicRunnerState {
         resources: runner.resources.clone(),
         memory_units: runner.memory_units,
-        grip_size: runner.grip_size,
-        stack_size: runner.stack_size,
+        grip: mask_zone(&runner.grip, owner_view),
+        stack: mask_zone(&runner.stack, owner_view),
+        rig: runner.rig.clone(),
     }
 }
 
@@ -118,8 +118,9 @@ mod tests {
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
-                grip_size: 0,
-                stack_size: 0,
+                grip: Vec::new(),
+                stack: Vec::new(),
+                rig: Vec::new(),
             },
             active_turn: Side::Corp,
             active_run: None,
@@ -206,5 +207,66 @@ mod tests {
         let unrezzed = &masked.corp.installed[0];
         assert!(!unrezzed.rezzed);
         assert_eq!(unrezzed.card, Some(CardId("ice_wall".to_string())));
+    }
+
+    fn runner_state_with_cards() -> RunnerState {
+        RunnerState {
+            resources: PlayerResources {
+                credits: Credits(5),
+                clicks: Clicks(3),
+                agenda_points: AgendaPoints(0),
+            },
+            memory_units: MemoryUnits(4),
+            grip: vec![CardId("sure_gamble".to_string())],
+            stack: vec![CardId("modded".to_string()), CardId("clone_chip".to_string())],
+            rig: vec![CardId("gordian_blade".to_string())],
+        }
+    }
+
+    fn game_state_with_runner(runner: RunnerState) -> GameState {
+        GameState {
+            corp: corp_state_with_cards(),
+            runner,
+            active_turn: Side::Runner,
+            active_run: None,
+        }
+    }
+
+    #[test]
+    fn runner_view_shows_own_grip_and_stack_contents() {
+        let state = game_state_with_runner(runner_state_with_cards());
+        let masked = mask_state_for_player(&state, Side::Runner);
+
+        assert_eq!(
+            masked.runner.grip,
+            MaskedZone::Visible(vec![CardId("sure_gamble".to_string())])
+        );
+        assert_eq!(
+            masked.runner.stack,
+            MaskedZone::Visible(vec![
+                CardId("modded".to_string()),
+                CardId("clone_chip".to_string())
+            ])
+        );
+    }
+
+    #[test]
+    fn corp_view_hides_runner_grip_and_stack_contents_but_shows_counts() {
+        let state = game_state_with_runner(runner_state_with_cards());
+        let masked = mask_state_for_player(&state, Side::Corp);
+
+        assert_eq!(masked.runner.grip, MaskedZone::Hidden { count: 1 });
+        assert_eq!(masked.runner.stack, MaskedZone::Hidden { count: 2 });
+    }
+
+    #[test]
+    fn runner_rig_is_never_masked() {
+        let state = game_state_with_runner(runner_state_with_cards());
+        let masked_for_corp = mask_state_for_player(&state, Side::Corp);
+        let masked_for_runner = mask_state_for_player(&state, Side::Runner);
+
+        let expected = vec![CardId("gordian_blade".to_string())];
+        assert_eq!(masked_for_corp.runner.rig, expected);
+        assert_eq!(masked_for_runner.runner.rig, expected);
     }
 }

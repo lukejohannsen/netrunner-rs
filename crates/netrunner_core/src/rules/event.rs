@@ -19,4 +19,7 @@ pub enum GameEvent {
     CardInstalled { side: Side, card: CardId, server: ServerId },
     IceRezzed { card: CardId, server: ServerId },
     RunInitiated { server: ServerId },
+    EventPlayed { side: Side, card: CardId },
+    HardwareInstalled { side: Side, card: CardId },
+    ProgramInstalled { side: Side, card: CardId, memory_cost: u8 },
 }
