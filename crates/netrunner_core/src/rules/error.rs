@@ -25,6 +25,9 @@ pub enum RulesError {
     #[error("run action attempted after the run already reached {phase:?}")]
     RunAlreadyConcluded { phase: RunPhase },
 
+    #[error("cannot complete a run that hasn't concluded yet (currently {phase:?})")]
+    RunNotConcluded { phase: RunPhase },
+
     #[error("{side:?} has no card {card:?} in hand")]
     CardNotInHand { side: Side, card: CardId },
 

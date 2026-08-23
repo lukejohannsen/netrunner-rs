@@ -17,6 +17,7 @@ pub fn apply_action(
         PlayerAction::InitiateRun { server } => initiate_run(state, server),
         PlayerAction::ContinueRun => continue_run(state),
         PlayerAction::JackOut => jack_out(state),
+        PlayerAction::CompleteRun => complete_run(state),
         PlayerAction::PlayEvent { card_id } => play_event(state, card_id),
         PlayerAction::InstallHardware { card_id } => install_hardware(state, card_id),
         PlayerAction::InstallProgram { card_id, memory_cost } => {
@@ -199,6 +200,21 @@ fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError
     next.active_run = None;
 
     Ok((next, events))
+}
+
+fn complete_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_active_turn(state, side)?;
+    let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+    if active_run.phase != RunPhase::Success {
+        return Err(RulesError::RunNotConcluded { phase: active_run.phase });
+    }
+    let server = active_run.server;
+
+    let mut next = state.clone();
+    next.active_run = None;
+
+    Ok((next, vec![GameEvent::RunCompleted { server }]))
 }
 
 fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result<(), RulesError> {
@@ -770,6 +786,85 @@ mod tests {
             apply_action(&state, PlayerAction::JackOut).expect("jack out should succeed");
         let (after_initiate, _) = apply_action(
             &after_jack_out,
+            PlayerAction::InitiateRun { server: ServerId::RnD },
+        )
+        .expect("initiating a new run should succeed");
+
+        assert_eq!(
+            after_initiate.active_run,
+            Some(RunState {
+                server: ServerId::RnD,
+                phase: RunPhase::Initiation,
+                ice: Vec::new(),
+                position: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn runner_complete_run_clears_active_run_after_success() {
+        let mut state = runner_state(3, 5, 3);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::Success,
+            ice: Vec::new(),
+            position: 0,
+        });
+        let (next, events) =
+            apply_action(&state, PlayerAction::CompleteRun).expect("action should succeed");
+
+        assert_eq!(next.runner.resources.clicks, Clicks(3));
+        assert_eq!(next.active_run, None);
+        assert_eq!(events, vec![GameEvent::RunCompleted { server: ServerId::Hq }]);
+    }
+
+    #[test]
+    fn runner_complete_run_before_success_returns_run_not_concluded() {
+        let mut state = runner_state(3, 5, 3);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::ApproachIce,
+            ice: vec![RunIce { subroutines_pending: 1 }],
+            position: 0,
+        });
+        let result = apply_action(&state, PlayerAction::CompleteRun);
+
+        assert_eq!(
+            result,
+            Err(RulesError::RunNotConcluded { phase: RunPhase::ApproachIce })
+        );
+    }
+
+    #[test]
+    fn corp_turn_complete_run_returns_not_your_turn() {
+        let state = corp_state(3, 5);
+        let result = apply_action(&state, PlayerAction::CompleteRun);
+
+        assert_eq!(result, Err(RulesError::NotYourTurn { side: Side::Runner }));
+    }
+
+    #[test]
+    fn runner_complete_run_with_no_active_run_returns_no_active_run() {
+        let state = runner_state(3, 5, 3);
+        let result = apply_action(&state, PlayerAction::CompleteRun);
+
+        assert_eq!(result, Err(RulesError::NoActiveRun));
+    }
+
+    #[test]
+    fn runner_can_initiate_run_again_after_completing_previous_run() {
+        let mut state = runner_state(3, 5, 3);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::Success,
+            ice: Vec::new(),
+            position: 0,
+        });
+
+        let (after_complete, _) =
+            apply_action(&state, PlayerAction::CompleteRun).expect("complete run should succeed");
+        let (after_initiate, _) = apply_action(
+            &after_complete,
             PlayerAction::InitiateRun { server: ServerId::RnD },
         )
         .expect("initiating a new run should succeed");

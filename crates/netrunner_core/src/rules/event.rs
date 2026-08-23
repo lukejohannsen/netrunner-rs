@@ -16,6 +16,7 @@ pub enum GameEvent {
     IcePassed { server: ServerId, position: u32 },
     RunSucceeded { server: ServerId },
     RunJackedOut { server: ServerId },
+    RunCompleted { server: ServerId },
     CardInstalled { side: Side, card: CardId, server: ServerId },
     IceRezzed { card: CardId, server: ServerId },
     RunInitiated { server: ServerId },

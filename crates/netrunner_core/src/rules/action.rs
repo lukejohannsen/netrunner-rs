@@ -44,6 +44,19 @@ pub enum PlayerAction {
     /// Voluntarily end the active run. Runner-only, no click cost. Delegates to
     /// `run::advance_run`'s `RunAction::JackOut`.
     JackOut,
+    /// Close out a run that has already reached `RunPhase::Success`, clearing
+    /// `active_run` so a new run can be initiated. Runner-only, no click cost —
+    /// like `JackOut`/`ContinueRun`, this is a run-flow sub-action, not a basic
+    /// click action. Deliberately does NOT delegate to `run::advance_run` (whose
+    /// top-of-function guard exists specifically to reject action on an
+    /// already-concluded run — the opposite of what's needed here); the engine
+    /// manipulates `GameState.active_run` directly instead. Requires `active_run`
+    /// to be `Some` (`RulesError::NoActiveRun` otherwise) with
+    /// `phase == RunPhase::Success` (`RulesError::RunNotConcluded` otherwise).
+    /// `JackOut` remains the way to end a run before `Success`; once `Success` is
+    /// reached, `JackOut` continues to be rejected via `RunAlreadyConcluded`, and
+    /// `CompleteRun` is the only path out.
+    CompleteRun,
     /// Spend 1 click, move `card_id` out of the Grip and resolve it. Runner-only.
     /// No credit cost yet — like `RezIce`, cost is data-driven per-card and no
     /// `CardRegistry` is wired into the engine yet.
