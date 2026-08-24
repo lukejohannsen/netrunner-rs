@@ -15,21 +15,14 @@ use crate::rules::state::{Credits, GamePhase, GameState, Side};
 /// well-formed state (`TrashCard` naming a target that isn't where it's
 /// claimed to be) while others structurally cannot.
 ///
-/// `acting_card` identifies which Runner rig card (if any) is resolving
-/// this effect — used by `BoostStrength`/`BreakSubroutines`, which always
-/// target whichever card activated the ability, rather than a fixed target
-/// like `ModifyStrength`'s "whatever ICE is currently encountered". Callers
-/// that aren't resolving a specific rig card's ability (subroutine
-/// resolution, most `TriggeredEffect`s) pass `None`.
-///
-/// `CardTarget::ThisCard` is a known signature gap: nothing here
-/// identifies "which card is currently resolving" for `TrashCard`/other
-/// non-strength effects. The future dispatch layer that calls
-/// `evaluate_effect` already knows which card/ability is resolving, so it
-/// should rewrite `ThisCard` into a concrete `CorpInstalled`/`RunnerRig`
-/// target before calling in, rather than further widening this signature.
-/// Reaching this arm as-is returns `RulesError::UnresolvedCardTarget`
-/// rather than panicking, per AGENTS.md's "no panics in engine code" rule.
+/// `acting_card` identifies which card is resolving this effect: for
+/// `BoostStrength`/`BreakSubroutines` it's specifically "whichever Runner
+/// rig card activated the ability" (`RulesError::UnresolvedCardTarget` if
+/// `None`); for `TrashCard(CardTarget::ThisCard)` it's simply "the card this
+/// effect is printed on" (Corp or Runner alike), resolved via
+/// `trash_this_card` — `RulesError::MissingActingCardContext` if `None`.
+/// Callers that aren't resolving a specific card's own ability/trigger
+/// (subroutine resolution) pass `None`.
 pub fn evaluate_effect(
     state: &mut GameState,
     effect: &Effect,
@@ -111,7 +104,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::TagsGiven { side: Side::Runner, amount: *amount }])
         }
 
-        Effect::TrashCard(target) => trash_card(state, target),
+        Effect::TrashCard(target) => trash_card(state, target, acting_card),
 
         Effect::BoostStrength { amount, duration } => {
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
@@ -255,9 +248,16 @@ pub fn process_card_triggers(
     Ok(events)
 }
 
-fn trash_card(state: &mut GameState, target: &CardTarget) -> Result<Vec<GameEvent>, RulesError> {
+fn trash_card(
+    state: &mut GameState,
+    target: &CardTarget,
+    acting_card: Option<&CardId>,
+) -> Result<Vec<GameEvent>, RulesError> {
     match target {
-        CardTarget::ThisCard => Err(RulesError::UnresolvedCardTarget),
+        CardTarget::ThisCard => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?;
+            trash_this_card(state, card_id)
+        }
 
         CardTarget::CorpInstalled { card, server } => {
             let position = state
@@ -302,13 +302,60 @@ fn trash_card(state: &mut GameState, target: &CardTarget) -> Result<Vec<GameEven
     }
 }
 
+/// Locates `card_id` wherever it currently sits — Corp installed, HQ, R&D,
+/// or Runner Rig/Grip — and moves it to that side's discard pile, for
+/// `CardTarget::ThisCard`/`Cost::TrashSelf` self-reference resolution
+/// (unlike `CardTarget::CorpInstalled`/`RunnerRig`, the zone isn't known
+/// ahead of time). Not found in any of those zones (e.g. already trashed by
+/// an earlier effect in the same resolution, or accessed straight from
+/// Archives) is a no-op, mirroring `run::access::move_to_archives`'s
+/// existing "already there" leniency, rather than erroring.
+fn trash_this_card(state: &mut GameState, card_id: &CardId) -> Result<Vec<GameEvent>, RulesError> {
+    if let Some(position) = state.corp.installed.iter().position(|installed| &installed.card == card_id) {
+        state.corp.installed.remove(position);
+        state.corp.archives.push(card_id.clone());
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone() }]);
+    }
+    if let Some(position) = state.corp.hq.iter().position(|c| c == card_id) {
+        state.corp.hq.remove(position);
+        state.corp.archives.push(card_id.clone());
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone() }]);
+    }
+    if let Some(position) = state.corp.r_and_d.iter().position(|c| c == card_id) {
+        state.corp.r_and_d.remove(position);
+        state.corp.archives.push(card_id.clone());
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone() }]);
+    }
+    if let Some(position) = state.runner.rig.iter().position(|c| &c.card == card_id) {
+        let removed = state.runner.rig.remove(position);
+        state.runner.heap.push(removed.card);
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() }]);
+    }
+    if let Some(position) = state.runner.grip.iter().position(|c| c == card_id) {
+        state.runner.grip.remove(position);
+        state.runner.heap.push(card_id.clone());
+        return Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() }]);
+    }
+    Ok(Vec::new())
+}
+
 /// Pays `cost` on `side`'s behalf, mutating `state` in place. Kept as a
 /// function separate from `evaluate_effect` — mirroring `AbilityDef`
 /// itself already modeling cost and effect as two separate fields — so a
 /// future dispatch path calls `pay_cost` then, only on success,
 /// `evaluate_effect`, matching real Netrunner's "costs are paid first,
 /// then the ability resolves" structure.
-pub fn pay_cost(state: &mut GameState, side: Side, cost: &Cost) -> Result<Vec<GameEvent>, RulesError> {
+///
+/// `acting_card` identifies the card whose cost this is — only read by
+/// `Cost::TrashSelf`, resolved via `trash_this_card`
+/// (`RulesError::MissingActingCardContext` if `None`); every other `Cost`
+/// variant ignores it.
+pub fn pay_cost(
+    state: &mut GameState,
+    side: Side,
+    cost: &Cost,
+    acting_card: Option<&CardId>,
+) -> Result<Vec<GameEvent>, RulesError> {
     match cost {
         Cost::Credits(amount) => {
             let available = state.resources(side).credits.0;
@@ -330,8 +377,10 @@ pub fn pay_cost(state: &mut GameState, side: Side, cost: &Cost) -> Result<Vec<Ga
             Ok(std::iter::repeat_n(GameEvent::ClickSpent { side }, *amount as usize).collect())
         }
 
-        // Same "which card is this" gap as CardTarget::ThisCard.
-        Cost::TrashSelf => Err(RulesError::UnresolvedCardTarget),
+        Cost::TrashSelf => {
+            let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?;
+            trash_this_card(state, card_id)
+        }
 
         Cost::PurgeTags => {
             state.runner.tags = 0;
@@ -694,12 +743,26 @@ mod tests {
     }
 
     #[test]
-    fn trash_card_this_card_is_rejected_not_panicked() {
+    fn trash_card_this_card_without_acting_card_is_rejected_not_panicked() {
         let mut state = game_state();
         assert_eq!(
             evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), None),
-            Err(RulesError::UnresolvedCardTarget)
+            Err(RulesError::MissingActingCardContext)
         );
+    }
+
+    #[test]
+    fn trash_card_this_card_with_acting_card_moves_it_to_the_heap() {
+        let mut state = game_state();
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 2)];
+        let acting = CardId("gordian_blade".to_string());
+
+        let events =
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), Some(&acting)).unwrap();
+
+        assert!(state.runner.rig.is_empty());
+        assert_eq!(state.runner.heap, vec![acting.clone()]);
+        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Runner, card: acting }]);
     }
 
     #[test]
@@ -833,13 +896,13 @@ mod tests {
     #[test]
     fn pay_credits_deducts_and_errors_when_insufficient() {
         let mut state = game_state();
-        let events = pay_cost(&mut state, Side::Corp, &Cost::Credits(3)).unwrap();
+        let events = pay_cost(&mut state, Side::Corp, &Cost::Credits(3), None).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(2));
         assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Corp, amount: 3 }]);
 
         assert_eq!(
-            pay_cost(&mut state, Side::Corp, &Cost::Credits(10)),
+            pay_cost(&mut state, Side::Corp, &Cost::Credits(10), None),
             Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 2, requested: 10 })
         );
     }
@@ -847,7 +910,7 @@ mod tests {
     #[test]
     fn pay_clicks_spends_the_requested_amount() {
         let mut state = game_state();
-        let events = pay_cost(&mut state, Side::Runner, &Cost::Clicks(2)).unwrap();
+        let events = pay_cost(&mut state, Side::Runner, &Cost::Clicks(2), None).unwrap();
 
         assert_eq!(state.runner.resources.clicks, Clicks(2));
         assert_eq!(events, vec![GameEvent::ClickSpent { side: Side::Runner }, GameEvent::ClickSpent { side: Side::Runner }]);
@@ -858,19 +921,32 @@ mod tests {
         let mut state = game_state();
         state.runner.tags = 3;
 
-        let events = pay_cost(&mut state, Side::Runner, &Cost::PurgeTags).unwrap();
+        let events = pay_cost(&mut state, Side::Runner, &Cost::PurgeTags, None).unwrap();
 
         assert_eq!(state.runner.tags, 0);
         assert_eq!(events, vec![GameEvent::TagsPurged { side: Side::Runner }]);
     }
 
     #[test]
-    fn pay_trash_self_is_rejected_not_panicked() {
+    fn pay_trash_self_without_acting_card_is_rejected_not_panicked() {
         let mut state = game_state();
         assert_eq!(
-            pay_cost(&mut state, Side::Runner, &Cost::TrashSelf),
-            Err(RulesError::UnresolvedCardTarget)
+            pay_cost(&mut state, Side::Runner, &Cost::TrashSelf, None),
+            Err(RulesError::MissingActingCardContext)
         );
+    }
+
+    #[test]
+    fn pay_trash_self_with_acting_card_trashes_it_to_the_heap() {
+        let mut state = game_state();
+        state.runner.rig = vec![installed_runner_card("self_modifying_code", 0)];
+        let acting = CardId("self_modifying_code".to_string());
+
+        let events = pay_cost(&mut state, Side::Runner, &Cost::TrashSelf, Some(&acting)).unwrap();
+
+        assert!(state.runner.rig.is_empty());
+        assert_eq!(state.runner.heap, vec![acting.clone()]);
+        assert_eq!(events, vec![GameEvent::CardTrashed { side: Side::Runner, card: acting }]);
     }
 
     /// A minimal `Card` carrying exactly the given `triggers` — everything

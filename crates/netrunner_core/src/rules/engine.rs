@@ -144,7 +144,7 @@ fn install_card(
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost))?);
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
 
     next.corp.installed.push(InstalledCard {
         card: card_id.clone(),
@@ -374,7 +374,7 @@ fn play_event(
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost))?);
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
     events.push(GameEvent::EventPlayed { side, card: card_id.clone() });
     events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnPlay)?);
 
@@ -409,7 +409,7 @@ fn play_operation(
     }
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost))?);
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
     next.corp.archives.push(card_id.clone());
     events.push(GameEvent::OperationPlayed { side, card: card_id.clone() });
     events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnPlay)?);
@@ -575,7 +575,7 @@ fn activate_ability(
     let mut next = state.clone();
     let mut events = Vec::new();
     if let Some(cost) = &ability.cost {
-        events.extend(ability::pay_cost(&mut next, side, cost)?);
+        events.extend(ability::pay_cost(&mut next, side, cost, Some(&card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
     events.extend(ability::evaluate_effect(&mut next, &ability.effect, Some(&card_id))?);
@@ -599,7 +599,7 @@ fn advance_card(
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(1))?);
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(1), Some(&card_id))?);
 
     let installed = next
         .corp
@@ -2531,6 +2531,42 @@ mod tests {
                     delta: 1,
                     duration: BoostDuration::Encounter,
                 },
+            ]
+        );
+    }
+
+    #[test]
+    fn runner_activate_ability_cost_trash_self_trashes_card_and_still_applies_its_effect() {
+        let card_id = CardId("self_modifying_code".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![installed_runner_card("self_modifying_code", 0)];
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "self_modifying_code",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::TrashSelf),
+            Effect::GainCredits(Side::Runner, 5),
+        ));
+
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        )
+        .expect("action should succeed");
+
+        assert!(next.runner.rig.is_empty());
+        assert_eq!(next.runner.heap, vec![card_id.clone()]);
+        assert_eq!(next.runner.resources.credits, Credits(5));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
+                GameEvent::CreditsGained { side: Side::Runner, amount: 5 },
             ]
         );
     }

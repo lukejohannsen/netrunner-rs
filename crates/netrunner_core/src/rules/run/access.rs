@@ -93,16 +93,56 @@ fn enter_pending_choice(
     server: ServerId,
     card_id: &CardId,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = ability::process_card_triggers(state, registry, card_id, Trigger::OnAccessed)?;
+    if let Some(finish) = finish_if_game_over(state, server, &events) {
+        events.extend(finish);
+        return Ok(events);
+    }
+
+    // The trigger just fired may have trashed `card_id` itself (e.g. a
+    // self-trashing trap via `Effect::TrashCard(CardTarget::ThisCard)`) —
+    // presenting a `PendingChoice` for a card that's already gone would let
+    // the Runner "trash"/"steal" it a second time (`move_to_archives`
+    // doesn't verify the card is still where it thinks, so this would
+    // duplicate it into Archives). Treat a self-trash as this card's
+    // resolution instead, same as an explicit `TrashAccessedCard`.
+    if was_trashed(&events, card_id) {
+        events.extend(advance_or_finish(state, registry, server, card_id.clone())?);
+        return Ok(events);
+    }
+
     let runner_credits = state.runner.resources.credits.0;
     let run = state.active_run.as_mut().expect("enter_pending_choice called mid-access");
     let access = run.access_state.as_mut().expect("enter_pending_choice called mid-access");
     access.phase = compute_pending_choice(card_id, runner_credits, registry);
-
-    let mut events = ability::process_card_triggers(state, registry, card_id, Trigger::OnAccessed)?;
-    if let Some(finish) = finish_if_game_over(state, server, &events) {
-        events.extend(finish);
-    }
     Ok(events)
+}
+
+/// True if `events` already trashed `card_id` — i.e. a `GameEvent::
+/// CardTrashed` naming it, from a self-referencing `Effect::TrashCard(
+/// CardTarget::ThisCard)`/`Cost::TrashSelf` fired while resolving this
+/// card's own trigger/avoidance effects.
+fn was_trashed(events: &[GameEvent], card_id: &CardId) -> bool {
+    events.iter().any(|e| matches!(e, GameEvent::CardTrashed { card, .. } if card == card_id))
+}
+
+/// Like `enter_pending_choice`, but for callers (`resolve_pay_to_avoid`/
+/// `resolve_decline_to_avoid`) that may have already trashed `card_id`
+/// themselves (via the paid avoidance cost or the declined effects) before
+/// ever reaching `enter_pending_choice` — `enter_pending_choice`'s own
+/// self-trash check only sees events from *its* `Trigger::OnAccessed` call,
+/// not `prior_events`.
+fn enter_pending_choice_unless_self_trashed(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    server: ServerId,
+    card_id: &CardId,
+    prior_events: &[GameEvent],
+) -> Result<Vec<GameEvent>, RulesError> {
+    if was_trashed(prior_events, card_id) {
+        return advance_or_finish(state, registry, server, card_id.clone());
+    }
+    enter_pending_choice(state, registry, server, card_id)
 }
 
 /// Presents `card_id` for access: emits `GameEvent::CardAccessed`, then
@@ -374,7 +414,7 @@ pub fn resolve_steal(
                 });
             }
         }
-        events.extend(ability::pay_cost(state, Side::Runner, cost)?);
+        events.extend(ability::pay_cost(state, Side::Runner, cost, Some(card_id))?);
     }
 
     state.runner.scored_agendas.push(card_id.clone());
@@ -420,7 +460,7 @@ pub fn resolve_trash(
         return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available, requested: cost });
     }
 
-    let mut events = ability::pay_cost(state, Side::Runner, &Cost::Credits(cost))?;
+    let mut events = ability::pay_cost(state, Side::Runner, &Cost::Credits(cost), Some(card_id))?;
     move_to_archives(state, card_id, pending.server);
     events.push(GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost });
     events.extend(ability::process_card_triggers(state, registry, card_id, Trigger::OnTrashedFromAccess)?);
@@ -494,8 +534,10 @@ pub fn resolve_pay_to_avoid(
         }
     }
 
-    let mut events = ability::pay_cost(state, Side::Runner, &pending.cost)?;
-    events.extend(enter_pending_choice(state, registry, pending.server, card_id)?);
+    let mut events = ability::pay_cost(state, Side::Runner, &pending.cost, Some(card_id))?;
+    let choice_events =
+        enter_pending_choice_unless_self_trashed(state, registry, pending.server, card_id, &events)?;
+    events.extend(choice_events);
     Ok(events)
 }
 
@@ -516,21 +558,23 @@ pub fn resolve_decline_to_avoid(
 
     let mut events = Vec::new();
     for effect in &effects {
-        events.extend(ability::evaluate_effect(state, effect, None)?);
+        events.extend(ability::evaluate_effect(state, effect, Some(card_id))?);
     }
     if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
         events.extend(finish);
         return Ok(events);
     }
 
-    events.extend(enter_pending_choice(state, registry, pending.server, card_id)?);
+    let choice_events =
+        enter_pending_choice_unless_self_trashed(state, registry, pending.server, card_id, &events)?;
+    events.extend(choice_events);
     Ok(events)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardType, DamageType, Effect, InteractiveOnAccess, TriggeredEffect};
+    use crate::dsl::{Card, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, TriggeredEffect};
     use crate::rules::run::state::RunState;
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, InstalledCard, MemoryUnits, PlayerResources, RunnerState,
@@ -1906,6 +1950,207 @@ mod tests {
             vec![
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+            ]
+        );
+    }
+
+    /// A minimal non-Agenda, non-trashable Asset `Card` with both an
+    /// `InteractiveOnAccess` trigger and a normal `OnAccessed` trigger —
+    /// proves the two compose (the normal trigger still fires once the
+    /// interactive decision resolves).
+    fn card_with_interactive_and_on_accessed(
+        id: &str,
+        cost: Cost,
+        avoided_effects: Vec<Effect>,
+        on_accessed_effects: Vec<Effect>,
+    ) -> Card {
+        Card {
+            interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects }),
+            triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects: on_accessed_effects }],
+            trash_cost: None,
+            ..trashable_card(id, 0)
+        }
+    }
+
+    #[test]
+    fn interactive_on_access_composes_with_a_normal_on_accessed_trigger() {
+        let registry = CardRegistry::from_cards(vec![card_with_interactive_and_on_accessed(
+            "fetal_ai",
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 2)],
+            vec![Effect::GiveTags(1)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(5);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let card_id = CardId("fetal_ai".to_string());
+        let events = resolve_pay_to_avoid(&mut state, &card_id, &registry).expect("paying should succeed");
+
+        // The avoided damage never landed, but the normal OnAccessed trigger
+        // still fired once the interactive decision resolved.
+        assert_eq!(state.runner.resources.credits, Credits(1));
+        assert_eq!(state.runner.tags, 1);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 4 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+            ]
+        );
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::PendingChoice {
+                card_id,
+                can_trash: false,
+                trash_cost: None,
+                mandatory_steal: false,
+                steal_cost: None,
+            }
+        );
+    }
+
+    /// An Agenda (see `agenda_card`) with an `InteractiveOnAccess` trigger —
+    /// Fetal AI's actual card shape (a damage trap that's also an Agenda).
+    fn agenda_with_interactive_on_access(id: &str, points: u32, cost: Cost, effects: Vec<Effect>) -> Card {
+        Card { interactive_on_access: Some(InteractiveOnAccess { cost, effects }), ..agenda_card(id, points) }
+    }
+
+    #[test]
+    fn interactive_on_access_composes_with_mandatory_steal_on_an_agenda() {
+        let registry = CardRegistry::from_cards(vec![agenda_with_interactive_on_access(
+            "fetal_ai",
+            2,
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 2)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(0);
+        state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let card_id = CardId("fetal_ai".to_string());
+        // Can't afford to pay — decline, taking the damage.
+        resolve_decline_to_avoid(&mut state, &card_id, &registry).expect("declining should succeed");
+        assert_eq!(state.runner.grip.len(), 0);
+        assert_eq!(state.runner.heap.len(), 2);
+
+        // The normal Agenda choice is still reachable afterward, and is a
+        // mandatory steal (no steal_cost).
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::PendingChoice {
+                card_id: card_id.clone(),
+                can_trash: false,
+                trash_cost: None,
+                mandatory_steal: true,
+                steal_cost: None,
+            }
+        );
+        assert_eq!(
+            resolve_pass(&mut state, &card_id, &registry),
+            Err(RulesError::MandatoryStealViolation { card: card_id.clone() })
+        );
+
+        let events = resolve_steal(&mut state, &card_id, &registry).expect("stealing should succeed");
+        assert_eq!(state.runner.scored_agendas, vec![card_id.clone()]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::AgendaStolen { card: card_id, agenda_points: 2 },
+                GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
+    }
+
+    #[test]
+    fn interactive_on_access_on_the_second_of_a_multi_card_access() {
+        let registry = CardRegistry::from_cards(vec![card_with_interactive_on_access(
+            "fetal_ai",
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 2)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("hedge_fund".to_string()), CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(5);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        // Pick the plain card first, then pass it — auto-advancing to the
+        // second (and last) card, which carries the interactive trigger.
+        resolve_select_card(&mut state, &CardId("hedge_fund".to_string()), &registry)
+            .expect("selecting should succeed");
+        let events = resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry)
+            .expect("passing should succeed");
+
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
+                GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives },
+            ]
+        );
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::PendingInteractiveTrigger {
+                card_id: CardId("fetal_ai".to_string()),
+                cost: Cost::Credits(4),
+                can_pay: true,
+            }
+        );
+    }
+
+    #[test]
+    fn self_trashing_trap_trashes_itself_exactly_once_without_breaking_the_access_loop() {
+        // HQ (not Archives) — the card must actually move zones (hq ->
+        // archives) for the self-trash to be observable at all.
+        let registry = CardRegistry::from_cards(vec![card_with_on_accessed(
+            "shock_ish",
+            vec![Effect::GiveTags(1), Effect::TrashCard(CardTarget::ThisCard)],
+        )]);
+        let mut state = game_state(
+            vec![CardId("shock_ish".to_string())],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(run_in_success(ServerId::Hq));
+
+        let events = access_server(&mut state, ServerId::Hq, &registry).unwrap();
+
+        assert_eq!(state.runner.tags, 1);
+        assert!(state.corp.hq.is_empty());
+        // Exactly one copy — not duplicated by a stale PendingChoice being
+        // acted on afterward.
+        assert_eq!(state.corp.archives, vec![CardId("shock_ish".to_string())]);
+        assert_eq!(state.active_run, None, "the run should complete, not hang on a phantom PendingChoice");
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CardAccessed { card: CardId("shock_ish".to_string()), server: ServerId::Hq },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()) },
+                GameEvent::RunCompleted { server: ServerId::Hq },
             ]
         );
     }

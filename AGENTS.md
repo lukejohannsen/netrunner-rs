@@ -69,10 +69,6 @@ This repository contains an asynchronous, turn-based Netrunner card game built i
 
 This section tracks open architectural gaps in `netrunner_core` to address before higher-level engine features build on top of them.
 
-### Priority 1: Rules & Ability Primitives
-
-* **Self-Reference Card Triggers:** `CardTarget::ThisCard` and `Cost::TrashSelf` for accessed or trashed card self-resolution currently throw `RulesError::UnresolvedCardTarget`.
-
 ### Priority 2: Engine Windows & State Integrity
 
 * **Asynchronous Start-of-Turn Windows:** `turn::enter_start_of_turn` currently runs inline/synchronously. It needs a yielding state machine for start-of-turn paid ability windows and interactive player choices ("gain 1c or draw").

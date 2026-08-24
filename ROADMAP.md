@@ -14,13 +14,11 @@ Tracking shipped milestones and future technical engine work for `netrunner_core
   * `InstalledRunnerCard` per-instance rig state with `Encounter` and `Turn` strength buff tracking.
   * Strength- and subtype-gated subroutine breaking (`Effect::BreakSubroutines`'s `restrict_to: Option<IceType>`, e.g. Corroder restricted to Barriers; `None` for universal breakers).
   * `OnPlay` trigger resolution for Event/Operation economy boosters (*Sure Gamble*, *Hedge Fund*), via `PlayerAction::PlayEvent` (Runner) and `PlayerAction::PlayOperation` (Corp).
+* **Self-Reference Card Triggers:** `CardTarget::ThisCard`/`Cost::TrashSelf` resolve dynamically to whichever card is currently acting (Corp installed/HQ/R&D or Runner Rig/Grip), trashing it to the correct discard pile — covers paid abilities ("trash this: ...") and self-trashing access traps alike.
 
 ---
 
 ## Planned Work & Engine Gaps
-
-### Phase 1: Card & Ability Primitives
-- [ ] **Trigger Self-References:** Resolve `CardTarget::ThisCard` and `Cost::TrashSelf` for cards executing their own trigger effects during access or trash.
 
 ### Phase 2: Engine Windows & State Integrity
 - [ ] **Asynchronous Start-of-Turn Windows:** Refactor `enter_start_of_turn` into a yielding state machine for start-of-turn paid ability windows and interactive triggers.

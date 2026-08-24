@@ -76,7 +76,7 @@ pub enum RulesError {
     #[error("{side:?}'s {zone:?} is empty, nothing to trash from the top")]
     EmptyZone { side: Side, zone: crate::dsl::StackZone },
 
-    #[error("CardTarget::ThisCard/Cost::TrashSelf must be resolved to a concrete card before evaluation")]
+    #[error("no acting rig card was identified for an effect that targets whichever card activated it")]
     UnresolvedCardTarget,
 
     #[error("{side:?}'s card {card:?} is not in an active zone (installed+rezzed for Corp, in the Rig for Runner)")]
@@ -135,4 +135,7 @@ pub enum RulesError {
 
     #[error("attempted to pay {requested} credit(s) to avoid {card:?}'s access trigger but only has {available}")]
     CannotAffordAvoidanceCost { card: CardId, available: u32, requested: u32 },
+
+    #[error("a self-reference (CardTarget::ThisCard or Cost::TrashSelf) requires an acting card, but none was available here")]
+    MissingActingCardContext,
 }

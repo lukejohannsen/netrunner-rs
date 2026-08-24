@@ -16,9 +16,12 @@ pub enum Trigger {
     OnTurnStart,
     /// Fires once, the moment this card is presented as the Runner's
     /// current access choice (when `GameEvent::CardAccessed` fires for it)
-    /// — Ambush-style "when accessed" abilities (Snare!, Fetal AI). Fires
-    /// unconditionally; no player choice to avoid it yet (a future
-    /// interactive-reaction framework will add that).
+    /// — Ambush-style "when accessed" abilities (Snare!). Always fires
+    /// unconditionally and cannot itself be paid off. A card that needs a
+    /// payable "avoid this" reaction (Fetal AI) models that separately via
+    /// `dsl::ability::InteractiveOnAccess`/`Card::interactive_on_access`,
+    /// resolved *before* `OnAccessed` via `rules::run::state::AccessPhase::
+    /// PendingInteractiveTrigger`.
     OnAccessed,
     /// Fires when this card is trashed via `PlayerAction::
     /// TrashAccessedCard` specifically — not other trash paths (a
