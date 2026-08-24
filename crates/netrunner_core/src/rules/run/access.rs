@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, Cost};
+use crate::dsl::{CardId, Cost, Trigger};
 use crate::rules::ability;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -94,12 +94,19 @@ fn compute_pending_choice(card_id: &CardId, runner_credits: u32, registry: &Card
 /// Takes `&mut GameState` because HQ access needs `GameState::next_u64` to
 /// pick a pseudo-random index, and every outcome mutates `active_run`.
 ///
-/// Never fails: an empty zone simply yields zero events.
-pub fn access_server(state: &mut GameState, server: ServerId, registry: &CardRegistry) -> Vec<GameEvent> {
+/// Fallible only because presenting the first accessed card can fire its
+/// `Trigger::OnAccessed` effects (`ability::process_card_triggers`), which
+/// can themselves error; an empty zone or a card with no matching trigger
+/// still always succeeds.
+pub fn access_server(
+    state: &mut GameState,
+    server: ServerId,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
     let accessed = compute_accessed_cards(state, server);
     if accessed.is_empty() {
         state.active_run = None;
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
     let runner_credits = state.runner.resources.credits.0;
@@ -114,7 +121,13 @@ pub fn access_server(state: &mut GameState, server: ServerId, registry: &CardReg
         let phase = compute_pending_choice(&card_id, runner_credits, registry);
         run.access_state =
             Some(AccessState { server, unaccessed_cards: Vec::new(), resolved_cards: Vec::new(), phase });
-        vec![GameEvent::CardAccessed { card: card_id, server }]
+
+        let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server }];
+        events.extend(ability::process_card_triggers(state, registry, &card_id, Trigger::OnAccessed)?);
+        if let Some(finish) = finish_if_game_over(state, server, &events) {
+            events.extend(finish);
+        }
+        Ok(events)
     } else {
         run.access_state = Some(AccessState {
             server,
@@ -122,7 +135,7 @@ pub fn access_server(state: &mut GameState, server: ServerId, registry: &CardReg
             resolved_cards: Vec::new(),
             phase: AccessPhase::SelectNextCard { selectable_cards: accessed },
         });
-        Vec::new()
+        Ok(Vec::new())
     }
 }
 
@@ -210,7 +223,43 @@ pub fn resolve_select_card(
     }
     access.phase = compute_pending_choice(card_id, runner_credits, registry);
 
-    Ok(vec![GameEvent::CardAccessed { card: card_id.clone(), server: pending.server }])
+    let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server: pending.server }];
+    events.extend(ability::process_card_triggers(state, registry, card_id, Trigger::OnAccessed)?);
+    if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
+        events.extend(finish);
+    }
+    Ok(events)
+}
+
+/// If `state.phase` became `GameOver` (e.g. a flatline mid-trigger, or an
+/// agenda-point win), clears `active_run` and returns the terminal events;
+/// otherwise `None`. Shared by every place in this file that fires
+/// card-trigger effects capable of ending the game out from under an
+/// in-progress access.
+///
+/// `events_so_far` is whatever's already been collected in the caller's
+/// local `events` vec: some triggers (e.g. a flatlining `Effect::
+/// DealDamage`, via `damage::apply_damage`) already emit their own
+/// `GameEvent::GameOver` as part of their normal return value, unlike
+/// `win::check_win_conditions` (which only mutates `state.phase` and emits
+/// nothing) — so this only appends a fresh `GameOver` if the caller's
+/// events don't already end with one, to avoid emitting it twice.
+fn finish_if_game_over(
+    state: &mut GameState,
+    server: ServerId,
+    events_so_far: &[GameEvent],
+) -> Option<Vec<GameEvent>> {
+    if let GamePhase::GameOver(winner) = state.phase {
+        state.active_run = None;
+        let mut events = Vec::new();
+        if !matches!(events_so_far.last(), Some(GameEvent::GameOver { .. })) {
+            events.push(GameEvent::GameOver { winner });
+        }
+        events.push(GameEvent::RunCompleted { server });
+        Some(events)
+    } else {
+        None
+    }
 }
 
 /// Shared tail of `resolve_steal`/`resolve_trash`/`resolve_pass`: if a steal
@@ -223,10 +272,9 @@ fn advance_or_finish(
     registry: &CardRegistry,
     server: ServerId,
     resolved_card: CardId,
-) -> Vec<GameEvent> {
-    if let GamePhase::GameOver(winner) = state.phase {
-        state.active_run = None;
-        return vec![GameEvent::GameOver { winner }, GameEvent::RunCompleted { server }];
+) -> Result<Vec<GameEvent>, RulesError> {
+    if let Some(events) = finish_if_game_over(state, server, &[]) {
+        return Ok(events);
     }
 
     let runner_credits = state.runner.resources.credits.0;
@@ -237,16 +285,22 @@ fn advance_or_finish(
     match access.unaccessed_cards.len() {
         0 => {
             state.active_run = None;
-            vec![GameEvent::RunCompleted { server }]
+            Ok(vec![GameEvent::RunCompleted { server }])
         }
         1 => {
             let next_card = access.unaccessed_cards.remove(0);
             access.phase = compute_pending_choice(&next_card, runner_credits, registry);
-            vec![GameEvent::CardAccessed { card: next_card, server }]
+
+            let mut events = vec![GameEvent::CardAccessed { card: next_card.clone(), server }];
+            events.extend(ability::process_card_triggers(state, registry, &next_card, Trigger::OnAccessed)?);
+            if let Some(finish) = finish_if_game_over(state, server, &events) {
+                events.extend(finish);
+            }
+            Ok(events)
         }
         _ => {
             access.phase = AccessPhase::SelectNextCard { selectable_cards: access.unaccessed_cards.clone() };
-            Vec::new()
+            Ok(Vec::new())
         }
     }
 }
@@ -284,7 +338,7 @@ pub fn resolve_steal(
     events.push(GameEvent::AgendaStolen { card: card_id.clone(), agenda_points });
 
     check_win_conditions(state, registry);
-    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone()));
+    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
 }
 
@@ -324,8 +378,9 @@ pub fn resolve_trash(
     let mut events = ability::pay_cost(state, Side::Runner, &Cost::Credits(cost))?;
     move_to_archives(state, card_id, pending.server);
     events.push(GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost });
+    events.extend(ability::process_card_triggers(state, registry, card_id, Trigger::OnTrashedFromAccess)?);
 
-    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone()));
+    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
 }
 
@@ -342,14 +397,14 @@ pub fn resolve_pass(
     }
 
     let mut events = vec![GameEvent::AccessPassed { card: card_id.clone() }];
-    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone()));
+    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardType};
+    use crate::dsl::{Card, CardType, DamageType, Effect, TriggeredEffect};
     use crate::rules::run::state::RunState;
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, InstalledCard, MemoryUnits, PlayerResources, RunnerState,
@@ -404,6 +459,25 @@ mod tests {
             advancement_requirement: None,
             agenda_points: None,
             min_deck_size: None,
+        }
+    }
+
+    /// A minimal non-Agenda, non-trashable Asset `Card` with an
+    /// `OnAccessed` trigger firing `effects` — Snare!/Fetal AI-style traps.
+    fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> Card {
+        Card {
+            triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects }],
+            trash_cost: None,
+            ..trashable_card(id, 0)
+        }
+    }
+
+    /// A trashable `Card` (see `trashable_card`) with an
+    /// `OnTrashedFromAccess` trigger firing `effects` — Shock!-style.
+    fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> Card {
+        Card {
+            triggers: vec![TriggeredEffect { trigger: Trigger::OnTrashedFromAccess, effects }],
+            ..trashable_card(id, trash_cost)
         }
     }
 
@@ -466,7 +540,7 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
         assert_eq!(
-            access_server(&mut state, ServerId::Hq, &registry()),
+            access_server(&mut state, ServerId::Hq, &registry()).unwrap(),
             vec![GameEvent::CardAccessed {
                 card: CardId("hedge_fund".to_string()),
                 server: ServerId::Hq,
@@ -491,8 +565,8 @@ mod tests {
         let mut state_b = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
         state_b.active_run = Some(run_in_success(ServerId::Hq));
 
-        let events_a = access_server(&mut state_a, ServerId::Hq, &registry());
-        let events_b = access_server(&mut state_b, ServerId::Hq, &registry());
+        let events_a = access_server(&mut state_a, ServerId::Hq, &registry()).unwrap();
+        let events_b = access_server(&mut state_b, ServerId::Hq, &registry()).unwrap();
 
         assert_eq!(events_a, events_b);
         assert_eq!(events_a.len(), 1);
@@ -512,7 +586,7 @@ mod tests {
             .map(|seed| {
                 let mut state = game_state(hq.clone(), Vec::new(), Vec::new(), Vec::new(), seed);
                 state.active_run = Some(run_in_success(ServerId::Hq));
-                match access_server(&mut state, ServerId::Hq, &registry()).into_iter().next() {
+                match access_server(&mut state, ServerId::Hq, &registry()).unwrap().into_iter().next() {
                     Some(GameEvent::CardAccessed { card, .. }) => card,
                     other => panic!("expected a CardAccessed event, got {other:?}"),
                 }
@@ -536,7 +610,7 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::RnD));
         assert_eq!(
-            access_server(&mut state, ServerId::RnD, &registry()),
+            access_server(&mut state, ServerId::RnD, &registry()).unwrap(),
             vec![GameEvent::CardAccessed {
                 card: CardId("hedge_fund".to_string()),
                 server: ServerId::RnD,
@@ -574,7 +648,7 @@ mod tests {
         // Upgrade), so nothing is presented until the Runner picks which to
         // resolve first (see
         // `multi_card_sequence_advances_through_each_card_in_order`).
-        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()).unwrap(), Vec::new());
         let access_state = state.active_run.unwrap().access_state.unwrap();
         assert_eq!(
             access_state.unaccessed_cards,
@@ -617,7 +691,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::RnD));
-        assert_eq!(access_server(&mut state, ServerId::RnD, &registry()), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::RnD, &registry()).unwrap(), Vec::new());
         assert_eq!(
             state.active_run.unwrap().access_state.unwrap().unaccessed_cards,
             vec![CardId("hedge_fund".to_string()), CardId("crisium_grid".to_string())]
@@ -634,7 +708,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()).unwrap(), Vec::new());
         assert_eq!(
             state.active_run.unwrap().access_state.unwrap().unaccessed_cards,
             vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())]
@@ -669,7 +743,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
         assert_eq!(
-            access_server(&mut state, ServerId::Remote(0), &registry()),
+            access_server(&mut state, ServerId::Remote(0), &registry()).unwrap(),
             vec![GameEvent::CardAccessed {
                 card: CardId("pad_campaign".to_string()),
                 server: ServerId::Remote(0)
@@ -687,17 +761,17 @@ mod tests {
             rezzed: true,
         }];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
-        assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()).unwrap(), Vec::new());
         assert_eq!(state.active_run, None);
     }
 
     #[test]
     fn accessing_an_empty_zone_yields_no_events() {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
-        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::RnD, &registry()), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()).unwrap(), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::RnD, &registry()).unwrap(), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()).unwrap(), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()).unwrap(), Vec::new());
         assert_eq!(state.active_run, None);
     }
 
@@ -712,7 +786,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry);
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
         let card_id = CardId("priority_requisition".to_string());
         assert_eq!(
@@ -751,7 +825,7 @@ mod tests {
         state.runner.scored_agendas = vec![CardId("already_scored".to_string())];
         state.runner.resources.agenda_points = AgendaPoints(4);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry);
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
         let card_id = CardId("priority_requisition".to_string());
         let events = resolve_steal(&mut state, &card_id, &registry).expect("steal should succeed");
@@ -789,7 +863,7 @@ mod tests {
         state.runner.scored_agendas = vec![CardId("already_scored".to_string())];
         state.runner.resources.agenda_points = AgendaPoints(4);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry);
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
         let card_id = CardId("priority_requisition".to_string());
         resolve_select_card(&mut state, &card_id, &registry).expect("selecting should succeed");
@@ -822,7 +896,7 @@ mod tests {
         );
         state.runner.resources.credits = Credits(4);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry);
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
         let card_id = CardId("napd_contract".to_string());
         let events = resolve_steal(&mut state, &card_id, &registry).expect("steal should succeed");
@@ -851,7 +925,7 @@ mod tests {
         );
         state.runner.resources.credits = Credits(2);
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry);
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
         let card_id = CardId("napd_contract".to_string());
         assert_eq!(
@@ -885,7 +959,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.runner.resources.credits = Credits(3);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry);
+        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
 
         let card_id = CardId("pad_campaign".to_string());
         let events = resolve_trash(&mut state, &card_id, &registry).expect("trash should succeed");
@@ -916,7 +990,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.runner.resources.credits = Credits(1);
         state.active_run = Some(run_in_success(ServerId::Remote(0)));
-        access_server(&mut state, ServerId::Remote(0), &registry);
+        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
 
         let card_id = CardId("pad_campaign".to_string());
         assert_eq!(
@@ -936,7 +1010,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry());
+        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
 
         let card_id = CardId("hedge_fund".to_string());
         let events = resolve_pass(&mut state, &card_id, &registry()).expect("passing should succeed");
@@ -961,7 +1035,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        let first = access_server(&mut state, ServerId::Archives, &registry());
+        let first = access_server(&mut state, ServerId::Archives, &registry()).unwrap();
         assert_eq!(first, Vec::new());
         assert_eq!(
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
@@ -1023,7 +1097,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry());
+        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
 
         let events = resolve_select_card(&mut state, &CardId("ice_wall".to_string()), &registry())
             .expect("selecting the second card should succeed");
@@ -1075,7 +1149,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry());
+        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
 
         resolve_select_card(&mut state, &CardId("card_3".to_string()), &registry())
             .expect("selecting card_3 should succeed");
@@ -1121,7 +1195,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry());
+        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
         resolve_select_card(&mut state, &CardId("hedge_fund".to_string()), &registry())
             .expect("selecting should succeed");
 
@@ -1156,7 +1230,7 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
-        access_server(&mut state, ServerId::Archives, &registry());
+        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
 
         let wrong_id = CardId("wrong_card".to_string());
         assert_eq!(
@@ -1175,7 +1249,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry());
+        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
 
         let card_id = CardId("hedge_fund".to_string());
         assert_eq!(
@@ -1204,7 +1278,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry());
+        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
 
         let wrong_id = CardId("wrong_card".to_string());
         assert_eq!(resolve_pass(&mut state, &wrong_id, &registry()), Err(RulesError::NotInAccessPhase));
@@ -1227,7 +1301,7 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry());
+        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
 
         let card_id = CardId("hedge_fund".to_string());
         assert_eq!(resolve_steal(&mut state, &card_id, &registry()), Err(RulesError::NotInAccessPhase));
@@ -1243,9 +1317,182 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        access_server(&mut state, ServerId::Hq, &registry());
+        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
 
         let card_id = CardId("hedge_fund".to_string());
         assert_eq!(resolve_trash(&mut state, &card_id, &registry()), Err(RulesError::NotInAccessPhase));
+    }
+
+    #[test]
+    fn accessing_a_trap_card_deals_damage_via_on_accessed_trigger() {
+        let registry =
+            CardRegistry::from_cards(vec![card_with_on_accessed("snare", vec![Effect::DealDamage(DamageType::Net, 2)])]);
+        let mut state =
+            game_state(Vec::new(), Vec::new(), vec![CardId("snare".to_string())], Vec::new(), 0);
+        state.runner.grip = vec![
+            CardId("card_a".to_string()),
+            CardId("card_b".to_string()),
+            CardId("card_c".to_string()),
+        ];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+
+        let events = access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        assert_eq!(state.runner.grip.len(), 1);
+        assert_eq!(state.runner.heap.len(), 2);
+        assert_eq!(
+            events[0],
+            GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives }
+        );
+        assert_eq!(events[1], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 });
+        assert_eq!(events.len(), 4);
+    }
+
+    #[test]
+    fn trashing_a_card_fires_on_trashed_from_access_trigger() {
+        let registry = CardRegistry::from_cards(vec![trashable_card_with_on_trashed_from_access(
+            "shock",
+            2,
+            vec![Effect::DealDamage(DamageType::Net, 1)],
+        )]);
+        let installed = vec![InstalledCard {
+            advancement_tokens: 0,
+            card: CardId("shock".to_string()),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+        }];
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
+        state.runner.resources.credits = Credits(3);
+        state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Remote(0)));
+        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
+
+        let card_id = CardId("shock".to_string());
+        let events = resolve_trash(&mut state, &card_id, &registry).expect("trash should succeed");
+
+        assert_eq!(state.runner.grip.len(), 1);
+        assert_eq!(events[0], GameEvent::CreditsSpent { side: Side::Runner, amount: 2 });
+        assert_eq!(
+            events[1],
+            GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 2 }
+        );
+        assert_eq!(events[2], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 });
+        assert!(matches!(events[3], GameEvent::CardDiscarded { side: Side::Runner, .. }));
+        assert_eq!(events[4], GameEvent::RunCompleted { server: ServerId::Remote(0) });
+        assert_eq!(events.len(), 5);
+    }
+
+    #[test]
+    fn on_trashed_from_access_trigger_does_not_fire_on_steal_or_pass() {
+        // A trashable, non-Agenda card with an `OnTrashedFromAccess`
+        // trigger — passing it (rather than trashing it) must not fire it.
+        let registry = CardRegistry::from_cards(vec![trashable_card_with_on_trashed_from_access(
+            "shock",
+            2,
+            vec![Effect::DealDamage(DamageType::Net, 5)],
+        )]);
+        let mut state =
+            game_state(Vec::new(), Vec::new(), vec![CardId("shock".to_string())], Vec::new(), 0);
+        state.runner.grip = vec![CardId("card_a".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let card_id = CardId("shock".to_string());
+        let events = resolve_pass(&mut state, &card_id, &registry).expect("passing should succeed");
+
+        // Had the trigger fired, 5 net damage against a 1-card grip would
+        // have flatlined the Runner (and ended the game).
+        assert_eq!(state.runner.grip.len(), 1);
+        assert_ne!(state.phase, GamePhase::GameOver(Side::Corp));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::AccessPassed { card: card_id },
+                GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
+    }
+
+    #[test]
+    fn on_accessed_flatline_clears_active_run_and_halts_further_access() {
+        let registry = CardRegistry::from_cards(vec![card_with_on_accessed(
+            "snare",
+            vec![Effect::DealDamage(DamageType::Net, 5)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("snare".to_string()), CardId("hedge_fund".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let events = resolve_select_card(&mut state, &CardId("snare".to_string()), &registry)
+            .expect("selecting should succeed");
+
+        assert_eq!(state.active_run, None);
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::RunnerFlatlined,
+                GameEvent::GameOver { winner: Side::Corp },
+                GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
+
+        // The second (never-presented) card's own trigger effects never ran
+        // — no leftover access state to resolve against, so any further
+        // access action now fails as "no active run" rather than
+        // "not in access phase" for a card that's still nominally pending.
+        assert_eq!(
+            resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry),
+            Err(RulesError::NotInAccessPhase)
+        );
+    }
+
+    #[test]
+    fn on_accessed_flatline_via_advance_or_finish_auto_bypass() {
+        // Two cards; the first has no trigger and is passed normally, which
+        // auto-bypasses straight to the second (only one remains) via
+        // `advance_or_finish`'s `1 =>` arm — the one hook point distinct
+        // from `access_server`/`resolve_select_card`.
+        let registry = CardRegistry::from_cards(vec![card_with_on_accessed(
+            "snare",
+            vec![Effect::DealDamage(DamageType::Net, 5)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("hedge_fund".to_string()), CardId("snare".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        resolve_select_card(&mut state, &CardId("hedge_fund".to_string()), &registry)
+            .expect("selecting the first card should succeed");
+
+        let events = resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry)
+            .expect("passing the first card should succeed");
+
+        assert_eq!(state.active_run, None);
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
+                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::RunnerFlatlined,
+                GameEvent::GameOver { winner: Side::Corp },
+                GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
     }
 }

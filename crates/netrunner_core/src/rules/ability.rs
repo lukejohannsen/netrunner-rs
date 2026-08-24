@@ -1,4 +1,5 @@
-use crate::dsl::{CardTarget, Cost, Effect, StackZone};
+use crate::cards::CardRegistry;
+use crate::dsl::{CardId, CardTarget, Cost, Effect, StackZone, Trigger};
 use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -138,6 +139,32 @@ pub fn resolve_unbroken_subroutines(state: &mut GameState) -> Result<Vec<GameEve
     Ok(events)
 }
 
+/// Fires every `TriggeredEffect` on `card_id`'s `CardRegistry` definition
+/// matching `trigger`, in declaration order, evaluating each contained
+/// `Effect` via `evaluate_effect` and collecting events. An unregistered
+/// `card_id` (or one with no matching `TriggeredEffect`) is not an error —
+/// yields `Ok(Vec::new())`, mirroring `run::access::compute_pending_choice`'s
+/// existing "unrecognized card" default. Errors propagate immediately with
+/// no rollback (already-fired effects/triggers stay applied), matching
+/// `resolve_unbroken_subroutines`'s convention.
+pub fn process_card_triggers(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+    trigger: Trigger,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(card) = registry.get(card_id) else {
+        return Ok(Vec::new());
+    };
+    let mut events = Vec::new();
+    for triggered in card.triggers.iter().filter(|t| t.trigger == trigger) {
+        for effect in &triggered.effects {
+            events.extend(evaluate_effect(state, effect)?);
+        }
+    }
+    Ok(events)
+}
+
 fn trash_card(state: &mut GameState, target: &CardTarget) -> Result<Vec<GameEvent>, RulesError> {
     match target {
         CardTarget::ThisCard => Err(RulesError::UnresolvedCardTarget),
@@ -226,7 +253,7 @@ pub fn pay_cost(state: &mut GameState, side: Side, cost: &Cost) -> Result<Vec<Ga
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{CardId, DamageType, SubroutineDef};
+    use crate::dsl::{Card, CardId, CardType, DamageType, SubroutineDef, TriggeredEffect};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase as RP, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, GamePhase, InstallSlot, InstalledCard, MemoryUnits,
@@ -726,5 +753,93 @@ mod tests {
             pay_cost(&mut state, Side::Runner, &Cost::TrashSelf),
             Err(RulesError::UnresolvedCardTarget)
         );
+    }
+
+    /// A minimal `Card` carrying exactly the given `triggers` — everything
+    /// else is irrelevant to `process_card_triggers` tests.
+    fn card_with_triggers(id: &str, triggers: Vec<TriggeredEffect>) -> Card {
+        Card {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Corp,
+            card_type: CardType::Asset,
+            cost: 0,
+            triggers,
+            abilities: Vec::new(),
+            trash_cost: None,
+            steal_cost: None,
+            advancement_requirement: None,
+            agenda_points: None,
+            min_deck_size: None,
+        }
+    }
+
+    #[test]
+    fn process_card_triggers_fires_all_effects_of_a_matching_trigger_in_order() {
+        let mut state = game_state();
+        let registry = CardRegistry::from_cards(vec![card_with_triggers(
+            "snare",
+            vec![TriggeredEffect {
+                trigger: Trigger::OnAccessed,
+                effects: vec![Effect::GiveTags(1), Effect::GainCredits(Side::Corp, 2)],
+            }],
+        )]);
+
+        let events = process_card_triggers(
+            &mut state,
+            &registry,
+            &CardId("snare".to_string()),
+            Trigger::OnAccessed,
+        )
+        .unwrap();
+
+        assert_eq!(state.runner.tags, 1);
+        assert_eq!(state.corp.resources.credits, Credits(7));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+                GameEvent::CreditsGained { side: Side::Corp, amount: 2 },
+            ]
+        );
+    }
+
+    #[test]
+    fn process_card_triggers_ignores_non_matching_triggers() {
+        let mut state = game_state();
+        let registry = CardRegistry::from_cards(vec![card_with_triggers(
+            "hedge_fund",
+            vec![TriggeredEffect {
+                trigger: Trigger::OnPlay,
+                effects: vec![Effect::GainCredits(Side::Corp, 9)],
+            }],
+        )]);
+
+        let events = process_card_triggers(
+            &mut state,
+            &registry,
+            &CardId("hedge_fund".to_string()),
+            Trigger::OnAccessed,
+        )
+        .unwrap();
+
+        assert!(events.is_empty());
+        assert_eq!(state.corp.resources.credits, Credits(5));
+    }
+
+    #[test]
+    fn process_card_triggers_with_unregistered_card_yields_no_events() {
+        let mut state = game_state();
+        let registry = CardRegistry::new();
+
+        let events = process_card_triggers(
+            &mut state,
+            &registry,
+            &CardId("unregistered".to_string()),
+            Trigger::OnAccessed,
+        )
+        .unwrap();
+
+        assert!(events.is_empty());
     }
 }

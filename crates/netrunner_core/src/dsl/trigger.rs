@@ -14,9 +14,17 @@ pub enum Trigger {
     /// `rules::state::GamePhase::StartOfTurn(Side)` variant, which names a
     /// turn sub-phase, not a card-ability trigger condition.
     OnTurnStart,
-    /// Fires when this card (or its server) is accessed during a run —
-    /// Ambush-style "when accessed" abilities.
-    OnAccess,
+    /// Fires once, the moment this card is presented as the Runner's
+    /// current access choice (when `GameEvent::CardAccessed` fires for it)
+    /// — Ambush-style "when accessed" abilities (Snare!, Fetal AI). Fires
+    /// unconditionally; no player choice to avoid it yet (a future
+    /// interactive-reaction framework will add that).
+    OnAccessed,
+    /// Fires when this card is trashed via `PlayerAction::
+    /// TrashAccessedCard` specifically — not other trash paths (a
+    /// subroutine's `Effect::TrashCard`, a normal Corp trash action, etc.).
+    /// Shock!-style "when trashed by the Runner accessing it" abilities.
+    OnTrashedFromAccess,
     /// Fires when a run completes successfully — distinct from
     /// `OnRunStart`, which fires at initiation, not resolution.
     OnSuccessfulRun,

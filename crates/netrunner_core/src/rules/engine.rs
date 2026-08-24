@@ -239,7 +239,7 @@ fn complete_run(
 
     let mut next = state.clone();
 
-    let mut events = run::access_server(&mut next, server, registry);
+    let mut events = run::access_server(&mut next, server, registry)?;
     // `access_server` clears `active_run` itself when nothing was accessed
     // (nothing to present a choice about); otherwise it parks the run in
     // `RunPhase::AccessingCard` and `StealAgenda`/`TrashAccessedCard`/
