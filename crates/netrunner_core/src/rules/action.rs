@@ -75,6 +75,11 @@ pub enum PlayerAction {
     /// No credit cost yet — like `RezIce`, cost is data-driven per-card and no
     /// `CardRegistry` is wired into the engine yet.
     PlayEvent { card_id: CardId },
+    /// Spend 1 click and `card_id`'s registry `cost` in credits, move
+    /// `card_id` out of HQ into Archives, then resolve its `OnPlay`
+    /// triggers. Corp-only mirror of `PlayEvent`. `card_id`'s `CardType`
+    /// must be `Operation` (`RulesError::CardNotOperation` otherwise).
+    PlayOperation { card_id: CardId },
     /// Spend 1 click, move `card_id` from the Grip into the Rig. Runner-only.
     /// No credit cost yet, for the same reason as `PlayEvent`.
     InstallHardware { card_id: CardId },

@@ -129,4 +129,7 @@ pub enum RulesError {
         ice: CardId,
         expected: IceType,
     },
+
+    #[error("card {card:?} is not an Operation and cannot be played via PlayOperation")]
+    CardNotOperation { card: CardId },
 }

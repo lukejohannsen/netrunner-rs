@@ -26,6 +26,7 @@ pub fn apply_action(
         PlayerAction::JackOut => jack_out(state),
         PlayerAction::CompleteRun => complete_run(state, registry),
         PlayerAction::PlayEvent { card_id } => play_event(state, registry, card_id),
+        PlayerAction::PlayOperation { card_id } => play_operation(state, registry, card_id),
         PlayerAction::InstallHardware { card_id } => install_hardware(state, registry, card_id),
         PlayerAction::InstallProgram { card_id, memory_cost } => {
             install_program(state, registry, card_id, memory_cost)
@@ -369,6 +370,42 @@ fn play_event(
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost))?);
     events.push(GameEvent::EventPlayed { side, card: card_id.clone() });
+    events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnPlay)?);
+
+    Ok((next, events))
+}
+
+/// Corp-only mirror of `play_event`: spends 1 click and the card's
+/// registry-defined credit cost, moves `card_id` out of HQ into Archives
+/// (Operations are trashed as part of being played, same as real
+/// Netrunner/Null Signal Games rules — unlike `play_event`, which currently
+/// has no Heap-placement step for played Events), then resolves its
+/// `OnPlay` triggers. `card_id`'s registry `CardType` must be `Operation`
+/// (`RulesError::CardNotOperation` otherwise) — checked before paying the
+/// credit cost, so an ineligible card never mutates `next`'s credits.
+fn play_operation(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Corp;
+    require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+    take_from_grip(&mut next, side, &card_id)?;
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if card_def.card_type != CardType::Operation {
+        return Err(RulesError::CardNotOperation { card: card_id });
+    }
+
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost))?);
+    next.corp.archives.push(card_id.clone());
+    events.push(GameEvent::OperationPlayed { side, card: card_id.clone() });
     events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnPlay)?);
 
     Ok((next, events))
@@ -1881,6 +1918,128 @@ mod tests {
         assert_eq!(
             result,
             Err(RulesError::NotEnoughClicks { side: Side::Runner, available: 0, requested: 1 })
+        );
+    }
+
+    #[test]
+    fn corp_play_operation_fires_on_play_trigger_and_moves_card_to_archives() {
+        let card_id = CardId("hedge_fund".to_string());
+        let state = corp_state_with_hq_and_installed(3, 5, vec![card_id.clone()], Vec::new());
+        let mut registry = CardRegistry::new();
+        let mut card = test_card("hedge_fund", Side::Corp, CardType::Operation, 5, None);
+        card.triggers = vec![TriggeredEffect {
+            trigger: Trigger::OnPlay,
+            effects: vec![Effect::GainCredits(Side::Corp, 9)],
+        }];
+        registry.insert(card);
+
+        let (next, events) =
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: card_id.clone() })
+                .expect("action should succeed");
+
+        assert_eq!(next.corp.resources.clicks, Clicks(2));
+        // Paid 5 to play, then the OnPlay trigger grants 9 back — net +4.
+        assert_eq!(next.corp.resources.credits, Credits(9));
+        assert!(next.corp.hq.is_empty());
+        assert_eq!(next.corp.archives, vec![card_id.clone()]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::CreditsSpent { side: Side::Corp, amount: 5 },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone() },
+                GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
+            ]
+        );
+
+        // Original state is untouched.
+        assert_eq!(state.corp.hq, vec![card_id]);
+        assert!(state.corp.archives.is_empty());
+    }
+
+    #[test]
+    fn corp_play_operation_not_in_registry_returns_card_not_found_in_registry() {
+        let card_id = CardId("hedge_fund".to_string());
+        let state = corp_state_with_hq_and_installed(3, 5, vec![card_id.clone()], Vec::new());
+
+        let result = apply_action(&state, &registry(), PlayerAction::PlayOperation { card_id: card_id.clone() });
+
+        assert_eq!(result, Err(RulesError::CardNotFoundInRegistry(card_id)));
+    }
+
+    #[test]
+    fn corp_play_operation_with_insufficient_credits_for_registry_cost_returns_not_enough_credits() {
+        let card_id = CardId("hedge_fund".to_string());
+        let state = corp_state_with_hq_and_installed(3, 0, vec![card_id.clone()], Vec::new());
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("hedge_fund", Side::Corp, CardType::Operation, 5, None));
+
+        let result = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id });
+
+        assert_eq!(
+            result,
+            Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 0, requested: 5 })
+        );
+
+        // Whole-action atomicity: the failed pay_cost never lands, so
+        // nothing about `next` is ever returned/observed here.
+    }
+
+    #[test]
+    fn corp_play_operation_with_zero_clicks_returns_not_enough_clicks() {
+        let card_id = CardId("hedge_fund".to_string());
+        let state = corp_state_with_hq_and_installed(0, 5, vec![card_id.clone()], Vec::new());
+
+        let result = apply_action(&state, &registry(), PlayerAction::PlayOperation { card_id });
+
+        assert_eq!(
+            result,
+            Err(RulesError::NotEnoughClicks { side: Side::Corp, available: 0, requested: 1 })
+        );
+    }
+
+    #[test]
+    fn corp_play_operation_with_card_not_in_hq_returns_card_not_in_hand() {
+        let card_id = CardId("hedge_fund".to_string());
+        let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), Vec::new());
+
+        let result = apply_action(&state, &registry(), PlayerAction::PlayOperation { card_id: card_id.clone() });
+
+        assert_eq!(result, Err(RulesError::CardNotInHand { side: Side::Corp, card: card_id }));
+    }
+
+    #[test]
+    fn corp_play_operation_with_non_operation_card_returns_card_not_operation() {
+        let ice_id = CardId("ice_wall".to_string());
+        let agenda_id = CardId("priority_requisition".to_string());
+        let state =
+            corp_state_with_hq_and_installed(3, 5, vec![ice_id.clone(), agenda_id.clone()], Vec::new());
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 1, None));
+        registry.insert(test_card("priority_requisition", Side::Corp, CardType::Agenda, 0, Some(5)));
+
+        assert_eq!(
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: ice_id.clone() }),
+            Err(RulesError::CardNotOperation { card: ice_id })
+        );
+        assert_eq!(
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: agenda_id.clone() }),
+            Err(RulesError::CardNotOperation { card: agenda_id })
+        );
+    }
+
+    #[test]
+    fn runner_turn_play_operation_returns_not_your_turn() {
+        let card_id = CardId("hedge_fund".to_string());
+        let state = runner_state(3, 5, 3);
+        let result = apply_action(&state, &registry(), PlayerAction::PlayOperation { card_id });
+
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Corp),
+                actual: GamePhase::Action(Side::Runner),
+            })
         );
     }
 

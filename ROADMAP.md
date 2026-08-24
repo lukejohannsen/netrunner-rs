@@ -13,14 +13,13 @@ Tracking shipped milestones and future technical engine work for `netrunner_core
 * **Icebreaker & Economy Primitives:** 
   * `InstalledRunnerCard` per-instance rig state with `Encounter` and `Turn` strength buff tracking.
   * Strength- and subtype-gated subroutine breaking (`Effect::BreakSubroutines`'s `restrict_to: Option<IceType>`, e.g. Corroder restricted to Barriers; `None` for universal breakers).
-  * `OnPlay` trigger resolution for Event/Operation economy boosters (*Sure Gamble*).
+  * `OnPlay` trigger resolution for Event/Operation economy boosters (*Sure Gamble*, *Hedge Fund*), via `PlayerAction::PlayEvent` (Runner) and `PlayerAction::PlayOperation` (Corp).
 
 ---
 
 ## Planned Work & Engine Gaps
 
 ### Phase 1: Card & Ability Primitives
-- [ ] **Corp Operation Execution:** Implement `PlayerAction::PlayOperation` path for resolving Operations directly from HQ.
 - [ ] **Interactive Access Triggers:** Choice-driven on-access abilities requiring cost payments or decisions (e.g., paying credits to prevent damage).
 - [ ] **Trigger Self-References:** Resolve `CardTarget::ThisCard` and `Cost::TrashSelf` for cards executing their own trigger effects during access or trash.
 

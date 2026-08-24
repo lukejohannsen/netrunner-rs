@@ -71,7 +71,6 @@ This section tracks open architectural gaps in `netrunner_core` to address befor
 
 ### Priority 1: Rules & Ability Primitives
 
-* **Corp Operation Execution:** The Runner can play Events via `PlayerAction::PlayEvent`, but Corp currently lacks a `PlayerAction::PlayOperation` path to resolve Operations from HQ.
 * **Interactive On-Access Triggers:** Automatic access triggers (`OnAccessed`, `OnTrashedFromAccess`) are implemented, but interactive triggers (e.g., Fetal AI requiring a 4c payment to avoid damage) need `AccessPhase`/`PlayerAction` choice plumbing.
 * **Self-Reference Card Triggers:** `CardTarget::ThisCard` and `Cost::TrashSelf` for accessed or trashed card self-resolution currently throw `RulesError::UnresolvedCardTarget`.
 
