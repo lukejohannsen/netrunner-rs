@@ -68,10 +68,14 @@ pub struct RunIce {
 }
 
 /// One card the Runner is currently being asked to make a choice about,
-/// mid-access. Currently a single-variant enum (room for future variants —
-/// e.g. an "on access" trigger prompt — without reshaping `AccessState`).
+/// mid-access, or a choice of which accessed card to resolve next when more
+/// than one remains unresolved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AccessPhase {
+    /// Offered when 2+ cards from this access remain unresolved. The Runner
+    /// picks one via `PlayerAction::SelectCardToAccess`, which moves it into
+    /// `PendingChoice`.
+    SelectNextCard { selectable_cards: Vec<CardId> },
     PendingChoice {
         card_id: CardId,
         /// Whether the Runner can currently afford `trash_cost` (`false` if
@@ -88,14 +92,18 @@ pub enum AccessPhase {
 }
 
 /// The in-progress state of resolving one server's worth of accessed cards,
-/// one at a time, via `PlayerAction::StealAgenda`/`TrashAccessedCard`/
-/// `PassAccessedCard`. Lives in `RunState::access_state` while
-/// `RunState::phase == RunPhase::AccessingCard`.
+/// one at a time, via `PlayerAction::SelectCardToAccess`/`StealAgenda`/
+/// `TrashAccessedCard`/`PassAccessedCard`. Lives in `RunState::access_state`
+/// while `RunState::phase == RunPhase::AccessingCard`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AccessState {
     pub server: ServerId,
-    pub accessed_cards: Vec<CardId>,
-    pub current_index: usize,
+    /// Cards from this access not yet chosen for resolution (order is
+    /// access-determination order, not resolution order — the Runner picks
+    /// freely among these via `SelectCardToAccess`).
+    pub unaccessed_cards: Vec<CardId>,
+    /// Cards already fully resolved (stolen/trashed/passed) this access.
+    pub resolved_cards: Vec<CardId>,
     pub phase: AccessPhase,
 }
 

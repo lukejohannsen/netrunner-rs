@@ -38,6 +38,9 @@ pub fn apply_action(
             activate_ability(state, registry, card_id, ability_index)
         }
         PlayerAction::AdvanceCard { card_id } => advance_card(state, registry, card_id),
+        PlayerAction::SelectCardToAccess { card_id } => {
+            select_card_to_access(state, registry, card_id)
+        }
         PlayerAction::StealAgenda { card_id } => steal_agenda(state, registry, card_id),
         PlayerAction::TrashAccessedCard { card_id } => {
             trash_accessed_card(state, registry, card_id)
@@ -431,6 +434,19 @@ fn advance_card(
     let advancement_tokens = installed.advancement_tokens;
     events.push(GameEvent::CardAdvanced { card: card_id, advancement_tokens });
 
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::SelectCardToAccess`, per its doc comment.
+/// Runner-only, like every other access-resolution action.
+fn select_card_to_access(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    require_phase(state, GamePhase::Action(Side::Runner))?;
+    let mut next = state.clone();
+    let events = run::resolve_select_card(&mut next, &card_id, registry)?;
     Ok((next, events))
 }
 
@@ -1186,8 +1202,8 @@ mod tests {
             Some(RunState {
                 access_state: Some(run::AccessState {
                     server: ServerId::Hq,
-                    accessed_cards: vec![CardId("hedge_fund".to_string())],
-                    current_index: 0,
+                    unaccessed_cards: Vec::new(),
+                    resolved_cards: Vec::new(),
                     phase: run::AccessPhase::PendingChoice {
                         card_id: CardId("hedge_fund".to_string()),
                         can_trash: false,

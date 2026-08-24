@@ -126,6 +126,19 @@ pub enum PlayerAction {
     /// score the card even if the requirement is met — scoring is a
     /// separate, not-yet-modeled action.
     AdvanceCard { card_id: CardId },
+    /// Choose which of the currently offered cards to resolve next, when
+    /// more than one card was accessed from a single server. Runner-only.
+    /// Legal only while a run is in `RunPhase::AccessingCard` and its
+    /// `AccessPhase` is `SelectNextCard` (`RulesError::NotInAccessPhase`
+    /// otherwise — including if it's already at `PendingChoice` for a
+    /// single remaining/bypassed card); `card_id` must be among
+    /// `selectable_cards` or this errors with
+    /// `RulesError::InvalidAccessSelection`. Moves the card out of
+    /// `AccessState::unaccessed_cards` and presents it via
+    /// `AccessPhase::PendingChoice`, ready for `StealAgenda`/
+    /// `TrashAccessedCard`/`PassAccessedCard` — see
+    /// `run::access::resolve_select_card`.
+    SelectCardToAccess { card_id: CardId },
     /// Steal the currently pending accessed card. Runner-only. Legal only
     /// while a run is in `RunPhase::AccessingCard` and `card_id` matches
     /// the `AccessPhase::PendingChoice` card, and that card is actually a

@@ -91,6 +91,9 @@ pub enum RulesError {
     #[error("no run is currently awaiting an access choice for that card")]
     NotInAccessPhase,
 
+    #[error("{card:?} is not one of the cards currently offered for access selection")]
+    InvalidAccessSelection { card: CardId },
+
     #[error("Agenda {card:?} must be stolen and cannot be passed")]
     MandatoryStealViolation { card: CardId },
 

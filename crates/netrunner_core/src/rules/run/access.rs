@@ -81,15 +81,18 @@ fn compute_pending_choice(card_id: &CardId, runner_credits: u32, registry: &Card
 }
 
 /// Determine which cards a successful run against `server` accesses and, if
-/// any, park the run in `RunPhase::AccessingCard` with an `AccessState`
-/// describing the first one's choice — `PlayerAction::StealAgenda`/
-/// `TrashAccessedCard`/`PassAccessedCard` (`resolve_steal`/`resolve_trash`/
-/// `resolve_pass` below) then resolve them one at a time. If nothing is
-/// accessed (empty zone), clears `active_run` immediately instead — there's
-/// nothing to present a choice about, so the run is simply over.
+/// any, park the run in `RunPhase::AccessingCard`. A single accessed card
+/// goes straight to an `AccessState` describing its `PendingChoice` —
+/// `PlayerAction::StealAgenda`/`TrashAccessedCard`/`PassAccessedCard`
+/// (`resolve_steal`/`resolve_trash`/`resolve_pass` below) resolve it. Two or
+/// more accessed cards instead park at `AccessPhase::SelectNextCard`, so the
+/// Runner picks resolution order via `PlayerAction::SelectCardToAccess`
+/// (`resolve_select_card` below) before any `PendingChoice` is presented. If
+/// nothing is accessed (empty zone), clears `active_run` immediately instead
+/// — there's nothing to present a choice about, so the run is simply over.
 ///
 /// Takes `&mut GameState` because HQ access needs `GameState::next_u64` to
-/// pick a pseudo-random index, and either outcome mutates `active_run`.
+/// pick a pseudo-random index, and every outcome mutates `active_run`.
 ///
 /// Never fails: an empty zone simply yields zero events.
 pub fn access_server(state: &mut GameState, server: ServerId, registry: &CardRegistry) -> Vec<GameEvent> {
@@ -100,17 +103,27 @@ pub fn access_server(state: &mut GameState, server: ServerId, registry: &CardReg
     }
 
     let runner_credits = state.runner.resources.credits.0;
-    let phase = compute_pending_choice(&accessed[0], runner_credits, registry);
-    let event = GameEvent::CardAccessed { card: accessed[0].clone(), server };
-
     let run = state
         .active_run
         .as_mut()
         .expect("engine::complete_run confirmed active_run is Some before calling access_server");
     run.phase = RunPhase::AccessingCard;
-    run.access_state = Some(AccessState { server, accessed_cards: accessed, current_index: 0, phase });
 
-    vec![event]
+    if accessed.len() == 1 {
+        let card_id = accessed.into_iter().next().unwrap();
+        let phase = compute_pending_choice(&card_id, runner_credits, registry);
+        run.access_state =
+            Some(AccessState { server, unaccessed_cards: Vec::new(), resolved_cards: Vec::new(), phase });
+        vec![GameEvent::CardAccessed { card: card_id, server }]
+    } else {
+        run.access_state = Some(AccessState {
+            server,
+            unaccessed_cards: accessed.clone(),
+            resolved_cards: Vec::new(),
+            phase: AccessPhase::SelectNextCard { selectable_cards: accessed },
+        });
+        Vec::new()
+    }
 }
 
 /// The `AccessState` fields `resolve_steal`/`resolve_trash`/`resolve_pass`
@@ -137,7 +150,10 @@ fn require_pending(state: &GameState, card_id: &CardId) -> Result<PendingAccess,
     }
     let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
     let AccessPhase::PendingChoice { card_id: pending, mandatory_steal, steal_cost, trash_cost, .. } =
-        &access.phase;
+        &access.phase
+    else {
+        return Err(RulesError::NotInAccessPhase);
+    };
     if pending != card_id {
         return Err(RulesError::NotInAccessPhase);
     }
@@ -150,11 +166,64 @@ fn require_pending(state: &GameState, card_id: &CardId) -> Result<PendingAccess,
     })
 }
 
+/// The `AccessState` fields `resolve_select_card` needs, pulled out by value
+/// for the same borrow-scoping reason as `PendingAccess`.
+struct PendingSelection {
+    server: ServerId,
+    selectable_cards: Vec<CardId>,
+}
+
+/// Confirms a run is parked in `RunPhase::AccessingCard` awaiting a
+/// selection (`AccessPhase::SelectNextCard`), and returns that choice's
+/// context. Covers every "wrong state to call this" case with a single
+/// error (`RulesError::NotInAccessPhase`), mirroring `require_pending`.
+fn require_selectable(state: &GameState) -> Result<PendingSelection, RulesError> {
+    let run = state.active_run.as_ref().ok_or(RulesError::NotInAccessPhase)?;
+    if run.phase != RunPhase::AccessingCard {
+        return Err(RulesError::NotInAccessPhase);
+    }
+    let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
+    let AccessPhase::SelectNextCard { selectable_cards } = &access.phase else {
+        return Err(RulesError::NotInAccessPhase);
+    };
+
+    Ok(PendingSelection { server: access.server, selectable_cards: selectable_cards.clone() })
+}
+
+/// Resolves `PlayerAction::SelectCardToAccess`. See its doc comment for the
+/// error conditions.
+pub fn resolve_select_card(
+    state: &mut GameState,
+    card_id: &CardId,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let pending = require_selectable(state)?;
+    if !pending.selectable_cards.contains(card_id) {
+        return Err(RulesError::InvalidAccessSelection { card: card_id.clone() });
+    }
+
+    let runner_credits = state.runner.resources.credits.0;
+    let run = state.active_run.as_mut().expect("resolve_select_card called mid-access");
+    let access = run.access_state.as_mut().expect("resolve_select_card called mid-access");
+    if let Some(pos) = access.unaccessed_cards.iter().position(|c| c == card_id) {
+        access.unaccessed_cards.remove(pos);
+    }
+    access.phase = compute_pending_choice(card_id, runner_credits, registry);
+
+    Ok(vec![GameEvent::CardAccessed { card: card_id.clone(), server: pending.server }])
+}
+
 /// Shared tail of `resolve_steal`/`resolve_trash`/`resolve_pass`: if a steal
 /// just won the game, finalize immediately without presenting further
-/// accessed cards; otherwise move on to the next accessed card (recomputing
-/// its `PendingChoice`), or finalize if that was the last one.
-fn advance_or_finish(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Vec<GameEvent> {
+/// accessed cards; otherwise record `resolved_card` as resolved and either
+/// auto-present the last remaining card's `PendingChoice`, offer a choice
+/// among 2+ remaining cards, or finalize if none remain.
+fn advance_or_finish(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    server: ServerId,
+    resolved_card: CardId,
+) -> Vec<GameEvent> {
     if let GamePhase::GameOver(winner) = state.phase {
         state.active_run = None;
         return vec![GameEvent::GameOver { winner }, GameEvent::RunCompleted { server }];
@@ -163,15 +232,22 @@ fn advance_or_finish(state: &mut GameState, registry: &CardRegistry, server: Ser
     let runner_credits = state.runner.resources.credits.0;
     let run = state.active_run.as_mut().expect("advance_or_finish called mid-access");
     let access = run.access_state.as_mut().expect("advance_or_finish called mid-access");
-    access.current_index += 1;
+    access.resolved_cards.push(resolved_card);
 
-    if access.current_index < access.accessed_cards.len() {
-        let next_card = access.accessed_cards[access.current_index].clone();
-        access.phase = compute_pending_choice(&next_card, runner_credits, registry);
-        vec![GameEvent::CardAccessed { card: next_card, server }]
-    } else {
-        state.active_run = None;
-        vec![GameEvent::RunCompleted { server }]
+    match access.unaccessed_cards.len() {
+        0 => {
+            state.active_run = None;
+            vec![GameEvent::RunCompleted { server }]
+        }
+        1 => {
+            let next_card = access.unaccessed_cards.remove(0);
+            access.phase = compute_pending_choice(&next_card, runner_credits, registry);
+            vec![GameEvent::CardAccessed { card: next_card, server }]
+        }
+        _ => {
+            access.phase = AccessPhase::SelectNextCard { selectable_cards: access.unaccessed_cards.clone() };
+            Vec::new()
+        }
     }
 }
 
@@ -208,7 +284,7 @@ pub fn resolve_steal(
     events.push(GameEvent::AgendaStolen { card: card_id.clone(), agenda_points });
 
     check_win_conditions(state, registry);
-    events.extend(advance_or_finish(state, registry, pending.server));
+    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone()));
     Ok(events)
 }
 
@@ -249,7 +325,7 @@ pub fn resolve_trash(
     move_to_archives(state, card_id, pending.server);
     events.push(GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost });
 
-    events.extend(advance_or_finish(state, registry, pending.server));
+    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone()));
     Ok(events)
 }
 
@@ -266,7 +342,7 @@ pub fn resolve_pass(
     }
 
     let mut events = vec![GameEvent::AccessPassed { card: card_id.clone() }];
-    events.extend(advance_or_finish(state, registry, pending.server));
+    events.extend(advance_or_finish(state, registry, pending.server, card_id.clone()));
     Ok(events)
 }
 
@@ -494,20 +570,24 @@ mod tests {
             42,
         );
         state.active_run = Some(run_in_success(ServerId::Hq));
-        // Only the first accessed card is surfaced immediately — the second
-        // (the Root-installed Upgrade) is captured in `access_state` and
-        // only presented once the first is resolved (see
+        // Two cards are accessed (the HQ card and the Root-installed
+        // Upgrade), so nothing is presented until the Runner picks which to
+        // resolve first (see
         // `multi_card_sequence_advances_through_each_card_in_order`).
+        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()), Vec::new());
+        let access_state = state.active_run.unwrap().access_state.unwrap();
         assert_eq!(
-            access_server(&mut state, ServerId::Hq, &registry()),
-            vec![GameEvent::CardAccessed {
-                card: CardId("hedge_fund".to_string()),
-                server: ServerId::Hq,
-            }]
+            access_state.unaccessed_cards,
+            vec![CardId("hedge_fund".to_string()), CardId("ash_2_0".to_string())]
         );
         assert_eq!(
-            state.active_run.unwrap().access_state.unwrap().accessed_cards,
-            vec![CardId("hedge_fund".to_string()), CardId("ash_2_0".to_string())]
+            access_state.phase,
+            AccessPhase::SelectNextCard {
+                selectable_cards: vec![
+                    CardId("hedge_fund".to_string()),
+                    CardId("ash_2_0".to_string())
+                ]
+            }
         );
     }
 
@@ -537,15 +617,9 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::RnD));
+        assert_eq!(access_server(&mut state, ServerId::RnD, &registry()), Vec::new());
         assert_eq!(
-            access_server(&mut state, ServerId::RnD, &registry()),
-            vec![GameEvent::CardAccessed {
-                card: CardId("hedge_fund".to_string()),
-                server: ServerId::RnD,
-            }]
-        );
-        assert_eq!(
-            state.active_run.unwrap().access_state.unwrap().accessed_cards,
+            state.active_run.unwrap().access_state.unwrap().unaccessed_cards,
             vec![CardId("hedge_fund".to_string()), CardId("crisium_grid".to_string())]
         );
     }
@@ -560,15 +634,9 @@ mod tests {
             0,
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
+        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()), Vec::new());
         assert_eq!(
-            access_server(&mut state, ServerId::Archives, &registry()),
-            vec![GameEvent::CardAccessed {
-                card: CardId("hedge_fund".to_string()),
-                server: ServerId::Archives
-            }]
-        );
-        assert_eq!(
-            state.active_run.unwrap().access_state.unwrap().accessed_cards,
+            state.active_run.unwrap().access_state.unwrap().unaccessed_cards,
             vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())]
         );
     }
@@ -724,6 +792,7 @@ mod tests {
         access_server(&mut state, ServerId::Archives, &registry);
 
         let card_id = CardId("priority_requisition".to_string());
+        resolve_select_card(&mut state, &card_id, &registry).expect("selecting should succeed");
         let events = resolve_steal(&mut state, &card_id, &registry).expect("steal should succeed");
 
         // Capped at the winning threshold, not 8 — the second agenda
@@ -893,18 +962,176 @@ mod tests {
         );
         state.active_run = Some(run_in_success(ServerId::Archives));
         let first = access_server(&mut state, ServerId::Archives, &registry());
+        assert_eq!(first, Vec::new());
         assert_eq!(
-            first,
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::SelectNextCard {
+                selectable_cards: vec![
+                    CardId("hedge_fund".to_string()),
+                    CardId("ice_wall".to_string())
+                ]
+            }
+        );
+
+        // Pick the second card first — order is the Runner's choice, not
+        // the fixed access-determination order.
+        let selected = resolve_select_card(&mut state, &CardId("ice_wall".to_string()), &registry())
+            .expect("selecting the second card should succeed");
+        assert_eq!(
+            selected,
             vec![GameEvent::CardAccessed {
-                card: CardId("hedge_fund".to_string()),
+                card: CardId("ice_wall".to_string()),
                 server: ServerId::Archives
             }]
         );
 
-        let second = resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry())
-            .expect("passing the first card should succeed");
+        let second = resolve_pass(&mut state, &CardId("ice_wall".to_string()), &registry())
+            .expect("passing the selected card should succeed");
+        // Only one card remains, so it auto-presents rather than offering
+        // another `SelectNextCard` choice.
         assert_eq!(
             second,
+            vec![
+                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()) },
+                GameEvent::CardAccessed {
+                    card: CardId("hedge_fund".to_string()),
+                    server: ServerId::Archives
+                },
+            ]
+        );
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::AccessingCard);
+
+        let last = resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry())
+            .expect("passing the last card should succeed");
+        assert_eq!(
+            last,
+            vec![
+                GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
+                GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
+        assert_eq!(state.active_run, None);
+    }
+
+    #[test]
+    fn multi_card_selection_lets_runner_pick_the_second_card_first() {
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry());
+
+        let events = resolve_select_card(&mut state, &CardId("ice_wall".to_string()), &registry())
+            .expect("selecting the second card should succeed");
+        assert_eq!(
+            events,
+            vec![GameEvent::CardAccessed {
+                card: CardId("ice_wall".to_string()),
+                server: ServerId::Archives
+            }]
+        );
+        let access_state = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert_eq!(access_state.unaccessed_cards, vec![CardId("hedge_fund".to_string())]);
+        assert_eq!(
+            access_state.phase,
+            AccessPhase::PendingChoice {
+                card_id: CardId("ice_wall".to_string()),
+                can_trash: false,
+                trash_cost: None,
+                mandatory_steal: false,
+                steal_cost: None,
+            }
+        );
+
+        let resolved = resolve_pass(&mut state, &CardId("ice_wall".to_string()), &registry())
+            .expect("passing the selected card should succeed");
+        assert_eq!(
+            resolved,
+            vec![
+                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()) },
+                GameEvent::CardAccessed {
+                    card: CardId("hedge_fund".to_string()),
+                    server: ServerId::Archives
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn three_card_access_supports_out_of_order_resolution() {
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![
+                CardId("card_1".to_string()),
+                CardId("card_2".to_string()),
+                CardId("card_3".to_string()),
+            ],
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry());
+
+        resolve_select_card(&mut state, &CardId("card_3".to_string()), &registry())
+            .expect("selecting card_3 should succeed");
+        resolve_pass(&mut state, &CardId("card_3".to_string()), &registry())
+            .expect("passing card_3 should succeed");
+
+        // Two cards remain, so the Runner is offered another choice rather
+        // than auto-advancing.
+        let access_state = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert_eq!(
+            access_state.phase,
+            AccessPhase::SelectNextCard {
+                selectable_cards: vec![CardId("card_1".to_string()), CardId("card_2".to_string())]
+            }
+        );
+        assert_eq!(access_state.resolved_cards, vec![CardId("card_3".to_string())]);
+
+        resolve_select_card(&mut state, &CardId("card_1".to_string()), &registry())
+            .expect("selecting card_1 should succeed");
+        let resolved = resolve_pass(&mut state, &CardId("card_1".to_string()), &registry())
+            .expect("passing card_1 should succeed");
+
+        // Only card_2 remains, so it auto-presents.
+        assert_eq!(
+            resolved,
+            vec![
+                GameEvent::AccessPassed { card: CardId("card_1".to_string()) },
+                GameEvent::CardAccessed {
+                    card: CardId("card_2".to_string()),
+                    server: ServerId::Archives
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn selecting_the_final_remaining_card_bypasses_select_next_card() {
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry());
+        resolve_select_card(&mut state, &CardId("hedge_fund".to_string()), &registry())
+            .expect("selecting should succeed");
+
+        let events = resolve_pass(&mut state, &CardId("hedge_fund".to_string()), &registry())
+            .expect("passing should succeed");
+
+        // With exactly one card left in `unaccessed_cards`, it goes
+        // straight to `PendingChoice` instead of another `SelectNextCard`.
+        assert_eq!(
+            events,
             vec![
                 GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
                 GameEvent::CardAccessed {
@@ -913,18 +1140,58 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::AccessingCard);
+        assert!(matches!(
+            state.active_run.unwrap().access_state.unwrap().phase,
+            AccessPhase::PendingChoice { .. }
+        ));
+    }
 
-        let last = resolve_pass(&mut state, &CardId("ice_wall".to_string()), &registry())
-            .expect("passing the second card should succeed");
-        assert_eq!(
-            last,
-            vec![
-                GameEvent::AccessPassed { card: CardId("ice_wall".to_string()) },
-                GameEvent::RunCompleted { server: ServerId::Archives },
-            ]
+    #[test]
+    fn selecting_a_card_not_in_selectable_cards_errors() {
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())],
+            Vec::new(),
+            0,
         );
-        assert_eq!(state.active_run, None);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry());
+
+        let wrong_id = CardId("wrong_card".to_string());
+        assert_eq!(
+            resolve_select_card(&mut state, &wrong_id, &registry()),
+            Err(RulesError::InvalidAccessSelection { card: wrong_id })
+        );
+    }
+
+    #[test]
+    fn selecting_while_already_at_pending_choice_errors() {
+        let mut state = game_state(
+            vec![CardId("hedge_fund".to_string())],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            42,
+        );
+        state.active_run = Some(run_in_success(ServerId::Hq));
+        access_server(&mut state, ServerId::Hq, &registry());
+
+        let card_id = CardId("hedge_fund".to_string());
+        assert_eq!(
+            resolve_select_card(&mut state, &card_id, &registry()),
+            Err(RulesError::NotInAccessPhase)
+        );
+    }
+
+    #[test]
+    fn selecting_with_no_active_run_errors() {
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
+        let card_id = CardId("hedge_fund".to_string());
+        assert_eq!(
+            resolve_select_card(&mut state, &card_id, &registry()),
+            Err(RulesError::NotInAccessPhase)
+        );
     }
 
     #[test]
