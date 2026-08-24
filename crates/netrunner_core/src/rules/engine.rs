@@ -4,6 +4,7 @@ use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
+use crate::rules::paid_ability;
 use crate::rules::run::{self, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState, SubroutineStatus};
 use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side};
 use crate::rules::turn;
@@ -48,6 +49,7 @@ pub fn apply_action(
         PlayerAction::PassAccessedCard { card_id } => {
             pass_accessed_card(state, registry, card_id)
         }
+        PlayerAction::PassPriority { side } => pass_priority_action(state, registry, side),
     }
 }
 
@@ -77,6 +79,7 @@ fn gain_credit_click(
     side: Side,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     next.resources_mut(side).credits = next.resources(side).credits.gain(1);
@@ -93,6 +96,7 @@ fn gain_credit_click(
 fn draw_card_click(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
 
@@ -114,6 +118,7 @@ fn install_card(
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
 
@@ -190,6 +195,12 @@ fn rez_ice(state: &GameState, ice_id: CardId) -> Result<(GameState, Vec<GameEven
     {
         current_ice.rezzed = true;
     }
+
+    // Rez stays priority-independent (either side can act regardless of
+    // whose priority it currently is), but still gives the other side a
+    // fresh chance to respond if a window is open — Netrunner/Null Signal
+    // Games priority rule 4.
+    paid_ability::note_window_action(&mut next, side);
 
     Ok((next, vec![GameEvent::IceRezzed { card: ice_id, server }]))
 }
@@ -271,8 +282,10 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> RunIce {
 fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let events = run::advance_run(&mut next, RunAction::Continue)?;
+    let mut events = run::advance_run(&mut next, RunAction::Continue)?;
+    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
 
     Ok((next, events))
 }
@@ -283,13 +296,18 @@ fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError
     let mut next = state.clone();
     let events = run::advance_run(&mut next, RunAction::JackOut)?;
     next.active_run = None;
+    // A window can be open here (e.g. mid-ApproachIce on the second+ ICE,
+    // where jack_out_permitted is already true from a prior pass) — clear it
+    // too, or it would survive with no active_run left to ever close it
+    // against, permanently blocking every ordinary action afterward.
+    next.paid_ability_window = None;
 
     Ok((next, events))
 }
 
 fn complete_run(
     state: &GameState,
-    registry: &CardRegistry,
+    _registry: &CardRegistry,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
@@ -297,20 +315,18 @@ fn complete_run(
     if active_run.phase != RunPhase::Success {
         return Err(RulesError::RunNotConcluded { phase: active_run.phase });
     }
-    let server = active_run.server;
 
     let mut next = state.clone();
-
-    let mut events = run::access_server(&mut next, server, registry)?;
-    // `access_server` clears `active_run` itself when nothing was accessed
-    // (nothing to present a choice about); otherwise it parks the run in
+    // Opens the pre-access Paid Ability Window rather than accessing
+    // immediately — access (`run::access_server`, `RunCompleted`) now
+    // happens once both sides pass, inside `paid_ability::close_window`'s
+    // `Success` arm. `access_server` clears `active_run` itself when
+    // nothing was accessed; otherwise it parks the run in
     // `RunPhase::AccessingCard` and `StealAgenda`/`TrashAccessedCard`/
     // `PassAccessedCard` are what eventually finish it off.
-    if next.active_run.is_none() {
-        events.push(GameEvent::RunCompleted { server });
-    }
+    let event = paid_ability::open_window(&mut next);
 
-    Ok((next, events))
+    Ok((next, vec![event]))
 }
 
 fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result<(), RulesError> {
@@ -336,6 +352,7 @@ fn play_event(
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
@@ -356,6 +373,7 @@ fn install_hardware(
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
@@ -377,6 +395,7 @@ fn install_program(
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
@@ -413,31 +432,63 @@ fn break_subroutine(
     // duplicate a pre-check here — just forward the index.
     let mut next = state.clone();
     let events = run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index))?;
+    // Priority-independent like RezIce (not gated on whose priority it is),
+    // but still gives the other side a fresh chance to respond if a window
+    // is open.
+    paid_ability::note_window_action(&mut next, side);
 
     Ok((next, events))
 }
 
 /// Pays and resolves the `ability_index`-th `AbilityDef` on `card_id`, per
 /// `PlayerAction::ActivateAbility`'s doc comment. Symmetric like
-/// `turn::end_turn`/`turn::discard_card` — the acting side is derived from
-/// `state.phase` rather than taken as a parameter.
+/// `turn::end_turn`/`turn::discard_card` — the acting side is derived rather
+/// than taken as a parameter. Outside a Paid Ability Window, this is
+/// derived from `state.phase` exactly as before (unchanged behavior).
+/// Inside one, either side may respond — *which* side is still resolved by
+/// zone (Corp `installed && rezzed` vs Runner `rig`, disjoint by
+/// construction, so unambiguous), but *whether* they're allowed to act now
+/// is gated by `window.active_priority` instead.
 fn activate_ability(
     state: &GameState,
     registry: &CardRegistry,
     card_id: CardId,
     ability_index: usize,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    let side = match state.phase {
-        GamePhase::Action(side) => side,
-        actual => return Err(RulesError::NotInActionPhase { actual }),
+    let corp_active = state.corp.installed.iter().any(|c| c.card == card_id && c.rezzed);
+    let runner_active = state.runner.rig.contains(&card_id);
+
+    let side = match &state.paid_ability_window {
+        Some(window) => {
+            if corp_active {
+                Side::Corp
+            } else if runner_active {
+                Side::Runner
+            } else {
+                // Neither zone has it — fall through to the CardNotActive
+                // check below either way; `window.active_priority` here is
+                // only used to shape that error's payload.
+                window.active_priority
+            }
+        }
+        None => match state.phase {
+            GamePhase::Action(side) => side,
+            actual => return Err(RulesError::NotInActionPhase { actual }),
+        },
     };
 
     let active = match side {
-        Side::Corp => state.corp.installed.iter().any(|c| c.card == card_id && c.rezzed),
-        Side::Runner => state.runner.rig.contains(&card_id),
+        Side::Corp => corp_active,
+        Side::Runner => runner_active,
     };
     if !active {
         return Err(RulesError::CardNotActive { side, card: card_id });
+    }
+
+    if let Some(window) = &state.paid_ability_window
+        && window.active_priority != side
+    {
+        return Err(RulesError::NotYourPriority { expected: window.active_priority, actual: side });
     }
 
     let card_def = registry
@@ -458,6 +509,7 @@ fn activate_ability(
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
     events.extend(ability::evaluate_effect(&mut next, &ability.effect)?);
+    paid_ability::note_window_action(&mut next, side);
 
     Ok((next, events))
 }
@@ -472,6 +524,7 @@ fn advance_card(
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
 
@@ -549,12 +602,28 @@ fn pass_accessed_card(
     Ok((next, events))
 }
 
+/// Resolves `PlayerAction::PassPriority`, per its doc comment. No
+/// `require_phase` call — legality is fully governed by
+/// `paid_ability::pass_priority`'s own `NotInPaidAbilityWindow`/
+/// `NotYourPriority` checks, since the whole point of a window is letting
+/// the *non*-active-turn side (e.g. Corp during the Runner's run) act, so
+/// gating on `GamePhase::Action(side)` would wrongly reject their pass.
+fn pass_priority_action(
+    state: &GameState,
+    registry: &CardRegistry,
+    side: Side,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = paid_ability::pass_priority(&mut next, registry, side)?;
+    Ok((next, events))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dsl::{AbilityDef, Card, CardType, Cost, Effect, IceType, SubroutineDef};
     use crate::rules::run::{EncounteredSubroutine, RunIce, ServerId, SubroutineStatus};
-    use crate::rules::state::{AgendaPoints, Clicks, Credits, PlayerResources};
+    use crate::rules::state::{AgendaPoints, Clicks, Credits, PaidAbilityWindow, PlayerResources};
 
     /// An empty registry, for every test that doesn't exercise
     /// `PlayerAction::ActivateAbility` and so doesn't need real card
@@ -615,6 +684,7 @@ mod tests {
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
+            paid_ability_window: None,
             seed: 0,
             rng_step: 0,
         }
@@ -653,6 +723,7 @@ mod tests {
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
+            paid_ability_window: None,
             seed: 0,
             rng_step: 0,
         }
@@ -1344,12 +1415,25 @@ mod tests {
             ice: Vec::new(),
             position: 0,
          jack_out_permitted: true,});
-        let (next, events) =
+        let (state, complete_events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
+        assert_eq!(complete_events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
+
+        let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(3));
         assert_eq!(next.active_run, None);
-        assert_eq!(events, vec![GameEvent::RunCompleted { server: ServerId::Hq }]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::PriorityPassed { side: Side::Corp },
+                GameEvent::PaidAbilityWindowClosed,
+                GameEvent::RunCompleted { server: ServerId::Hq },
+            ]
+        );
     }
 
     #[test]
@@ -1401,8 +1485,12 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        let (after_complete, _) =
+        let (state, _) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("complete run should succeed");
+        let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (after_complete, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
         let (after_initiate, _) = apply_action(
             &after_complete,
             &registry(),
@@ -1436,18 +1524,28 @@ mod tests {
             ice: Vec::new(),
             position: 0,
          jack_out_permitted: true,});
-        let (next, events) =
+        let (state, complete_events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
+        assert_eq!(complete_events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
+
+        let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
 
         // Not an Agenda and not in the (empty) registry, so nothing is
         // stealable/trashable — but the run still waits for
         // `PassAccessedCard` rather than completing on its own.
         assert_eq!(
             events,
-            vec![GameEvent::CardAccessed {
-                card: CardId("hedge_fund".to_string()),
-                server: ServerId::Hq
-            }]
+            vec![
+                GameEvent::PriorityPassed { side: Side::Corp },
+                GameEvent::PaidAbilityWindowClosed,
+                GameEvent::CardAccessed {
+                    card: CardId("hedge_fund".to_string()),
+                    server: ServerId::Hq
+                },
+            ]
         );
         assert_eq!(
             next.active_run,
@@ -1482,11 +1580,22 @@ mod tests {
             ice: Vec::new(),
             position: 0,
          jack_out_permitted: true,});
-        let (next, events) =
+        let (state, _) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
+        let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
 
         assert_eq!(next.active_run, None);
-        assert_eq!(events, vec![GameEvent::RunCompleted { server: ServerId::Hq }]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::PriorityPassed { side: Side::Corp },
+                GameEvent::PaidAbilityWindowClosed,
+                GameEvent::RunCompleted { server: ServerId::Hq },
+            ]
+        );
     }
 
     #[test]
@@ -1516,35 +1625,62 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        // Initiation -> ApproachIce
+        // Initiation -> ApproachIce, opening a Paid Ability Window there.
         let (state, events) =
             apply_action(&state, &registry(), PlayerAction::ContinueRun).expect("continue should succeed");
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::ApproachIce);
-        assert_eq!(events, vec![GameEvent::IceApproached { server: ServerId::Hq, position: 0 }]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::IceApproached { server: ServerId::Hq, position: 0 },
+                GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
+            ]
+        );
 
-        // ApproachIce -> EncounterIce
-        let (state, events) =
-            apply_action(&state, &registry(), PlayerAction::ContinueRun).expect("continue should succeed");
+        // A second ContinueRun is blocked while the window is open.
+        let blocked = apply_action(&state, &registry(), PlayerAction::ContinueRun);
+        assert_eq!(
+            blocked,
+            Err(RulesError::BlockedByPaidAbilityWindow { priority: Side::Runner })
+        );
+
+        // Both sides pass -> window closes -> auto-commits ApproachIce ->
+        // EncounterIce (ice is rezzed), opening a fresh window there.
+        let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (state, events) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::EncounterIce);
         assert_eq!(
             events,
-            vec![GameEvent::IceEncountered {
-                card_id: CardId("ice_wall".to_string()),
-                strength: 0,
-                subroutine_count: 0,
-            }]
+            vec![
+                GameEvent::PriorityPassed { side: Side::Corp },
+                GameEvent::PaidAbilityWindowClosed,
+                GameEvent::IceEncountered {
+                    card_id: CardId("ice_wall".to_string()),
+                    strength: 0,
+                    subroutine_count: 0,
+                },
+                GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
+            ]
         );
 
-        // EncounterIce (0 pending) -> Success
-        let (state, events) =
-            apply_action(&state, &registry(), PlayerAction::ContinueRun).expect("continue should succeed");
+        // Both sides pass again -> window closes -> auto-resolves (0
+        // pending) -> passes the ICE -> Success, no ICE remaining so no new
+        // window opens.
+        let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (state, events) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success);
         assert_eq!(
             events,
             vec![
+                GameEvent::PriorityPassed { side: Side::Corp },
+                GameEvent::PaidAbilityWindowClosed,
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
                 GameEvent::RunSucceeded { server: ServerId::Hq },
             ]
@@ -2037,6 +2173,168 @@ mod tests {
                     delta: 1,
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn activate_ability_during_window_by_priority_holder_succeeds_and_resets_passes() {
+        let card_id = CardId("gordian_blade".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![card_id.clone()];
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            position: 0,
+         jack_out_permitted: false,});
+        // A window is open with one pass already in (Corp holds priority
+        // after the Runner's first pass); the Runner activates instead.
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 1,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "gordian_blade",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::ModifyStrength(1),
+        ));
+
+        let (next, _events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        )
+        .expect("action should succeed");
+
+        let window = next.paid_ability_window.expect("window should stay open");
+        assert_eq!(window.consecutive_passes, 0, "firing a paid ability resets the pass counter");
+        assert_eq!(window.active_priority, Side::Corp, "priority toggles to the other side");
+    }
+
+    #[test]
+    fn activate_ability_during_window_by_non_priority_side_returns_not_your_priority() {
+        let card_id = CardId("gordian_blade".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![card_id.clone()];
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            position: 0,
+         jack_out_permitted: false,});
+        // Corp currently holds priority — the Runner tries to act anyway.
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Corp,
+            consecutive_passes: 1,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "gordian_blade",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::ModifyStrength(1),
+        ));
+
+        let result = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id, ability_index: 0 },
+        );
+
+        assert_eq!(
+            result,
+            Err(RulesError::NotYourPriority { expected: Side::Corp, actual: Side::Runner })
+        );
+    }
+
+    #[test]
+    fn gain_credit_click_is_blocked_while_a_paid_ability_window_is_open() {
+        let mut state = corp_state(3, 5);
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Corp)),
+        });
+
+        let result = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp });
+
+        assert_eq!(
+            result,
+            Err(RulesError::BlockedByPaidAbilityWindow { priority: Side::Runner })
+        );
+    }
+
+    #[test]
+    fn rez_ice_by_non_priority_side_during_window_still_succeeds_and_resets_passes() {
+        let installed = vec![InstalledCard {
+            advancement_tokens: 0,
+            card: CardId("ice_wall".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: false,
+        }];
+        let mut state = runner_state(3, 0, 0);
+        state.corp.installed = installed;
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::ApproachIce,
+            ice: vec![test_ice("ice_wall", 0, 0, false)],
+            position: 0,
+         jack_out_permitted: false,});
+        // It's the Runner's priority, but Rez is priority-independent —
+        // the Corp can still act, and doing so should give the Runner a
+        // fresh chance to respond (reset passes, toggle priority to Runner).
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 1,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let (next, _events) =
+            apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) })
+                .expect("action should succeed");
+
+        let window = next.paid_ability_window.expect("window should stay open");
+        assert_eq!(window.consecutive_passes, 0);
+        assert_eq!(window.active_priority, Side::Runner);
+        assert!(next.corp.installed[0].rezzed);
+        assert!(next.active_run.unwrap().ice[0].rezzed);
+    }
+
+    #[test]
+    fn jack_out_during_an_open_window_clears_the_window() {
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::ApproachIce,
+            // Second ICE's approach — jack_out_permitted is true because
+            // the first ICE has already been passed.
+            ice: vec![test_ice("ice_wall", 0, 0, true), test_ice("enigma", 0, 0, true)],
+            position: 1,
+         jack_out_permitted: true,});
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let (next, _events) =
+            apply_action(&state, &registry(), PlayerAction::JackOut).expect("action should succeed");
+
+        assert_eq!(next.active_run, None);
+        assert_eq!(
+            next.paid_ability_window, None,
+            "a stale window must not survive the run it belonged to"
         );
     }
 

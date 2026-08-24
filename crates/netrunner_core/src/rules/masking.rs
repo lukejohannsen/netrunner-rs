@@ -3,7 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::CardId;
 use crate::rules::run::{RunState, ServerId};
 use crate::rules::state::{
-    CorpState, GamePhase, GameState, InstalledCard, MemoryUnits, PlayerResources, RunnerState, Side,
+    CorpState, GamePhase, GameState, InstalledCard, MemoryUnits, PaidAbilityWindow, PlayerResources,
+    RunnerState, Side,
 };
 
 /// A card zone whose contents are secret to everyone but its owner. The
@@ -63,12 +64,15 @@ pub struct PublicRunnerState {
 /// `GameState` as visible to one player: hidden zones are collapsed to a
 /// count, and unrezzed installed cards have their identity stripped unless
 /// the viewer owns them. `phase` is never masked — turn structure is public.
+/// `paid_ability_window` is likewise never masked — both players always see
+/// whose priority it is and the current pass count.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicGameState {
     pub corp: PublicCorpState,
     pub runner: PublicRunnerState,
     pub phase: GamePhase,
     pub active_run: Option<RunState>,
+    pub paid_ability_window: Option<PaidAbilityWindow>,
 }
 
 pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState {
@@ -77,6 +81,7 @@ pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState
         runner: mask_runner_state(&state.runner, player == Side::Runner),
         phase: state.phase,
         active_run: state.active_run.clone(),
+        paid_ability_window: state.paid_ability_window.clone(),
     }
 }
 
@@ -154,6 +159,7 @@ mod tests {
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
+            paid_ability_window: None,
             seed: 0,
             rng_step: 0,
         }
@@ -271,6 +277,7 @@ mod tests {
             runner,
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
+            paid_ability_window: None,
             seed: 0,
             rng_step: 0,
         }

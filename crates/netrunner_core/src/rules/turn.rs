@@ -231,6 +231,7 @@ mod tests {
             },
             phase: GamePhase::Action(active_turn),
             active_run: None,
+            paid_ability_window: None,
             seed: 0,
             rng_step: 0,
         }

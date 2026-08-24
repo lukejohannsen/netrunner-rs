@@ -42,4 +42,7 @@ pub enum GameEvent {
     CardAdvanced { card: CardId, advancement_tokens: u32 },
     CardTrashedFromAccess { card: CardId, cost_paid: u32 },
     AccessPassed { card: CardId },
+    PaidAbilityWindowOpened { side: Side },
+    PriorityPassed { side: Side },
+    PaidAbilityWindowClosed,
 }

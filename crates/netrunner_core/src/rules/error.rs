@@ -105,4 +105,13 @@ pub enum RulesError {
 
     #[error("attempted to pay {requested} credit(s) to trash {card:?} but only has {available}")]
     CannotAffordTrashCost { card: CardId, available: u32, requested: u32 },
+
+    #[error("no paid ability window is currently open")]
+    NotInPaidAbilityWindow,
+
+    #[error("it is not {actual:?}'s priority right now — {expected:?} has priority")]
+    NotYourPriority { expected: Side, actual: Side },
+
+    #[error("cannot take that action while a paid ability window is open (priority: {priority:?})")]
+    BlockedByPaidAbilityWindow { priority: Side },
 }

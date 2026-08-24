@@ -87,6 +87,7 @@ mod tests {
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
+            paid_ability_window: None,
             seed,
             rng_step: 0,
         }

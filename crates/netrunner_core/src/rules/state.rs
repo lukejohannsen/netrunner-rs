@@ -171,12 +171,33 @@ pub enum GamePhase {
     GameOver(Side),
 }
 
+/// A Paid Ability Window (PAW) — a priority-passing sub-loop that pauses the
+/// run flow so both sides get a chance to fire paid abilities (rez ICE,
+/// activate a `Trigger::Paid` ability, break a subroutine) before the engine
+/// auto-advances past a checkpoint (ICE approach, ICE encounter, pre-access).
+/// Lives as a sibling field on `GameState`, not folded into `GamePhase` —
+/// mirrors `RunPhase`'s existing precedent of never changing `state.phase`
+/// mid-run (see this file's `GamePhase` doc comment).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PaidAbilityWindow {
+    pub active_priority: Side,
+    pub consecutive_passes: u8,
+    /// Snapshot of `state.phase` at the moment the window opened. Not
+    /// currently read anywhere — `GamePhase` never changes mid-run, so this
+    /// is always `Action(Side::Runner)` for every window today (all three
+    /// checkpoints live inside a run). Kept for forward compatibility with a
+    /// hypothetical future non-run window, where restoring `state.phase` on
+    /// close would actually matter.
+    pub return_phase: Box<GamePhase>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameState {
     pub corp: CorpState,
     pub runner: RunnerState,
     pub phase: GamePhase,
     pub active_run: Option<RunState>,
+    pub paid_ability_window: Option<PaidAbilityWindow>,
     /// Fixed seed for this game's deterministic pseudo-randomness (e.g.
     /// which HQ card a run accesses). Never mutated after construction —
     /// only `rng_step` advances — so replaying the same `(GameState,
@@ -226,6 +247,7 @@ impl GameState {
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
+            paid_ability_window: None,
             seed,
             rng_step: 0,
         }

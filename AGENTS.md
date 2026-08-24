@@ -127,3 +127,27 @@ pub enum GamePhase {
 **`RunnerState::heap`**: added as a prerequisite for `discard_card` — the Runner had no discard pile before. Mirrors `CorpState::archives`: fully public, never masked (`masking::PublicRunnerState`/`mask_runner_state`).
 
 `RunPhase` did not become a `GamePhase` variant, and still hasn't — a run still just requires `GamePhase::Action(Side::Runner)` at `InitiateRun`/`CompleteRun` time. Interactive access resolution ended up living entirely inside `RunPhase::AccessingCard` instead of a `GamePhase::Access` variant as the draft sketched — see "Interactive Access Resolution" above for how that shipped.
+
+### Paid Ability Windows & Priority System (Shipped)
+
+Netrunner/Null Signal Games play depends on formal priority windows: at defined checkpoints, both sides get a chance to fire paid abilities (rez ICE, pump an icebreaker, use a `Trigger::Paid` ability) before the engine auto-advances. `GameState` gains `paid_ability_window: Option<PaidAbilityWindow>` (`state.rs`), a sibling field to `active_run` rather than a `GamePhase` variant — `GamePhase` never changes mid-run (see "GamePhase State Machine" above), and the same reasoning applies here: layering window state on top rather than folding it in kept every existing `RunPhase` transition untouched.
+
+```rust
+pub struct PaidAbilityWindow {
+    pub active_priority: Side,
+    pub consecutive_passes: u8,
+    pub return_phase: Box<GamePhase>,
+}
+```
+
+Reuses the existing `Side` enum rather than introducing a duplicate — the original request specified a new `PlayerSide`, but `Side { Corp, Runner }` already covers that shape and is used everywhere else in the engine.
+
+**New module** `rules/paid_ability.rs`: `open_window`/`open_window_if_at_checkpoint` (opens a window with the active-turn side holding priority first), `require_no_window` (blocks ordinary click-economy actions while a window is open), `note_window_action` (rule: any window-legal action that resolves resets `consecutive_passes` and toggles priority, giving the other side a fresh chance to respond), and `pass_priority`/`close_window` (toggles priority on a single pass; on the second consecutive pass, closes the window and auto-advances whatever run step was paused).
+
+`close_window` keys off `state.active_run`'s *current* `RunPhase` — not a discriminant on `PaidAbilityWindow` itself — since nothing a window permits (`RezIce`, `BreakSubroutine`, `ActivateAbility`) mutates `RunPhase`. `return_phase` is captured on open for structural completeness but isn't currently load-bearing: `GamePhase` stays `Action(Side::Runner)` for a run's entire duration, so every window's `return_phase` is always that same value and nothing reads it back — it's forward-compatible groundwork for a hypothetical future non-run window, not wired into any control flow today.
+
+**Integration** (`engine.rs`): windows open at three checkpoints — `continue_run` opens one on landing at `ApproachIce`/`EncounterIce` (via `open_window_if_at_checkpoint`), and `complete_run` opens one explicitly on reaching `RunPhase::Success` rather than accessing immediately. This is the biggest control-flow change: `continue_run` no longer performs the `ApproachIce → EncounterIce` commit or `EncounterIce → next-ICE` pass directly — it only drives `Initiation → ApproachIce` (or `→ Success` with no ICE) and opens a window; every subsequent step happens inside `close_window` once both sides pass. Likewise `complete_run` no longer calls `run::access_server` itself — access happens inside `close_window`'s `Success` arm. `PlayerAction::PassPriority { side }` is the new symmetric action (explicit `side`, since `state.phase` can't disambiguate whose priority it is mid-run) — dispatches to `pass_priority`, which takes `&CardRegistry` in addition to `state`/`side` (a deviation from a bare `(state, side)` signature) because closing a `Success` window must call `run::access_server`.
+
+`RezIce` and `BreakSubroutine` stay priority-independent — neither is gated by `window.active_priority`, since both are existing free/special actions rather than `Trigger::Paid` abilities — but both call `note_window_action` on success. `ActivateAbility` is the one handler that *is* priority-gated: outside a window it's unchanged (side derived from `state.phase`); inside one, side is still resolved by zone (Corp `installed && rezzed` vs Runner `rig` — disjoint, so unambiguous) but must additionally match `window.active_priority` (`RulesError::NotYourPriority` otherwise). Seven ordinary handlers (`gain_credit_click`, `draw_card_click`, `install_card`, `play_event`, `install_hardware`, `install_program`, `advance_card`) call the new `require_no_window` guard and are rejected with `RulesError::BlockedByPaidAbilityWindow` while a window is open. `jack_out` additionally clears `paid_ability_window` on success — a window can be open when the Runner bails (e.g. mid-`ApproachIce` on the second+ ICE), and leaving it set would strand it with no run left to ever close it against.
+
+**Still open**: windows only exist at the three run checkpoints above — there's no start-of-turn or end-of-turn window (real Netrunner/Null Signal Games opens one after essentially every action). `RezIce` and `BreakSubroutine` remain uncosted/hardcoded rather than converted into data-driven `Trigger::Paid` abilities, so rezzing ICE is still free and icebreaker credit costs still aren't charged anywhere — a window gives both sides a chance to *respond*, but doesn't by itself make the two biggest existing free actions costed.

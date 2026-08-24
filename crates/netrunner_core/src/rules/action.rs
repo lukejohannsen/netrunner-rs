@@ -177,4 +177,14 @@ pub enum PlayerAction {
     /// mandatory-steal Agenda. Advances to the next accessed card (or
     /// finalizes the run) — see `run::access::resolve_pass`.
     PassAccessedCard { card_id: CardId },
+    /// Pass priority in the currently open Paid Ability Window. Carries an
+    /// explicit `side` — unlike `EndTurn`/`DiscardCard`/`ActivateAbility`,
+    /// there's no card/zone/phase to infer it from: `GameState::phase` stays
+    /// `Action(Side::Runner)` throughout a run, so it can't tell whose
+    /// priority it is. Errors with `RulesError::NotInPaidAbilityWindow` if no
+    /// window is open, or `RulesError::NotYourPriority` if it isn't `side`'s
+    /// priority. Once both sides pass consecutively, the window closes and
+    /// the engine auto-advances whatever run step was paused — see
+    /// `rules::paid_ability`.
+    PassPriority { side: Side },
 }

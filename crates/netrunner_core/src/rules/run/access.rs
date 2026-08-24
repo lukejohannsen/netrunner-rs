@@ -528,6 +528,7 @@ mod tests {
             },
             phase: crate::rules::state::GamePhase::Action(Side::Corp),
             active_run: None,
+            paid_ability_window: None,
             seed,
             rng_step: 0,
         }

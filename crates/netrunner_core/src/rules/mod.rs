@@ -5,6 +5,7 @@ mod engine;
 mod error;
 mod event;
 mod masking;
+mod paid_ability;
 mod run;
 mod state;
 mod turn;
@@ -27,6 +28,6 @@ pub use run::{
 };
 pub use state::{
     AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard, MemoryUnits,
-    PlayerResources, RunnerState, Side,
+    PaidAbilityWindow, PlayerResources, RunnerState, Side,
 };
 pub use turn::end_turn;
