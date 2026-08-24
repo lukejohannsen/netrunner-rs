@@ -203,6 +203,7 @@ mod tests {
     ) -> GameState {
         GameState {
             corp: CorpState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(corp_credits),
                     clicks: Clicks(corp_clicks),
@@ -214,6 +215,7 @@ mod tests {
                 installed: Vec::new(),
             },
             runner: RunnerState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(runner_credits),
                     clicks: Clicks(runner_clicks),

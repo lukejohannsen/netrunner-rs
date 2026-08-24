@@ -86,6 +86,10 @@ pub struct InstalledCard {
     pub server: ServerId,
     pub slot: InstallSlot,
     pub rezzed: bool,
+    /// Advancement tokens placed via `PlayerAction::AdvanceCard`. Public
+    /// information even on an unrezzed card — never masked (see
+    /// `masking::PublicInstalledCard`).
+    pub advancement_tokens: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +105,11 @@ pub struct CorpState {
     /// discard/trash mechanic exists yet); starts empty.
     pub archives: Vec<CardId>,
     pub installed: Vec<InstalledCard>,
+    /// Agendas the Corp has scored, in scoring order. Fully public — never
+    /// masked, same treatment as `archives`. `win::check_win_conditions`
+    /// sums each entry's registry-defined `agenda_points` to determine
+    /// whether the Corp has won, rather than reading a running counter.
+    pub scored_agendas: Vec<CardId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +135,9 @@ pub struct RunnerState {
     /// Runner's discard pile. Like Corp's `archives`, this is fully public —
     /// never masked in the masked view.
     pub heap: Vec<CardId>,
+    /// Agendas the Runner has stolen, in steal order. Fully public — never
+    /// masked. See `CorpState::scored_agendas`'s doc comment.
+    pub scored_agendas: Vec<CardId>,
 }
 
 /// Which sub-phase of a turn is currently active. `StartOfTurn`/`Action`/
@@ -183,6 +195,7 @@ impl GameState {
     pub fn new(seed: u64) -> Self {
         GameState {
             corp: CorpState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
@@ -194,6 +207,7 @@ impl GameState {
                 installed: Vec::new(),
             },
             runner: RunnerState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),

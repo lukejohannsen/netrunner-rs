@@ -59,6 +59,7 @@ mod tests {
     fn game_state(grip: Vec<CardId>, brain_damage: usize, seed: u64) -> GameState {
         GameState {
             corp: CorpState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
@@ -70,6 +71,7 @@ mod tests {
                 installed: Vec::new(),
             },
             runner: RunnerState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),

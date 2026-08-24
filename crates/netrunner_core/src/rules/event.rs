@@ -39,4 +39,5 @@ pub enum GameEvent {
     RunEndedByEffect { server: ServerId },
     GameOver { winner: Side },
     AbilityActivated { side: Side, card_id: CardId, ability_index: usize },
+    CardAdvanced { card: CardId, advancement_tokens: u32 },
 }

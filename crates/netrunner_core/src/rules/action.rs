@@ -116,4 +116,14 @@ pub enum PlayerAction {
     /// `RulesError::InvalidAbilityIndex`/`RulesError::AbilityNotManuallyActivatable`
     /// respectively.
     ActivateAbility { card_id: CardId, ability_index: usize },
+    /// Place one advancement token on `card_id`, a Corp-installed card.
+    /// Corp-only. Costs 1 click + 1 credit (`pay_cost(state, side,
+    /// &Cost::Credits(1))`, in addition to the click). `card_id` must be
+    /// installed (`RulesError::CardNotInstalled` otherwise) — no rez
+    /// requirement, matching the real game (advancement doesn't require
+    /// rez). Its `CardRegistry` definition must have `advancement_requirement:
+    /// Some(_)` (`RulesError::CardNotAdvanceable` otherwise); this doesn't
+    /// score the card even if the requirement is met — scoring is a
+    /// separate, not-yet-modeled action.
+    AdvanceCard { card_id: CardId },
 }

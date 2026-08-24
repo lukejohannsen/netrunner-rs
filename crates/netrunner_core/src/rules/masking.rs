@@ -23,6 +23,9 @@ pub struct PublicInstalledCard {
     pub server: ServerId,
     pub rezzed: bool,
     pub card: Option<CardId>,
+    /// Never masked — advancement tokens are public info on the physical
+    /// card, same as `server`/`rezzed`.
+    pub advancement_tokens: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +36,8 @@ pub struct PublicCorpState {
     /// Never masked — Archives is a fully public zone in the real game.
     pub archives: Vec<CardId>,
     pub installed: Vec<PublicInstalledCard>,
+    /// Never masked — scored Agendas sit in a fully public score area.
+    pub scored_agendas: Vec<CardId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +56,8 @@ pub struct PublicRunnerState {
     /// Never masked — like Corp's `archives`, a Runner's discard pile is a
     /// fully public zone in the real game.
     pub heap: Vec<CardId>,
+    /// Never masked — stolen Agendas sit in a fully public score area.
+    pub scored_agendas: Vec<CardId>,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -89,6 +96,7 @@ fn mask_installed_card(installed: &InstalledCard, owner_view: bool) -> PublicIns
         server: installed.server,
         rezzed: installed.rezzed,
         card: identity_visible.then(|| installed.card.clone()),
+        advancement_tokens: installed.advancement_tokens,
     }
 }
 
@@ -103,6 +111,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
             .iter()
             .map(|card| mask_installed_card(card, owner_view))
             .collect(),
+        scored_agendas: corp.scored_agendas.clone(),
     }
 }
 
@@ -116,6 +125,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         stack: mask_zone(&runner.stack, owner_view),
         rig: runner.rig.clone(),
         heap: runner.heap.clone(),
+        scored_agendas: runner.scored_agendas.clone(),
     }
 }
 
@@ -140,6 +150,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
+                scored_agendas: Vec::new(),
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
@@ -164,14 +175,17 @@ mod tests {
                     server: ServerId::Hq,
                     slot: InstallSlot::Ice,
                     rezzed: false,
+                    advancement_tokens: 0,
                 },
                 InstalledCard {
                     card: CardId("enigma".to_string()),
                     server: ServerId::RnD,
                     slot: InstallSlot::Ice,
                     rezzed: true,
+                    advancement_tokens: 2,
                 },
             ],
+            scored_agendas: vec![CardId("hostile_takeover".to_string())],
         }
     }
 
@@ -247,6 +261,7 @@ mod tests {
             stack: vec![CardId("modded".to_string()), CardId("clone_chip".to_string())],
             rig: vec![CardId("gordian_blade".to_string())],
             heap: vec![CardId("easy_mark".to_string())],
+            scored_agendas: vec![CardId("priority_requisition".to_string())],
         }
     }
 
@@ -335,5 +350,30 @@ mod tests {
         assert_eq!(masked_for_runner.runner.tags, 2);
         assert_eq!(masked_for_corp.runner.brain_damage, 1);
         assert_eq!(masked_for_runner.runner.brain_damage, 1);
+    }
+
+    #[test]
+    fn scored_agendas_are_never_masked() {
+        let state = game_state_with_runner(runner_state_with_cards());
+        let masked_for_corp = mask_state_for_player(&state, Side::Corp);
+        let masked_for_runner = mask_state_for_player(&state, Side::Runner);
+
+        let expected_corp = vec![CardId("hostile_takeover".to_string())];
+        let expected_runner = vec![CardId("priority_requisition".to_string())];
+        assert_eq!(masked_for_corp.corp.scored_agendas, expected_corp);
+        assert_eq!(masked_for_runner.corp.scored_agendas, expected_corp);
+        assert_eq!(masked_for_corp.runner.scored_agendas, expected_runner);
+        assert_eq!(masked_for_runner.runner.scored_agendas, expected_runner);
+    }
+
+    #[test]
+    fn advancement_tokens_are_never_masked() {
+        let state = game_state(corp_state_with_cards());
+        let masked_for_corp = mask_state_for_player(&state, Side::Corp);
+        let masked_for_runner = mask_state_for_player(&state, Side::Runner);
+
+        // installed[1] ("enigma") is rezzed with 2 advancement tokens.
+        assert_eq!(masked_for_corp.corp.installed[1].advancement_tokens, 2);
+        assert_eq!(masked_for_runner.corp.installed[1].advancement_tokens, 2);
     }
 }

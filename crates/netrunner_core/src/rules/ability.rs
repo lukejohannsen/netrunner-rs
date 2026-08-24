@@ -236,6 +236,7 @@ mod tests {
     fn game_state() -> GameState {
         GameState {
             corp: CorpState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(5),
                     clicks: Clicks(3),
@@ -247,6 +248,7 @@ mod tests {
                 installed: Vec::new(),
             },
             runner: RunnerState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(5),
                     clicks: Clicks(4),
@@ -565,6 +567,7 @@ mod tests {
     fn trash_card_corp_installed_moves_card_to_archives() {
         let mut state = game_state();
         state.corp.installed.push(InstalledCard {
+            advancement_tokens: 0,
             card: CardId("pad_campaign".to_string()),
             server: ServerId::Remote(0),
             slot: InstallSlot::Root,

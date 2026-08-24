@@ -1,3 +1,4 @@
+use crate::cards::CardRegistry;
 use crate::dsl::CardId;
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::ServerId;
@@ -6,22 +7,21 @@ use crate::rules::win::{agenda_value, check_win_conditions};
 
 /// Determine which `CardId`s become accessible when a run against `server`
 /// concludes successfully, then resolve the one access effect the engine
-/// currently understands: stealing an Agenda (via the `win::agenda_value`
-/// placeholder lookup — see its doc comment) awards the Runner its points
-/// and checks win conditions. Every other access effect (paying to trash an
-/// Asset/Upgrade, "on access" triggers) is still unresolved — those need
-/// each card's full `CardType`/ability data, and no `CardRegistry` is wired
-/// into the engine yet (see `PlayerAction::RezIce`'s doc comment for the
-/// same gap).
+/// currently understands: stealing an Agenda (via a `win::agenda_value`
+/// registry lookup) records it in the Runner's score area and checks win
+/// conditions. Every other access effect (paying to trash an Asset/Upgrade,
+/// "on access" triggers) is still unresolved — those need per-card ability
+/// data beyond `dsl::Card::agenda_points` (see `PlayerAction::RezIce`'s doc
+/// comment for the same kind of gap).
 ///
 /// Takes `&mut GameState` (rather than just `&CorpState`) because HQ access
 /// needs `GameState::next_u64` to pick a pseudo-random index, and a stolen
-/// Agenda needs to mutate `runner.resources.agenda_points` and possibly
-/// `phase` — both live on `GameState`, so advancing/mutating either requires
-/// mutable access.
+/// Agenda needs to mutate `runner.scored_agendas`/`runner.resources.
+/// agenda_points` and possibly `phase` — all live on `GameState`, so
+/// advancing/mutating any of them requires mutable access.
 ///
 /// Never fails: an empty zone simply yields zero events.
-pub fn access_server(state: &mut GameState, server: ServerId) -> Vec<GameEvent> {
+pub fn access_server(state: &mut GameState, server: ServerId, registry: &CardRegistry) -> Vec<GameEvent> {
     // Root (non-ICE) installs on `server` — ICE is excluded via
     // `InstalledCard::slot`, which the installing action declares explicitly
     // (see `InstallSlot`'s doc comment for why this doesn't need a full
@@ -72,12 +72,13 @@ pub fn access_server(state: &mut GameState, server: ServerId) -> Vec<GameEvent> 
     for card in accessed {
         events.push(GameEvent::CardAccessed { card: card.clone(), server });
 
-        if let Some(agenda_points) = agenda_value(&card) {
+        if let Some(agenda_points) = agenda_value(&card, registry) {
+            state.runner.scored_agendas.push(card.clone());
             state.runner.resources.agenda_points =
                 state.runner.resources.agenda_points.gain(agenda_points);
             events.push(GameEvent::AgendaStolen { card, agenda_points });
 
-            check_win_conditions(state);
+            check_win_conditions(state, registry);
             if let GamePhase::GameOver(winner) = state.phase {
                 events.push(GameEvent::GameOver { winner });
                 // The game just ended — don't keep accessing/stealing
@@ -93,11 +94,36 @@ pub fn access_server(state: &mut GameState, server: ServerId) -> Vec<GameEvent> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dsl::{Card, CardType};
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, InstalledCard, MemoryUnits, PlayerResources, RunnerState,
         Side,
     };
     use std::collections::HashSet;
+
+    /// An empty registry, for every test that doesn't exercise agenda
+    /// scoring and so doesn't need real card definitions.
+    fn registry() -> CardRegistry {
+        CardRegistry::new()
+    }
+
+    /// A minimal Agenda `Card` worth `points` — everything besides id and
+    /// `agenda_points` is irrelevant to these tests.
+    fn agenda_card(id: &str, points: u32) -> Card {
+        Card {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Corp,
+            card_type: CardType::Agenda,
+            cost: 0,
+            triggers: Vec::new(),
+            abilities: Vec::new(),
+            trash_cost: None,
+            advancement_requirement: Some(points),
+            agenda_points: Some(points),
+            min_deck_size: None,
+        }
+    }
 
     fn game_state(
         hq: Vec<CardId>,
@@ -108,6 +134,7 @@ mod tests {
     ) -> GameState {
         GameState {
             corp: crate::rules::state::CorpState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
@@ -119,6 +146,7 @@ mod tests {
                 installed,
             },
             runner: RunnerState {
+                scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
@@ -149,7 +177,7 @@ mod tests {
             42,
         );
         assert_eq!(
-            access_server(&mut state, ServerId::Hq),
+            access_server(&mut state, ServerId::Hq, &registry()),
             vec![GameEvent::CardAccessed {
                 card: CardId("hedge_fund".to_string()),
                 server: ServerId::Hq,
@@ -171,8 +199,8 @@ mod tests {
         let mut state_a = game_state(hq.clone(), Vec::new(), Vec::new(), Vec::new(), 42);
         let mut state_b = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
 
-        let events_a = access_server(&mut state_a, ServerId::Hq);
-        let events_b = access_server(&mut state_b, ServerId::Hq);
+        let events_a = access_server(&mut state_a, ServerId::Hq, &registry());
+        let events_b = access_server(&mut state_b, ServerId::Hq, &registry());
 
         assert_eq!(events_a, events_b);
         assert_eq!(events_a.len(), 1);
@@ -191,7 +219,7 @@ mod tests {
         let accessed_cards: HashSet<CardId> = (0..20u64)
             .map(|seed| {
                 let mut state = game_state(hq.clone(), Vec::new(), Vec::new(), Vec::new(), seed);
-                match access_server(&mut state, ServerId::Hq).into_iter().next() {
+                match access_server(&mut state, ServerId::Hq, &registry()).into_iter().next() {
                     Some(GameEvent::CardAccessed { card, .. }) => card,
                     other => panic!("expected a CardAccessed event, got {other:?}"),
                 }
@@ -214,7 +242,7 @@ mod tests {
             0,
         );
         assert_eq!(
-            access_server(&mut state, ServerId::RnD),
+            access_server(&mut state, ServerId::RnD, &registry()),
             vec![GameEvent::CardAccessed {
                 card: CardId("hedge_fund".to_string()),
                 server: ServerId::RnD,
@@ -226,12 +254,14 @@ mod tests {
     fn accessing_hq_yields_hq_card_and_root_installed_upgrades() {
         let installed = vec![
             InstalledCard {
+                advancement_tokens: 0,
                 card: CardId("ice_wall".to_string()),
                 server: ServerId::Hq,
                 slot: InstallSlot::Ice,
                 rezzed: true,
             },
             InstalledCard {
+                advancement_tokens: 0,
                 card: CardId("ash_2_0".to_string()),
                 server: ServerId::Hq,
                 slot: InstallSlot::Root,
@@ -246,7 +276,7 @@ mod tests {
             42,
         );
         assert_eq!(
-            access_server(&mut state, ServerId::Hq),
+            access_server(&mut state, ServerId::Hq, &registry()),
             vec![
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
@@ -264,12 +294,14 @@ mod tests {
     fn accessing_rnd_yields_rnd_card_and_root_installed_upgrades() {
         let installed = vec![
             InstalledCard {
+                advancement_tokens: 0,
                 card: CardId("wraparound".to_string()),
                 server: ServerId::RnD,
                 slot: InstallSlot::Ice,
                 rezzed: true,
             },
             InstalledCard {
+                advancement_tokens: 0,
                 card: CardId("crisium_grid".to_string()),
                 server: ServerId::RnD,
                 slot: InstallSlot::Root,
@@ -284,7 +316,7 @@ mod tests {
             0,
         );
         assert_eq!(
-            access_server(&mut state, ServerId::RnD),
+            access_server(&mut state, ServerId::RnD, &registry()),
             vec![
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
@@ -308,7 +340,7 @@ mod tests {
             0,
         );
         assert_eq!(
-            access_server(&mut state, ServerId::Archives),
+            access_server(&mut state, ServerId::Archives, &registry()),
             vec![
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
@@ -326,18 +358,21 @@ mod tests {
     fn accessing_remote_skips_installed_ice_and_yields_only_root_installs() {
         let installed = vec![
             InstalledCard {
+                advancement_tokens: 0,
                 card: CardId("ice_wall".to_string()),
                 server: ServerId::Remote(0),
                 slot: InstallSlot::Ice,
                 rezzed: true,
             },
             InstalledCard {
+                advancement_tokens: 0,
                 card: CardId("pad_campaign".to_string()),
                 server: ServerId::Remote(0),
                 slot: InstallSlot::Root,
                 rezzed: false,
             },
             InstalledCard {
+                advancement_tokens: 0,
                 card: CardId("enigma".to_string()),
                 server: ServerId::Remote(1),
                 slot: InstallSlot::Ice,
@@ -346,7 +381,7 @@ mod tests {
         ];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         assert_eq!(
-            access_server(&mut state, ServerId::Remote(0)),
+            access_server(&mut state, ServerId::Remote(0), &registry()),
             vec![GameEvent::CardAccessed {
                 card: CardId("pad_campaign".to_string()),
                 server: ServerId::Remote(0)
@@ -357,26 +392,31 @@ mod tests {
     #[test]
     fn accessing_remote_with_only_ice_yields_no_events() {
         let installed = vec![InstalledCard {
+            advancement_tokens: 0,
             card: CardId("ice_wall".to_string()),
             server: ServerId::Remote(0),
             slot: InstallSlot::Ice,
             rezzed: true,
         }];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
-        assert_eq!(access_server(&mut state, ServerId::Remote(0)), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()), Vec::new());
     }
 
     #[test]
     fn accessing_an_empty_zone_yields_no_events() {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
-        assert_eq!(access_server(&mut state, ServerId::Hq), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::RnD), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::Archives), Vec::new());
-        assert_eq!(access_server(&mut state, ServerId::Remote(0)), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Hq, &registry()), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::RnD, &registry()), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Archives, &registry()), Vec::new());
+        assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()), Vec::new());
     }
 
     #[test]
     fn stealing_an_agenda_that_reaches_seven_points_ends_the_game_with_a_runner_win() {
+        let registry = CardRegistry::from_cards(vec![
+            agenda_card("priority_requisition", 3),
+            agenda_card("already_scored", 4),
+        ]);
         let mut state = game_state(
             Vec::new(),
             Vec::new(),
@@ -384,9 +424,12 @@ mod tests {
             Vec::new(),
             0,
         );
+        // Simulate having already stolen 4 points' worth of Agendas earlier
+        // in the game.
+        state.runner.scored_agendas = vec![CardId("already_scored".to_string())];
         state.runner.resources.agenda_points = AgendaPoints(4);
 
-        let events = access_server(&mut state, ServerId::Archives);
+        let events = access_server(&mut state, ServerId::Archives, &registry);
 
         assert_eq!(state.runner.resources.agenda_points, AgendaPoints(7));
         assert_eq!(state.phase, GamePhase::GameOver(Side::Runner));
@@ -408,6 +451,11 @@ mod tests {
 
     #[test]
     fn stealing_a_second_agenda_in_the_same_batch_after_winning_is_never_processed() {
+        let registry = CardRegistry::from_cards(vec![
+            agenda_card("priority_requisition", 3),
+            agenda_card("hostile_takeover", 1),
+            agenda_card("already_scored", 4),
+        ]);
         let mut state = game_state(
             Vec::new(),
             Vec::new(),
@@ -418,9 +466,10 @@ mod tests {
             Vec::new(),
             0,
         );
+        state.runner.scored_agendas = vec![CardId("already_scored".to_string())];
         state.runner.resources.agenda_points = AgendaPoints(4);
 
-        let events = access_server(&mut state, ServerId::Archives);
+        let events = access_server(&mut state, ServerId::Archives, &registry);
 
         // Capped at the winning threshold, not 8 — the second agenda
         // (worth 1 more point) was never reached.

@@ -84,4 +84,7 @@ pub enum RulesError {
 
     #[error("ability index {0} is not a Trigger::Paid ability and cannot be manually activated")]
     AbilityNotManuallyActivatable(usize),
+
+    #[error("card {card:?} has no advancement_requirement and cannot be advanced")]
+    CardNotAdvanceable { card: CardId },
 }
