@@ -114,4 +114,12 @@ pub enum RulesError {
 
     #[error("cannot take that action while a paid ability window is open (priority: {priority:?})")]
     BlockedByPaidAbilityWindow { priority: Side },
+
+    #[error("breaker {breaker:?} (strength {breaker_strength}) is too weak to break subroutines on {ice:?} (strength {ice_strength})")]
+    BreakerStrengthTooLow {
+        breaker: CardId,
+        breaker_strength: i32,
+        ice: CardId,
+        ice_strength: i32,
+    },
 }

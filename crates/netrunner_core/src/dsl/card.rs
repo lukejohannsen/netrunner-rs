@@ -77,8 +77,11 @@ pub struct Card {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_deck_size: Option<u32>,
 
-    /// Base strength printed on an ICE. `Some` only for `CardType::Ice(_)`
-    /// — the data source for `RunIce::current_strength`.
+    /// Base strength printed on an ICE, or an Icebreaker's printed
+    /// strength before any pumps. `Some` for `CardType::Ice(_)` (the data
+    /// source for `RunIce::current_strength`) and for breaker-style
+    /// `CardType::Program`s (the data source for
+    /// `InstalledRunnerCard::base_strength`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strength: Option<i32>,
 
@@ -102,6 +105,8 @@ mod tests {
     ));
     const ICE_WALL_JSON: &str =
         include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/corp/ice_wall.json"));
+    const CORRODER_JSON: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/runner/corroder.json"));
 
     #[test]
     fn parses_hedge_fund_from_json() {
@@ -156,5 +161,36 @@ mod tests {
             vec![SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun }]
         );
         assert!(card.triggers.is_empty());
+    }
+
+    #[test]
+    fn parses_corroder_from_json() {
+        use crate::dsl::cost::Cost;
+        use crate::dsl::effect::{BoostDuration, SubroutineBreakCount};
+
+        let card: Card = serde_json::from_str(CORRODER_JSON).expect("valid card JSON");
+
+        assert_eq!(card.id, CardId("corroder".to_string()));
+        assert_eq!(card.title, "Corroder");
+        assert_eq!(card.side, Side::Runner);
+        assert_eq!(card.card_type, CardType::Program);
+        assert_eq!(card.cost, 2);
+        assert_eq!(card.strength, Some(2));
+        assert!(card.triggers.is_empty());
+        assert_eq!(
+            card.abilities,
+            vec![
+                AbilityDef {
+                    trigger: Trigger::Paid,
+                    cost: Some(Cost::Credits(1)),
+                    effect: Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+                },
+                AbilityDef {
+                    trigger: Trigger::Paid,
+                    cost: Some(Cost::Credits(1)),
+                    effect: Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+                },
+            ]
+        );
     }
 }

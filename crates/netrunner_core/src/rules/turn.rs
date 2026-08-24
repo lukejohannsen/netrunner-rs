@@ -106,6 +106,14 @@ pub fn end_turn(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesE
     let mut next = state.clone();
     let mut events = vec![GameEvent::TurnEnded { side }];
 
+    if side == Side::Runner {
+        // `BoostDuration::Turn` strength buffs last until end of turn, not
+        // until the Runner's next turn — `end_turn` already guards
+        // `CannotEndTurnWhileRunActive`, so there's no run-boundary
+        // ambiguity to worry about here.
+        next.runner.reset_turn_strength_buffs();
+    }
+
     let over_by = hand_size(&next, side).saturating_sub(max_hand_size(&next, side));
     if over_by > 0 {
         next.phase = GamePhase::Discard { side, required: over_by };
@@ -300,6 +308,27 @@ mod tests {
                 GameEvent::CardDrawn { side: Side::Corp },
             ]
         );
+    }
+
+    #[test]
+    fn end_turn_for_runner_resets_turn_strength_buff() {
+        use crate::rules::state::InstalledRunnerCard;
+
+        let mut state = game_state(Side::Runner, 0, 5, 0, 2);
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
+        state.runner.rig = vec![InstalledRunnerCard {
+            card: CardId("corroder".to_string()),
+            base_strength: 2,
+            encounter_strength_buff: 1,
+            turn_strength_buff: 3,
+        }];
+
+        let (next, _events) = end_turn(&state).expect("should succeed");
+
+        assert_eq!(next.runner.rig[0].turn_strength_buff, 0);
+        // Encounter-duration buffs are a separate cleanup hook
+        // (`run::engine::continue_run`), untouched here.
+        assert_eq!(next.runner.rig[0].encounter_strength_buff, 1);
     }
 
     #[test]

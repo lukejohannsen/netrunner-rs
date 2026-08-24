@@ -112,6 +112,41 @@ pub struct CorpState {
     pub scored_agendas: Vec<CardId>,
 }
 
+/// A Runner card installed in the Rig (Hardware or Program), with the
+/// per-instance runtime state needed for icebreaker strength: Corp's
+/// `InstalledCard` already carries per-instance state (`advancement_tokens`)
+/// alongside its `CardId` lookup key, but the Runner side had nothing
+/// analogous — mutable strength buffs can't live on `dsl::Card` itself,
+/// since that's a single shared/immutable definition in `CardRegistry`, not
+/// a per-instance object.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InstalledRunnerCard {
+    pub card: CardId,
+    /// Printed strength, seeded once at install time from
+    /// `registry.get(card).strength.unwrap_or(0)` — mirrors
+    /// `RunIce::current_strength`'s seeding at `build_run_ice` exactly. `0`
+    /// for Hardware and non-strength Programs.
+    pub base_strength: i32,
+    /// Sum of active `Effect::BoostStrength { duration: Encounter, .. }`
+    /// amounts. Reset to `0` whenever the current ICE encounter ends (see
+    /// `reset_encounter_strength_buffs`).
+    pub encounter_strength_buff: i32,
+    /// Sum of active `Effect::BoostStrength { duration: Turn, .. }` amounts.
+    /// Reset to `0` at the end of the Runner's turn (see
+    /// `reset_turn_strength_buffs`). Tracked separately from
+    /// `encounter_strength_buff` rather than as one combined mutable total
+    /// (unlike `RunIce::current_strength`) because an `Encounter` buff and a
+    /// `Turn` buff can be live simultaneously and must expire independently.
+    pub turn_strength_buff: i32,
+}
+
+impl InstalledRunnerCard {
+    /// Base strength plus every currently-active buff.
+    pub fn effective_strength(&self) -> i32 {
+        self.base_strength + self.encounter_strength_buff + self.turn_strength_buff
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunnerState {
     pub resources: PlayerResources,
@@ -131,13 +166,32 @@ pub struct RunnerState {
     pub stack: Vec<CardId>,
     /// Installed Hardware/Programs. Unlike Corp's `installed`, Rig cards have
     /// no hidden/unrezzed state — they're always face-up once installed.
-    pub rig: Vec<CardId>,
+    pub rig: Vec<InstalledRunnerCard>,
     /// Runner's discard pile. Like Corp's `archives`, this is fully public —
     /// never masked in the masked view.
     pub heap: Vec<CardId>,
     /// Agendas the Runner has stolen, in steal order. Fully public — never
     /// masked. See `CorpState::scored_agendas`'s doc comment.
     pub scored_agendas: Vec<CardId>,
+}
+
+impl RunnerState {
+    /// Clears every rig card's `Encounter`-duration strength buff. Called
+    /// when the current ICE encounter ends (see
+    /// `run::engine::continue_run`).
+    pub fn reset_encounter_strength_buffs(&mut self) {
+        for card in &mut self.rig {
+            card.encounter_strength_buff = 0;
+        }
+    }
+
+    /// Clears every rig card's `Turn`-duration strength buff. Called at the
+    /// end of the Runner's turn (see `turn::end_turn`).
+    pub fn reset_turn_strength_buffs(&mut self) {
+        for card in &mut self.rig {
+            card.turn_strength_buff = 0;
+        }
+    }
 }
 
 /// Which sub-phase of a turn is currently active. `StartOfTurn`/`Action`/
@@ -282,5 +336,72 @@ impl GameState {
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
         z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
         z ^ (z >> 31)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn card(id: &str, base: i32, encounter_buff: i32, turn_buff: i32) -> InstalledRunnerCard {
+        InstalledRunnerCard {
+            card: CardId(id.to_string()),
+            base_strength: base,
+            encounter_strength_buff: encounter_buff,
+            turn_strength_buff: turn_buff,
+        }
+    }
+
+    #[test]
+    fn effective_strength_sums_base_and_both_buffs() {
+        assert_eq!(card("corroder", 2, 1, 3).effective_strength(), 6);
+    }
+
+    #[test]
+    fn reset_encounter_strength_buffs_zeroes_only_encounter_buff() {
+        let mut runner = RunnerState {
+            resources: PlayerResources {
+                credits: Credits(0),
+                clicks: Clicks(0),
+                agenda_points: AgendaPoints(0),
+            },
+            memory_units: MemoryUnits(0),
+            brain_damage: 0,
+            tags: 0,
+            grip: Vec::new(),
+            stack: Vec::new(),
+            rig: vec![card("corroder", 2, 1, 3)],
+            heap: Vec::new(),
+            scored_agendas: Vec::new(),
+        };
+
+        runner.reset_encounter_strength_buffs();
+
+        assert_eq!(runner.rig[0].encounter_strength_buff, 0);
+        assert_eq!(runner.rig[0].turn_strength_buff, 3);
+    }
+
+    #[test]
+    fn reset_turn_strength_buffs_zeroes_only_turn_buff() {
+        let mut runner = RunnerState {
+            resources: PlayerResources {
+                credits: Credits(0),
+                clicks: Clicks(0),
+                agenda_points: AgendaPoints(0),
+            },
+            memory_units: MemoryUnits(0),
+            brain_damage: 0,
+            tags: 0,
+            grip: Vec::new(),
+            stack: Vec::new(),
+            rig: vec![card("corroder", 2, 1, 3)],
+            heap: Vec::new(),
+            scored_agendas: Vec::new(),
+        };
+
+        runner.reset_turn_strength_buffs();
+
+        assert_eq!(runner.rig[0].turn_strength_buff, 0);
+        assert_eq!(runner.rig[0].encounter_strength_buff, 1);
     }
 }

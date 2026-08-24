@@ -140,6 +140,13 @@ fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
                 return Err(RulesError::SubroutinesStillPending { pending });
             }
 
+            // The encounter is genuinely ending (no pending subroutines
+            // left) — clear any `BoostDuration::Encounter` strength buffs
+            // before advancing. Covers both a direct `ContinueRun` action
+            // and `paid_ability::close_window`'s `EncounterIce` arm, which
+            // itself calls into this function.
+            state.runner.reset_encounter_strength_buffs();
+            let run = state.active_run.as_mut().expect("active_run checked above");
             Ok(pass_current_ice(run, position))
         }
         // Unreachable in practice — `advance_run`'s top-level guard already
@@ -188,7 +195,7 @@ fn step_subroutine(state: &mut GameState, index: usize, resolve: bool) -> Result
 
     if resolve {
         let mut events = vec![GameEvent::SubroutineFired { card_id, index, effect: effect.clone() }];
-        events.extend(evaluate_effect(state, &effect)?);
+        events.extend(evaluate_effect(state, &effect, None)?);
         Ok(events)
     } else {
         Ok(vec![GameEvent::SubroutineBroken { card_id, index }])
@@ -479,6 +486,29 @@ mod tests {
                 GameEvent::IceApproached { server: ServerId::Hq, position: 1 },
             ]
         );
+    }
+
+    #[test]
+    fn continue_run_leaving_encounter_ice_resets_encounter_buff_but_not_turn_buff() {
+        use crate::rules::state::InstalledRunnerCard;
+
+        let mut state = game_state();
+        state.runner.rig = vec![InstalledRunnerCard {
+            card: CardId("corroder".to_string()),
+            base_strength: 2,
+            encounter_strength_buff: 1,
+            turn_strength_buff: 3,
+        }];
+        state.active_run = Some(run_state(
+            RunPhase::EncounterIce,
+            vec![test_ice("ice_wall_0", 0, 0, true), test_ice("ice_wall_1", 0, 3, true)],
+            0,
+        ));
+
+        advance_run(&mut state, RunAction::Continue).expect("should succeed");
+
+        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
+        assert_eq!(state.runner.rig[0].turn_strength_buff, 3);
     }
 
     #[test]

@@ -68,4 +68,67 @@ pub enum Effect {
     /// `Side::Corp` would never be a legal target.
     GiveTags(u32),
     TrashCard(CardTarget),
+    /// Boosts a Runner rig card's own strength — unlike `ModifyStrength`,
+    /// which always targets whatever ICE is currently being encountered,
+    /// this always targets whichever rig card activated the ability (see
+    /// `evaluate_effect`'s `acting_card` parameter). `Encounter`-duration
+    /// boosts are cleared when the encounter ends
+    /// (`RunnerState::reset_encounter_strength_buffs`); `Turn`-duration
+    /// boosts are cleared at the end of the Runner's turn
+    /// (`RunnerState::reset_turn_strength_buffs`).
+    BoostStrength { amount: u32, duration: BoostDuration },
+    /// Breaks pending subroutines on the ICE currently being encountered,
+    /// gated on the acting rig card's `effective_strength()` meeting the
+    /// ICE's `current_strength` (`RulesError::BreakerStrengthTooLow`
+    /// otherwise). Does not restrict by ICE subtype (e.g. Barrier-only) —
+    /// that's a separate, not-yet-built primitive.
+    BreakSubroutines { count: SubroutineBreakCount },
+}
+
+/// How long an `Effect::BoostStrength` buff lasts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum BoostDuration {
+    /// Cleared when the current ICE encounter ends.
+    Encounter,
+    /// Cleared at the end of the Runner's turn.
+    Turn,
+}
+
+/// How many pending subroutines an `Effect::BreakSubroutines` breaks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubroutineBreakCount {
+    /// Breaks up to this many pending subroutines, lowest-id first —
+    /// breaks fewer (not an error) if fewer are pending, mirroring
+    /// `Effect::DrawCards`'s "stop silently on empty" precedent.
+    Fixed(u32),
+    /// Breaks every currently-pending subroutine.
+    All,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn boost_strength_and_break_subroutines_round_trip_through_json() {
+        let boost = Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter };
+        let boost_json = serde_json::to_string(&boost).unwrap();
+        assert_eq!(boost_json, r#"{"BoostStrength":{"amount":1,"duration":"Encounter"}}"#);
+        assert_eq!(serde_json::from_str::<Effect>(&boost_json).unwrap(), boost);
+
+        let turn_boost = Effect::BoostStrength { amount: 2, duration: BoostDuration::Turn };
+        let turn_boost_json = serde_json::to_string(&turn_boost).unwrap();
+        assert_eq!(turn_boost_json, r#"{"BoostStrength":{"amount":2,"duration":"Turn"}}"#);
+        assert_eq!(serde_json::from_str::<Effect>(&turn_boost_json).unwrap(), turn_boost);
+
+        let fixed = Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) };
+        let fixed_json = serde_json::to_string(&fixed).unwrap();
+        assert_eq!(fixed_json, r#"{"BreakSubroutines":{"count":{"Fixed":1}}}"#);
+        assert_eq!(serde_json::from_str::<Effect>(&fixed_json).unwrap(), fixed);
+
+        let all = Effect::BreakSubroutines { count: SubroutineBreakCount::All };
+        let all_json = serde_json::to_string(&all).unwrap();
+        assert_eq!(all_json, r#"{"BreakSubroutines":{"count":"All"}}"#);
+        assert_eq!(serde_json::from_str::<Effect>(&all_json).unwrap(), all);
+    }
 }

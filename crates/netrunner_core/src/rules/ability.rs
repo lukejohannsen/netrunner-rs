@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardTarget, Cost, Effect, StackZone, Trigger};
+use crate::dsl::{BoostDuration, CardId, CardTarget, Cost, Effect, StackZone, SubroutineBreakCount, Trigger};
 use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -15,16 +15,26 @@ use crate::rules::state::{Credits, GamePhase, GameState, Side};
 /// well-formed state (`TrashCard` naming a target that isn't where it's
 /// claimed to be) while others structurally cannot.
 ///
+/// `acting_card` identifies which Runner rig card (if any) is resolving
+/// this effect — used by `BoostStrength`/`BreakSubroutines`, which always
+/// target whichever card activated the ability, rather than a fixed target
+/// like `ModifyStrength`'s "whatever ICE is currently encountered". Callers
+/// that aren't resolving a specific rig card's ability (subroutine
+/// resolution, most `TriggeredEffect`s) pass `None`.
+///
 /// `CardTarget::ThisCard` is a known signature gap: nothing here
-/// identifies "which card is currently resolving." The future dispatch
-/// layer that calls `evaluate_effect` already knows which card/ability is
-/// resolving, so it should rewrite `ThisCard` into a concrete
-/// `CorpInstalled`/`RunnerRig` target before calling in, rather than
-/// widening this signature with a `source` parameter every other `Effect`
-/// arm would ignore. Reaching this arm as-is returns
-/// `RulesError::UnresolvedCardTarget` rather than panicking, per AGENTS.md's
-/// "no panics in engine code" rule.
-pub fn evaluate_effect(state: &mut GameState, effect: &Effect) -> Result<Vec<GameEvent>, RulesError> {
+/// identifies "which card is currently resolving" for `TrashCard`/other
+/// non-strength effects. The future dispatch layer that calls
+/// `evaluate_effect` already knows which card/ability is resolving, so it
+/// should rewrite `ThisCard` into a concrete `CorpInstalled`/`RunnerRig`
+/// target before calling in, rather than further widening this signature.
+/// Reaching this arm as-is returns `RulesError::UnresolvedCardTarget`
+/// rather than panicking, per AGENTS.md's "no panics in engine code" rule.
+pub fn evaluate_effect(
+    state: &mut GameState,
+    effect: &Effect,
+    acting_card: Option<&CardId>,
+) -> Result<Vec<GameEvent>, RulesError> {
     match effect {
         Effect::GainCredits(side, amount) => {
             // Mirrors engine::gain_credit_click's existing pattern.
@@ -102,6 +112,76 @@ pub fn evaluate_effect(state: &mut GameState, effect: &Effect) -> Result<Vec<Gam
         }
 
         Effect::TrashCard(target) => trash_card(state, target),
+
+        Effect::BoostStrength { amount, duration } => {
+            let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+            let card = state
+                .runner
+                .rig
+                .iter_mut()
+                .find(|c| &c.card == acting)
+                .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
+            match duration {
+                BoostDuration::Encounter => card.encounter_strength_buff += *amount as i32,
+                BoostDuration::Turn => card.turn_strength_buff += *amount as i32,
+            }
+            let new_strength = card.effective_strength();
+            Ok(vec![GameEvent::StrengthBoosted {
+                card_id: acting.clone(),
+                new_strength,
+                delta: *amount as i32,
+                duration: *duration,
+            }])
+        }
+
+        Effect::BreakSubroutines { count } => {
+            let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+            let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+            if run.phase != RunPhase::EncounterIce {
+                return Err(RulesError::NotInEncounter);
+            }
+
+            let breaker_strength = state
+                .runner
+                .rig
+                .iter()
+                .find(|c| &c.card == acting)
+                .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?
+                .effective_strength();
+
+            let run = state.active_run.as_ref().unwrap();
+            let ice = &run.ice[run.position];
+            let (ice_card_id, ice_strength) = (ice.card_id.clone(), ice.current_strength);
+            if breaker_strength < ice_strength {
+                return Err(RulesError::BreakerStrengthTooLow {
+                    breaker: acting.clone(),
+                    breaker_strength,
+                    ice: ice_card_id,
+                    ice_strength,
+                });
+            }
+
+            // Collected/owned before any &mut state borrow below, so the
+            // immutable `run`/`ice` reads above never overlap with
+            // transition_subroutine's &mut state.
+            let pending: Vec<usize> = ice
+                .subroutines
+                .iter()
+                .filter(|s| s.status == SubroutineStatus::Pending)
+                .map(|s| s.id)
+                .collect();
+
+            let take = match count {
+                SubroutineBreakCount::All => pending.len(),
+                SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
+            };
+            let mut events = Vec::new();
+            for idx in pending.into_iter().take(take) {
+                let (card_id, _effect) = run::transition_subroutine(state, idx, SubroutineStatus::Broken)?;
+                events.push(GameEvent::SubroutineBroken { card_id, index: idx });
+            }
+            Ok(events)
+        }
     }
 }
 
@@ -131,7 +211,7 @@ pub fn resolve_unbroken_subroutines(state: &mut GameState) -> Result<Vec<GameEve
         };
 
         let (card_id, effect) = run::transition_subroutine(state, index, SubroutineStatus::Resolved)?;
-        let fired_events = evaluate_effect(state, &effect)?;
+        let fired_events = evaluate_effect(state, &effect, None)?;
         events.push(GameEvent::SubroutineFired { card_id, index, effect });
         events.extend(fired_events);
     }
@@ -159,7 +239,7 @@ pub fn process_card_triggers(
     let mut events = Vec::new();
     for triggered in card.triggers.iter().filter(|t| t.trigger == trigger) {
         for effect in &triggered.effects {
-            events.extend(evaluate_effect(state, effect)?);
+            events.extend(evaluate_effect(state, effect, Some(card_id))?);
         }
     }
     Ok(events)
@@ -186,10 +266,10 @@ fn trash_card(state: &mut GameState, target: &CardTarget) -> Result<Vec<GameEven
                 .runner
                 .rig
                 .iter()
-                .position(|c| c == card)
+                .position(|c| &c.card == card)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: card.clone() })?;
-            state.runner.rig.remove(position);
-            state.runner.heap.push(card.clone());
+            let removed = state.runner.rig.remove(position);
+            state.runner.heap.push(removed.card);
             Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone() }])
         }
 
@@ -256,9 +336,18 @@ mod tests {
     use crate::dsl::{Card, CardId, CardType, DamageType, SubroutineDef, TriggeredEffect};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase as RP, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{
-        AgendaPoints, Clicks, CorpState, GamePhase, InstallSlot, InstalledCard, MemoryUnits,
-        PlayerResources, RunnerState,
+        AgendaPoints, Clicks, CorpState, GamePhase, InstallSlot, InstalledCard, InstalledRunnerCard,
+        MemoryUnits, PlayerResources, RunnerState,
     };
+
+    fn installed_runner_card(id: &str, base_strength: i32) -> InstalledRunnerCard {
+        InstalledRunnerCard {
+            card: CardId(id.to_string()),
+            base_strength,
+            encounter_strength_buff: 0,
+            turn_strength_buff: 0,
+        }
+    }
 
     fn game_state() -> GameState {
         GameState {
@@ -300,7 +389,7 @@ mod tests {
     #[test]
     fn gain_credits_targets_the_named_side() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GainCredits(Side::Corp, 3)).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GainCredits(Side::Corp, 3), None).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(8));
         assert_eq!(state.runner.resources.credits, Credits(5));
@@ -312,7 +401,7 @@ mod tests {
         let mut state = game_state();
         state.runner.grip = vec![CardId("card_0".to_string()), CardId("card_1".to_string())];
 
-        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1)).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), None).unwrap();
 
         assert_eq!(state.runner.grip.len(), 1);
         assert_eq!(state.runner.heap.len(), 1);
@@ -324,7 +413,7 @@ mod tests {
         let mut state = game_state();
         state.runner.stack = vec![CardId("only_card".to_string())];
 
-        let events = evaluate_effect(&mut state, &Effect::DrawCards(Side::Runner, 3)).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::DrawCards(Side::Runner, 3), None).unwrap();
 
         assert_eq!(state.runner.grip, vec![CardId("only_card".to_string())]);
         assert!(state.runner.stack.is_empty());
@@ -336,7 +425,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
-        let events = evaluate_effect(&mut state, &Effect::EndTheRun).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::EndTheRun, None).unwrap();
 
         assert!(state.active_run.is_none());
         assert_eq!(events, vec![GameEvent::RunEndedByEffect { server: ServerId::Hq }]);
@@ -345,13 +434,13 @@ mod tests {
     #[test]
     fn end_the_run_with_no_active_run_errors() {
         let mut state = game_state();
-        assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun), Err(RulesError::NoActiveRun));
+        assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun, None), Err(RulesError::NoActiveRun));
     }
 
     #[test]
     fn give_tags_always_targets_the_runner() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GiveTags(2)).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GiveTags(2), None).unwrap();
 
         assert_eq!(state.runner.tags, 2);
         assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2 }]);
@@ -385,7 +474,7 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(0)).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None).unwrap();
 
         assert_eq!(
             events,
@@ -407,7 +496,7 @@ mod tests {
          jack_out_permitted: true,});
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(1)),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(1), None),
             Err(RulesError::InvalidSubroutineIndex(1))
         );
     }
@@ -421,7 +510,7 @@ mod tests {
             Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 , jack_out_permitted: true});
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0)),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
             Err(RulesError::SubroutineAlreadyHandled)
         );
     }
@@ -430,7 +519,7 @@ mod tests {
     fn break_subroutine_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0)),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -442,7 +531,7 @@ mod tests {
             Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0)),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -549,7 +638,7 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2)).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), None).unwrap();
 
         assert_eq!(state.active_run.unwrap().ice[0].current_strength, 5);
         assert_eq!(
@@ -569,7 +658,7 @@ mod tests {
             Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength(2)),
+            evaluate_effect(&mut state, &Effect::ModifyStrength(2), None),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -578,7 +667,7 @@ mod tests {
     fn modify_strength_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength(2)),
+            evaluate_effect(&mut state, &Effect::ModifyStrength(2), None),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -587,7 +676,7 @@ mod tests {
     fn trash_card_this_card_is_rejected_not_panicked() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard)),
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), None),
             Err(RulesError::UnresolvedCardTarget)
         );
     }
@@ -609,6 +698,7 @@ mod tests {
                 card: CardId("pad_campaign".to_string()),
                 server: ServerId::Remote(0),
             }),
+            None,
         )
         .unwrap();
 
@@ -624,7 +714,7 @@ mod tests {
     fn trash_card_runner_rig_not_found_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string())))),
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))), None),
             Err(RulesError::CardNotInRig { side: Side::Runner, card: CardId("gordian_blade".to_string()) })
         );
     }
@@ -632,11 +722,12 @@ mod tests {
     #[test]
     fn trash_card_runner_rig_moves_card_to_heap() {
         let mut state = game_state();
-        state.runner.rig = vec![CardId("gordian_blade".to_string())];
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 2)];
 
         let events = evaluate_effect(
             &mut state,
             &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))),
+            None,
         )
         .unwrap();
 
@@ -656,6 +747,7 @@ mod tests {
         let events = evaluate_effect(
             &mut state,
             &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }),
+            None,
         )
         .unwrap();
 
@@ -676,6 +768,7 @@ mod tests {
             evaluate_effect(
                 &mut state,
                 &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::Stack }),
+                None,
             ),
             Err(RulesError::EmptyZone { side: Side::Corp, zone: StackZone::Stack })
         );
@@ -689,6 +782,7 @@ mod tests {
         let events = evaluate_effect(
             &mut state,
             &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Runner, zone: StackZone::Stack }),
+            None,
         )
         .unwrap();
 
@@ -709,6 +803,7 @@ mod tests {
             evaluate_effect(
                 &mut state,
                 &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }),
+                None,
             ),
             Err(RulesError::EmptyZone { side: Side::Corp, zone: StackZone::RAndD })
         );
@@ -845,5 +940,251 @@ mod tests {
         .unwrap();
 
         assert!(events.is_empty());
+    }
+
+    #[test]
+    fn boost_strength_encounter_increments_buff_and_effective_strength() {
+        let mut state = game_state();
+        state.runner.rig = vec![installed_runner_card("corroder", 2)];
+        let acting = CardId("corroder".to_string());
+
+        let events = evaluate_effect(
+            &mut state,
+            &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+            Some(&acting),
+        )
+        .unwrap();
+
+        assert_eq!(state.runner.rig[0].encounter_strength_buff, 1);
+        assert_eq!(state.runner.rig[0].effective_strength(), 3);
+        assert_eq!(
+            events,
+            vec![GameEvent::StrengthBoosted {
+                card_id: acting,
+                new_strength: 3,
+                delta: 1,
+                duration: BoostDuration::Encounter,
+            }]
+        );
+    }
+
+    #[test]
+    fn boost_strength_turn_increments_turn_buff() {
+        let mut state = game_state();
+        state.runner.rig = vec![installed_runner_card("corroder", 2)];
+        let acting = CardId("corroder".to_string());
+
+        evaluate_effect(
+            &mut state,
+            &Effect::BoostStrength { amount: 2, duration: BoostDuration::Turn },
+            Some(&acting),
+        )
+        .unwrap();
+
+        assert_eq!(state.runner.rig[0].turn_strength_buff, 2);
+        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
+        assert_eq!(state.runner.rig[0].effective_strength(), 4);
+    }
+
+    #[test]
+    fn boost_strength_without_acting_card_errors_unresolved_card_target() {
+        let mut state = game_state();
+        assert_eq!(
+            evaluate_effect(
+                &mut state,
+                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+                None,
+            ),
+            Err(RulesError::UnresolvedCardTarget)
+        );
+    }
+
+    #[test]
+    fn boost_strength_acting_card_not_in_rig_errors_card_not_in_rig() {
+        let mut state = game_state();
+        let acting = CardId("corroder".to_string());
+        assert_eq!(
+            evaluate_effect(
+                &mut state,
+                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+                Some(&acting),
+            ),
+            Err(RulesError::CardNotInRig { side: Side::Runner, card: acting })
+        );
+    }
+
+    fn ice_encounter_state(rig: Vec<InstalledRunnerCard>, ice_strength: i32, subroutine_count: usize) -> GameState {
+        let mut state = game_state();
+        state.runner.rig = rig;
+        state.active_run = Some(RunState {
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![test_ice("ice_wall", ice_strength, subroutine_count, true)],
+            position: 0,
+            jack_out_permitted: true,
+        });
+        state
+    }
+
+    #[test]
+    fn break_subroutines_fixed_breaks_up_to_count_pending_lowest_id_first() {
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 3);
+        let acting = CardId("corroder".to_string());
+
+        let events = evaluate_effect(
+            &mut state,
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2) },
+            Some(&acting),
+        )
+        .unwrap();
+
+        let ice = &state.active_run.unwrap().ice[0];
+        assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
+        assert_eq!(ice.subroutines[1].status, SubroutineStatus::Broken);
+        assert_eq!(ice.subroutines[2].status, SubroutineStatus::Pending);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1 },
+            ]
+        );
+    }
+
+    #[test]
+    fn break_subroutines_fixed_breaks_fewer_when_fewer_are_pending() {
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
+        let acting = CardId("corroder".to_string());
+
+        let events = evaluate_effect(
+            &mut state,
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2) },
+            Some(&acting),
+        )
+        .unwrap();
+
+        assert_eq!(events.len(), 1);
+        let ice = &state.active_run.unwrap().ice[0];
+        assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
+    }
+
+    #[test]
+    fn break_subroutines_all_breaks_every_pending_subroutine() {
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 3);
+        let acting = CardId("corroder".to_string());
+
+        let events = evaluate_effect(
+            &mut state,
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::All },
+            Some(&acting),
+        )
+        .unwrap();
+
+        assert_eq!(events.len(), 3);
+        let ice = state.active_run.unwrap().ice;
+        assert!(ice[0].subroutines.iter().all(|s| s.status == SubroutineStatus::Broken));
+    }
+
+    #[test]
+    fn break_subroutines_outside_encounter_ice_errors_not_in_encounter() {
+        let mut state = game_state();
+        state.active_run = Some(RunState {
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RP::ApproachIce,
+            ice: Vec::new(),
+            position: 0,
+            jack_out_permitted: true,
+        });
+
+        assert_eq!(
+            evaluate_effect(
+                &mut state,
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::All },
+                Some(&CardId("corroder".to_string())),
+            ),
+            Err(RulesError::NotInEncounter)
+        );
+    }
+
+    #[test]
+    fn break_subroutines_with_insufficient_breaker_strength_errors_breaker_strength_too_low() {
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 1)], 3, 1);
+        let acting = CardId("corroder".to_string());
+
+        assert_eq!(
+            evaluate_effect(
+                &mut state,
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+                Some(&acting),
+            ),
+            Err(RulesError::BreakerStrengthTooLow {
+                breaker: acting,
+                breaker_strength: 1,
+                ice: CardId("ice_wall".to_string()),
+                ice_strength: 3,
+            })
+        );
+        let ice = &state.active_run.unwrap().ice[0];
+        assert_eq!(ice.subroutines[0].status, SubroutineStatus::Pending);
+    }
+
+    #[test]
+    fn break_subroutines_after_boost_succeeds_and_marks_subroutines_broken() {
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 1)], 2, 1);
+        let acting = CardId("corroder".to_string());
+
+        // Too weak before boosting.
+        assert_eq!(
+            evaluate_effect(
+                &mut state,
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+                Some(&acting),
+            ),
+            Err(RulesError::BreakerStrengthTooLow {
+                breaker: acting.clone(),
+                breaker_strength: 1,
+                ice: CardId("ice_wall".to_string()),
+                ice_strength: 2,
+            })
+        );
+
+        evaluate_effect(
+            &mut state,
+            &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+            Some(&acting),
+        )
+        .unwrap();
+
+        let events = evaluate_effect(
+            &mut state,
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+            Some(&acting),
+        )
+        .unwrap();
+
+        assert_eq!(
+            events,
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+        );
+        let ice = &state.active_run.unwrap().ice[0];
+        assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
+    }
+
+    #[test]
+    fn break_subroutines_skips_already_broken_subroutines() {
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 2);
+        state.active_run.as_mut().unwrap().ice[0].subroutines[0].status = SubroutineStatus::Broken;
+        let acting = CardId("corroder".to_string());
+
+        let events = evaluate_effect(
+            &mut state,
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::All },
+            Some(&acting),
+        )
+        .unwrap();
+
+        assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1 }]);
     }
 }

@@ -19,7 +19,7 @@ pub use error::RulesError;
 pub use event::GameEvent;
 pub use masking::{
     mask_state_for_player, MaskedZone, PublicCorpState, PublicGameState, PublicInstalledCard,
-    PublicRunnerState,
+    PublicInstalledRunnerCard, PublicRunnerState,
 };
 pub use run::{
     access_server, advance_run, resolve_pass, resolve_select_card, resolve_steal, resolve_trash,
@@ -27,7 +27,7 @@ pub use run::{
     ServerId, SubroutineStatus,
 };
 pub use state::{
-    AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard, MemoryUnits,
-    PaidAbilityWindow, PlayerResources, RunnerState, Side,
+    AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard, InstalledRunnerCard,
+    MemoryUnits, PaidAbilityWindow, PlayerResources, RunnerState, Side,
 };
 pub use turn::end_turn;

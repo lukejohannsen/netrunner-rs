@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardId, DamageType, Effect};
+use crate::dsl::{BoostDuration, CardId, DamageType, Effect};
 use crate::rules::run::ServerId;
 use crate::rules::state::Side;
 
@@ -45,4 +45,5 @@ pub enum GameEvent {
     PaidAbilityWindowOpened { side: Side },
     PriorityPassed { side: Side },
     PaidAbilityWindowClosed,
+    StrengthBoosted { card_id: CardId, new_strength: i32, delta: i32, duration: BoostDuration },
 }

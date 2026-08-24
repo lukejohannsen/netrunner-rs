@@ -6,7 +6,7 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run::{self, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState, SubroutineStatus};
-use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side};
+use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, Side};
 use crate::rules::turn;
 
 pub fn apply_action(
@@ -26,9 +26,9 @@ pub fn apply_action(
         PlayerAction::JackOut => jack_out(state),
         PlayerAction::CompleteRun => complete_run(state, registry),
         PlayerAction::PlayEvent { card_id } => play_event(state, registry, card_id),
-        PlayerAction::InstallHardware { card_id } => install_hardware(state, card_id),
+        PlayerAction::InstallHardware { card_id } => install_hardware(state, registry, card_id),
         PlayerAction::InstallProgram { card_id, memory_cost } => {
-            install_program(state, card_id, memory_cost)
+            install_program(state, registry, card_id, memory_cost)
         }
         PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
             break_subroutine(state, ice_id, subroutine_index)
@@ -362,13 +362,31 @@ fn play_event(
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost))?);
-    events.push(GameEvent::EventPlayed { side, card: card_id });
+    events.push(GameEvent::EventPlayed { side, card: card_id.clone() });
+    events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnPlay)?);
 
     Ok((next, events))
 }
 
+/// Seeds a newly-installed rig card's `base_strength` from the registry's
+/// printed `strength` — mirrors `build_run_ice`'s identical seed-once
+/// pattern for `RunIce::current_strength`. `0` for Hardware/non-strength
+/// Programs (`Card::strength` is `None`).
+fn seed_rig_card(registry: &CardRegistry, card_id: CardId) -> Result<InstalledRunnerCard, RulesError> {
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    Ok(InstalledRunnerCard {
+        base_strength: card_def.strength.unwrap_or(0),
+        card: card_id,
+        encounter_strength_buff: 0,
+        turn_strength_buff: 0,
+    })
+}
+
 fn install_hardware(
     state: &GameState,
+    registry: &CardRegistry,
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
@@ -377,7 +395,8 @@ fn install_hardware(
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
-    next.runner.rig.push(card_id.clone());
+    let rig_card = seed_rig_card(registry, card_id.clone())?;
+    next.runner.rig.push(rig_card);
 
     Ok((
         next,
@@ -390,6 +409,7 @@ fn install_hardware(
 
 fn install_program(
     state: &GameState,
+    registry: &CardRegistry,
     card_id: CardId,
     memory_cost: u8,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
@@ -407,7 +427,8 @@ fn install_program(
         .memory_units
         .spend(requested)
         .ok_or(RulesError::InsufficientMemory { available, requested })?;
-    next.runner.rig.push(card_id.clone());
+    let rig_card = seed_rig_card(registry, card_id.clone())?;
+    next.runner.rig.push(rig_card);
 
     Ok((
         next,
@@ -456,7 +477,7 @@ fn activate_ability(
     ability_index: usize,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let corp_active = state.corp.installed.iter().any(|c| c.card == card_id && c.rezzed);
-    let runner_active = state.runner.rig.contains(&card_id);
+    let runner_active = state.runner.rig.iter().any(|c| c.card == card_id);
 
     let side = match &state.paid_ability_window {
         Some(window) => {
@@ -508,7 +529,7 @@ fn activate_ability(
         events.extend(ability::pay_cost(&mut next, side, cost)?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
-    events.extend(ability::evaluate_effect(&mut next, &ability.effect)?);
+    events.extend(ability::evaluate_effect(&mut next, &ability.effect, Some(&card_id))?);
     paid_ability::note_window_action(&mut next, side);
 
     Ok((next, events))
@@ -621,7 +642,10 @@ fn pass_priority_action(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{AbilityDef, Card, CardType, Cost, Effect, IceType, SubroutineDef};
+    use crate::dsl::{
+        AbilityDef, BoostDuration, Card, CardType, Cost, Effect, IceType, SubroutineBreakCount,
+        SubroutineDef, TriggeredEffect,
+    };
     use crate::rules::run::{EncounteredSubroutine, RunIce, ServerId, SubroutineStatus};
     use crate::rules::state::{AgendaPoints, Clicks, Credits, PaidAbilityWindow, PlayerResources};
 
@@ -1751,6 +1775,34 @@ mod tests {
     }
 
     #[test]
+    fn runner_play_event_fires_on_play_trigger_and_grants_credits() {
+        let card_id = CardId("sure_gamble".to_string());
+        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let mut registry = CardRegistry::new();
+        let mut card = test_card("sure_gamble", Side::Runner, CardType::Event, 5, None);
+        card.triggers = vec![TriggeredEffect {
+            trigger: Trigger::OnPlay,
+            effects: vec![Effect::GainCredits(Side::Runner, 9)],
+        }];
+        registry.insert(card);
+
+        let (next, events) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: card_id.clone() })
+            .expect("action should succeed");
+
+        // Paid 5 to play, then the OnPlay trigger grants 9 back — net +4.
+        assert_eq!(next.runner.resources.credits, Credits(9));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
+                GameEvent::EventPlayed { side: Side::Runner, card: card_id },
+                GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
+            ]
+        );
+    }
+
+    #[test]
     fn runner_play_event_not_in_registry_returns_card_not_found_in_registry() {
         let card_id = CardId("sure_gamble".to_string());
         let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
@@ -1818,16 +1870,18 @@ mod tests {
     fn runner_install_hardware_moves_card_from_grip_to_rig_and_spends_click() {
         let card_id = CardId("clone_chip".to_string());
         let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let mut reg = registry();
+        reg.insert(test_card("clone_chip", Side::Runner, CardType::Hardware, 0, None));
         let (next, events) = apply_action(
             &state,
-            &registry(),
+            &reg,
             PlayerAction::InstallHardware { card_id: card_id.clone() },
         )
         .expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(2));
         assert!(next.runner.grip.is_empty());
-        assert_eq!(next.runner.rig, vec![card_id.clone()]);
+        assert_eq!(next.runner.rig, vec![installed_runner_card("clone_chip", 0)]);
         assert_eq!(
             events,
             vec![
@@ -1868,16 +1922,18 @@ mod tests {
     fn runner_install_program_moves_card_and_reserves_memory() {
         let card_id = CardId("gordian_blade".to_string());
         let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
+        let mut reg = registry();
+        reg.insert(test_card("gordian_blade", Side::Runner, CardType::Program, 0, None));
         let (next, events) = apply_action(
             &state,
-            &registry(),
+            &reg,
             PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
         )
         .expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(2));
         assert!(next.runner.grip.is_empty());
-        assert_eq!(next.runner.rig, vec![card_id.clone()]);
+        assert_eq!(next.runner.rig, vec![installed_runner_card("gordian_blade", 0)]);
         assert_eq!(next.runner.memory_units, crate::rules::state::MemoryUnits(1));
         assert_eq!(
             events,
@@ -1944,6 +2000,42 @@ mod tests {
 
         // Original state is untouched: the card is still in the grip.
         assert_eq!(state.runner.grip, vec![card_id]);
+    }
+
+    #[test]
+    fn install_program_seeds_base_strength_from_registry() {
+        let card_id = CardId("corroder".to_string());
+        let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
+        let mut reg = registry();
+        let mut corroder = test_card("corroder", Side::Runner, CardType::Program, 0, None);
+        corroder.strength = Some(2);
+        reg.insert(corroder);
+
+        let (next, _events) = apply_action(
+            &state,
+            &reg,
+            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 1 },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.rig, vec![installed_runner_card("corroder", 2)]);
+    }
+
+    #[test]
+    fn install_hardware_seeds_zero_base_strength_for_non_strength_card() {
+        let card_id = CardId("clone_chip".to_string());
+        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let mut reg = registry();
+        reg.insert(test_card("clone_chip", Side::Runner, CardType::Hardware, 0, None));
+
+        let (next, _events) = apply_action(
+            &state,
+            &reg,
+            PlayerAction::InstallHardware { card_id: card_id.clone() },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.rig, vec![installed_runner_card("clone_chip", 0)]);
     }
 
     #[test]
@@ -2073,6 +2165,18 @@ mod tests {
         );
     }
 
+    /// A rig entry seeded with `base_strength` and no active buffs — used
+    /// by `activate_ability`/install tests that need a card already in the
+    /// Runner's rig.
+    fn installed_runner_card(card_id: &str, base_strength: i32) -> InstalledRunnerCard {
+        InstalledRunnerCard {
+            card: CardId(card_id.to_string()),
+            base_strength,
+            encounter_strength_buff: 0,
+            turn_strength_buff: 0,
+        }
+    }
+
     /// A minimal `Card` with the given install/play `cost` and
     /// `advancement_requirement`, no abilities — used by the
     /// `InstallCard`/`PlayEvent`/`AdvanceCard` cost/advancement tests, which
@@ -2136,7 +2240,7 @@ mod tests {
         let card_id = CardId("gordian_blade".to_string());
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
-        state.runner.rig = vec![card_id.clone()];
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
@@ -2177,11 +2281,142 @@ mod tests {
     }
 
     #[test]
+    fn runner_activate_ability_boosts_own_rig_card_strength_and_deducts_credits() {
+        let card_id = CardId("corroder".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![installed_runner_card("corroder", 2)];
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            position: 0,
+         jack_out_permitted: true,});
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "corroder",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+        ));
+
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.resources.credits, Credits(4));
+        assert_eq!(next.runner.rig[0].effective_strength(), 3);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0 },
+                GameEvent::StrengthBoosted {
+                    card_id,
+                    new_strength: 3,
+                    delta: 1,
+                    duration: BoostDuration::Encounter,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn runner_activate_ability_breaks_subroutine_via_break_subroutines_when_strong_enough() {
+        let card_id = CardId("corroder".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![installed_runner_card("corroder", 2)];
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice("ice_wall", 2, 1, true)],
+            position: 0,
+         jack_out_permitted: true,});
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "corroder",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+        ));
+
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.resources.credits, Credits(4));
+        assert_eq!(next.active_run.unwrap().ice[0].subroutines[0].status, SubroutineStatus::Broken);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 },
+            ]
+        );
+    }
+
+    #[test]
+    fn runner_activate_ability_break_subroutines_fails_and_rolls_back_cost_when_too_weak() {
+        let card_id = CardId("corroder".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![installed_runner_card("corroder", 1)];
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice("ice_wall", 3, 1, true)],
+            position: 0,
+         jack_out_permitted: true,});
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "corroder",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+        ));
+
+        let result = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        );
+
+        assert_eq!(
+            result,
+            Err(RulesError::BreakerStrengthTooLow {
+                breaker: card_id,
+                breaker_strength: 1,
+                ice: CardId("ice_wall".to_string()),
+                ice_strength: 3,
+            })
+        );
+        // Whole-action atomicity: `activate_ability` operates on a cloned
+        // `next` and only returns it on success, so the credit spent while
+        // paying the cost is rolled back along with everything else when
+        // the effect itself errors afterward.
+        assert_eq!(state.runner.resources.credits, Credits(5));
+    }
+
+    #[test]
     fn activate_ability_during_window_by_priority_holder_succeeds_and_resets_passes() {
         let card_id = CardId("gordian_blade".to_string());
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
-        state.runner.rig = vec![card_id.clone()];
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
@@ -2222,7 +2457,7 @@ mod tests {
         let card_id = CardId("gordian_blade".to_string());
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
-        state.runner.rig = vec![card_id.clone()];
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
@@ -2373,7 +2608,7 @@ mod tests {
         let card_id = CardId("gordian_blade".to_string());
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(0);
-        state.runner.rig = vec![card_id.clone()];
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
@@ -2406,7 +2641,7 @@ mod tests {
     fn runner_activate_ability_with_invalid_index_returns_invalid_ability_index() {
         let card_id = CardId("gordian_blade".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.runner.rig = vec![card_id.clone()];
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -2430,7 +2665,7 @@ mod tests {
     fn runner_activate_ability_on_non_paid_trigger_returns_not_manually_activatable() {
         let card_id = CardId("gordian_blade".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.runner.rig = vec![card_id.clone()];
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(

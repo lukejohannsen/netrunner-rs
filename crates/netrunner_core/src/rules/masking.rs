@@ -3,8 +3,8 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::CardId;
 use crate::rules::run::{RunState, ServerId};
 use crate::rules::state::{
-    CorpState, GamePhase, GameState, InstalledCard, MemoryUnits, PaidAbilityWindow, PlayerResources,
-    RunnerState, Side,
+    CorpState, GamePhase, GameState, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
+    PlayerResources, RunnerState, Side,
 };
 
 /// A card zone whose contents are secret to everyone but its owner. The
@@ -41,6 +41,16 @@ pub struct PublicCorpState {
     pub scored_agendas: Vec<CardId>,
 }
 
+/// A Runner rig card as seen by any viewer: never hidden (see
+/// `PublicRunnerState::rig`'s doc comment), including its current
+/// (possibly pumped) strength — real Netrunner/Null Signal Games treats an
+/// installed icebreaker's current strength as visible public information.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicInstalledRunnerCard {
+    pub card: CardId,
+    pub current_strength: i32,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicRunnerState {
     pub resources: PlayerResources,
@@ -53,7 +63,7 @@ pub struct PublicRunnerState {
     pub grip: MaskedZone,
     pub stack: MaskedZone,
     /// Never masked — Rig cards are always face-up once installed.
-    pub rig: Vec<CardId>,
+    pub rig: Vec<PublicInstalledRunnerCard>,
     /// Never masked — like Corp's `archives`, a Runner's discard pile is a
     /// fully public zone in the real game.
     pub heap: Vec<CardId>,
@@ -120,6 +130,10 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
     }
 }
 
+fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
+    PublicInstalledRunnerCard { card: card.card.clone(), current_strength: card.effective_strength() }
+}
+
 fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerState {
     PublicRunnerState {
         resources: runner.resources.clone(),
@@ -128,7 +142,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         tags: runner.tags,
         grip: mask_zone(&runner.grip, owner_view),
         stack: mask_zone(&runner.stack, owner_view),
-        rig: runner.rig.clone(),
+        rig: runner.rig.iter().map(mask_installed_runner_card).collect(),
         heap: runner.heap.clone(),
         scored_agendas: runner.scored_agendas.clone(),
     }
@@ -265,7 +279,12 @@ mod tests {
             tags: 0,
             grip: vec![CardId("sure_gamble".to_string())],
             stack: vec![CardId("modded".to_string()), CardId("clone_chip".to_string())],
-            rig: vec![CardId("gordian_blade".to_string())],
+            rig: vec![InstalledRunnerCard {
+                card: CardId("gordian_blade".to_string()),
+                base_strength: 2,
+                encounter_strength_buff: 1,
+                turn_strength_buff: 0,
+            }],
             heap: vec![CardId("easy_mark".to_string())],
             scored_agendas: vec![CardId("priority_requisition".to_string())],
         }
@@ -327,9 +346,24 @@ mod tests {
         let masked_for_corp = mask_state_for_player(&state, Side::Corp);
         let masked_for_runner = mask_state_for_player(&state, Side::Runner);
 
-        let expected = vec![CardId("gordian_blade".to_string())];
+        let expected = vec![PublicInstalledRunnerCard {
+            card: CardId("gordian_blade".to_string()),
+            current_strength: 3,
+        }];
         assert_eq!(masked_for_corp.runner.rig, expected);
         assert_eq!(masked_for_runner.runner.rig, expected);
+    }
+
+    #[test]
+    fn runner_rig_current_strength_is_never_masked() {
+        let state = game_state_with_runner(runner_state_with_cards());
+        let masked_for_corp = mask_state_for_player(&state, Side::Corp);
+        let masked_for_runner = mask_state_for_player(&state, Side::Runner);
+
+        // base_strength 2 + encounter_strength_buff 1 = 3, from
+        // runner_state_with_cards().
+        assert_eq!(masked_for_corp.runner.rig[0].current_strength, 3);
+        assert_eq!(masked_for_runner.runner.rig[0].current_strength, 3);
     }
 
     #[test]

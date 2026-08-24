@@ -1,0 +1,21 @@
+{
+  "id": "corroder",
+  "title": "Corroder",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "strength": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": { "Credits": 1 },
+      "effect": { "BoostStrength": { "amount": 1, "duration": "Encounter" } }
+    },
+    {
+      "trigger": "Paid",
+      "cost": { "Credits": 1 },
+      "effect": { "BreakSubroutines": { "count": { "Fixed": 1 } } }
+    }
+  ]
+}
