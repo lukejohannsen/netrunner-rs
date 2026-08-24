@@ -75,4 +75,13 @@ pub enum RulesError {
 
     #[error("CardTarget::ThisCard/Cost::TrashSelf must be resolved to a concrete card before evaluation")]
     UnresolvedCardTarget,
+
+    #[error("{side:?}'s card {card:?} is not in an active zone (installed+rezzed for Corp, in the Rig for Runner)")]
+    CardNotActive { side: Side, card: CardId },
+
+    #[error("ability index {0} is out of range")]
+    InvalidAbilityIndex(usize),
+
+    #[error("ability index {0} is not a Trigger::Paid ability and cannot be manually activated")]
+    AbilityNotManuallyActivatable(usize),
 }

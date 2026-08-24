@@ -156,7 +156,7 @@ mod tests {
 
         let action = crate::rules::PlayerAction::GainCreditClick { side: Side::Runner };
         assert!(matches!(
-            crate::rules::apply_action(&state, action),
+            crate::rules::apply_action(&state, &crate::cards::CardRegistry::new(), action),
             Err(RulesError::WrongPhase { .. })
         ));
     }

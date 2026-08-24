@@ -38,4 +38,5 @@ pub enum GameEvent {
     CardTrashed { side: Side, card: CardId },
     RunEndedByEffect { server: ServerId },
     GameOver { winner: Side },
+    AbilityActivated { side: Side, card_id: CardId, ability_index: usize },
 }

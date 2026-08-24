@@ -1,4 +1,6 @@
-use crate::dsl::CardId;
+use crate::cards::CardRegistry;
+use crate::dsl::{CardId, Trigger};
+use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -8,6 +10,7 @@ use crate::rules::turn;
 
 pub fn apply_action(
     state: &GameState,
+    registry: &CardRegistry,
     action: PlayerAction,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     match action {
@@ -31,6 +34,9 @@ pub fn apply_action(
         }
         PlayerAction::EndTurn => turn::end_turn(state),
         PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id),
+        PlayerAction::ActivateAbility { card_id, ability_index } => {
+            activate_ability(state, registry, card_id, ability_index)
+        }
     }
 }
 
@@ -321,12 +327,64 @@ fn break_subroutine(
     Ok((next, events))
 }
 
+/// Pays and resolves the `ability_index`-th `AbilityDef` on `card_id`, per
+/// `PlayerAction::ActivateAbility`'s doc comment. Symmetric like
+/// `turn::end_turn`/`turn::discard_card` — the acting side is derived from
+/// `state.phase` rather than taken as a parameter.
+fn activate_ability(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+    ability_index: usize,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = match state.phase {
+        GamePhase::Action(side) => side,
+        actual => return Err(RulesError::NotInActionPhase { actual }),
+    };
+
+    let active = match side {
+        Side::Corp => state.corp.installed.iter().any(|c| c.card == card_id && c.rezzed),
+        Side::Runner => state.runner.rig.contains(&card_id),
+    };
+    if !active {
+        return Err(RulesError::CardNotActive { side, card: card_id });
+    }
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    let ability = card_def
+        .abilities
+        .get(ability_index)
+        .ok_or(RulesError::InvalidAbilityIndex(ability_index))?;
+    if ability.trigger != Trigger::Paid {
+        return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
+    }
+
+    let mut next = state.clone();
+    let mut events = Vec::new();
+    if let Some(cost) = &ability.cost {
+        events.extend(ability::pay_cost(&mut next, side, cost)?);
+    }
+    events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
+    events.extend(ability::evaluate_effect(&mut next, &ability.effect)?);
+
+    Ok((next, events))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Effect, SubroutineDef};
+    use crate::dsl::{AbilityDef, Card, CardType, Cost, Effect, SubroutineDef};
     use crate::rules::run::{EncounteredSubroutine, RunIce, ServerId, SubroutineStatus};
     use crate::rules::state::{AgendaPoints, Clicks, Credits, PlayerResources};
+
+    /// An empty registry, for every test that doesn't exercise
+    /// `PlayerAction::ActivateAbility` and so doesn't need real card
+    /// definitions.
+    fn registry() -> CardRegistry {
+        CardRegistry::new()
+    }
 
     /// Builds a `RunIce` with `subroutine_count` placeholder `Pending`
     /// subroutines — identity/effect content doesn't matter for tests using
@@ -446,7 +504,7 @@ mod tests {
     #[test]
     fn corp_gain_credit_click_spends_click_and_gains_credit() {
         let state = corp_state(3, 5);
-        let (next, events) = apply_action(&state, PlayerAction::GainCreditClick { side: Side::Corp })
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp })
             .expect("action should succeed");
 
         assert_eq!(next.corp.resources.clicks, Clicks(2));
@@ -471,7 +529,7 @@ mod tests {
     fn runner_draw_card_click_spends_click_and_draws_card() {
         let state = runner_state(4, 10, 5);
         let (next, events) =
-            apply_action(&state, PlayerAction::DrawCardClick).expect("action should succeed");
+            apply_action(&state, &registry(), PlayerAction::DrawCardClick).expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(3));
         assert_eq!(next.runner.stack.len(), 9);
@@ -488,7 +546,7 @@ mod tests {
     #[test]
     fn spending_click_with_zero_clicks_returns_error() {
         let state = corp_state(0, 5);
-        let result = apply_action(&state, PlayerAction::GainCreditClick { side: Side::Corp });
+        let result = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp });
 
         assert_eq!(
             result,
@@ -503,7 +561,7 @@ mod tests {
     #[test]
     fn acting_out_of_turn_returns_error() {
         let state = corp_state(3, 5);
-        let result = apply_action(&state, PlayerAction::GainCreditClick { side: Side::Runner });
+        let result = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Runner });
 
         assert_eq!(
             result,
@@ -518,7 +576,7 @@ mod tests {
     fn runner_draw_card_click_with_empty_stack_does_not_underflow() {
         let state = runner_state(2, 0, 3);
         let (next, events) =
-            apply_action(&state, PlayerAction::DrawCardClick).expect("action should succeed");
+            apply_action(&state, &registry(), PlayerAction::DrawCardClick).expect("action should succeed");
 
         assert_eq!(next.runner.stack.len(), 0);
         assert_eq!(next.runner.grip.len(), 3);
@@ -532,6 +590,7 @@ mod tests {
         let state = corp_state_with_hq_and_installed(3, 5, vec![card_id.clone()], Vec::new());
         let (next, events) = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallCard {
                 card_id: card_id.clone(),
                 zone: ServerId::Hq,
@@ -574,6 +633,7 @@ mod tests {
         let state = runner_state(3, 5, 3);
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice },
         );
 
@@ -592,6 +652,7 @@ mod tests {
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), Vec::new());
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallCard {
                 card_id: card_id.clone(),
                 zone: ServerId::Hq,
@@ -611,6 +672,7 @@ mod tests {
         let state = corp_state_with_hq_and_installed(0, 5, vec![card_id.clone()], Vec::new());
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice },
         );
 
@@ -630,7 +692,7 @@ mod tests {
             rezzed: false,
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
-        let (next, events) = apply_action(&state, PlayerAction::RezIce { ice_id: card_id.clone() })
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() })
             .expect("action should succeed");
 
         assert!(next.corp.installed[0].rezzed);
@@ -646,7 +708,7 @@ mod tests {
     fn runner_turn_rez_ice_returns_not_your_turn() {
         let card_id = CardId("ice_wall".to_string());
         let state = runner_state(3, 5, 3);
-        let result = apply_action(&state, PlayerAction::RezIce { ice_id: card_id });
+        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id });
 
         assert_eq!(
             result,
@@ -661,7 +723,7 @@ mod tests {
     fn corp_rez_ice_with_card_not_installed_returns_card_not_installed() {
         let card_id = CardId("ice_wall".to_string());
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), Vec::new());
-        let result = apply_action(&state, PlayerAction::RezIce { ice_id: card_id.clone() });
+        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() });
 
         assert_eq!(result, Err(RulesError::CardNotInstalled { card: card_id }));
     }
@@ -676,7 +738,7 @@ mod tests {
             rezzed: true,
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
-        let result = apply_action(&state, PlayerAction::RezIce { ice_id: card_id.clone() });
+        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() });
 
         assert_eq!(result, Err(RulesError::AlreadyRezzed { card: card_id }));
     }
@@ -699,7 +761,7 @@ mod tests {
             position: 0,
         });
 
-        let (next, events) = apply_action(&state, PlayerAction::RezIce { ice_id: card_id.clone() })
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() })
             .expect("Corp should be able to rez ICE during the Runner's run");
 
         assert!(next.corp.installed[0].rezzed);
@@ -714,7 +776,7 @@ mod tests {
     #[test]
     fn runner_initiate_run_starts_run_and_spends_click() {
         let state = runner_state(3, 5, 3);
-        let (next, events) = apply_action(&state, PlayerAction::InitiateRun { server: ServerId::Hq })
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
             .expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(2));
@@ -742,7 +804,7 @@ mod tests {
     #[test]
     fn corp_turn_initiate_run_returns_not_your_turn() {
         let state = corp_state(3, 5);
-        let result = apply_action(&state, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let result = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq });
 
         assert_eq!(
             result,
@@ -762,7 +824,7 @@ mod tests {
             ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
-        let result = apply_action(&state, PlayerAction::InitiateRun { server: ServerId::RnD });
+        let result = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::RnD });
 
         assert_eq!(result, Err(RulesError::RunAlreadyInProgress));
     }
@@ -770,7 +832,7 @@ mod tests {
     #[test]
     fn runner_initiate_run_with_zero_clicks_returns_not_enough_clicks() {
         let state = runner_state(0, 5, 3);
-        let result = apply_action(&state, PlayerAction::InitiateRun { server: ServerId::Hq });
+        let result = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq });
 
         assert_eq!(
             result,
@@ -788,7 +850,7 @@ mod tests {
             position: 0,
         });
         let (next, events) =
-            apply_action(&state, PlayerAction::JackOut).expect("action should succeed");
+            apply_action(&state, &registry(), PlayerAction::JackOut).expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(3));
         assert_eq!(next.active_run, None);
@@ -798,7 +860,7 @@ mod tests {
     #[test]
     fn corp_turn_jack_out_returns_not_your_turn() {
         let state = corp_state(3, 5);
-        let result = apply_action(&state, PlayerAction::JackOut);
+        let result = apply_action(&state, &registry(), PlayerAction::JackOut);
 
         assert_eq!(
             result,
@@ -812,7 +874,7 @@ mod tests {
     #[test]
     fn runner_jack_out_with_no_active_run_returns_no_active_run() {
         let state = runner_state(3, 5, 3);
-        let result = apply_action(&state, PlayerAction::JackOut);
+        let result = apply_action(&state, &registry(), PlayerAction::JackOut);
 
         assert_eq!(result, Err(RulesError::NoActiveRun));
     }
@@ -826,7 +888,7 @@ mod tests {
             ice: Vec::new(),
             position: 0,
         });
-        let result = apply_action(&state, PlayerAction::JackOut);
+        let result = apply_action(&state, &registry(), PlayerAction::JackOut);
 
         assert_eq!(
             result,
@@ -845,9 +907,10 @@ mod tests {
         });
 
         let (after_jack_out, _) =
-            apply_action(&state, PlayerAction::JackOut).expect("jack out should succeed");
+            apply_action(&state, &registry(), PlayerAction::JackOut).expect("jack out should succeed");
         let (after_initiate, _) = apply_action(
             &after_jack_out,
+            &registry(),
             PlayerAction::InitiateRun { server: ServerId::RnD },
         )
         .expect("initiating a new run should succeed");
@@ -873,7 +936,7 @@ mod tests {
             position: 0,
         });
         let (next, events) =
-            apply_action(&state, PlayerAction::CompleteRun).expect("action should succeed");
+            apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(3));
         assert_eq!(next.active_run, None);
@@ -889,7 +952,7 @@ mod tests {
             ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
-        let result = apply_action(&state, PlayerAction::CompleteRun);
+        let result = apply_action(&state, &registry(), PlayerAction::CompleteRun);
 
         assert_eq!(
             result,
@@ -900,7 +963,7 @@ mod tests {
     #[test]
     fn corp_turn_complete_run_returns_not_your_turn() {
         let state = corp_state(3, 5);
-        let result = apply_action(&state, PlayerAction::CompleteRun);
+        let result = apply_action(&state, &registry(), PlayerAction::CompleteRun);
 
         assert_eq!(
             result,
@@ -914,7 +977,7 @@ mod tests {
     #[test]
     fn runner_complete_run_with_no_active_run_returns_no_active_run() {
         let state = runner_state(3, 5, 3);
-        let result = apply_action(&state, PlayerAction::CompleteRun);
+        let result = apply_action(&state, &registry(), PlayerAction::CompleteRun);
 
         assert_eq!(result, Err(RulesError::NoActiveRun));
     }
@@ -930,9 +993,10 @@ mod tests {
         });
 
         let (after_complete, _) =
-            apply_action(&state, PlayerAction::CompleteRun).expect("complete run should succeed");
+            apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("complete run should succeed");
         let (after_initiate, _) = apply_action(
             &after_complete,
+            &registry(),
             PlayerAction::InitiateRun { server: ServerId::RnD },
         )
         .expect("initiating a new run should succeed");
@@ -959,7 +1023,7 @@ mod tests {
             position: 0,
         });
         let (next, events) =
-            apply_action(&state, PlayerAction::CompleteRun).expect("action should succeed");
+            apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
 
         assert_eq!(next.active_run, None);
         assert_eq!(
@@ -978,7 +1042,7 @@ mod tests {
     fn corp_end_turn_via_apply_action_hands_control_to_runner() {
         let state = corp_state(0, 5);
         let (next, events) =
-            apply_action(&state, PlayerAction::EndTurn).expect("action should succeed");
+            apply_action(&state, &registry(), PlayerAction::EndTurn).expect("action should succeed");
 
         assert_eq!(next.phase, GamePhase::Action(Side::Runner));
         assert_eq!(next.runner.resources.clicks, Clicks(4));
@@ -1003,14 +1067,14 @@ mod tests {
 
         // Initiation -> ApproachIce
         let (state, events) =
-            apply_action(&state, PlayerAction::ContinueRun).expect("continue should succeed");
+            apply_action(&state, &registry(), PlayerAction::ContinueRun).expect("continue should succeed");
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::ApproachIce);
         assert_eq!(events, vec![GameEvent::IceApproached { server: ServerId::Hq, position: 0 }]);
 
         // ApproachIce -> EncounterIce
         let (state, events) =
-            apply_action(&state, PlayerAction::ContinueRun).expect("continue should succeed");
+            apply_action(&state, &registry(), PlayerAction::ContinueRun).expect("continue should succeed");
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::EncounterIce);
         assert_eq!(
@@ -1024,7 +1088,7 @@ mod tests {
 
         // EncounterIce (0 pending) -> Success
         let (state, events) =
-            apply_action(&state, PlayerAction::ContinueRun).expect("continue should succeed");
+            apply_action(&state, &registry(), PlayerAction::ContinueRun).expect("continue should succeed");
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success);
         assert_eq!(
@@ -1046,7 +1110,7 @@ mod tests {
             position: 0,
         });
 
-        let result = apply_action(&state, PlayerAction::ContinueRun);
+        let result = apply_action(&state, &registry(), PlayerAction::ContinueRun);
 
         assert_eq!(result, Err(RulesError::SubroutinesStillPending { pending: 1 }));
     }
@@ -1054,7 +1118,7 @@ mod tests {
     #[test]
     fn corp_turn_continue_run_returns_not_your_turn() {
         let state = corp_state(3, 5);
-        let result = apply_action(&state, PlayerAction::ContinueRun);
+        let result = apply_action(&state, &registry(), PlayerAction::ContinueRun);
 
         assert_eq!(
             result,
@@ -1068,7 +1132,7 @@ mod tests {
     #[test]
     fn runner_continue_run_with_no_active_run_returns_no_active_run() {
         let state = runner_state(3, 0, 0);
-        let result = apply_action(&state, PlayerAction::ContinueRun);
+        let result = apply_action(&state, &registry(), PlayerAction::ContinueRun);
 
         assert_eq!(result, Err(RulesError::NoActiveRun));
     }
@@ -1077,7 +1141,7 @@ mod tests {
     fn runner_play_event_removes_card_from_grip_and_spends_click() {
         let card_id = CardId("sure_gamble".to_string());
         let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
-        let (next, events) = apply_action(&state, PlayerAction::PlayEvent { card_id: card_id.clone() })
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::PlayEvent { card_id: card_id.clone() })
             .expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(2));
@@ -1098,7 +1162,7 @@ mod tests {
     fn corp_turn_play_event_returns_not_your_turn() {
         let card_id = CardId("sure_gamble".to_string());
         let state = corp_state(3, 5);
-        let result = apply_action(&state, PlayerAction::PlayEvent { card_id });
+        let result = apply_action(&state, &registry(), PlayerAction::PlayEvent { card_id });
 
         assert_eq!(
             result,
@@ -1113,7 +1177,7 @@ mod tests {
     fn runner_play_event_with_card_not_in_grip_returns_card_not_in_hand() {
         let card_id = CardId("sure_gamble".to_string());
         let state = runner_state_with_grip(3, 5, 0, Vec::new());
-        let result = apply_action(&state, PlayerAction::PlayEvent { card_id: card_id.clone() });
+        let result = apply_action(&state, &registry(), PlayerAction::PlayEvent { card_id: card_id.clone() });
 
         assert_eq!(
             result,
@@ -1125,7 +1189,7 @@ mod tests {
     fn runner_play_event_with_zero_clicks_returns_not_enough_clicks() {
         let card_id = CardId("sure_gamble".to_string());
         let state = runner_state_with_grip(0, 5, 0, vec![card_id.clone()]);
-        let result = apply_action(&state, PlayerAction::PlayEvent { card_id });
+        let result = apply_action(&state, &registry(), PlayerAction::PlayEvent { card_id });
 
         assert_eq!(
             result,
@@ -1139,6 +1203,7 @@ mod tests {
         let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
         let (next, events) = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallHardware { card_id: card_id.clone() },
         )
         .expect("action should succeed");
@@ -1159,7 +1224,7 @@ mod tests {
     fn corp_turn_install_hardware_returns_not_your_turn() {
         let card_id = CardId("clone_chip".to_string());
         let state = corp_state(3, 5);
-        let result = apply_action(&state, PlayerAction::InstallHardware { card_id });
+        let result = apply_action(&state, &registry(), PlayerAction::InstallHardware { card_id });
 
         assert_eq!(
             result,
@@ -1174,7 +1239,7 @@ mod tests {
     fn runner_install_hardware_with_card_not_in_grip_returns_card_not_in_hand() {
         let card_id = CardId("clone_chip".to_string());
         let state = runner_state_with_grip(3, 5, 0, Vec::new());
-        let result = apply_action(&state, PlayerAction::InstallHardware { card_id: card_id.clone() });
+        let result = apply_action(&state, &registry(), PlayerAction::InstallHardware { card_id: card_id.clone() });
 
         assert_eq!(
             result,
@@ -1188,6 +1253,7 @@ mod tests {
         let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
         let (next, events) = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
         )
         .expect("action should succeed");
@@ -1215,6 +1281,7 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallProgram { card_id, memory_cost: 3 },
         );
 
@@ -1233,6 +1300,7 @@ mod tests {
         let state = runner_state_with_grip(3, 5, 4, Vec::new());
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
         );
 
@@ -1248,6 +1316,7 @@ mod tests {
         let state = runner_state_with_grip(3, 5, 2, vec![card_id.clone()]);
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
         );
 
@@ -1272,6 +1341,7 @@ mod tests {
         });
         let (next, events) = apply_action(
             &state,
+            &registry(),
             PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
         )
         .expect("action should succeed");
@@ -1293,6 +1363,7 @@ mod tests {
         let state = corp_state(3, 5);
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
         );
 
@@ -1311,6 +1382,7 @@ mod tests {
         let state = runner_state(3, 0, 0);
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
         );
 
@@ -1329,6 +1401,7 @@ mod tests {
         });
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::BreakSubroutine { ice_id, subroutine_index: 1 },
         );
 
@@ -1347,6 +1420,7 @@ mod tests {
         });
         let result = apply_action(
             &state,
+            &registry(),
             PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
         );
 
@@ -1358,7 +1432,7 @@ mod tests {
         let mut state = corp_state(3, 5);
         state.phase = GamePhase::GameOver(Side::Runner);
 
-        let result = apply_action(&state, PlayerAction::GainCreditClick { side: Side::Corp });
+        let result = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp });
 
         assert_eq!(
             result,
@@ -1374,11 +1448,193 @@ mod tests {
         let mut state = corp_state(3, 5);
         state.phase = GamePhase::GameOver(Side::Runner);
 
-        let result = apply_action(&state, PlayerAction::EndTurn);
+        let result = apply_action(&state, &registry(), PlayerAction::EndTurn);
 
         assert_eq!(
             result,
             Err(RulesError::NotInActionPhase { actual: GamePhase::GameOver(Side::Runner) })
         );
+    }
+
+    /// A minimal `Card` whose only `abilities` entry is the given
+    /// `trigger`/`cost`/`effect` — everything about the card besides its id,
+    /// side, and that one ability is irrelevant to `activate_ability`'s
+    /// logic, so it's held to placeholder values.
+    fn test_card_with_ability(
+        card_id: &str,
+        side: Side,
+        trigger: Trigger,
+        cost: Option<Cost>,
+        effect: Effect,
+    ) -> Card {
+        Card {
+            id: CardId(card_id.to_string()),
+            title: card_id.to_string(),
+            side,
+            card_type: CardType::Program,
+            cost: 0,
+            triggers: Vec::new(),
+            abilities: vec![AbilityDef { trigger, cost, effect }],
+            trash_cost: None,
+            advancement_requirement: None,
+            agenda_points: None,
+            min_deck_size: None,
+        }
+    }
+
+    #[test]
+    fn runner_activate_ability_pumps_icebreaker_and_deducts_credits() {
+        let card_id = CardId("gordian_blade".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![card_id.clone()];
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice("ice_wall", 0, 0)],
+            position: 0,
+        });
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "gordian_blade",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::ModifyStrength(1),
+        ));
+
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.resources.credits, Credits(4));
+        assert_eq!(next.active_run.unwrap().ice[0].current_strength, 1);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
+                GameEvent::IceStrengthModified {
+                    card_id: CardId("ice_wall".to_string()),
+                    new_strength: 1,
+                    delta: 1,
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn corp_activate_ability_on_unrezzed_asset_returns_card_not_active() {
+        let card_id = CardId("pad_campaign".to_string());
+        let installed = vec![InstalledCard {
+            card: card_id.clone(),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: false,
+        }];
+        let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "pad_campaign",
+            Side::Corp,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+
+        let result = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        );
+
+        assert_eq!(result, Err(RulesError::CardNotActive { side: Side::Corp, card: card_id }));
+    }
+
+    #[test]
+    fn runner_activate_ability_with_insufficient_credits_propagates_pay_cost_error() {
+        let card_id = CardId("gordian_blade".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![card_id.clone()];
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice("ice_wall", 0, 0)],
+            position: 0,
+        });
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "gordian_blade",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::ModifyStrength(1),
+        ));
+
+        let result = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id, ability_index: 0 },
+        );
+
+        assert_eq!(
+            result,
+            Err(RulesError::NotEnoughCredits { side: Side::Runner, available: 0, requested: 1 })
+        );
+    }
+
+    #[test]
+    fn runner_activate_ability_with_invalid_index_returns_invalid_ability_index() {
+        let card_id = CardId("gordian_blade".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.rig = vec![card_id.clone()];
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "gordian_blade",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::ModifyStrength(1),
+        ));
+
+        let result = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id, ability_index: 1 },
+        );
+
+        assert_eq!(result, Err(RulesError::InvalidAbilityIndex(1)));
+    }
+
+    #[test]
+    fn runner_activate_ability_on_non_paid_trigger_returns_not_manually_activatable() {
+        let card_id = CardId("gordian_blade".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.rig = vec![card_id.clone()];
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "gordian_blade",
+            Side::Runner,
+            Trigger::OnEncounter,
+            Some(Cost::Credits(1)),
+            Effect::ModifyStrength(1),
+        ));
+
+        let result = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id, ability_index: 0 },
+        );
+
+        assert_eq!(result, Err(RulesError::AbilityNotManuallyActivatable(0)));
     }
 }

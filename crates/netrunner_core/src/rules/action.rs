@@ -103,4 +103,17 @@ pub enum PlayerAction {
     /// side's `GamePhase::StartOfTurn` — see `turn::discard_card`'s doc
     /// comment.
     DiscardCard { card_id: CardId },
+    /// Pay and resolve the `ability_index`-th ability (a `dsl::AbilityDef`,
+    /// looked up in the `CardRegistry`) on `card_id`. Symmetric — no `side`
+    /// field; the acting side is whichever side `GameState::phase` is
+    /// currently `Action(side)` for, same as `EndTurn`/`DiscardCard`. No
+    /// implicit click cost — a paid ability's `AbilityDef::cost` is whatever
+    /// the card prints, which may itself include `Cost::Clicks`. `card_id`
+    /// must be in an active zone for the acting side (Corp: installed *and*
+    /// rezzed; Runner: in the Rig) or this errors with
+    /// `RulesError::CardNotActive`. `ability_index` must address a
+    /// `Trigger::Paid` ability on that card's definition, or this errors with
+    /// `RulesError::InvalidAbilityIndex`/`RulesError::AbilityNotManuallyActivatable`
+    /// respectively.
+    ActivateAbility { card_id: CardId, ability_index: usize },
 }
