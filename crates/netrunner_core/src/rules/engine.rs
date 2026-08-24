@@ -188,11 +188,8 @@ fn initiate_run(
 fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
-    let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
-    let (next_run, events) = run::advance_run(active_run, RunAction::Continue)?;
-
     let mut next = state.clone();
-    next.active_run = Some(next_run);
+    let events = run::advance_run(&mut next, RunAction::Continue)?;
 
     Ok((next, events))
 }
@@ -200,10 +197,8 @@ fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesE
 fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
-    let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
-    let (_, events) = run::advance_run(active_run, RunAction::JackOut)?;
-
     let mut next = state.clone();
+    let events = run::advance_run(&mut next, RunAction::JackOut)?;
     next.active_run = None;
 
     Ok((next, events))
@@ -316,16 +311,12 @@ fn break_subroutine(
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
-    let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
 
     // `step_subroutine` (via `advance_run`) now does its own bounds/status
     // validation against `RunIce::subroutines`, so there's no need to
     // duplicate a pre-check here — just forward the index.
-    let (next_run, events) =
-        run::advance_run(active_run, RunAction::BreakSubroutine(subroutine_index))?;
-
     let mut next = state.clone();
-    next.active_run = Some(next_run);
+    let events = run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index))?;
 
     Ok((next, events))
 }

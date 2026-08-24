@@ -2,8 +2,8 @@ use crate::dsl::{CardTarget, Cost, Effect, StackZone};
 use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
-use crate::rules::run::RunPhase;
-use crate::rules::state::{Credits, GameState, Side};
+use crate::rules::run::{self, RunPhase, SubroutineStatus};
+use crate::rules::state::{Credits, GamePhase, GameState, Side};
 
 /// Applies a single, already-resolved `Effect` to `state` in place.
 ///
@@ -37,18 +37,9 @@ pub fn evaluate_effect(state: &mut GameState, effect: &Effect) -> Result<Vec<Gam
             Ok(damage::apply_damage(state, *damage_type, *amount))
         }
 
-        Effect::BreakSubroutine(_count) => {
-            // Still a documented no-op: this Effect variant has no notion
-            // of *which* subroutine to break (unlike RunAction::
-            // BreakSubroutine's index), so it can't drive
-            // RunIce::subroutines directly. Guarded on actually being in
-            // an ICE encounter (not just "any active run") for consistency
-            // with ModifyStrength below.
-            let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
-            if run.phase != RunPhase::EncounterIce {
-                return Err(RulesError::NotInEncounter);
-            }
-            Ok(Vec::new())
+        Effect::BreakSubroutine(index) => {
+            let (card_id, _effect) = run::transition_subroutine(state, *index, SubroutineStatus::Broken)?;
+            Ok(vec![GameEvent::SubroutineBroken { card_id, index: *index }])
         }
 
         Effect::ModifyStrength(delta) => {
@@ -111,6 +102,40 @@ pub fn evaluate_effect(state: &mut GameState, effect: &Effect) -> Result<Vec<Gam
 
         Effect::TrashCard(target) => trash_card(state, target),
     }
+}
+
+/// Fires every still-`Pending` subroutine on the ICE currently being
+/// encountered, lowest index first, stopping once none are left (or the
+/// run/game ends out from under the loop — e.g. an `Effect::EndTheRun`
+/// subroutine partway through). "Nothing left to resolve" is this
+/// function's normal terminal condition, not a failure: it only returns
+/// `Err` if `evaluate_effect` itself errors on one of the fired
+/// subroutines' effects, in which case that error propagates immediately
+/// and any already-fired subroutines stay fired (no rollback).
+pub fn resolve_unbroken_subroutines(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+
+    loop {
+        if matches!(state.phase, GamePhase::GameOver(_)) {
+            break;
+        }
+
+        // Immutable read only — ends before any mutation below, so it
+        // never overlaps with the `&mut state` passed to transition_subroutine/evaluate_effect.
+        let Some(index) = state.active_run.as_ref().and_then(|run| {
+            let ice = run.ice.get(run.position)?;
+            ice.subroutines.iter().position(|s| s.status == SubroutineStatus::Pending)
+        }) else {
+            break;
+        };
+
+        let (card_id, effect) = run::transition_subroutine(state, index, SubroutineStatus::Resolved)?;
+        let fired_events = evaluate_effect(state, &effect)?;
+        events.push(GameEvent::SubroutineFired { card_id, index, effect });
+        events.extend(fired_events);
+    }
+
+    Ok(events)
 }
 
 fn trash_card(state: &mut GameState, target: &CardTarget) -> Result<Vec<GameEvent>, RulesError> {
@@ -320,7 +345,28 @@ mod tests {
     }
 
     #[test]
-    fn break_subroutine_no_ops_while_encountering_ice() {
+    fn break_subroutine_breaks_the_targeted_pending_subroutine() {
+        let mut state = game_state();
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![test_ice("ice_wall", 0, 2)],
+            position: 0,
+        });
+
+        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(0)).unwrap();
+
+        assert_eq!(
+            events,
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+        );
+        let run = state.active_run.unwrap();
+        assert_eq!(run.ice[0].subroutines[0].status, SubroutineStatus::Broken);
+        assert_eq!(run.ice[0].subroutines[1].status, SubroutineStatus::Pending);
+    }
+
+    #[test]
+    fn break_subroutine_out_of_range_index_errors() {
         let mut state = game_state();
         state.active_run = Some(RunState {
             server: ServerId::Hq,
@@ -329,15 +375,31 @@ mod tests {
             position: 0,
         });
 
-        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(1)).unwrap();
-        assert!(events.is_empty());
+        assert_eq!(
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(1)),
+            Err(RulesError::InvalidSubroutineIndex(1))
+        );
+    }
+
+    #[test]
+    fn break_subroutine_already_broken_errors() {
+        let mut state = game_state();
+        let mut ice = test_ice("ice_wall", 0, 1);
+        ice.subroutines[0].status = SubroutineStatus::Broken;
+        state.active_run =
+            Some(RunState { server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 });
+
+        assert_eq!(
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0)),
+            Err(RulesError::SubroutineAlreadyHandled)
+        );
     }
 
     #[test]
     fn break_subroutine_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(1)),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0)),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -349,9 +411,101 @@ mod tests {
             Some(RunState { server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(1)),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0)),
             Err(RulesError::NotInEncounter)
         );
+    }
+
+    #[test]
+    fn resolve_unbroken_subroutines_resolves_each_pending_subroutine_in_order() {
+        let mut state = game_state();
+        let mut ice = test_ice("ice_wall", 0, 2);
+        ice.subroutines[0].definition.effect = Effect::GiveTags(2);
+        ice.subroutines[1].definition.effect = Effect::GainCredits(Side::Corp, 3);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![ice],
+            position: 0,
+        });
+
+        let events = resolve_unbroken_subroutines(&mut state).unwrap();
+
+        assert_eq!(state.runner.tags, 2);
+        assert_eq!(state.corp.resources.credits, Credits(8));
+
+        let run = state.active_run.unwrap();
+        assert_eq!(run.ice[0].subroutines[0].status, SubroutineStatus::Resolved);
+        assert_eq!(run.ice[0].subroutines[1].status, SubroutineStatus::Resolved);
+
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::SubroutineFired {
+                    card_id: CardId("ice_wall".to_string()),
+                    index: 0,
+                    effect: Effect::GiveTags(2),
+                },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 2 },
+                GameEvent::SubroutineFired {
+                    card_id: CardId("ice_wall".to_string()),
+                    index: 1,
+                    effect: Effect::GainCredits(Side::Corp, 3),
+                },
+                GameEvent::CreditsGained { side: Side::Corp, amount: 3 },
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_unbroken_subroutines_stops_at_end_the_run() {
+        let mut state = game_state();
+        let mut ice = test_ice("ice_wall", 0, 2);
+        ice.subroutines[0].definition.effect = Effect::EndTheRun;
+        ice.subroutines[1].definition.effect = Effect::GiveTags(5);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![ice],
+            position: 0,
+        });
+
+        let events = resolve_unbroken_subroutines(&mut state).unwrap();
+
+        assert!(state.active_run.is_none());
+        assert_eq!(state.runner.tags, 0);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::SubroutineFired {
+                    card_id: CardId("ice_wall".to_string()),
+                    index: 0,
+                    effect: Effect::EndTheRun,
+                },
+                GameEvent::RunEndedByEffect { server: ServerId::Hq },
+            ]
+        );
+    }
+
+    #[test]
+    fn resolve_unbroken_subroutines_skips_already_handled_subroutines() {
+        let mut state = game_state();
+        let mut ice = test_ice("ice_wall", 0, 2);
+        ice.subroutines[0].status = SubroutineStatus::Broken;
+        ice.subroutines[1].definition.effect = Effect::GiveTags(1);
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![ice],
+            position: 0,
+        });
+
+        let events = resolve_unbroken_subroutines(&mut state).unwrap();
+
+        assert_eq!(events.len(), 2);
+        let run = state.active_run.unwrap();
+        assert_eq!(run.ice[0].subroutines[0].status, SubroutineStatus::Broken);
+        assert_eq!(run.ice[0].subroutines[1].status, SubroutineStatus::Resolved);
     }
 
     #[test]

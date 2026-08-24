@@ -52,8 +52,11 @@ pub enum Effect {
     /// same as `apply_damage` itself.
     DealDamage(DamageType, usize),
     /// Never side-ambiguous — always targets whatever ICE the current run
-    /// is encountering.
-    BreakSubroutine(u32),
+    /// is encountering. Unlike `RunAction::BreakSubroutine`'s index (chosen
+    /// by the player breaking a subroutine manually), this `usize` is the
+    /// index of the specific subroutine this effect itself is wired to
+    /// break — a target, not a count.
+    BreakSubroutine(usize),
     ModifyStrength(i32),
     /// `Side`-explicit for the same reason as `GainCredits`.
     DrawCards(Side, u32),

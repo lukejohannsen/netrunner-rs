@@ -10,7 +10,7 @@ mod state;
 mod turn;
 mod win;
 
-pub use ability::{evaluate_effect, pay_cost};
+pub use ability::{evaluate_effect, pay_cost, resolve_unbroken_subroutines};
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use damage::apply_damage;
 pub use engine::apply_action;
