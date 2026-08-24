@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, Cost, Trigger};
+use crate::dsl::{CardId, CardType, Cost, IceType, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::error::RulesError;
@@ -262,6 +262,12 @@ fn initiate_run(
 fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> RunIce {
     let card_def = registry.get(&installed.card);
     let current_strength = card_def.and_then(|c| c.strength).unwrap_or(0);
+    let ice_type = card_def
+        .and_then(|c| match &c.card_type {
+            CardType::Ice(ice_type) => Some(*ice_type),
+            _ => None,
+        })
+        .unwrap_or(IceType::Barrier);
     let subroutines = card_def
         .map(|c| {
             c.subroutines
@@ -276,7 +282,7 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> RunIce {
         })
         .unwrap_or_default();
 
-    RunIce { card_id: installed.card.clone(), current_strength, subroutines, rezzed: installed.rezzed }
+    RunIce { card_id: installed.card.clone(), current_strength, ice_type, subroutines, rezzed: installed.rezzed }
 }
 
 fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
@@ -660,9 +666,20 @@ mod tests {
     /// subroutines — identity/effect content doesn't matter for tests using
     /// this, only status transitions and counts do.
     fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
+        test_ice_of_type(card_id, strength, subroutine_count, rezzed, IceType::Barrier)
+    }
+
+    fn test_ice_of_type(
+        card_id: &str,
+        strength: i32,
+        subroutine_count: usize,
+        rezzed: bool,
+        ice_type: IceType,
+    ) -> RunIce {
         RunIce {
             card_id: CardId(card_id.to_string()),
             current_strength: strength,
+            ice_type,
             subroutines: (0..subroutine_count)
                 .map(|id| EncounteredSubroutine {
                     id,
@@ -1254,6 +1271,7 @@ mod tests {
             vec![RunIce {
                 card_id: CardId("mystery_ice".to_string()),
                 current_strength: 0,
+                ice_type: IceType::Barrier,
                 subroutines: Vec::new(),
                 rezzed: false,
             }]
@@ -2345,7 +2363,10 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+            Effect::BreakSubroutines {
+                count: SubroutineBreakCount::Fixed(1),
+                restrict_to: Some(IceType::Barrier),
+            },
         ));
 
         let (next, events) = apply_action(
@@ -2386,7 +2407,10 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+            Effect::BreakSubroutines {
+                count: SubroutineBreakCount::Fixed(1),
+                restrict_to: Some(IceType::Barrier),
+            },
         ));
 
         let result = apply_action(
@@ -2409,6 +2433,120 @@ mod tests {
         // paying the cost is rolled back along with everything else when
         // the effect itself errors afterward.
         assert_eq!(state.runner.resources.credits, Credits(5));
+    }
+
+    #[test]
+    fn runner_activate_ability_corroder_breaks_subroutine_on_matching_barrier_ice() {
+        let card_id = CardId("corroder".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![installed_runner_card("corroder", 2)];
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
+            position: 0,
+         jack_out_permitted: true,});
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "corroder",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::BreakSubroutines {
+                count: SubroutineBreakCount::Fixed(1),
+                restrict_to: Some(IceType::Barrier),
+            },
+        ));
+
+        let (next, _events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        )
+        .expect("Corroder should break a subroutine on Barrier ICE");
+
+        assert_eq!(next.active_run.unwrap().ice[0].subroutines[0].status, SubroutineStatus::Broken);
+    }
+
+    #[test]
+    fn runner_activate_ability_corroder_fails_and_rolls_back_cost_against_wrong_subtype() {
+        for wrong_type in [IceType::CodeGate, IceType::Sentry] {
+            let card_id = CardId("corroder".to_string());
+            let mut state = runner_state(3, 0, 0);
+            state.runner.resources.credits = Credits(5);
+            state.runner.rig = vec![installed_runner_card("corroder", 2)];
+            state.active_run = Some(RunState { access_state: None,
+                server: ServerId::Hq,
+                phase: RunPhase::EncounterIce,
+                ice: vec![test_ice_of_type("some_ice", 2, 1, true, wrong_type)],
+                position: 0,
+             jack_out_permitted: true,});
+
+            let mut registry = CardRegistry::new();
+            registry.insert(test_card_with_ability(
+                "corroder",
+                Side::Runner,
+                Trigger::Paid,
+                Some(Cost::Credits(1)),
+                Effect::BreakSubroutines {
+                    count: SubroutineBreakCount::Fixed(1),
+                    restrict_to: Some(IceType::Barrier),
+                },
+            ));
+
+            let result = apply_action(
+                &state,
+                &registry,
+                PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            );
+
+            assert_eq!(
+                result,
+                Err(RulesError::InvalidBreakerSubtype {
+                    breaker: card_id,
+                    ice: CardId("some_ice".to_string()),
+                    expected: IceType::Barrier,
+                })
+            );
+            // Same whole-action atomicity as the strength-too-low case.
+            assert_eq!(state.runner.resources.credits, Credits(5));
+        }
+    }
+
+    #[test]
+    fn runner_activate_ability_universal_breaker_breaks_subroutines_on_any_ice_type() {
+        for ice_type in [IceType::Barrier, IceType::CodeGate, IceType::Sentry] {
+            let card_id = CardId("mimic".to_string());
+            let mut state = runner_state(3, 0, 0);
+            state.runner.resources.credits = Credits(5);
+            state.runner.rig = vec![installed_runner_card("mimic", 2)];
+            state.active_run = Some(RunState { access_state: None,
+                server: ServerId::Hq,
+                phase: RunPhase::EncounterIce,
+                ice: vec![test_ice_of_type("some_ice", 2, 1, true, ice_type)],
+                position: 0,
+             jack_out_permitted: true,});
+
+            let mut registry = CardRegistry::new();
+            registry.insert(test_card_with_ability(
+                "mimic",
+                Side::Runner,
+                Trigger::Paid,
+                Some(Cost::Credits(1)),
+                Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
+            ));
+
+            let (next, _events) = apply_action(
+                &state,
+                &registry,
+                PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            )
+            .expect("a universal breaker should break subroutines regardless of ICE subtype");
+
+            assert_eq!(next.active_run.unwrap().ice[0].subroutines[0].status, SubroutineStatus::Broken);
+        }
     }
 
     #[test]

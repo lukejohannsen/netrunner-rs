@@ -205,7 +205,7 @@ fn step_subroutine(state: &mut GameState, index: usize, resolve: bool) -> Result
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{CardId, Effect, SubroutineDef};
+    use crate::dsl::{CardId, Effect, IceType, SubroutineDef};
     use crate::rules::run::state::{EncounteredSubroutine, RunState, ServerId};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, Credits, GamePhase, MemoryUnits, PlayerResources,
@@ -276,6 +276,7 @@ mod tests {
         RunIce {
             card_id: CardId(card_id.to_string()),
             current_strength: strength,
+            ice_type: IceType::Barrier,
             subroutines: (0..subroutine_count)
                 .map(|id| EncounteredSubroutine {
                     id,

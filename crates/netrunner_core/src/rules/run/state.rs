@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardId, Cost, SubroutineDef};
+use crate::dsl::{CardId, Cost, IceType, SubroutineDef};
 
 /// Which Corp zone/server a run targets. Central servers are singletons;
 /// Remote servers are numbered since multiple can exist simultaneously.
@@ -67,6 +67,13 @@ pub struct EncounteredSubroutine {
 pub struct RunIce {
     pub card_id: CardId,
     pub current_strength: i32,
+    /// This ICE's subtype, seeded from `Card::card_type`'s `CardType::Ice(_)`
+    /// at `engine::build_run_ice` — the data `Effect::BreakSubroutines`'s
+    /// `restrict_to` gate compares against. Defaults to `IceType::Barrier`
+    /// for an unregistered card (same leniency as `current_strength`'s `0`
+    /// default), which is harmless since such ICE has no strength/
+    /// subroutines to break anyway.
+    pub ice_type: IceType,
     pub subroutines: Vec<EncounteredSubroutine>,
     /// Mirrors `InstalledCard::rezzed` at the moment this `RunIce` was
     /// built (`initiate_run`) or later flipped (`rez_ice`, when rezzing

@@ -188,7 +188,10 @@ mod tests {
                 AbilityDef {
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
-                    effect: Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+                    effect: Effect::BreakSubroutines {
+                        count: SubroutineBreakCount::Fixed(1),
+                        restrict_to: Some(IceType::Barrier),
+                    },
                 },
             ]
         );

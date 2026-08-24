@@ -1,6 +1,6 @@
 use thiserror::Error;
 
-use crate::dsl::CardId;
+use crate::dsl::{CardId, IceType};
 use crate::rules::run::RunPhase;
 use crate::rules::state::{GamePhase, Side};
 
@@ -121,5 +121,12 @@ pub enum RulesError {
         breaker_strength: i32,
         ice: CardId,
         ice_strength: i32,
+    },
+
+    #[error("breaker {breaker:?} cannot break subroutines on {ice:?}: requires {expected:?}")]
+    InvalidBreakerSubtype {
+        breaker: CardId,
+        ice: CardId,
+        expected: IceType,
     },
 }

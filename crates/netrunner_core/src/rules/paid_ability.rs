@@ -160,7 +160,7 @@ fn close_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{CardId, Effect, SubroutineDef};
+    use crate::dsl::{CardId, Effect, IceType, SubroutineDef};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, CorpState, MemoryUnits, PlayerResources, RunnerState,
@@ -203,6 +203,7 @@ mod tests {
         RunIce {
             card_id: CardId("ice_wall".to_string()),
             current_strength: 0,
+            ice_type: IceType::Barrier,
             subroutines,
             rezzed,
         }

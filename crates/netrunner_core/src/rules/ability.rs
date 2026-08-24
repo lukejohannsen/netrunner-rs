@@ -134,7 +134,7 @@ pub fn evaluate_effect(
             }])
         }
 
-        Effect::BreakSubroutines { count } => {
+        Effect::BreakSubroutines { count, restrict_to } => {
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
             if run.phase != RunPhase::EncounterIce {
@@ -151,7 +151,17 @@ pub fn evaluate_effect(
 
             let run = state.active_run.as_ref().unwrap();
             let ice = &run.ice[run.position];
-            let (ice_card_id, ice_strength) = (ice.card_id.clone(), ice.current_strength);
+            let (ice_card_id, ice_strength, ice_type) =
+                (ice.card_id.clone(), ice.current_strength, ice.ice_type);
+            if let Some(expected) = restrict_to
+                && *expected != ice_type
+            {
+                return Err(RulesError::InvalidBreakerSubtype {
+                    breaker: acting.clone(),
+                    ice: ice_card_id,
+                    expected: *expected,
+                });
+            }
             if breaker_strength < ice_strength {
                 return Err(RulesError::BreakerStrengthTooLow {
                     breaker: acting.clone(),
@@ -333,7 +343,7 @@ pub fn pay_cost(state: &mut GameState, side: Side, cost: &Cost) -> Result<Vec<Ga
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardId, CardType, DamageType, SubroutineDef, TriggeredEffect};
+    use crate::dsl::{Card, CardId, CardType, DamageType, IceType, SubroutineDef, TriggeredEffect};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase as RP, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, GamePhase, InstallSlot, InstalledCard, InstalledRunnerCard,
@@ -447,9 +457,20 @@ mod tests {
     }
 
     fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
+        test_ice_of_type(card_id, strength, subroutine_count, rezzed, IceType::Barrier)
+    }
+
+    fn test_ice_of_type(
+        card_id: &str,
+        strength: i32,
+        subroutine_count: usize,
+        rezzed: bool,
+        ice_type: IceType,
+    ) -> RunIce {
         RunIce {
             card_id: CardId(card_id.to_string()),
             current_strength: strength,
+            ice_type,
             subroutines: (0..subroutine_count)
                 .map(|id| EncounteredSubroutine {
                     id,
@@ -1034,7 +1055,7 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2) },
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2), restrict_to: None },
             Some(&acting),
         )
         .unwrap();
@@ -1059,7 +1080,7 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2) },
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2), restrict_to: None },
             Some(&acting),
         )
         .unwrap();
@@ -1076,7 +1097,7 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::All },
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
             Some(&acting),
         )
         .unwrap();
@@ -1101,7 +1122,7 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BreakSubroutines { count: SubroutineBreakCount::All },
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
                 Some(&CardId("corroder".to_string())),
             ),
             Err(RulesError::NotInEncounter)
@@ -1116,7 +1137,7 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
                 Some(&acting),
             ),
             Err(RulesError::BreakerStrengthTooLow {
@@ -1139,7 +1160,7 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
                 Some(&acting),
             ),
             Err(RulesError::BreakerStrengthTooLow {
@@ -1159,7 +1180,7 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) },
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
             Some(&acting),
         )
         .unwrap();
@@ -1180,11 +1201,98 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::All },
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
             Some(&acting),
         )
         .unwrap();
 
         assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1 }]);
+    }
+
+    fn ice_encounter_state_of_type(
+        rig: Vec<InstalledRunnerCard>,
+        ice_strength: i32,
+        subroutine_count: usize,
+        ice_type: IceType,
+    ) -> GameState {
+        let mut state = game_state();
+        state.runner.rig = rig;
+        state.active_run = Some(RunState {
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![test_ice_of_type("ice_wall", ice_strength, subroutine_count, true, ice_type)],
+            position: 0,
+            jack_out_permitted: true,
+        });
+        state
+    }
+
+    #[test]
+    fn break_subroutines_restrict_to_matching_ice_type_succeeds() {
+        let mut state =
+            ice_encounter_state_of_type(vec![installed_runner_card("corroder", 2)], 2, 1, IceType::Barrier);
+        let acting = CardId("corroder".to_string());
+
+        let events = evaluate_effect(
+            &mut state,
+            &Effect::BreakSubroutines {
+                count: SubroutineBreakCount::Fixed(1),
+                restrict_to: Some(IceType::Barrier),
+            },
+            Some(&acting),
+        )
+        .unwrap();
+
+        assert_eq!(
+            events,
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+        );
+    }
+
+    #[test]
+    fn break_subroutines_restrict_to_mismatched_ice_type_errors_invalid_breaker_subtype() {
+        let mut state =
+            ice_encounter_state_of_type(vec![installed_runner_card("corroder", 2)], 2, 1, IceType::CodeGate);
+        let acting = CardId("corroder".to_string());
+
+        assert_eq!(
+            evaluate_effect(
+                &mut state,
+                &Effect::BreakSubroutines {
+                    count: SubroutineBreakCount::Fixed(1),
+                    restrict_to: Some(IceType::Barrier),
+                },
+                Some(&acting),
+            ),
+            Err(RulesError::InvalidBreakerSubtype {
+                breaker: acting,
+                ice: CardId("ice_wall".to_string()),
+                expected: IceType::Barrier,
+            })
+        );
+        let ice = &state.active_run.unwrap().ice[0];
+        assert_eq!(ice.subroutines[0].status, SubroutineStatus::Pending);
+    }
+
+    #[test]
+    fn break_subroutines_with_no_restrict_to_breaks_any_ice_type() {
+        for ice_type in [IceType::Barrier, IceType::CodeGate, IceType::Sentry] {
+            let mut state =
+                ice_encounter_state_of_type(vec![installed_runner_card("mimic", 2)], 2, 1, ice_type);
+            let acting = CardId("mimic".to_string());
+
+            let events = evaluate_effect(
+                &mut state,
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
+                Some(&acting),
+            )
+            .unwrap();
+
+            assert_eq!(
+                events,
+                vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+            );
+        }
     }
 }

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::card::CardId;
+use crate::dsl::card::{CardId, IceType};
 use crate::rules::{ServerId, Side};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -80,9 +80,15 @@ pub enum Effect {
     /// Breaks pending subroutines on the ICE currently being encountered,
     /// gated on the acting rig card's `effective_strength()` meeting the
     /// ICE's `current_strength` (`RulesError::BreakerStrengthTooLow`
-    /// otherwise). Does not restrict by ICE subtype (e.g. Barrier-only) —
-    /// that's a separate, not-yet-built primitive.
-    BreakSubroutines { count: SubroutineBreakCount },
+    /// otherwise). `restrict_to`, if set, further gates this on the ICE's
+    /// subtype matching (`RulesError::InvalidBreakerSubtype` otherwise) —
+    /// e.g. Corroder's `Some(IceType::Barrier)`. `None` is a universal
+    /// breaker: no subtype restriction.
+    BreakSubroutines {
+        count: SubroutineBreakCount,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        restrict_to: Option<IceType>,
+    },
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -121,14 +127,36 @@ mod tests {
         assert_eq!(turn_boost_json, r#"{"BoostStrength":{"amount":2,"duration":"Turn"}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&turn_boost_json).unwrap(), turn_boost);
 
-        let fixed = Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1) };
+        let fixed = Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None };
         let fixed_json = serde_json::to_string(&fixed).unwrap();
         assert_eq!(fixed_json, r#"{"BreakSubroutines":{"count":{"Fixed":1}}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&fixed_json).unwrap(), fixed);
 
-        let all = Effect::BreakSubroutines { count: SubroutineBreakCount::All };
+        let all = Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None };
         let all_json = serde_json::to_string(&all).unwrap();
         assert_eq!(all_json, r#"{"BreakSubroutines":{"count":"All"}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&all_json).unwrap(), all);
+    }
+
+    #[test]
+    fn break_subroutines_restrict_to_round_trips_through_json() {
+        let restricted = Effect::BreakSubroutines {
+            count: SubroutineBreakCount::Fixed(1),
+            restrict_to: Some(crate::dsl::card::IceType::Barrier),
+        };
+        let restricted_json = serde_json::to_string(&restricted).unwrap();
+        assert_eq!(
+            restricted_json,
+            r#"{"BreakSubroutines":{"count":{"Fixed":1},"restrict_to":"Barrier"}}"#
+        );
+        assert_eq!(serde_json::from_str::<Effect>(&restricted_json).unwrap(), restricted);
+
+        // Absent restrict_to key still parses fine (backward-compatible with
+        // older JSON that predates this field).
+        let no_restrict_json = r#"{"BreakSubroutines":{"count":{"Fixed":1}}}"#;
+        assert_eq!(
+            serde_json::from_str::<Effect>(no_restrict_json).unwrap(),
+            Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }
+        );
     }
 }
