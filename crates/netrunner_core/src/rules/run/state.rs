@@ -72,8 +72,9 @@ pub struct RunIce {
     /// built (`initiate_run`) or later flipped (`rez_ice`, when rezzing
     /// during this ICE's `ApproachIce` window). Gates
     /// `run::engine::continue_run`'s `ApproachIce` transition: unrezzed
-    /// ICE presents no subroutines and has no effect on the run, per NISEI
-    /// rules, so it auto-passes straight through instead of entering
+    /// ICE presents no subroutines and has no effect on the run, per
+    /// Netrunner/Null Signal Games rules, so it auto-passes straight
+    /// through instead of entering
     /// `EncounterIce`.
     pub rezzed: bool,
 }
@@ -134,4 +135,15 @@ pub struct RunState {
     pub ice: Vec<RunIce>,
     pub position: usize,
     pub access_state: Option<AccessState>,
+    /// Whether `PlayerAction::JackOut` is currently legal
+    /// (Netrunner/Null Signal Games-style jack-out windows). `false` while
+    /// initially approaching the outermost
+    /// ICE (`initiate_run`'s starting value) or while committed to an
+    /// encounter/subroutine resolution (`ApproachIce --Continue-->
+    /// EncounterIce` closes it); `true` once an ICE has been passed —
+    /// including an unrezzed one, which counts as "passed" — or once the
+    /// server approach step is reached with no ICE remaining (both via
+    /// `run::engine::pass_current_ice`, the single place an ICE gets left
+    /// behind).
+    pub jack_out_permitted: bool,
 }

@@ -225,6 +225,10 @@ fn initiate_run(
         phase: RunPhase::Initiation,
         ice,
         position: 0,
+        // Netrunner/Null Signal Games jack-out rule 1: closed until an ICE is passed (or the
+        // server approach step is reached with none installed) — see
+        // `run::engine::pass_current_ice`/`continue_run`'s `Initiation` arm.
+        jack_out_permitted: false,
     });
 
     Ok((
@@ -979,7 +983,7 @@ mod tests {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, false)],
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         let (next, events) = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() })
             .expect("Corp should be able to rez ICE during the Runner's run");
@@ -1021,7 +1025,7 @@ mod tests {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("outer_ice", 0, 1, false), test_ice("inner_ice", 0, 1, false)],
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         let (next, _events) = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: inner.clone() })
             .expect("Corp should be able to pre-emptively rez ICE the run hasn't reached yet");
@@ -1046,6 +1050,7 @@ mod tests {
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
                 position: 0,
+                jack_out_permitted: false,
             })
         );
         assert_eq!(
@@ -1182,7 +1187,7 @@ mod tests {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
         let result = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::RnD });
 
         assert_eq!(result, Err(RulesError::RunAlreadyInProgress));
@@ -1207,7 +1212,7 @@ mod tests {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
         let (next, events) =
             apply_action(&state, &registry(), PlayerAction::JackOut).expect("action should succeed");
 
@@ -1239,19 +1244,60 @@ mod tests {
     }
 
     #[test]
+    fn runner_jack_out_during_initial_approach_returns_illegal_jack_out_window() {
+        let installed = vec![InstalledCard {
+            advancement_tokens: 0,
+            card: CardId("ice_wall".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: false,
+        }];
+        let mut state = corp_state_with_hq_and_installed(0, 0, Vec::new(), installed);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = runner_state(3, 5, 3).runner;
+
+        let (after_initiate, _) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
+            .expect("initiate run should succeed");
+        let result = apply_action(&after_initiate, &registry(), PlayerAction::JackOut);
+
+        assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::Initiation }));
+        assert!(after_initiate.active_run.is_some());
+    }
+
+    #[test]
+    fn runner_jack_out_succeeds_on_ice_less_server_before_access() {
+        let state = runner_state(3, 5, 3);
+
+        let (after_initiate, _) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
+            .expect("initiate run should succeed");
+        let (after_continue, _) = apply_action(&after_initiate, &registry(), PlayerAction::ContinueRun)
+            .expect("continue run should succeed");
+        assert_eq!(after_continue.active_run.as_ref().unwrap().phase, RunPhase::Success);
+
+        let (after_jack_out, events) = apply_action(&after_continue, &registry(), PlayerAction::JackOut)
+            .expect("jack out should succeed at the server approach step");
+
+        assert_eq!(after_jack_out.active_run, None);
+        assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }]);
+    }
+
+    #[test]
     fn runner_jack_out_on_concluded_run_propagates_run_already_concluded() {
+        // `RunPhase::AccessingCard` — genuinely terminal for `JackOut`,
+        // unlike `RunPhase::Success` (legal there — the "approach server"
+        // jack-out window; see `runner_jack_out_succeeds_on_ice_less_server_before_access`).
         let mut state = runner_state(3, 5, 3);
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
-            phase: RunPhase::Success,
+            phase: RunPhase::AccessingCard,
             ice: Vec::new(),
             position: 0,
-        });
+         jack_out_permitted: true,});
         let result = apply_action(&state, &registry(), PlayerAction::JackOut);
 
         assert_eq!(
             result,
-            Err(RulesError::RunAlreadyConcluded { phase: RunPhase::Success })
+            Err(RulesError::RunAlreadyConcluded { phase: RunPhase::AccessingCard })
         );
     }
 
@@ -1263,7 +1309,7 @@ mod tests {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         let (after_jack_out, _) =
             apply_action(&state, &registry(), PlayerAction::JackOut).expect("jack out should succeed");
@@ -1281,6 +1327,10 @@ mod tests {
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
                 position: 0,
+                // `initiate_run` always starts a fresh run with the
+                // jack-out window closed (Netrunner/Null Signal Games rule 1) — it only opens
+                // via `continue_run`, which this test never calls.
+                jack_out_permitted: false,
             })
         );
     }
@@ -1293,7 +1343,7 @@ mod tests {
             phase: RunPhase::Success,
             ice: Vec::new(),
             position: 0,
-        });
+         jack_out_permitted: true,});
         let (next, events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
 
@@ -1310,7 +1360,7 @@ mod tests {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
         let result = apply_action(&state, &registry(), PlayerAction::CompleteRun);
 
         assert_eq!(
@@ -1349,7 +1399,7 @@ mod tests {
             phase: RunPhase::Success,
             ice: Vec::new(),
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         let (after_complete, _) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("complete run should succeed");
@@ -1367,6 +1417,10 @@ mod tests {
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
                 position: 0,
+                // `initiate_run` always starts a fresh run with the
+                // jack-out window closed (Netrunner/Null Signal Games rule 1) — it only opens
+                // via `continue_run`, which this test never calls.
+                jack_out_permitted: false,
             })
         );
     }
@@ -1381,7 +1435,7 @@ mod tests {
             phase: RunPhase::Success,
             ice: Vec::new(),
             position: 0,
-        });
+         jack_out_permitted: true,});
         let (next, events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
 
@@ -1414,7 +1468,7 @@ mod tests {
                 phase: RunPhase::AccessingCard,
                 ice: Vec::new(),
                 position: 0,
-            })
+             jack_out_permitted: true,})
         );
     }
 
@@ -1427,7 +1481,7 @@ mod tests {
             phase: RunPhase::Success,
             ice: Vec::new(),
             position: 0,
-        });
+         jack_out_permitted: true,});
         let (next, events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
 
@@ -1460,7 +1514,7 @@ mod tests {
             phase: RunPhase::Initiation,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         // Initiation -> ApproachIce
         let (state, events) =
@@ -1505,7 +1559,7 @@ mod tests {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         let result = apply_action(&state, &registry(), PlayerAction::ContinueRun);
 
@@ -1765,7 +1819,7 @@ mod tests {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 2, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
         let (next, events) = apply_action(
             &state,
             &registry(),
@@ -1825,7 +1879,7 @@ mod tests {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
         let result = apply_action(
             &state,
             &registry(),
@@ -1844,7 +1898,7 @@ mod tests {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
         let result = apply_action(
             &state,
             &registry(),
@@ -1952,7 +2006,7 @@ mod tests {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -2027,7 +2081,7 @@ mod tests {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(

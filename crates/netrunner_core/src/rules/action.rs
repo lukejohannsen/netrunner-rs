@@ -46,8 +46,15 @@ pub enum PlayerAction {
     /// `RulesError::SubroutinesStillPending` when subroutines remain on the
     /// ICE currently being encountered.
     ContinueRun,
-    /// Voluntarily end the active run. Runner-only, no click cost. Delegates to
-    /// `run::advance_run`'s `RunAction::JackOut`.
+    /// Voluntarily end the active run. Runner-only, no click cost. Delegates
+    /// to `run::advance_run`'s `RunAction::JackOut`, legal only while
+    /// `RunState::jack_out_permitted` is `true` — Netrunner/Null Signal
+    /// Games-style jack-out windows: closed while initially approaching the
+    /// outermost ICE, closed
+    /// while committed to an encounter/subroutine resolution, and open once
+    /// an ICE has been passed (even an unrezzed one) or the server approach
+    /// step is reached (`RunPhase::Success`) with no ICE remaining.
+    /// `RulesError::IllegalJackOutWindow` otherwise.
     JackOut,
     /// Close out a run that has already reached `RunPhase::Success`, clearing
     /// `active_run` so a new run can be initiated. Runner-only, no click cost —
@@ -58,9 +65,11 @@ pub enum PlayerAction {
     /// manipulates `GameState.active_run` directly instead. Requires `active_run`
     /// to be `Some` (`RulesError::NoActiveRun` otherwise) with
     /// `phase == RunPhase::Success` (`RulesError::RunNotConcluded` otherwise).
-    /// `JackOut` remains the way to end a run before `Success`; once `Success` is
-    /// reached, `JackOut` continues to be rejected via `RunAlreadyConcluded`, and
-    /// `CompleteRun` is the only path out.
+    /// `JackOut` is legal at `Success` too (the "approach server" jack-out
+    /// window) — the Runner can still bail right up until `CompleteRun` is
+    /// actually called; once it is, the run has moved on to
+    /// `RunPhase::AccessingCard`, where `JackOut` is rejected via
+    /// `RulesError::RunAlreadyConcluded`.
     CompleteRun,
     /// Spend 1 click, move `card_id` out of the Grip and resolve it. Runner-only.
     /// No credit cost yet — like `RezIce`, cost is data-driven per-card and no

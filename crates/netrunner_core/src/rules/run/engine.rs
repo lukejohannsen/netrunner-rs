@@ -24,6 +24,12 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
     let mut events = vec![GameEvent::IcePassed { server, position: position as u32 }];
     run.position = position + 1;
     run.phase = phase_for_position(&run.ice, run.position);
+    // An ICE has now been left behind — including an unrezzed one, which
+    // still counts as "passed" — opening the jack-out window whether the
+    // Runner is about to approach the next ICE or has reached the server
+    // approach step with none remaining (Netrunner/Null Signal Games
+    // jack-out rules 2 & 3).
+    run.jack_out_permitted = true;
     match run.phase {
         RunPhase::ApproachIce => {
             events.push(GameEvent::IceApproached { server, position: run.position as u32 })
@@ -36,27 +42,40 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
 
 pub fn advance_run(state: &mut GameState, action: RunAction) -> Result<Vec<GameEvent>, RulesError> {
     let phase = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?.phase;
-    if matches!(phase, RunPhase::Success | RunPhase::AccessingCard | RunPhase::Ended) {
+    // `JackOut` alone is legal from `RunPhase::Success` (the "approach
+    // server" jack-out window, Netrunner/Null Signal Games rule 3) — every
+    // other action still
+    // treats `Success` as concluded, since there's nothing left to
+    // continue/resolve/break through.
+    let already_concluded = match action {
+        RunAction::JackOut => matches!(phase, RunPhase::AccessingCard | RunPhase::Ended),
+        _ => matches!(phase, RunPhase::Success | RunPhase::AccessingCard | RunPhase::Ended),
+    };
+    if already_concluded {
         return Err(RulesError::RunAlreadyConcluded { phase });
     }
 
     match action {
-        RunAction::JackOut => Ok(jack_out(state)),
+        RunAction::JackOut => jack_out(state),
         RunAction::Continue => continue_run(state),
         RunAction::ResolveSubroutine(index) => step_subroutine(state, index, true),
         RunAction::BreakSubroutine(index) => step_subroutine(state, index, false),
     }
 }
 
-// Real NISEI rules restrict exactly when a Runner may jack out; this engine
-// deliberately allows it unconditionally from any non-terminal phase, even
-// mid-EncounterIce with subroutines still pending. Refining jack-out
-// legality windows is future work.
-fn jack_out(state: &mut GameState) -> Vec<GameEvent> {
+/// Resolves `PlayerAction::JackOut`, per its doc comment's four
+/// Netrunner/Null Signal Games-style legality windows — gated entirely by
+/// `RunState::jack_out_permitted`
+/// (`RulesError::IllegalJackOutWindow` if `false`), which `continue_run`/
+/// `pass_current_ice` keep in sync at every transition.
+fn jack_out(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
     // Safe: advance_run already confirmed active_run is Some before dispatching here.
     let run = state.active_run.as_mut().expect("active_run checked by advance_run");
+    if !run.jack_out_permitted {
+        return Err(RulesError::IllegalJackOutWindow { phase: run.phase });
+    }
     run.phase = RunPhase::Ended;
-    vec![GameEvent::RunJackedOut { server: run.server }]
+    Ok(vec![GameEvent::RunJackedOut { server: run.server }])
 }
 
 fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
@@ -67,8 +86,15 @@ fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
             let server = run.server;
             run.phase = phase_for_position(&run.ice, 0);
             if run.phase == RunPhase::Success {
+                // Reached the server approach step immediately (no ICE to
+                // pass) — the window opens here too (Netrunner/Null Signal
+                // Games rule 3).
+                run.jack_out_permitted = true;
                 Ok(vec![GameEvent::RunSucceeded { server }])
             } else {
+                // Initial approach of the outermost ICE — window stays
+                // closed (already `false` from `initiate_run`;
+                // Netrunner/Null Signal Games rule 1).
                 Ok(vec![GameEvent::IceApproached { server, position: 0 }])
             }
         }
@@ -89,6 +115,10 @@ fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
                 return Ok(pass_current_ice(run, position));
             }
 
+            // Committing to the encounter closes whatever window was open
+            // (Netrunner/Null Signal Games rule 4 — no jack-out
+            // mid-encounter).
+            run.jack_out_permitted = false;
             run.phase = RunPhase::EncounterIce;
             let event = GameEvent::IceEncountered {
                 card_id: ice.card_id.clone(),
@@ -212,12 +242,22 @@ mod tests {
     }
 
     fn run_state(phase: RunPhase, ice: Vec<RunIce>, position: usize) -> RunState {
+        run_state_with_jack_out(phase, ice, position, true)
+    }
+
+    fn run_state_with_jack_out(
+        phase: RunPhase,
+        ice: Vec<RunIce>,
+        position: usize,
+        jack_out_permitted: bool,
+    ) -> RunState {
         RunState {
             server: ServerId::Hq,
             phase,
             ice,
             position,
             access_state: None,
+            jack_out_permitted,
         }
     }
 
@@ -485,9 +525,46 @@ mod tests {
     }
 
     #[test]
-    fn jack_out_from_initiation_ends_run() {
+    fn jack_out_from_initiation_fails() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::Initiation, vec![], 0));
+        state.active_run =
+            Some(run_state_with_jack_out(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 1, true)], 0, false));
+        let result = advance_run(&mut state, RunAction::JackOut);
+
+        assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::Initiation }));
+        assert_eq!(state.active_run.unwrap().phase, RunPhase::Initiation);
+    }
+
+    #[test]
+    fn jack_out_during_initial_approach_ice_fails() {
+        let mut state = game_state();
+        state.active_run = Some(run_state_with_jack_out(
+            RunPhase::ApproachIce,
+            vec![test_ice("ice_wall", 0, 1, true)],
+            0,
+            false,
+        ));
+        let result = advance_run(&mut state, RunAction::JackOut);
+
+        assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::ApproachIce }));
+        assert_eq!(state.active_run.unwrap().phase, RunPhase::ApproachIce);
+    }
+
+    #[test]
+    fn jack_out_after_passing_first_ice_succeeds() {
+        let mut state = game_state();
+        // First ICE unrezzed — `Continue` auto-passes it, opening the
+        // jack-out window before the second (rezzed) ICE is approached.
+        state.active_run = Some(run_state_with_jack_out(
+            RunPhase::ApproachIce,
+            vec![test_ice("ice_wall_0", 0, 0, false), test_ice("ice_wall_1", 0, 1, true)],
+            0,
+            false,
+        ));
+        advance_run(&mut state, RunAction::Continue).expect("should auto-pass the unrezzed ICE");
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::ApproachIce);
+        assert_eq!(state.active_run.as_ref().unwrap().position, 1);
+
         let events = advance_run(&mut state, RunAction::JackOut).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::Ended);
@@ -495,22 +572,16 @@ mod tests {
     }
 
     #[test]
-    fn jack_out_from_approach_ice_ends_run() {
+    fn jack_out_during_encounter_ice_fails() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 0, 1, true)], 0));
-        advance_run(&mut state, RunAction::JackOut).expect("should succeed");
+        state.active_run =
+            Some(run_state_with_jack_out(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 5, true)], 0, false));
+        let result = advance_run(&mut state, RunAction::JackOut);
 
-        assert_eq!(state.active_run.unwrap().phase, RunPhase::Ended);
-    }
-
-    #[test]
-    fn jack_out_from_encounter_ice_ends_run_even_with_pending_subroutines() {
-        let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 5, true)], 0));
-        let events = advance_run(&mut state, RunAction::JackOut).expect("should succeed");
-
-        assert_eq!(state.active_run.unwrap().phase, RunPhase::Ended);
-        assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }]);
+        assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::EncounterIce }));
+        let run = state.active_run.unwrap();
+        assert_eq!(run.phase, RunPhase::EncounterIce);
+        assert!(run.ice[0].subroutines.iter().all(|s| s.status == SubroutineStatus::Pending));
     }
 
     #[test]
@@ -526,15 +597,13 @@ mod tests {
     }
 
     #[test]
-    fn jack_out_after_success_errors() {
+    fn jack_out_after_reaching_success_succeeds() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::Success, vec![], 0));
-        let result = advance_run(&mut state, RunAction::JackOut);
+        state.active_run = Some(run_state_with_jack_out(RunPhase::Success, vec![], 0, true));
+        let events = advance_run(&mut state, RunAction::JackOut).expect("should succeed");
 
-        assert_eq!(
-            result,
-            Err(RulesError::RunAlreadyConcluded { phase: RunPhase::Success })
-        );
+        assert_eq!(state.active_run.unwrap().phase, RunPhase::Ended);
+        assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }]);
     }
 
     #[test]

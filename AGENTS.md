@@ -31,6 +31,7 @@ This repository contains an asynchronous, turn-based Netrunner card game built i
 - **Serde Serialization**: All `PlayerAction` and `GameStateEvent` enums must derive `Serialize` and `Deserialize`.
 - **Error Handling**: Use explicit `Result<T, GameError>` return types over `panic!` or `unwrap()` in engine code.
 - **Bevy Plugins**: Split client rendering code cleanly into modular Bevy plugins (`CardRenderPlugin`, `RunPhaseUIPlugin`, `NetworkClientPlugin`).
+- **Terminology**: Refer to the game as "Netrunner" and its current rules maintainer as "Null Signal Games" in code and comments — never "NISEI" (Null Signal Games' predecessor).
 
 ---
 
@@ -90,13 +91,13 @@ This used to describe `engine::complete_run` clearing `state.active_run = None` 
 
 `turn::enter_start_of_turn` sets `phase = GamePhase::StartOfTurn(next_side)` and resolves its triggers (currently just the mandatory Corp draw) fully synchronously before advancing to `Action(next_side)` — no `PlayerAction` or external observer ever actually sees `StartOfTurn` as the current phase. This is fine while `StartOfTurn` has no triggers requiring a player choice, but cards like "gain 1 credit or draw a card" at turn start will need `enter_start_of_turn` to actually pause and return control mid-phase instead of resolving everything inline.
 
-### ICE Stack Population
+### ICE Stack Population (Shipped)
 
-`engine::initiate_run` builds `ice: Vec::new()` regardless of what's installed on the targeted server — a real run against installed ICE currently encounters nothing and instantly succeeds. `dsl::Card` also has no `strength`/`subroutines` fields to source real `RunIce` values from even if `initiate_run` looked them up. See the implementation plan drafted alongside this note for the fix (adds `Card::strength`/`Card::subroutines`, populates `RunIce` from `CorpState::installed` + `CardRegistry` in install order, and gates ICE-encounter behavior on `InstalledCard::rezzed` so unrezzed ICE has no effect, per NISEI rules).
+`engine::initiate_run` now populates real `RunIce` from `CorpState::installed` + `CardRegistry` in install order (oldest install = outermost = index 0), instead of always building `ice: Vec::new()`. `dsl::Card` gained `strength`/`subroutines` fields as the data source. `RunIce` also gained a `rezzed` flag, seeded from `InstalledCard::rezzed` at run start and synced by `rez_ice` during the approach window — unrezzed ICE has no effect on the run (`run::engine::continue_run`'s `ApproachIce` transition auto-passes it via `pass_current_ice` rather than presenting subroutines), per Netrunner/Null Signal Games rules.
 
-### Jack-out Legality Windows
+### Jack-out Legality Windows (Shipped)
 
-`run::engine::jack_out` allows jacking out unconditionally from any non-terminal run phase, even mid-`EncounterIce` with subroutines still pending — see its own comment: *"Real NISEI rules restrict exactly when a Runner may jack out; this engine deliberately allows it unconditionally... Refining jack-out legality windows is future work."* Not yet scoped.
+`run::engine::jack_out` now gates on `RunState::jack_out_permitted`, implementing Netrunner/Null Signal Games' four jack-out windows: illegal during the initial approach of the outermost ICE and during any encounter/subroutine resolution; legal once an ICE has been passed (even an unrezzed one) or the server approach step (`RunPhase::Success`) is reached with no ICE remaining. `advance_run`'s top-of-function "already concluded" guard was narrowed for `JackOut` specifically so `Success` no longer blocks it outright — see `RulesError::IllegalJackOutWindow`.
 
 ### GamePhase State Machine (Shipped)
 

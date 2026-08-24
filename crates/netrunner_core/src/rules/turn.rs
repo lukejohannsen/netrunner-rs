@@ -348,7 +348,7 @@ mod tests {
             phase: RunPhase::ApproachIce,
             ice: Vec::new(),
             position: 0,
-        });
+         jack_out_permitted: true,});
 
         assert_eq!(end_turn(&state), Err(RulesError::CannotEndTurnWhileRunActive));
     }

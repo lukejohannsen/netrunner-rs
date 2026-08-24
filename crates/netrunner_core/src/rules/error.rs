@@ -43,6 +43,9 @@ pub enum RulesError {
     #[error("cannot complete a run that hasn't concluded yet (currently {phase:?})")]
     RunNotConcluded { phase: RunPhase },
 
+    #[error("cannot jack out right now — no jack-out window is open (currently {phase:?})")]
+    IllegalJackOutWindow { phase: RunPhase },
+
     #[error("{side:?} has no card {card:?} in hand")]
     CardNotInHand { side: Side, card: CardId },
 

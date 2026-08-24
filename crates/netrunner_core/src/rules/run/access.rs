@@ -488,7 +488,7 @@ mod tests {
     /// A run against `server` already in `RunPhase::Success`, ready for
     /// `access_server` to park in `AccessingCard`.
     fn run_in_success(server: ServerId) -> RunState {
-        RunState { server, phase: RunPhase::Success, ice: Vec::new(), position: 0, access_state: None }
+        RunState { server, phase: RunPhase::Success, ice: Vec::new(), position: 0, access_state: None , jack_out_permitted: true}
     }
 
     fn game_state(
