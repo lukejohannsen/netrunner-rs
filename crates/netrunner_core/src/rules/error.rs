@@ -25,8 +25,17 @@ pub enum RulesError {
     #[error("cannot continue past ICE while {pending} subroutine(s) are still pending")]
     SubroutinesStillPending { pending: u32 },
 
-    #[error("no subroutines are pending to resolve or break right now")]
-    NoSubroutinesPending,
+    #[error("not currently encountering ICE")]
+    NotInEncounter,
+
+    #[error("subroutine index {0} is out of range")]
+    InvalidSubroutineIndex(usize),
+
+    #[error("that subroutine has already been broken or resolved")]
+    SubroutineAlreadyHandled,
+
+    #[error("card {0:?} not found in the card registry")]
+    CardNotFoundInRegistry(CardId),
 
     #[error("run action attempted after the run already reached {phase:?}")]
     RunAlreadyConcluded { phase: RunPhase },
@@ -51,9 +60,6 @@ pub enum RulesError {
 
     #[error("attempted to spend {requested} memory unit(s) but only has {available}")]
     InsufficientMemory { available: u32, requested: u32 },
-
-    #[error("subroutine index {index} is out of range: only {pending} subroutine(s) pending")]
-    InvalidSubroutineIndex { index: usize, pending: u32 },
 
     #[error("cannot end turn while a run is active")]
     CannotEndTurnWhileRunActive,

@@ -20,7 +20,10 @@ pub use masking::{
     mask_state_for_player, MaskedZone, PublicCorpState, PublicGameState, PublicInstalledCard,
     PublicRunnerState,
 };
-pub use run::{access_server, advance_run, RunAction, RunIce, RunPhase, RunState, ServerId};
+pub use run::{
+    access_server, advance_run, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState,
+    ServerId, SubroutineStatus,
+};
 pub use state::{
     AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard, MemoryUnits,
     PlayerResources, RunnerState, Side,

@@ -318,19 +318,11 @@ fn break_subroutine(
     require_phase(state, GamePhase::Action(side))?;
     let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
 
-    let pending = active_run
-        .ice
-        .get(active_run.position)
-        .map(|ice| ice.subroutines_pending)
-        .unwrap_or(0);
-    if subroutine_index as u32 >= pending {
-        return Err(RulesError::InvalidSubroutineIndex {
-            index: subroutine_index,
-            pending,
-        });
-    }
-
-    let (next_run, events) = run::advance_run(active_run, RunAction::BreakSubroutine)?;
+    // `step_subroutine` (via `advance_run`) now does its own bounds/status
+    // validation against `RunIce::subroutines`, so there's no need to
+    // duplicate a pre-check here — just forward the index.
+    let (next_run, events) =
+        run::advance_run(active_run, RunAction::BreakSubroutine(subroutine_index))?;
 
     let mut next = state.clone();
     next.active_run = Some(next_run);
@@ -341,8 +333,29 @@ fn break_subroutine(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::run::{RunIce, ServerId};
+    use crate::dsl::{Effect, SubroutineDef};
+    use crate::rules::run::{EncounteredSubroutine, RunIce, ServerId, SubroutineStatus};
     use crate::rules::state::{AgendaPoints, Clicks, Credits, PlayerResources};
+
+    /// Builds a `RunIce` with `subroutine_count` placeholder `Pending`
+    /// subroutines — identity/effect content doesn't matter for tests using
+    /// this, only status transitions and counts do.
+    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize) -> RunIce {
+        RunIce {
+            card_id: CardId(card_id.to_string()),
+            current_strength: strength,
+            subroutines: (0..subroutine_count)
+                .map(|id| EncounteredSubroutine {
+                    id,
+                    definition: SubroutineDef {
+                        text: format!("Subroutine {id}"),
+                        effect: Effect::EndTheRun,
+                    },
+                    status: SubroutineStatus::Pending,
+                })
+                .collect(),
+        }
+    }
 
     fn corp_state(clicks: u32, credits: u32) -> GameState {
         GameState {
@@ -691,7 +704,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![RunIce { subroutines_pending: 1 }],
+            ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
 
@@ -755,7 +768,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![RunIce { subroutines_pending: 1 }],
+            ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
         let result = apply_action(&state, PlayerAction::InitiateRun { server: ServerId::RnD });
@@ -780,7 +793,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![RunIce { subroutines_pending: 1 }],
+            ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
         let (next, events) =
@@ -836,7 +849,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![RunIce { subroutines_pending: 1 }],
+            ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
 
@@ -882,7 +895,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![RunIce { subroutines_pending: 1 }],
+            ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
         let result = apply_action(&state, PlayerAction::CompleteRun);
@@ -993,7 +1006,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::Initiation,
-            ice: vec![RunIce { subroutines_pending: 0 }],
+            ice: vec![test_ice("ice_wall", 0, 0)],
             position: 0,
         });
 
@@ -1009,7 +1022,14 @@ mod tests {
             apply_action(&state, PlayerAction::ContinueRun).expect("continue should succeed");
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::EncounterIce);
-        assert_eq!(events, vec![GameEvent::IceEncountered { server: ServerId::Hq, position: 0 }]);
+        assert_eq!(
+            events,
+            vec![GameEvent::IceEncountered {
+                card_id: CardId("ice_wall".to_string()),
+                strength: 0,
+                subroutine_count: 0,
+            }]
+        );
 
         // EncounterIce (0 pending) -> Success
         let (state, events) =
@@ -1031,7 +1051,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
-            ice: vec![RunIce { subroutines_pending: 1 }],
+            ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
 
@@ -1256,7 +1276,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
-            ice: vec![RunIce { subroutines_pending: 2 }],
+            ice: vec![test_ice("ice_wall", 0, 2)],
             position: 0,
         });
         let (next, events) = apply_action(
@@ -1267,18 +1287,12 @@ mod tests {
 
         // No click cost: breaking a subroutine isn't a click action.
         assert_eq!(next.runner.resources.clicks, Clicks(3));
-        assert_eq!(
-            next.active_run,
-            Some(RunState {
-                server: ServerId::Hq,
-                phase: RunPhase::EncounterIce,
-                ice: vec![RunIce { subroutines_pending: 1 }],
-                position: 0,
-            })
-        );
+        let ice = &next.active_run.as_ref().unwrap().ice[0];
+        assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
+        assert_eq!(ice.subroutines[1].status, SubroutineStatus::Pending);
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { server: ServerId::Hq, position: 0, remaining: 1 }]
+            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
         );
     }
 
@@ -1319,7 +1333,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
-            ice: vec![RunIce { subroutines_pending: 1 }],
+            ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
         let result = apply_action(
@@ -1327,20 +1341,17 @@ mod tests {
             PlayerAction::BreakSubroutine { ice_id, subroutine_index: 1 },
         );
 
-        assert_eq!(
-            result,
-            Err(RulesError::InvalidSubroutineIndex { index: 1, pending: 1 })
-        );
+        assert_eq!(result, Err(RulesError::InvalidSubroutineIndex(1)));
     }
 
     #[test]
-    fn runner_break_subroutine_outside_encounter_ice_returns_no_subroutines_pending() {
+    fn runner_break_subroutine_outside_encounter_ice_returns_not_in_encounter() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![RunIce { subroutines_pending: 1 }],
+            ice: vec![test_ice("ice_wall", 0, 1)],
             position: 0,
         });
         let result = apply_action(
@@ -1348,7 +1359,7 @@ mod tests {
             PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
         );
 
-        assert_eq!(result, Err(RulesError::NoSubroutinesPending));
+        assert_eq!(result, Err(RulesError::NotInEncounter));
     }
 
     #[test]

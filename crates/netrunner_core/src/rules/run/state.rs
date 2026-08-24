@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::dsl::{CardId, SubroutineDef};
+
 /// Which Corp zone/server a run targets. Central servers are singletons;
 /// Remote servers are numbered since multiple can exist simultaneously.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,13 +25,38 @@ pub enum RunPhase {
     Ended,
 }
 
-/// A single piece of ICE within a run's ice stack, as seen by the run state
-/// machine. Deliberately decoupled from `dsl::Card`/`dsl::IceType` — no
-/// installed-ICE/server model exists in `GameState` yet, so this only carries
-/// what `advance_run` needs to step through subroutines one at a time.
+/// Where one `EncounteredSubroutine` sits in its handling lifecycle.
+/// `Pending` blocks `continue_run` from passing this ICE — see
+/// `RunPhase::EncounterIce`'s gate in `run::engine::continue_run`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubroutineStatus {
+    Pending,
+    Broken,
+    Resolved,
+}
+
+/// One subroutine on the ICE currently being encountered, individually
+/// addressable by `id` (its index within `RunIce::subroutines`). `status`
+/// tracks whether the Runner broke it, let it fire (`Resolved`), or hasn't
+/// handled it yet (`Pending`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EncounteredSubroutine {
+    pub id: usize,
+    pub definition: SubroutineDef,
+    pub status: SubroutineStatus,
+}
+
+/// A single piece of ICE within a run's ice stack, as seen by the run state
+/// machine. `card_id` identifies which installed card this is (not yet
+/// cross-checked against `CorpState::installed` — populating real ICE from
+/// there via a `CardRegistry` lookup is still future work; `initiate_run`
+/// still builds `ice: Vec::new()`). Not `Copy` — owns a `Vec` and a
+/// `String`-backed `CardId`, unlike the bare counter this replaced.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunIce {
-    pub subroutines_pending: u32,
+    pub card_id: CardId,
+    pub current_strength: i32,
+    pub subroutines: Vec<EncounteredSubroutine>,
 }
 
 /// A run in progress (or just concluded) — the sub-state-machine embedded in

@@ -2,6 +2,7 @@ use crate::dsl::{CardTarget, Cost, Effect, StackZone};
 use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
+use crate::rules::run::RunPhase;
 use crate::rules::state::{Credits, GameState, Side};
 
 /// Applies a single, already-resolved `Effect` to `state` in place.
@@ -37,25 +38,37 @@ pub fn evaluate_effect(state: &mut GameState, effect: &Effect) -> Result<Vec<Gam
         }
 
         Effect::BreakSubroutine(_count) => {
-            // NOT wired to RunIce::subroutines_pending yet (SubroutineDef
-            // is inert data for now — see its doc comment). Documented
-            // no-op while a run is active; errors like every other
-            // run-flow action when there isn't one.
-            if state.active_run.is_none() {
-                return Err(RulesError::NoActiveRun);
+            // Still a documented no-op: this Effect variant has no notion
+            // of *which* subroutine to break (unlike RunAction::
+            // BreakSubroutine's index), so it can't drive
+            // RunIce::subroutines directly. Guarded on actually being in
+            // an ICE encounter (not just "any active run") for consistency
+            // with ModifyStrength below.
+            let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+            if run.phase != RunPhase::EncounterIce {
+                return Err(RulesError::NotInEncounter);
             }
             Ok(Vec::new())
         }
 
-        Effect::ModifyStrength(_delta) => {
-            // No ICE-strength field exists anywhere in GameState yet —
-            // same "inert for now" status as BreakSubroutine, guarded the
-            // same way for consistency: both only make sense while a run
-            // is active.
-            if state.active_run.is_none() {
-                return Err(RulesError::NoActiveRun);
+        Effect::ModifyStrength(delta) => {
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            if run.phase != RunPhase::EncounterIce {
+                return Err(RulesError::NotInEncounter);
             }
-            Ok(Vec::new())
+            let position = run.position;
+            // `NotInEncounter` doubles as the defensive fallback here if
+            // `position` were ever out of bounds — an invariant violation
+            // that shouldn't happen while `phase == EncounterIce`, but
+            // `.get_mut` avoids a raw-index panic regardless.
+            let ice = run.ice.get_mut(position).ok_or(RulesError::NotInEncounter)?;
+            ice.current_strength += delta;
+            let event = GameEvent::IceStrengthModified {
+                card_id: ice.card_id.clone(),
+                new_strength: ice.current_strength,
+                delta: *delta,
+            };
+            Ok(vec![event])
         }
 
         Effect::DrawCards(side, amount) => {
@@ -188,8 +201,8 @@ pub fn pay_cost(state: &mut GameState, side: Side, cost: &Cost) -> Result<Vec<Ga
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{CardId, DamageType};
-    use crate::rules::run::{RunPhase as RP, RunState, ServerId};
+    use crate::dsl::{CardId, DamageType, SubroutineDef};
+    use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase as RP, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, GamePhase, InstallSlot, InstalledCard, MemoryUnits,
         PlayerResources, RunnerState,
@@ -289,11 +302,32 @@ mod tests {
         assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2 }]);
     }
 
+    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize) -> RunIce {
+        RunIce {
+            card_id: CardId(card_id.to_string()),
+            current_strength: strength,
+            subroutines: (0..subroutine_count)
+                .map(|id| EncounteredSubroutine {
+                    id,
+                    definition: SubroutineDef {
+                        text: format!("Subroutine {id}"),
+                        effect: Effect::EndTheRun,
+                    },
+                    status: SubroutineStatus::Pending,
+                })
+                .collect(),
+        }
+    }
+
     #[test]
-    fn break_subroutine_no_ops_while_a_run_is_active() {
+    fn break_subroutine_no_ops_while_encountering_ice() {
         let mut state = game_state();
-        state.active_run =
-            Some(RunState { server: ServerId::Hq, phase: RP::EncounterIce, ice: Vec::new(), position: 0 });
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![test_ice("ice_wall", 0, 1)],
+            position: 0,
+        });
 
         let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(1)).unwrap();
         assert!(events.is_empty());
@@ -309,13 +343,50 @@ mod tests {
     }
 
     #[test]
-    fn modify_strength_no_ops_while_a_run_is_active() {
+    fn break_subroutine_outside_encounter_ice_errors() {
         let mut state = game_state();
         state.active_run =
             Some(RunState { server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
 
+        assert_eq!(
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(1)),
+            Err(RulesError::NotInEncounter)
+        );
+    }
+
+    #[test]
+    fn modify_strength_updates_current_strength_and_emits_event() {
+        let mut state = game_state();
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![test_ice("ice_wall", 3, 0)],
+            position: 0,
+        });
+
         let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2)).unwrap();
-        assert!(events.is_empty());
+
+        assert_eq!(state.active_run.unwrap().ice[0].current_strength, 5);
+        assert_eq!(
+            events,
+            vec![GameEvent::IceStrengthModified {
+                card_id: CardId("ice_wall".to_string()),
+                new_strength: 5,
+                delta: 2,
+            }]
+        );
+    }
+
+    #[test]
+    fn modify_strength_outside_encounter_ice_errors() {
+        let mut state = game_state();
+        state.active_run =
+            Some(RunState { server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
+
+        assert_eq!(
+            evaluate_effect(&mut state, &Effect::ModifyStrength(2)),
+            Err(RulesError::NotInEncounter)
+        );
     }
 
     #[test]

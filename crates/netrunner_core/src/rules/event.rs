@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardId, DamageType};
+use crate::dsl::{CardId, DamageType, Effect};
 use crate::rules::run::ServerId;
 use crate::rules::state::Side;
 
@@ -10,9 +10,10 @@ pub enum GameEvent {
     CreditsGained { side: Side, amount: u32 },
     CardDrawn { side: Side },
     IceApproached { server: ServerId, position: u32 },
-    IceEncountered { server: ServerId, position: u32 },
-    SubroutineResolved { server: ServerId, position: u32, remaining: u32 },
-    SubroutineBroken { server: ServerId, position: u32, remaining: u32 },
+    IceEncountered { card_id: CardId, strength: i32, subroutine_count: usize },
+    SubroutineBroken { card_id: CardId, index: usize },
+    SubroutineFired { card_id: CardId, index: usize, effect: Effect },
+    IceStrengthModified { card_id: CardId, new_strength: i32, delta: i32 },
     IcePassed { server: ServerId, position: u32 },
     RunSucceeded { server: ServerId },
     RunJackedOut { server: ServerId },

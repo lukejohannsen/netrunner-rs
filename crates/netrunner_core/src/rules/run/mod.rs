@@ -6,4 +6,4 @@ mod state;
 pub use access::access_server;
 pub use action::RunAction;
 pub use engine::advance_run;
-pub use state::{RunIce, RunPhase, RunState, ServerId};
+pub use state::{EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId, SubroutineStatus};
