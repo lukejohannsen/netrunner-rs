@@ -55,16 +55,27 @@ pub struct EncounteredSubroutine {
 }
 
 /// A single piece of ICE within a run's ice stack, as seen by the run state
-/// machine. `card_id` identifies which installed card this is (not yet
-/// cross-checked against `CorpState::installed` — populating real ICE from
-/// there via a `CardRegistry` lookup is still future work; `initiate_run`
-/// still builds `ice: Vec::new()`). Not `Copy` — owns a `Vec` and a
-/// `String`-backed `CardId`, unlike the bare counter this replaced.
+/// machine. Built by `engine::initiate_run` from the Corp's `InstalledCard`s
+/// on the targeted server (`CardRegistry`-looked-up for
+/// `strength`/`subroutines`, defaulting to a blank 0-strength/no-subroutines
+/// ICE if unregistered), ordered outermost-to-innermost matching install
+/// order (index 0 is the first ICE approached; `position` indexes into this
+/// for whichever ICE is currently being approached/encountered). Not `Copy`
+/// — owns a `Vec` and a `String`-backed `CardId`, unlike the bare counter
+/// this replaced.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunIce {
     pub card_id: CardId,
     pub current_strength: i32,
     pub subroutines: Vec<EncounteredSubroutine>,
+    /// Mirrors `InstalledCard::rezzed` at the moment this `RunIce` was
+    /// built (`initiate_run`) or later flipped (`rez_ice`, when rezzing
+    /// during this ICE's `ApproachIce` window). Gates
+    /// `run::engine::continue_run`'s `ApproachIce` transition: unrezzed
+    /// ICE presents no subroutines and has no effect on the run, per NISEI
+    /// rules, so it auto-passes straight through instead of entering
+    /// `EncounterIce`.
+    pub rezzed: bool,
 }
 
 /// One card the Runner is currently being asked to make a choice about,

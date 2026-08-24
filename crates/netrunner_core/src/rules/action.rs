@@ -76,12 +76,15 @@ pub enum PlayerAction {
     /// Break the next pending subroutine on the ICE currently being
     /// encountered. Runner-only; delegates to `run::advance_run`'s
     /// `RunAction::BreakSubroutine`. `ice_id` isn't cross-checked against
-    /// `RunState::ice` — that list has no card identity yet (see its doc
-    /// comment) — so it's accepted as caller-provided context only.
-    /// `subroutine_index` must address one of the currently pending
-    /// subroutines; since `RunIce` only tracks a pending *count*, not
-    /// individually addressable subroutines, this is a bounds check rather
-    /// than a break-this-exact-one operation.
+    /// `RunState::ice[position].card_id` — it's accepted as caller-provided
+    /// context only, since `transition_subroutine` already identifies the
+    /// right `RunIce` positionally (`run.position`), not by `ice_id`; a
+    /// mismatched `ice_id` here silently breaks whatever's actually being
+    /// encountered rather than erroring (a real, separate, pre-existing
+    /// gap). `subroutine_index` addresses one specific
+    /// `EncounteredSubroutine` by its `id`/index within
+    /// `RunIce::subroutines`, bounds/status-checked by
+    /// `transition_subroutine`.
     BreakSubroutine { ice_id: CardId, subroutine_index: usize },
     /// End the active side's turn, handing control to the other side and
     /// refilling their clicks to the fixed per-turn allotment (Corp 3 / Runner

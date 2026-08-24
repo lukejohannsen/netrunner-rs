@@ -4,7 +4,7 @@ use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
-use crate::rules::run::{self, RunAction, RunPhase, RunState};
+use crate::rules::run::{self, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState, SubroutineStatus};
 use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side};
 use crate::rules::turn;
 
@@ -20,7 +20,7 @@ pub fn apply_action(
             install_card(state, registry, card_id, zone, slot)
         }
         PlayerAction::RezIce { ice_id } => rez_ice(state, ice_id),
-        PlayerAction::InitiateRun { server } => initiate_run(state, server),
+        PlayerAction::InitiateRun { server } => initiate_run(state, registry, server),
         PlayerAction::ContinueRun => continue_run(state),
         PlayerAction::JackOut => jack_out(state),
         PlayerAction::CompleteRun => complete_run(state, registry),
@@ -175,11 +175,28 @@ fn rez_ice(state: &GameState, ice_id: CardId) -> Result<(GameState, Vec<GameEven
         installed.server
     };
 
+    // If this rez happens during this ICE's own `ApproachIce` window (the
+    // normal "rez window"), also flip the matching `RunIce.rezzed` so
+    // `continue_run`'s upcoming `ApproachIce` transition sees it as rezzed.
+    // Scoped to the ICE currently at `position` — rezzing a *different*
+    // installed ICE on the same server (legal, e.g. pre-emptively, before
+    // the run reaches it) must not affect a `RunIce` the run hasn't reached
+    // yet; `initiate_run` already seeded that one correctly from
+    // `InstalledCard::rezzed` at run start.
+    if let Some(run) = next.active_run.as_mut()
+        && run.phase == RunPhase::ApproachIce
+        && let Some(current_ice) = run.ice.get_mut(run.position)
+        && current_ice.card_id == ice_id
+    {
+        current_ice.rezzed = true;
+    }
+
     Ok((next, vec![GameEvent::IceRezzed { card: ice_id, server }]))
 }
 
 fn initiate_run(
     state: &GameState,
+    registry: &CardRegistry,
     server: ServerTarget,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
@@ -190,10 +207,23 @@ fn initiate_run(
 
     let mut next = state.clone();
     spend_click(&mut next, side)?;
+
+    // `corp.installed`'s Vec order is install order (oldest first);
+    // installs only ever `.push()` (see `install_card`), never reorder.
+    // Oldest install = outermost ICE = index 0, matching `RunIce`'s
+    // outermost-to-innermost doc comment — no reversal needed.
+    let ice: Vec<RunIce> = next
+        .corp
+        .installed
+        .iter()
+        .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
+        .map(|installed| build_run_ice(installed, registry))
+        .collect();
+
     next.active_run = Some(RunState { access_state: None,
         server,
         phase: RunPhase::Initiation,
-        ice: Vec::new(),
+        ice,
         position: 0,
     });
 
@@ -204,6 +234,34 @@ fn initiate_run(
             GameEvent::RunInitiated { server },
         ],
     ))
+}
+
+/// Builds one `RunIce` from an `InstalledCard` known to be ICE (caller
+/// filters by `InstallSlot::Ice`), looking up strength/subroutines from
+/// `registry`. Never errors: a `card_id` absent from `registry` (or missing
+/// `strength`/`subroutines`) degrades to a blank 0-strength/no-subroutines
+/// ICE that can't block anything, mirroring
+/// `run::access::compute_pending_choice`'s existing leniency for
+/// unrecognized cards, rather than failing the whole `InitiateRun` action
+/// over one unregistered card elsewhere on the server.
+fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> RunIce {
+    let card_def = registry.get(&installed.card);
+    let current_strength = card_def.and_then(|c| c.strength).unwrap_or(0);
+    let subroutines = card_def
+        .map(|c| {
+            c.subroutines
+                .iter()
+                .enumerate()
+                .map(|(id, def)| EncounteredSubroutine {
+                    id,
+                    definition: def.clone(),
+                    status: SubroutineStatus::Pending,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    RunIce { card_id: installed.card.clone(), current_strength, subroutines, rezzed: installed.rezzed }
 }
 
 fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
@@ -490,7 +548,7 @@ fn pass_accessed_card(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{AbilityDef, Card, CardType, Cost, Effect, SubroutineDef};
+    use crate::dsl::{AbilityDef, Card, CardType, Cost, Effect, IceType, SubroutineDef};
     use crate::rules::run::{EncounteredSubroutine, RunIce, ServerId, SubroutineStatus};
     use crate::rules::state::{AgendaPoints, Clicks, Credits, PlayerResources};
 
@@ -504,7 +562,7 @@ mod tests {
     /// Builds a `RunIce` with `subroutine_count` placeholder `Pending`
     /// subroutines — identity/effect content doesn't matter for tests using
     /// this, only status transitions and counts do.
-    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize) -> RunIce {
+    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
         RunIce {
             card_id: CardId(card_id.to_string()),
             current_strength: strength,
@@ -518,6 +576,7 @@ mod tests {
                     status: SubroutineStatus::Pending,
                 })
                 .collect(),
+            rezzed,
         }
     }
 
@@ -918,7 +977,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, false)],
             position: 0,
         });
 
@@ -926,12 +985,51 @@ mod tests {
             .expect("Corp should be able to rez ICE during the Runner's run");
 
         assert!(next.corp.installed[0].rezzed);
+        assert!(next.active_run.as_ref().unwrap().ice[0].rezzed);
         assert_eq!(next.corp.resources.clicks, Clicks(3));
         assert_eq!(next.corp.resources.credits, Credits(5));
         assert_eq!(
             events,
             vec![GameEvent::IceRezzed { card: card_id, server: ServerId::Hq }]
         );
+    }
+
+    #[test]
+    fn corp_rez_ice_for_ice_not_at_current_position_does_not_affect_run_ice() {
+        let outer = CardId("outer_ice".to_string());
+        let inner = CardId("inner_ice".to_string());
+        let installed = vec![
+            InstalledCard {
+                advancement_tokens: 0,
+                card: outer.clone(),
+                server: ServerId::Hq,
+                slot: InstallSlot::Ice,
+                rezzed: false,
+            },
+            InstalledCard {
+                advancement_tokens: 0,
+                card: inner.clone(),
+                server: ServerId::Hq,
+                slot: InstallSlot::Ice,
+                rezzed: false,
+            },
+        ];
+        let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.active_run = Some(RunState { access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::ApproachIce,
+            ice: vec![test_ice("outer_ice", 0, 1, false), test_ice("inner_ice", 0, 1, false)],
+            position: 0,
+        });
+
+        let (next, _events) = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: inner.clone() })
+            .expect("Corp should be able to pre-emptively rez ICE the run hasn't reached yet");
+
+        assert!(next.corp.installed.iter().find(|c| c.card == inner).unwrap().rezzed);
+        let run = next.active_run.unwrap();
+        assert!(!run.ice[0].rezzed, "the currently-approached ICE must be untouched");
+        assert!(!run.ice[1].rezzed, "only InstalledCard::rezzed flips for ICE not at `position`");
     }
 
     #[test]
@@ -963,6 +1061,106 @@ mod tests {
     }
 
     #[test]
+    fn runner_initiate_run_populates_ice_from_installed_ice_outermost_first() {
+        let outer = InstalledCard {
+            advancement_tokens: 0,
+            card: CardId("outer_ice".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: false,
+        };
+        let inner = InstalledCard {
+            advancement_tokens: 0,
+            card: CardId("inner_ice".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+        };
+        let state = corp_state_with_hq_and_installed(0, 0, Vec::new(), vec![outer, inner]);
+        let mut state = state;
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = runner_state(3, 5, 3).runner;
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("outer_ice", Side::Corp, CardType::Ice(IceType::Barrier), 1, None));
+        let mut inner_card = test_card("inner_ice", Side::Corp, CardType::Ice(IceType::Barrier), 1, None);
+        inner_card.strength = Some(2);
+        inner_card.subroutines =
+            vec![SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun }];
+        registry.insert(inner_card);
+
+        let (next, _events) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq })
+            .expect("action should succeed");
+
+        let ice = next.active_run.unwrap().ice;
+        assert_eq!(ice.len(), 2);
+        assert_eq!(ice[0].card_id, CardId("outer_ice".to_string()));
+        assert_eq!(ice[0].current_strength, 0);
+        assert!(ice[0].subroutines.is_empty());
+        assert!(!ice[0].rezzed);
+        assert_eq!(ice[1].card_id, CardId("inner_ice".to_string()));
+        assert_eq!(ice[1].current_strength, 2);
+        assert_eq!(ice[1].subroutines.len(), 1);
+        assert!(ice[1].rezzed);
+    }
+
+    #[test]
+    fn runner_initiate_run_ignores_root_installs_and_other_servers_ice() {
+        let installed = vec![
+            InstalledCard {
+                advancement_tokens: 0,
+                card: CardId("some_upgrade".to_string()),
+                server: ServerId::Hq,
+                slot: InstallSlot::Root,
+                rezzed: false,
+            },
+            InstalledCard {
+                advancement_tokens: 0,
+                card: CardId("remote_ice".to_string()),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Ice,
+                rezzed: true,
+            },
+        ];
+        let mut state = corp_state_with_hq_and_installed(0, 0, Vec::new(), installed);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = runner_state(3, 5, 3).runner;
+
+        let (next, _events) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
+            .expect("action should succeed");
+
+        assert!(next.active_run.unwrap().ice.is_empty());
+    }
+
+    #[test]
+    fn runner_initiate_run_defaults_unregistered_ice_to_blank() {
+        let installed = vec![InstalledCard {
+            advancement_tokens: 0,
+            card: CardId("mystery_ice".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: false,
+        }];
+        let mut state = corp_state_with_hq_and_installed(0, 0, Vec::new(), installed);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = runner_state(3, 5, 3).runner;
+
+        let (next, _events) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
+            .expect("action should succeed");
+
+        let ice = next.active_run.unwrap().ice;
+        assert_eq!(
+            ice,
+            vec![RunIce {
+                card_id: CardId("mystery_ice".to_string()),
+                current_strength: 0,
+                subroutines: Vec::new(),
+                rezzed: false,
+            }]
+        );
+    }
+
+    #[test]
     fn corp_turn_initiate_run_returns_not_your_turn() {
         let state = corp_state(3, 5);
         let result = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq });
@@ -982,7 +1180,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
         });
         let result = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::RnD });
@@ -1007,7 +1205,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
         });
         let (next, events) =
@@ -1063,7 +1261,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
         });
 
@@ -1110,7 +1308,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
         });
         let result = apply_action(&state, &registry(), PlayerAction::CompleteRun);
@@ -1260,7 +1458,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Initiation,
-            ice: vec![test_ice("ice_wall", 0, 0)],
+            ice: vec![test_ice("ice_wall", 0, 0, true)],
             position: 0,
         });
 
@@ -1305,7 +1503,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
         });
 
@@ -1565,7 +1763,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 2)],
+            ice: vec![test_ice("ice_wall", 0, 2, true)],
             position: 0,
         });
         let (next, events) = apply_action(
@@ -1625,7 +1823,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
         });
         let result = apply_action(
@@ -1644,7 +1842,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
         });
         let result = apply_action(
@@ -1709,6 +1907,8 @@ mod tests {
             advancement_requirement,
             agenda_points: None,
             min_deck_size: None,
+            strength: None,
+            subroutines: Vec::new(),
         }
     }
 
@@ -1736,6 +1936,8 @@ mod tests {
             advancement_requirement: None,
             agenda_points: None,
             min_deck_size: None,
+            strength: None,
+            subroutines: Vec::new(),
         }
     }
 
@@ -1748,7 +1950,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 0)],
+            ice: vec![test_ice("ice_wall", 0, 0, true)],
             position: 0,
         });
 
@@ -1823,7 +2025,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 0)],
+            ice: vec![test_ice("ice_wall", 0, 0, true)],
             position: 0,
         });
 

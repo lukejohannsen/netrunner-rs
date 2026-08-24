@@ -434,6 +434,8 @@ mod tests {
             advancement_requirement: Some(points),
             agenda_points: Some(points),
             min_deck_size: None,
+            strength: None,
+            subroutines: Vec::new(),
         }
     }
 
@@ -459,6 +461,8 @@ mod tests {
             advancement_requirement: None,
             agenda_points: None,
             min_deck_size: None,
+            strength: None,
+            subroutines: Vec::new(),
         }
     }
 

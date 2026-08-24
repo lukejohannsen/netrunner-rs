@@ -59,33 +59,44 @@ This repository contains an asynchronous, turn-based Netrunner card game built i
 
 ## Future Engine Considerations
 
-Notes captured from Gemini-assisted reviews of `netrunner_core`'s access/turn logic (2026-08-23). The `GamePhase` state machine below has since shipped; the other three items remain open and are tracked before further engine work builds on top of those gaps.
+Notes captured from Gemini-assisted reviews of `netrunner_core`'s access/turn logic (2026-08-23). The `GamePhase` state machine, Runner-selected access ordering, and automatic access-trigger resolution described below have since shipped; the remaining items are tracked before further engine work builds on top of those gaps.
 
 ### Per-Viewer Event Masking
 
 `GameEvent::CardAccessed` (and every other `GameEvent` variant) currently emits unredacted card IDs. `rules::masking::mask_state_for_player` only masks `GameState` snapshots (`PublicGameState`) — there is no equivalent filtering of `Vec<GameEvent>` anywhere in the engine, and `netrunner_server` is still a stub. Once a server layer exists, it MUST filter/sanitize the `GameEvent` stream per recipient before broadcasting (e.g. strip `CardAccessed { card, .. }`'s `card` field for the non-accessing side when the accessed card wasn't revealed) rather than assuming raw engine events are safe to relay as-is. This matters most for HQ/R&D access, since those are hidden zones — Archives/Remote access was already effectively public.
 
-### Interactive Access Resolution
+### Interactive Access Resolution (Access Order + Post-Access Actions Shipped)
 
-`run::access_server` is intentionally scoped to determine *which* cards are accessed, not the effects of accessing them (steal an Agenda, pay to trash an Asset/Upgrade, resolve "on access" triggers) — see its doc comment. Two related gaps to close together once card-ability hooks exist:
-- **Access order**: real rules let the Runner choose the order they resolve multiple accessed cards (e.g. central hand/deck card vs. a Root-installed Upgrade); `access_server` currently returns them in a fixed order.
-- **Post-access actions**: steal/trash/pay-cost resolution needs a new `PlayerAction` (e.g. `InteractWithAccessedCard`) and likely a dedicated phase/sub-state rather than resolving everything synchronously inside one `access_server` call.
+Both gaps originally tracked here have shipped:
+- **Access order**: `run::access_server` now parks multi-card accesses at `AccessPhase::SelectNextCard { selectable_cards }` instead of a fixed walk order; the Runner picks resolution order via `PlayerAction::SelectCardToAccess` (`run::access::resolve_select_card`). A single accessed card still bypasses straight to `PendingChoice`, and the last remaining card in a multi-card access auto-bypasses `SelectNextCard` too, since there's nothing left to choose between.
+- **Post-access actions**: `PlayerAction::StealAgenda`/`TrashAccessedCard`/`PassAccessedCard` (`run::access::resolve_steal`/`resolve_trash`/`resolve_pass`) resolve steal/trash/pass against the current `AccessPhase::PendingChoice` card, with `RunPhase::AccessingCard` as the dedicated run sub-state — no separate `GamePhase` variant needed (see "GamePhase State Machine" below for why).
+- **"On access" triggers**: the *automatic* half now also ships — `Trigger::OnAccessed`/`Trigger::OnTrashedFromAccess` (`dsl/trigger.rs`) fire unconditionally via `ability::process_card_triggers`, hooked at every place `GameEvent::CardAccessed`/`CardTrashedFromAccess` fires (`run/access.rs`'s `access_server`, `resolve_select_card`, `advance_or_finish`'s auto-bypass arm, and `resolve_trash`). A mid-trigger flatline (or any other trigger-induced `GameOver`) is handled by a shared `finish_if_game_over` helper that clears `active_run` and halts further access presentation without double-emitting `GameOver` when the triggering effect (e.g. a flatlining `Effect::DealDamage`) already emitted one itself.
 
-### Run Context During Access
+**Still open**: the *interactive* half of on-access triggers — a card pausing to ask a player a yes/no or payment question before its effect resolves (e.g. Fetal AI's real "Runner may pay 4c to prevent the damage" text, simplified away for the automatic-only cut that shipped) needs new `AccessPhase`/`PlayerAction` plumbing and is deliberately not built yet. Also still open: `CardTarget::ThisCard`/`Cost::TrashSelf` self-reference resolution for an accessed/trashed card's own trigger effects — both still hard-error with `RulesError::UnresolvedCardTarget`.
 
-`engine::complete_run` clears `state.active_run = None` *before* calling `run::access_server`. This is fine today since nothing during access needs to know "a run against server X is/was in progress," but once card abilities check active-run state during access resolution (e.g. cards that react to "while a run is in progress"), `complete_run` will need to defer clearing `active_run` until access fully resolves.
+### Run Context During Access (Resolved)
+
+This used to describe `engine::complete_run` clearing `state.active_run = None` *before* calling `run::access_server`, which would have hidden "a run against server X is in progress" from any card ability checking active-run state during access resolution. That's no longer how it works: `complete_run` now only reads `server` off `active_run` (a `Copy` field) before cloning state, and `access_server` itself owns clearing `active_run` — only once nothing was accessed, or once every accessed card is fully resolved (`advance_or_finish`)/a trigger ends the game (`finish_if_game_over`). `active_run` stays `Some` throughout `OnAccessed`/`OnTrashedFromAccess` trigger resolution today, so a future "while a run is in progress" card ability would already see correct state.
 
 ### Deck-out Win Condition (Shipped)
 
-`turn::enter_start_of_turn` now checks for this up front: if control is passing to the Corp and `corp.r_and_d` is empty, `phase` transitions straight to `GamePhase::GameOver(Side::Runner)` (no clicks refilled, no `TurnStarted` — the turn never starts) instead of silently skipping the draw. Paired with `win::check_win_conditions`, which separately handles agenda-point victory (Corp or Runner reaching 7+ points, checked from `run::access_server` after a steal) — deck-out is deliberately *not* folded into that function, since it's a momentary event (a draw attempt that just failed) rather than a standing condition safely re-derivable from `GameState` alone; see `check_win_conditions`'s doc comment for why. Agenda detection itself is still a placeholder: `win::agenda_value` is a hardcoded lookup for a couple of fixture card IDs, standing in for the real `CardRegistry` this engine still doesn't have (same gap noted throughout this file).
+`turn::enter_start_of_turn` now checks for this up front: if control is passing to the Corp and `corp.r_and_d` is empty, `phase` transitions straight to `GamePhase::GameOver(Side::Runner)` (no clicks refilled, no `TurnStarted` — the turn never starts) instead of silently skipping the draw. Paired with `win::check_win_conditions`, which separately handles agenda-point victory (Corp or Runner reaching 7+ points, checked from `run::access_server` after a steal) — deck-out is deliberately *not* folded into that function, since it's a momentary event (a draw attempt that just failed) rather than a standing condition safely re-derivable from `GameState` alone; see `check_win_conditions`'s doc comment for why. Agenda detection reads from the real `CardRegistry`: `win::agenda_value` is `registry.get(card_id).and_then(|card| card.agenda_points)` — no placeholder/hardcoded lookup remains.
 
 ### Dynamic Hand-Size Re-Checks
 
-`GamePhase::Discard { required }` (see `turn::end_turn`) locks in a fixed discard count computed once on phase entry, rather than re-checking hand size after each discard. Real rules require discarding until at/under the max, which matters if a future trigger causes a draw mid-discard (not possible yet — no trigger system is wired into the engine). Worth revisiting once triggers exist.
+`GamePhase::Discard { required }` (see `turn::end_turn`) locks in a fixed discard count computed once on phase entry, rather than re-checking hand size after each discard. Real rules require discarding until at/under the max, which matters if a future trigger causes a draw mid-discard. A general card-trigger dispatcher now exists (`ability::process_card_triggers`, added for `OnAccessed`/`OnTrashedFromAccess`), but nothing wires it into the discard flow and no shipped effect fires mid-discard yet — so this is still open, just no longer blocked on "no trigger system exists at all." Worth revisiting once a trigger can actually cause a draw here.
 
 ### Asynchronous Start-of-Turn Windows
 
 `turn::enter_start_of_turn` sets `phase = GamePhase::StartOfTurn(next_side)` and resolves its triggers (currently just the mandatory Corp draw) fully synchronously before advancing to `Action(next_side)` — no `PlayerAction` or external observer ever actually sees `StartOfTurn` as the current phase. This is fine while `StartOfTurn` has no triggers requiring a player choice, but cards like "gain 1 credit or draw a card" at turn start will need `enter_start_of_turn` to actually pause and return control mid-phase instead of resolving everything inline.
+
+### ICE Stack Population
+
+`engine::initiate_run` builds `ice: Vec::new()` regardless of what's installed on the targeted server — a real run against installed ICE currently encounters nothing and instantly succeeds. `dsl::Card` also has no `strength`/`subroutines` fields to source real `RunIce` values from even if `initiate_run` looked them up. See the implementation plan drafted alongside this note for the fix (adds `Card::strength`/`Card::subroutines`, populates `RunIce` from `CorpState::installed` + `CardRegistry` in install order, and gates ICE-encounter behavior on `InstalledCard::rezzed` so unrezzed ICE has no effect, per NISEI rules).
+
+### Jack-out Legality Windows
+
+`run::engine::jack_out` allows jacking out unconditionally from any non-terminal run phase, even mid-`EncounterIce` with subroutines still pending — see its own comment: *"Real NISEI rules restrict exactly when a Runner may jack out; this engine deliberately allows it unconditionally... Refining jack-out legality windows is future work."* Not yet scoped.
 
 ### GamePhase State Machine (Shipped)
 
@@ -114,4 +125,4 @@ pub enum GamePhase {
 
 **`RunnerState::heap`**: added as a prerequisite for `discard_card` — the Runner had no discard pile before. Mirrors `CorpState::archives`: fully public, never masked (`masking::PublicRunnerState`/`mask_runner_state`).
 
-**Still deferred** (unchanged from the draft): an `Access` phase for interactive access resolution — see "Interactive Access Resolution" above. `RunPhase` did not become a `GamePhase` variant; a run still just requires `GamePhase::Action(Side::Runner)` at `InitiateRun`/`CompleteRun` time.
+`RunPhase` did not become a `GamePhase` variant, and still hasn't — a run still just requires `GamePhase::Action(Side::Runner)` at `InitiateRun`/`CompleteRun` time. Interactive access resolution ended up living entirely inside `RunPhase::AccessingCard` instead of a `GamePhase::Access` variant as the draft sketched — see "Interactive Access Resolution" above for how that shipped.

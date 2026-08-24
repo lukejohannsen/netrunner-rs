@@ -22,11 +22,13 @@ pub struct AbilityDef {
 /// A subroutine's printed text and the `Effect` it resolves into, when the
 /// Corp lets it fire (or the Runner fails to break it).
 ///
-/// Deliberately NOT wired into `rules::run::state::RunIce` yet — `RunIce`
-/// stays a bare `{ subroutines_pending: u32 }` counter, and
-/// `rules::run::engine::step_subroutine` keeps treating subroutine
-/// resolution as pure decrement-the-counter bookkeeping with no effect
-/// payload consulted. This is inert data only for now.
+/// Wired into `rules::run::state::RunIce` via `EncounteredSubroutine`,
+/// individually addressable and status-tracked
+/// (`SubroutineStatus::{Pending, Broken, Resolved}`);
+/// `rules::run::engine::step_subroutine`/`transition_subroutine` consult
+/// and fire the real `Effect` payload on resolution. `engine::initiate_run`
+/// (via `build_run_ice`) populates real `SubroutineDef`s from
+/// `Card::subroutines` at run start.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SubroutineDef {
     pub text: String,

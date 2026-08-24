@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::ability::AbilityDef;
+use crate::dsl::ability::{AbilityDef, SubroutineDef};
 use crate::dsl::cost::Cost;
 use crate::dsl::effect::Effect;
 use crate::dsl::trigger::Trigger;
@@ -76,6 +76,18 @@ pub struct Card {
     /// this yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_deck_size: Option<u32>,
+
+    /// Base strength printed on an ICE. `Some` only for `CardType::Ice(_)`
+    /// — the data source for `RunIce::current_strength`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strength: Option<i32>,
+
+    /// This ICE's subroutines, printed top-to-bottom. `Vec::new()` for the
+    /// common non-ICE case — an absent `"subroutines"` key parses to an
+    /// empty `Vec`, same as `"abilities"`. Meaningful content only for
+    /// `CardType::Ice(_)`.
+    #[serde(default)]
+    pub subroutines: Vec<SubroutineDef>,
 }
 
 #[cfg(test)]
@@ -88,6 +100,8 @@ mod tests {
         env!("CARGO_MANIFEST_DIR"),
         "/../../data/runner/sure_gamble.json"
     ));
+    const ICE_WALL_JSON: &str =
+        include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../../data/corp/ice_wall.json"));
 
     #[test]
     fn parses_hedge_fund_from_json() {
@@ -125,5 +139,22 @@ mod tests {
             }]
         );
         assert!(card.abilities.is_empty());
+    }
+
+    #[test]
+    fn parses_ice_wall_from_json() {
+        let card: Card = serde_json::from_str(ICE_WALL_JSON).expect("valid card JSON");
+
+        assert_eq!(card.id, CardId("ice_wall".to_string()));
+        assert_eq!(card.title, "Ice Wall");
+        assert_eq!(card.side, Side::Corp);
+        assert_eq!(card.card_type, CardType::Ice(IceType::Barrier));
+        assert_eq!(card.cost, 1);
+        assert_eq!(card.strength, Some(1));
+        assert_eq!(
+            card.subroutines,
+            vec![SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun }]
+        );
+        assert!(card.triggers.is_empty());
     }
 }

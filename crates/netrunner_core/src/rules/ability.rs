@@ -356,7 +356,7 @@ mod tests {
         assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2 }]);
     }
 
-    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize) -> RunIce {
+    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
         RunIce {
             card_id: CardId(card_id.to_string()),
             current_strength: strength,
@@ -370,6 +370,7 @@ mod tests {
                     status: SubroutineStatus::Pending,
                 })
                 .collect(),
+            rezzed,
         }
     }
 
@@ -379,7 +380,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 2)],
+            ice: vec![test_ice("ice_wall", 0, 2, true)],
             position: 0,
         });
 
@@ -400,7 +401,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 1)],
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
             position: 0,
         });
 
@@ -413,7 +414,7 @@ mod tests {
     #[test]
     fn break_subroutine_already_broken_errors() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 1);
+        let mut ice = test_ice("ice_wall", 0, 1, true);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         state.active_run =
             Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 });
@@ -448,7 +449,7 @@ mod tests {
     #[test]
     fn resolve_unbroken_subroutines_resolves_each_pending_subroutine_in_order() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 2);
+        let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].definition.effect = Effect::GiveTags(2);
         ice.subroutines[1].definition.effect = Effect::GainCredits(Side::Corp, 3);
         state.active_run = Some(RunState { access_state: None,
@@ -489,7 +490,7 @@ mod tests {
     #[test]
     fn resolve_unbroken_subroutines_stops_at_end_the_run() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 2);
+        let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].definition.effect = Effect::EndTheRun;
         ice.subroutines[1].definition.effect = Effect::GiveTags(5);
         state.active_run = Some(RunState { access_state: None,
@@ -519,7 +520,7 @@ mod tests {
     #[test]
     fn resolve_unbroken_subroutines_skips_already_handled_subroutines() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 2);
+        let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         ice.subroutines[1].definition.effect = Effect::GiveTags(1);
         state.active_run = Some(RunState { access_state: None,
@@ -543,7 +544,7 @@ mod tests {
         state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
-            ice: vec![test_ice("ice_wall", 3, 0)],
+            ice: vec![test_ice("ice_wall", 3, 0, true)],
             position: 0,
         });
 
@@ -771,6 +772,8 @@ mod tests {
             advancement_requirement: None,
             agenda_points: None,
             min_deck_size: None,
+            strength: None,
+            subroutines: Vec::new(),
         }
     }
 
