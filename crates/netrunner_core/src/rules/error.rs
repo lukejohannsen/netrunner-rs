@@ -87,4 +87,16 @@ pub enum RulesError {
 
     #[error("card {card:?} has no advancement_requirement and cannot be advanced")]
     CardNotAdvanceable { card: CardId },
+
+    #[error("no run is currently awaiting an access choice for that card")]
+    NotInAccessPhase,
+
+    #[error("Agenda {card:?} must be stolen and cannot be passed")]
+    MandatoryStealViolation { card: CardId },
+
+    #[error("attempted to pay {requested} credit(s) to steal {card:?} but only has {available}")]
+    CannotAffordStealCost { card: CardId, available: u32, requested: u32 },
+
+    #[error("attempted to pay {requested} credit(s) to trash {card:?} but only has {available}")]
+    CannotAffordTrashCost { card: CardId, available: u32, requested: u32 },
 }

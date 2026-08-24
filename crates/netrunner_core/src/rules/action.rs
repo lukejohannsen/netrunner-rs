@@ -126,4 +126,30 @@ pub enum PlayerAction {
     /// score the card even if the requirement is met — scoring is a
     /// separate, not-yet-modeled action.
     AdvanceCard { card_id: CardId },
+    /// Steal the currently pending accessed card. Runner-only. Legal only
+    /// while a run is in `RunPhase::AccessingCard` and `card_id` matches
+    /// the `AccessPhase::PendingChoice` card, and that card is actually a
+    /// stealable Agenda (`mandatory_steal` or `steal_cost` is set) —
+    /// `RulesError::NotInAccessPhase` otherwise. If the card has a
+    /// `steal_cost`, it's paid here (`RulesError::CannotAffordStealCost` if
+    /// unaffordable). Moves the card into `RunnerState::scored_agendas`,
+    /// checks win conditions, and advances to the next accessed card (or
+    /// finalizes the run) — see `run::access::resolve_steal`.
+    StealAgenda { card_id: CardId },
+    /// Pay to trash the currently pending accessed card off the table into
+    /// `CorpState::archives`. Runner-only. Legal only while a run is in
+    /// `RunPhase::AccessingCard`, `card_id` matches the pending card, and
+    /// that card has a `trash_cost` (`RulesError::NotInAccessPhase`
+    /// otherwise); `RulesError::CannotAffordTrashCost` if the cost can't be
+    /// paid. Advances to the next accessed card (or finalizes the run) —
+    /// see `run::access::resolve_trash`.
+    TrashAccessedCard { card_id: CardId },
+    /// Decline to steal/trash the currently pending accessed card and move
+    /// on. Runner-only. Legal only while a run is in `RunPhase::
+    /// AccessingCard` and `card_id` matches the pending card
+    /// (`RulesError::NotInAccessPhase` otherwise); illegal
+    /// (`RulesError::MandatoryStealViolation`) if that card is a
+    /// mandatory-steal Agenda. Advances to the next accessed card (or
+    /// finalizes the run) — see `run::access::resolve_pass`.
+    PassAccessedCard { card_id: CardId },
 }

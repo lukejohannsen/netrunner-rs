@@ -21,8 +21,9 @@ pub use masking::{
     PublicRunnerState,
 };
 pub use run::{
-    access_server, advance_run, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState,
-    ServerId, SubroutineStatus,
+    access_server, advance_run, resolve_pass, resolve_steal, resolve_trash, AccessPhase,
+    AccessState, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState, ServerId,
+    SubroutineStatus,
 };
 pub use state::{
     AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard, MemoryUnits,

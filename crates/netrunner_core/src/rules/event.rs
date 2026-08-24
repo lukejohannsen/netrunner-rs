@@ -40,4 +40,6 @@ pub enum GameEvent {
     GameOver { winner: Side },
     AbilityActivated { side: Side, card_id: CardId, ability_index: usize },
     CardAdvanced { card: CardId, advancement_tokens: u32 },
+    CardTrashedFromAccess { card: CardId, cost_paid: u32 },
+    AccessPassed { card: CardId },
 }

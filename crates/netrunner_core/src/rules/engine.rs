@@ -38,6 +38,13 @@ pub fn apply_action(
             activate_ability(state, registry, card_id, ability_index)
         }
         PlayerAction::AdvanceCard { card_id } => advance_card(state, registry, card_id),
+        PlayerAction::StealAgenda { card_id } => steal_agenda(state, registry, card_id),
+        PlayerAction::TrashAccessedCard { card_id } => {
+            trash_accessed_card(state, registry, card_id)
+        }
+        PlayerAction::PassAccessedCard { card_id } => {
+            pass_accessed_card(state, registry, card_id)
+        }
     }
 }
 
@@ -180,7 +187,7 @@ fn initiate_run(
 
     let mut next = state.clone();
     spend_click(&mut next, side)?;
-    next.active_run = Some(RunState {
+    next.active_run = Some(RunState { access_state: None,
         server,
         phase: RunPhase::Initiation,
         ice: Vec::new(),
@@ -228,10 +235,15 @@ fn complete_run(
     let server = active_run.server;
 
     let mut next = state.clone();
-    next.active_run = None;
 
     let mut events = run::access_server(&mut next, server, registry);
-    events.push(GameEvent::RunCompleted { server });
+    // `access_server` clears `active_run` itself when nothing was accessed
+    // (nothing to present a choice about); otherwise it parks the run in
+    // `RunPhase::AccessingCard` and `StealAgenda`/`TrashAccessedCard`/
+    // `PassAccessedCard` are what eventually finish it off.
+    if next.active_run.is_none() {
+        events.push(GameEvent::RunCompleted { server });
+    }
 
     Ok((next, events))
 }
@@ -419,6 +431,43 @@ fn advance_card(
     let advancement_tokens = installed.advancement_tokens;
     events.push(GameEvent::CardAdvanced { card: card_id, advancement_tokens });
 
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::StealAgenda`, per its doc comment. Runner-only,
+/// like every other access-resolution action.
+fn steal_agenda(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    require_phase(state, GamePhase::Action(Side::Runner))?;
+    let mut next = state.clone();
+    let events = run::resolve_steal(&mut next, &card_id, registry)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::TrashAccessedCard`, per its doc comment.
+fn trash_accessed_card(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    require_phase(state, GamePhase::Action(Side::Runner))?;
+    let mut next = state.clone();
+    let events = run::resolve_trash(&mut next, &card_id, registry)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::PassAccessedCard`, per its doc comment.
+fn pass_accessed_card(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    require_phase(state, GamePhase::Action(Side::Runner))?;
+    let mut next = state.clone();
+    let events = run::resolve_pass(&mut next, &card_id, registry)?;
     Ok((next, events))
 }
 
@@ -850,7 +899,7 @@ mod tests {
         }];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -878,7 +927,7 @@ mod tests {
         assert_eq!(next.runner.resources.clicks, Clicks(2));
         assert_eq!(
             next.active_run,
-            Some(RunState {
+            Some(RunState { access_state: None,
                 server: ServerId::Hq,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -914,7 +963,7 @@ mod tests {
     #[test]
     fn runner_initiate_run_with_run_already_active_returns_run_already_in_progress() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -939,7 +988,7 @@ mod tests {
     #[test]
     fn runner_jack_out_ends_run_clears_active_run_no_click_cost() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -978,7 +1027,7 @@ mod tests {
     #[test]
     fn runner_jack_out_on_concluded_run_propagates_run_already_concluded() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -995,7 +1044,7 @@ mod tests {
     #[test]
     fn runner_can_initiate_run_again_after_jacking_out() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -1013,7 +1062,7 @@ mod tests {
 
         assert_eq!(
             after_initiate.active_run,
-            Some(RunState {
+            Some(RunState { access_state: None,
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -1025,7 +1074,7 @@ mod tests {
     #[test]
     fn runner_complete_run_clears_active_run_after_success() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -1042,7 +1091,7 @@ mod tests {
     #[test]
     fn runner_complete_run_before_success_returns_run_not_concluded() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -1081,7 +1130,7 @@ mod tests {
     #[test]
     fn runner_can_initiate_run_again_after_completing_previous_run() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -1099,7 +1148,7 @@ mod tests {
 
         assert_eq!(
             after_initiate.active_run,
-            Some(RunState {
+            Some(RunState { access_state: None,
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -1109,10 +1158,57 @@ mod tests {
     }
 
     #[test]
-    fn runner_complete_run_against_hq_surfaces_card_accessed_event_before_run_completed() {
+    fn runner_complete_run_against_hq_parks_the_run_awaiting_an_access_choice() {
         let mut state = runner_state(3, 5, 3);
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
         state.active_run = Some(RunState {
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::Success,
+            ice: Vec::new(),
+            position: 0,
+        });
+        let (next, events) =
+            apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
+
+        // Not an Agenda and not in the (empty) registry, so nothing is
+        // stealable/trashable — but the run still waits for
+        // `PassAccessedCard` rather than completing on its own.
+        assert_eq!(
+            events,
+            vec![GameEvent::CardAccessed {
+                card: CardId("hedge_fund".to_string()),
+                server: ServerId::Hq
+            }]
+        );
+        assert_eq!(
+            next.active_run,
+            Some(RunState {
+                access_state: Some(run::AccessState {
+                    server: ServerId::Hq,
+                    accessed_cards: vec![CardId("hedge_fund".to_string())],
+                    current_index: 0,
+                    phase: run::AccessPhase::PendingChoice {
+                        card_id: CardId("hedge_fund".to_string()),
+                        can_trash: false,
+                        trash_cost: None,
+                        mandatory_steal: false,
+                        steal_cost: None,
+                    },
+                }),
+                server: ServerId::Hq,
+                phase: RunPhase::AccessingCard,
+                ice: Vec::new(),
+                position: 0,
+            })
+        );
+    }
+
+    #[test]
+    fn runner_complete_run_against_empty_hq_completes_immediately() {
+        let mut state = runner_state(3, 5, 3);
+        state.active_run = Some(RunState {
+            access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -1122,16 +1218,7 @@ mod tests {
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
 
         assert_eq!(next.active_run, None);
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::CardAccessed {
-                    card: CardId("hedge_fund".to_string()),
-                    server: ServerId::Hq
-                },
-                GameEvent::RunCompleted { server: ServerId::Hq },
-            ]
-        );
+        assert_eq!(events, vec![GameEvent::RunCompleted { server: ServerId::Hq }]);
     }
 
     #[test]
@@ -1154,7 +1241,7 @@ mod tests {
     #[test]
     fn runner_continue_run_steps_through_phases_with_no_click_cost() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Initiation,
             ice: vec![test_ice("ice_wall", 0, 0)],
@@ -1199,7 +1286,7 @@ mod tests {
     #[test]
     fn runner_continue_run_with_subroutines_pending_propagates_error() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -1459,7 +1546,7 @@ mod tests {
     fn runner_break_subroutine_decrements_pending_on_current_ice() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 2)],
@@ -1519,7 +1606,7 @@ mod tests {
     fn runner_break_subroutine_with_index_out_of_range_returns_invalid_subroutine_index() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -1538,7 +1625,7 @@ mod tests {
     fn runner_break_subroutine_outside_encounter_ice_returns_not_in_encounter() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -1602,6 +1689,7 @@ mod tests {
             triggers: Vec::new(),
             abilities: Vec::new(),
             trash_cost: None,
+            steal_cost: None,
             advancement_requirement,
             agenda_points: None,
             min_deck_size: None,
@@ -1628,6 +1716,7 @@ mod tests {
             triggers: Vec::new(),
             abilities: vec![AbilityDef { trigger, cost, effect }],
             trash_cost: None,
+            steal_cost: None,
             advancement_requirement: None,
             agenda_points: None,
             min_deck_size: None,
@@ -1640,7 +1729,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![card_id.clone()];
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0)],
@@ -1715,7 +1804,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(0);
         state.runner.rig = vec![card_id.clone()];
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0)],

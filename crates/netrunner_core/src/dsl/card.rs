@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dsl::ability::AbilityDef;
+use crate::dsl::cost::Cost;
 use crate::dsl::effect::Effect;
 use crate::dsl::trigger::Trigger;
 use crate::rules::Side;
@@ -51,6 +52,13 @@ pub struct Card {
     /// common case of cards that aren't trashable this way.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub trash_cost: Option<u32>,
+
+    /// Runner-paid cost to steal this Agenda, if any (e.g. NAPD Contract's
+    /// "pay 4 credits to steal"). `None` is the common case — a free steal
+    /// — and is exactly when `run::AccessPhase::PendingChoice::
+    /// mandatory_steal` is set. `Some` only for `CardType::Agenda`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub steal_cost: Option<Cost>,
 
     /// Advancement tokens required before an agenda can be scored/stolen.
     /// `Some` only for `CardType::Agenda`.

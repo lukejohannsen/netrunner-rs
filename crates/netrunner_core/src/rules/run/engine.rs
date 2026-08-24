@@ -16,7 +16,7 @@ fn phase_for_position(ice: &[RunIce], position: usize) -> RunPhase {
 
 pub fn advance_run(state: &mut GameState, action: RunAction) -> Result<Vec<GameEvent>, RulesError> {
     let phase = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?.phase;
-    if matches!(phase, RunPhase::Success | RunPhase::Ended) {
+    if matches!(phase, RunPhase::Success | RunPhase::AccessingCard | RunPhase::Ended) {
         return Err(RulesError::RunAlreadyConcluded { phase });
     }
 
@@ -89,7 +89,10 @@ fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
             }
             Ok(events)
         }
-        RunPhase::Success | RunPhase::Ended => {
+        // Unreachable in practice — `advance_run`'s top-level guard already
+        // rejects both phases before `continue_run` is ever called. Handled
+        // here only so this match stays exhaustive.
+        RunPhase::AccessingCard | RunPhase::Success | RunPhase::Ended => {
             Err(RulesError::RunAlreadyConcluded { phase: run.phase })
         }
     }
@@ -191,6 +194,7 @@ mod tests {
             phase,
             ice,
             position,
+            access_state: None,
         }
     }
 

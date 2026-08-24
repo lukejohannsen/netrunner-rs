@@ -306,7 +306,7 @@ mod tests {
     #[test]
     fn end_the_run_clears_active_run_and_emits_event() {
         let mut state = game_state();
-        state.active_run = Some(RunState { server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
+        state.active_run = Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
 
         let events = evaluate_effect(&mut state, &Effect::EndTheRun).unwrap();
 
@@ -349,7 +349,7 @@ mod tests {
     #[test]
     fn break_subroutine_breaks_the_targeted_pending_subroutine() {
         let mut state = game_state();
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 2)],
@@ -370,7 +370,7 @@ mod tests {
     #[test]
     fn break_subroutine_out_of_range_index_errors() {
         let mut state = game_state();
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1)],
@@ -389,7 +389,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 1);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         state.active_run =
-            Some(RunState { server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 });
+            Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 });
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::BreakSubroutine(0)),
@@ -410,7 +410,7 @@ mod tests {
     fn break_subroutine_outside_encounter_ice_errors() {
         let mut state = game_state();
         state.active_run =
-            Some(RunState { server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
+            Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::BreakSubroutine(0)),
@@ -424,7 +424,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2);
         ice.subroutines[0].definition.effect = Effect::GiveTags(2);
         ice.subroutines[1].definition.effect = Effect::GainCredits(Side::Corp, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -465,7 +465,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2);
         ice.subroutines[0].definition.effect = Effect::EndTheRun;
         ice.subroutines[1].definition.effect = Effect::GiveTags(5);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -495,7 +495,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         ice.subroutines[1].definition.effect = Effect::GiveTags(1);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -513,7 +513,7 @@ mod tests {
     #[test]
     fn modify_strength_updates_current_strength_and_emits_event() {
         let mut state = game_state();
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 3, 0)],
@@ -537,7 +537,7 @@ mod tests {
     fn modify_strength_outside_encounter_ice_errors() {
         let mut state = game_state();
         state.active_run =
-            Some(RunState { server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
+            Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 });
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::ModifyStrength(2)),
