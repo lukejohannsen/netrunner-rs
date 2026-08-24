@@ -80,6 +80,65 @@ fn compute_pending_choice(card_id: &CardId, runner_credits: u32, registry: &Card
     }
 }
 
+/// Sets `access.phase` to the `PendingChoice` computed from `card_id`'s
+/// registry def, then fires its (unconditional) `Trigger::OnAccessed`
+/// triggers. Does not itself emit `GameEvent::CardAccessed` — callers are
+/// responsible for that, since it differs depending on whether this is a
+/// card's first presentation (a fresh access) or the continuation of one
+/// already announced via `AccessPhase::PendingInteractiveTrigger` (in which
+/// case `CardAccessed` was already emitted once and must not repeat).
+fn enter_pending_choice(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    server: ServerId,
+    card_id: &CardId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let runner_credits = state.runner.resources.credits.0;
+    let run = state.active_run.as_mut().expect("enter_pending_choice called mid-access");
+    let access = run.access_state.as_mut().expect("enter_pending_choice called mid-access");
+    access.phase = compute_pending_choice(card_id, runner_credits, registry);
+
+    let mut events = ability::process_card_triggers(state, registry, card_id, Trigger::OnAccessed)?;
+    if let Some(finish) = finish_if_game_over(state, server, &events) {
+        events.extend(finish);
+    }
+    Ok(events)
+}
+
+/// Presents `card_id` for access: emits `GameEvent::CardAccessed`, then
+/// either parks at `AccessPhase::PendingInteractiveTrigger` (if the card's
+/// registry def has an `InteractiveOnAccess` trigger — e.g. Fetal AI) or
+/// goes straight to `enter_pending_choice`. The single entry point every
+/// "a card is now being accessed" call site (`access_server`,
+/// `resolve_select_card`, `advance_or_finish`) should use.
+fn present_card_for_access(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    server: ServerId,
+    card_id: &CardId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server }];
+
+    if let Some(interactive) = registry.get(card_id).and_then(|c| c.interactive_on_access.as_ref()) {
+        let can_pay = match &interactive.cost {
+            Cost::Credits(amount) => state.runner.resources.credits.0 >= *amount,
+            // Other cost kinds aren't precomputed elsewhere either
+            // (`resolve_steal`'s `steal_cost` handling is the same) —
+            // `resolve_pay_to_avoid`'s `ability::pay_cost` call re-validates
+            // affordability for every `Cost` variant regardless.
+            _ => true,
+        };
+        let cost = interactive.cost.clone();
+        let run = state.active_run.as_mut().expect("present_card_for_access called mid-access");
+        let access = run.access_state.as_mut().expect("present_card_for_access called mid-access");
+        access.phase = AccessPhase::PendingInteractiveTrigger { card_id: card_id.clone(), cost, can_pay };
+        return Ok(events);
+    }
+
+    events.extend(enter_pending_choice(state, registry, server, card_id)?);
+    Ok(events)
+}
+
 /// Determine which cards a successful run against `server` accesses and, if
 /// any, park the run in `RunPhase::AccessingCard`. A single accessed card
 /// goes straight to an `AccessState` describing its `PendingChoice` —
@@ -109,7 +168,6 @@ pub fn access_server(
         return Ok(Vec::new());
     }
 
-    let runner_credits = state.runner.resources.credits.0;
     let run = state
         .active_run
         .as_mut()
@@ -118,16 +176,18 @@ pub fn access_server(
 
     if accessed.len() == 1 {
         let card_id = accessed.into_iter().next().unwrap();
-        let phase = compute_pending_choice(&card_id, runner_credits, registry);
-        run.access_state =
-            Some(AccessState { server, unaccessed_cards: Vec::new(), resolved_cards: Vec::new(), phase });
+        // Placeholder phase — `present_card_for_access` below overwrites it
+        // immediately (with either `PendingInteractiveTrigger` or, via
+        // `enter_pending_choice`, the real `PendingChoice`). `AccessState`
+        // must exist first since both paths borrow `run.access_state.as_mut()`.
+        run.access_state = Some(AccessState {
+            server,
+            unaccessed_cards: Vec::new(),
+            resolved_cards: Vec::new(),
+            phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
+        });
 
-        let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server }];
-        events.extend(ability::process_card_triggers(state, registry, &card_id, Trigger::OnAccessed)?);
-        if let Some(finish) = finish_if_game_over(state, server, &events) {
-            events.extend(finish);
-        }
-        Ok(events)
+        present_card_for_access(state, registry, server, &card_id)
     } else {
         run.access_state = Some(AccessState {
             server,
@@ -215,20 +275,13 @@ pub fn resolve_select_card(
         return Err(RulesError::InvalidAccessSelection { card: card_id.clone() });
     }
 
-    let runner_credits = state.runner.resources.credits.0;
     let run = state.active_run.as_mut().expect("resolve_select_card called mid-access");
     let access = run.access_state.as_mut().expect("resolve_select_card called mid-access");
     if let Some(pos) = access.unaccessed_cards.iter().position(|c| c == card_id) {
         access.unaccessed_cards.remove(pos);
     }
-    access.phase = compute_pending_choice(card_id, runner_credits, registry);
 
-    let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server: pending.server }];
-    events.extend(ability::process_card_triggers(state, registry, card_id, Trigger::OnAccessed)?);
-    if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
-        events.extend(finish);
-    }
-    Ok(events)
+    present_card_for_access(state, registry, pending.server, card_id)
 }
 
 /// If `state.phase` became `GameOver` (e.g. a flatline mid-trigger, or an
@@ -277,7 +330,6 @@ fn advance_or_finish(
         return Ok(events);
     }
 
-    let runner_credits = state.runner.resources.credits.0;
     let run = state.active_run.as_mut().expect("advance_or_finish called mid-access");
     let access = run.access_state.as_mut().expect("advance_or_finish called mid-access");
     access.resolved_cards.push(resolved_card);
@@ -289,14 +341,7 @@ fn advance_or_finish(
         }
         1 => {
             let next_card = access.unaccessed_cards.remove(0);
-            access.phase = compute_pending_choice(&next_card, runner_credits, registry);
-
-            let mut events = vec![GameEvent::CardAccessed { card: next_card.clone(), server }];
-            events.extend(ability::process_card_triggers(state, registry, &next_card, Trigger::OnAccessed)?);
-            if let Some(finish) = finish_if_game_over(state, server, &events) {
-                events.extend(finish);
-            }
-            Ok(events)
+            present_card_for_access(state, registry, server, &next_card)
         }
         _ => {
             access.phase = AccessPhase::SelectNextCard { selectable_cards: access.unaccessed_cards.clone() };
@@ -401,10 +446,91 @@ pub fn resolve_pass(
     Ok(events)
 }
 
+/// The `AccessState` fields `resolve_pay_to_avoid`/`resolve_decline_to_avoid`
+/// need, pulled out by value for the same borrow-scoping reason as
+/// `PendingAccess`.
+struct PendingInteractive {
+    server: ServerId,
+    cost: Cost,
+}
+
+/// Confirms a run is parked in `RunPhase::AccessingCard` awaiting an
+/// interactive-trigger decision (`AccessPhase::PendingInteractiveTrigger`)
+/// on exactly `card_id`, and returns that decision's context. Covers every
+/// "wrong state to call this" case with a single error
+/// (`RulesError::NotInAccessPhase`), mirroring `require_pending`.
+fn require_pending_interactive(state: &GameState, card_id: &CardId) -> Result<PendingInteractive, RulesError> {
+    let run = state.active_run.as_ref().ok_or(RulesError::NotInAccessPhase)?;
+    if run.phase != RunPhase::AccessingCard {
+        return Err(RulesError::NotInAccessPhase);
+    }
+    let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
+    let AccessPhase::PendingInteractiveTrigger { card_id: pending, cost, .. } = &access.phase else {
+        return Err(RulesError::NotInAccessPhase);
+    };
+    if pending != card_id {
+        return Err(RulesError::NotInAccessPhase);
+    }
+
+    Ok(PendingInteractive { server: access.server, cost: cost.clone() })
+}
+
+/// Resolves `PlayerAction::PayToAvoidAccessTrigger`. See its doc comment for
+/// the error conditions.
+pub fn resolve_pay_to_avoid(
+    state: &mut GameState,
+    card_id: &CardId,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let pending = require_pending_interactive(state, card_id)?;
+    if let Cost::Credits(requested) = &pending.cost {
+        let available = state.runner.resources.credits.0;
+        if available < *requested {
+            return Err(RulesError::CannotAffordAvoidanceCost {
+                card: card_id.clone(),
+                available,
+                requested: *requested,
+            });
+        }
+    }
+
+    let mut events = ability::pay_cost(state, Side::Runner, &pending.cost)?;
+    events.extend(enter_pending_choice(state, registry, pending.server, card_id)?);
+    Ok(events)
+}
+
+/// Resolves `PlayerAction::DeclineAccessTrigger`. See its doc comment for
+/// the error conditions.
+pub fn resolve_decline_to_avoid(
+    state: &mut GameState,
+    card_id: &CardId,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let pending = require_pending_interactive(state, card_id)?;
+
+    let effects = registry
+        .get(card_id)
+        .and_then(|c| c.interactive_on_access.as_ref())
+        .map(|interactive| interactive.effects.clone())
+        .unwrap_or_default();
+
+    let mut events = Vec::new();
+    for effect in &effects {
+        events.extend(ability::evaluate_effect(state, effect, None)?);
+    }
+    if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
+        events.extend(finish);
+        return Ok(events);
+    }
+
+    events.extend(enter_pending_choice(state, registry, pending.server, card_id)?);
+    Ok(events)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardType, DamageType, Effect, TriggeredEffect};
+    use crate::dsl::{Card, CardType, DamageType, Effect, InteractiveOnAccess, TriggeredEffect};
     use crate::rules::run::state::RunState;
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, InstalledCard, MemoryUnits, PlayerResources, RunnerState,
@@ -436,6 +562,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
+            interactive_on_access: None,
         }
     }
 
@@ -463,6 +590,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
+            interactive_on_access: None,
         }
     }
 
@@ -482,6 +610,17 @@ mod tests {
         Card {
             triggers: vec![TriggeredEffect { trigger: Trigger::OnTrashedFromAccess, effects }],
             ..trashable_card(id, trash_cost)
+        }
+    }
+
+    /// A minimal non-Agenda, non-trashable Asset `Card` with an
+    /// `InteractiveOnAccess` trigger — Fetal AI-style "pay `cost` to avoid
+    /// `effects`."
+    fn card_with_interactive_on_access(id: &str, cost: Cost, effects: Vec<Effect>) -> Card {
+        Card {
+            interactive_on_access: Some(InteractiveOnAccess { cost, effects }),
+            trash_cost: None,
+            ..trashable_card(id, 0)
         }
     }
 
@@ -1497,6 +1636,276 @@ mod tests {
                 GameEvent::RunnerFlatlined,
                 GameEvent::GameOver { winner: Side::Corp },
                 GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
+    }
+
+    #[test]
+    fn accessing_a_card_with_interactive_on_access_pauses_at_pending_interactive_trigger() {
+        let registry = CardRegistry::from_cards(vec![card_with_interactive_on_access(
+            "fetal_ai",
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 2)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+
+        let events = access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        assert_eq!(
+            events,
+            vec![GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives }]
+        );
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::PendingInteractiveTrigger {
+                card_id: CardId("fetal_ai".to_string()),
+                cost: Cost::Credits(4),
+                can_pay: true,
+            }
+        );
+        // No damage taken yet — the effect hasn't resolved.
+        assert_eq!(state.runner.grip.len(), 2);
+    }
+
+    #[test]
+    fn pay_to_avoid_deducts_cost_skips_effects_and_proceeds_to_pending_choice() {
+        let registry = CardRegistry::from_cards(vec![card_with_interactive_on_access(
+            "fetal_ai",
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 2)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let card_id = CardId("fetal_ai".to_string());
+        let events = resolve_pay_to_avoid(&mut state, &card_id, &registry).expect("paying should succeed");
+
+        assert_eq!(state.runner.resources.credits, Credits(1));
+        // No damage — the effect was avoided.
+        assert_eq!(state.runner.grip.len(), 2);
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::PendingChoice {
+                card_id: card_id.clone(),
+                can_trash: false,
+                trash_cost: None,
+                mandatory_steal: false,
+                steal_cost: None,
+            }
+        );
+        assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Runner, amount: 4 }]);
+
+        // The normal choice is still reachable afterward.
+        let pass_events = resolve_pass(&mut state, &card_id, &registry).expect("pass should succeed");
+        assert_eq!(
+            pass_events,
+            vec![
+                GameEvent::AccessPassed { card: card_id },
+                GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
+    }
+
+    #[test]
+    fn decline_to_avoid_applies_effects_and_proceeds_to_pending_choice() {
+        let registry = CardRegistry::from_cards(vec![card_with_interactive_on_access(
+            "fetal_ai",
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 2)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let card_id = CardId("fetal_ai".to_string());
+        let events =
+            resolve_decline_to_avoid(&mut state, &card_id, &registry).expect("declining should succeed");
+
+        // Credits untouched, but the 2 net damage landed.
+        assert_eq!(state.runner.resources.credits, Credits(5));
+        assert_eq!(state.runner.grip.len(), 0);
+        assert_eq!(state.runner.heap.len(), 2);
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::PendingChoice {
+                card_id: card_id.clone(),
+                can_trash: false,
+                trash_cost: None,
+                mandatory_steal: false,
+                steal_cost: None,
+            }
+        );
+        assert!(matches!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 }));
+    }
+
+    #[test]
+    fn pay_to_avoid_with_insufficient_credits_errors_and_leaves_state_untouched() {
+        let registry = CardRegistry::from_cards(vec![card_with_interactive_on_access(
+            "fetal_ai",
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 2)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(2);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let card_id = CardId("fetal_ai".to_string());
+        assert_eq!(
+            resolve_pay_to_avoid(&mut state, &card_id, &registry),
+            Err(RulesError::CannotAffordAvoidanceCost { card: card_id.clone(), available: 2, requested: 4 })
+        );
+
+        // Untouched: still credits 2, still pending the same interactive trigger.
+        assert_eq!(state.runner.resources.credits, Credits(2));
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::PendingInteractiveTrigger { card_id, cost: Cost::Credits(4), can_pay: false }
+        );
+    }
+
+    #[test]
+    fn resolving_interactive_trigger_actions_against_the_wrong_state_errors_not_in_access_phase() {
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
+        let card_id = CardId("fetal_ai".to_string());
+
+        assert_eq!(
+            resolve_pay_to_avoid(&mut state, &card_id, &registry()),
+            Err(RulesError::NotInAccessPhase)
+        );
+        assert_eq!(
+            resolve_decline_to_avoid(&mut state, &card_id, &registry()),
+            Err(RulesError::NotInAccessPhase)
+        );
+
+        // Also errors when a *different* card is actually pending.
+        let registry = CardRegistry::from_cards(vec![card_with_interactive_on_access(
+            "fetal_ai",
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 2)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(5);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let wrong_card = CardId("not_pending".to_string());
+        assert_eq!(
+            resolve_pay_to_avoid(&mut state, &wrong_card, &registry),
+            Err(RulesError::NotInAccessPhase)
+        );
+        assert_eq!(
+            resolve_decline_to_avoid(&mut state, &wrong_card, &registry),
+            Err(RulesError::NotInAccessPhase)
+        );
+    }
+
+    #[test]
+    fn decline_to_avoid_flatlining_ends_the_game_and_skips_pending_choice() {
+        let registry = CardRegistry::from_cards(vec![card_with_interactive_on_access(
+            "fetal_ai",
+            Cost::Credits(4),
+            vec![Effect::DealDamage(DamageType::Net, 5)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("fetal_ai".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.runner.resources.credits = Credits(0);
+        state.runner.grip = vec![CardId("card_a".to_string()), CardId("card_b".to_string())];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let card_id = CardId("fetal_ai".to_string());
+        let events =
+            resolve_decline_to_avoid(&mut state, &card_id, &registry).expect("declining should succeed");
+
+        assert_eq!(state.active_run, None);
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::RunnerFlatlined,
+                GameEvent::GameOver { winner: Side::Corp },
+                GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
+    }
+
+    #[test]
+    fn ordinary_on_accessed_cards_are_unaffected_by_the_interactive_trigger_refactor() {
+        let registry = CardRegistry::from_cards(vec![card_with_on_accessed(
+            "snare",
+            vec![Effect::GiveTags(1)],
+        )]);
+        let mut state = game_state(
+            Vec::new(),
+            Vec::new(),
+            vec![CardId("snare".to_string())],
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(run_in_success(ServerId::Archives));
+
+        let events = access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        assert_eq!(state.runner.tags, 1, "OnAccessed still fires unconditionally for non-interactive cards");
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::PendingChoice {
+                card_id: CardId("snare".to_string()),
+                can_trash: false,
+                trash_cost: None,
+                mandatory_steal: false,
+                steal_cost: None,
+            }
+        );
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
             ]
         );
     }

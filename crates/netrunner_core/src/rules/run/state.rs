@@ -95,6 +95,21 @@ pub enum AccessPhase {
     /// picks one via `PlayerAction::SelectCardToAccess`, which moves it into
     /// `PendingChoice`.
     SelectNextCard { selectable_cards: Vec<CardId> },
+    /// Offered instead of `PendingChoice` when the just-accessed card's
+    /// registry definition has an `InteractiveOnAccess` trigger (e.g. Fetal
+    /// AI's "pay 2c to avoid 2 net damage") — resolved first, via
+    /// `PlayerAction::PayToAvoidAccessTrigger`/`DeclineAccessTrigger`
+    /// (`run::access::resolve_pay_to_avoid`/`resolve_decline_to_avoid`),
+    /// before the card's normal `PendingChoice` is presented.
+    PendingInteractiveTrigger {
+        card_id: CardId,
+        cost: Cost,
+        /// Whether the Runner can currently afford `cost` (for
+        /// `Cost::Credits`; `true` otherwise) — a precomputed hint, same
+        /// role as `PendingChoice::can_trash`. Resolution re-checks
+        /// affordability regardless.
+        can_pay: bool,
+    },
     PendingChoice {
         card_id: CardId,
         /// Whether the Runner can currently afford `trash_cost` (`false` if

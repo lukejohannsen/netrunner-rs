@@ -891,6 +891,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
+            interactive_on_access: None,
         }
     }
 

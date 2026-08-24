@@ -50,6 +50,12 @@ pub fn apply_action(
         PlayerAction::PassAccessedCard { card_id } => {
             pass_accessed_card(state, registry, card_id)
         }
+        PlayerAction::PayToAvoidAccessTrigger { card_id } => {
+            pay_to_avoid_access_trigger(state, registry, card_id)
+        }
+        PlayerAction::DeclineAccessTrigger { card_id } => {
+            decline_access_trigger(state, registry, card_id)
+        }
         PlayerAction::PassPriority { side } => pass_priority_action(state, registry, side),
     }
 }
@@ -663,6 +669,30 @@ fn pass_accessed_card(
     require_phase(state, GamePhase::Action(Side::Runner))?;
     let mut next = state.clone();
     let events = run::resolve_pass(&mut next, &card_id, registry)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::PayToAvoidAccessTrigger`, per its doc comment.
+fn pay_to_avoid_access_trigger(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    require_phase(state, GamePhase::Action(Side::Runner))?;
+    let mut next = state.clone();
+    let events = run::resolve_pay_to_avoid(&mut next, &card_id, registry)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::DeclineAccessTrigger`, per its doc comment.
+fn decline_access_trigger(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    require_phase(state, GamePhase::Action(Side::Runner))?;
+    let mut next = state.clone();
+    let events = run::resolve_decline_to_avoid(&mut next, &card_id, registry)?;
     Ok((next, events))
 }
 
@@ -2380,6 +2410,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
+            interactive_on_access: None,
         }
     }
 
@@ -2409,6 +2440,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
+            interactive_on_access: None,
         }
     }
 

@@ -8,7 +8,7 @@ Tracking shipped milestones and future technical engine work for `netrunner_core
 
 * **Phase & Priority State Machines:** Fully integrated `GamePhase` state machine (`StartOfTurn`, `Action`, `Discard`, `GameOver`) and priority-based `PaidAbilityWindow` system.
 * **ICE Stack & Jack-out Windows:** Dynamic `RunIce` resolution from installed Corp cards and four Netrunner-compliant jack-out legality windows.
-* **Access Phase Plumbing:** Interactive multi-card access selection (`SelectNextCard`), post-access decisions (`StealAgenda`, `TrashAccessedCard`, `PassAccessedCard`), and automatic on-access triggers (`OnAccessed`, `OnTrashedFromAccess`).
+* **Access Phase Plumbing:** Interactive multi-card access selection (`SelectNextCard`), post-access decisions (`StealAgenda`, `TrashAccessedCard`, `PassAccessedCard`), automatic on-access triggers (`OnAccessed`, `OnTrashedFromAccess`), and choice-driven interactive on-access triggers (`AccessPhase::PendingInteractiveTrigger`/`PlayerAction::PayToAvoidAccessTrigger`/`DeclineAccessTrigger`, e.g. Fetal AI's "pay to avoid damage").
 * **Deck-Out & Victory Resolution:** Start-of-turn deck-out checks, agenda point victory detection via `CardRegistry`, and public Heap/Archives tracking.
 * **Icebreaker & Economy Primitives:** 
   * `InstalledRunnerCard` per-instance rig state with `Encounter` and `Turn` strength buff tracking.
@@ -20,7 +20,6 @@ Tracking shipped milestones and future technical engine work for `netrunner_core
 ## Planned Work & Engine Gaps
 
 ### Phase 1: Card & Ability Primitives
-- [ ] **Interactive Access Triggers:** Choice-driven on-access abilities requiring cost payments or decisions (e.g., paying credits to prevent damage).
 - [ ] **Trigger Self-References:** Resolve `CardTarget::ThisCard` and `Cost::TrashSelf` for cards executing their own trigger effects during access or trash.
 
 ### Phase 2: Engine Windows & State Integrity

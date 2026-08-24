@@ -19,6 +19,20 @@ pub struct AbilityDef {
     pub effect: Effect,
 }
 
+/// An optional "may pay `cost` to prevent `effects`" access-time trigger —
+/// e.g. Fetal AI's "pay 2 [credit] to avoid 2 net damage." Lives on
+/// `dsl::card::Card::interactive_on_access`, `None` for the common case of
+/// no such trigger. Resolved before the card's normal (unconditional)
+/// `Trigger::OnAccessed` effects, via `rules::run::state::AccessPhase::
+/// PendingInteractiveTrigger` and `PlayerAction::PayToAvoidAccessTrigger`/
+/// `DeclineAccessTrigger` (`rules::run::access::resolve_pay_to_avoid`/
+/// `resolve_decline_to_avoid`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct InteractiveOnAccess {
+    pub cost: Cost,
+    pub effects: Vec<Effect>,
+}
+
 /// A subroutine's printed text and the `Effect` it resolves into, when the
 /// Corp lets it fire (or the Runner fails to break it).
 ///

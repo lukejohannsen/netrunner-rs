@@ -71,7 +71,6 @@ This section tracks open architectural gaps in `netrunner_core` to address befor
 
 ### Priority 1: Rules & Ability Primitives
 
-* **Interactive On-Access Triggers:** Automatic access triggers (`OnAccessed`, `OnTrashedFromAccess`) are implemented, but interactive triggers (e.g., Fetal AI requiring a 4c payment to avoid damage) need `AccessPhase`/`PlayerAction` choice plumbing.
 * **Self-Reference Card Triggers:** `CardTarget::ThisCard` and `Cost::TrashSelf` for accessed or trashed card self-resolution currently throw `RulesError::UnresolvedCardTarget`.
 
 ### Priority 2: Engine Windows & State Integrity

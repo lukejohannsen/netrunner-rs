@@ -182,6 +182,22 @@ pub enum PlayerAction {
     /// mandatory-steal Agenda. Advances to the next accessed card (or
     /// finalizes the run) — see `run::access::resolve_pass`.
     PassAccessedCard { card_id: CardId },
+    /// Pay the pending `AccessPhase::PendingInteractiveTrigger`'s `cost` to
+    /// prevent its `effects`. Runner-only. Legal only while a run is in
+    /// `RunPhase::AccessingCard` and `card_id` matches the pending
+    /// interactive trigger (`RulesError::NotInAccessPhase` otherwise);
+    /// `RulesError::CannotAffordAvoidanceCost` if the cost can't be paid.
+    /// Transitions straight to that card's normal `AccessPhase::
+    /// PendingChoice` afterward — see `run::access::resolve_pay_to_avoid`.
+    PayToAvoidAccessTrigger { card_id: CardId },
+    /// Decline to pay the pending `AccessPhase::PendingInteractiveTrigger`'s
+    /// `cost`, letting its `effects` resolve instead. Runner-only. Legal
+    /// only while a run is in `RunPhase::AccessingCard` and `card_id`
+    /// matches the pending interactive trigger (`RulesError::
+    /// NotInAccessPhase` otherwise). Transitions to that card's normal
+    /// `AccessPhase::PendingChoice` afterward, unless the effects ended the
+    /// game — see `run::access::resolve_decline_to_avoid`.
+    DeclineAccessTrigger { card_id: CardId },
     /// Pass priority in the currently open Paid Ability Window. Carries an
     /// explicit `side` — unlike `EndTurn`/`DiscardCard`/`ActivateAbility`,
     /// there's no card/zone/phase to infer it from: `GameState::phase` stays

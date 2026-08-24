@@ -132,4 +132,7 @@ pub enum RulesError {
 
     #[error("card {card:?} is not an Operation and cannot be played via PlayOperation")]
     CardNotOperation { card: CardId },
+
+    #[error("attempted to pay {requested} credit(s) to avoid {card:?}'s access trigger but only has {available}")]
+    CannotAffordAvoidanceCost { card: CardId, available: u32, requested: u32 },
 }

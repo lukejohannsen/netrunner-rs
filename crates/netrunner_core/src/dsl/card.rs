@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::ability::{AbilityDef, SubroutineDef};
+use crate::dsl::ability::{AbilityDef, InteractiveOnAccess, SubroutineDef};
 use crate::dsl::cost::Cost;
 use crate::dsl::effect::Effect;
 use crate::dsl::trigger::Trigger;
@@ -91,6 +91,13 @@ pub struct Card {
     /// `CardType::Ice(_)`.
     #[serde(default)]
     pub subroutines: Vec<SubroutineDef>,
+
+    /// An optional "may pay a cost to prevent an access-time effect"
+    /// trigger — e.g. Fetal AI's "pay 2c to avoid 2 net damage." `None` for
+    /// the common case (no such trigger). See `InteractiveOnAccess`'s doc
+    /// comment.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interactive_on_access: Option<InteractiveOnAccess>,
 }
 
 #[cfg(test)]
