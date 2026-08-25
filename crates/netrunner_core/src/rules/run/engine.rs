@@ -1,10 +1,84 @@
-use crate::dsl::{CardId, Effect};
+use crate::cards::CardRegistry;
+use crate::dsl::{CardId, CardType, Effect, IceType};
 use crate::rules::ability::evaluate_effect;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::action::RunAction;
-use crate::rules::run::state::{RunIce, RunPhase, RunState, SubroutineStatus};
-use crate::rules::state::GameState;
+use crate::rules::run::state::{EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId, SubroutineStatus};
+use crate::rules::state::{GameState, InstallSlot, InstalledCard};
+
+/// Builds one `RunIce` from an `InstalledCard` known to be ICE (caller
+/// filters by `InstallSlot::Ice`), looking up strength/subroutines from
+/// `registry`. Never errors: a `card_id` absent from `registry` (or missing
+/// `strength`/`subroutines`) degrades to a blank 0-strength/no-subroutines
+/// ICE that can't block anything, mirroring
+/// `run::access::compute_pending_choice`'s existing leniency for
+/// unrecognized cards.
+fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> RunIce {
+    let card_def = registry.get(&installed.card);
+    let current_strength = card_def.and_then(|c| c.strength).unwrap_or(0);
+    let ice_type = card_def
+        .and_then(|c| match &c.card_type {
+            CardType::Ice(ice_type) => Some(*ice_type),
+            _ => None,
+        })
+        .unwrap_or(IceType::Barrier);
+    let subroutines = card_def
+        .map(|c| {
+            c.subroutines
+                .iter()
+                .enumerate()
+                .map(|(id, def)| EncounteredSubroutine {
+                    id,
+                    definition: def.clone(),
+                    status: SubroutineStatus::Pending,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    RunIce { card_id: installed.card.clone(), current_strength, ice_type, subroutines, rezzed: installed.rezzed }
+}
+
+/// Sets `state.active_run` to a freshly-initiated run on `server` — shared
+/// by `engine::initiate_run` (`PlayerAction::InitiateRun`, which spends a
+/// click before calling this) and `ability::evaluate_effect`'s
+/// `Effect::InitiateRun` arm (a card's own "make a run" text, which doesn't
+/// spend an extra click — the enclosing `PlayEvent`/`PlayOperation` already
+/// did). `RulesError::RunAlreadyInProgress` if a run is already active.
+pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<(), RulesError> {
+    if state.active_run.is_some() {
+        return Err(RulesError::RunAlreadyInProgress);
+    }
+
+    // `corp.installed`'s Vec order is install order (oldest first); installs
+    // only ever `.push()`, so oldest install = outermost ICE = index 0,
+    // matching `RunIce`'s outermost-to-innermost doc comment.
+    let ice: Vec<RunIce> = state
+        .corp
+        .installed
+        .iter()
+        .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
+        .map(|installed| build_run_ice(installed, registry))
+        .collect();
+
+    state.active_run = Some(RunState {
+        additional_rd_access: 0,
+        additional_hq_access: 0,
+        access_replacement: None,
+        access_state: None,
+        bad_publicity_credits: state.corp.bad_publicity,
+        server,
+        phase: RunPhase::Initiation,
+        ice,
+        position: 0,
+        // Netrunner/Null Signal Games jack-out rule 1: closed until an ICE
+        // is passed (or the server approach step is reached with none
+        // installed).
+        jack_out_permitted: false,
+    });
+    Ok(())
+}
 
 fn phase_for_position(ice: &[RunIce], position: usize) -> RunPhase {
     if position < ice.len() {
@@ -40,7 +114,11 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
     events
 }
 
-pub fn advance_run(state: &mut GameState, action: RunAction) -> Result<Vec<GameEvent>, RulesError> {
+pub fn advance_run(
+    state: &mut GameState,
+    action: RunAction,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
     let phase = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?.phase;
     // `JackOut` alone is legal from `RunPhase::Success` (the "approach
     // server" jack-out window, Netrunner/Null Signal Games rule 3) — every
@@ -58,8 +136,8 @@ pub fn advance_run(state: &mut GameState, action: RunAction) -> Result<Vec<GameE
     match action {
         RunAction::JackOut => jack_out(state),
         RunAction::Continue => continue_run(state),
-        RunAction::ResolveSubroutine(index) => step_subroutine(state, index, true),
-        RunAction::BreakSubroutine(index) => step_subroutine(state, index, false),
+        RunAction::ResolveSubroutine(index) => step_subroutine(state, index, true, registry),
+        RunAction::BreakSubroutine(index) => step_subroutine(state, index, false, registry),
     }
 }
 
@@ -189,13 +267,18 @@ pub(crate) fn transition_subroutine(
     Ok((card_id, effect))
 }
 
-fn step_subroutine(state: &mut GameState, index: usize, resolve: bool) -> Result<Vec<GameEvent>, RulesError> {
+fn step_subroutine(
+    state: &mut GameState,
+    index: usize,
+    resolve: bool,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
     let to = if resolve { SubroutineStatus::Resolved } else { SubroutineStatus::Broken };
     let (card_id, effect) = transition_subroutine(state, index, to)?;
 
     if resolve {
         let mut events = vec![GameEvent::SubroutineFired { card_id, index, effect: effect.clone() }];
-        events.extend(evaluate_effect(state, &effect, None)?);
+        events.extend(evaluate_effect(state, &effect, None, registry)?);
         Ok(events)
     } else {
         Ok(vec![GameEvent::SubroutineBroken { card_id, index }])
@@ -214,7 +297,7 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(5),
@@ -240,7 +323,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
@@ -297,7 +380,7 @@ mod tests {
     fn initiation_continue_with_ice_enters_approach_ice() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 2, true)], 0));
-        let events = advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::ApproachIce);
@@ -312,7 +395,7 @@ mod tests {
     fn initiation_continue_with_no_ice_is_immediate_success() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::Initiation, vec![], 0));
-        let events = advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::Success);
         assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Hq }]);
@@ -322,7 +405,7 @@ mod tests {
     fn approach_ice_continue_enters_encounter_ice() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 3, 2, true)], 0));
-        let events = advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::EncounterIce);
         assert_eq!(
@@ -339,7 +422,7 @@ mod tests {
     fn approach_ice_continue_with_unrezzed_ice_auto_passes_without_encounter() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 3, 2, false)], 0));
-        let events = advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::Success);
@@ -362,7 +445,7 @@ mod tests {
             vec![test_ice("ice_wall_0", 0, 1, false), test_ice("ice_wall_1", 0, 1, true)],
             0,
         ));
-        let events = advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::ApproachIce);
@@ -380,7 +463,7 @@ mod tests {
     fn initiation_continue_with_unrezzed_ice_still_enters_approach_ice() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 2, false)], 0));
-        let events = advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::ApproachIce);
@@ -396,7 +479,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 2, true)], 0));
         let events =
-            advance_run(&mut state, RunAction::ResolveSubroutine(0)).expect("should succeed");
+            advance_run(&mut state, RunAction::ResolveSubroutine(0), &CardRegistry::new()).expect("should succeed");
 
         // subroutine 0's effect (EndTheRun) fired, which clears active_run —
         // this is itself proof the effect was actually applied, not just the
@@ -423,7 +506,7 @@ mod tests {
         ice.subroutines[0].definition.effect = Effect::GiveTags(2);
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![ice], 0));
 
-        let events = advance_run(&mut state, RunAction::ResolveSubroutine(0)).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::ResolveSubroutine(0), &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.runner.tags, 2);
         assert_eq!(
@@ -448,7 +531,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 2, true)], 0));
         let events =
-            advance_run(&mut state, RunAction::BreakSubroutine(0)).expect("should succeed");
+            advance_run(&mut state, RunAction::BreakSubroutine(0), &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(
             state.active_run.unwrap().ice[0].subroutines[0].status,
@@ -464,7 +547,7 @@ mod tests {
     fn encounter_ice_continue_with_pending_subroutines_errors() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 1, true)], 0));
-        let result = advance_run(&mut state, RunAction::Continue);
+        let result = advance_run(&mut state, RunAction::Continue, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::SubroutinesStillPending { pending: 1 }));
     }
@@ -477,7 +560,7 @@ mod tests {
             vec![test_ice("ice_wall_0", 0, 0, true), test_ice("ice_wall_1", 0, 3, true)],
             0,
         ));
-        let events = advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
         assert_eq!(run.phase, RunPhase::ApproachIce);
@@ -508,7 +591,7 @@ mod tests {
             0,
         ));
 
-        advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
         assert_eq!(state.runner.rig[0].turn_strength_buff, 3);
@@ -518,7 +601,7 @@ mod tests {
     fn encounter_ice_continue_after_last_ice_reaches_success() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 0, true)], 0));
-        let events = advance_run(&mut state, RunAction::Continue).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::Success);
         assert_eq!(
@@ -534,7 +617,7 @@ mod tests {
     fn resolve_subroutine_with_invalid_index_errors() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 0, true)], 0));
-        let result = advance_run(&mut state, RunAction::ResolveSubroutine(0));
+        let result = advance_run(&mut state, RunAction::ResolveSubroutine(0), &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::InvalidSubroutineIndex(0)));
     }
@@ -543,7 +626,7 @@ mod tests {
     fn break_subroutine_outside_encounter_ice_errors() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 0, 2, true)], 0));
-        let result = advance_run(&mut state, RunAction::BreakSubroutine(0));
+        let result = advance_run(&mut state, RunAction::BreakSubroutine(0), &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::NotInEncounter));
     }
@@ -552,8 +635,8 @@ mod tests {
     fn break_subroutine_already_handled_errors() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 1, true)], 0));
-        advance_run(&mut state, RunAction::BreakSubroutine(0)).expect("should succeed");
-        let result = advance_run(&mut state, RunAction::ResolveSubroutine(0));
+        advance_run(&mut state, RunAction::BreakSubroutine(0), &CardRegistry::new()).expect("should succeed");
+        let result = advance_run(&mut state, RunAction::ResolveSubroutine(0), &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::SubroutineAlreadyHandled));
     }
@@ -563,7 +646,7 @@ mod tests {
         let mut state = game_state();
         state.active_run =
             Some(run_state_with_jack_out(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 1, true)], 0, false));
-        let result = advance_run(&mut state, RunAction::JackOut);
+        let result = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::Initiation }));
         assert_eq!(state.active_run.unwrap().phase, RunPhase::Initiation);
@@ -578,7 +661,7 @@ mod tests {
             0,
             false,
         ));
-        let result = advance_run(&mut state, RunAction::JackOut);
+        let result = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::ApproachIce }));
         assert_eq!(state.active_run.unwrap().phase, RunPhase::ApproachIce);
@@ -595,11 +678,11 @@ mod tests {
             0,
             false,
         ));
-        advance_run(&mut state, RunAction::Continue).expect("should auto-pass the unrezzed ICE");
+        advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should auto-pass the unrezzed ICE");
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::ApproachIce);
         assert_eq!(state.active_run.as_ref().unwrap().position, 1);
 
-        let events = advance_run(&mut state, RunAction::JackOut).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::Ended);
         assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }]);
@@ -610,7 +693,7 @@ mod tests {
         let mut state = game_state();
         state.active_run =
             Some(run_state_with_jack_out(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 5, true)], 0, false));
-        let result = advance_run(&mut state, RunAction::JackOut);
+        let result = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::EncounterIce }));
         let run = state.active_run.unwrap();
@@ -622,7 +705,7 @@ mod tests {
     fn continue_after_success_errors() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::Success, vec![], 0));
-        let result = advance_run(&mut state, RunAction::Continue);
+        let result = advance_run(&mut state, RunAction::Continue, &CardRegistry::new());
 
         assert_eq!(
             result,
@@ -634,7 +717,7 @@ mod tests {
     fn jack_out_after_reaching_success_succeeds() {
         let mut state = game_state();
         state.active_run = Some(run_state_with_jack_out(RunPhase::Success, vec![], 0, true));
-        let events = advance_run(&mut state, RunAction::JackOut).expect("should succeed");
+        let events = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::Ended);
         assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }]);
@@ -644,7 +727,7 @@ mod tests {
     fn action_after_ended_errors() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::Ended, vec![], 0));
-        let result = advance_run(&mut state, RunAction::Continue);
+        let result = advance_run(&mut state, RunAction::Continue, &CardRegistry::new());
 
         assert_eq!(
             result,
@@ -655,7 +738,7 @@ mod tests {
     #[test]
     fn advance_run_with_no_active_run_errors() {
         let mut state = game_state();
-        let result = advance_run(&mut state, RunAction::Continue);
+        let result = advance_run(&mut state, RunAction::Continue, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::NoActiveRun));
     }

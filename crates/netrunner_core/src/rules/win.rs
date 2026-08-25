@@ -78,13 +78,13 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 
     fn game_state(corp_scored: Vec<CardId>, runner_scored: Vec<CardId>) -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
@@ -110,7 +110,7 @@ mod tests {
                 rig: Vec::new(),
                 heap: Vec::new(),
                 scored_agendas: runner_scored,
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
@@ -216,7 +216,7 @@ mod tests {
                 min_deck_size: None,
                 strength: None,
                 subroutines: Vec::new(),
-                interactive_on_access: None,
+                interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
             },
         ]);
 

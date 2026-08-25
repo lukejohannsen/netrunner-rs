@@ -155,6 +155,19 @@ pub enum PlayerAction {
     /// score the card even if the requirement is met — scoring is a
     /// separate, not-yet-modeled action.
     AdvanceCard { card_id: CardId },
+    /// Score `card_id`, an installed Corp Agenda whose `advancement_tokens`
+    /// already meet its registry `advancement_requirement`. Corp-only,
+    /// costs 1 click (no credit cost — matches `AdvanceCard`'s "just a
+    /// click" shape). `RulesError::CardNotInstalled` if `card_id` isn't in
+    /// `CorpState::installed`; `RulesError::CardNotAgenda` if its registry
+    /// `card_type` isn't `Agenda`; `RulesError::AdvancementRequirementNotMet`
+    /// if it hasn't been advanced enough yet. No rez requirement — scoring
+    /// doesn't depend on `InstalledCard::rezzed`, matching real Netrunner/Null
+    /// Signal Games rules. On success, moves the card into `CorpState::
+    /// scored_agendas`, fires its own `Trigger::OnAgendaScored` triggers
+    /// (e.g. Hostile Takeover), then the Corp identity's (e.g. Jinteki:
+    /// Personal Evolution), then checks win conditions.
+    ScoreAgenda { card_id: CardId },
     /// Spend 1 click + 2 credits to remove 1 of the Runner's tags.
     /// Runner-only. `RulesError::RunnerNotTagged` if `RunnerState::tags == 0`.
     RemoveTag,

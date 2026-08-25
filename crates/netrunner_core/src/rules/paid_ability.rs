@@ -141,11 +141,11 @@ fn close_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             // flipped the matching RunIce::rezzed). Reuses continue_run's
             // existing ApproachIce arm: auto-pass if unrezzed, else commit
             // to EncounterIce.
-            let mut events = run::advance_run(state, RunAction::Continue)?;
+            let mut events = run::advance_run(state, RunAction::Continue, registry)?;
             events.extend(open_window_if_at_checkpoint(state));
             Ok(events)
         }
-        RunPhase::EncounterIce => resolve_encounter_ice(state),
+        RunPhase::EncounterIce => resolve_encounter_ice(state, registry),
         RunPhase::Success => {
             // This window was opened by `complete_run`. Now actually
             // access — the logic `complete_run` used to run inline.
@@ -174,10 +174,13 @@ fn close_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
 /// ICE." The `active_trace.is_none()` guard is needed even for the plain
 /// `close_window` path: if a subroutine fired while a window was closing
 /// parks a trace, this must not advance the run before the trace resolves.
-pub(crate) fn resolve_encounter_ice(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
-    let mut events = ability::resolve_unbroken_subroutines(state)?;
+pub(crate) fn resolve_encounter_ice(
+    state: &mut GameState,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = ability::resolve_unbroken_subroutines(state, registry)?;
     if state.active_run.is_some() && state.active_trace.is_none() {
-        events.extend(run::advance_run(state, RunAction::Continue)?);
+        events.extend(run::advance_run(state, RunAction::Continue, registry)?);
         events.extend(open_window_if_at_checkpoint(state));
     }
     Ok(events)
@@ -198,7 +201,7 @@ mod tests {
 
     fn base_state() -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
                 hq: Vec::new(),
@@ -216,7 +219,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,

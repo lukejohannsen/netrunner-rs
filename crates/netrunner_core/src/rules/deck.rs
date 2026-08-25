@@ -123,7 +123,7 @@ mod tests {
             min_deck_size: Some(min_deck_size),
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 
@@ -143,7 +143,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 

@@ -1,4 +1,6 @@
-use crate::dsl::CardId;
+use crate::cards::CardRegistry;
+use crate::dsl::{CardId, Trigger};
+use crate::rules::ability;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::state::{Clicks, GamePhase, GameState, Side};
@@ -97,7 +99,7 @@ fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
 /// own stale clicks are also left untouched rather than zeroed: every
 /// click-spending action is already gated by `engine::require_phase`, so
 /// leftover clicks are inert until that side's own next `end_turn`.
-pub fn end_turn(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = require_action_phase(state)?;
     if state.active_run.is_some() {
         return Err(RulesError::CannotEndTurnWhileRunActive);
@@ -119,7 +121,7 @@ pub fn end_turn(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesE
         next.phase = GamePhase::Discard { side, required: over_by };
         events.push(GameEvent::DiscardPending { side, required: over_by });
     } else {
-        enter_start_of_turn(&mut next, &mut events, side.other());
+        enter_start_of_turn(&mut next, &mut events, side.other(), registry)?;
     }
 
     Ok((next, events))
@@ -134,6 +136,7 @@ pub fn end_turn(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesE
 pub fn discard_card(
     state: &GameState,
     card_id: CardId,
+    registry: &CardRegistry,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let (side, required) = require_discard_phase(state)?;
     let mut next = state.clone();
@@ -143,7 +146,7 @@ pub fn discard_card(
 
     let remaining = required - 1; // `required > 0` is an invariant of the Discard phase.
     if remaining == 0 {
-        enter_start_of_turn(&mut next, &mut events, side.other());
+        enter_start_of_turn(&mut next, &mut events, side.other(), registry)?;
     } else {
         next.phase = GamePhase::Discard { side, required: remaining };
     }
@@ -168,13 +171,18 @@ pub fn discard_card(
 /// exact draw attempt that fails, not a standing condition safely
 /// re-derivable from `GameState` alone elsewhere — see
 /// `check_win_conditions`'s doc comment.
-pub(crate) fn enter_start_of_turn(next: &mut GameState, events: &mut Vec<GameEvent>, next_side: Side) {
+pub(crate) fn enter_start_of_turn(
+    next: &mut GameState,
+    events: &mut Vec<GameEvent>,
+    next_side: Side,
+    registry: &CardRegistry,
+) -> Result<(), RulesError> {
     next.phase = GamePhase::StartOfTurn(next_side);
 
     if next_side == Side::Corp && next.corp.r_and_d.is_empty() {
         next.phase = GamePhase::GameOver(Side::Runner);
         events.push(GameEvent::GameOver { winner: Side::Runner });
-        return;
+        return Ok(());
     }
 
     let clicks = clicks_for(next_side);
@@ -188,9 +196,34 @@ pub(crate) fn enter_start_of_turn(next: &mut GameState, events: &mut Vec<GameEve
             next.corp.hq.push(card);
             events.push(GameEvent::CardDrawn { side: Side::Corp });
         }
+
+        next.corp.first_install_used_this_turn = false;
+        next.corp.recurring_credits = next.corp.recurring_credits_max;
+    } else {
+        next.runner.first_hq_run_used_this_turn = false;
+        next.runner.first_install_discount_used_this_turn = false;
+    }
+
+    // `Trigger::OnTurnStart` — e.g. PAD Campaign's "gain 1 credit". Only
+    // rezzed Corp installs / any Runner rig card (always face-up) get their
+    // start-of-turn ability; an unrezzed asset stays silent, same as every
+    // other rez-gated ability in this engine.
+    let start_of_turn_cards: Vec<CardId> = match next_side {
+        Side::Corp => next
+            .corp
+            .installed
+            .iter()
+            .filter(|installed| installed.rezzed)
+            .map(|installed| installed.card.clone())
+            .collect(),
+        Side::Runner => next.runner.rig.iter().map(|card| card.card.clone()).collect(),
+    };
+    for card_id in start_of_turn_cards {
+        events.extend(ability::process_card_triggers(next, registry, &card_id, Trigger::OnTurnStart)?);
     }
 
     next.phase = GamePhase::Action(next_side);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -210,7 +243,7 @@ mod tests {
         runner_credits: u32,
     ) -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(corp_credits),
@@ -236,7 +269,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(active_turn),
             active_run: None,
@@ -250,7 +283,7 @@ mod tests {
     #[test]
     fn corp_ending_turn_hands_control_to_runner_with_four_clicks() {
         let state = game_state(Side::Corp, 0, 5, 0, 2);
-        let (next, events) = end_turn(&state).expect("should succeed");
+        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(next.phase, GamePhase::Action(Side::Runner));
         assert_eq!(next.runner.resources.clicks, Clicks(4));
@@ -269,7 +302,7 @@ mod tests {
         // A non-empty R&D so the Corp's mandatory draw succeeds rather than
         // decking out — this test is about the click handoff, not deck-out.
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
-        let (next, events) = end_turn(&state).expect("should succeed");
+        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(next.phase, GamePhase::Action(Side::Corp));
         assert_eq!(next.corp.resources.clicks, Clicks(3));
@@ -286,7 +319,7 @@ mod tests {
     #[test]
     fn ending_turn_does_not_change_either_sides_credits() {
         let state = game_state(Side::Corp, 0, 5, 0, 2);
-        let (next, _events) = end_turn(&state).expect("should succeed");
+        let (next, _events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(next.corp.resources.credits, Credits(5));
         assert_eq!(next.runner.resources.credits, Credits(2));
@@ -296,7 +329,7 @@ mod tests {
     fn runner_ending_turn_gives_corp_a_mandatory_draw_into_hq() {
         let mut state = game_state(Side::Runner, 0, 5, 0, 2);
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())];
-        let (next, events) = end_turn(&state).expect("should succeed");
+        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         // Draws from the top of R&D, i.e. the end of the Vec (mirrors
         // RunnerState::stack's convention).
@@ -325,7 +358,7 @@ mod tests {
             turn_strength_buff: 3,
         }];
 
-        let (next, _events) = end_turn(&state).expect("should succeed");
+        let (next, _events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(next.runner.rig[0].turn_strength_buff, 0);
         // Encounter-duration buffs are a separate cleanup hook
@@ -337,7 +370,7 @@ mod tests {
     fn corp_ending_turn_gives_no_draw_since_only_the_corp_draws_automatically() {
         let mut state = game_state(Side::Corp, 0, 5, 0, 2);
         state.runner.stack = vec![CardId("sure_gamble".to_string())];
-        let (next, events) = end_turn(&state).expect("should succeed");
+        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         // Control passed to the Runner, so no automatic draw happens here —
         // only the Corp draws automatically at the start of their turn.
@@ -355,7 +388,7 @@ mod tests {
     #[test]
     fn mandatory_draw_with_empty_rd_ends_game_with_runner_win() {
         let state = game_state(Side::Runner, 0, 5, 0, 2);
-        let (next, events) = end_turn(&state).expect("should succeed");
+        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         // Deck-out: the Corp can't make their mandatory draw, so the game
         // ends immediately — no underflow/panic, but also no turn starts
@@ -382,7 +415,7 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        assert_eq!(end_turn(&state), Err(RulesError::CannotEndTurnWhileRunActive));
+        assert_eq!(end_turn(&state, &CardRegistry::new()), Err(RulesError::CannotEndTurnWhileRunActive));
     }
 
     #[test]
@@ -391,7 +424,7 @@ mod tests {
         state.phase = GamePhase::Discard { side: Side::Corp, required: 1 };
 
         assert_eq!(
-            end_turn(&state),
+            end_turn(&state, &CardRegistry::new()),
             Err(RulesError::NotInActionPhase {
                 actual: GamePhase::Discard { side: Side::Corp, required: 1 }
             })
@@ -402,7 +435,7 @@ mod tests {
     fn ending_turn_over_hand_size_transitions_to_discard_instead_of_next_start_of_turn() {
         let mut state = game_state(Side::Corp, 0, 5, 0, 2);
         state.corp.hq = (0..6).map(|i| CardId(format!("card_{i}"))).collect();
-        let (next, events) = end_turn(&state).expect("should succeed");
+        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(next.phase, GamePhase::Discard { side: Side::Corp, required: 1 });
         // Control has NOT passed to the Runner yet — clicks are untouched.
@@ -420,7 +453,7 @@ mod tests {
     fn ending_turn_within_hand_size_skips_discard_entirely() {
         let mut state = game_state(Side::Corp, 0, 5, 0, 2);
         state.corp.hq = (0..5).map(|i| CardId(format!("card_{i}"))).collect();
-        let (next, _events) = end_turn(&state).expect("should succeed");
+        let (next, _events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(next.phase, GamePhase::Action(Side::Runner));
     }
@@ -432,7 +465,7 @@ mod tests {
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
 
         let (next, events) =
-            discard_card(&state, CardId("hedge_fund".to_string())).expect("should succeed");
+            discard_card(&state, CardId("hedge_fund".to_string()), &CardRegistry::new()).expect("should succeed");
 
         assert!(next.corp.hq.is_empty());
         assert_eq!(next.corp.archives, vec![CardId("hedge_fund".to_string())]);
@@ -458,7 +491,7 @@ mod tests {
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
 
         let (next, _events) =
-            discard_card(&state, CardId("sure_gamble".to_string())).expect("should succeed");
+            discard_card(&state, CardId("sure_gamble".to_string()), &CardRegistry::new()).expect("should succeed");
 
         assert!(next.runner.grip.is_empty());
         assert_eq!(next.runner.heap, vec![CardId("sure_gamble".to_string())]);
@@ -473,7 +506,7 @@ mod tests {
             vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())];
 
         let (next, events) =
-            discard_card(&state, CardId("hedge_fund".to_string())).expect("should succeed");
+            discard_card(&state, CardId("hedge_fund".to_string()), &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(next.corp.hq, vec![CardId("ice_wall".to_string())]);
         assert_eq!(next.phase, GamePhase::Discard { side: Side::Corp, required: 1 });
@@ -491,7 +524,7 @@ mod tests {
         let state = game_state(Side::Corp, 3, 5, 0, 2);
 
         assert_eq!(
-            discard_card(&state, CardId("hedge_fund".to_string())),
+            discard_card(&state, CardId("hedge_fund".to_string()), &CardRegistry::new()),
             Err(RulesError::NotInDiscardPhase { actual: GamePhase::Action(Side::Corp) })
         );
     }
@@ -502,7 +535,7 @@ mod tests {
         state.phase = GamePhase::Discard { side: Side::Corp, required: 1 };
 
         assert_eq!(
-            discard_card(&state, CardId("hedge_fund".to_string())),
+            discard_card(&state, CardId("hedge_fund".to_string()), &CardRegistry::new()),
             Err(RulesError::CardNotInHand {
                 side: Side::Corp,
                 card: CardId("hedge_fund".to_string())

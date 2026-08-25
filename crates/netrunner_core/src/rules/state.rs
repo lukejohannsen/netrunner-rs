@@ -121,6 +121,26 @@ pub struct CorpState {
     /// temporary per-run credit pool (`run::RunState::bad_publicity_credits`)
     /// at `engine::initiate_run`.
     pub bad_publicity: u32,
+    /// Whether the Corp's "first install this turn" bonus
+    /// (`Trigger::OnInstall` gated by `EffectRequirement::
+    /// FirstInstallThisTurn`, e.g. Haas-Bioroid: Engineering the Future) has
+    /// already fired this turn. Reset to `false` at the start of every Corp
+    /// turn (`turn::enter_start_of_turn`); consumed (flipped to `true`) by
+    /// `ability::process_card_triggers` the moment a gated `TriggeredEffect`
+    /// actually fires.
+    pub first_install_used_this_turn: bool,
+    /// Corp's current recurring-credit pool, spendable on trace bids before
+    /// the Corp's own wallet (`ability::pay_cost`'s `Cost::Credits` arm,
+    /// mirroring the Runner's `RunState::bad_publicity_credits`-before-wallet
+    /// precedent but keyed on `GameState::active_trace` instead of an active
+    /// run). Refilled to `recurring_credits_max` unconditionally at the
+    /// start of every Corp turn.
+    pub recurring_credits: u32,
+    /// The size `recurring_credits` refills to each Corp turn, set once at
+    /// `GameState::setup` from the Corp identity's registry `Card::
+    /// recurring_credits` (`0` for an identity with no such pool, e.g.
+    /// every identity but NBN: Making News in the baseline set).
+    pub recurring_credits_max: u32,
 }
 
 /// A Runner card installed in the Rig (Hardware or Program), with the
@@ -194,6 +214,19 @@ pub struct RunnerState {
     /// (and normally stays) at `0` until a future identity/hardware system
     /// lands. Public information, same treatment as `tags`.
     pub link_strength: u32,
+    /// Whether the Runner's "first successful HQ run this turn" bonus
+    /// (`Trigger::OnSuccessfulRunOnHq` gated by `EffectRequirement::
+    /// FirstSuccessfulHqRunThisTurn`, e.g. Gabriel Santiago) has already
+    /// fired this turn. Reset to `false` at the start of every Runner turn;
+    /// consumed the same way as `CorpState::first_install_used_this_turn`.
+    pub first_hq_run_used_this_turn: bool,
+    /// Whether the Runner's identity install-cost discount (`Card::
+    /// first_install_discount`, e.g. Kate "Mac" McCaffrey) has already been
+    /// applied to a Program/Hardware install this turn. Reset to `false` at
+    /// the start of every Runner turn; consumed directly by
+    /// `engine::install_hardware`/`install_program` (not a `Trigger`/
+    /// `Effect` — see `Card::first_install_discount`'s doc comment for why).
+    pub first_install_discount_used_this_turn: bool,
 }
 
 impl RunnerState {
@@ -351,7 +384,7 @@ impl GameState {
     /// `GamePhase::Action(Side::Corp)`, matching the real game's turn order.
     pub fn new(seed: u64) -> Self {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -377,7 +410,7 @@ impl GameState {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
@@ -454,7 +487,7 @@ mod tests {
             rig: vec![card("corroder", 2, 1, 3)],
             heap: Vec::new(),
             scored_agendas: Vec::new(),
-            link_strength: 0,
+            link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
         };
 
         runner.reset_encounter_strength_buffs();
@@ -479,7 +512,7 @@ mod tests {
             rig: vec![card("corroder", 2, 1, 3)],
             heap: Vec::new(),
             scored_agendas: Vec::new(),
-            link_strength: 0,
+            link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
         };
 
         runner.reset_turn_strength_buffs();

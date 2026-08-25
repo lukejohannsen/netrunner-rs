@@ -24,12 +24,23 @@ pub struct AbilityDef {
     pub effect: Effect,
 }
 
-/// A precondition gating an `AbilityDef`'s activation. Kept minimal — extend
-/// as new tag/state-conditional card text is needed.
+/// A precondition gating an `AbilityDef`'s activation, a `Card::
+/// play_requirement`'s play legality, or (as a soft/silent gate — see
+/// `dsl::card::TriggeredEffect::requirement`) a `TriggeredEffect`'s firing.
+/// Kept minimal — extend as new tag/state-conditional card text is needed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EffectRequirement {
     /// The Runner must have at least one tag (`RunnerState::is_tagged()`).
     IsTagged,
+    /// Soft-gate only (`dsl::card::TriggeredEffect::requirement`): true
+    /// exactly once per Corp turn, the first time the Corp installs a card
+    /// (`CorpState::first_install_used_this_turn` not yet consumed this
+    /// turn) — e.g. Haas-Bioroid: Engineering the Future.
+    FirstInstallThisTurn,
+    /// Soft-gate only: true exactly once per Runner turn, the first time a
+    /// run on HQ succeeds (`RunnerState::first_hq_run_used_this_turn` not
+    /// yet consumed this turn) — e.g. Gabriel Santiago.
+    FirstSuccessfulHqRunThisTurn,
 }
 
 /// An optional "may pay `cost` to prevent `effects`" access-time trigger —

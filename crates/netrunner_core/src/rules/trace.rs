@@ -6,6 +6,7 @@
 //! for how a trace fired mid-subroutine-loop suspends that loop until this
 //! module resolves it.
 
+use crate::cards::CardRegistry;
 use crate::dsl::Cost;
 use crate::rules::ability;
 use crate::rules::error::RulesError;
@@ -43,7 +44,11 @@ pub(crate) fn submit_corp_bid(state: &mut GameState, amount: u32) -> Result<Vec<
 /// ResumeSubroutines`), resumes it via `paid_ability::resolve_encounter_ice`
 /// after resolving — whether avoided or not — so any remaining subroutines
 /// on the ICE still fire and the run still advances.
-pub(crate) fn submit_runner_bid(state: &mut GameState, amount: u32) -> Result<Vec<GameEvent>, RulesError> {
+pub(crate) fn submit_runner_bid(
+    state: &mut GameState,
+    amount: u32,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
     let trace = state.active_trace.as_ref().ok_or(RulesError::TraceNotAwaitingRunnerBid)?;
     if trace.corp_bid.is_none() {
         return Err(RulesError::TraceNotAwaitingRunnerBid);
@@ -60,11 +65,16 @@ pub(crate) fn submit_runner_bid(state: &mut GameState, amount: u32) -> Result<Ve
         events.push(GameEvent::TraceAvoided { corp_total, runner_total });
     } else {
         events.push(GameEvent::TraceSuccessful { corp_total, runner_total });
-        events.extend(ability::evaluate_effect(state, &trace.effect_on_success, trace.initiating_card.as_ref())?);
+        events.extend(ability::evaluate_effect(
+            state,
+            &trace.effect_on_success,
+            trace.initiating_card.as_ref(),
+            registry,
+        )?);
     }
 
     if trace.resume == TraceResume::ResumeSubroutines {
-        events.extend(paid_ability::resolve_encounter_ice(state)?);
+        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
 
     Ok(events)
@@ -83,7 +93,7 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
                 hq: Vec::new(),
@@ -101,7 +111,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
@@ -128,7 +138,7 @@ mod tests {
         state.active_trace = Some(active_trace(3, Some(2), Effect::GiveTags(1)));
         state.runner.link_strength = 2;
 
-        let events = submit_runner_bid(&mut state, 3).unwrap();
+        let events = submit_runner_bid(&mut state, 3, &CardRegistry::new()).unwrap();
 
         assert!(state.active_trace.is_none());
         assert_eq!(state.runner.tags, 0, "on_success must not fire when avoided");
@@ -148,7 +158,7 @@ mod tests {
         state.active_trace = Some(active_trace(3, Some(2), Effect::GiveTags(1)));
         state.runner.link_strength = 1;
 
-        let events = submit_runner_bid(&mut state, 3).unwrap();
+        let events = submit_runner_bid(&mut state, 3, &CardRegistry::new()).unwrap();
 
         assert!(state.active_trace.is_none());
         assert_eq!(state.runner.tags, 1);
@@ -168,7 +178,7 @@ mod tests {
         let mut state = game_state();
         state.active_trace = Some(active_trace(0, Some(0), Effect::GiveTags(9)));
 
-        let events = submit_runner_bid(&mut state, 0).unwrap();
+        let events = submit_runner_bid(&mut state, 0, &CardRegistry::new()).unwrap();
 
         assert!(state.active_trace.is_none());
         assert_eq!(state.runner.tags, 0);
@@ -199,7 +209,7 @@ mod tests {
         let mut state = game_state();
         state.active_trace = Some(active_trace(2, Some(1), Effect::GiveTags(1)));
 
-        let result = submit_runner_bid(&mut state, 10);
+        let result = submit_runner_bid(&mut state, 10, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::NotEnoughCredits { side: Side::Runner, available: 5, requested: 10 }));
         assert_eq!(state.runner.resources.credits, Credits(5));
@@ -211,7 +221,7 @@ mod tests {
         let mut state = game_state();
         state.active_trace = Some(active_trace(2, None, Effect::GiveTags(1)));
 
-        assert_eq!(submit_runner_bid(&mut state, 0), Err(RulesError::TraceNotAwaitingRunnerBid));
+        assert_eq!(submit_runner_bid(&mut state, 0, &CardRegistry::new()), Err(RulesError::TraceNotAwaitingRunnerBid));
     }
 
     #[test]
@@ -264,7 +274,7 @@ mod tests {
         });
         state.runner.link_strength = 5;
 
-        submit_runner_bid(&mut state, 0).unwrap();
+        submit_runner_bid(&mut state, 0, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 3, "remaining subroutine should have fired after resume");
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success, "run should advance past the ICE");
@@ -283,7 +293,7 @@ mod tests {
         });
         state.runner.link_strength = 0;
 
-        submit_runner_bid(&mut state, 0).unwrap();
+        submit_runner_bid(&mut state, 0, &CardRegistry::new()).unwrap();
 
         assert!(state.active_run.is_none(), "EndTheRun should have fired and ended the run");
         assert_eq!(state.runner.tags, 0, "remaining subroutine must never fire once the run ended");

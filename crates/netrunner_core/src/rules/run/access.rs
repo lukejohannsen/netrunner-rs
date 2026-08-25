@@ -221,7 +221,11 @@ fn present_card_for_access(
 /// `&mut` borrow (extracting and clearing it in one step) — both borrows
 /// end before `ability::evaluate_effect` needs its own `&mut GameState`, so
 /// there's no simultaneous-borrow conflict.
-fn try_replace_access(state: &mut GameState, server: ServerId) -> Result<Option<Vec<GameEvent>>, RulesError> {
+fn try_replace_access(
+    state: &mut GameState,
+    server: ServerId,
+    registry: &CardRegistry,
+) -> Result<Option<Vec<GameEvent>>, RulesError> {
     let matches = state
         .active_run
         .as_ref()
@@ -239,7 +243,7 @@ fn try_replace_access(state: &mut GameState, server: ServerId) -> Result<Option<
         .take()
         .expect("just confirmed access_replacement is Some above");
 
-    let mut events = ability::evaluate_effect(state, &effect, None)?;
+    let mut events = ability::evaluate_effect(state, &effect, None, registry)?;
     state.active_run = None;
     events.push(GameEvent::AccessReplaced { server });
     Ok(Some(events))
@@ -250,7 +254,7 @@ pub fn access_server(
     server: ServerId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if let Some(events) = try_replace_access(state, server)? {
+    if let Some(events) = try_replace_access(state, server, registry)? {
         return Ok(events);
     }
 
@@ -474,6 +478,12 @@ pub fn resolve_steal(
     state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(agenda_points);
     events.push(GameEvent::AgendaStolen { card: card_id.clone(), agenda_points });
 
+    // Jinteki: Personal Evolution-style identity reaction to a steal —
+    // unconditional dispatch, no per-turn gate.
+    if let Some(identity) = state.corp.identity.clone() {
+        events.extend(ability::process_card_triggers(state, registry, &identity, Trigger::OnAgendaStolen)?);
+    }
+
     check_win_conditions(state, registry);
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
@@ -610,7 +620,7 @@ pub fn resolve_decline_to_avoid(
 
     let mut events = Vec::new();
     for effect in &effects {
-        events.extend(ability::evaluate_effect(state, effect, Some(card_id))?);
+        events.extend(ability::evaluate_effect(state, effect, Some(card_id), registry)?);
     }
     if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
         events.extend(finish);
@@ -658,7 +668,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 
@@ -686,7 +696,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 
@@ -694,7 +704,7 @@ mod tests {
     /// `OnAccessed` trigger firing `effects` — Snare!/Fetal AI-style traps.
     fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> Card {
         Card {
-            triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects }],
+            triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }
@@ -704,7 +714,7 @@ mod tests {
     /// `OnTrashedFromAccess` trigger firing `effects` — Shock!-style.
     fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> Card {
         Card {
-            triggers: vec![TriggeredEffect { trigger: Trigger::OnTrashedFromAccess, effects }],
+            triggers: vec![TriggeredEffect { trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
             ..trashable_card(id, trash_cost)
         }
     }
@@ -734,7 +744,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0,
+            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -760,7 +770,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: crate::rules::state::GamePhase::Action(Side::Corp),
             active_run: None,
@@ -2180,7 +2190,7 @@ mod tests {
     ) -> Card {
         Card {
             interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects }),
-            triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects: on_accessed_effects }],
+            triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }

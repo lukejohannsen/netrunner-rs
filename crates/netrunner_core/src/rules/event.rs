@@ -62,4 +62,8 @@ pub enum GameEvent {
     AdditionalAccessGranted { server: ServerId, count: u32 },
     AccessReplacementSet { server: ServerId },
     AccessReplaced { server: ServerId },
+    CreditsLost { side: Side, amount: u32 },
+    ClicksLost { side: Side, amount: u32 },
+    RecurringCreditsSpent { amount: u32 },
+    AgendaScored { card: CardId, agenda_points: u32 },
 }

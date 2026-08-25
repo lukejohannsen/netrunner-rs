@@ -183,4 +183,13 @@ pub enum RulesError {
 
     #[error("deck has {points} agenda point(s), outside the required range {min}-{max}")]
     AgendaPointsOutOfRange { points: u32, min: u32, max: u32 },
+
+    #[error("card {card:?} is not an Agenda and cannot be scored")]
+    CardNotAgenda { card: CardId },
+
+    #[error("card {card:?} has {current} advancement token(s) but needs {required} to score")]
+    AdvancementRequirementNotMet { card: CardId, current: u32, required: u32 },
+
+    #[error("a soft-gated requirement was not met")]
+    RequirementNotMet,
 }

@@ -49,6 +49,7 @@ pub fn apply_damage(state: &mut GameState, damage_type: DamageType, amount: usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cards::CardRegistry;
     use crate::dsl::CardId;
     use crate::rules::error::RulesError;
     use crate::rules::state::{
@@ -58,7 +59,7 @@ mod tests {
 
     fn game_state(grip: Vec<CardId>, brain_damage: usize, seed: u64) -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -84,7 +85,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
@@ -139,7 +140,7 @@ mod tests {
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
 
         let (next, _events) =
-            crate::rules::turn::end_turn(&state).expect("ending turn should succeed");
+            crate::rules::turn::end_turn(&state, &CardRegistry::new()).expect("ending turn should succeed");
 
         assert_eq!(next.phase, GamePhase::Discard { side: Side::Runner, required: 1 });
     }

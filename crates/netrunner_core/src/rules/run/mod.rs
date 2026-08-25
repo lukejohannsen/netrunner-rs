@@ -8,7 +8,7 @@ pub use access::{
     resolve_steal, resolve_trash,
 };
 pub use action::RunAction;
-pub use engine::advance_run;
+pub use engine::{advance_run, start_run};
 pub(crate) use engine::transition_subroutine;
 pub use state::{
     AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId,

@@ -1,15 +1,16 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, Cost, IceType, Trigger};
+use crate::dsl::{CardId, CardSubtype, CardType, Cost, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
-use crate::rules::run::{self, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState, SubroutineStatus};
+use crate::rules::run::{self, RunAction, RunPhase};
 use crate::rules::setup;
 use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, Side};
 use crate::rules::trace;
 use crate::rules::turn;
+use crate::rules::win;
 
 pub fn apply_action(
     state: &GameState,
@@ -35,8 +36,8 @@ pub fn apply_action(
         }
         PlayerAction::RezIce { ice_id } => rez_ice(state, ice_id),
         PlayerAction::InitiateRun { server } => initiate_run(state, registry, server),
-        PlayerAction::ContinueRun => continue_run(state),
-        PlayerAction::JackOut => jack_out(state),
+        PlayerAction::ContinueRun => continue_run(state, registry),
+        PlayerAction::JackOut => jack_out(state, registry),
         PlayerAction::CompleteRun => complete_run(state, registry),
         PlayerAction::PlayEvent { card_id } => play_event(state, registry, card_id),
         PlayerAction::PlayOperation { card_id } => play_operation(state, registry, card_id),
@@ -45,16 +46,17 @@ pub fn apply_action(
             install_program(state, registry, card_id, memory_cost)
         }
         PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
-            break_subroutine(state, ice_id, subroutine_index)
+            break_subroutine(state, ice_id, subroutine_index, registry)
         }
-        PlayerAction::EndTurn => turn::end_turn(state),
-        PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id),
-        PlayerAction::KeepHand => setup::keep_hand(state),
-        PlayerAction::TakeMulligan => setup::take_mulligan(state),
+        PlayerAction::EndTurn => turn::end_turn(state, registry),
+        PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id, registry),
+        PlayerAction::KeepHand => setup::keep_hand(state, registry),
+        PlayerAction::TakeMulligan => setup::take_mulligan(state, registry),
         PlayerAction::ActivateAbility { card_id, ability_index } => {
             activate_ability(state, registry, card_id, ability_index)
         }
         PlayerAction::AdvanceCard { card_id } => advance_card(state, registry, card_id),
+        PlayerAction::ScoreAgenda { card_id } => score_agenda(state, registry, card_id),
         PlayerAction::RemoveTag => remove_tag(state),
         PlayerAction::TrashResource { card_id } => trash_resource(state, registry, card_id),
         PlayerAction::SelectCardToAccess { card_id } => {
@@ -75,7 +77,7 @@ pub fn apply_action(
         }
         PlayerAction::PassPriority { side } => pass_priority_action(state, registry, side),
         PlayerAction::SubmitCorpTraceBid { amount } => submit_corp_trace_bid(state, amount),
-        PlayerAction::SubmitRunnerTraceBid { amount } => submit_runner_trace_bid(state, amount),
+        PlayerAction::SubmitRunnerTraceBid { amount } => submit_runner_trace_bid(state, registry, amount),
     }
 }
 
@@ -178,6 +180,13 @@ fn install_card(
         server: zone,
     });
 
+    // Haas-Bioroid: Engineering the Future-style identity reaction — gated
+    // by `EffectRequirement::FirstInstallThisTurn` on the identity's own
+    // `TriggeredEffect`, so this dispatch is unconditional here.
+    if let Some(identity) = next.corp.identity.clone() {
+        events.extend(ability::process_card_triggers(&mut next, registry, &identity, Trigger::OnInstall)?);
+    }
+
     Ok((next, events))
 }
 
@@ -244,30 +253,7 @@ fn initiate_run(
 
     let mut next = state.clone();
     spend_click(&mut next, side)?;
-
-    // `corp.installed`'s Vec order is install order (oldest first);
-    // installs only ever `.push()` (see `install_card`), never reorder.
-    // Oldest install = outermost ICE = index 0, matching `RunIce`'s
-    // outermost-to-innermost doc comment — no reversal needed.
-    let ice: Vec<RunIce> = next
-        .corp
-        .installed
-        .iter()
-        .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
-        .map(|installed| build_run_ice(installed, registry))
-        .collect();
-
-    next.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, access_state: None,
-        bad_publicity_credits: next.corp.bad_publicity,
-        server,
-        phase: RunPhase::Initiation,
-        ice,
-        position: 0,
-        // Netrunner/Null Signal Games jack-out rule 1: closed until an ICE is passed (or the
-        // server approach step is reached with none installed) — see
-        // `run::engine::pass_current_ice`/`continue_run`'s `Initiation` arm.
-        jack_out_permitted: false,
-    });
+    run::start_run(&mut next, registry, server)?;
 
     Ok((
         next,
@@ -278,56 +264,38 @@ fn initiate_run(
     ))
 }
 
-/// Builds one `RunIce` from an `InstalledCard` known to be ICE (caller
-/// filters by `InstallSlot::Ice`), looking up strength/subroutines from
-/// `registry`. Never errors: a `card_id` absent from `registry` (or missing
-/// `strength`/`subroutines`) degrades to a blank 0-strength/no-subroutines
-/// ICE that can't block anything, mirroring
-/// `run::access::compute_pending_choice`'s existing leniency for
-/// unrecognized cards, rather than failing the whole `InitiateRun` action
-/// over one unregistered card elsewhere on the server.
-fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> RunIce {
-    let card_def = registry.get(&installed.card);
-    let current_strength = card_def.and_then(|c| c.strength).unwrap_or(0);
-    let ice_type = card_def
-        .and_then(|c| match &c.card_type {
-            CardType::Ice(ice_type) => Some(*ice_type),
-            _ => None,
-        })
-        .unwrap_or(IceType::Barrier);
-    let subroutines = card_def
-        .map(|c| {
-            c.subroutines
-                .iter()
-                .enumerate()
-                .map(|(id, def)| EncounteredSubroutine {
-                    id,
-                    definition: def.clone(),
-                    status: SubroutineStatus::Pending,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-
-    RunIce { card_id: installed.card.clone(), current_strength, ice_type, subroutines, rezzed: installed.rezzed }
-}
-
-fn continue_run(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+fn continue_run(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::advance_run(&mut next, RunAction::Continue)?;
+    let mut events = run::advance_run(&mut next, RunAction::Continue, registry)?;
     events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+
+    // Gabriel Santiago-style identity reaction: a run on HQ just succeeded.
+    // Gated by `EffectRequirement::FirstSuccessfulHqRunThisTurn` on the
+    // identity's own `TriggeredEffect`, so this dispatch itself is
+    // unconditional — the soft-gate inside `process_card_triggers` is what
+    // limits it to once per turn.
+    if events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { server: run::ServerId::Hq }))
+        && let Some(identity) = next.runner.identity.clone()
+    {
+        events.extend(ability::process_card_triggers(
+            &mut next,
+            registry,
+            &identity,
+            Trigger::OnSuccessfulRunOnHq,
+        )?);
+    }
 
     Ok((next, events))
 }
 
-fn jack_out(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
-    let events = run::advance_run(&mut next, RunAction::JackOut)?;
+    let events = run::advance_run(&mut next, RunAction::JackOut, registry)?;
     next.active_run = None;
     // A window can be open here (e.g. mid-ApproachIce on the second+ ICE,
     // where jack_out_permitted is already true from a prior pass) — clear it
@@ -393,6 +361,13 @@ fn play_event(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    // Hard play-legality gate (e.g. Scorched Earth's "the Runner must be
+    // tagged") — checked before its credit cost is paid, mirroring
+    // `activate_ability`'s identical placement for `AbilityDef::requirement`.
+    if let Some(requirement) = &card_def.play_requirement {
+        ability::check_requirement(&next, requirement)?;
+    }
+
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
     events.push(GameEvent::EventPlayed { side, card: card_id.clone() });
@@ -427,12 +402,28 @@ fn play_operation(
     if card_def.card_type != CardType::Operation {
         return Err(RulesError::CardNotOperation { card: card_id });
     }
+    if let Some(requirement) = &card_def.play_requirement {
+        ability::check_requirement(&next, requirement)?;
+    }
+    let is_transaction = card_def.subtypes.contains(&CardSubtype::Transaction);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
     next.corp.archives.push(card_id.clone());
     events.push(GameEvent::OperationPlayed { side, card: card_id.clone() });
     events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnPlay)?);
+
+    // Weyland Consortium: Building a Better World-style identity reaction —
+    // unconditional (no per-turn gate), unlike `OnSuccessfulRunOnHq`/
+    // `OnInstall` above.
+    if is_transaction && let Some(identity) = next.corp.identity.clone() {
+        events.extend(ability::process_card_triggers(
+            &mut next,
+            registry,
+            &identity,
+            Trigger::OnTransactionPlayed,
+        )?);
+    }
 
     Ok((next, events))
 }
@@ -453,6 +444,28 @@ fn seed_rig_card(registry: &CardRegistry, card_id: CardId) -> Result<InstalledRu
     })
 }
 
+/// The credit cost to charge for installing a Program/Hardware this turn:
+/// `base_cost` reduced by the Runner identity's `Card::
+/// first_install_discount`, if one exists and hasn't already been applied
+/// this turn (`RunnerState::first_install_discount_used_this_turn`) — e.g.
+/// Kate "Mac" McCaffrey: Digital Tinker. Consumes the flag on `next` if the
+/// discount applies. Not a `Trigger`/`Effect` — see `Card::
+/// first_install_discount`'s doc comment for why this is a direct cost
+/// modifier instead.
+fn discounted_install_cost(next: &mut GameState, registry: &CardRegistry, base_cost: u32) -> u32 {
+    if next.runner.first_install_discount_used_this_turn {
+        return base_cost;
+    }
+    let Some(identity) = next.runner.identity.as_ref() else {
+        return base_cost;
+    };
+    let Some(discount) = registry.get(identity).and_then(|c| c.first_install_discount) else {
+        return base_cost;
+    };
+    next.runner.first_install_discount_used_this_turn = true;
+    base_cost.saturating_sub(discount)
+}
+
 fn install_hardware(
     state: &GameState,
     registry: &CardRegistry,
@@ -464,16 +477,19 @@ fn install_hardware(
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    let cost = discounted_install_cost(&mut next, registry, card_def.cost);
+
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
+    events.push(GameEvent::HardwareInstalled { side, card: card_id });
 
-    Ok((
-        next,
-        vec![
-            GameEvent::ClickSpent { side },
-            GameEvent::HardwareInstalled { side, card: card_id },
-        ],
-    ))
+    Ok((next, events))
 }
 
 fn install_program(
@@ -496,16 +512,26 @@ fn install_program(
         .memory_units
         .spend(requested)
         .ok_or(RulesError::InsufficientMemory { available, requested })?;
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    let is_virus = card_def.subtypes.contains(&CardSubtype::Virus);
+    let cost = discounted_install_cost(&mut next, registry, card_def.cost);
+
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
+    events.push(GameEvent::ProgramInstalled { side, card: card_id, memory_cost });
 
-    Ok((
-        next,
-        vec![
-            GameEvent::ClickSpent { side },
-            GameEvent::ProgramInstalled { side, card: card_id, memory_cost },
-        ],
-    ))
+    // Noise: Hacker Extraordinaire-style identity reaction — unconditional
+    // (no per-turn gate).
+    if is_virus && let Some(identity) = next.runner.identity.clone() {
+        events.extend(ability::process_card_triggers(&mut next, registry, &identity, Trigger::OnVirusInstalled)?);
+    }
+
+    Ok((next, events))
 }
 
 fn break_subroutine(
@@ -513,6 +539,7 @@ fn break_subroutine(
     // Not cross-checked against `RunState::ice` — see `PlayerAction::BreakSubroutine`'s doc comment.
     _ice_id: CardId,
     subroutine_index: usize,
+    registry: &CardRegistry,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
@@ -521,7 +548,7 @@ fn break_subroutine(
     // validation against `RunIce::subroutines`, so there's no need to
     // duplicate a pre-check here — just forward the index.
     let mut next = state.clone();
-    let events = run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index))?;
+    let events = run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index), registry)?;
     // Priority-independent like RezIce (not gated on whose priority it is),
     // but still gives the other side a fresh chance to respond if a window
     // is open.
@@ -601,7 +628,7 @@ fn activate_ability(
         events.extend(ability::pay_cost(&mut next, side, cost, Some(&card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
-    events.extend(ability::evaluate_effect(&mut next, &ability.effect, Some(&card_id))?);
+    events.extend(ability::evaluate_effect(&mut next, &ability.effect, Some(&card_id), registry)?);
     paid_ability::note_window_action(&mut next, side);
 
     Ok((next, events))
@@ -641,6 +668,61 @@ fn advance_card(
     installed.advancement_tokens += 1;
     let advancement_tokens = installed.advancement_tokens;
     events.push(GameEvent::CardAdvanced { card: card_id, advancement_tokens });
+
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::ScoreAgenda`, per its doc comment. Corp-only,
+/// costs 1 click, no rez requirement.
+fn score_agenda(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Corp;
+    require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
+
+    let position = state
+        .corp
+        .installed
+        .iter()
+        .position(|installed| installed.card == card_id)
+        .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+    let advancement_tokens = state.corp.installed[position].advancement_tokens;
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if card_def.card_type != CardType::Agenda {
+        return Err(RulesError::CardNotAgenda { card: card_id });
+    }
+    let required = card_def.advancement_requirement.unwrap_or(0);
+    if advancement_tokens < required {
+        return Err(RulesError::AdvancementRequirementNotMet {
+            card: card_id,
+            current: advancement_tokens,
+            required,
+        });
+    }
+    let agenda_points = card_def.agenda_points.unwrap_or(0);
+
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+    next.corp.installed.remove(position);
+    next.corp.scored_agendas.push(card_id.clone());
+    next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
+
+    let mut events = vec![GameEvent::ClickSpent { side }, GameEvent::AgendaScored { card: card_id.clone(), agenda_points }];
+    // The agenda's own "on score" text (e.g. Hostile Takeover), then the
+    // Corp identity's reactive ability if one is set (e.g. Jinteki:
+    // Personal Evolution) — unconditional dispatch, no per-turn gate.
+    events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnAgendaScored)?);
+    if let Some(identity) = next.corp.identity.clone() {
+        events.extend(ability::process_card_triggers(&mut next, registry, &identity, Trigger::OnAgendaScored)?);
+    }
+
+    win::check_win_conditions(&mut next, registry);
 
     Ok((next, events))
 }
@@ -819,9 +901,13 @@ fn submit_corp_trace_bid(state: &GameState, amount: u32) -> Result<(GameState, V
 }
 
 /// Resolves `PlayerAction::SubmitRunnerTraceBid`, per its doc comment.
-fn submit_runner_trace_bid(state: &GameState, amount: u32) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+fn submit_runner_trace_bid(
+    state: &GameState,
+    registry: &CardRegistry,
+    amount: u32,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let mut next = state.clone();
-    let events = trace::submit_runner_bid(&mut next, amount)?;
+    let events = trace::submit_runner_bid(&mut next, amount, registry)?;
     Ok((next, events))
 }
 
@@ -832,7 +918,7 @@ mod tests {
         AbilityDef, BoostDuration, Card, CardType, Cost, Effect, IceType, SubroutineBreakCount,
         SubroutineDef, TriggeredEffect,
     };
-    use crate::rules::run::{EncounteredSubroutine, RunIce, ServerId, SubroutineStatus};
+    use crate::rules::run::{EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{AgendaPoints, Clicks, Credits, PaidAbilityWindow, PlayerResources};
 
     /// An empty registry, for every test that doesn't exercise
@@ -876,7 +962,7 @@ mod tests {
 
     fn corp_state(clicks: u32, credits: u32) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0,
+            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(credits),
@@ -902,7 +988,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
@@ -917,7 +1003,7 @@ mod tests {
     /// (identity doesn't matter for the tests using this — only counts do).
     fn runner_state(clicks: u32, stack_size: u32, grip_size: u32) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0,
+            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -943,7 +1029,7 @@ mod tests {
                 stack: (0..stack_size).map(|i| CardId(format!("stack_card_{i}"))).collect(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
@@ -1988,6 +2074,7 @@ mod tests {
         card.triggers = vec![TriggeredEffect {
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Runner, 9)],
+            requirement: None,
         }];
         registry.insert(card);
 
@@ -2080,6 +2167,7 @@ mod tests {
         card.triggers = vec![TriggeredEffect {
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Corp, 9)],
+            requirement: None,
         }];
         registry.insert(card);
 
@@ -2218,6 +2306,7 @@ mod tests {
         card.triggers = vec![TriggeredEffect {
             trigger: Trigger::OnPlay,
             effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) }],
+            requirement: None,
         }];
         registry.insert(card);
 
@@ -2280,6 +2369,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
                 GameEvent::HardwareInstalled { side: Side::Runner, card: card_id },
             ]
         );
@@ -2333,6 +2423,7 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
                 GameEvent::ProgramInstalled {
                     side: Side::Runner,
                     card: card_id,
@@ -2597,7 +2688,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 
@@ -2627,7 +2718,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 

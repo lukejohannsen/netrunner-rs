@@ -50,12 +50,19 @@ impl GameState {
             &mut state,
             &Effect::DrawCards(Side::Corp, OPENING_HAND_SIZE),
             None,
+            registry,
         )?);
         events.extend(ability::evaluate_effect(
             &mut state,
             &Effect::DrawCards(Side::Runner, OPENING_HAND_SIZE),
             None,
+            registry,
         )?);
+
+        let recurring_credits_max =
+            registry.get(&corp_deck.identity).and_then(|c| c.recurring_credits).unwrap_or(0);
+        state.corp.recurring_credits_max = recurring_credits_max;
+        state.corp.recurring_credits = recurring_credits_max;
 
         state.phase = GamePhase::Mulligan(Side::Corp);
 
@@ -123,27 +130,38 @@ fn return_hand_to_deck(state: &mut GameState, side: Side) {
 
 /// Resolves `PlayerAction::KeepHand`, per its doc comment. Legal only
 /// during `GamePhase::Mulligan(side)` for whichever side is deciding.
-pub(crate) fn keep_hand(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+pub(crate) fn keep_hand(
+    state: &GameState,
+    registry: &CardRegistry,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = require_mulligan_phase(state)?;
     let mut next = state.clone();
     let mut events = vec![GameEvent::HandKept { side }];
-    advance_past_mulligan(&mut next, &mut events, side);
+    advance_past_mulligan(&mut next, &mut events, side, registry)?;
     Ok((next, events))
 }
 
 /// Resolves `PlayerAction::TakeMulligan`, per its doc comment: returns the
 /// current hand to the deck, reshuffles, redraws a fresh
 /// `OPENING_HAND_SIZE`-card hand, then advances exactly like `keep_hand`.
-pub(crate) fn take_mulligan(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+pub(crate) fn take_mulligan(
+    state: &GameState,
+    registry: &CardRegistry,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = require_mulligan_phase(state)?;
     let mut next = state.clone();
     let mut events = vec![GameEvent::MulliganTaken { side }];
 
     return_hand_to_deck(&mut next, side);
     shuffle_deck(&mut next, side);
-    events.extend(ability::evaluate_effect(&mut next, &Effect::DrawCards(side, OPENING_HAND_SIZE), None)?);
+    events.extend(ability::evaluate_effect(
+        &mut next,
+        &Effect::DrawCards(side, OPENING_HAND_SIZE),
+        None,
+        registry,
+    )?);
 
-    advance_past_mulligan(&mut next, &mut events, side);
+    advance_past_mulligan(&mut next, &mut events, side, registry)?;
     Ok((next, events))
 }
 
@@ -156,11 +174,17 @@ pub(crate) fn take_mulligan(state: &GameState) -> Result<(GameState, Vec<GameEve
 /// true first turn skips that draw) — implemented literally per the
 /// brief's explicit "Corp's first turn: 3 clicks + mandatory draw"
 /// wording, not silently "fixed" to match the real game.
-fn advance_past_mulligan(next: &mut GameState, events: &mut Vec<GameEvent>, side: Side) {
+fn advance_past_mulligan(
+    next: &mut GameState,
+    events: &mut Vec<GameEvent>,
+    side: Side,
+    registry: &CardRegistry,
+) -> Result<(), RulesError> {
     match side {
         Side::Corp => next.phase = GamePhase::Mulligan(Side::Runner),
-        Side::Runner => turn::enter_start_of_turn(next, events, Side::Corp),
+        Side::Runner => turn::enter_start_of_turn(next, events, Side::Corp, registry)?,
     }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -186,7 +210,7 @@ mod tests {
             min_deck_size: Some(min_deck_size),
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 
@@ -206,7 +230,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 

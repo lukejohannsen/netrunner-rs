@@ -31,7 +31,7 @@ pub use run::{
     ServerId, SubroutineStatus,
 };
 pub use state::{
-    AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard, InstalledRunnerCard,
+    AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard,
     MemoryUnits, PaidAbilityWindow, PlayerResources, RunnerState, Side, TraceResume, TraceState,
 };
 pub use turn::end_turn;

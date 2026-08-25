@@ -125,6 +125,31 @@ pub enum Effect {
     /// `Box`ed for the same reason as `Trace::on_success` — the first two
     /// other variants that nest another `Effect`.
     SetAccessReplacement { server: ServerId, effect: Box<Effect> },
+    /// Resolves every `Effect` in order, collecting all of their events —
+    /// e.g. Account Siphon's "Corp loses 5, Runner gains 10, Runner gains 2
+    /// tags" bundled into the single `Effect` `SetAccessReplacement`
+    /// requires. Stops and propagates immediately if any inner `Effect`
+    /// errors, same "no rollback of already-applied effects" convention as
+    /// `resolve_unbroken_subroutines`/`process_card_triggers`.
+    Sequence(Vec<Effect>),
+    /// Symmetric opposite of `GainCredits` — saturating, never errors even
+    /// if `side` can't actually afford it (mirrors `GainCredits`'s own
+    /// "gains/losses never fail in the rules" precedent, not a `pay_cost`
+    /// credit *cost* subject to affordability checks).
+    LoseCredits(Side, u32),
+    /// Removes `amount` clicks from the Runner (this engine has no card that
+    /// costs the Corp a click this way yet, so — like `GiveTags`/
+    /// `GiveBadPublicity` — deliberately no `Side` param). Saturating.
+    LoseClicks(u32),
+    /// Initiates a run on `server`, exactly like `PlayerAction::InitiateRun`
+    /// (same `RunState` shape, `RulesError::RunAlreadyInProgress` guard) but
+    /// without spending a click — the enclosing `PlayEvent`/`PlayOperation`
+    /// already spent the one click this whole card costs. Lets a single
+    /// card's `OnPlay` effect list read as "make a run on X, then [modify
+    /// that run's access]" in one resolution (e.g. The Maker's Eye, Account
+    /// Siphon) by simply listing `InitiateRun` before the access-modifying
+    /// effect(s) that follow it.
+    InitiateRun(ServerId),
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.

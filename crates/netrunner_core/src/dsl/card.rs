@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::ability::{AbilityDef, InteractiveOnAccess, SubroutineDef};
+use crate::dsl::ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 use crate::dsl::cost::Cost;
 use crate::dsl::effect::Effect;
 use crate::dsl::trigger::Trigger;
@@ -14,6 +14,16 @@ pub enum IceType {
     Barrier,
     CodeGate,
     Sentry,
+}
+
+/// A card subtype the engine dispatches a reactive identity trigger off of
+/// (`Trigger::OnTransactionPlayed`/`OnVirusInstalled`) — distinct from
+/// `CardType`, which is a card's primary type, not a tag on top of it. Kept
+/// minimal, extend as new subtype-gated triggers are needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum CardSubtype {
+    Transaction,
+    Virus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -33,6 +43,18 @@ pub enum CardType {
 pub struct TriggeredEffect {
     pub trigger: Trigger,
     pub effects: Vec<Effect>,
+    /// A *soft* precondition: if unmet, `ability::process_card_triggers`
+    /// silently skips this entry (no error, no `RulesError` surfaced) and
+    /// leaves any per-turn tracking flag untouched. Used exclusively by
+    /// passive identity-reactive triggers (`Trigger::OnInstall`/
+    /// `OnSuccessfulRunOnHq` gated by `EffectRequirement::
+    /// FirstInstallThisTurn`/`FirstSuccessfulHqRunThisTurn`) so a
+    /// bonus-already-used-this-turn case never blocks the install/run that
+    /// triggered it. Distinct from `Card::play_requirement`, which is a hard
+    /// gate checked before a card can even be played at all. `None` for the
+    /// common case of an unconditional trigger.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirement: Option<EffectRequirement>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -99,6 +121,39 @@ pub struct Card {
     /// comment.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interactive_on_access: Option<InteractiveOnAccess>,
+
+    /// Subtypes this card carries beyond its primary `card_type` — currently
+    /// only meaningful for `CardType::Operation` (`CardSubtype::Transaction`)
+    /// and `CardType::Program` (`CardSubtype::Virus`), each read at a
+    /// specific engine dispatch site rather than generically. `Vec::new()`
+    /// for the common case of no subtype.
+    #[serde(default)]
+    pub subtypes: Vec<CardSubtype>,
+
+    /// A hard precondition gating `PlayerAction::PlayEvent`/`PlayOperation`
+    /// for this specific card — checked *before* its click/credit cost is
+    /// paid, same placement as `AbilityDef::requirement` in
+    /// `engine::activate_ability`. `None` for the overwhelmingly common case
+    /// of no play restriction. Distinct from `TriggeredEffect::requirement`,
+    /// which gates a *reactive* trigger firing (silently, no error) rather
+    /// than blocking the play itself.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub play_requirement: Option<EffectRequirement>,
+
+    /// Recurring-credit pool size for an identity, refilled to this amount
+    /// at the start of every Corp turn (`turn::enter_start_of_turn`) and
+    /// spendable on Corp trace bids before the Corp's own wallet — e.g. NBN:
+    /// Making News's 2 recurring credits. `None` for the common case (no
+    /// pool). `Some` only meaningful on an identity (`CardType::Identity`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub recurring_credits: Option<u32>,
+
+    /// Credit discount applied to the first Program/Hardware the Runner
+    /// installs each turn — e.g. Kate "Mac" McCaffrey: Digital Tinker's -1.
+    /// `None` for the common case (no discount). `Some` only meaningful on
+    /// an identity.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub first_install_discount: Option<u32>,
 }
 
 #[cfg(test)]
@@ -130,6 +185,7 @@ mod tests {
             vec![TriggeredEffect {
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
+                requirement: None,
             }]
         );
         assert!(card.abilities.is_empty());
@@ -149,6 +205,7 @@ mod tests {
             vec![TriggeredEffect {
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
+                requirement: None,
             }]
         );
         assert!(card.abilities.is_empty());

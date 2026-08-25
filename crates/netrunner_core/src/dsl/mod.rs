@@ -5,7 +5,7 @@ mod effect;
 mod trigger;
 
 pub use ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
-pub use card::{Card, CardId, CardType, IceType, TriggeredEffect};
+pub use card::{Card, CardId, CardSubtype, CardType, IceType, TriggeredEffect};
 pub use cost::Cost;
 pub use effect::{BoostDuration, CardTarget, DamageType, Effect, StackZone, SubroutineBreakCount};
 pub use trigger::Trigger;

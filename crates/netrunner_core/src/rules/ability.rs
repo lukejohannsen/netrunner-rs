@@ -6,7 +6,7 @@ use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, RunPhase, ServerId, SubroutineStatus};
-use crate::rules::state::{Credits, GamePhase, GameState, Side, TraceResume, TraceState};
+use crate::rules::state::{Clicks, Credits, GamePhase, GameState, Side, TraceResume, TraceState};
 
 /// Applies a single, already-resolved `Effect` to `state` in place.
 ///
@@ -29,6 +29,7 @@ pub fn evaluate_effect(
     state: &mut GameState,
     effect: &Effect,
     acting_card: Option<&CardId>,
+    registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     match effect {
         Effect::GainCredits(side, amount) => {
@@ -234,6 +235,30 @@ pub fn evaluate_effect(
             run.access_replacement = Some((*server, (**effect).clone()));
             Ok(vec![GameEvent::AccessReplacementSet { server: *server }])
         }
+
+        Effect::Sequence(effects) => {
+            let mut events = Vec::new();
+            for inner in effects {
+                events.extend(evaluate_effect(state, inner, acting_card, registry)?);
+            }
+            Ok(events)
+        }
+
+        Effect::LoseCredits(side, amount) => {
+            state.resources_mut(*side).credits = Credits(state.resources(*side).credits.0.saturating_sub(*amount));
+            Ok(vec![GameEvent::CreditsLost { side: *side, amount: *amount }])
+        }
+
+        Effect::LoseClicks(amount) => {
+            state.runner.resources.clicks =
+                Clicks(state.runner.resources.clicks.0.saturating_sub(*amount));
+            Ok(vec![GameEvent::ClicksLost { side: Side::Runner, amount: *amount }])
+        }
+
+        Effect::InitiateRun(server) => {
+            run::start_run(state, registry, *server)?;
+            Ok(vec![GameEvent::RunInitiated { server: *server }])
+        }
     }
 }
 
@@ -245,7 +270,10 @@ pub fn evaluate_effect(
 /// `Err` if `evaluate_effect` itself errors on one of the fired
 /// subroutines' effects, in which case that error propagates immediately
 /// and any already-fired subroutines stay fired (no rollback).
-pub fn resolve_unbroken_subroutines(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
+pub fn resolve_unbroken_subroutines(
+    state: &mut GameState,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
 
     loop {
@@ -271,7 +299,7 @@ pub fn resolve_unbroken_subroutines(state: &mut GameState) -> Result<Vec<GameEve
         };
 
         let (card_id, effect) = run::transition_subroutine(state, index, SubroutineStatus::Resolved)?;
-        let fired_events = evaluate_effect(state, &effect, None)?;
+        let fired_events = evaluate_effect(state, &effect, None, registry)?;
         events.push(GameEvent::SubroutineFired { card_id, index, effect });
         events.extend(fired_events);
 
@@ -304,8 +332,20 @@ pub fn process_card_triggers(
     };
     let mut events = Vec::new();
     for triggered in card.triggers.iter().filter(|t| t.trigger == trigger) {
+        if let Some(requirement) = &triggered.requirement
+            && check_requirement(state, requirement).is_err()
+        {
+            // Soft gate (see `TriggeredEffect::requirement`'s doc comment):
+            // unmet just means no bonus this time, not an error propagated
+            // to the caller — and no per-turn flag is consumed, since it was
+            // never available to begin with.
+            continue;
+        }
         for effect in &triggered.effects {
-            events.extend(evaluate_effect(state, effect, Some(card_id))?);
+            events.extend(evaluate_effect(state, effect, Some(card_id), registry)?);
+        }
+        if let Some(requirement) = &triggered.requirement {
+            consume_requirement(state, requirement);
         }
     }
     Ok(events)
@@ -431,8 +471,20 @@ pub fn pay_cost(
                 (Side::Runner, Some(run)) => run.bad_publicity_credits,
                 _ => 0,
             };
+            // Symmetric pool for the Corp: during an active trace, the Corp
+            // draws from `CorpState::recurring_credits` before their own
+            // wallet (e.g. NBN: Making News). Every `Cost::Credits` payment
+            // the Corp makes while a trace is active is necessarily
+            // `trace::submit_corp_bid`'s — `engine::apply_action` rejects
+            // every other action while `active_trace` is `Some` — so keying
+            // on `state.active_trace.is_some()` here is exact, not a
+            // heuristic.
+            let recurring_available = match (side, state.active_trace.is_some()) {
+                (Side::Corp, true) => state.corp.recurring_credits,
+                _ => 0,
+            };
             let wallet_available = state.resources(side).credits.0;
-            let total_available = bp_available.saturating_add(wallet_available);
+            let total_available = bp_available.saturating_add(recurring_available).saturating_add(wallet_available);
             if total_available < *amount {
                 return Err(RulesError::NotEnoughCredits {
                     side,
@@ -442,7 +494,8 @@ pub fn pay_cost(
             }
 
             let from_bp = bp_available.min(*amount);
-            let from_wallet = amount - from_bp;
+            let from_recurring = recurring_available.min(*amount - from_bp);
+            let from_wallet = amount - from_bp - from_recurring;
 
             let mut events = Vec::new();
             if from_bp > 0 {
@@ -452,6 +505,10 @@ pub fn pay_cost(
                     .expect("bp_available > 0 implies an active run")
                     .bad_publicity_credits -= from_bp;
                 events.push(GameEvent::BadPublicityCreditsSpent { amount: from_bp });
+            }
+            if from_recurring > 0 {
+                state.corp.recurring_credits -= from_recurring;
+                events.push(GameEvent::RecurringCreditsSpent { amount: from_recurring });
             }
             state.resources_mut(side).credits = Credits(wallet_available - from_wallet);
             events.push(GameEvent::CreditsSpent { side, amount: *amount });
@@ -492,6 +549,33 @@ pub fn check_requirement(state: &GameState, requirement: &EffectRequirement) -> 
             }
             Ok(())
         }
+        EffectRequirement::FirstInstallThisTurn => {
+            if state.corp.first_install_used_this_turn {
+                return Err(RulesError::RequirementNotMet);
+            }
+            Ok(())
+        }
+        EffectRequirement::FirstSuccessfulHqRunThisTurn => {
+            if state.runner.first_hq_run_used_this_turn {
+                return Err(RulesError::RequirementNotMet);
+            }
+            Ok(())
+        }
+    }
+}
+
+/// Flips the per-turn tracking flag `requirement` gates, once a
+/// `TriggeredEffect` it gated has actually fired — see `dsl::card::
+/// TriggeredEffect::requirement`'s doc comment. A no-op for `IsTagged`
+/// (nothing to consume; tag count isn't a once-per-turn resource). Kept
+/// separate from `check_requirement` (which stays read-only) so
+/// `activate_ability`'s existing `AbilityDef::requirement` call site is
+/// unaffected — only `process_card_triggers`'s soft-gate path calls this.
+fn consume_requirement(state: &mut GameState, requirement: &EffectRequirement) {
+    match requirement {
+        EffectRequirement::IsTagged => {}
+        EffectRequirement::FirstInstallThisTurn => state.corp.first_install_used_this_turn = true,
+        EffectRequirement::FirstSuccessfulHqRunThisTurn => state.runner.first_hq_run_used_this_turn = true,
     }
 }
 
@@ -516,7 +600,7 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(5),
@@ -542,7 +626,7 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
-                link_strength: 0,
+                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
@@ -556,7 +640,7 @@ mod tests {
     #[test]
     fn gain_credits_targets_the_named_side() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GainCredits(Side::Corp, 3), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GainCredits(Side::Corp, 3), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(8));
         assert_eq!(state.runner.resources.credits, Credits(5));
@@ -568,7 +652,7 @@ mod tests {
         let mut state = game_state();
         state.runner.grip = vec![CardId("card_0".to_string()), CardId("card_1".to_string())];
 
-        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.grip.len(), 1);
         assert_eq!(state.runner.heap.len(), 1);
@@ -580,7 +664,7 @@ mod tests {
         let mut state = game_state();
         state.runner.stack = vec![CardId("only_card".to_string())];
 
-        let events = evaluate_effect(&mut state, &Effect::DrawCards(Side::Runner, 3), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::DrawCards(Side::Runner, 3), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.grip, vec![CardId("only_card".to_string())]);
         assert!(state.runner.stack.is_empty());
@@ -592,7 +676,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
-        let events = evaluate_effect(&mut state, &Effect::EndTheRun, None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::EndTheRun, None, &CardRegistry::new()).unwrap();
 
         assert!(state.active_run.is_none());
         assert_eq!(events, vec![GameEvent::RunEndedByEffect { server: ServerId::Hq }]);
@@ -601,7 +685,7 @@ mod tests {
     #[test]
     fn end_the_run_with_no_active_run_errors() {
         let mut state = game_state();
-        assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun, None), Err(RulesError::NoActiveRun));
+        assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun, None, &CardRegistry::new()), Err(RulesError::NoActiveRun));
     }
 
     fn active_run_state() -> RunState {
@@ -625,13 +709,13 @@ mod tests {
         state.active_run = Some(active_run_state());
 
         let events =
-            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None)
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None, &CardRegistry::new())
                 .unwrap();
         assert_eq!(state.active_run.as_ref().unwrap().additional_hq_access, 1);
         assert_eq!(events, vec![GameEvent::AdditionalAccessGranted { server: ServerId::Hq, count: 1 }]);
 
         let events =
-            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::RnD, count: 2 }, None)
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::RnD, count: 2 }, None, &CardRegistry::new())
                 .unwrap();
         assert_eq!(state.active_run.as_ref().unwrap().additional_rd_access, 2);
         assert_eq!(events, vec![GameEvent::AdditionalAccessGranted { server: ServerId::RnD, count: 2 }]);
@@ -642,8 +726,8 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(active_run_state());
 
-        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None).unwrap();
-        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None).unwrap();
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None, &CardRegistry::new()).unwrap();
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.active_run.as_ref().unwrap().additional_hq_access, 2);
     }
@@ -653,12 +737,13 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(active_run_state());
 
-        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Archives, count: 3 }, None)
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Archives, count: 3 }, None, &CardRegistry::new())
             .unwrap();
         evaluate_effect(
             &mut state,
             &Effect::AddAdditionalAccess { server: ServerId::Remote(0), count: 3 },
             None,
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -671,7 +756,7 @@ mod tests {
     fn add_additional_access_without_an_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None),
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None, &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -686,6 +771,7 @@ mod tests {
             &mut state,
             &Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(replacement.clone()) },
             None,
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -707,6 +793,7 @@ mod tests {
                     effect: Box::new(Effect::GainCredits(Side::Runner, 8)),
                 },
                 None,
+                &CardRegistry::new(),
             ),
             Err(RulesError::NoActiveRun)
         );
@@ -715,7 +802,7 @@ mod tests {
     #[test]
     fn give_tags_always_targets_the_runner() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GiveTags(2), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GiveTags(2), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 2);
         assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2 }]);
@@ -725,7 +812,7 @@ mod tests {
     fn remove_tags_saturates_at_zero() {
         let mut state = game_state();
         state.runner.tags = 1;
-        let events = evaluate_effect(&mut state, &Effect::RemoveTags(5), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::RemoveTags(5), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 0);
         assert_eq!(events, vec![GameEvent::TagsRemoved { side: Side::Runner, amount: 5 }]);
@@ -734,7 +821,7 @@ mod tests {
     #[test]
     fn give_bad_publicity_increases_the_counter() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GiveBadPublicity(2), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GiveBadPublicity(2), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.bad_publicity, 2);
         assert_eq!(events, vec![GameEvent::BadPublicityGiven { amount: 2 }]);
@@ -744,7 +831,7 @@ mod tests {
     fn remove_bad_publicity_saturates_at_zero() {
         let mut state = game_state();
         state.corp.bad_publicity = 1;
-        let events = evaluate_effect(&mut state, &Effect::RemoveBadPublicity(5), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::RemoveBadPublicity(5), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.bad_publicity, 0);
         assert_eq!(events, vec![GameEvent::BadPublicityRemoved { amount: 5 }]);
@@ -801,7 +888,7 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(
             events,
@@ -823,7 +910,7 @@ mod tests {
          jack_out_permitted: true,});
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(1), None),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(1), None, &CardRegistry::new()),
             Err(RulesError::InvalidSubroutineIndex(1))
         );
     }
@@ -837,7 +924,7 @@ mod tests {
             Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 , jack_out_permitted: true});
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None, &CardRegistry::new()),
             Err(RulesError::SubroutineAlreadyHandled)
         );
     }
@@ -846,7 +933,7 @@ mod tests {
     fn break_subroutine_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None, &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -858,7 +945,7 @@ mod tests {
             Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None, &CardRegistry::new()),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -876,7 +963,7 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        let events = resolve_unbroken_subroutines(&mut state).unwrap();
+        let events = resolve_unbroken_subroutines(&mut state, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 2);
         assert_eq!(state.corp.resources.credits, Credits(8));
@@ -917,7 +1004,7 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        let events = resolve_unbroken_subroutines(&mut state).unwrap();
+        let events = resolve_unbroken_subroutines(&mut state, &CardRegistry::new()).unwrap();
 
         assert!(state.active_run.is_none());
         assert_eq!(state.runner.tags, 0);
@@ -947,7 +1034,7 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        let events = resolve_unbroken_subroutines(&mut state).unwrap();
+        let events = resolve_unbroken_subroutines(&mut state, &CardRegistry::new()).unwrap();
 
         assert_eq!(events.len(), 2);
         let run = state.active_run.unwrap();
@@ -965,7 +1052,7 @@ mod tests {
             position: 0,
          jack_out_permitted: true,});
 
-        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), None).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), None, &CardRegistry::new()).unwrap();
 
         assert_eq!(state.active_run.unwrap().ice[0].current_strength, 5);
         assert_eq!(
@@ -985,7 +1072,7 @@ mod tests {
             Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength(2), None),
+            evaluate_effect(&mut state, &Effect::ModifyStrength(2), None, &CardRegistry::new()),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -994,7 +1081,7 @@ mod tests {
     fn modify_strength_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength(2), None),
+            evaluate_effect(&mut state, &Effect::ModifyStrength(2), None, &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -1003,7 +1090,7 @@ mod tests {
     fn trash_card_this_card_without_acting_card_is_rejected_not_panicked() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), None),
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), None, &CardRegistry::new()),
             Err(RulesError::MissingActingCardContext)
         );
     }
@@ -1015,7 +1102,7 @@ mod tests {
         let acting = CardId("gordian_blade".to_string());
 
         let events =
-            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), Some(&acting)).unwrap();
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), Some(&acting), &CardRegistry::new()).unwrap();
 
         assert!(state.runner.rig.is_empty());
         assert_eq!(state.runner.heap, vec![acting.clone()]);
@@ -1040,6 +1127,7 @@ mod tests {
                 server: ServerId::Remote(0),
             }),
             None,
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1055,7 +1143,7 @@ mod tests {
     fn trash_card_runner_rig_not_found_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))), None),
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))), None, &CardRegistry::new()),
             Err(RulesError::CardNotInRig { side: Side::Runner, card: CardId("gordian_blade".to_string()) })
         );
     }
@@ -1069,6 +1157,7 @@ mod tests {
             &mut state,
             &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))),
             None,
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1089,6 +1178,7 @@ mod tests {
             &mut state,
             &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }),
             None,
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1110,6 +1200,7 @@ mod tests {
                 &mut state,
                 &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::Stack }),
                 None,
+                &CardRegistry::new(),
             ),
             Err(RulesError::EmptyZone { side: Side::Corp, zone: StackZone::Stack })
         );
@@ -1124,6 +1215,7 @@ mod tests {
             &mut state,
             &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Runner, zone: StackZone::Stack }),
             None,
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1145,6 +1237,7 @@ mod tests {
                 &mut state,
                 &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }),
                 None,
+                &CardRegistry::new(),
             ),
             Err(RulesError::EmptyZone { side: Side::Corp, zone: StackZone::RAndD })
         );
@@ -1304,7 +1397,7 @@ mod tests {
             min_deck_size: None,
             strength: None,
             subroutines: Vec::new(),
-            interactive_on_access: None,
+            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
         }
     }
 
@@ -1316,6 +1409,7 @@ mod tests {
             vec![TriggeredEffect {
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(1), Effect::GainCredits(Side::Corp, 2)],
+                requirement: None,
             }],
         )]);
 
@@ -1346,6 +1440,7 @@ mod tests {
             vec![TriggeredEffect {
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
+                requirement: None,
             }],
         )]);
 
@@ -1387,6 +1482,7 @@ mod tests {
             &mut state,
             &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1413,6 +1509,7 @@ mod tests {
             &mut state,
             &Effect::BoostStrength { amount: 2, duration: BoostDuration::Turn },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1429,6 +1526,7 @@ mod tests {
                 &mut state,
                 &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
                 None,
+                &CardRegistry::new(),
             ),
             Err(RulesError::UnresolvedCardTarget)
         );
@@ -1443,6 +1541,7 @@ mod tests {
                 &mut state,
                 &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
                 Some(&acting),
+                &CardRegistry::new(),
             ),
             Err(RulesError::CardNotInRig { side: Side::Runner, card: acting })
         );
@@ -1471,6 +1570,7 @@ mod tests {
             &mut state,
             &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2), restrict_to: None },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1496,6 +1596,7 @@ mod tests {
             &mut state,
             &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2), restrict_to: None },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1513,6 +1614,7 @@ mod tests {
             &mut state,
             &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1538,6 +1640,7 @@ mod tests {
                 &mut state,
                 &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
                 Some(&CardId("corroder".to_string())),
+                &CardRegistry::new(),
             ),
             Err(RulesError::NotInEncounter)
         );
@@ -1553,6 +1656,7 @@ mod tests {
                 &mut state,
                 &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
                 Some(&acting),
+                &CardRegistry::new(),
             ),
             Err(RulesError::BreakerStrengthTooLow {
                 breaker: acting,
@@ -1576,6 +1680,7 @@ mod tests {
                 &mut state,
                 &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
                 Some(&acting),
+                &CardRegistry::new(),
             ),
             Err(RulesError::BreakerStrengthTooLow {
                 breaker: acting.clone(),
@@ -1589,6 +1694,7 @@ mod tests {
             &mut state,
             &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1596,6 +1702,7 @@ mod tests {
             &mut state,
             &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1617,6 +1724,7 @@ mod tests {
             &mut state,
             &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1655,6 +1763,7 @@ mod tests {
                 restrict_to: Some(IceType::Barrier),
             },
             Some(&acting),
+            &CardRegistry::new(),
         )
         .unwrap();
 
@@ -1678,6 +1787,7 @@ mod tests {
                     restrict_to: Some(IceType::Barrier),
                 },
                 Some(&acting),
+                &CardRegistry::new(),
             ),
             Err(RulesError::InvalidBreakerSubtype {
                 breaker: acting,
@@ -1700,6 +1810,7 @@ mod tests {
                 &mut state,
                 &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
                 Some(&acting),
+                &CardRegistry::new(),
             )
             .unwrap();
 
@@ -1715,7 +1826,7 @@ mod tests {
         let mut state = game_state();
         let effect = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) };
 
-        let events = evaluate_effect(&mut state, &effect, None).unwrap();
+        let events = evaluate_effect(&mut state, &effect, None, &CardRegistry::new()).unwrap();
 
         assert_eq!(events, vec![GameEvent::TraceInitiated { base: 3, initiating_card: None }]);
         assert_eq!(state.runner.tags, 0, "on_success must not fire yet");
@@ -1729,11 +1840,11 @@ mod tests {
     #[test]
     fn trace_effect_while_already_active_errors() {
         let mut state = game_state();
-        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) }, None)
+        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) }, None, &CardRegistry::new())
             .unwrap();
 
         let result =
-            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(2)) }, None);
+            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(2)) }, None, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::TraceAlreadyActive));
         assert_eq!(state.active_trace.unwrap().base_strength, 3, "original trace must be untouched");
@@ -1755,7 +1866,7 @@ mod tests {
             jack_out_permitted: true,
         });
 
-        let events = resolve_unbroken_subroutines(&mut state).unwrap();
+        let events = resolve_unbroken_subroutines(&mut state, &CardRegistry::new()).unwrap();
 
         let run = state.active_run.as_ref().unwrap();
         assert_eq!(run.ice[0].subroutines[0].status, SubroutineStatus::Resolved);
