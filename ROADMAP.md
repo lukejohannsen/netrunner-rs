@@ -30,8 +30,9 @@ Canonical single source of truth for engine mechanics, client-server infrastruct
 ## 📇 Phase 1: Single-Player Engine Completeness & Card Data (Immediate Focus)
 
 ### 1. Card Data, Storage & NetrunnerDB Ingestion
-- [ ] **Dynamic Card Storage & Schemas:** Standardize card representation, metadata, and rules text schemas inside `netrunner_core` to support dynamic updates, serialization, and offline local caching.
-- [ ] **NetrunnerDB Sync Pipeline:** Build an ingestion client to fetch card definitions, printings, and set structures directly from NetrunnerDB JSON APIs without requiring hardcoded Rust fixture registries.
+- [ ] **Bundled Gateway & Elevation Core Sets:** Embed *System Gateway* and *Elevation* JSON fixtures directly into `netrunner_core` (`include_str!`) for instant, zero-dependency offline availability.
+- [ ] **Cross-Platform Cache Resolution:** Utilize standard cross-platform path resolution (e.g., `dirs::cache_dir()`) to resolve OS-specific cache directories (`~/.cache/netrunner`, `~/Library/Caches/netrunner`, `%LOCALAPPDATA%\netrunner\cache`) for offline sync persistence across Windows, macOS, and Linux.
+- [ ] **Dynamic NetrunnerDB Ingestion Pipeline:** Build an asynchronous HTTP client in `netrunner_core` to sync expanded card printings, errata, and historical sets from NetrunnerDB APIs to extend the bundled core catalog.
 - [ ] **Null Signal Games Format Support:** Enforce official [Null Signal Games Supported Formats](https://nullsignal.games/players/supported-formats/) (Startup, Standard, Eternal, Snapshot), including rotation tracking, card banlists, points restrictions, and legality checks prior to match start.
 
 ### 2. Deckbuilding & Single-Player Customization
