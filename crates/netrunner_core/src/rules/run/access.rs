@@ -671,7 +671,7 @@ mod tests {
     /// A run against `server` already in `RunPhase::Success`, ready for
     /// `access_server` to park in `AccessingCard`.
     fn run_in_success(server: ServerId) -> RunState {
-        RunState { server, phase: RunPhase::Success, ice: Vec::new(), position: 0, access_state: None , jack_out_permitted: true}
+        RunState { bad_publicity_credits: 0, server, phase: RunPhase::Success, ice: Vec::new(), position: 0, access_state: None , jack_out_permitted: true}
     }
 
     fn game_state(
@@ -682,7 +682,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState {
+            corp: crate::rules::state::CorpState { bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),

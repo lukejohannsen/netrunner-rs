@@ -210,7 +210,7 @@ mod tests {
         runner_credits: u32,
     ) -> GameState {
         GameState {
-            corp: CorpState {
+            corp: CorpState { bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(corp_credits),
@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn ending_turn_while_a_run_is_active_errors() {
         let mut state = game_state(Side::Runner, 0, 5, 0, 2);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: Vec::new(),

@@ -168,4 +168,11 @@ pub struct RunState {
     /// `run::engine::pass_current_ice`, the single place an ICE gets left
     /// behind).
     pub jack_out_permitted: bool,
+    /// Temporary Runner credit pool for this run only, seeded from
+    /// `state::CorpState::bad_publicity` at `engine::initiate_run`.
+    /// Spendable via `ability::pay_cost`'s `Cost::Credits` arm — draws from
+    /// here before the Runner's own wallet. Discarded for free whenever this
+    /// `RunState` is dropped/replaced (every run-termination site already
+    /// clears `GameState::active_run`); no separate cleanup is needed.
+    pub bad_publicity_credits: u32,
 }

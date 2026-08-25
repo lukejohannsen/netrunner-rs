@@ -214,7 +214,7 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState {
+            corp: CorpState { bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(5),
@@ -261,7 +261,7 @@ mod tests {
         position: usize,
         jack_out_permitted: bool,
     ) -> RunState {
-        RunState {
+        RunState { bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase,
             ice,

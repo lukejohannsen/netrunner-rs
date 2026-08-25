@@ -67,6 +67,13 @@ pub enum Effect {
     /// tags exist solely on `RunnerState` in this data model, so
     /// `Side::Corp` would never be a legal target.
     GiveTags(u32),
+    /// Deliberately no `Side` param, same rationale as `GiveTags`.
+    RemoveTags(u32),
+    /// Deliberately no `Side` param — Bad Publicity exists solely on
+    /// `CorpState` in this data model, same rationale as `GiveTags`.
+    GiveBadPublicity(u32),
+    /// Deliberately no `Side` param, same rationale as `GiveBadPublicity`.
+    RemoveBadPublicity(u32),
     TrashCard(CardTarget),
     /// Boosts a Runner rig card's own strength — unlike `ModifyStrength`,
     /// which always targets whatever ICE is currently being encountered,

@@ -190,11 +190,13 @@ mod tests {
                 AbilityDef {
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
+                    requirement: None,
                     effect: Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
                 },
                 AbilityDef {
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
+                    requirement: None,
                     effect: Effect::BreakSubroutines {
                         count: SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),

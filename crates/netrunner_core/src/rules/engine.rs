@@ -52,6 +52,8 @@ pub fn apply_action(
             activate_ability(state, registry, card_id, ability_index)
         }
         PlayerAction::AdvanceCard { card_id } => advance_card(state, registry, card_id),
+        PlayerAction::RemoveTag => remove_tag(state),
+        PlayerAction::TrashResource { card_id } => trash_resource(state, registry, card_id),
         PlayerAction::SelectCardToAccess { card_id } => {
             select_card_to_access(state, registry, card_id)
         }
@@ -253,6 +255,7 @@ fn initiate_run(
         .collect();
 
     next.active_run = Some(RunState { access_state: None,
+        bad_publicity_credits: next.corp.bad_publicity,
         server,
         phase: RunPhase::Initiation,
         ice,
@@ -585,6 +588,9 @@ fn activate_ability(
     if ability.trigger != Trigger::Paid {
         return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
     }
+    if let Some(requirement) = &ability.requirement {
+        ability::check_requirement(state, requirement)?;
+    }
 
     let mut next = state.clone();
     let mut events = Vec::new();
@@ -632,6 +638,66 @@ fn advance_card(
     installed.advancement_tokens += 1;
     let advancement_tokens = installed.advancement_tokens;
     events.push(GameEvent::CardAdvanced { card: card_id, advancement_tokens });
+
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::RemoveTag`, per its doc comment. Runner-only.
+fn remove_tag(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
+    if !state.runner.is_tagged() {
+        return Err(RulesError::RunnerNotTagged);
+    }
+
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(2), None)?);
+
+    next.runner.tags -= 1;
+    events.push(GameEvent::TagRemoved { side });
+
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::TrashResource`, per its doc comment. Corp-only.
+fn trash_resource(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Corp;
+    require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
+    if !state.runner.is_tagged() {
+        return Err(RulesError::RunnerNotTagged);
+    }
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if card_def.card_type != CardType::Resource {
+        return Err(RulesError::CardNotResource { card: card_id });
+    }
+
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(2), None)?);
+
+    let position = next
+        .runner
+        .rig
+        .iter()
+        .position(|c| c.card == card_id)
+        .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: card_id.clone() })?;
+    let removed = next.runner.rig.remove(position);
+    next.runner.heap.push(removed.card);
+    events.push(GameEvent::CardTrashed { side: Side::Runner, card: card_id });
 
     Ok((next, events))
 }
@@ -807,7 +873,7 @@ mod tests {
 
     fn corp_state(clicks: u32, credits: u32) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState {
+            corp: crate::rules::state::CorpState { bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(credits),
@@ -848,7 +914,7 @@ mod tests {
     /// (identity doesn't matter for the tests using this — only counts do).
     fn runner_state(clicks: u32, stack_size: u32, grip_size: u32) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState {
+            corp: crate::rules::state::CorpState { bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -1205,7 +1271,7 @@ mod tests {
         }];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, false)],
@@ -1247,7 +1313,7 @@ mod tests {
         ];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("outer_ice", 0, 1, false), test_ice("inner_ice", 0, 1, false)],
@@ -1272,7 +1338,7 @@ mod tests {
         assert_eq!(next.runner.resources.clicks, Clicks(2));
         assert_eq!(
             next.active_run,
-            Some(RunState { access_state: None,
+            Some(RunState { bad_publicity_credits: 0, access_state: None,
                 server: ServerId::Hq,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -1410,7 +1476,7 @@ mod tests {
     #[test]
     fn runner_initiate_run_with_run_already_active_returns_run_already_in_progress() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -1435,7 +1501,7 @@ mod tests {
     #[test]
     fn runner_jack_out_ends_run_clears_active_run_no_click_cost() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -1515,7 +1581,7 @@ mod tests {
         // unlike `RunPhase::Success` (legal there — the "approach server"
         // jack-out window; see `runner_jack_out_succeeds_on_ice_less_server_before_access`).
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::AccessingCard,
             ice: Vec::new(),
@@ -1532,7 +1598,7 @@ mod tests {
     #[test]
     fn runner_can_initiate_run_again_after_jacking_out() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -1550,7 +1616,7 @@ mod tests {
 
         assert_eq!(
             after_initiate.active_run,
-            Some(RunState { access_state: None,
+            Some(RunState { bad_publicity_credits: 0, access_state: None,
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -1566,7 +1632,7 @@ mod tests {
     #[test]
     fn runner_complete_run_clears_active_run_after_success() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -1596,7 +1662,7 @@ mod tests {
     #[test]
     fn runner_complete_run_before_success_returns_run_not_concluded() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -1635,7 +1701,7 @@ mod tests {
     #[test]
     fn runner_can_initiate_run_again_after_completing_previous_run() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -1657,7 +1723,7 @@ mod tests {
 
         assert_eq!(
             after_initiate.active_run,
-            Some(RunState { access_state: None,
+            Some(RunState { bad_publicity_credits: 0, access_state: None,
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -1674,7 +1740,7 @@ mod tests {
     fn runner_complete_run_against_hq_parks_the_run_awaiting_an_access_choice() {
         let mut state = runner_state(3, 5, 3);
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
@@ -1709,7 +1775,7 @@ mod tests {
         assert_eq!(next.paid_ability_window.as_ref().unwrap().active_priority, Side::Runner);
         assert_eq!(
             next.active_run,
-            Some(RunState {
+            Some(RunState { bad_publicity_credits: 0,
                 access_state: Some(run::AccessState {
                     server: ServerId::Hq,
                     unaccessed_cards: Vec::new(),
@@ -1733,7 +1799,7 @@ mod tests {
     #[test]
     fn runner_complete_run_against_empty_hq_completes_immediately() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
@@ -1778,7 +1844,7 @@ mod tests {
     #[test]
     fn runner_continue_run_steps_through_phases_with_no_click_cost() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Initiation,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -1850,7 +1916,7 @@ mod tests {
     #[test]
     fn runner_continue_run_with_subroutines_pending_propagates_error() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -2367,7 +2433,7 @@ mod tests {
     fn runner_break_subroutine_decrements_pending_on_current_ice() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 2, true)],
@@ -2427,7 +2493,7 @@ mod tests {
     fn runner_break_subroutine_with_index_out_of_range_returns_invalid_subroutine_index() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -2446,7 +2512,7 @@ mod tests {
     fn runner_break_subroutine_outside_encounter_ice_returns_not_in_encounter() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -2550,7 +2616,7 @@ mod tests {
             card_type: CardType::Program,
             cost: 0,
             triggers: Vec::new(),
-            abilities: vec![AbilityDef { trigger, cost, effect }],
+            abilities: vec![AbilityDef { trigger, cost, requirement: None, effect }],
             trash_cost: None,
             steal_cost: None,
             advancement_requirement: None,
@@ -2568,7 +2634,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -2613,7 +2679,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -2695,7 +2761,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 2, 1, true)],
@@ -2739,7 +2805,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 1)];
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 3, 1, true)],
@@ -2786,7 +2852,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
@@ -2822,7 +2888,7 @@ mod tests {
             let mut state = runner_state(3, 0, 0);
             state.runner.resources.credits = Credits(5);
             state.runner.rig = vec![installed_runner_card("corroder", 2)];
-            state.active_run = Some(RunState { access_state: None,
+            state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
                 server: ServerId::Hq,
                 phase: RunPhase::EncounterIce,
                 ice: vec![test_ice_of_type("some_ice", 2, 1, true, wrong_type)],
@@ -2867,7 +2933,7 @@ mod tests {
             let mut state = runner_state(3, 0, 0);
             state.runner.resources.credits = Credits(5);
             state.runner.rig = vec![installed_runner_card("mimic", 2)];
-            state.active_run = Some(RunState { access_state: None,
+            state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
                 server: ServerId::Hq,
                 phase: RunPhase::EncounterIce,
                 ice: vec![test_ice_of_type("some_ice", 2, 1, true, ice_type)],
@@ -2900,7 +2966,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -2941,7 +3007,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -3003,7 +3069,7 @@ mod tests {
         }];
         let mut state = runner_state(3, 0, 0);
         state.corp.installed = installed;
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 0, false)],
@@ -3032,7 +3098,7 @@ mod tests {
     #[test]
     fn jack_out_during_an_open_window_clears_the_window() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             // Second ICE's approach — jack_out_permitted is true because
@@ -3092,7 +3158,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(0);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -3279,11 +3345,218 @@ mod tests {
         );
     }
 
+    #[test]
+    fn runner_remove_tag_spends_click_and_credits_and_removes_one_tag() {
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.tags = 2;
+
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::RemoveTag).expect("action should succeed");
+
+        assert_eq!(next.runner.resources.clicks, Clicks(2));
+        assert_eq!(next.runner.resources.credits, Credits(3));
+        assert_eq!(next.runner.tags, 1);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 2 },
+                GameEvent::TagRemoved { side: Side::Runner },
+            ]
+        );
+    }
+
+    #[test]
+    fn runner_remove_tag_with_zero_tags_returns_runner_not_tagged() {
+        let state = runner_state(3, 0, 0);
+
+        let result = apply_action(&state, &registry(), PlayerAction::RemoveTag);
+
+        assert_eq!(result, Err(RulesError::RunnerNotTagged));
+    }
+
+    #[test]
+    fn corp_turn_remove_tag_returns_wrong_phase() {
+        let mut state = corp_state(3, 5);
+        state.runner.tags = 1;
+
+        let result = apply_action(&state, &registry(), PlayerAction::RemoveTag);
+
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Runner),
+                actual: GamePhase::Action(Side::Corp),
+            })
+        );
+    }
+
+    #[test]
+    fn corp_trash_resource_while_runner_tagged_moves_card_from_rig_to_heap() {
+        let card_id = CardId("daily_casts".to_string());
+        let mut state = corp_state(3, 5);
+        state.runner.tags = 1;
+        state.runner.rig = vec![installed_runner_card("daily_casts", 0)];
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("daily_casts", Side::Runner, CardType::Resource, 3, None));
+
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::TrashResource { card_id: card_id.clone() },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.corp.resources.clicks, Clicks(2));
+        assert_eq!(next.corp.resources.credits, Credits(3));
+        assert!(next.runner.rig.is_empty());
+        assert_eq!(next.runner.heap, vec![card_id.clone()]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::CreditsSpent { side: Side::Corp, amount: 2 },
+                GameEvent::CardTrashed { side: Side::Runner, card: card_id },
+            ]
+        );
+    }
+
+    #[test]
+    fn corp_trash_resource_with_zero_tags_returns_runner_not_tagged() {
+        let card_id = CardId("daily_casts".to_string());
+        let mut state = corp_state(3, 5);
+        state.runner.rig = vec![installed_runner_card("daily_casts", 0)];
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("daily_casts", Side::Runner, CardType::Resource, 3, None));
+
+        let result = apply_action(&state, &registry, PlayerAction::TrashResource { card_id });
+
+        assert_eq!(result, Err(RulesError::RunnerNotTagged));
+    }
+
+    #[test]
+    fn corp_trash_resource_on_non_resource_card_returns_card_not_resource() {
+        let card_id = CardId("gordian_blade".to_string());
+        let mut state = corp_state(3, 5);
+        state.runner.tags = 1;
+        state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("gordian_blade", Side::Runner, CardType::Program, 3, None));
+
+        let result = apply_action(&state, &registry, PlayerAction::TrashResource { card_id: card_id.clone() });
+
+        assert_eq!(result, Err(RulesError::CardNotResource { card: card_id }));
+    }
+
+    #[test]
+    fn corp_trash_resource_on_card_not_in_rig_returns_card_not_in_rig() {
+        let card_id = CardId("daily_casts".to_string());
+        let mut state = corp_state(3, 5);
+        state.runner.tags = 1;
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("daily_casts", Side::Runner, CardType::Resource, 3, None));
+
+        let result = apply_action(&state, &registry, PlayerAction::TrashResource { card_id: card_id.clone() });
+
+        assert_eq!(result, Err(RulesError::CardNotInRig { side: Side::Runner, card: card_id }));
+    }
+
+    #[test]
+    fn runner_turn_trash_resource_returns_wrong_phase() {
+        let card_id = CardId("daily_casts".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.tags = 1;
+
+        let result = apply_action(&state, &registry(), PlayerAction::TrashResource { card_id });
+
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Corp),
+                actual: GamePhase::Action(Side::Runner),
+            })
+        );
+    }
+
+    #[test]
+    fn initiate_run_seeds_bad_publicity_credits_from_corp_bad_publicity_counter() {
+        let mut state = runner_state(3, 5, 3);
+        state.corp.bad_publicity = 4;
+
+        let (next, _events) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
+            .expect("action should succeed");
+
+        assert_eq!(next.active_run.unwrap().bad_publicity_credits, 4);
+    }
+
+    #[test]
+    fn bad_publicity_credits_are_discarded_when_the_run_ends_via_jack_out() {
+        let mut state = runner_state(3, 5, 3);
+        state.corp.bad_publicity = 4;
+        let (after_initiate, _) =
+            apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
+                .expect("initiate should succeed");
+        assert_eq!(after_initiate.active_run.as_ref().unwrap().bad_publicity_credits, 4);
+
+        let (after_continue, _) =
+            apply_action(&after_initiate, &registry(), PlayerAction::ContinueRun).expect("continue should succeed");
+        let (after_jack_out, _) =
+            apply_action(&after_continue, &registry(), PlayerAction::JackOut).expect("jack out should succeed");
+
+        assert!(after_jack_out.active_run.is_none());
+    }
+
+    #[test]
+    fn runner_activate_ability_gated_by_is_tagged_requirement() {
+        let card_id = CardId("wireless_net_pavilion".to_string());
+        let mut card = test_card_with_ability(
+            "wireless_net_pavilion",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::GainCredits(Side::Runner, 3),
+        );
+        card.abilities[0].requirement = Some(crate::dsl::EffectRequirement::IsTagged);
+        let mut registry = CardRegistry::new();
+        registry.insert(card);
+
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![installed_runner_card("wireless_net_pavilion", 0)];
+
+        // Untagged: the ability is blocked and no cost is paid.
+        let result = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        );
+        assert_eq!(result, Err(RulesError::RunnerNotTagged));
+
+        // Tagged: the ability activates normally.
+        state.runner.tags = 1;
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        )
+        .expect("action should succeed while tagged");
+
+        assert_eq!(next.runner.resources.credits, Credits(7)); // 5 - 1 (cost) + 3 (effect)
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
+                GameEvent::CreditsGained { side: Side::Runner, amount: 3 },
+            ]
+        );
+    }
+
     /// A `RunState` parked at `RunPhase::AccessingCard` awaiting `card_id`'s
     /// `PendingChoice`/`PendingInteractiveTrigger` decision — used by the
     /// access-time paid-ability-window tests below.
     fn run_accessing(server: ServerId, phase: run::AccessPhase) -> RunState {
-        RunState {
+        RunState { bad_publicity_credits: 0,
             server,
             phase: RunPhase::AccessingCard,
             ice: Vec::new(),
@@ -3541,7 +3814,7 @@ mod tests {
         let card_b = CardId("card_b".to_string());
         let mut state = runner_state(3, 0, 0);
         state.corp.archives = vec![card_a.clone(), card_b.clone()];
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             server: ServerId::Archives,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -3628,7 +3901,7 @@ mod tests {
         // activation below only succeeds because the first activation's
         // encounter-duration boost is still applied.
         state.runner.rig = vec![installed_runner_card("corroder", 1)];
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
@@ -3653,6 +3926,7 @@ mod tests {
         card.abilities.push(AbilityDef {
             trigger: Trigger::Paid,
             cost: Some(Cost::Credits(1)),
+            requirement: None,
             effect: Effect::BreakSubroutines {
                 count: SubroutineBreakCount::Fixed(1),
                 restrict_to: Some(IceType::Barrier),
@@ -3699,7 +3973,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("mimic", 2)];
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,

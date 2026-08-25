@@ -52,4 +52,9 @@ pub enum GameEvent {
     TraceRunnerBidSubmitted { runner_bid: u32, total_strength: u32 },
     TraceAvoided { corp_total: u32, runner_total: u32 },
     TraceSuccessful { corp_total: u32, runner_total: u32 },
+    TagRemoved { side: Side },
+    TagsRemoved { side: Side, amount: u32 },
+    BadPublicityCreditsSpent { amount: u32 },
+    BadPublicityGiven { amount: u32 },
+    BadPublicityRemoved { amount: u32 },
 }

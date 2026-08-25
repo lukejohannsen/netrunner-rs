@@ -16,7 +16,20 @@ pub struct AbilityDef {
     pub trigger: Trigger,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
+    /// A precondition gating whether this ability may even be activated,
+    /// checked (via `rules::ability::check_requirement`) before `cost` is
+    /// paid. `None` for the common case of no precondition.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirement: Option<EffectRequirement>,
     pub effect: Effect,
+}
+
+/// A precondition gating an `AbilityDef`'s activation. Kept minimal — extend
+/// as new tag/state-conditional card text is needed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EffectRequirement {
+    /// The Runner must have at least one tag (`RunnerState::is_tagged()`).
+    IsTagged,
 }
 
 /// An optional "may pay `cost` to prevent `effects`" access-time trigger —
@@ -95,6 +108,7 @@ mod tests {
             AbilityDef {
                 trigger: Trigger::Paid,
                 cost: Some(Cost::Credits(3)),
+                requirement: None,
                 effect: Effect::DealDamage(DamageType::Net, 1),
             }
         );
@@ -103,6 +117,7 @@ mod tests {
             AbilityDef {
                 trigger: Trigger::Paid,
                 cost: Some(Cost::TrashSelf),
+                requirement: None,
                 effect: Effect::GiveTags(1),
             }
         );

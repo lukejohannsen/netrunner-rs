@@ -83,7 +83,7 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState {
+            corp: CorpState { bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
                 hq: Vec::new(),
@@ -221,7 +221,7 @@ mod tests {
     }
 
     fn ice_with_trace_pending_resume(remaining_effect: Effect, on_success: Effect) -> RunState {
-        RunState {
+        RunState { bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {

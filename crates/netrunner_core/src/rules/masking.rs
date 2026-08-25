@@ -39,6 +39,9 @@ pub struct PublicCorpState {
     pub installed: Vec<PublicInstalledCard>,
     /// Never masked — scored Agendas sit in a fully public score area.
     pub scored_agendas: Vec<CardId>,
+    /// Never masked — Bad Publicity is public information in the real game,
+    /// same treatment as `scored_agendas`.
+    pub bad_publicity: u32,
 }
 
 /// A Runner rig card as seen by any viewer: never hidden (see
@@ -134,6 +137,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
             .map(|card| mask_installed_card(card, owner_view))
             .collect(),
         scored_agendas: corp.scored_agendas.clone(),
+        bad_publicity: corp.bad_publicity,
     }
 }
 
@@ -190,7 +194,7 @@ mod tests {
     }
 
     fn corp_state_with_cards() -> CorpState {
-        CorpState {
+        CorpState { bad_publicity: 0,
             resources: PlayerResources {
                 credits: Credits(5),
                 clicks: Clicks(3),
@@ -350,6 +354,19 @@ mod tests {
         let expected = vec![CardId("cyberdex_trial".to_string())];
         assert_eq!(masked_for_corp.corp.archives, expected);
         assert_eq!(masked_for_runner.corp.archives, expected);
+    }
+
+    #[test]
+    fn corp_bad_publicity_is_never_masked() {
+        let mut corp = corp_state_with_cards();
+        corp.bad_publicity = 3;
+        let state = game_state(corp);
+
+        let masked_for_corp = mask_state_for_player(&state, Side::Corp);
+        let masked_for_runner = mask_state_for_player(&state, Side::Runner);
+
+        assert_eq!(masked_for_corp.corp.bad_publicity, 3);
+        assert_eq!(masked_for_runner.corp.bad_publicity, 3);
     }
 
     #[test]

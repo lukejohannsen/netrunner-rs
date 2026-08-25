@@ -84,7 +84,7 @@ mod tests {
 
     fn game_state(corp_scored: Vec<CardId>, runner_scored: Vec<CardId>) -> GameState {
         GameState {
-            corp: CorpState {
+            corp: CorpState { bad_publicity: 0,
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),

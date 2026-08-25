@@ -143,6 +143,16 @@ pub enum PlayerAction {
     /// score the card even if the requirement is met — scoring is a
     /// separate, not-yet-modeled action.
     AdvanceCard { card_id: CardId },
+    /// Spend 1 click + 2 credits to remove 1 of the Runner's tags.
+    /// Runner-only. `RulesError::RunnerNotTagged` if `RunnerState::tags == 0`.
+    RemoveTag,
+    /// Spend 1 click + 2 credits to trash `card_id`, an installed Runner
+    /// Resource, off the Rig into the Heap. Corp-only, legal only while the
+    /// Runner is tagged (`RulesError::RunnerNotTagged` otherwise). `card_id`'s
+    /// `CardRegistry` definition must be `CardType::Resource`
+    /// (`RulesError::CardNotResource` otherwise) and must be installed in the
+    /// Runner's rig (`RulesError::CardNotInRig` otherwise).
+    TrashResource { card_id: CardId },
     /// Choose which of the currently offered cards to resolve next, when
     /// more than one card was accessed from a single server. Runner-only.
     /// Legal only while a run is in `RunPhase::AccessingCard` and its

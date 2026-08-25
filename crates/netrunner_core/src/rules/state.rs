@@ -110,6 +110,11 @@ pub struct CorpState {
     /// sums each entry's registry-defined `agenda_points` to determine
     /// whether the Corp has won, rather than reading a running counter.
     pub scored_agendas: Vec<CardId>,
+    /// Corp's persistent Bad Publicity counter. Public information — never
+    /// masked, same treatment as `scored_agendas`. Seeds the Runner's
+    /// temporary per-run credit pool (`run::RunState::bad_publicity_credits`)
+    /// at `engine::initiate_run`.
+    pub bad_publicity: u32,
 }
 
 /// A Runner card installed in the Rig (Hardware or Program), with the
@@ -197,6 +202,11 @@ impl RunnerState {
         for card in &mut self.rig {
             card.turn_strength_buff = 0;
         }
+    }
+
+    /// Whether the Runner currently has at least one tag.
+    pub fn is_tagged(&self) -> bool {
+        self.tags > 0
     }
 }
 
@@ -321,7 +331,7 @@ impl GameState {
     /// `GamePhase::Action(Side::Corp)`, matching the real game's turn order.
     pub fn new(seed: u64) -> Self {
         GameState {
-            corp: CorpState {
+            corp: CorpState { bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),

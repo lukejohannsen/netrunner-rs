@@ -150,4 +150,10 @@ pub enum RulesError {
 
     #[error("cannot take that action while a trace is active (awaiting {awaiting:?}'s bid)")]
     ActionBlockedByActiveTrace { awaiting: Side },
+
+    #[error("the Runner has no tags")]
+    RunnerNotTagged,
+
+    #[error("card {card:?} is not a Resource")]
+    CardNotResource { card: CardId },
 }

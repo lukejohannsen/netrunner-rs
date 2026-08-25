@@ -1,5 +1,7 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{BoostDuration, CardId, CardTarget, Cost, Effect, StackZone, SubroutineBreakCount, Trigger};
+use crate::dsl::{
+    BoostDuration, CardId, CardTarget, Cost, Effect, EffectRequirement, StackZone, SubroutineBreakCount, Trigger,
+};
 use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -102,6 +104,21 @@ pub fn evaluate_effect(
             // Always targets the Runner — see GiveTags's own doc comment.
             state.runner.tags = state.runner.tags.saturating_add(*amount);
             Ok(vec![GameEvent::TagsGiven { side: Side::Runner, amount: *amount }])
+        }
+
+        Effect::RemoveTags(amount) => {
+            state.runner.tags = state.runner.tags.saturating_sub(*amount);
+            Ok(vec![GameEvent::TagsRemoved { side: Side::Runner, amount: *amount }])
+        }
+
+        Effect::GiveBadPublicity(amount) => {
+            state.corp.bad_publicity = state.corp.bad_publicity.saturating_add(*amount);
+            Ok(vec![GameEvent::BadPublicityGiven { amount: *amount }])
+        }
+
+        Effect::RemoveBadPublicity(amount) => {
+            state.corp.bad_publicity = state.corp.bad_publicity.saturating_sub(*amount);
+            Ok(vec![GameEvent::BadPublicityRemoved { amount: *amount }])
         }
 
         Effect::TrashCard(target) => trash_card(state, target, acting_card),
@@ -386,12 +403,41 @@ pub fn pay_cost(
 ) -> Result<Vec<GameEvent>, RulesError> {
     match cost {
         Cost::Credits(amount) => {
-            let available = state.resources(side).credits.0;
-            if available < *amount {
-                return Err(RulesError::NotEnoughCredits { side, available, requested: *amount });
+            // During an active run, the Runner draws from their temporary
+            // Bad Publicity credit pool (RunState::bad_publicity_credits)
+            // before their own wallet — see RunState's doc comment. Corp
+            // credit costs, and any Runner cost outside a run, are
+            // unaffected: bp_available is unconditionally 0 for them, so
+            // this collapses to the original wallet-only behavior.
+            let bp_available = match (side, state.active_run.as_ref()) {
+                (Side::Runner, Some(run)) => run.bad_publicity_credits,
+                _ => 0,
+            };
+            let wallet_available = state.resources(side).credits.0;
+            let total_available = bp_available.saturating_add(wallet_available);
+            if total_available < *amount {
+                return Err(RulesError::NotEnoughCredits {
+                    side,
+                    available: total_available,
+                    requested: *amount,
+                });
             }
-            state.resources_mut(side).credits = Credits(available - amount);
-            Ok(vec![GameEvent::CreditsSpent { side, amount: *amount }])
+
+            let from_bp = bp_available.min(*amount);
+            let from_wallet = amount - from_bp;
+
+            let mut events = Vec::new();
+            if from_bp > 0 {
+                state
+                    .active_run
+                    .as_mut()
+                    .expect("bp_available > 0 implies an active run")
+                    .bad_publicity_credits -= from_bp;
+                events.push(GameEvent::BadPublicityCreditsSpent { amount: from_bp });
+            }
+            state.resources_mut(side).credits = Credits(wallet_available - from_wallet);
+            events.push(GameEvent::CreditsSpent { side, amount: *amount });
+            Ok(events)
         }
 
         Cost::Clicks(amount) => {
@@ -417,6 +463,20 @@ pub fn pay_cost(
     }
 }
 
+/// Checks an `AbilityDef::requirement` gate before its cost/effect resolve —
+/// same "checked before resolution" role as `pay_cost`, but for a
+/// precondition rather than a payment. Called from `engine::activate_ability`.
+pub fn check_requirement(state: &GameState, requirement: &EffectRequirement) -> Result<(), RulesError> {
+    match requirement {
+        EffectRequirement::IsTagged => {
+            if !state.runner.is_tagged() {
+                return Err(RulesError::RunnerNotTagged);
+            }
+            Ok(())
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,7 +498,7 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState {
+            corp: CorpState { bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(5),
@@ -512,7 +572,7 @@ mod tests {
     #[test]
     fn end_the_run_clears_active_run_and_emits_event() {
         let mut state = game_state();
-        state.active_run = Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         let events = evaluate_effect(&mut state, &Effect::EndTheRun, None).unwrap();
 
@@ -533,6 +593,47 @@ mod tests {
 
         assert_eq!(state.runner.tags, 2);
         assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2 }]);
+    }
+
+    #[test]
+    fn remove_tags_saturates_at_zero() {
+        let mut state = game_state();
+        state.runner.tags = 1;
+        let events = evaluate_effect(&mut state, &Effect::RemoveTags(5), None).unwrap();
+
+        assert_eq!(state.runner.tags, 0);
+        assert_eq!(events, vec![GameEvent::TagsRemoved { side: Side::Runner, amount: 5 }]);
+    }
+
+    #[test]
+    fn give_bad_publicity_increases_the_counter() {
+        let mut state = game_state();
+        let events = evaluate_effect(&mut state, &Effect::GiveBadPublicity(2), None).unwrap();
+
+        assert_eq!(state.corp.bad_publicity, 2);
+        assert_eq!(events, vec![GameEvent::BadPublicityGiven { amount: 2 }]);
+    }
+
+    #[test]
+    fn remove_bad_publicity_saturates_at_zero() {
+        let mut state = game_state();
+        state.corp.bad_publicity = 1;
+        let events = evaluate_effect(&mut state, &Effect::RemoveBadPublicity(5), None).unwrap();
+
+        assert_eq!(state.corp.bad_publicity, 0);
+        assert_eq!(events, vec![GameEvent::BadPublicityRemoved { amount: 5 }]);
+    }
+
+    #[test]
+    fn is_tagged_requirement_fails_with_zero_tags_and_succeeds_with_a_tag() {
+        let mut state = game_state();
+        assert_eq!(
+            check_requirement(&state, &EffectRequirement::IsTagged),
+            Err(RulesError::RunnerNotTagged)
+        );
+
+        state.runner.tags = 1;
+        assert_eq!(check_requirement(&state, &EffectRequirement::IsTagged), Ok(()));
     }
 
     fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
@@ -567,7 +668,7 @@ mod tests {
     #[test]
     fn break_subroutine_breaks_the_targeted_pending_subroutine() {
         let mut state = game_state();
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 2, true)],
@@ -588,7 +689,7 @@ mod tests {
     #[test]
     fn break_subroutine_out_of_range_index_errors() {
         let mut state = game_state();
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -607,7 +708,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 1, true);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         state.active_run =
-            Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 , jack_out_permitted: true});
+            Some(RunState { bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 , jack_out_permitted: true});
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
@@ -628,7 +729,7 @@ mod tests {
     fn break_subroutine_outside_encounter_ice_errors() {
         let mut state = game_state();
         state.active_run =
-            Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
+            Some(RunState { bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
@@ -642,7 +743,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].definition.effect = Effect::GiveTags(2);
         ice.subroutines[1].definition.effect = Effect::GainCredits(Side::Corp, 3);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -683,7 +784,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].definition.effect = Effect::EndTheRun;
         ice.subroutines[1].definition.effect = Effect::GiveTags(5);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -713,7 +814,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         ice.subroutines[1].definition.effect = Effect::GiveTags(1);
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -731,7 +832,7 @@ mod tests {
     #[test]
     fn modify_strength_updates_current_strength_and_emits_event() {
         let mut state = game_state();
-        state.active_run = Some(RunState { access_state: None,
+        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 3, 0, true)],
@@ -755,7 +856,7 @@ mod tests {
     fn modify_strength_outside_encounter_ice_errors() {
         let mut state = game_state();
         state.active_run =
-            Some(RunState { access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
+            Some(RunState { bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::ModifyStrength(2), None),
@@ -935,6 +1036,86 @@ mod tests {
             pay_cost(&mut state, Side::Corp, &Cost::Credits(10), None),
             Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 2, requested: 10 })
         );
+    }
+
+    fn run_with_bad_publicity_credits(amount: u32) -> RunState {
+        RunState {
+            bad_publicity_credits: amount,
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RP::ApproachIce,
+            ice: Vec::new(),
+            position: 0,
+            jack_out_permitted: true,
+        }
+    }
+
+    #[test]
+    fn pay_credits_draws_from_bad_publicity_pool_before_the_wallet_during_a_run() {
+        let mut state = game_state();
+        state.active_run = Some(run_with_bad_publicity_credits(3));
+
+        let events = pay_cost(&mut state, Side::Runner, &Cost::Credits(5), None).unwrap();
+
+        assert_eq!(state.active_run.as_ref().unwrap().bad_publicity_credits, 0);
+        assert_eq!(state.runner.resources.credits, Credits(3)); // 5 wallet - (5 - 3 from BP)
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::BadPublicityCreditsSpent { amount: 3 },
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
+            ]
+        );
+    }
+
+    #[test]
+    fn pay_credits_with_no_active_run_ignores_bad_publicity_pool() {
+        // Regression guard: behavior/events must be byte-identical to the
+        // pre-Bad-Publicity path when there's no run to draw from.
+        let mut state = game_state();
+        let events = pay_cost(&mut state, Side::Runner, &Cost::Credits(2), None).unwrap();
+
+        assert_eq!(state.runner.resources.credits, Credits(3));
+        assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Runner, amount: 2 }]);
+    }
+
+    #[test]
+    fn pay_credits_with_zero_bad_publicity_credits_behaves_like_wallet_only() {
+        let mut state = game_state();
+        state.active_run = Some(run_with_bad_publicity_credits(0));
+
+        let events = pay_cost(&mut state, Side::Runner, &Cost::Credits(2), None).unwrap();
+
+        assert_eq!(state.runner.resources.credits, Credits(3));
+        assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Runner, amount: 2 }]);
+    }
+
+    #[test]
+    fn pay_credits_insufficient_across_both_pools_reports_combined_available_and_leaves_state_untouched() {
+        let mut state = game_state();
+        state.runner.resources.credits = Credits(1);
+        state.active_run = Some(run_with_bad_publicity_credits(1));
+
+        let result = pay_cost(&mut state, Side::Runner, &Cost::Credits(5), None);
+
+        assert_eq!(
+            result,
+            Err(RulesError::NotEnoughCredits { side: Side::Runner, available: 2, requested: 5 })
+        );
+        assert_eq!(state.runner.resources.credits, Credits(1));
+        assert_eq!(state.active_run.as_ref().unwrap().bad_publicity_credits, 1);
+    }
+
+    #[test]
+    fn pay_credits_corp_side_is_unaffected_by_runner_bad_publicity_pool() {
+        let mut state = game_state();
+        state.active_run = Some(run_with_bad_publicity_credits(10));
+
+        let events = pay_cost(&mut state, Side::Corp, &Cost::Credits(3), None).unwrap();
+
+        assert_eq!(state.corp.resources.credits, Credits(2));
+        assert_eq!(state.active_run.as_ref().unwrap().bad_publicity_credits, 10);
+        assert_eq!(events, vec![GameEvent::CreditsSpent { side: Side::Corp, amount: 3 }]);
     }
 
     #[test]
@@ -1144,7 +1325,7 @@ mod tests {
     fn ice_encounter_state(rig: Vec<InstalledRunnerCard>, ice_strength: i32, subroutine_count: usize) -> GameState {
         let mut state = game_state();
         state.runner.rig = rig;
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
@@ -1217,7 +1398,7 @@ mod tests {
     #[test]
     fn break_subroutines_outside_encounter_ice_errors_not_in_encounter() {
         let mut state = game_state();
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RP::ApproachIce,
@@ -1324,7 +1505,7 @@ mod tests {
     ) -> GameState {
         let mut state = game_state();
         state.runner.rig = rig;
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
@@ -1439,7 +1620,7 @@ mod tests {
         ice.subroutines[0].definition.effect =
             Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun) };
         ice.subroutines[1].definition.effect = Effect::GiveTags(5);
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
