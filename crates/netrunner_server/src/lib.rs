@@ -4,13 +4,14 @@
 //! channel-backed — an embedded `BotAgent` slot never even goes through a
 //! channel. See `match_session`'s doc comment for the run loop itself.
 //!
-//! This pass wires up `tokio::sync::mpsc` only (see `protocol`'s doc
+//! Local play wires up `tokio::sync::mpsc` directly (see `protocol`'s doc
 //! comment) — `ClientMessage`/`ServerMessage` are plain serializable data
-//! with no transport assumptions baked in, so a future WebSocket transport
-//! can carry the same types unchanged.
+//! with no transport assumptions baked in. `net` carries the same types
+//! over a real WebSocket for `--serve` mode's remote clients.
 
 pub mod fixtures;
 pub mod match_session;
+pub mod net;
 pub mod protocol;
 
 pub use match_session::{MatchSession, PlayerSlot};

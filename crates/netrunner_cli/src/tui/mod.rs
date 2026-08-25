@@ -14,17 +14,49 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{GamePhase, GameState, ServerId, Side};
 use netrunner_core::view::ServerView;
-use netrunner_server::{MatchSession, PlayerSlot};
+use netrunner_server::{MatchSession, PlayerSlot, ServerMessage};
 
 use crate::app::{describe_action, App};
 use crate::bots;
-use crate::config::Config;
+use crate::config::{Config, Mode};
 use crate::decks;
+use crate::remote;
 
 const CORP_MAX_CLICKS: u32 = 3;
 const RUNNER_MAX_CLICKS: u32 = 4;
 
 pub async fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    match config.mode {
+        Mode::Local => run_local(config).await,
+        Mode::Remote => run_remote(config).await,
+    }
+}
+
+async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    // The wire protocol never transmits a `CardRegistry` — every entry
+    // point in this repo (headless, local TUI) already agrees on this one
+    // fixed Kate-vs-HB matchup out of band, so the remote client just
+    // builds the identical registry locally to resolve card titles.
+    let registry = decks::kate_vs_hb_registry();
+    let (tx, mut rx) = remote::connect_remote(&config.server, config.side.map(Into::into)).await?;
+
+    let human_side = loop {
+        match rx.recv().await {
+            Some(ServerMessage::MatchJoined { assigned_side, .. }) => break assigned_side,
+            Some(_) => continue,
+            None => return Err("server closed the connection before assigning a seat".into()),
+        }
+    };
+
+    let mut app = App::new(registry, human_side, tx, rx);
+
+    let mut terminal = ratatui::init();
+    let result = run_event_loop(&mut terminal, &mut app);
+    ratatui::restore();
+    result
+}
+
+async fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let human_side = match (config.corp, config.runner) {
         (crate::config::BotKind::Human, crate::config::BotKind::Human) => {
             return Err("interactive mode requires exactly one human-controlled side (both --corp and --runner are human)".into());

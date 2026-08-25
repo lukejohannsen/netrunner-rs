@@ -1,5 +1,7 @@
 use clap::{Parser, ValueEnum};
 
+use netrunner_core::rules::Side;
+
 #[derive(Parser, Debug, Clone)]
 #[command(name = "netrunner_cli", about = "Ratatui TUI game harness and headless simulator for netrunner_core")]
 pub struct Config {
@@ -40,6 +42,23 @@ pub struct Config {
     /// `corp`'s doc comment for the `Human`/headless-mode caveats.
     #[arg(long, value_enum, default_value_t = BotKind::Human)]
     pub runner: BotKind,
+
+    /// `Local` spawns an in-process `MatchSession` (the historical
+    /// behavior, unaffected by this flag's default). `Remote` instead
+    /// connects to a `netrunner_server --serve` daemon over WebSocket at
+    /// `--server`; `--corp`/`--runner`/`--headless`/`--games` are ignored
+    /// in this mode — use `--side` to request a seat instead.
+    #[arg(long, value_enum, default_value_t = Mode::Local)]
+    pub mode: Mode,
+
+    /// (remote mode) WebSocket URL of the `netrunner_server --serve` daemon.
+    #[arg(long, default_value = "ws://127.0.0.1:8080")]
+    pub server: String,
+
+    /// (remote mode) Preferred seat to request from the server. Omitted:
+    /// the server assigns whichever side is available.
+    #[arg(long, value_enum)]
+    pub side: Option<SideArg>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,4 +67,25 @@ pub enum BotKind {
     Random,
     Heuristic,
     Mcts,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Mode {
+    Local,
+    Remote,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SideArg {
+    Corp,
+    Runner,
+}
+
+impl From<SideArg> for Side {
+    fn from(side: SideArg) -> Side {
+        match side {
+            SideArg::Corp => Side::Corp,
+            SideArg::Runner => Side::Runner,
+        }
+    }
 }

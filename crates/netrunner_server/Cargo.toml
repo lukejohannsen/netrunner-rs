@@ -12,3 +12,7 @@ tokio = { workspace = true }
 uuid = { version = "1", features = ["v4", "serde"] }
 rand = "0.9"
 clap = { version = "4", features = ["derive"] }
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+tracing = "0.1"
+tracing-subscriber = "0.3"

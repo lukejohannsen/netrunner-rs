@@ -3,6 +3,7 @@ mod bots;
 mod config;
 mod decks;
 mod headless;
+mod remote;
 mod tui;
 
 use clap::Parser;
