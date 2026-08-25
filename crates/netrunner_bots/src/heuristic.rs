@@ -2,9 +2,11 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{apply_action, GameState, PlayerAction, Side};
+use netrunner_core::rules::{apply_action, PlayerAction, Side};
+use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
+use crate::determinize::determinize;
 use crate::eval::evaluate_state;
 
 /// Tiny random jitter added to each candidate's score, purely to break ties
@@ -12,10 +14,12 @@ use crate::eval::evaluate_state;
 /// `legal_actions` order.
 const TIE_BREAK_JITTER: f64 = 1e-3;
 
-/// A greedy one-ply planner: for each legal action, actually applies it
-/// (cheap — this is exactly what `netrunner_core::rules::legal_actions`
-/// itself already does internally to validate candidates) and scores the
-/// resulting state with `evaluate_state`, picking the best.
+/// A greedy one-ply planner: determinizes one concrete `GameState`
+/// consistent with the current `ClientView`, then for each of `view.
+/// legal_actions` actually applies it against that sample (cheap — this is
+/// exactly what `netrunner_core::rules::legal_actions` itself already does
+/// internally to validate candidates) and scores the result with
+/// `evaluate_state`, picking the best.
 pub struct HeuristicAgent {
     side: Side,
     rng: StdRng,
@@ -28,23 +32,27 @@ impl HeuristicAgent {
 }
 
 impl BotAgent for HeuristicAgent {
-    fn select_action(&mut self, state: &GameState, registry: &CardRegistry, legal_actions: &[PlayerAction]) -> PlayerAction {
-        assert!(!legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
+    fn select_action(&mut self, view: &ClientView, registry: &CardRegistry) -> PlayerAction {
+        assert!(!view.legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
+
+        let sample = determinize(view, registry, &mut self.rng);
 
         let mut best: Option<(f64, usize)> = None;
-        for (index, action) in legal_actions.iter().enumerate() {
-            let Ok((next, _events)) = apply_action(state, registry, action.clone()) else { continue };
+        for (index, action) in view.legal_actions.iter().enumerate() {
+            let Ok((next, _events)) = apply_action(&sample, registry, action.clone()) else { continue };
             let score = evaluate_state(&next, self.side) + self.rng.random::<f64>() * TIE_BREAK_JITTER;
             if best.is_none_or(|(best_score, _)| score > best_score) {
                 best = Some((score, index));
             }
         }
 
-        // `legal_actions` is `netrunner_core::rules::legal_actions`'s own
-        // output, so every candidate above should already succeed against
-        // `apply_action` — falling back to the first entry only guards
-        // against a hypothetical future divergence, not an expected case.
-        best.map_or_else(|| legal_actions[0].clone(), |(_, index)| legal_actions[index].clone())
+        // `view.legal_actions` came from `legal_actions_for`, whose
+        // ownership filtering doesn't depend on hidden info (see its doc
+        // comment), so every candidate above should already succeed
+        // against the determinized `sample` too — falling back to the
+        // first entry only guards against a hypothetical future
+        // divergence, not an expected case.
+        best.map_or_else(|| view.legal_actions[0].clone(), |(_, index)| view.legal_actions[index].clone())
     }
 }
 
@@ -53,9 +61,10 @@ mod tests {
     use super::*;
     use netrunner_core::dsl::{Card, CardId, CardType};
     use netrunner_core::rules::{
-        AgendaPoints, Clicks, CorpState, Credits, GamePhase, InstalledCard, InstallSlot, MemoryUnits, PlayerResources,
-        RunnerState, ServerId,
+        AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallSlot, InstalledCard, MemoryUnits,
+        PlayerResources, RunnerState, ServerId,
     };
+    use netrunner_core::view::build_client_view;
 
     fn blank_card(id: &str, card_type: CardType) -> Card {
         Card {
@@ -139,13 +148,11 @@ mod tests {
     fn prefers_scoring_a_ready_agenda_over_an_idle_click() {
         let mut registry = CardRegistry::new();
         let state = corp_state_with_scorable_agenda(&mut registry);
-        let legal = vec![
-            PlayerAction::GainCreditClick { side: Side::Corp },
-            PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) },
-        ];
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) }));
 
         let mut agent = HeuristicAgent::new(Side::Corp, 1);
-        let chosen = agent.select_action(&state, &registry, &legal);
+        let chosen = agent.select_action(&view, &registry);
 
         assert_eq!(chosen, PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) });
     }
@@ -154,14 +161,10 @@ mod tests {
     fn always_returns_a_member_of_legal_actions() {
         let mut registry = CardRegistry::new();
         let state = corp_state_with_scorable_agenda(&mut registry);
-        let legal = vec![
-            PlayerAction::GainCreditClick { side: Side::Corp },
-            PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) },
-            PlayerAction::EndTurn,
-        ];
+        let view = build_client_view(&state, &registry, Side::Corp);
 
         let mut agent = HeuristicAgent::new(Side::Corp, 2);
-        let chosen = agent.select_action(&state, &registry, &legal);
-        assert!(legal.contains(&chosen));
+        let chosen = agent.select_action(&view, &registry);
+        assert!(view.legal_actions.contains(&chosen));
     }
 }

@@ -1,0 +1,458 @@
+//! Samples one concrete, `ClientView`-consistent `GameState` — the "I" in
+//! Information Set MCTS: `MctsAgent` runs its unchanged Phase-1 search
+//! machinery against a sampled state instead of the real (unavailable) one,
+//! and `HeuristicAgent` does the same for its one-ply lookahead.
+//!
+//! There's no decklist/multiplicity concept anywhere in this engine, so
+//! hidden slots are filled by drawing from the full `CardRegistry` pool for
+//! the right side (optionally type-constrained — an unrezzed ICE slot only
+//! ever draws an ICE-typed card, a root slot only an Agenda/Asset), minus
+//! every card id already visible somewhere in the view. This is a known,
+//! documented baseline simplification, not an attempt at a "real" opponent
+//! hand model.
+
+use std::collections::HashSet;
+
+use rand::seq::SliceRandom;
+use rand::Rng;
+
+use netrunner_core::cards::CardRegistry;
+use netrunner_core::dsl::{CardId, CardType};
+use netrunner_core::rules::{
+    AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard,
+    InstalledRunnerCard, MaskedZone, MemoryUnits, PlayerResources, PublicAccessPhase, RunIce, RunState, RunnerState, Side,
+};
+use netrunner_core::view::ClientView;
+
+/// A shuffled draw pool that cycles once exhausted (draws-with-replacement
+/// across repeated full passes) — matches "shuffle then keep drawing" for
+/// however many hidden slots need filling, however many that is.
+struct Pool {
+    cards: Vec<CardId>,
+    cursor: usize,
+}
+
+impl Pool {
+    fn new(mut cards: Vec<CardId>, rng: &mut impl Rng) -> Self {
+        cards.shuffle(rng);
+        Pool { cards, cursor: 0 }
+    }
+
+    /// Falls back to a synthetic placeholder id only in the pathological
+    /// case of an empty pool (no registered cards of the needed
+    /// type/side at all) — keeps the caller total instead of panicking.
+    fn draw(&mut self) -> CardId {
+        if self.cards.is_empty() {
+            return CardId("__determinize_unknown".to_string());
+        }
+        let card = self.cards[self.cursor % self.cards.len()].clone();
+        self.cursor += 1;
+        card
+    }
+
+    fn draw_n(&mut self, n: usize) -> Vec<CardId> {
+        (0..n).map(|_| self.draw()).collect()
+    }
+}
+
+struct Pools {
+    corp_any: Pool,
+    corp_ice: Pool,
+    corp_root: Pool,
+    runner_any: Pool,
+}
+
+fn visible_card_ids(view: &ClientView) -> HashSet<CardId> {
+    let mut ids = HashSet::new();
+    if let Some(cards) = &view.corp.hq_cards {
+        ids.extend(cards.iter().cloned());
+    }
+    ids.extend(view.corp.archives.iter().cloned());
+    ids.extend(view.corp.scored_agendas.iter().cloned());
+    for server in &view.corp.servers {
+        for card in server.ice.iter().chain(server.root.iter()) {
+            if let Some(id) = &card.card {
+                ids.insert(id.clone());
+            }
+        }
+    }
+
+    if let Some(cards) = &view.runner.grip_cards {
+        ids.extend(cards.iter().cloned());
+    }
+    ids.extend(view.runner.heap.iter().cloned());
+    ids.extend(view.runner.scored_agendas.iter().cloned());
+    for rig_card in &view.runner.rig {
+        ids.insert(rig_card.card.clone());
+    }
+
+    if let Some(run) = &view.active_run {
+        for ice in &run.ice {
+            if let Some(identity) = &ice.identity {
+                ids.insert(identity.card.clone());
+            }
+        }
+        if let Some(access) = &run.access_state {
+            if let MaskedZone::Visible(cards) = &access.unaccessed_cards {
+                ids.extend(cards.iter().cloned());
+            }
+            if let MaskedZone::Visible(cards) = &access.resolved_cards {
+                ids.extend(cards.iter().cloned());
+            }
+            match &access.phase {
+                PublicAccessPhase::SelectNextCard { selectable_cards: MaskedZone::Visible(cards) } => {
+                    ids.extend(cards.iter().cloned());
+                }
+                PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. }
+                | PublicAccessPhase::PendingChoice { card: Some(id), .. } => {
+                    ids.insert(id.clone());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    ids
+}
+
+fn build_pools(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) -> Pools {
+    let visible = visible_card_ids(view);
+    let corp_cards: Vec<&netrunner_core::dsl::Card> = registry.iter().filter(|c| c.side == Side::Corp && !visible.contains(&c.id)).collect();
+    let runner_cards: Vec<CardId> =
+        registry.iter().filter(|c| c.side == Side::Runner && !visible.contains(&c.id)).map(|c| c.id.clone()).collect();
+
+    let corp_any: Vec<CardId> = corp_cards.iter().map(|c| c.id.clone()).collect();
+    let corp_ice: Vec<CardId> = corp_cards.iter().filter(|c| matches!(c.card_type, CardType::Ice(_))).map(|c| c.id.clone()).collect();
+    let corp_root: Vec<CardId> = corp_cards
+        .iter()
+        .filter(|c| matches!(c.card_type, CardType::Agenda | CardType::Asset))
+        .map(|c| c.id.clone())
+        .collect();
+
+    Pools {
+        // Falling back to the unfiltered `corp_any` pool when no
+        // type-matching card is registered at all keeps a determinized
+        // sample buildable even against a tiny/synthetic test registry,
+        // rather than only ever emitting the placeholder id.
+        corp_ice: Pool::new(if corp_ice.is_empty() { corp_any.clone() } else { corp_ice }, rng),
+        corp_root: Pool::new(if corp_root.is_empty() { corp_any.clone() } else { corp_root }, rng),
+        corp_any: Pool::new(corp_any, rng),
+        runner_any: Pool::new(runner_cards, rng),
+    }
+}
+
+fn determinize_installed(server_view: &netrunner_core::view::ServerView, pools: &mut Pools) -> Vec<InstalledCard> {
+    let ice = server_view.ice.iter().map(|card| InstalledCard {
+        card: card.card.clone().unwrap_or_else(|| pools.corp_ice.draw()),
+        server: card.server,
+        slot: InstallSlot::Ice,
+        rezzed: card.rezzed,
+        advancement_tokens: card.advancement_tokens,
+    });
+    let root = server_view.root.iter().map(|card| InstalledCard {
+        card: card.card.clone().unwrap_or_else(|| pools.corp_root.draw()),
+        server: card.server,
+        slot: InstallSlot::Root,
+        rezzed: card.rezzed,
+        advancement_tokens: card.advancement_tokens,
+    });
+    ice.chain(root).collect()
+}
+
+fn determinize_zone(cards: &Option<Vec<CardId>>, count: usize, pool: &mut Pool) -> Vec<CardId> {
+    match cards {
+        Some(cards) => cards.clone(),
+        None => pool.draw_n(count),
+    }
+}
+
+fn determinize_access_cards(zone: &MaskedZone, pool: &mut Pool) -> Vec<CardId> {
+    match zone {
+        MaskedZone::Visible(cards) => cards.clone(),
+        MaskedZone::Hidden { count } => pool.draw_n(*count as usize),
+    }
+}
+
+fn determinize_access_phase(phase: &PublicAccessPhase, pool: &mut Pool) -> AccessPhase {
+    match phase {
+        PublicAccessPhase::SelectNextCard { selectable_cards } => {
+            AccessPhase::SelectNextCard { selectable_cards: determinize_access_cards(selectable_cards, pool) }
+        }
+        PublicAccessPhase::PendingInteractiveTrigger { card, cost, can_pay } => AccessPhase::PendingInteractiveTrigger {
+            card_id: card.clone().unwrap_or_else(|| pool.draw()),
+            cost: cost.clone(),
+            can_pay: *can_pay,
+        },
+        PublicAccessPhase::PendingChoice { card, can_trash, trash_cost, mandatory_steal, steal_cost } => AccessPhase::PendingChoice {
+            card_id: card.clone().unwrap_or_else(|| pool.draw()),
+            can_trash: *can_trash,
+            trash_cost: *trash_cost,
+            mandatory_steal: *mandatory_steal,
+            steal_cost: steal_cost.clone(),
+        },
+    }
+}
+
+fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardRegistry, pools: &mut Pools) -> RunState {
+    let ice = run
+        .ice
+        .iter()
+        .map(|ice| match &ice.identity {
+            Some(identity) => RunIce {
+                card_id: identity.card.clone(),
+                current_strength: identity.current_strength,
+                ice_type: identity.ice_type,
+                subroutines: identity.subroutines.clone(),
+                rezzed: ice.rezzed,
+            },
+            None => {
+                let card_id = pools.corp_ice.draw();
+                let strength = registry.get(&card_id).and_then(|c| c.strength).unwrap_or(0);
+                RunIce { card_id, current_strength: strength, ice_type: netrunner_core::dsl::IceType::Barrier, subroutines: Vec::new(), rezzed: ice.rezzed }
+            }
+        })
+        .collect();
+
+    let access_state = run.access_state.as_ref().map(|access| AccessState {
+        server: access.server,
+        unaccessed_cards: determinize_access_cards(&access.unaccessed_cards, &mut pools.corp_any),
+        resolved_cards: determinize_access_cards(&access.resolved_cards, &mut pools.corp_any),
+        phase: determinize_access_phase(&access.phase, &mut pools.corp_any),
+    });
+
+    RunState {
+        server: run.server,
+        phase: run.phase,
+        ice,
+        position: run.position,
+        access_state,
+        jack_out_permitted: run.jack_out_permitted,
+        bad_publicity_credits: 0,
+        additional_rd_access: 0,
+        additional_hq_access: 0,
+        access_replacement: None,
+    }
+}
+
+pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) -> GameState {
+    let mut pools = build_pools(view, registry, rng);
+
+    let mut installed = Vec::new();
+    for server in &view.corp.servers {
+        installed.extend(determinize_installed(server, &mut pools));
+    }
+
+    let corp = CorpState {
+        identity: None,
+        bad_publicity: view.corp.bad_publicity,
+        first_install_used_this_turn: false,
+        recurring_credits: 0,
+        recurring_credits_max: 0,
+        scored_agendas: view.corp.scored_agendas.clone(),
+        resources: PlayerResources {
+            credits: Credits(view.corp.credits),
+            clicks: Clicks(view.corp.clicks),
+            agenda_points: AgendaPoints(view.corp.agenda_points),
+        },
+        hq: determinize_zone(&view.corp.hq_cards, view.corp.hq_count, &mut pools.corp_any),
+        r_and_d: pools.corp_any.draw_n(view.corp.rd_count),
+        archives: view.corp.archives.clone(),
+        installed,
+    };
+
+    let rig = view
+        .runner
+        .rig
+        .iter()
+        .map(|card| InstalledRunnerCard {
+            card: card.card.clone(),
+            base_strength: card.current_strength,
+            encounter_strength_buff: 0,
+            turn_strength_buff: 0,
+        })
+        .collect();
+
+    let runner = RunnerState {
+        identity: None,
+        scored_agendas: view.runner.scored_agendas.clone(),
+        resources: PlayerResources {
+            credits: Credits(view.runner.credits),
+            clicks: Clicks(view.runner.clicks),
+            agenda_points: AgendaPoints(view.runner.agenda_points),
+        },
+        memory_units: MemoryUnits(view.runner.memory_units),
+        brain_damage: view.runner.brain_damage,
+        tags: view.runner.tags,
+        grip: determinize_zone(&view.runner.grip_cards, view.runner.grip_count, &mut pools.runner_any),
+        stack: pools.runner_any.draw_n(view.runner.stack_count),
+        rig,
+        heap: view.runner.heap.clone(),
+        link_strength: view.runner.link_strength,
+        first_hq_run_used_this_turn: false,
+        first_install_discount_used_this_turn: false,
+    };
+
+    let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools));
+
+    GameState {
+        corp,
+        runner,
+        phase: view.phase,
+        active_run,
+        paid_ability_window: view.paid_ability_window.clone(),
+        active_trace: view.active_trace.clone(),
+        seed: rng.random(),
+        rng_step: 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use netrunner_core::dsl::{Card, CardType, IceType};
+    use netrunner_core::rules::{
+        AgendaPoints as AP, Clicks as C, CorpState as CS, Credits as Cr, GamePhase, GameState as CoreGameState,
+        InstallSlot as CoreInstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits as MU, PlayerResources as PR,
+        RunnerState as RS, ServerId,
+    };
+    use netrunner_core::view::build_client_view;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
+
+    fn blank_card(id: &str, side: Side, card_type: CardType) -> Card {
+        Card {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side,
+            card_type,
+            cost: 0,
+            triggers: Vec::new(),
+            abilities: Vec::new(),
+            trash_cost: None,
+            steal_cost: None,
+            advancement_requirement: None,
+            agenda_points: None,
+            min_deck_size: None,
+            strength: Some(2),
+            subroutines: Vec::new(),
+            interactive_on_access: None,
+            subtypes: Vec::new(),
+            play_requirement: None,
+            recurring_credits: None,
+            first_install_discount: None,
+        }
+    }
+
+    fn registry() -> CardRegistry {
+        let mut registry = CardRegistry::new();
+        for i in 0..5 {
+            registry.insert(blank_card(&format!("corp_ice_{i}"), Side::Corp, CardType::Ice(IceType::Barrier)));
+            registry.insert(blank_card(&format!("corp_asset_{i}"), Side::Corp, CardType::Asset));
+            registry.insert(blank_card(&format!("runner_card_{i}"), Side::Runner, CardType::Event));
+        }
+        registry.insert(blank_card("hedge_fund", Side::Corp, CardType::Operation));
+        registry.insert(blank_card("sure_gamble", Side::Runner, CardType::Event));
+        registry
+    }
+
+    fn state_with_hidden_zones() -> CoreGameState {
+        CoreGameState {
+            corp: CS {
+                identity: None,
+                bad_publicity: 0,
+                first_install_used_this_turn: false,
+                recurring_credits: 0,
+                recurring_credits_max: 0,
+                scored_agendas: Vec::new(),
+                resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
+                hq: vec![CardId("hedge_fund".to_string())],
+                r_and_d: vec![CardId("corp_asset_0".to_string()), CardId("corp_asset_1".to_string())],
+                archives: Vec::new(),
+                installed: vec![InstalledCard {
+                    card: CardId("corp_ice_0".to_string()),
+                    server: ServerId::Hq,
+                    slot: CoreInstallSlot::Ice,
+                    rezzed: false,
+                    advancement_tokens: 0,
+                }],
+            },
+            runner: RS {
+                identity: None,
+                scored_agendas: Vec::new(),
+                resources: PR { credits: Cr(5), clicks: C(4), agenda_points: AP(0) },
+                memory_units: MU(4),
+                brain_damage: 0,
+                tags: 0,
+                grip: vec![CardId("sure_gamble".to_string())],
+                stack: vec![CardId("runner_card_0".to_string()), CardId("runner_card_1".to_string()), CardId("runner_card_2".to_string())],
+                rig: vec![InstalledRunnerCard { card: CardId("runner_card_3".to_string()), base_strength: 2, encounter_strength_buff: 0, turn_strength_buff: 0 }],
+                heap: Vec::new(),
+                link_strength: 0,
+                first_hq_run_used_this_turn: false,
+                first_install_discount_used_this_turn: false,
+            },
+            phase: GamePhase::Action(Side::Runner),
+            active_run: None,
+            paid_ability_window: None,
+            active_trace: None,
+            seed: 1,
+            rng_step: 0,
+        }
+    }
+
+    #[test]
+    fn own_hand_is_reproduced_exactly() {
+        let state = state_with_hidden_zones();
+        let registry = registry();
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let mut rng = StdRng::seed_from_u64(1);
+
+        let sample = determinize(&view, &registry, &mut rng);
+        assert_eq!(sample.runner.grip, vec![CardId("sure_gamble".to_string())]);
+    }
+
+    #[test]
+    fn hidden_zone_sizes_match_the_view() {
+        let state = state_with_hidden_zones();
+        let registry = registry();
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let mut rng = StdRng::seed_from_u64(2);
+
+        let sample = determinize(&view, &registry, &mut rng);
+        assert_eq!(sample.corp.hq.len(), view.corp.hq_count);
+        assert_eq!(sample.corp.r_and_d.len(), view.corp.rd_count);
+        assert_eq!(sample.corp.installed.len(), 1);
+    }
+
+    #[test]
+    fn different_rng_states_sample_different_hidden_cards() {
+        let state = state_with_hidden_zones();
+        let registry = registry();
+        let view = build_client_view(&state, &registry, Side::Runner);
+
+        let mut rng_a = StdRng::seed_from_u64(10);
+        let mut rng_b = StdRng::seed_from_u64(20);
+        let sample_a = determinize(&view, &registry, &mut rng_a);
+        let sample_b = determinize(&view, &registry, &mut rng_b);
+
+        assert_ne!(sample_a.corp.hq, sample_b.corp.hq);
+    }
+
+    #[test]
+    fn sampled_hidden_cards_come_from_the_correct_side_and_type_pool() {
+        let state = state_with_hidden_zones();
+        let registry = registry();
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let mut rng = StdRng::seed_from_u64(3);
+
+        let sample = determinize(&view, &registry, &mut rng);
+        for card_id in &sample.corp.hq {
+            assert_eq!(registry.get(card_id).unwrap().side, Side::Corp);
+        }
+        for card_id in &sample.runner.stack {
+            assert_eq!(registry.get(card_id).unwrap().side, Side::Runner);
+        }
+        let ice = &sample.corp.installed[0];
+        assert!(matches!(registry.get(&ice.card).unwrap().card_type, CardType::Ice(_)));
+    }
+}

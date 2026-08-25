@@ -46,6 +46,15 @@ impl CardRegistry {
         self.cards.get(id)
     }
 
+    /// Every registered card, in unspecified order. Used by a determinizer
+    /// (`netrunner_bots::determinize`) to enumerate "every card that could
+    /// plausibly be in a hidden zone for side X" — there's no decklist
+    /// concept anywhere in this engine, so the full registry pool for a
+    /// side is the only candidate set available.
+    pub fn iter(&self) -> impl Iterator<Item = &Card> {
+        self.cards.values()
+    }
+
     /// Parses one card's JSON text and inserts it — pure, no I/O
     /// performed by this function itself.
     pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
@@ -95,5 +104,41 @@ mod tests {
             .get(&CardId("hedge_fund".to_string()))
             .expect("card present after round-trip");
         assert_eq!(card.title, "Hedge Fund");
+    }
+
+    #[test]
+    fn iter_yields_every_inserted_card() {
+        let registry = CardRegistry::from_cards(vec![blank_card("a"), blank_card("b")]);
+
+        let mut ids: Vec<String> = registry.iter().map(|card| card.id.0.clone()).collect();
+        ids.sort();
+        assert_eq!(ids, vec!["a".to_string(), "b".to_string()]);
+    }
+
+    fn blank_card(id: &str) -> Card {
+        use crate::dsl::CardType;
+        use crate::rules::Side;
+
+        Card {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Corp,
+            card_type: CardType::Operation,
+            cost: 0,
+            triggers: Vec::new(),
+            abilities: Vec::new(),
+            trash_cost: None,
+            steal_cost: None,
+            advancement_requirement: None,
+            agenda_points: None,
+            min_deck_size: None,
+            strength: None,
+            subroutines: Vec::new(),
+            interactive_on_access: None,
+            subtypes: Vec::new(),
+            play_requirement: None,
+            recurring_credits: None,
+            first_install_discount: None,
+        }
     }
 }

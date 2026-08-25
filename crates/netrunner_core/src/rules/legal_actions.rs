@@ -29,6 +29,104 @@ pub fn legal_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
         .collect()
 }
 
+/// Whose decision is actually pending right now, if anyone's. `GameState::
+/// phase` alone isn't enough mid-run: `phase` stays `Action(Runner)`
+/// throughout a run even while a `PaidAbilityWindow` briefly hands priority
+/// to the Corp (to rez ICE, say), or while a `TraceState` awaits the Corp's
+/// bid. Precedence:
+///
+/// 1. An active trace awaits a bid — Corp first, then Runner.
+/// 2. An open paid ability window holds priority for one side.
+/// 3. Otherwise it's whichever side `GamePhase` names directly.
+/// 4. `StartOfTurn`/`GameOver` — no player decision is pending.
+pub fn current_actor(state: &GameState) -> Option<Side> {
+    if let Some(trace) = &state.active_trace {
+        return Some(if trace.corp_bid.is_none() { Side::Corp } else { Side::Runner });
+    }
+    if let Some(window) = &state.paid_ability_window {
+        return Some(window.active_priority);
+    }
+    match state.phase {
+        GamePhase::Mulligan(side) | GamePhase::Discard { side, .. } | GamePhase::Action(side) => Some(side),
+        GamePhase::StartOfTurn(_) | GamePhase::GameOver(_) => None,
+    }
+}
+
+/// `legal_actions(state, registry)`, filtered to only the actions `side` is
+/// actually entitled to submit — the per-viewer slice a `ClientView`'s
+/// `legal_actions` field needs. Every `PlayerAction` variant is structurally
+/// single-side by the engine's own documented convention (see `action.rs`'s
+/// doc comments) except the handful `action_owner` resolves explicitly.
+///
+/// This is deliberately *not* "gate everything by `current_actor`" — that
+/// would be wrong in both directions here: `RezIce` is priority-independent
+/// (legal for the Corp during `ApproachIce` regardless of whose priority
+/// the open window currently holds), so a Runner-priority window would
+/// wrongly exclude it from the Corp's list and wrongly include it in the
+/// Runner's if filtering only looked at `current_actor`.
+pub fn legal_actions_for(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<PlayerAction> {
+    legal_actions(state, registry).into_iter().filter(|action| action_owner(state, action) == side).collect()
+}
+
+/// Which side may submit `action` against `state`. `action` is assumed to
+/// already be a member of `legal_actions(state, registry)` — i.e. it's
+/// already known to be legal for *someone*; this only resolves *who*.
+fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
+    match action {
+        PlayerAction::GainCreditClick { side } | PlayerAction::PassPriority { side } => *side,
+
+        PlayerAction::DrawCardClick
+        | PlayerAction::InitiateRun { .. }
+        | PlayerAction::ContinueRun
+        | PlayerAction::JackOut
+        | PlayerAction::CompleteRun
+        | PlayerAction::PlayEvent { .. }
+        | PlayerAction::InstallHardware { .. }
+        | PlayerAction::InstallProgram { .. }
+        | PlayerAction::BreakSubroutine { .. }
+        | PlayerAction::RemoveTag
+        | PlayerAction::SelectCardToAccess { .. }
+        | PlayerAction::StealAgenda { .. }
+        | PlayerAction::TrashAccessedCard { .. }
+        | PlayerAction::PassAccessedCard { .. }
+        | PlayerAction::PayToAvoidAccessTrigger { .. }
+        | PlayerAction::DeclineAccessTrigger { .. }
+        | PlayerAction::SubmitRunnerTraceBid { .. } => Side::Runner,
+
+        PlayerAction::InstallCard { .. }
+        | PlayerAction::RezIce { .. }
+        | PlayerAction::PlayOperation { .. }
+        | PlayerAction::AdvanceCard { .. }
+        | PlayerAction::ScoreAgenda { .. }
+        | PlayerAction::TrashResource { .. }
+        | PlayerAction::SubmitCorpTraceBid { .. } => Side::Corp,
+
+        // Symmetric, but only ever legal when `phase` names exactly one
+        // side — this action already passed the `legal_actions` probe, so
+        // `phase` is guaranteed to match one of these arms.
+        PlayerAction::EndTurn | PlayerAction::DiscardCard { .. } | PlayerAction::KeepHand | PlayerAction::TakeMulligan => {
+            match state.phase {
+                GamePhase::Action(side) | GamePhase::Discard { side, .. } | GamePhase::Mulligan(side) => side,
+                GamePhase::StartOfTurn(side) | GamePhase::GameOver(side) => side,
+            }
+        }
+
+        // Symmetric *and* can fire off-priority mid-window (a Corp ability
+        // during the Runner's own priority, or vice versa) — `phase`/
+        // `current_actor` can't resolve this; ownership is a card-location
+        // lookup instead.
+        PlayerAction::ActivateAbility { card_id, .. } => {
+            if state.corp.installed.iter().any(|c| c.card == *card_id) {
+                Side::Corp
+            } else if state.runner.rig.iter().any(|c| c.card == *card_id) {
+                Side::Runner
+            } else {
+                unreachable!("ActivateAbility({card_id:?}) passed legal_actions but owns no matching installed/rig card")
+            }
+        }
+    }
+}
+
 fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let mut candidates = static_candidates();
     candidates.extend(install_card_candidates(state, registry));
@@ -731,5 +829,130 @@ mod tests {
         let mut state = base_state();
         state.phase = GamePhase::StartOfTurn(Side::Corp);
         assert!(legal_actions(&state, &CardRegistry::new()).is_empty());
+    }
+
+    #[test]
+    fn current_actor_prefers_active_trace_over_window_and_phase() {
+        let mut state = corp_state(3, 5);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.paid_ability_window =
+            Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase) });
+        state.active_trace = Some(TraceState {
+            initiating_card: None,
+            base_strength: 0,
+            corp_bid: None,
+            effect_on_success: Effect::GiveTags(1),
+            resume: TraceResume::None,
+        });
+        assert_eq!(current_actor(&state), Some(Side::Corp));
+
+        state.active_trace.as_mut().unwrap().corp_bid = Some(2);
+        assert_eq!(current_actor(&state), Some(Side::Runner));
+    }
+
+    #[test]
+    fn current_actor_prefers_paid_ability_window_over_phase() {
+        let mut state = corp_state(3, 5);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.paid_ability_window =
+            Some(PaidAbilityWindow { active_priority: Side::Corp, consecutive_passes: 0, return_phase: Box::new(state.phase) });
+        assert_eq!(current_actor(&state), Some(Side::Corp));
+    }
+
+    #[test]
+    fn current_actor_falls_back_to_phase_and_is_none_for_start_of_turn_and_game_over() {
+        let mut state = corp_state(3, 5);
+        assert_eq!(current_actor(&state), Some(Side::Corp));
+
+        state.phase = GamePhase::Discard { side: Side::Runner, required: 1 };
+        assert_eq!(current_actor(&state), Some(Side::Runner));
+
+        state.phase = GamePhase::StartOfTurn(Side::Corp);
+        assert_eq!(current_actor(&state), None);
+
+        state.phase = GamePhase::GameOver(Side::Runner);
+        assert_eq!(current_actor(&state), None);
+    }
+
+    /// Priority-independent `RezIce` is legal for the Corp even while the
+    /// Runner holds priority in an open window — `legal_actions_for` must
+    /// keep it out of the Runner's slice and put it in the Corp's, which a
+    /// naive "gate by `current_actor`" filter would get backwards. Mirrors
+    /// `engine::tests::rez_ice_by_non_priority_side_during_window_still_succeeds_and_resets_passes`.
+    #[test]
+    fn legal_actions_for_gives_priority_independent_rez_ice_to_the_owning_side_not_the_priority_holder() {
+        let mut state = runner_state(3, 5);
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("ice_wall".to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: false,
+            advancement_tokens: 0,
+        }];
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::ApproachIce,
+            ice: vec![RunIce {
+                card_id: CardId("ice_wall".to_string()),
+                current_strength: 1,
+                ice_type: IceType::Barrier,
+                subroutines: Vec::new(),
+                rezzed: false,
+            }],
+            position: 0,
+            access_state: None,
+            jack_out_permitted: false,
+            bad_publicity_credits: 0,
+            additional_rd_access: 0,
+            additional_hq_access: 0,
+            access_replacement: None,
+        });
+        state.paid_ability_window =
+            Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase) });
+
+        let registry = CardRegistry::new();
+        let rez = PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) };
+        assert!(legal_actions(&state, &registry).contains(&rez));
+
+        assert!(legal_actions_for(&state, &registry, Side::Corp).contains(&rez));
+        assert!(!legal_actions_for(&state, &registry, Side::Runner).contains(&rez));
+
+        // The Runner still gets their own priority-holder action.
+        assert!(legal_actions_for(&state, &registry, Side::Runner).contains(&PlayerAction::PassPriority { side: Side::Runner }));
+    }
+
+    #[test]
+    fn legal_actions_for_activate_ability_resolves_ownership_by_card_location() {
+        let mut registry = CardRegistry::new();
+        let mut breaker = blank_card("corroder", CardType::Program);
+        breaker.abilities = vec![AbilityDef {
+            trigger: Trigger::Paid,
+            cost: Some(Cost::Credits(1)),
+            requirement: None,
+            effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::BoostDuration::Encounter },
+        }];
+        registry.insert(breaker);
+
+        let mut state = runner_state(3, 5);
+        state.runner.rig = vec![InstalledRunnerCard {
+            card: CardId("corroder".to_string()),
+            base_strength: 2,
+            encounter_strength_buff: 0,
+            turn_strength_buff: 0,
+        }];
+
+        let activate = PlayerAction::ActivateAbility { card_id: CardId("corroder".to_string()), ability_index: 0 };
+        assert!(legal_actions_for(&state, &registry, Side::Runner).contains(&activate));
+        assert!(!legal_actions_for(&state, &registry, Side::Corp).contains(&activate));
+    }
+
+    #[test]
+    fn legal_actions_for_splits_symmetric_click_actions_by_phase() {
+        let corp = corp_state(3, 5);
+        let registry = CardRegistry::new();
+        assert!(legal_actions_for(&corp, &registry, Side::Corp).contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
+        assert!(!legal_actions_for(&corp, &registry, Side::Runner).contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
+        assert!(legal_actions_for(&corp, &registry, Side::Corp).contains(&PlayerAction::EndTurn));
+        assert!(!legal_actions_for(&corp, &registry, Side::Runner).contains(&PlayerAction::EndTurn));
     }
 }

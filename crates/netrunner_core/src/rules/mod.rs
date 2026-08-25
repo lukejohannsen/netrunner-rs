@@ -22,10 +22,11 @@ pub use deck::{validate_deck, Deck};
 pub use engine::apply_action;
 pub use error::RulesError;
 pub use event::GameEvent;
-pub use legal_actions::legal_actions;
+pub use legal_actions::{current_actor, legal_actions, legal_actions_for};
 pub use masking::{
-    mask_state_for_player, MaskedZone, PublicCorpState, PublicGameState, PublicInstalledCard,
-    PublicInstalledRunnerCard, PublicRunnerState,
+    mask_state_for_player, MaskedZone, PublicAccessPhase, PublicAccessState, PublicCorpState, PublicGameState,
+    PublicInstalledCard, PublicInstalledRunnerCard, PublicRunIce, PublicRunIceIdentity, PublicRunState,
+    PublicRunnerState,
 };
 pub use run::{
     access_server, advance_run, resolve_pass, resolve_select_card, resolve_steal, resolve_trash,

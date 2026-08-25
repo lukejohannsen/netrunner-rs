@@ -1,140 +1,92 @@
-//! The interactive TUI's state: the live `GameState`, the cached legal-move
-//! list, UI selection/focus/scroll state, and the accumulated event log
-//! (`GameState` has no built-in history — the app collects it itself from
-//! each `apply_action` call).
+//! The interactive TUI's state: the human seat's latest `ClientView`
+//! (received over a channel from a background `netrunner_server::
+//! MatchSession` task — never the raw `GameState`), UI selection state, and
+//! the most recent rejection/game-end notice.
+//!
+//! Exactly one side is the human seat; the other is always bot-controlled
+//! (see `config::Config::corp`'s doc comment) — under real per-side
+//! masking there's no coherent way for a single local terminal to
+//! represent "both sides, simultaneously, from each one's own point of
+//! view," so this app doesn't try to.
 
 use crossterm::event::{KeyCode, KeyEvent};
+use tokio::sync::mpsc;
 
-use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{apply_action, legal_actions, GameEvent, GamePhase, GameState, PlayerAction, RulesError, Side};
-
-use crate::bots;
-use crate::config::ViewAs;
-
-/// Guard against a stalled/looping game auto-playing forever — same budget
-/// as `headless::MAX_TICKS`, which this mirrors for a two-bot game.
-const MAX_BOT_STEPS: u32 = 10_000;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Focus {
-    Actions,
-    Log,
-    Inspect,
-}
+use netrunner_core::rules::{PlayerAction, Side};
+use netrunner_core::view::ClientView;
+use netrunner_server::protocol::GameEndReason;
+use netrunner_server::{ClientMessage, ServerMessage};
 
 pub struct App {
-    pub state: GameState,
     pub registry: CardRegistry,
-    pub view_as: ViewAs,
-    pub legal: Vec<PlayerAction>,
+    pub human_side: Side,
+    tx: mpsc::UnboundedSender<ClientMessage>,
+    rx: mpsc::UnboundedReceiver<ServerMessage>,
+    /// `None` until the first `StateUpdate` arrives from the match session
+    /// (should be near-instant — the session broadcasts its initial state
+    /// before waiting on anything).
+    pub view: Option<ClientView>,
     pub selected: usize,
-    pub event_log: Vec<GameEvent>,
-    pub log_scroll: usize,
-    pub focus: Focus,
     pub should_quit: bool,
-    /// The most recent action rejection, surfaced in the UI rather than
-    /// silently dropped — should never actually happen since every offered
-    /// action came from `legal_actions` itself, but a defensive display
-    /// beats a silent no-op if it ever does.
-    pub last_error: Option<RulesError>,
-    /// `None` means that side is human-controlled — driven by
-    /// `handle_key`/`apply_selected_action` instead of `drive_bots`.
-    corp_agent: Option<Box<dyn BotAgent>>,
-    runner_agent: Option<Box<dyn BotAgent>>,
+    pub last_rejection: Option<String>,
+    pub game_ended: Option<(Side, GameEndReason)>,
 }
 
 impl App {
     pub fn new(
-        state: GameState,
         registry: CardRegistry,
-        view_as: ViewAs,
-        corp_agent: Option<Box<dyn BotAgent>>,
-        runner_agent: Option<Box<dyn BotAgent>>,
+        human_side: Side,
+        tx: mpsc::UnboundedSender<ClientMessage>,
+        rx: mpsc::UnboundedReceiver<ServerMessage>,
     ) -> Self {
-        let legal = legal_actions(&state, &registry);
         let mut app = App {
-            state,
             registry,
-            view_as,
-            legal,
+            human_side,
+            tx,
+            rx,
+            view: None,
             selected: 0,
-            event_log: Vec::new(),
-            log_scroll: 0,
-            focus: Focus::Actions,
             should_quit: false,
-            last_error: None,
-            corp_agent,
-            runner_agent,
+            last_rejection: None,
+            game_ended: None,
         };
-        // The Corp acts first — if it's bot-controlled, play its turn(s)
-        // out before the TUI's first draw rather than waiting on a human
-        // keypress that would never come.
-        app.drive_bots();
+        app.drain_messages();
         app
     }
 
-    fn refresh_legal_actions(&mut self) {
-        self.legal = legal_actions(&self.state, &self.registry);
-        if self.selected >= self.legal.len() {
-            self.selected = self.legal.len().saturating_sub(1);
-        }
-    }
-
-    /// Repeatedly lets whichever bot-controlled side currently holds the
-    /// decision (`bots::current_actor`) act, until control returns to a
-    /// human side, no decision is pending (`StartOfTurn`/`GameOver`), or
-    /// `MAX_BOT_STEPS` is hit.
-    fn drive_bots(&mut self) {
-        for _ in 0..MAX_BOT_STEPS {
-            if self.is_game_over() || self.legal.is_empty() {
-                break;
-            }
-            let Some(side) = bots::current_actor(&self.state) else { break };
-            let agent = match side {
-                Side::Corp => self.corp_agent.as_mut(),
-                Side::Runner => self.runner_agent.as_mut(),
-            };
-            let Some(agent) = agent else { break };
-
-            let action = agent.select_action(&self.state, &self.registry, &self.legal);
-            match apply_action(&self.state, &self.registry, action) {
-                Ok((next, events)) => {
-                    self.state = next;
-                    self.event_log.extend(events);
-                    self.last_error = None;
-                    self.refresh_legal_actions();
+    /// Non-blocking drain of every message the match session has sent
+    /// since the last poll — called once at construction and once per TUI
+    /// render tick, mirroring the ~100ms `event::poll` cadence the render
+    /// loop already uses for keyboard input.
+    pub fn drain_messages(&mut self) {
+        while let Ok(message) = self.rx.try_recv() {
+            match message {
+                ServerMessage::StateUpdate(view) => {
+                    if self.selected >= view.legal_actions.len() {
+                        self.selected = 0;
+                    }
+                    self.view = Some(*view);
+                    self.last_rejection = None;
                 }
-                Err(error) => {
-                    self.last_error = Some(error);
-                    break;
-                }
+                ServerMessage::ActionRejected { reason } => self.last_rejection = Some(reason),
+                ServerMessage::GameEnded { winner, reason } => self.game_ended = Some((winner, reason)),
+                ServerMessage::MatchJoined { .. } => {}
             }
         }
     }
 
     pub fn is_game_over(&self) -> bool {
-        matches!(self.state.phase, GamePhase::GameOver(_))
+        self.game_ended.is_some()
     }
 
-    pub fn apply_selected_action(&mut self) -> Result<(), RulesError> {
-        let Some(action) = self.legal.get(self.selected).cloned() else {
-            return Ok(());
-        };
-        match apply_action(&self.state, &self.registry, action) {
-            Ok((next, events)) => {
-                self.state = next;
-                self.event_log.extend(events);
-                self.last_error = None;
-                self.refresh_legal_actions();
-                self.drive_bots();
-                Ok(())
-            }
-            Err(error) => {
-                self.last_error = Some(error.clone());
-                Err(error)
-            }
-        }
+    pub fn legal_actions(&self) -> &[PlayerAction] {
+        self.view.as_ref().map_or(&[], |view| view.legal_actions.as_slice())
+    }
+
+    fn submit_selected_action(&mut self) {
+        let Some(action) = self.legal_actions().get(self.selected).cloned() else { return };
+        let _ = self.tx.send(ClientMessage::SubmitAction(action));
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -147,37 +99,20 @@ impl App {
 
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
-            KeyCode::Up | KeyCode::Char('k') if self.focus == Focus::Log => {
-                self.log_scroll = self.log_scroll.saturating_add(1);
-            }
-            KeyCode::Down | KeyCode::Char('j') if self.focus == Focus::Log => {
-                self.log_scroll = self.log_scroll.saturating_sub(1);
-            }
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
-            KeyCode::Enter | KeyCode::Char(' ') => {
-                let _ = self.apply_selected_action();
-            }
-            KeyCode::Tab => self.cycle_focus(),
+            KeyCode::Enter | KeyCode::Char(' ') => self.submit_selected_action(),
             _ => {}
         }
     }
 
     fn move_selection(&mut self, delta: i32) {
-        if self.legal.is_empty() {
+        let len = self.legal_actions().len();
+        if len == 0 {
             return;
         }
-        let len = self.legal.len() as i32;
-        let next = (self.selected as i32 + delta).rem_euclid(len);
+        let next = (self.selected as i32 + delta).rem_euclid(len as i32);
         self.selected = next as usize;
-    }
-
-    fn cycle_focus(&mut self) {
-        self.focus = match self.focus {
-            Focus::Actions => Focus::Log,
-            Focus::Log => Focus::Inspect,
-            Focus::Inspect => Focus::Actions,
-        };
     }
 }
 
@@ -233,6 +168,8 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
 mod tests {
     use super::*;
     use netrunner_bots::RandomAgent;
+    use netrunner_core::rules::GameState;
+    use netrunner_server::{MatchSession, PlayerSlot};
 
     use crate::decks;
 
@@ -243,32 +180,46 @@ mod tests {
         (state, registry)
     }
 
-    #[test]
-    fn bot_controlled_side_resolves_its_own_mulligan_before_yielding_to_a_human() {
-        let (state, registry) = setup();
-        let corp_agent: Option<Box<dyn BotAgent>> = Some(Box::new(RandomAgent::new(1)));
-
-        // `App::new` drives the Corp's Mulligan decision automatically
-        // (`bots::current_actor` resolves `Mulligan(Corp)` to the Corp),
-        // then stops at `Mulligan(Runner)` since `runner_agent` is `None`
-        // (human-controlled) — the same handoff a bot-controlled Corp vs. a
-        // human Runner would see in the real TUI.
-        let app = App::new(state, registry, ViewAs::Omniscient, corp_agent, None);
-
-        assert_eq!(app.state.phase, GamePhase::Mulligan(Side::Runner));
-        assert!(!app.legal.is_empty());
-        assert!(app.legal.iter().all(|action| matches!(action, PlayerAction::KeepHand | PlayerAction::TakeMulligan)));
+    fn spawn_session(state: GameState, registry: CardRegistry, corp_slot: PlayerSlot, runner_slot: PlayerSlot) {
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot);
+        tokio::spawn(session.run());
     }
 
-    #[test]
-    fn two_bot_controlled_sides_play_an_entire_game_with_no_human_input() {
+    #[tokio::test]
+    async fn human_seat_receives_its_own_view_and_can_submit_an_action() {
         let (state, registry) = setup();
-        let corp_agent: Option<Box<dyn BotAgent>> = Some(Box::new(RandomAgent::new(2)));
-        let runner_agent: Option<Box<dyn BotAgent>> = Some(Box::new(RandomAgent::new(3)));
+        let (server_tx, app_rx) = mpsc::unbounded_channel();
+        let (app_tx, server_rx) = mpsc::unbounded_channel();
+        let corp_slot = PlayerSlot::Channel { tx: server_tx, rx: server_rx };
+        let runner_slot = PlayerSlot::Bot(Box::new(RandomAgent::new(2)));
 
-        let app = App::new(state, registry, ViewAs::Omniscient, corp_agent, runner_agent);
+        spawn_session(state, registry.clone(), corp_slot, runner_slot);
 
-        assert!(app.is_game_over(), "expected the game to reach GameOver within {MAX_BOT_STEPS} bot steps");
-        assert!(!app.event_log.is_empty());
+        let mut app = App::new(registry, Side::Corp, app_tx, app_rx);
+        // Give the background task a moment to deliver the initial view.
+        for _ in 0..50 {
+            if app.view.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            app.drain_messages();
+        }
+
+        let (initial_phase, initial_credits) = {
+            let view = app.view.as_ref().expect("initial view delivered");
+            assert_eq!(view.side, Side::Corp);
+            (view.phase, view.corp.credits)
+        };
+        assert!(!app.legal_actions().is_empty());
+        assert!(app.legal_actions().iter().all(|action| matches!(action, PlayerAction::KeepHand | PlayerAction::TakeMulligan)));
+
+        app.handle_key(KeyEvent::from(KeyCode::Enter));
+        for _ in 0..50 {
+            app.drain_messages();
+            if app.view.as_ref().is_some_and(|v| v.phase != initial_phase || v.corp.credits != initial_credits) {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
     }
 }

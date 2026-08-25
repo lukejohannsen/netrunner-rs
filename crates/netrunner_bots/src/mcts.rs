@@ -4,8 +4,10 @@ use rayon::prelude::*;
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{apply_action, legal_actions as engine_legal_actions, GamePhase, GameState, PlayerAction, Side};
+use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
+use crate::determinize::determinize;
 use crate::eval::evaluate_state;
 
 // Both `Node::new` (per expansion) and `rollout` (per rollout ply) call
@@ -23,23 +25,20 @@ const DEFAULT_MAX_DEPTH: usize = 16;
 const DEFAULT_EXPLORATION: f64 = std::f64::consts::SQRT_2;
 const MAX_TREES: usize = 4;
 
-/// Monte Carlo Tree Search over `netrunner_core`'s own `apply_action`/
-/// `legal_actions`.
-///
-/// **Phase 1 scope:** this searches the single, fully-observed `GameState`
-/// handed to `select_action` — there is no hidden information to
-/// determinize at god-view (see the crate-level doc comment), so this is
-/// standard perfect-information MCTS, *not* Information Set MCTS. A future
-/// phase that runs bots against a masked/server-hosted view is what will
-/// turn this into real ISMCTS: sampling a determinized full state per
-/// simulation from the visible information set (e.g. shaped by
-/// `netrunner_core::rules::mask_state_for_player`) instead of reading
-/// `state` directly.
-///
-/// Uses root parallelization: `trees` independent single-threaded searches
-/// run concurrently via `rayon`, each building its own `Node` tree from a
-/// cloned root state, and their root-level visit/value stats are merged
-/// afterward. This avoids needing any locking around a shared mutable tree.
+/// Information Set MCTS over `netrunner_core`'s own `apply_action`/
+/// `legal_actions`: each of `trees` independent, single-threaded searches
+/// (root-parallel — no shared mutable tree, no locking) determinizes its
+/// *own* concrete `GameState` sample from the current `ClientView` (see
+/// `determinize`) before searching — that per-tree resampling of hidden
+/// information is what makes this ISMCTS rather than plain perfect-info
+/// MCTS. Every tree's root expands the identical, already-correctly-
+/// side-filtered `view.legal_actions` (not a freshly recomputed
+/// `legal_actions` on the sample, which would be redundant — ownership
+/// filtering doesn't depend on hidden info); everything below the root
+/// (expansion/rollout, representing hypothetical continuations from that
+/// tree's own sample) uses the engine's normal `legal_actions` exactly as a
+/// perfect-information search would. Root-level visit/value stats are
+/// merged by `PlayerAction` equality once all trees finish.
 pub struct MctsAgent {
     side: Side,
     iterations: usize,
@@ -61,10 +60,10 @@ impl MctsAgent {
 }
 
 impl BotAgent for MctsAgent {
-    fn select_action(&mut self, state: &GameState, registry: &CardRegistry, legal_actions: &[PlayerAction]) -> PlayerAction {
-        assert!(!legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
-        if legal_actions.len() == 1 {
-            return legal_actions[0].clone();
+    fn select_action(&mut self, view: &ClientView, registry: &CardRegistry) -> PlayerAction {
+        assert!(!view.legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
+        if view.legal_actions.len() == 1 {
+            return view.legal_actions[0].clone();
         }
 
         let side = self.side;
@@ -79,7 +78,8 @@ impl BotAgent for MctsAgent {
             .into_par_iter()
             .map(|tree_index| {
                 let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(tree_index as u64));
-                let mut root = Node::new(state.clone(), registry);
+                let sample = determinize(view, registry, &mut rng);
+                let mut root = Node::new_root(sample, view.legal_actions.clone());
                 for _ in 0..per_tree_iterations {
                     simulate(&mut root, registry, side, max_depth, exploration, &mut rng);
                 }
@@ -104,7 +104,7 @@ impl BotAgent for MctsAgent {
             .into_iter()
             .max_by(|a, b| a.1.cmp(&b.1).then_with(|| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal)))
             .map(|(action, _, _)| action)
-            .unwrap_or_else(|| legal_actions[0].clone())
+            .unwrap_or_else(|| view.legal_actions[0].clone())
     }
 }
 
@@ -120,6 +120,13 @@ impl Node {
     fn new(state: GameState, registry: &CardRegistry) -> Self {
         let untried = engine_legal_actions(&state, registry);
         Node { state, untried, children: Vec::new(), visits: 0, total_value: 0.0 }
+    }
+
+    /// Root-only constructor: seeds `untried` from the caller's own
+    /// `ClientView::legal_actions` instead of recomputing it against
+    /// `state` — see the struct doc comment on `MctsAgent`.
+    fn new_root(state: GameState, legal_actions: Vec<PlayerAction>) -> Self {
+        Node { state, untried: legal_actions, children: Vec::new(), visits: 0, total_value: 0.0 }
     }
 
     fn is_terminal(&self) -> bool {
@@ -150,9 +157,10 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
                 node.children.push((action, child));
                 rollout_value
             }
-            // `node.untried` comes from `legal_actions`, so this should
-            // never actually fail; treat it as a dead branch rather than
-            // corrupting the tree with an unresolved candidate.
+            // `node.untried` comes from `legal_actions` (or, at the root,
+            // `view.legal_actions`), so this should never actually fail;
+            // treat it as a dead branch rather than corrupting the tree
+            // with an unresolved candidate.
             Err(_) => evaluate_state(&node.state, side),
         };
         node.visits += 1;
@@ -253,6 +261,7 @@ mod tests {
         AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, InstallSlot, InstalledCard, InstalledRunnerCard,
         MemoryUnits, PaidAbilityWindow, PlayerResources, RunIce, RunPhase, RunState, RunnerState, ServerId, SubroutineStatus,
     };
+    use netrunner_core::view::build_client_view;
 
     fn blank_card(id: &str, card_type: CardType) -> Card {
         Card {
@@ -319,18 +328,18 @@ mod tests {
     #[test]
     fn always_returns_a_member_of_legal_actions() {
         let registry = CardRegistry::new();
-        let mut state = GameState::new(0);
+        let mut state = netrunner_core::rules::GameState::new(0);
         state.corp = empty_corp();
         state.runner = empty_runner();
         state.corp.resources.clicks = Clicks(3);
         state.corp.resources.credits = Credits(5);
 
-        let legal = engine_legal_actions(&state, &registry);
-        assert!(!legal.is_empty());
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(!view.legal_actions.is_empty());
 
         let mut agent = small_agent(Side::Corp);
-        let chosen = agent.select_action(&state, &registry, &legal);
-        assert!(legal.contains(&chosen));
+        let chosen = agent.select_action(&view, &registry);
+        assert!(view.legal_actions.contains(&chosen));
     }
 
     #[test]
@@ -342,7 +351,7 @@ mod tests {
             breaker
         });
 
-        let mut state = GameState::new(0);
+        let mut state = netrunner_core::rules::GameState::new(0);
         state.phase = GamePhase::Action(Side::Runner);
         state.corp = empty_corp();
         state.runner = empty_runner();
@@ -382,12 +391,12 @@ mod tests {
         state.paid_ability_window =
             Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase) });
 
-        let legal = engine_legal_actions(&state, &registry);
-        assert!(!legal.is_empty());
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(!view.legal_actions.is_empty());
 
         let mut agent = small_agent(Side::Runner);
-        let chosen = agent.select_action(&state, &registry, &legal);
-        assert!(legal.contains(&chosen));
+        let chosen = agent.select_action(&view, &registry);
+        assert!(view.legal_actions.contains(&chosen));
     }
 
     #[test]
@@ -398,7 +407,7 @@ mod tests {
         agenda.agenda_points = Some(7);
         registry.insert(agenda);
 
-        let mut state = GameState::new(0);
+        let mut state = netrunner_core::rules::GameState::new(0);
         state.phase = GamePhase::Action(Side::Corp);
         state.runner = empty_runner();
         state.corp = empty_corp();
@@ -412,28 +421,25 @@ mod tests {
             advancement_tokens: 3,
         }];
 
-        let legal = engine_legal_actions(&state, &registry);
-        assert!(legal.contains(&PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) }));
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) }));
 
         let mut agent = MctsAgent::with_config(Side::Corp, 123, 200, 10, DEFAULT_EXPLORATION, 2);
-        let chosen = agent.select_action(&state, &registry, &legal);
+        let chosen = agent.select_action(&view, &registry);
         assert_eq!(chosen, PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) });
     }
 
     #[test]
     fn single_legal_action_short_circuits() {
         let registry = CardRegistry::new();
-        let mut state = GameState::new(0);
+        let mut state = netrunner_core::rules::GameState::new(0);
         state.phase = GamePhase::Mulligan(Side::Corp);
         state.corp = empty_corp();
         state.runner = empty_runner();
 
+        let view = build_client_view(&state, &registry, Side::Corp);
         let mut agent = small_agent(Side::Corp);
-        // Mulligan phase only ever offers KeepHand/TakeMulligan, so this
-        // isn't the single-action path in practice, but confirms a small
-        // legal set never panics or returns an out-of-set action either way.
-        let legal = engine_legal_actions(&state, &registry);
-        let chosen = agent.select_action(&state, &registry, &legal);
-        assert!(legal.contains(&chosen));
+        let chosen = agent.select_action(&view, &registry);
+        assert!(view.legal_actions.contains(&chosen));
     }
 }

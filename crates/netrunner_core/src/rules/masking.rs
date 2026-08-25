@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::CardId;
-use crate::rules::run::{RunState, ServerId};
+use crate::dsl::{CardId, Cost, IceType};
+use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
 use crate::rules::state::{
-    CorpState, GamePhase, GameState, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
+    CorpState, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
     PlayerResources, RunnerState, Side, TraceState,
 };
 
@@ -22,6 +22,10 @@ pub enum MaskedZone {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicInstalledCard {
     pub server: ServerId,
+    /// Never masked — whether a card occupies a server's ICE-protection
+    /// slot or its root (content) slot is visible to both sides regardless
+    /// of the card's identity.
+    pub slot: InstallSlot,
     pub rezzed: bool,
     pub card: Option<CardId>,
     /// Never masked — advancement tokens are public info on the physical
@@ -77,6 +81,65 @@ pub struct PublicRunnerState {
     pub link_strength: u32,
 }
 
+/// A run's ICE as seen by a particular viewer: `rezzed` is always public,
+/// but a face-down (unrezzed) ICE reveals *nothing* else — not just its
+/// identity, but every identity-derived field (`current_strength`/
+/// `ice_type`/`subroutines` are all printed on the hidden card face, same
+/// as a real physical card) — unless the viewer is the Corp.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicRunIce {
+    pub rezzed: bool,
+    pub identity: Option<PublicRunIceIdentity>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicRunIceIdentity {
+    pub card: CardId,
+    pub current_strength: i32,
+    pub ice_type: IceType,
+    pub subroutines: Vec<EncounteredSubroutine>,
+}
+
+/// A pending per-card access decision as seen by a particular viewer —
+/// masking mirrors `PublicAccessState::unaccessed_cards`/`resolved_cards`:
+/// the card being decided on is identity-visible to the Runner always, and
+/// to the Corp only when accessing (fully public) Archives.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PublicAccessPhase {
+    SelectNextCard { selectable_cards: MaskedZone },
+    PendingInteractiveTrigger { card: Option<CardId>, cost: Cost, can_pay: bool },
+    PendingChoice { card: Option<CardId>, can_trash: bool, trash_cost: Option<u32>, mandatory_steal: bool, steal_cost: Option<Cost> },
+}
+
+/// `run::AccessState` as seen by a particular viewer. In the real game the
+/// Runner sees exactly which card they're accessing the instant access
+/// begins, but the Corp doesn't learn which HQ/R&D card was hit unless it's
+/// since landed in a public zone (Archives, a score area) — so identity
+/// here is visible to the Runner unconditionally, and to the Corp only when
+/// `server == ServerId::Archives` (Archives is always a public zone).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicAccessState {
+    pub server: ServerId,
+    pub unaccessed_cards: MaskedZone,
+    pub resolved_cards: MaskedZone,
+    pub phase: PublicAccessPhase,
+}
+
+/// `run::RunState` as seen by a particular viewer. Drops
+/// `bad_publicity_credits`/`additional_rd_access`/`additional_hq_access`/
+/// `access_replacement` from the projection — none carry card identity,
+/// none are consumed by any current renderer, and omitting a field is
+/// always leak-safe.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicRunState {
+    pub server: ServerId,
+    pub phase: RunPhase,
+    pub ice: Vec<PublicRunIce>,
+    pub position: usize,
+    pub access_state: Option<PublicAccessState>,
+    pub jack_out_permitted: bool,
+}
+
 /// `GameState` as visible to one player: hidden zones are collapsed to a
 /// count, and unrezzed installed cards have their identity stripped unless
 /// the viewer owns them. `phase` is never masked — turn structure is public.
@@ -89,7 +152,7 @@ pub struct PublicGameState {
     pub corp: PublicCorpState,
     pub runner: PublicRunnerState,
     pub phase: GamePhase,
-    pub active_run: Option<RunState>,
+    pub active_run: Option<PublicRunState>,
     pub paid_ability_window: Option<PaidAbilityWindow>,
     pub active_trace: Option<TraceState>,
 }
@@ -99,9 +162,66 @@ pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState
         corp: mask_corp_state(&state.corp, player == Side::Corp),
         runner: mask_runner_state(&state.runner, player == Side::Runner),
         phase: state.phase,
-        active_run: state.active_run.clone(),
+        active_run: state.active_run.as_ref().map(|run| mask_run_state(run, player)),
         paid_ability_window: state.paid_ability_window.clone(),
         active_trace: state.active_trace.clone(),
+    }
+}
+
+fn mask_run_ice(ice: &RunIce, owner_view: bool) -> PublicRunIce {
+    let identity_visible = owner_view || ice.rezzed;
+    PublicRunIce {
+        rezzed: ice.rezzed,
+        identity: identity_visible.then(|| PublicRunIceIdentity {
+            card: ice.card_id.clone(),
+            current_strength: ice.current_strength,
+            ice_type: ice.ice_type,
+            subroutines: ice.subroutines.clone(),
+        }),
+    }
+}
+
+fn mask_access_phase(phase: &AccessPhase, card_visible: bool) -> PublicAccessPhase {
+    match phase {
+        AccessPhase::SelectNextCard { selectable_cards } => {
+            PublicAccessPhase::SelectNextCard { selectable_cards: mask_zone(selectable_cards, card_visible) }
+        }
+        AccessPhase::PendingInteractiveTrigger { card_id, cost, can_pay } => PublicAccessPhase::PendingInteractiveTrigger {
+            card: card_visible.then(|| card_id.clone()),
+            cost: cost.clone(),
+            can_pay: *can_pay,
+        },
+        AccessPhase::PendingChoice { card_id, can_trash, trash_cost, mandatory_steal, steal_cost } => PublicAccessPhase::PendingChoice {
+            card: card_visible.then(|| card_id.clone()),
+            can_trash: *can_trash,
+            trash_cost: *trash_cost,
+            mandatory_steal: *mandatory_steal,
+            steal_cost: steal_cost.clone(),
+        },
+    }
+}
+
+fn mask_access_state(access: &AccessState, card_visible: bool) -> PublicAccessState {
+    PublicAccessState {
+        server: access.server,
+        unaccessed_cards: mask_zone(&access.unaccessed_cards, card_visible),
+        resolved_cards: mask_zone(&access.resolved_cards, card_visible),
+        phase: mask_access_phase(&access.phase, card_visible),
+    }
+}
+
+fn mask_run_state(run: &RunState, player: Side) -> PublicRunState {
+    // The Corp only ever sees accessed-card identities once the accessed
+    // server is Archives (an always-public zone) — otherwise the Runner
+    // alone knows what they hit until it lands in a public zone.
+    let card_visible = player == Side::Runner || run.server == ServerId::Archives;
+    PublicRunState {
+        server: run.server,
+        phase: run.phase,
+        ice: run.ice.iter().map(|ice| mask_run_ice(ice, player == Side::Corp)).collect(),
+        position: run.position,
+        access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible)),
+        jack_out_permitted: run.jack_out_permitted,
     }
 }
 
@@ -119,6 +239,7 @@ fn mask_installed_card(installed: &InstalledCard, owner_view: bool) -> PublicIns
     let identity_visible = owner_view || installed.rezzed;
     PublicInstalledCard {
         server: installed.server,
+        slot: installed.slot,
         rezzed: installed.rezzed,
         card: identity_visible.then(|| installed.card.clone()),
         advancement_tokens: installed.advancement_tokens,
@@ -445,5 +566,133 @@ mod tests {
         // installed[1] ("enigma") is rezzed with 2 advancement tokens.
         assert_eq!(masked_for_corp.corp.installed[1].advancement_tokens, 2);
         assert_eq!(masked_for_runner.corp.installed[1].advancement_tokens, 2);
+    }
+
+    use crate::dsl::{Effect, SubroutineDef};
+    use crate::rules::run::SubroutineStatus;
+
+    fn run_ice(id: &str, rezzed: bool) -> RunIce {
+        RunIce {
+            card_id: CardId(id.to_string()),
+            current_strength: 3,
+            ice_type: IceType::Barrier,
+            subroutines: if rezzed {
+                vec![EncounteredSubroutine {
+                    id: 0,
+                    definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun },
+                    status: SubroutineStatus::Pending,
+                }]
+            } else {
+                Vec::new()
+            },
+            rezzed,
+        }
+    }
+
+    fn run_state(server: ServerId, ice: Vec<RunIce>, access_state: Option<AccessState>) -> RunState {
+        RunState {
+            server,
+            phase: if access_state.is_some() { RunPhase::AccessingCard } else { RunPhase::ApproachIce },
+            ice,
+            position: 0,
+            access_state,
+            jack_out_permitted: true,
+            bad_publicity_credits: 0,
+            additional_rd_access: 0,
+            additional_hq_access: 0,
+            access_replacement: None,
+        }
+    }
+
+    fn state_with_run(run: RunState) -> GameState {
+        let mut state = game_state_with_runner(runner_state_with_cards());
+        state.active_run = Some(run);
+        state
+    }
+
+    #[test]
+    fn unrezzed_ice_identity_is_hidden_from_runner_but_visible_to_corp() {
+        let run = run_state(ServerId::Hq, vec![run_ice("ice_wall", false)], None);
+        let state = state_with_run(run);
+
+        let for_runner = mask_state_for_player(&state, Side::Runner);
+        let ice = &for_runner.active_run.as_ref().unwrap().ice[0];
+        assert!(!ice.rezzed);
+        assert_eq!(ice.identity, None);
+
+        let for_corp = mask_state_for_player(&state, Side::Corp);
+        let ice = &for_corp.active_run.as_ref().unwrap().ice[0];
+        assert_eq!(ice.identity.as_ref().unwrap().card, CardId("ice_wall".to_string()));
+    }
+
+    #[test]
+    fn rezzed_ice_identity_and_subroutines_are_visible_to_both_sides() {
+        let run = run_state(ServerId::Hq, vec![run_ice("enigma", true)], None);
+        let state = state_with_run(run);
+
+        for side in [Side::Corp, Side::Runner] {
+            let masked = mask_state_for_player(&state, side);
+            let identity = masked.active_run.as_ref().unwrap().ice[0].identity.as_ref().unwrap();
+            assert_eq!(identity.card, CardId("enigma".to_string()));
+            assert_eq!(identity.subroutines.len(), 1);
+        }
+    }
+
+    #[test]
+    fn accessed_hq_card_identity_is_hidden_from_corp_but_visible_to_runner() {
+        let access = AccessState {
+            server: ServerId::Hq,
+            unaccessed_cards: vec![CardId("agenda".to_string())],
+            resolved_cards: Vec::new(),
+            phase: AccessPhase::PendingChoice {
+                card_id: CardId("hedge_fund".to_string()),
+                can_trash: false,
+                trash_cost: None,
+                mandatory_steal: false,
+                steal_cost: None,
+            },
+        };
+        let run = run_state(ServerId::Hq, Vec::new(), Some(access));
+        let state = state_with_run(run);
+
+        let for_corp = mask_state_for_player(&state, Side::Corp);
+        let corp_access = for_corp.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert_eq!(corp_access.unaccessed_cards, MaskedZone::Hidden { count: 1 });
+        assert!(matches!(&corp_access.phase, PublicAccessPhase::PendingChoice { card: None, .. }));
+
+        let for_runner = mask_state_for_player(&state, Side::Runner);
+        let runner_access = for_runner.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert_eq!(runner_access.unaccessed_cards, MaskedZone::Visible(vec![CardId("agenda".to_string())]));
+        assert!(matches!(
+            &runner_access.phase,
+            PublicAccessPhase::PendingChoice { card: Some(id), .. } if *id == CardId("hedge_fund".to_string())
+        ));
+    }
+
+    #[test]
+    fn accessed_archives_card_identity_is_visible_to_both_sides() {
+        let access = AccessState {
+            server: ServerId::Archives,
+            unaccessed_cards: Vec::new(),
+            resolved_cards: Vec::new(),
+            phase: AccessPhase::PendingChoice {
+                card_id: CardId("cyberdex_trial".to_string()),
+                can_trash: false,
+                trash_cost: None,
+                mandatory_steal: false,
+                steal_cost: None,
+            },
+        };
+        let run = run_state(ServerId::Archives, Vec::new(), Some(access));
+        let state = state_with_run(run);
+
+        for side in [Side::Corp, Side::Runner] {
+            let masked = mask_state_for_player(&state, side);
+            let access = masked.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+            assert!(matches!(
+                &access.phase,
+                PublicAccessPhase::PendingChoice { card: Some(id), .. } if *id == CardId("cyberdex_trial".to_string())
+            ));
+        }
     }
 }

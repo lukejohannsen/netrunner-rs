@@ -2,13 +2,15 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{GameState, PlayerAction};
+use netrunner_core::rules::PlayerAction;
+use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
 
-/// Picks uniformly at random among the legal actions — the same policy
+/// Picks uniformly at random among `view.legal_actions` — the same policy
 /// `netrunner_cli`'s headless self-play loop used inline before this crate
-/// existed (see `netrunner_cli::headless`), now packaged behind `BotAgent`.
+/// existed. No determinization needed: it never looks past the immediate
+/// legal action set.
 pub struct RandomAgent {
     rng: StdRng,
 }
@@ -20,48 +22,44 @@ impl RandomAgent {
 }
 
 impl BotAgent for RandomAgent {
-    fn select_action(&mut self, _state: &GameState, _registry: &CardRegistry, legal_actions: &[PlayerAction]) -> PlayerAction {
-        assert!(!legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
-        legal_actions[self.rng.random_range(0..legal_actions.len())].clone()
+    fn select_action(&mut self, view: &ClientView, _registry: &CardRegistry) -> PlayerAction {
+        assert!(!view.legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
+        view.legal_actions[self.rng.random_range(0..view.legal_actions.len())].clone()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::rules::Side;
+    use netrunner_core::rules::{GamePhase, GameState, Side};
+    use netrunner_core::view::build_client_view;
+
+    fn view() -> ClientView {
+        let mut state = GameState::new(0);
+        state.corp.resources.clicks = netrunner_core::rules::Clicks(3);
+        state.phase = GamePhase::Action(Side::Corp);
+        build_client_view(&state, &CardRegistry::new(), Side::Corp)
+    }
 
     #[test]
     fn always_returns_a_member_of_legal_actions() {
-        let state = GameState::new(0);
-        let registry = CardRegistry::new();
-        let legal = vec![
-            PlayerAction::GainCreditClick { side: Side::Corp },
-            PlayerAction::EndTurn,
-            PlayerAction::DrawCardClick,
-        ];
+        let view = view();
+        assert!(!view.legal_actions.is_empty());
         let mut agent = RandomAgent::new(42);
 
         for _ in 0..20 {
-            let action = agent.select_action(&state, &registry, &legal);
-            assert!(legal.contains(&action));
+            let action = agent.select_action(&view, &CardRegistry::new());
+            assert!(view.legal_actions.contains(&action));
         }
     }
 
     #[test]
     fn same_seed_is_deterministic() {
-        let state = GameState::new(0);
-        let registry = CardRegistry::new();
-        let legal = vec![
-            PlayerAction::GainCreditClick { side: Side::Corp },
-            PlayerAction::EndTurn,
-            PlayerAction::DrawCardClick,
-        ];
-
+        let view = view();
         let mut a = RandomAgent::new(7);
         let mut b = RandomAgent::new(7);
         for _ in 0..10 {
-            assert_eq!(a.select_action(&state, &registry, &legal), b.select_action(&state, &registry, &legal));
+            assert_eq!(a.select_action(&view, &CardRegistry::new()), b.select_action(&view, &CardRegistry::new()));
         }
     }
 }

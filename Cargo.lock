@@ -2884,8 +2884,10 @@ dependencies = [
  "crossterm",
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_server",
  "rand 0.9.5",
  "ratatui",
+ "tokio",
 ]
 
 [[package]]
@@ -2920,10 +2922,14 @@ dependencies = [
 name = "netrunner_server"
 version = "0.1.0"
 dependencies = [
+ "clap",
+ "netrunner_bots",
  "netrunner_core",
+ "rand 0.9.5",
  "serde",
  "serde_json",
  "tokio",
+ "uuid",
 ]
 
 [[package]]

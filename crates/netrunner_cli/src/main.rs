@@ -9,11 +9,12 @@ use clap::Parser;
 
 use config::Config;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::parse();
     if config.headless {
-        headless::run(&config)
+        headless::run(&config).await
     } else {
-        tui::run(&config)
+        tui::run(&config).await
     }
 }
