@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
 serde = { workspace = true }
+thiserror = { workspace = true }
 rand = "0.9"
 rayon = "1"

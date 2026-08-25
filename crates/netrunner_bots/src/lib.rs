@@ -1,27 +1,41 @@
 //! Automated `netrunner_core` players: a `BotAgent` trait plus baseline
-//! `RandomAgent`, `HeuristicAgent`, and `MctsAgent` implementations.
+//! `RandomAgent`, `HeuristicAgent`, `MctsAgent`, and `PuctAgent`
+//! implementations.
 //!
 //! **Phase 2 / masked view:** every agent operates only on a per-side
 //! `netrunner_core::view::ClientView` — never the raw `GameState` — matching
 //! the masking `netrunner_server`'s `MatchSession` enforces for real
-//! clients. `HeuristicAgent`/`MctsAgent` still need a concrete `GameState`
-//! to run `apply_action`-based lookahead/rollouts, which a masked view
-//! can't provide alone; `determinize` samples one, consistent with
-//! everything the view actually reveals, for them to search against.
+//! clients. `HeuristicAgent`/`MctsAgent`/`PuctAgent` still need a concrete
+//! `GameState` to run `apply_action`-based lookahead/rollouts/search, which
+//! a masked view can't provide alone; `determinize` samples one, consistent
+//! with everything the view actually reveals, for them to search against.
 //! `MctsAgent` resampling independently per parallel tree is what makes it
 //! genuine (if basic) Information Set MCTS — see its own doc comment for
 //! the known simplifications in what gets sampled.
+//!
+//! **Phase 3 / fixed action space:** `action_space` and `policy` build on
+//! `netrunner_core::rules::{ActionSpace, get_action_mask}` — a fixed
+//! `0..ActionSpace::SIZE` categorical encoding of `PlayerAction`, suited to
+//! a neural-net policy head. `PuctAgent` (`puct`) is the search that
+//! consumes it: PUCT over fixed indices, driven by a pluggable
+//! `PolicyEvaluator` instead of `MctsAgent`'s random rollouts.
 
+pub mod action_space;
 pub mod agent;
 pub mod determinize;
 pub mod eval;
 pub mod heuristic;
 pub mod mcts;
+pub mod policy;
+pub mod puct;
 pub mod random;
 
+pub use action_space::{legal_indices, step_index, IndexedActionError};
 pub use agent::BotAgent;
 pub use determinize::determinize;
 pub use eval::evaluate_state;
 pub use heuristic::HeuristicAgent;
 pub use mcts::MctsAgent;
+pub use policy::{PolicyEvaluator, UniformPolicyEvaluator};
+pub use puct::{PuctAgent, PuctConfig};
 pub use random::RandomAgent;

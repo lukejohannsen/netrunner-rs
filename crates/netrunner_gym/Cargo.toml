@@ -3,7 +3,33 @@ name = "netrunner_gym"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name = "netrunner_gym"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
+netrunner_bots = { path = "../netrunner_bots" }
+pyo3 = "0.29"
 serde = { workspace = true }
 serde_json = { workspace = true }
+rand = "0.9"
+
+# `auto-initialize` only for `cargo test` (Cargo unions dependency +
+# dev-dependency features of the same crate for test builds): the
+# `python::tests` module embeds its own Python interpreter via
+# `Python::attach` and needs this to auto-initialize it. Left out of the
+# plain `[dependencies]` table so a real `extension-module` build (loaded
+# *by* an already-running Python process, never initializing its own)
+# doesn't carry it.
+[dev-dependencies]
+pyo3 = { version = "0.29", features = ["auto-initialize"] }
+
+[features]
+# Off by default so `cargo build/test/clippy` link against the system
+# `libpython` (embedding mode) and produce a runnable test binary. `maturin`
+# auto-enables this by its standard convention when building the real
+# importable wheel — PyO3's `extension-module` deliberately omits linking
+# `libpython` since it expects to be `dlopen`ed by an already-running
+# interpreter, which would otherwise break a normal `cargo test` binary.
+extension-module = ["pyo3/extension-module"]
