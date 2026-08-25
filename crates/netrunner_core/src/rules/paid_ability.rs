@@ -198,7 +198,7 @@ mod tests {
 
     fn base_state() -> GameState {
         GameState {
-            corp: CorpState { bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
                 hq: Vec::new(),
@@ -206,7 +206,7 @@ mod tests {
                 archives: Vec::new(),
                 installed: Vec::new(),
             },
-            runner: RunnerState {
+            runner: RunnerState { identity: None,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
                 memory_units: MemoryUnits(0),

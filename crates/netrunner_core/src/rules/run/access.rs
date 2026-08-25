@@ -682,7 +682,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { bad_publicity: 0,
+            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -694,7 +694,7 @@ mod tests {
                 archives,
                 installed,
             },
-            runner: RunnerState {
+            runner: RunnerState { identity: None,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),

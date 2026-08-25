@@ -6,6 +6,7 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run::{self, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState, SubroutineStatus};
+use crate::rules::setup;
 use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, Side};
 use crate::rules::trace;
 use crate::rules::turn;
@@ -48,6 +49,8 @@ pub fn apply_action(
         }
         PlayerAction::EndTurn => turn::end_turn(state),
         PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id),
+        PlayerAction::KeepHand => setup::keep_hand(state),
+        PlayerAction::TakeMulligan => setup::take_mulligan(state),
         PlayerAction::ActivateAbility { card_id, ability_index } => {
             activate_ability(state, registry, card_id, ability_index)
         }
@@ -873,7 +876,7 @@ mod tests {
 
     fn corp_state(clicks: u32, credits: u32) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { bad_publicity: 0,
+            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(credits),
@@ -885,7 +888,7 @@ mod tests {
                 archives: Vec::new(),
                 installed: Vec::new(),
             },
-            runner: crate::rules::state::RunnerState {
+            runner: crate::rules::state::RunnerState { identity: None,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -914,7 +917,7 @@ mod tests {
     /// (identity doesn't matter for the tests using this — only counts do).
     fn runner_state(clicks: u32, stack_size: u32, grip_size: u32) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { bad_publicity: 0,
+            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -926,7 +929,7 @@ mod tests {
                 archives: Vec::new(),
                 installed: Vec::new(),
             },
-            runner: crate::rules::state::RunnerState {
+            runner: crate::rules::state::RunnerState { identity: None,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),

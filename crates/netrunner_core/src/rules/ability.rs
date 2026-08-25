@@ -498,7 +498,7 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState { bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(5),
@@ -510,7 +510,7 @@ mod tests {
                 archives: Vec::new(),
                 installed: Vec::new(),
             },
-            runner: RunnerState {
+            runner: RunnerState { identity: None,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(5),

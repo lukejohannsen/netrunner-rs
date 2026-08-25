@@ -57,4 +57,6 @@ pub enum GameEvent {
     BadPublicityCreditsSpent { amount: u32 },
     BadPublicityGiven { amount: u32 },
     BadPublicityRemoved { amount: u32 },
+    HandKept { side: Side },
+    MulliganTaken { side: Side },
 }

@@ -22,6 +22,9 @@ pub enum RulesError {
     #[error("action requires a Discard phase but game is in {actual:?}")]
     NotInDiscardPhase { actual: GamePhase },
 
+    #[error("action requires a Mulligan phase but game is in {actual:?}")]
+    NotInMulliganPhase { actual: GamePhase },
+
     #[error("cannot continue past ICE while {pending} subroutine(s) are still pending")]
     SubroutinesStillPending { pending: u32 },
 
@@ -156,4 +159,28 @@ pub enum RulesError {
 
     #[error("card {card:?} is not a Resource")]
     CardNotResource { card: CardId },
+
+    #[error("card {card:?} is not an Identity and cannot anchor a deck")]
+    CardNotIdentity { card: CardId },
+
+    #[error("identity {card:?} has no min_deck_size configured in the registry")]
+    IdentityMissingMinDeckSize { card: CardId },
+
+    #[error("card {card:?} is not this deck's declared identity's side (expected {expected:?}, found {actual:?})")]
+    IdentitySideMismatch { card: CardId, expected: Side, actual: Side },
+
+    #[error("deck has {size} card(s) but its identity requires at least {minimum}")]
+    DeckBelowMinimumSize { size: u32, minimum: u32 },
+
+    #[error("card {card:?} has {count} copies, exceeding the {max}-copy limit")]
+    TooManyCopies { card: CardId, count: u32, max: u32 },
+
+    #[error("card {card:?} is {actual:?}-side but this deck is {expected:?}-side")]
+    DeckCardWrongSide { card: CardId, expected: Side, actual: Side },
+
+    #[error("Runner decks cannot contain Agenda {card:?}")]
+    RunnerDeckContainsAgenda { card: CardId },
+
+    #[error("deck has {points} agenda point(s), outside the required range {min}-{max}")]
+    AgendaPointsOutOfRange { points: u32, min: u32, max: u32 },
 }

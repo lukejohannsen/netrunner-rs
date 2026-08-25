@@ -168,7 +168,7 @@ mod tests {
     fn game_state(corp: CorpState) -> GameState {
         GameState {
             corp,
-            runner: RunnerState {
+            runner: RunnerState { identity: None,
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
@@ -194,7 +194,7 @@ mod tests {
     }
 
     fn corp_state_with_cards() -> CorpState {
-        CorpState { bad_publicity: 0,
+        CorpState { identity: None, bad_publicity: 0,
             resources: PlayerResources {
                 credits: Credits(5),
                 clicks: Clicks(3),
@@ -282,7 +282,7 @@ mod tests {
     }
 
     fn runner_state_with_cards() -> RunnerState {
-        RunnerState {
+        RunnerState { identity: None,
             resources: PlayerResources {
                 credits: Credits(5),
                 clicks: Clicks(3),

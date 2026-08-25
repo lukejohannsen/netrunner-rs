@@ -120,6 +120,18 @@ pub enum PlayerAction {
     /// side's `GamePhase::StartOfTurn` — see `turn::discard_card`'s doc
     /// comment.
     DiscardCard { card_id: CardId },
+    /// Keep the current opening hand. Symmetric — no `side` field; the
+    /// acting side is whichever side `GameState::phase` is currently
+    /// `Mulligan(side)` for, same convention as `EndTurn`/`DiscardCard`.
+    /// `RulesError::NotInMulliganPhase` outside `GamePhase::Mulligan`.
+    /// Corp's decision advances to `Mulligan(Side::Runner)`; the Runner's
+    /// decision hands off into Corp's first turn — see
+    /// `rules::setup::keep_hand`.
+    KeepHand,
+    /// Return the current opening hand, reshuffle it back into the deck,
+    /// and draw a fresh 5-card hand. Same phase-inference convention as
+    /// `KeepHand`. See `rules::setup::take_mulligan`.
+    TakeMulligan,
     /// Pay and resolve the `ability_index`-th ability (a `dsl::AbilityDef`,
     /// looked up in the `CardRegistry`) on `card_id`. Symmetric — no `side`
     /// field; the acting side is whichever side `GameState::phase` is

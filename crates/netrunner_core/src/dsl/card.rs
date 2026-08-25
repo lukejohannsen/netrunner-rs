@@ -26,6 +26,7 @@ pub enum CardType {
     Resource,
     Program,
     Event,
+    Identity,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

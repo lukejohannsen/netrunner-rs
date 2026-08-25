@@ -94,6 +94,12 @@ pub struct InstalledCard {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CorpState {
+    /// Corp's identity card, set once by `GameState::setup`. `None` before
+    /// a real game is set up — `GameState::new()`'s bare/empty state (used
+    /// directly by many unit tests) has no real identity to put here, and
+    /// `CardId` has no `Default` impl, so `Option` is the natural "no game
+    /// set up yet" value.
+    pub identity: Option<CardId>,
     pub resources: PlayerResources,
     /// Corp's hand — hidden from the Runner in the masked view.
     pub hq: Vec<CardId>,
@@ -154,6 +160,10 @@ impl InstalledRunnerCard {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunnerState {
+    /// Runner's identity card, set once by `GameState::setup`. `None`
+    /// before a real game is set up — see `CorpState::identity`'s doc
+    /// comment for the same rationale.
+    pub identity: Option<CardId>,
     pub resources: PlayerResources,
     /// Unspent memory units available for installing programs.
     pub memory_units: MemoryUnits,
@@ -215,6 +225,16 @@ impl RunnerState {
 /// winning `Side` instead (there's no "active side" once the game has ended).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GamePhase {
+    /// Sequential opening-hand mulligan decision, entered once by
+    /// `GameState::setup` (`Mulligan(Side::Corp)`). Corp's decision
+    /// (`PlayerAction::KeepHand`/`TakeMulligan`) advances to
+    /// `Mulligan(Side::Runner)`; the Runner's decision advances straight
+    /// into Corp's first turn via `turn::enter_start_of_turn`. No
+    /// `PlayerAction` other than `KeepHand`/`TakeMulligan` is legal here —
+    /// every other handler gates on `Action(_)`/`Discard { .. }` via
+    /// `engine::require_phase`, so it falls through to the existing
+    /// `RulesError::WrongPhase` for free.
+    Mulligan(Side),
     /// Entered momentarily on a turn handoff; phase-entry triggers
     /// (mandatory Corp draw) resolve here, then the engine auto-advances to
     /// `Action(side)` before returning control to a `PlayerAction`. No
@@ -331,7 +351,7 @@ impl GameState {
     /// `GamePhase::Action(Side::Corp)`, matching the real game's turn order.
     pub fn new(seed: u64) -> Self {
         GameState {
-            corp: CorpState { bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -343,7 +363,7 @@ impl GameState {
                 archives: Vec::new(),
                 installed: Vec::new(),
             },
-            runner: RunnerState {
+            runner: RunnerState { identity: None,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -420,7 +440,7 @@ mod tests {
 
     #[test]
     fn reset_encounter_strength_buffs_zeroes_only_encounter_buff() {
-        let mut runner = RunnerState {
+        let mut runner = RunnerState { identity: None,
             resources: PlayerResources {
                 credits: Credits(0),
                 clicks: Clicks(0),
@@ -445,7 +465,7 @@ mod tests {
 
     #[test]
     fn reset_turn_strength_buffs_zeroes_only_turn_buff() {
-        let mut runner = RunnerState {
+        let mut runner = RunnerState { identity: None,
             resources: PlayerResources {
                 credits: Credits(0),
                 clicks: Clicks(0),

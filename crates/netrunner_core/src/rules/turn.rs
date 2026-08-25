@@ -168,7 +168,7 @@ pub fn discard_card(
 /// exact draw attempt that fails, not a standing condition safely
 /// re-derivable from `GameState` alone elsewhere — see
 /// `check_win_conditions`'s doc comment.
-fn enter_start_of_turn(next: &mut GameState, events: &mut Vec<GameEvent>, next_side: Side) {
+pub(crate) fn enter_start_of_turn(next: &mut GameState, events: &mut Vec<GameEvent>, next_side: Side) {
     next.phase = GamePhase::StartOfTurn(next_side);
 
     if next_side == Side::Corp && next.corp.r_and_d.is_empty() {
@@ -210,7 +210,7 @@ mod tests {
         runner_credits: u32,
     ) -> GameState {
         GameState {
-            corp: CorpState { bad_publicity: 0,
+            corp: CorpState { identity: None, bad_publicity: 0,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(corp_credits),
@@ -222,7 +222,7 @@ mod tests {
                 archives: Vec::new(),
                 installed: Vec::new(),
             },
-            runner: RunnerState {
+            runner: RunnerState { identity: None,
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(runner_credits),
