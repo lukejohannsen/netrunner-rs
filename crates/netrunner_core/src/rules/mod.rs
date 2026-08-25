@@ -5,6 +5,7 @@ mod deck;
 mod engine;
 mod error;
 mod event;
+mod legal_actions;
 mod masking;
 mod paid_ability;
 mod run;
@@ -21,6 +22,7 @@ pub use deck::{validate_deck, Deck};
 pub use engine::apply_action;
 pub use error::RulesError;
 pub use event::GameEvent;
+pub use legal_actions::legal_actions;
 pub use masking::{
     mask_state_for_player, MaskedZone, PublicCorpState, PublicGameState, PublicInstalledCard,
     PublicInstalledRunnerCard, PublicRunnerState,
