@@ -478,4 +478,42 @@ mod tests {
             vec![GameEvent::PriorityPassed { side: Side::Corp }, GameEvent::PaidAbilityWindowClosed]
         );
     }
+
+    #[test]
+    fn encounter_ice_window_close_auto_fires_end_the_run_and_terminates_cleanly() {
+        let mut state = base_state();
+        let end_the_run_subroutine = EncounteredSubroutine {
+            id: 0,
+            definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun },
+            status: SubroutineStatus::Pending,
+        };
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![run_ice(true, vec![end_the_run_subroutine])],
+            position: 0,
+            access_state: None,
+            jack_out_permitted: false,
+        });
+        open_window(&mut state);
+
+        pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
+        let events = pass_priority(&mut state, &registry(), Side::Corp).expect("second pass should succeed");
+
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::PriorityPassed { side: Side::Corp },
+                GameEvent::PaidAbilityWindowClosed,
+                GameEvent::SubroutineFired {
+                    card_id: CardId("ice_wall".to_string()),
+                    index: 0,
+                    effect: Effect::EndTheRun,
+                },
+                GameEvent::RunEndedByEffect { server: ServerId::Hq },
+            ]
+        );
+        assert!(state.active_run.is_none(), "the run must end cleanly, not error or half-transition");
+        assert!(state.paid_ability_window.is_none());
+    }
 }

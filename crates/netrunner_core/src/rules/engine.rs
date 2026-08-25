@@ -3519,4 +3519,165 @@ mod tests {
         assert_eq!(state.active_run, None);
         assert!(state.paid_ability_window.is_none());
     }
+
+    #[test]
+    fn boost_strength_persists_across_a_pass_for_a_later_break_subroutines_activation() {
+        let card_id = CardId("corroder".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        // Deliberately too weak to break the ICE alone (1 < 2) — the second
+        // activation below only succeeds because the first activation's
+        // encounter-duration boost is still applied.
+        state.runner.rig = vec![installed_runner_card("corroder", 1)];
+        state.active_run = Some(RunState {
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
+            position: 0,
+            jack_out_permitted: false,
+        });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let mut registry = CardRegistry::new();
+        let mut card = test_card_with_ability(
+            "corroder",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+        );
+        card.abilities.push(AbilityDef {
+            trigger: Trigger::Paid,
+            cost: Some(Cost::Credits(1)),
+            effect: Effect::BreakSubroutines {
+                count: SubroutineBreakCount::Fixed(1),
+                restrict_to: Some(IceType::Barrier),
+            },
+        });
+        registry.insert(card);
+
+        // Runner boosts; priority passes to Corp.
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+        )
+        .expect("boost should succeed");
+        assert_eq!(state.runner.rig[0].effective_strength(), 2);
+        assert_eq!(
+            state.paid_ability_window.as_ref().unwrap().active_priority,
+            Side::Corp,
+            "priority toggles to the other side after a window-legal action"
+        );
+
+        // Corp declines to act; priority returns to the Runner.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
+        assert_eq!(state.paid_ability_window.as_ref().unwrap().active_priority, Side::Runner);
+        // The pass alone (no encounter exit) must not have reset the boost.
+        assert_eq!(state.runner.rig[0].effective_strength(), 2);
+
+        // Runner now breaks the subroutine — only possible because the
+        // boost from the first activation persisted through the pass.
+        let (next, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id, ability_index: 1 },
+        )
+        .expect("break should succeed now that effective strength meets the ICE's");
+
+        assert_eq!(next.active_run.unwrap().ice[0].subroutines[0].status, SubroutineStatus::Broken);
+    }
+
+    #[test]
+    fn partial_break_leaves_only_the_unbroken_subroutine_to_auto_fire_on_priority_close() {
+        let card_id = CardId("mimic".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![installed_runner_card("mimic", 2)];
+        state.active_run = Some(RunState {
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce {
+                card_id: CardId("ice_wall".to_string()),
+                current_strength: 2,
+                ice_type: IceType::Barrier,
+                subroutines: vec![
+                    EncounteredSubroutine {
+                        id: 0,
+                        definition: SubroutineDef { text: "sub 0".to_string(), effect: Effect::GiveTags(1) },
+                        status: SubroutineStatus::Pending,
+                    },
+                    EncounteredSubroutine {
+                        id: 1,
+                        definition: SubroutineDef { text: "sub 1".to_string(), effect: Effect::GiveTags(2) },
+                        status: SubroutineStatus::Pending,
+                    },
+                ],
+                rezzed: true,
+            }],
+            position: 0,
+            jack_out_permitted: false,
+        });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "mimic",
+            Side::Runner,
+            Trigger::Paid,
+            Some(Cost::Credits(1)),
+            Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
+        ));
+
+        // Break the lowest-id pending subroutine (id 0); priority passes to Corp.
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id, ability_index: 0 },
+        )
+        .expect("break should succeed");
+        assert_eq!(
+            state.active_run.as_ref().unwrap().ice[0].subroutines[0].status,
+            SubroutineStatus::Broken
+        );
+        assert_eq!(
+            state.active_run.as_ref().unwrap().ice[0].subroutines[1].status,
+            SubroutineStatus::Pending
+        );
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
+        let (next, events) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+
+        // Only the unbroken subroutine (id 1, GiveTags(2)) auto-fires; the
+        // broken one (id 0, GiveTags(1)) never does.
+        assert_eq!(next.runner.tags, 2);
+        let ice = &next.active_run.as_ref().unwrap().ice[0];
+        assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
+        assert_eq!(ice.subroutines[1].status, SubroutineStatus::Resolved);
+        let fired: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, GameEvent::SubroutineFired { .. }))
+            .collect();
+        assert_eq!(
+            fired,
+            vec![&GameEvent::SubroutineFired {
+                card_id: CardId("ice_wall".to_string()),
+                index: 1,
+                effect: Effect::GiveTags(2),
+            }]
+        );
+    }
 }
