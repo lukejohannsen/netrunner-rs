@@ -259,7 +259,7 @@ mod tests {
     #[test]
     fn single_pass_toggles_priority_and_leaves_window_open() {
         let mut state = base_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![run_ice(true, Vec::new())],
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn second_consecutive_pass_closes_window_and_auto_advances() {
         let mut state = base_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![run_ice(true, Vec::new())],
@@ -334,7 +334,7 @@ mod tests {
     #[test]
     fn note_window_action_resets_passes_and_toggles_priority() {
         let mut state = base_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![run_ice(true, Vec::new())],
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn approach_ice_window_close_with_unrezzed_ice_auto_passes_without_encounter() {
         let mut state = base_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![run_ice(false, Vec::new())],
@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn encounter_ice_window_close_auto_fires_unbroken_subroutines() {
         let mut state = base_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![run_ice(true, vec![pending_subroutine()])],
@@ -434,7 +434,7 @@ mod tests {
     fn success_window_close_presenting_a_single_card_opens_a_fresh_access_window() {
         let mut state = base_state();
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -470,7 +470,7 @@ mod tests {
         // `SelectNextCard` choice rather than a single `PendingChoice` —
         // deliberately not a checkpoint (no cost is at stake in ordering).
         state.corp.archives = vec![CardId("card_1".to_string()), CardId("card_2".to_string())];
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Archives,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -498,7 +498,7 @@ mod tests {
             definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun },
             status: SubroutineStatus::Pending,
         };
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![run_ice(true, vec![end_the_run_subroutine])],

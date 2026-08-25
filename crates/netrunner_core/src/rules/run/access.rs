@@ -24,32 +24,40 @@ fn root_installs_on(state: &GameState, server: ServerId) -> Vec<CardId> {
 }
 
 /// Determine which `CardId`s become accessible when a run against `server`
-/// concludes successfully. Unchanged logic from before this file's access
-/// resolution became interactive — only *which* cards are accessed, not
-/// what happens when they are.
+/// concludes successfully.
 fn compute_accessed_cards(state: &mut GameState, server: ServerId) -> Vec<CardId> {
     match server {
-        // Real rules access one *randomly* chosen HQ card. `next_u64` is
-        // `GameState`'s deterministic pseudo-random source (no external RNG,
-        // per AGENTS.md's purity requirement) — the roll is reduced modulo
-        // `hq.len()` to pick an index.
+        // Real rules access one *randomly* chosen HQ card, plus one more
+        // per `RunState::additional_hq_access` (`Effect::AddAdditionalAccess`).
+        // `next_u64` is `GameState`'s deterministic pseudo-random source (no
+        // external RNG, per AGENTS.md's purity requirement) — each roll is
+        // reduced modulo the shrinking pool's length to pick a distinct
+        // index, mirroring `damage::apply_damage`'s "pick N distinct random
+        // elements" idiom.
         ServerId::Hq => {
-            let mut accessed = if state.corp.hq.is_empty() {
-                Vec::new()
-            } else {
+            let additional = state.active_run.as_ref().map_or(0, |run| run.additional_hq_access);
+            let take = (1 + additional as usize).min(state.corp.hq.len());
+            let mut pool = state.corp.hq.clone();
+            let mut accessed = Vec::with_capacity(take);
+            for _ in 0..take {
                 let roll = state.next_u64();
-                let index = (roll as usize) % state.corp.hq.len();
-                state.corp.hq.get(index).cloned().into_iter().collect()
-            };
+                let index = (roll as usize) % pool.len();
+                accessed.push(pool.remove(index));
+            }
             accessed.extend(root_installs_on(state, server));
             accessed
         }
         // Real rules access one card too, but R&D isn't randomized — it's
-        // drawn from a fixed deck order. `.last()` mirrors
-        // `RunnerState::stack`'s "top of deck is the end of the Vec"
-        // convention (see `engine.rs::draw_card_click`'s `stack.pop()`).
+        // drawn from a fixed deck order, plus one more per
+        // `RunState::additional_rd_access`. `.rev()` walks from the end (top
+        // of deck, per `RunnerState::stack`'s "top of deck is the end of the
+        // Vec" convention — see `engine.rs::draw_card_click`'s `stack.pop()`)
+        // backward, so `.take(n)` yields the top `n` cards in top-to-bottom
+        // order.
         ServerId::RnD => {
-            let mut accessed: Vec<CardId> = state.corp.r_and_d.last().cloned().into_iter().collect();
+            let additional = state.active_run.as_ref().map_or(0, |run| run.additional_rd_access);
+            let take = (1 + additional as usize).min(state.corp.r_and_d.len());
+            let mut accessed: Vec<CardId> = state.corp.r_and_d.iter().rev().take(take).cloned().collect();
             accessed.extend(root_installs_on(state, server));
             accessed
         }
@@ -197,11 +205,55 @@ fn present_card_for_access(
 /// `Trigger::OnAccessed` effects (`ability::process_card_triggers`), which
 /// can themselves error; an empty zone or a card with no matching trigger
 /// still always succeeds.
+/// If `server` has a pending `Effect::SetAccessReplacement` parked in
+/// `state.active_run`'s `access_replacement`, consumes it (clearing the
+/// field so it can't be reused on a later access) and evaluates its
+/// `Effect` in place of normal access, then concludes the run — mirroring
+/// `access_server`'s empty-zone shortcut (`active_run = None`, no
+/// `AccessPhase` presented). Returns `Some` with the accumulated events
+/// (the replacement effect's own events, then `GameEvent::AccessReplaced`)
+/// if a replacement fired; `None` (nothing consumed — proceed with normal
+/// access) if there's no active run, no pending replacement, or the
+/// pending replacement targets a different server.
+///
+/// Reads/compares under a short-lived `&` borrow first (extracting only a
+/// `bool`), then `Option::take()`s the field under a fresh short-lived
+/// `&mut` borrow (extracting and clearing it in one step) — both borrows
+/// end before `ability::evaluate_effect` needs its own `&mut GameState`, so
+/// there's no simultaneous-borrow conflict.
+fn try_replace_access(state: &mut GameState, server: ServerId) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let matches = state
+        .active_run
+        .as_ref()
+        .and_then(|run| run.access_replacement.as_ref())
+        .is_some_and(|(replaced_server, _)| *replaced_server == server);
+    if !matches {
+        return Ok(None);
+    }
+
+    let (_, effect) = state
+        .active_run
+        .as_mut()
+        .expect("just confirmed active_run is Some above")
+        .access_replacement
+        .take()
+        .expect("just confirmed access_replacement is Some above");
+
+    let mut events = ability::evaluate_effect(state, &effect, None)?;
+    state.active_run = None;
+    events.push(GameEvent::AccessReplaced { server });
+    Ok(Some(events))
+}
+
 pub fn access_server(
     state: &mut GameState,
     server: ServerId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    if let Some(events) = try_replace_access(state, server)? {
+        return Ok(events);
+    }
+
     let accessed = compute_accessed_cards(state, server);
     if accessed.is_empty() {
         state.active_run = None;
@@ -671,7 +723,7 @@ mod tests {
     /// A run against `server` already in `RunPhase::Success`, ready for
     /// `access_server` to park in `AccessingCard`.
     fn run_in_success(server: ServerId) -> RunState {
-        RunState { bad_publicity_credits: 0, server, phase: RunPhase::Success, ice: Vec::new(), position: 0, access_state: None , jack_out_permitted: true}
+        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, server, phase: RunPhase::Success, ice: Vec::new(), position: 0, access_state: None , jack_out_permitted: true}
     }
 
     fn game_state(
@@ -806,6 +858,166 @@ mod tests {
                 server: ServerId::RnD,
             }]
         );
+    }
+
+    #[test]
+    fn accessing_rnd_with_additional_access_yields_top_two_cards_in_order() {
+        let mut state = game_state(
+            Vec::new(),
+            vec![CardId("bottom".to_string()), CardId("middle".to_string()), CardId("top".to_string())],
+            Vec::new(),
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(RunState { additional_rd_access: 1, ..run_in_success(ServerId::RnD) });
+
+        access_server(&mut state, ServerId::RnD, &registry()).unwrap();
+
+        let access_state = state.active_run.unwrap().access_state.unwrap();
+        assert_eq!(
+            access_state.phase,
+            AccessPhase::SelectNextCard {
+                selectable_cards: vec![CardId("top".to_string()), CardId("middle".to_string())]
+            }
+        );
+    }
+
+    #[test]
+    fn accessing_hq_with_additional_access_yields_two_distinct_cards() {
+        let hq = vec![
+            CardId("card_0".to_string()),
+            CardId("card_1".to_string()),
+            CardId("card_2".to_string()),
+            CardId("card_3".to_string()),
+            CardId("card_4".to_string()),
+        ];
+        let mut state = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
+        state.active_run = Some(RunState { additional_hq_access: 1, ..run_in_success(ServerId::Hq) });
+
+        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+
+        let access_state = state.active_run.unwrap().access_state.unwrap();
+        let selectable = match access_state.phase {
+            AccessPhase::SelectNextCard { selectable_cards } => selectable_cards,
+            other => panic!("expected SelectNextCard, got {other:?}"),
+        };
+        assert_eq!(selectable.len(), 2);
+        assert_eq!(selectable.iter().collect::<HashSet<_>>().len(), 2, "cards must be distinct");
+    }
+
+    #[test]
+    fn add_additional_access_stacks_to_three_total_cards() {
+        let hq = vec![
+            CardId("card_0".to_string()),
+            CardId("card_1".to_string()),
+            CardId("card_2".to_string()),
+            CardId("card_3".to_string()),
+            CardId("card_4".to_string()),
+        ];
+        let mut state = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
+        state.active_run = Some(RunState { additional_hq_access: 2, ..run_in_success(ServerId::Hq) });
+
+        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+
+        let access_state = state.active_run.unwrap().access_state.unwrap();
+        let selectable = match access_state.phase {
+            AccessPhase::SelectNextCard { selectable_cards } => selectable_cards,
+            other => panic!("expected SelectNextCard, got {other:?}"),
+        };
+        assert_eq!(selectable.len(), 3);
+        assert_eq!(selectable.iter().collect::<HashSet<_>>().len(), 3, "cards must be distinct");
+    }
+
+    #[test]
+    fn accessing_hq_with_more_additional_access_than_available_caps_at_hq_size() {
+        let hq = vec![CardId("card_0".to_string()), CardId("card_1".to_string())];
+        let mut state = game_state(hq, Vec::new(), Vec::new(), Vec::new(), 42);
+        state.active_run = Some(RunState { additional_hq_access: 4, ..run_in_success(ServerId::Hq) });
+
+        access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+
+        let access_state = state.active_run.unwrap().access_state.unwrap();
+        let selectable = match access_state.phase {
+            AccessPhase::SelectNextCard { selectable_cards } => selectable_cards,
+            other => panic!("expected SelectNextCard, got {other:?}"),
+        };
+        assert_eq!(selectable.len(), 2);
+        assert_eq!(selectable.iter().collect::<HashSet<_>>().len(), 2, "cards must be distinct");
+    }
+
+    #[test]
+    fn accessing_rnd_with_more_additional_access_than_available_caps_at_rnd_size() {
+        let mut state = game_state(
+            Vec::new(),
+            vec![CardId("bottom".to_string()), CardId("top".to_string())],
+            Vec::new(),
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(RunState { additional_rd_access: 4, ..run_in_success(ServerId::RnD) });
+
+        access_server(&mut state, ServerId::RnD, &registry()).unwrap();
+
+        let access_state = state.active_run.unwrap().access_state.unwrap();
+        assert_eq!(
+            access_state.phase,
+            AccessPhase::SelectNextCard {
+                selectable_cards: vec![CardId("top".to_string()), CardId("bottom".to_string())]
+            }
+        );
+    }
+
+    #[test]
+    fn access_replacement_skips_normal_access_and_fires_its_effect() {
+        let mut state = game_state(
+            vec![CardId("hedge_fund".to_string())],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(RunState {
+            access_replacement: Some((ServerId::Hq, Effect::GainCredits(Side::Runner, 8))),
+            ..run_in_success(ServerId::Hq)
+        });
+
+        let events = access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CreditsGained { side: Side::Runner, amount: 8 },
+                GameEvent::AccessReplaced { server: ServerId::Hq },
+            ]
+        );
+        assert_eq!(state.runner.resources.credits, Credits(8));
+        assert!(state.active_run.is_none());
+    }
+
+    #[test]
+    fn access_replacement_for_a_different_server_does_not_fire() {
+        let mut state = game_state(
+            vec![CardId("hedge_fund".to_string())],
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            0,
+        );
+        state.active_run = Some(RunState {
+            access_replacement: Some((ServerId::RnD, Effect::GainCredits(Side::Runner, 8))),
+            ..run_in_success(ServerId::Hq)
+        });
+
+        let events = access_server(&mut state, ServerId::Hq, &registry()).unwrap();
+
+        // Normal HQ access proceeded — the replacement (parked for RnD)
+        // never fired.
+        assert_eq!(
+            events,
+            vec![GameEvent::CardAccessed { card: CardId("hedge_fund".to_string()), server: ServerId::Hq }]
+        );
+        assert_eq!(state.runner.resources.credits, Credits(0));
+        assert!(state.active_run.is_some());
     }
 
     #[test]

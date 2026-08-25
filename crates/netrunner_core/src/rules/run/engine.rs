@@ -261,7 +261,7 @@ mod tests {
         position: usize,
         jack_out_permitted: bool,
     ) -> RunState {
-        RunState { bad_publicity_credits: 0,
+        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase,
             ice,

@@ -106,6 +106,25 @@ pub enum Effect {
     /// eventually evaluates `on_success`, if the trace succeeds. `Box`ed
     /// since this is the first `Effect` variant that nests another `Effect`.
     Trace { base: u32, on_success: Box<Effect> },
+    /// Grants `count` additional cards accessed from `server` on top of the
+    /// normal single-card access, for the remainder of the current run —
+    /// e.g. a Runner program's "access 1 additional card from HQ" ability.
+    /// Requires an active run (`RulesError::NoActiveRun` otherwise);
+    /// silently no-ops for `ServerId::Archives`/`ServerId::Remote(_)`,
+    /// which already access every card/every root install respectively and
+    /// have no "additional count" field to increment — see
+    /// `RunState::additional_hq_access`/`additional_rd_access`, which only
+    /// exist for the two central servers whose access is naturally capped
+    /// at one card.
+    AddAdditionalAccess { server: ServerId, count: u32 },
+    /// Replaces this run's normal access of `server` with `effect` instead
+    /// — e.g. Account Siphon's "gain 8 credits instead of accessing HQ".
+    /// Consumed (and the run concluded) the moment `run::access_server` is
+    /// next called against `server`; see `run::access::try_replace_access`.
+    /// Requires an active run (`RulesError::NoActiveRun` otherwise).
+    /// `Box`ed for the same reason as `Trace::on_success` — the first two
+    /// other variants that nest another `Effect`.
+    SetAccessReplacement { server: ServerId, effect: Box<Effect> },
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -183,5 +202,27 @@ mod tests {
         let trace_json = serde_json::to_string(&trace).unwrap();
         assert_eq!(trace_json, r#"{"Trace":{"base":3,"on_success":{"GiveTags":1}}}"#);
         assert_eq!(serde_json::from_str::<Effect>(&trace_json).unwrap(), trace);
+    }
+
+    #[test]
+    fn add_additional_access_round_trips_through_json() {
+        let effect = Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 };
+        let json = serde_json::to_string(&effect).unwrap();
+        assert_eq!(json, r#"{"AddAdditionalAccess":{"server":"Hq","count":1}}"#);
+        assert_eq!(serde_json::from_str::<Effect>(&json).unwrap(), effect);
+    }
+
+    #[test]
+    fn set_access_replacement_round_trips_through_json() {
+        let effect = Effect::SetAccessReplacement {
+            server: ServerId::Hq,
+            effect: Box::new(Effect::GainCredits(Side::Runner, 8)),
+        };
+        let json = serde_json::to_string(&effect).unwrap();
+        assert_eq!(
+            json,
+            r#"{"SetAccessReplacement":{"server":"Hq","effect":{"GainCredits":["Runner",8]}}}"#
+        );
+        assert_eq!(serde_json::from_str::<Effect>(&json).unwrap(), effect);
     }
 }

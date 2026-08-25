@@ -221,7 +221,7 @@ mod tests {
     }
 
     fn ice_with_trace_pending_resume(remaining_effect: Effect, on_success: Effect) -> RunState {
-        RunState { bad_publicity_credits: 0,
+        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {

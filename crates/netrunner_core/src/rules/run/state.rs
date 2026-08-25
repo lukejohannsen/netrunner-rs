@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardId, Cost, IceType, SubroutineDef};
+use crate::dsl::{CardId, Cost, Effect, IceType, SubroutineDef};
 
 /// Which Corp zone/server a run targets. Central servers are singletons;
 /// Remote servers are numbered since multiple can exist simultaneously.
@@ -175,4 +175,23 @@ pub struct RunState {
     /// `RunState` is dropped/replaced (every run-termination site already
     /// clears `GameState::active_run`); no separate cleanup is needed.
     pub bad_publicity_credits: u32,
+    /// Extra R&D cards a successful run accesses beyond the top card —
+    /// e.g. a Runner program's "access 1 additional card from R&D" ability
+    /// (`Effect::AddAdditionalAccess`). Read (not decremented) by
+    /// `run::access::compute_accessed_cards`; naturally discarded for free
+    /// when this `RunState` is dropped/replaced, same lifecycle as
+    /// `bad_publicity_credits`.
+    pub additional_rd_access: u32,
+    /// Extra HQ cards, mirroring `additional_rd_access`.
+    pub additional_hq_access: u32,
+    /// A pending "replace this server's normal access with `Effect`
+    /// instead" grant (`Effect::SetAccessReplacement`), e.g. Account
+    /// Siphon's "gain 8 credits instead of accessing HQ". Consumed the
+    /// moment `run::access_server` is next called against the matching
+    /// `ServerId` — see `run::access::try_replace_access`. `None` is the
+    /// overwhelmingly common case. If set twice for the same server before
+    /// being consumed, the second call overwrites the first (last write
+    /// wins) — no error, since only ever one replacement can matter per
+    /// access and this can only occur from malformed card authoring.
+    pub access_replacement: Option<(ServerId, Effect)>,
 }

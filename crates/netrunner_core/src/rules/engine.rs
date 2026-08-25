@@ -257,7 +257,7 @@ fn initiate_run(
         .map(|installed| build_run_ice(installed, registry))
         .collect();
 
-    next.active_run = Some(RunState { access_state: None,
+    next.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, access_state: None,
         bad_publicity_credits: next.corp.bad_publicity,
         server,
         phase: RunPhase::Initiation,
@@ -1274,7 +1274,7 @@ mod tests {
         }];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, false)],
@@ -1316,7 +1316,7 @@ mod tests {
         ];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("outer_ice", 0, 1, false), test_ice("inner_ice", 0, 1, false)],
@@ -1341,7 +1341,7 @@ mod tests {
         assert_eq!(next.runner.resources.clicks, Clicks(2));
         assert_eq!(
             next.active_run,
-            Some(RunState { bad_publicity_credits: 0, access_state: None,
+            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
                 server: ServerId::Hq,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -1479,7 +1479,7 @@ mod tests {
     #[test]
     fn runner_initiate_run_with_run_already_active_returns_run_already_in_progress() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -1504,7 +1504,7 @@ mod tests {
     #[test]
     fn runner_jack_out_ends_run_clears_active_run_no_click_cost() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -1584,7 +1584,7 @@ mod tests {
         // unlike `RunPhase::Success` (legal there — the "approach server"
         // jack-out window; see `runner_jack_out_succeeds_on_ice_less_server_before_access`).
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::AccessingCard,
             ice: Vec::new(),
@@ -1601,7 +1601,7 @@ mod tests {
     #[test]
     fn runner_can_initiate_run_again_after_jacking_out() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -1619,7 +1619,7 @@ mod tests {
 
         assert_eq!(
             after_initiate.active_run,
-            Some(RunState { bad_publicity_credits: 0, access_state: None,
+            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -1635,7 +1635,7 @@ mod tests {
     #[test]
     fn runner_complete_run_clears_active_run_after_success() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -1665,7 +1665,7 @@ mod tests {
     #[test]
     fn runner_complete_run_before_success_returns_run_not_concluded() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -1704,7 +1704,7 @@ mod tests {
     #[test]
     fn runner_can_initiate_run_again_after_completing_previous_run() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -1726,7 +1726,7 @@ mod tests {
 
         assert_eq!(
             after_initiate.active_run,
-            Some(RunState { bad_publicity_credits: 0, access_state: None,
+            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
                 ice: Vec::new(),
@@ -1743,7 +1743,7 @@ mod tests {
     fn runner_complete_run_against_hq_parks_the_run_awaiting_an_access_choice() {
         let mut state = runner_state(3, 5, 3);
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
@@ -1778,7 +1778,7 @@ mod tests {
         assert_eq!(next.paid_ability_window.as_ref().unwrap().active_priority, Side::Runner);
         assert_eq!(
             next.active_run,
-            Some(RunState { bad_publicity_credits: 0,
+            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
                 access_state: Some(run::AccessState {
                     server: ServerId::Hq,
                     unaccessed_cards: Vec::new(),
@@ -1802,7 +1802,7 @@ mod tests {
     #[test]
     fn runner_complete_run_against_empty_hq_completes_immediately() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Success,
@@ -1847,7 +1847,7 @@ mod tests {
     #[test]
     fn runner_continue_run_steps_through_phases_with_no_click_cost() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::Initiation,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -1919,7 +1919,7 @@ mod tests {
     #[test]
     fn runner_continue_run_with_subroutines_pending_propagates_error() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -2436,7 +2436,7 @@ mod tests {
     fn runner_break_subroutine_decrements_pending_on_current_ice() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 2, true)],
@@ -2496,7 +2496,7 @@ mod tests {
     fn runner_break_subroutine_with_index_out_of_range_returns_invalid_subroutine_index() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -2515,7 +2515,7 @@ mod tests {
     fn runner_break_subroutine_outside_encounter_ice_returns_not_in_encounter() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -2637,7 +2637,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -2682,7 +2682,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -2764,7 +2764,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 2, 1, true)],
@@ -2808,7 +2808,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 1)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 3, 1, true)],
@@ -2855,7 +2855,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
@@ -2891,7 +2891,7 @@ mod tests {
             let mut state = runner_state(3, 0, 0);
             state.runner.resources.credits = Credits(5);
             state.runner.rig = vec![installed_runner_card("corroder", 2)];
-            state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+            state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
                 server: ServerId::Hq,
                 phase: RunPhase::EncounterIce,
                 ice: vec![test_ice_of_type("some_ice", 2, 1, true, wrong_type)],
@@ -2936,7 +2936,7 @@ mod tests {
             let mut state = runner_state(3, 0, 0);
             state.runner.resources.credits = Credits(5);
             state.runner.rig = vec![installed_runner_card("mimic", 2)];
-            state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+            state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
                 server: ServerId::Hq,
                 phase: RunPhase::EncounterIce,
                 ice: vec![test_ice_of_type("some_ice", 2, 1, true, ice_type)],
@@ -2969,7 +2969,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -3010,7 +3010,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -3072,7 +3072,7 @@ mod tests {
         }];
         let mut state = runner_state(3, 0, 0);
         state.corp.installed = installed;
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 0, false)],
@@ -3101,7 +3101,7 @@ mod tests {
     #[test]
     fn jack_out_during_an_open_window_clears_the_window() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             // Second ICE's approach — jack_out_permitted is true because
@@ -3161,7 +3161,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(0);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
@@ -3559,7 +3559,7 @@ mod tests {
     /// `PendingChoice`/`PendingInteractiveTrigger` decision — used by the
     /// access-time paid-ability-window tests below.
     fn run_accessing(server: ServerId, phase: run::AccessPhase) -> RunState {
-        RunState { bad_publicity_credits: 0,
+        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server,
             phase: RunPhase::AccessingCard,
             ice: Vec::new(),
@@ -3817,7 +3817,7 @@ mod tests {
         let card_b = CardId("card_b".to_string());
         let mut state = runner_state(3, 0, 0);
         state.corp.archives = vec![card_a.clone(), card_b.clone()];
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             server: ServerId::Archives,
             phase: RunPhase::Success,
             ice: Vec::new(),
@@ -3904,7 +3904,7 @@ mod tests {
         // activation below only succeeds because the first activation's
         // encounter-duration boost is still applied.
         state.runner.rig = vec![installed_runner_card("corroder", 1)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
@@ -3976,7 +3976,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("mimic", 2)];
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::EncounterIce,

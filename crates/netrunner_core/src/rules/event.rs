@@ -59,4 +59,7 @@ pub enum GameEvent {
     BadPublicityRemoved { amount: u32 },
     HandKept { side: Side },
     MulliganTaken { side: Side },
+    AdditionalAccessGranted { server: ServerId, count: u32 },
+    AccessReplacementSet { server: ServerId },
+    AccessReplaced { server: ServerId },
 }

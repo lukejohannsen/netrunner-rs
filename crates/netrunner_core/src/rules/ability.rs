@@ -5,7 +5,7 @@ use crate::dsl::{
 use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
-use crate::rules::run::{self, RunPhase, SubroutineStatus};
+use crate::rules::run::{self, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{Credits, GamePhase, GameState, Side, TraceResume, TraceState};
 
 /// Applies a single, already-resolved `Effect` to `state` in place.
@@ -215,6 +215,24 @@ pub fn evaluate_effect(
                 resume: TraceResume::None,
             });
             Ok(vec![GameEvent::TraceInitiated { base: *base, initiating_card: acting_card.cloned() }])
+        }
+
+        Effect::AddAdditionalAccess { server, count } => {
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            match server {
+                ServerId::Hq => run.additional_hq_access = run.additional_hq_access.saturating_add(*count),
+                ServerId::RnD => run.additional_rd_access = run.additional_rd_access.saturating_add(*count),
+                // No per-count field exists for these — see the variant's
+                // doc comment. Deliberate no-op.
+                ServerId::Archives | ServerId::Remote(_) => {}
+            }
+            Ok(vec![GameEvent::AdditionalAccessGranted { server: *server, count: *count }])
+        }
+
+        Effect::SetAccessReplacement { server, effect } => {
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            run.access_replacement = Some((*server, (**effect).clone()));
+            Ok(vec![GameEvent::AccessReplacementSet { server: *server }])
         }
     }
 }
@@ -572,7 +590,7 @@ mod tests {
     #[test]
     fn end_the_run_clears_active_run_and_emits_event() {
         let mut state = game_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         let events = evaluate_effect(&mut state, &Effect::EndTheRun, None).unwrap();
 
@@ -584,6 +602,114 @@ mod tests {
     fn end_the_run_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun, None), Err(RulesError::NoActiveRun));
+    }
+
+    fn active_run_state() -> RunState {
+        RunState {
+            additional_rd_access: 0,
+            additional_hq_access: 0,
+            access_replacement: None,
+            bad_publicity_credits: 0,
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RP::ApproachIce,
+            ice: Vec::new(),
+            position: 0,
+            jack_out_permitted: true,
+        }
+    }
+
+    #[test]
+    fn add_additional_access_increments_the_matching_field() {
+        let mut state = game_state();
+        state.active_run = Some(active_run_state());
+
+        let events =
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None)
+                .unwrap();
+        assert_eq!(state.active_run.as_ref().unwrap().additional_hq_access, 1);
+        assert_eq!(events, vec![GameEvent::AdditionalAccessGranted { server: ServerId::Hq, count: 1 }]);
+
+        let events =
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::RnD, count: 2 }, None)
+                .unwrap();
+        assert_eq!(state.active_run.as_ref().unwrap().additional_rd_access, 2);
+        assert_eq!(events, vec![GameEvent::AdditionalAccessGranted { server: ServerId::RnD, count: 2 }]);
+    }
+
+    #[test]
+    fn add_additional_access_stacks_additively() {
+        let mut state = game_state();
+        state.active_run = Some(active_run_state());
+
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None).unwrap();
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None).unwrap();
+
+        assert_eq!(state.active_run.as_ref().unwrap().additional_hq_access, 2);
+    }
+
+    #[test]
+    fn add_additional_access_no_ops_for_archives_and_remote() {
+        let mut state = game_state();
+        state.active_run = Some(active_run_state());
+
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Archives, count: 3 }, None)
+            .unwrap();
+        evaluate_effect(
+            &mut state,
+            &Effect::AddAdditionalAccess { server: ServerId::Remote(0), count: 3 },
+            None,
+        )
+        .unwrap();
+
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!(run.additional_hq_access, 0);
+        assert_eq!(run.additional_rd_access, 0);
+    }
+
+    #[test]
+    fn add_additional_access_without_an_active_run_errors() {
+        let mut state = game_state();
+        assert_eq!(
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None),
+            Err(RulesError::NoActiveRun)
+        );
+    }
+
+    #[test]
+    fn set_access_replacement_stores_the_pending_effect() {
+        let mut state = game_state();
+        state.active_run = Some(active_run_state());
+        let replacement = Effect::GainCredits(Side::Runner, 8);
+
+        let events = evaluate_effect(
+            &mut state,
+            &Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(replacement.clone()) },
+            None,
+        )
+        .unwrap();
+
+        assert_eq!(
+            state.active_run.as_ref().unwrap().access_replacement,
+            Some((ServerId::Hq, replacement))
+        );
+        assert_eq!(events, vec![GameEvent::AccessReplacementSet { server: ServerId::Hq }]);
+    }
+
+    #[test]
+    fn set_access_replacement_without_an_active_run_errors() {
+        let mut state = game_state();
+        assert_eq!(
+            evaluate_effect(
+                &mut state,
+                &Effect::SetAccessReplacement {
+                    server: ServerId::Hq,
+                    effect: Box::new(Effect::GainCredits(Side::Runner, 8)),
+                },
+                None,
+            ),
+            Err(RulesError::NoActiveRun)
+        );
     }
 
     #[test]
@@ -668,7 +794,7 @@ mod tests {
     #[test]
     fn break_subroutine_breaks_the_targeted_pending_subroutine() {
         let mut state = game_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 2, true)],
@@ -689,7 +815,7 @@ mod tests {
     #[test]
     fn break_subroutine_out_of_range_index_errors() {
         let mut state = game_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
@@ -708,7 +834,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 1, true);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         state.active_run =
-            Some(RunState { bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 , jack_out_permitted: true});
+            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::EncounterIce, ice: vec![ice], position: 0 , jack_out_permitted: true});
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
@@ -729,7 +855,7 @@ mod tests {
     fn break_subroutine_outside_encounter_ice_errors() {
         let mut state = game_state();
         state.active_run =
-            Some(RunState { bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
+            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None),
@@ -743,7 +869,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].definition.effect = Effect::GiveTags(2);
         ice.subroutines[1].definition.effect = Effect::GainCredits(Side::Corp, 3);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -784,7 +910,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].definition.effect = Effect::EndTheRun;
         ice.subroutines[1].definition.effect = Effect::GiveTags(5);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -814,7 +940,7 @@ mod tests {
         let mut ice = test_ice("ice_wall", 0, 2, true);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         ice.subroutines[1].definition.effect = Effect::GiveTags(1);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![ice],
@@ -832,7 +958,7 @@ mod tests {
     #[test]
     fn modify_strength_updates_current_strength_and_emits_event() {
         let mut state = game_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
             ice: vec![test_ice("ice_wall", 3, 0, true)],
@@ -856,7 +982,7 @@ mod tests {
     fn modify_strength_outside_encounter_ice_errors() {
         let mut state = game_state();
         state.active_run =
-            Some(RunState { bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
+            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None, server: ServerId::Hq, phase: RP::ApproachIce, ice: Vec::new(), position: 0 , jack_out_permitted: true});
 
         assert_eq!(
             evaluate_effect(&mut state, &Effect::ModifyStrength(2), None),
@@ -1039,7 +1165,7 @@ mod tests {
     }
 
     fn run_with_bad_publicity_credits(amount: u32) -> RunState {
-        RunState {
+        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None,
             bad_publicity_credits: amount,
             access_state: None,
             server: ServerId::Hq,
@@ -1325,7 +1451,7 @@ mod tests {
     fn ice_encounter_state(rig: Vec<InstalledRunnerCard>, ice_strength: i32, subroutine_count: usize) -> GameState {
         let mut state = game_state();
         state.runner.rig = rig;
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
@@ -1398,7 +1524,7 @@ mod tests {
     #[test]
     fn break_subroutines_outside_encounter_ice_errors_not_in_encounter() {
         let mut state = game_state();
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RP::ApproachIce,
@@ -1505,7 +1631,7 @@ mod tests {
     ) -> GameState {
         let mut state = game_state();
         state.runner.rig = rig;
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,
@@ -1620,7 +1746,7 @@ mod tests {
         ice.subroutines[0].definition.effect =
             Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun) };
         ice.subroutines[1].definition.effect = Effect::GiveTags(5);
-        state.active_run = Some(RunState { bad_publicity_credits: 0,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
             access_state: None,
             server: ServerId::Hq,
             phase: RP::EncounterIce,

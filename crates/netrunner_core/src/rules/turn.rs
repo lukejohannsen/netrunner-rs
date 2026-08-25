@@ -375,7 +375,7 @@ mod tests {
     #[test]
     fn ending_turn_while_a_run_is_active_errors() {
         let mut state = game_state(Side::Runner, 0, 5, 0, 2);
-        state.active_run = Some(RunState { bad_publicity_credits: 0, access_state: None,
+        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
             server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: Vec::new(),
