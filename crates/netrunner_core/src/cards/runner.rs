@@ -104,8 +104,37 @@ fn gordian_blade() -> Card {
     pump_and_break("gordian_blade", "Gordian Blade", IceType::CodeGate)
 }
 
+/// Cleaver — Fracter: pump 1 strength for 1c, break up to 2 Barrier
+/// subroutines for 2c. Unlike `corroder`/`gordian_blade`'s 1-for-1 shape,
+/// its break ability is priced and counted differently, so it's built
+/// directly rather than through `pump_and_break`.
+fn cleaver() -> Card {
+    let mut card = base_card("cleaver", "Cleaver", Side::Runner, CardType::Program, 3);
+    card.strength = Some(3);
+    card.abilities = vec![
+        AbilityDef {
+            trigger: Trigger::Paid,
+            cost: Some(Cost::Credits(1)),
+            requirement: None,
+            effect: Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+        },
+        AbilityDef {
+            trigger: Trigger::Paid,
+            cost: Some(Cost::Credits(2)),
+            requirement: None,
+            effect: Effect::BreakSubroutines {
+                count: SubroutineBreakCount::Fixed(2),
+                restrict_to: Some(IceType::Barrier),
+            },
+        },
+    ];
+    card
+}
+
 pub fn register_runner_cards(registry: &mut CardRegistry) {
-    for card in [sure_gamble(), diesel(), the_makers_eye(), account_siphon(), corroder(), gordian_blade()] {
+    for card in
+        [sure_gamble(), diesel(), the_makers_eye(), account_siphon(), corroder(), gordian_blade(), cleaver()]
+    {
         registry.insert(card);
     }
 }

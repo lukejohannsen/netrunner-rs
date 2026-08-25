@@ -1,6 +1,7 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, Cost, Trigger};
+use crate::dsl::{CardId, Cost};
 use crate::rules::ability;
+use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessPhase, AccessState, RunPhase, ServerId};
@@ -101,7 +102,11 @@ fn enter_pending_choice(
     server: ServerId,
     card_id: &CardId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let mut events = ability::process_card_triggers(state, registry, card_id, Trigger::OnAccessed)?;
+    // Dispatched from the `CardAccessed { card, server }` shape directly —
+    // this function doesn't itself emit `CardAccessed` (see the doc comment
+    // above), only `dispatch_event`'s `OnAccessed` reaction to it.
+    let mut events =
+        dispatcher::dispatch_event(state, registry, &GameEvent::CardAccessed { card: card_id.clone(), server })?;
     if let Some(finish) = finish_if_game_over(state, server, &events) {
         events.extend(finish);
         return Ok(events);
@@ -476,13 +481,11 @@ pub fn resolve_steal(
     state.runner.scored_agendas.push(card_id.clone());
     let agenda_points = registry.get(card_id).and_then(|c| c.agenda_points).unwrap_or(0);
     state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(agenda_points);
-    events.push(GameEvent::AgendaStolen { card: card_id.clone(), agenda_points });
-
+    let stolen_event = GameEvent::AgendaStolen { card: card_id.clone(), agenda_points };
+    events.push(stolen_event.clone());
     // Jinteki: Personal Evolution-style identity reaction to a steal —
     // unconditional dispatch, no per-turn gate.
-    if let Some(identity) = state.corp.identity.clone() {
-        events.extend(ability::process_card_triggers(state, registry, &identity, Trigger::OnAgendaStolen)?);
-    }
+    events.extend(dispatcher::dispatch_event(state, registry, &stolen_event)?);
 
     check_win_conditions(state, registry);
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
@@ -524,8 +527,9 @@ pub fn resolve_trash(
 
     let mut events = ability::pay_cost(state, Side::Runner, &Cost::Credits(cost), Some(card_id))?;
     move_to_archives(state, card_id, pending.server);
-    events.push(GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost });
-    events.extend(ability::process_card_triggers(state, registry, card_id, Trigger::OnTrashedFromAccess)?);
+    let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost };
+    events.push(trashed_event.clone());
+    events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
 
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
@@ -636,7 +640,7 @@ pub fn resolve_decline_to_avoid(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, TriggeredEffect};
+    use crate::dsl::{Card, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, Trigger, TriggeredEffect};
     use crate::rules::run::state::RunState;
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, InstalledCard, MemoryUnits, PlayerResources, RunnerState,

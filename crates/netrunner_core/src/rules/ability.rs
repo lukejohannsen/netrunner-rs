@@ -257,7 +257,10 @@ pub fn evaluate_effect(
 
         Effect::InitiateRun(server) => {
             run::start_run(state, registry, *server)?;
-            Ok(vec![GameEvent::RunInitiated { server: *server }])
+            let run_initiated_event = GameEvent::RunInitiated { server: *server };
+            let mut events = vec![run_initiated_event.clone()];
+            events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &run_initiated_event)?);
+            Ok(events)
         }
     }
 }

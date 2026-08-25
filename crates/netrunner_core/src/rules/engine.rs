@@ -1,7 +1,8 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardSubtype, CardType, Cost, Trigger};
+use crate::dsl::{CardId, CardType, Cost, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
+use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
@@ -174,18 +175,17 @@ fn install_card(
         rezzed: false,
         advancement_tokens: 0,
     });
-    events.push(GameEvent::CardInstalled {
+    let installed_event = GameEvent::CardInstalled {
         side,
         card: card_id,
         server: zone,
-    });
+    };
+    events.push(installed_event.clone());
 
     // Haas-Bioroid: Engineering the Future-style identity reaction — gated
     // by `EffectRequirement::FirstInstallThisTurn` on the identity's own
     // `TriggeredEffect`, so this dispatch is unconditional here.
-    if let Some(identity) = next.corp.identity.clone() {
-        events.extend(ability::process_card_triggers(&mut next, registry, &identity, Trigger::OnInstall)?);
-    }
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
     Ok((next, events))
 }
@@ -255,13 +255,11 @@ fn initiate_run(
     spend_click(&mut next, side)?;
     run::start_run(&mut next, registry, server)?;
 
-    Ok((
-        next,
-        vec![
-            GameEvent::ClickSpent { side },
-            GameEvent::RunInitiated { server },
-        ],
-    ))
+    let run_initiated_event = GameEvent::RunInitiated { server };
+    let mut events = vec![GameEvent::ClickSpent { side }, run_initiated_event.clone()];
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &run_initiated_event)?);
+
+    Ok((next, events))
 }
 
 fn continue_run(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
@@ -269,24 +267,16 @@ fn continue_run(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
+    // Gabriel Santiago-style identity reaction (a run on HQ just succeeded,
+    // gated by `EffectRequirement::FirstSuccessfulHqRunThisTurn` on the
+    // identity's own `TriggeredEffect` — the dispatch itself is
+    // unconditional, the soft-gate inside `process_card_triggers` is what
+    // limits it to once per turn) and any `OnEncounter`/`OnSuccessfulRun`
+    // reactions are dispatched inside `run::advance_run` itself now, so
+    // every caller (this handler, and `paid_ability::close_window`'s
+    // window-mediated auto-continue) gets them uniformly.
     let mut events = run::advance_run(&mut next, RunAction::Continue, registry)?;
     events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
-
-    // Gabriel Santiago-style identity reaction: a run on HQ just succeeded.
-    // Gated by `EffectRequirement::FirstSuccessfulHqRunThisTurn` on the
-    // identity's own `TriggeredEffect`, so this dispatch itself is
-    // unconditional — the soft-gate inside `process_card_triggers` is what
-    // limits it to once per turn.
-    if events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { server: run::ServerId::Hq }))
-        && let Some(identity) = next.runner.identity.clone()
-    {
-        events.extend(ability::process_card_triggers(
-            &mut next,
-            registry,
-            &identity,
-            Trigger::OnSuccessfulRunOnHq,
-        )?);
-    }
 
     Ok((next, events))
 }
@@ -370,8 +360,9 @@ fn play_event(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
-    events.push(GameEvent::EventPlayed { side, card: card_id.clone() });
-    events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnPlay)?);
+    let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
+    events.push(played_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &played_event)?);
 
     Ok((next, events))
 }
@@ -405,25 +396,17 @@ fn play_operation(
     if let Some(requirement) = &card_def.play_requirement {
         ability::check_requirement(&next, requirement)?;
     }
-    let is_transaction = card_def.subtypes.contains(&CardSubtype::Transaction);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
     next.corp.archives.push(card_id.clone());
-    events.push(GameEvent::OperationPlayed { side, card: card_id.clone() });
-    events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnPlay)?);
-
-    // Weyland Consortium: Building a Better World-style identity reaction —
-    // unconditional (no per-turn gate), unlike `OnSuccessfulRunOnHq`/
-    // `OnInstall` above.
-    if is_transaction && let Some(identity) = next.corp.identity.clone() {
-        events.extend(ability::process_card_triggers(
-            &mut next,
-            registry,
-            &identity,
-            Trigger::OnTransactionPlayed,
-        )?);
-    }
+    // `dispatch_event` resolves both `OnPlay` and, for Transaction-subtype
+    // Operations, the Weyland Consortium: Building a Better World-style
+    // identity reaction (unconditional — no per-turn gate, unlike
+    // `OnSuccessfulRunOnHq`/`OnInstall` above) from this one event.
+    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone() };
+    events.push(played_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &played_event)?);
 
     Ok((next, events))
 }
@@ -516,20 +499,18 @@ fn install_program(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
-    let is_virus = card_def.subtypes.contains(&CardSubtype::Virus);
     let cost = discounted_install_cost(&mut next, registry, card_def.cost);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
-    events.push(GameEvent::ProgramInstalled { side, card: card_id, memory_cost });
-
-    // Noise: Hacker Extraordinaire-style identity reaction — unconditional
-    // (no per-turn gate).
-    if is_virus && let Some(identity) = next.runner.identity.clone() {
-        events.extend(ability::process_card_triggers(&mut next, registry, &identity, Trigger::OnVirusInstalled)?);
-    }
+    // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
+    // Programs only, unconditional otherwise — no per-turn gate) resolved by
+    // `dispatch_event` from this one event.
+    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost };
+    events.push(installed_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
     Ok((next, events))
 }
@@ -713,14 +694,13 @@ fn score_agenda(
     next.corp.scored_agendas.push(card_id.clone());
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
 
-    let mut events = vec![GameEvent::ClickSpent { side }, GameEvent::AgendaScored { card: card_id.clone(), agenda_points }];
-    // The agenda's own "on score" text (e.g. Hostile Takeover), then the
-    // Corp identity's reactive ability if one is set (e.g. Jinteki:
-    // Personal Evolution) — unconditional dispatch, no per-turn gate.
-    events.extend(ability::process_card_triggers(&mut next, registry, &card_id, Trigger::OnAgendaScored)?);
-    if let Some(identity) = next.corp.identity.clone() {
-        events.extend(ability::process_card_triggers(&mut next, registry, &identity, Trigger::OnAgendaScored)?);
-    }
+    let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points };
+    let mut events = vec![GameEvent::ClickSpent { side }, scored_event.clone()];
+    // `dispatch_event` fires the agenda's own "on score" text (e.g. Hostile
+    // Takeover), then the Corp identity's reactive ability if one is set
+    // (e.g. Jinteki: Personal Evolution) — unconditional dispatch, no
+    // per-turn gate.
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &scored_event)?);
 
     win::check_win_conditions(&mut next, registry);
 

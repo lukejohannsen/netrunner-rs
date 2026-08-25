@@ -215,6 +215,129 @@ fn run_to_completion_after_playing(
 }
 
 #[test]
+fn pad_campaign_gains_one_credit_at_the_start_of_the_corps_next_turn() {
+    let registry = registry();
+    let mut state = base_state();
+    state.corp.hq = vec![CardId("pad_campaign".to_string())];
+    // A non-empty R&D — an empty one would deck the Corp out the moment
+    // their next turn's mandatory draw is attempted, which is exactly the
+    // turn boundary this test needs to cross to see PAD Campaign fire.
+    state.corp.r_and_d = vec![CardId("filler_card".to_string())];
+    state.corp.resources.credits = Credits(10);
+    state.corp.resources.clicks = Clicks(3);
+
+    let (state, _) = apply_action(
+        &state,
+        &registry,
+        PlayerAction::InstallCard {
+            card_id: CardId("pad_campaign".to_string()),
+            zone: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+        },
+    )
+    .expect("install pad campaign");
+    // Started at 10, paid 2 to install — unrezzed installs stay silent at
+    // start of turn, so this must be rezzed for the trigger to fire below.
+    assert_eq!(state.corp.resources.credits, Credits(8));
+    let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("pad_campaign".to_string()) })
+        .expect("rez pad campaign");
+
+    // Corp's own turn ending doesn't refire their own start-of-turn — only
+    // the Runner's turn ending (advancing back to the Corp) does.
+    let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+    let (state, events) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+
+    assert_eq!(state.corp.resources.credits, Credits(9), "PAD Campaign should gain 1 credit at the start of the Corp's next turn");
+    assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 1 })));
+}
+
+#[test]
+fn snare_deals_three_net_damage_and_a_tag_when_accessed() {
+    let registry = registry();
+    let mut state = base_state();
+    state.phase = GamePhase::Action(Side::Runner);
+    state.runner.resources.clicks = Clicks(4);
+    state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
+    state.corp.installed = vec![crate::rules::InstalledCard {
+        card: CardId("snare".to_string()),
+        server: ServerId::Remote(0),
+        slot: InstallSlot::Root,
+        rezzed: false,
+        advancement_tokens: 0,
+    }];
+
+    let (state, _) =
+        apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open access window");
+    let (state, _) =
+        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes access window");
+    let (state, events) =
+        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes access window, resolving access");
+
+    assert_eq!(state.runner.grip.len(), 2, "3 of the 5 grip cards should have been discarded to net damage");
+    assert_eq!(state.runner.tags, 1);
+    assert!(events.iter().any(|e| matches!(
+        e,
+        crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Net, amount: 3 }
+    )));
+    assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
+}
+
+#[test]
+fn cleaver_pumps_strength_and_breaks_up_to_two_barrier_subroutines() {
+    let registry = registry();
+    let mut state = base_state();
+    state.phase = GamePhase::Action(Side::Runner);
+    state.runner.resources.clicks = Clicks(4);
+    state.runner.resources.credits = Credits(10);
+    state.runner.grip = vec![CardId("cleaver".to_string())];
+    state.corp.installed = vec![crate::rules::InstalledCard {
+        card: CardId("wall_of_static".to_string()),
+        server: ServerId::Hq,
+        slot: InstallSlot::Ice,
+        rezzed: true,
+        advancement_tokens: 0,
+    }];
+
+    let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("cleaver".to_string()), memory_cost: 1 })
+        .expect("install cleaver");
+    assert_eq!(state.runner.resources.credits, Credits(7), "10 - 3 (Cleaver's install cost)");
+
+    let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+    // `ApproachIce` opens a paid-ability window (Runner has priority first,
+    // since it's their turn) — both sides must pass before the run commits
+    // to `EncounterIce`, per `paid_ability`'s priority-passing rules.
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach wall of static");
+    let (state, _) =
+        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
+    let (state, _) =
+        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach window, entering encounter");
+
+    // Pump for 1c (well within Wall of Static's printed strength once
+    // stacked with the break below, though not strictly required here since
+    // Cleaver's base strength already matches it), then break its single
+    // Barrier subroutine (well within Cleaver's up-to-2 cap) for 2c. Each
+    // activation flips window priority to the Corp, who has nothing to
+    // activate and passes back.
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { card_id: CardId("cleaver".to_string()), ability_index: 0 })
+        .expect("pump strength");
+    assert_eq!(state.runner.rig[0].effective_strength(), 4);
+    let (state, _) =
+        apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back to the runner");
+
+    let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { card_id: CardId("cleaver".to_string()), ability_index: 1 })
+        .expect("break subroutines");
+
+    assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::SubroutineBroken { index: 0, .. })));
+    assert_eq!(
+        state.active_run.as_ref().unwrap().ice[0].subroutines[0].status,
+        crate::rules::SubroutineStatus::Broken
+    );
+    assert_eq!(state.runner.resources.credits, Credits(4), "7 - 1 (pump) - 2 (break)");
+}
+
+#[test]
 fn scorched_earth_requires_a_tagged_runner_and_deals_four_meat_damage() {
     let registry = registry();
     let mut state = base_state();

@@ -1,6 +1,6 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, Trigger};
-use crate::rules::ability;
+use crate::dsl::CardId;
+use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::state::{Clicks, GamePhase, GameState, Side};
@@ -187,7 +187,8 @@ pub(crate) fn enter_start_of_turn(
 
     let clicks = clicks_for(next_side);
     next.resources_mut(next_side).clicks = Clicks(clicks);
-    events.push(GameEvent::TurnStarted { side: next_side, clicks });
+    let turn_started_event = GameEvent::TurnStarted { side: next_side, clicks };
+    events.push(turn_started_event.clone());
 
     if next_side == Side::Corp {
         // Top of R&D mirrors `RunnerState::stack`'s convention — drawing
@@ -207,20 +208,9 @@ pub(crate) fn enter_start_of_turn(
     // `Trigger::OnTurnStart` — e.g. PAD Campaign's "gain 1 credit". Only
     // rezzed Corp installs / any Runner rig card (always face-up) get their
     // start-of-turn ability; an unrezzed asset stays silent, same as every
-    // other rez-gated ability in this engine.
-    let start_of_turn_cards: Vec<CardId> = match next_side {
-        Side::Corp => next
-            .corp
-            .installed
-            .iter()
-            .filter(|installed| installed.rezzed)
-            .map(|installed| installed.card.clone())
-            .collect(),
-        Side::Runner => next.runner.rig.iter().map(|card| card.card.clone()).collect(),
-    };
-    for card_id in start_of_turn_cards {
-        events.extend(ability::process_card_triggers(next, registry, &card_id, Trigger::OnTurnStart)?);
-    }
+    // other rez-gated ability in this engine — `dispatch_event` applies this
+    // same scoping from `GameEvent::TurnStarted::side`.
+    events.extend(dispatcher::dispatch_event(next, registry, &turn_started_event)?);
 
     next.phase = GamePhase::Action(next_side);
     Ok(())

@@ -1,6 +1,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{CardId, CardType, Effect, IceType};
 use crate::rules::ability::evaluate_effect;
+use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::action::RunAction;
@@ -133,12 +134,34 @@ pub fn advance_run(
         return Err(RulesError::RunAlreadyConcluded { phase });
     }
 
-    match action {
-        RunAction::JackOut => jack_out(state),
-        RunAction::Continue => continue_run(state),
-        RunAction::ResolveSubroutine(index) => step_subroutine(state, index, true, registry),
-        RunAction::BreakSubroutine(index) => step_subroutine(state, index, false, registry),
+    let mut events = match action {
+        RunAction::JackOut => jack_out(state)?,
+        RunAction::Continue => continue_run(state)?,
+        RunAction::ResolveSubroutine(index) => step_subroutine(state, index, true, registry)?,
+        RunAction::BreakSubroutine(index) => step_subroutine(state, index, false, registry)?,
+    };
+
+    // `IceEncountered`/`RunSucceeded` may have just been emitted above (only
+    // ever from the `Continue` arm) — dispatched here, in the one function
+    // every `Continue` step funnels through (this crate's own
+    // `PlayerAction::ContinueRun` handler, and `paid_ability::close_window`'s
+    // window-mediated auto-continue alike), so `Trigger::OnEncounter`/
+    // `OnSuccessfulRun`/`OnSuccessfulRunOnHq` fire identically regardless of
+    // which path reached this transition. Filtered to exactly these two
+    // variants (not a blanket dispatch of every event returned above) so a
+    // subroutine effect that happens to emit some other dispatch-relevant
+    // event (e.g. `Effect::InitiateRun`'s own `RunInitiated`, which already
+    // dispatches `OnRunStart` itself) is never fired twice.
+    let reactive: Vec<GameEvent> = events
+        .iter()
+        .filter(|event| matches!(event, GameEvent::IceEncountered { .. } | GameEvent::RunSucceeded { .. }))
+        .cloned()
+        .collect();
+    for event in reactive {
+        events.extend(dispatcher::dispatch_event(state, registry, &event)?);
     }
+
+    Ok(events)
 }
 
 /// Resolves `PlayerAction::JackOut`, per its doc comment's four

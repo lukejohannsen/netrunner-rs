@@ -2,6 +2,7 @@ mod ability;
 mod action;
 mod damage;
 mod deck;
+mod dispatcher;
 mod engine;
 mod error;
 mod event;
@@ -19,6 +20,7 @@ pub use ability::{evaluate_effect, pay_cost, process_card_triggers, resolve_unbr
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use damage::apply_damage;
 pub use deck::{validate_deck, Deck};
+pub use dispatcher::dispatch_event;
 pub use engine::apply_action;
 pub use error::RulesError;
 pub use event::GameEvent;
