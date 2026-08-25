@@ -6,7 +6,7 @@ Tracking shipped milestones and future technical engine work for `netrunner_core
 
 ## Shipped Features
 
-* **Phase & Priority State Machines:** Fully integrated `GamePhase` state machine (`StartOfTurn`, `Action`, `Discard`, `GameOver`) and priority-based `PaidAbilityWindow` system.
+* **Phase & Priority State Machines:** Fully integrated `GamePhase` state machine (`StartOfTurn`, `Action`, `Discard`, `GameOver`) and priority-based `PaidAbilityWindow` system, opening at ICE approach/encounter, pre-access, and per-card access decisions (`AccessPhase::PendingChoice`/`PendingInteractiveTrigger`).
 * **ICE Stack & Jack-out Windows:** Dynamic `RunIce` resolution from installed Corp cards and four Netrunner-compliant jack-out legality windows.
 * **Access Phase Plumbing:** Interactive multi-card access selection (`SelectNextCard`), post-access decisions (`StealAgenda`, `TrashAccessedCard`, `PassAccessedCard`), automatic on-access triggers (`OnAccessed`, `OnTrashedFromAccess`), and choice-driven interactive on-access triggers (`AccessPhase::PendingInteractiveTrigger`/`PlayerAction::PayToAvoidAccessTrigger`/`DeclineAccessTrigger`, e.g. Fetal AI's "pay to avoid damage").
 * **Deck-Out & Victory Resolution:** Start-of-turn deck-out checks, agenda point victory detection via `CardRegistry`, and public Heap/Archives tracking.
@@ -22,7 +22,7 @@ Tracking shipped milestones and future technical engine work for `netrunner_core
 
 ### Phase 2: Engine Windows & State Integrity
 - [ ] **Asynchronous Start-of-Turn Windows:** Refactor `enter_start_of_turn` into a yielding state machine for start-of-turn paid ability windows and interactive triggers.
-- [ ] **Expanded Priority Windows:** Expand priority window checkpoints beyond runs (start/end of turn, post-action windows).
+- [ ] **Expanded Priority Windows:** Expand priority window checkpoints beyond runs — start/end of turn, post-action windows. (Run-level windows now cover ICE approach/encounter, pre-access, and per-accessed-card choices/interactive triggers.)
 - [ ] **Dynamic Discard Re-checks:** Dynamically evaluate hand size limit during `GamePhase::Discard` to account for mid-discard draws or hand-size modifications.
 
 ### Phase 3: Network & Presentation Layer

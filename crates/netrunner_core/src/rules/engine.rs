@@ -630,8 +630,14 @@ fn select_card_to_access(
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(Side::Runner))?;
+    // Never actually open when this is legal in practice — a window only
+    // opens at `PendingChoice`/`PendingInteractiveTrigger`, never at
+    // `SelectNextCard` (the only phase this action is legal in) — but kept
+    // for consistency with every other access-resolution action below.
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let events = run::resolve_select_card(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_select_card(&mut next, &card_id, registry)?;
+    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
 
@@ -643,8 +649,10 @@ fn steal_agenda(
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(Side::Runner))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let events = run::resolve_steal(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_steal(&mut next, &card_id, registry)?;
+    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
 
@@ -655,8 +663,10 @@ fn trash_accessed_card(
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(Side::Runner))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let events = run::resolve_trash(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_trash(&mut next, &card_id, registry)?;
+    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
 
@@ -667,8 +677,10 @@ fn pass_accessed_card(
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(Side::Runner))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let events = run::resolve_pass(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_pass(&mut next, &card_id, registry)?;
+    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
 
@@ -679,8 +691,10 @@ fn pay_to_avoid_access_trigger(
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(Side::Runner))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let events = run::resolve_pay_to_avoid(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_pay_to_avoid(&mut next, &card_id, registry)?;
+    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
 
@@ -691,8 +705,10 @@ fn decline_access_trigger(
     card_id: CardId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(Side::Runner))?;
+    paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let events = run::resolve_decline_to_avoid(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_decline_to_avoid(&mut next, &card_id, registry)?;
+    events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
 
@@ -1644,7 +1660,8 @@ mod tests {
 
         // Not an Agenda and not in the (empty) registry, so nothing is
         // stealable/trashable — but the run still waits for
-        // `PassAccessedCard` rather than completing on its own.
+        // `PassAccessedCard` rather than completing on its own. Landing on
+        // `PendingChoice` opens a fresh window for the newly-presented card.
         assert_eq!(
             events,
             vec![
@@ -1654,8 +1671,10 @@ mod tests {
                     card: CardId("hedge_fund".to_string()),
                     server: ServerId::Hq
                 },
+                GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
         );
+        assert_eq!(next.paid_ability_window.as_ref().unwrap().active_priority, Side::Runner);
         assert_eq!(
             next.active_run,
             Some(RunState {
@@ -3159,5 +3178,345 @@ mod tests {
             result,
             Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 0, requested: 1 })
         );
+    }
+
+    /// A `RunState` parked at `RunPhase::AccessingCard` awaiting `card_id`'s
+    /// `PendingChoice`/`PendingInteractiveTrigger` decision — used by the
+    /// access-time paid-ability-window tests below.
+    fn run_accessing(server: ServerId, phase: run::AccessPhase) -> RunState {
+        RunState {
+            server,
+            phase: RunPhase::AccessingCard,
+            ice: Vec::new(),
+            position: 0,
+            access_state: Some(run::AccessState {
+                server,
+                unaccessed_cards: Vec::new(),
+                resolved_cards: Vec::new(),
+                phase,
+            }),
+            jack_out_permitted: true,
+        }
+    }
+
+    fn pending_choice(card_id: &CardId) -> run::AccessPhase {
+        run::AccessPhase::PendingChoice {
+            card_id: card_id.clone(),
+            can_trash: false,
+            trash_cost: None,
+            mandatory_steal: false,
+            steal_cost: None,
+        }
+    }
+
+    fn pending_interactive_trigger(card_id: &CardId) -> run::AccessPhase {
+        run::AccessPhase::PendingInteractiveTrigger { card_id: card_id.clone(), cost: Cost::Credits(2), can_pay: true }
+    }
+
+    #[test]
+    fn runner_activate_ability_succeeds_during_access_time_window_at_pending_choice() {
+        let card_id = CardId("hedge_fund".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.rig = vec![installed_runner_card("investment", 0)];
+        state.active_run = Some(run_accessing(ServerId::Hq, pending_choice(&card_id)));
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "investment",
+            Side::Runner,
+            Trigger::Paid,
+            None,
+            Effect::GainCredits(Side::Runner, 3),
+        ));
+
+        let (next, _events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility {
+                card_id: CardId("investment".to_string()),
+                ability_index: 0,
+            },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.resources.credits, Credits(3));
+        let window = next.paid_ability_window.expect("window should stay open");
+        assert_eq!(window.consecutive_passes, 0, "firing a paid ability resets the pass counter");
+        assert_eq!(window.active_priority, Side::Corp, "priority toggles to the other side");
+    }
+
+    #[test]
+    fn runner_activate_ability_succeeds_during_access_time_window_at_pending_interactive_trigger() {
+        let card_id = CardId("fetal_ai".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.runner.rig = vec![installed_runner_card("investment", 0)];
+        state.active_run = Some(run_accessing(ServerId::Hq, pending_interactive_trigger(&card_id)));
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "investment",
+            Side::Runner,
+            Trigger::Paid,
+            None,
+            Effect::GainCredits(Side::Runner, 3),
+        ));
+
+        let (next, _events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility {
+                card_id: CardId("investment".to_string()),
+                ability_index: 0,
+            },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.resources.credits, Credits(3));
+        let window = next.paid_ability_window.expect("window should stay open");
+        assert_eq!(window.active_priority, Side::Corp);
+    }
+
+    #[test]
+    fn corp_activate_ability_succeeds_during_access_time_window() {
+        let card_id = CardId("hedge_fund".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.corp.installed = vec![InstalledCard {
+            advancement_tokens: 0,
+            card: CardId("pad_campaign".to_string()),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+        }];
+        state.active_run = Some(run_accessing(ServerId::Hq, pending_choice(&card_id)));
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Corp,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card_with_ability(
+            "pad_campaign",
+            Side::Corp,
+            Trigger::Paid,
+            None,
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+
+        let (next, _events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility {
+                card_id: CardId("pad_campaign".to_string()),
+                ability_index: 0,
+            },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.corp.resources.credits, Credits(1));
+        let window = next.paid_ability_window.expect("window should stay open");
+        assert_eq!(window.active_priority, Side::Runner, "priority toggles to the other side");
+    }
+
+    #[test]
+    fn pending_choice_actions_are_blocked_while_an_access_time_window_is_open() {
+        let card_id = CardId("hedge_fund".to_string());
+        let window = PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        };
+
+        for action in [
+            PlayerAction::StealAgenda { card_id: card_id.clone() },
+            PlayerAction::TrashAccessedCard { card_id: card_id.clone() },
+            PlayerAction::PassAccessedCard { card_id: card_id.clone() },
+        ] {
+            let mut state = runner_state(3, 0, 0);
+            state.active_run = Some(run_accessing(ServerId::Hq, pending_choice(&card_id)));
+            state.paid_ability_window = Some(window.clone());
+
+            let result = apply_action(&state, &registry(), action);
+
+            assert_eq!(result, Err(RulesError::BlockedByPaidAbilityWindow { priority: Side::Runner }));
+        }
+    }
+
+    #[test]
+    fn pending_interactive_trigger_actions_are_blocked_while_an_access_time_window_is_open() {
+        let card_id = CardId("fetal_ai".to_string());
+        let window = PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        };
+
+        for action in [
+            PlayerAction::PayToAvoidAccessTrigger { card_id: card_id.clone() },
+            PlayerAction::DeclineAccessTrigger { card_id: card_id.clone() },
+        ] {
+            let mut state = runner_state(3, 0, 0);
+            state.active_run = Some(run_accessing(ServerId::Hq, pending_interactive_trigger(&card_id)));
+            state.paid_ability_window = Some(window.clone());
+
+            let result = apply_action(&state, &registry(), action);
+
+            assert_eq!(result, Err(RulesError::BlockedByPaidAbilityWindow { priority: Side::Runner }));
+        }
+    }
+
+    #[test]
+    fn access_time_window_closes_without_disturbing_a_pending_choice() {
+        let card_id = CardId("hedge_fund".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(run_accessing(ServerId::Hq, pending_choice(&card_id)));
+        // Runner already passed once; Corp's pass here is the second and
+        // should close the window.
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Corp,
+            consecutive_passes: 1,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let (next, events) =
+            apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
+                .expect("pass should succeed");
+
+        assert_eq!(events, vec![GameEvent::PriorityPassed { side: Side::Corp }, GameEvent::PaidAbilityWindowClosed]);
+        assert!(next.paid_ability_window.is_none());
+        assert_eq!(
+            next.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            pending_choice(&card_id),
+            "the pending choice itself is untouched by the window closing"
+        );
+
+        // The Runner can now resolve it normally.
+        let (after_pass, _events) =
+            apply_action(&next, &registry(), PlayerAction::PassAccessedCard { card_id })
+                .expect("passing the accessed card should succeed");
+        assert_eq!(after_pass.active_run, None);
+    }
+
+    #[test]
+    fn access_time_window_closes_without_disturbing_a_pending_interactive_trigger() {
+        let card_id = CardId("fetal_ai".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(run_accessing(ServerId::Hq, pending_interactive_trigger(&card_id)));
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Corp,
+            consecutive_passes: 1,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let (next, _events) =
+            apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
+                .expect("pass should succeed");
+
+        assert!(next.paid_ability_window.is_none());
+        assert_eq!(
+            next.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            pending_interactive_trigger(&card_id)
+        );
+
+        // The Runner can now decline (registry has no matching card, so this
+        // just falls through to the card's normal, empty `PendingChoice`).
+        let (after_decline, _events) =
+            apply_action(&next, &registry(), PlayerAction::DeclineAccessTrigger { card_id })
+                .expect("declining should succeed");
+        assert_eq!(after_decline.active_run.unwrap().phase, RunPhase::AccessingCard);
+    }
+
+    #[test]
+    fn multi_card_access_sequence_opens_a_fresh_window_at_each_card() {
+        let card_a = CardId("card_a".to_string());
+        let card_b = CardId("card_b".to_string());
+        let mut state = runner_state(3, 0, 0);
+        state.corp.archives = vec![card_a.clone(), card_b.clone()];
+        state.active_run = Some(RunState {
+            server: ServerId::Archives,
+            phase: RunPhase::Success,
+            ice: Vec::new(),
+            position: 0,
+            access_state: None,
+            jack_out_permitted: true,
+        });
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("card_a", Side::Corp, CardType::Asset, 0, None));
+        registry.insert(test_card("card_b", Side::Corp, CardType::Asset, 0, None));
+
+        let (state, complete_events) =
+            apply_action(&state, &registry, PlayerAction::CompleteRun).expect("action should succeed");
+        assert_eq!(complete_events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
+        // Two cards land on `SelectNextCard` — not a checkpoint, so no
+        // window opens here.
+        assert_eq!(
+            events,
+            vec![GameEvent::PriorityPassed { side: Side::Corp }, GameEvent::PaidAbilityWindowClosed]
+        );
+        assert!(state.paid_ability_window.is_none());
+
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::SelectCardToAccess { card_id: card_a.clone() })
+                .expect("selecting the first card should succeed");
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CardAccessed { card: card_a.clone(), server: ServerId::Archives },
+                GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
+            ]
+        );
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
+        assert!(state.paid_ability_window.is_none());
+
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card_a.clone() })
+                .expect("passing the first card should succeed");
+        // Presenting the second card opens *another* fresh window.
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::AccessPassed { card: card_a },
+                GameEvent::CardAccessed { card: card_b.clone(), server: ServerId::Archives },
+                GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
+            ]
+        );
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner })
+            .expect("pass should succeed");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("pass should succeed");
+        assert!(state.paid_ability_window.is_none());
+
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: card_b.clone() })
+                .expect("passing the second card should succeed");
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::AccessPassed { card: card_b },
+                GameEvent::RunCompleted { server: ServerId::Archives },
+            ]
+        );
+        assert_eq!(state.active_run, None);
+        assert!(state.paid_ability_window.is_none());
     }
 }

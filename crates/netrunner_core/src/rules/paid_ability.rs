@@ -8,7 +8,7 @@ use crate::cards::CardRegistry;
 use crate::rules::ability;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
-use crate::rules::run::{self, RunAction, RunPhase};
+use crate::rules::run::{self, AccessPhase, RunAction, RunPhase};
 use crate::rules::state::{GamePhase, GameState, PaidAbilityWindow, Side};
 
 /// Opens a PAW: the active-turn side gets priority first (Netrunner/Null
@@ -28,16 +28,28 @@ pub(crate) fn open_window(state: &mut GameState) -> GameEvent {
 }
 
 /// Opens a fresh window if the run just landed on `ApproachIce`/
-/// `EncounterIce`. Called both after a Runner-driven `ContinueRun` and from
-/// `close_window`'s own auto-advance (arriving at the *next* ICE). The
-/// `Success` checkpoint's window is opened explicitly by `CompleteRun`
-/// instead, not automatically here — the Runner should still get to choose
-/// `CompleteRun` vs `JackOut` before a window commits them to accessing.
+/// `EncounterIce`, or on `AccessingCard` with the access sub-state at
+/// `PendingChoice`/`PendingInteractiveTrigger`. Called both after a
+/// Runner-driven `ContinueRun`/access-resolution action and from
+/// `close_window`'s own auto-advance (arriving at the *next* ICE or the
+/// *next* accessed card). The `Success` checkpoint's window is opened
+/// explicitly by `CompleteRun` instead, not automatically here — the Runner
+/// should still get to choose `CompleteRun` vs `JackOut` before a window
+/// commits them to accessing. `AccessPhase::SelectNextCard` is deliberately
+/// *not* a checkpoint either — unlike `PendingChoice`/`PendingInteractiveTrigger`,
+/// which each gate a costed decision (steal/trash/avoidance cost) worth
+/// reacting to, picking resolution order among already-accessed cards risks
+/// nothing.
 pub(crate) fn open_window_if_at_checkpoint(state: &mut GameState) -> Option<GameEvent> {
-    match state.active_run.as_ref().map(|r| r.phase) {
-        Some(RunPhase::ApproachIce) | Some(RunPhase::EncounterIce) => Some(open_window(state)),
-        _ => None,
-    }
+    let is_checkpoint = match state.active_run.as_ref().map(|r| &r.phase) {
+        Some(RunPhase::ApproachIce) | Some(RunPhase::EncounterIce) => true,
+        Some(RunPhase::AccessingCard) => matches!(
+            state.active_run.as_ref().and_then(|r| r.access_state.as_ref()).map(|a| &a.phase),
+            Some(AccessPhase::PendingChoice { .. }) | Some(AccessPhase::PendingInteractiveTrigger { .. })
+        ),
+        _ => false,
+    };
+    is_checkpoint.then(|| open_window(state))
 }
 
 /// Guard for handlers that must be blocked while a window is open. Called
@@ -150,6 +162,11 @@ fn close_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             let mut events = run::access_server(state, server, registry)?;
             if state.active_run.is_none() {
                 events.push(GameEvent::RunCompleted { server });
+            } else {
+                // A card was just presented (or `SelectNextCard` was
+                // reached, in which case this is a no-op) — open a fresh
+                // window for whichever `AccessPhase` it landed on.
+                events.extend(open_window_if_at_checkpoint(state));
             }
             Ok(events)
         }
@@ -399,6 +416,66 @@ mod tests {
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
                 GameEvent::RunSucceeded { server: ServerId::Hq },
             ]
+        );
+    }
+
+    #[test]
+    fn success_window_close_presenting_a_single_card_opens_a_fresh_access_window() {
+        let mut state = base_state();
+        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::Success,
+            ice: Vec::new(),
+            position: 0,
+            access_state: None,
+            jack_out_permitted: true,
+        });
+        open_window(&mut state);
+
+        pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
+        let events = pass_priority(&mut state, &registry(), Side::Corp).expect("second pass should succeed");
+
+        // Landing on `PendingChoice` (a single accessed card) opens a fresh
+        // window for the Runner's steal/trash/pass decision.
+        let window = state.paid_ability_window.expect("a fresh window should open for the presented card");
+        assert_eq!(window.active_priority, Side::Runner);
+        assert_eq!(window.consecutive_passes, 0);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::PriorityPassed { side: Side::Corp },
+                GameEvent::PaidAbilityWindowClosed,
+                GameEvent::CardAccessed { card: CardId("hedge_fund".to_string()), server: ServerId::Hq },
+                GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
+            ]
+        );
+    }
+
+    #[test]
+    fn success_window_close_presenting_select_next_card_does_not_open_a_window() {
+        let mut state = base_state();
+        // Archives access every card in it, so two cards there yields a
+        // `SelectNextCard` choice rather than a single `PendingChoice` —
+        // deliberately not a checkpoint (no cost is at stake in ordering).
+        state.corp.archives = vec![CardId("card_1".to_string()), CardId("card_2".to_string())];
+        state.active_run = Some(RunState {
+            server: ServerId::Archives,
+            phase: RunPhase::Success,
+            ice: Vec::new(),
+            position: 0,
+            access_state: None,
+            jack_out_permitted: true,
+        });
+        open_window(&mut state);
+
+        pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
+        let events = pass_priority(&mut state, &registry(), Side::Corp).expect("second pass should succeed");
+
+        assert!(state.paid_ability_window.is_none(), "SelectNextCard is not a checkpoint");
+        assert_eq!(
+            events,
+            vec![GameEvent::PriorityPassed { side: Side::Corp }, GameEvent::PaidAbilityWindowClosed]
         );
     }
 }

@@ -72,7 +72,7 @@ This section tracks open architectural gaps in `netrunner_core` to address befor
 ### Priority 2: Engine Windows & State Integrity
 
 * **Asynchronous Start-of-Turn Windows:** `turn::enter_start_of_turn` currently runs inline/synchronously. It needs a yielding state machine for start-of-turn paid ability windows and interactive player choices ("gain 1c or draw").
-* **Expanded Paid Ability Windows:** Paid ability windows currently only exist at 3 run checkpoints (`ApproachIce`, `EncounterIce`, `Success`). Expansion is needed for non-run windows (start/end of turn, post-action).
+* **Expanded Paid Ability Windows:** Paid ability windows now exist at run checkpoints `ApproachIce`, `EncounterIce`, `Success`, and `AccessingCard`'s `PendingChoice`/`PendingInteractiveTrigger` sub-phases (`SelectNextCard` intentionally excluded — no resource is at stake there). Remaining gap: non-run windows (start/end of turn, post-action).
 * **Dynamic Hand-Size Discard Re-checks:** `GamePhase::Discard` locks in a count on entry. Needs dynamic re-checking if mid-discard triggers alter hand size or max hand size.
 
 ### Priority 3: Server & Network Layer

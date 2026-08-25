@@ -154,7 +154,12 @@ pub enum PlayerAction {
     /// `AccessState::unaccessed_cards` and presents it via
     /// `AccessPhase::PendingChoice`, ready for `StealAgenda`/
     /// `TrashAccessedCard`/`PassAccessedCard` — see
-    /// `run::access::resolve_select_card`.
+    /// `run::access::resolve_select_card`. Blocked while a Paid Ability
+    /// Window is open (`RulesError::BlockedByPaidAbilityWindow`) — both
+    /// sides must pass priority first via `PassPriority`. Resolving this
+    /// action may itself open a fresh window if it presents a card's
+    /// `PendingChoice`/`PendingInteractiveTrigger` — see
+    /// `rules::paid_ability::open_window_if_at_checkpoint`.
     SelectCardToAccess { card_id: CardId },
     /// Steal the currently pending accessed card. Runner-only. Legal only
     /// while a run is in `RunPhase::AccessingCard` and `card_id` matches
@@ -164,7 +169,12 @@ pub enum PlayerAction {
     /// `steal_cost`, it's paid here (`RulesError::CannotAffordStealCost` if
     /// unaffordable). Moves the card into `RunnerState::scored_agendas`,
     /// checks win conditions, and advances to the next accessed card (or
-    /// finalizes the run) — see `run::access::resolve_steal`.
+    /// finalizes the run) — see `run::access::resolve_steal`. Blocked while
+    /// a Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`)
+    /// — both sides must pass priority first via `PassPriority`. Resolving
+    /// this action may itself open a fresh window if it presents another
+    /// card's `PendingChoice`/`PendingInteractiveTrigger` — see
+    /// `rules::paid_ability::open_window_if_at_checkpoint`.
     StealAgenda { card_id: CardId },
     /// Pay to trash the currently pending accessed card off the table into
     /// `CorpState::archives`. Runner-only. Legal only while a run is in
@@ -172,7 +182,12 @@ pub enum PlayerAction {
     /// that card has a `trash_cost` (`RulesError::NotInAccessPhase`
     /// otherwise); `RulesError::CannotAffordTrashCost` if the cost can't be
     /// paid. Advances to the next accessed card (or finalizes the run) —
-    /// see `run::access::resolve_trash`.
+    /// see `run::access::resolve_trash`. Blocked while a Paid Ability
+    /// Window is open (`RulesError::BlockedByPaidAbilityWindow`) — both
+    /// sides must pass priority first via `PassPriority`. Resolving this
+    /// action may itself open a fresh window if it presents another card's
+    /// `PendingChoice`/`PendingInteractiveTrigger` — see
+    /// `rules::paid_ability::open_window_if_at_checkpoint`.
     TrashAccessedCard { card_id: CardId },
     /// Decline to steal/trash the currently pending accessed card and move
     /// on. Runner-only. Legal only while a run is in `RunPhase::
@@ -180,7 +195,12 @@ pub enum PlayerAction {
     /// (`RulesError::NotInAccessPhase` otherwise); illegal
     /// (`RulesError::MandatoryStealViolation`) if that card is a
     /// mandatory-steal Agenda. Advances to the next accessed card (or
-    /// finalizes the run) — see `run::access::resolve_pass`.
+    /// finalizes the run) — see `run::access::resolve_pass`. Blocked while
+    /// a Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`)
+    /// — both sides must pass priority first via `PassPriority`. Resolving
+    /// this action may itself open a fresh window if it presents another
+    /// card's `PendingChoice`/`PendingInteractiveTrigger` — see
+    /// `rules::paid_ability::open_window_if_at_checkpoint`.
     PassAccessedCard { card_id: CardId },
     /// Pay the pending `AccessPhase::PendingInteractiveTrigger`'s `cost` to
     /// prevent its `effects`. Runner-only. Legal only while a run is in
@@ -189,6 +209,11 @@ pub enum PlayerAction {
     /// `RulesError::CannotAffordAvoidanceCost` if the cost can't be paid.
     /// Transitions straight to that card's normal `AccessPhase::
     /// PendingChoice` afterward — see `run::access::resolve_pay_to_avoid`.
+    /// Blocked while a Paid Ability Window is open
+    /// (`RulesError::BlockedByPaidAbilityWindow`) — both sides must pass
+    /// priority first via `PassPriority`. Resolving this action may itself
+    /// open a fresh window for the card's `PendingChoice` — see
+    /// `rules::paid_ability::open_window_if_at_checkpoint`.
     PayToAvoidAccessTrigger { card_id: CardId },
     /// Decline to pay the pending `AccessPhase::PendingInteractiveTrigger`'s
     /// `cost`, letting its `effects` resolve instead. Runner-only. Legal
@@ -196,7 +221,11 @@ pub enum PlayerAction {
     /// matches the pending interactive trigger (`RulesError::
     /// NotInAccessPhase` otherwise). Transitions to that card's normal
     /// `AccessPhase::PendingChoice` afterward, unless the effects ended the
-    /// game — see `run::access::resolve_decline_to_avoid`.
+    /// game — see `run::access::resolve_decline_to_avoid`. Blocked while a
+    /// Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`)
+    /// — both sides must pass priority first via `PassPriority`. Resolving
+    /// this action may itself open a fresh window for the card's
+    /// `PendingChoice` — see `rules::paid_ability::open_window_if_at_checkpoint`.
     DeclineAccessTrigger { card_id: CardId },
     /// Pass priority in the currently open Paid Ability Window. Carries an
     /// explicit `side` — unlike `EndTurn`/`DiscardCard`/`ActivateAbility`,
@@ -205,7 +234,10 @@ pub enum PlayerAction {
     /// priority it is. Errors with `RulesError::NotInPaidAbilityWindow` if no
     /// window is open, or `RulesError::NotYourPriority` if it isn't `side`'s
     /// priority. Once both sides pass consecutively, the window closes and
-    /// the engine auto-advances whatever run step was paused — see
+    /// the engine auto-advances whatever run step was paused — a window can
+    /// also open at an access-time checkpoint (`AccessPhase::PendingChoice`/
+    /// `PendingInteractiveTrigger`, not `SelectNextCard`) as well as the run
+    /// checkpoints described above — see
     /// `rules::paid_ability`.
     PassPriority { side: Side },
 }

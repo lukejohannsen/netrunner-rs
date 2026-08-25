@@ -228,17 +228,18 @@ pub enum GamePhase {
 /// A Paid Ability Window (PAW) — a priority-passing sub-loop that pauses the
 /// run flow so both sides get a chance to fire paid abilities (rez ICE,
 /// activate a `Trigger::Paid` ability, break a subroutine) before the engine
-/// auto-advances past a checkpoint (ICE approach, ICE encounter, pre-access).
-/// Lives as a sibling field on `GameState`, not folded into `GamePhase` —
-/// mirrors `RunPhase`'s existing precedent of never changing `state.phase`
-/// mid-run (see this file's `GamePhase` doc comment).
+/// auto-advances past a checkpoint (ICE approach, ICE encounter, pre-access,
+/// or a pending per-card access decision). Lives as a sibling field on
+/// `GameState`, not folded into `GamePhase` — mirrors `RunPhase`'s existing
+/// precedent of never changing `state.phase` mid-run (see this file's
+/// `GamePhase` doc comment).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaidAbilityWindow {
     pub active_priority: Side,
     pub consecutive_passes: u8,
     /// Snapshot of `state.phase` at the moment the window opened. Not
     /// currently read anywhere — `GamePhase` never changes mid-run, so this
-    /// is always `Action(Side::Runner)` for every window today (all three
+    /// is always `Action(Side::Runner)` for every window today (all four
     /// checkpoints live inside a run). Kept for forward compatibility with a
     /// hypothetical future non-run window, where restoring `state.phase` on
     /// close would actually matter.
