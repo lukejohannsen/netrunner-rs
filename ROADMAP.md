@@ -1,6 +1,6 @@
 # Netrunner Workspace Roadmap
 
-Canonical single source of truth for engine mechanics, client-server infrastructure, single-player card data, and AI bot development across `netrunner_core`, `netrunner_server`, `netrunner_cli`, `netrunner_bots`, and `netrunner_gym`.
+Canonical single source of truth for engine mechanics, client-server infrastructure, single-player card data, and AI bot development across `netrunner_core`, `netrunner_card_sync`, `netrunner_server`, `netrunner_cli`, `netrunner_bots`, and `netrunner_gym`.
 
 ---
 
@@ -30,10 +30,10 @@ Canonical single source of truth for engine mechanics, client-server infrastruct
 ## 📇 Phase 1: Single-Player Engine Completeness & Card Data (Immediate Focus)
 
 ### 1. Card Data, Storage & NetrunnerDB Ingestion
-- [ ] **Bundled Gateway & Elevation Core Sets:** Embed *System Gateway* and *Elevation* JSON fixtures directly into `netrunner_core` (`include_str!`) for instant, zero-dependency offline availability.
-- [ ] **Cross-Platform Cache Resolution:** Utilize standard cross-platform path resolution (e.g., `dirs::cache_dir()`) to resolve OS-specific cache directories (`~/.cache/netrunner`, `~/Library/Caches/netrunner`, `%LOCALAPPDATA%\netrunner\cache`) for offline sync persistence across Windows, macOS, and Linux.
-- [ ] **Dynamic NetrunnerDB Ingestion Pipeline:** Build an asynchronous HTTP client in `netrunner_core` to sync expanded card printings, errata, and historical sets from NetrunnerDB APIs to extend the bundled core catalog.
-- [ ] **Null Signal Games Format Support:** Enforce official [Null Signal Games Supported Formats](https://nullsignal.games/players/supported-formats/) (Startup, Standard, Eternal, Snapshot), including rotation tracking, card banlists, points restrictions, and legality checks prior to match start.
+- [x] **Bundled Gateway & Elevation Core Sets (`netrunner_core`)**: Embed *System Gateway* and *Elevation* JSON fixtures directly into `netrunner_core` (`include_str!`) for zero-dependency offline availability while maintaining strict no-I/O crate boundaries.
+- [x] **Dedicated Sync & Cache Crate (`netrunner_card_sync`)**: Establish a dedicated workspace crate (`netrunner_card_sync`) handling async network I/O, NetrunnerDB API v2 synchronization, and cross-platform disk caching without polluting `netrunner_core`. Also wired into `netrunner_cli cards {list-sets,sync}`.
+- [x] **Cross-Platform Cache Directory Resolution**: Utilize standard cross-platform path resolution via `dirs::cache_dir()` in `netrunner_card_sync` to target OS-specific cache locations (`~/.cache/netrunner`, `~/Library/Caches/netrunner`, `%LOCALAPPDATA%\netrunner`) across Windows, macOS, and Linux.
+- [ ] **Null Signal Games Format Support**: Enforce official [Null Signal Games Supported Formats](https://nullsignal.games/players/supported-formats/) (Startup, Standard, Eternal, Snapshot), including rotation tracking, card banlists, points restrictions, and legality checks prior to match start.
 
 ### 2. Deckbuilding & Single-Player Customization
 - [ ] **Deck Import & Validation:** Parse client-provided decklists (NetrunnerDB IDs, JSON, or text formats). Enforce faction influence limits, deck size minimums, agenda point ratios, and identity constraints.

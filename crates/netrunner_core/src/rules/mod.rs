@@ -1,5 +1,6 @@
 mod ability;
 mod action;
+mod action_mask;
 mod damage;
 mod deck;
 mod dispatcher;
@@ -18,6 +19,7 @@ mod win;
 
 pub use ability::{evaluate_effect, pay_cost, process_card_triggers, resolve_unbroken_subroutines};
 pub use action::{PlayerAction, ServerTarget, TargetZone};
+pub use action_mask::{get_action_mask, ActionSpace};
 pub use damage::apply_damage;
 pub use deck::{validate_deck, Deck};
 pub use dispatcher::dispatch_event;

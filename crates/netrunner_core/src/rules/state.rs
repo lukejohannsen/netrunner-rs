@@ -421,6 +421,16 @@ impl GameState {
         }
     }
 
+    /// Whether the game has concluded. A pure query over `phase` — every
+    /// existing call site that inlined `matches!(state.phase,
+    /// GamePhase::GameOver(_))` itself (`legal_actions::current_actor`,
+    /// `netrunner_bots::mcts::Node::is_terminal`, etc.) is left as-is;
+    /// they're free to migrate to this later, but that's not this change's
+    /// scope.
+    pub fn is_over(&self) -> bool {
+        matches!(self.phase, GamePhase::GameOver(_))
+    }
+
     pub fn resources(&self, side: Side) -> &PlayerResources {
         match side {
             Side::Corp => &self.corp.resources,

@@ -1,10 +1,16 @@
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand, ValueEnum};
 
 use netrunner_core::rules::Side;
 
-#[derive(Parser, Debug, Clone)]
+#[derive(Parser, Debug)]
 #[command(name = "netrunner_cli", about = "Ratatui TUI game harness and headless simulator for netrunner_core")]
 pub struct Config {
+    /// Manage the local NetrunnerDB card catalog cache instead of playing a
+    /// game. Omitted: falls through to the existing TUI/headless behavior
+    /// below, unaffected by this field's presence.
+    #[command(subcommand)]
+    pub command: Option<Command>,
+
     /// Launch the Ratatui TUI dashboard. This is the default mode — the
     /// flag exists for discoverability/documentation symmetry with
     /// `--headless`, not because anything reads it: mode selection is
@@ -73,6 +79,32 @@ pub enum BotKind {
 pub enum Mode {
     Local,
     Remote,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// List or fetch NetrunnerDB card sets into the local cache.
+    Cards {
+        #[command(subcommand)]
+        action: CardsAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CardsAction {
+    /// List NetrunnerDB sets (packs) available to sync.
+    ListSets,
+
+    /// Fetch and cache card data from NetrunnerDB.
+    Sync {
+        /// Sync every set.
+        #[arg(long)]
+        all: bool,
+
+        /// Sync only these set codes (repeatable), e.g. `--set sg --set elev`.
+        #[arg(long = "set")]
+        set: Vec<String>,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]

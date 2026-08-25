@@ -13,6 +13,24 @@ use crate::rules::trace;
 use crate::rules::turn;
 use crate::rules::win;
 
+impl GameState {
+    /// Ergonomic `state.step(registry, action)` alias for `apply_action`,
+    /// for callers (MCTS/RL environments in particular) that read better as
+    /// a method on the state being stepped. `apply_action` remains the one
+    /// real implementation — every rejection rule lives there, not here —
+    /// and `rules::legal_actions::legal_actions` is defined in terms of it
+    /// (`candidate.is_ok()` under `apply_action`), so `step` rejecting
+    /// exactly what's outside `legal_actions()` holds by construction, not
+    /// as separately-enforced logic.
+    pub fn step(
+        &self,
+        registry: &CardRegistry,
+        action: PlayerAction,
+    ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+        apply_action(self, registry, action)
+    }
+}
+
 pub fn apply_action(
     state: &GameState,
     registry: &CardRegistry,

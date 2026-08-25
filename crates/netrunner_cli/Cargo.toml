@@ -7,6 +7,7 @@ edition = "2024"
 netrunner_core = { path = "../netrunner_core" }
 netrunner_bots = { path = "../netrunner_bots" }
 netrunner_server = { path = "../netrunner_server" }
+netrunner_card_sync = { path = "../netrunner_card_sync" }
 ratatui = "0.29"
 crossterm = "0.28"
 clap = { version = "4", features = ["derive"] }

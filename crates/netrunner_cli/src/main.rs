@@ -1,5 +1,6 @@
 mod app;
 mod bots;
+mod cards;
 mod config;
 mod decks;
 mod headless;
@@ -8,14 +9,19 @@ mod tui;
 
 use clap::Parser;
 
-use config::Config;
+use config::{Command, Config};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::parse();
-    if config.headless {
-        headless::run(&config).await
-    } else {
-        tui::run(&config).await
+    match config.command {
+        Some(Command::Cards { action }) => cards::run(action).await,
+        None => {
+            if config.headless {
+                headless::run(&config).await
+            } else {
+                tui::run(&config).await
+            }
+        }
     }
 }
