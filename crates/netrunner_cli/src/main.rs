@@ -1,4 +1,5 @@
 mod app;
+mod bots;
 mod config;
 mod decks;
 mod headless;

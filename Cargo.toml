@@ -5,6 +5,7 @@ members = [
     "crates/netrunner_client",
     "crates/netrunner_gym",
     "crates/netrunner_cli",
+    "crates/netrunner_bots",
 ]
 resolver = "3"
 

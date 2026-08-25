@@ -1,0 +1,10 @@
+[package]
+name = "netrunner_bots"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+netrunner_core = { path = "../netrunner_core" }
+serde = { workspace = true }
+rand = "0.9"
+rayon = "1"

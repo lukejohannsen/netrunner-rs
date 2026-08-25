@@ -29,6 +29,18 @@ pub struct Config {
     /// headless mode.
     #[arg(long, value_enum, default_value_t = ViewAs::Omniscient)]
     pub view_as: ViewAs,
+
+    /// Which `netrunner_bots` agent (if any) controls the Corp side.
+    /// `Human` (the default) preserves today's fully-human-controlled TUI;
+    /// in `--headless` mode, where a `Human` agent can't make progress,
+    /// `Human` is treated as `Random` instead (see `headless::run`).
+    #[arg(long, value_enum, default_value_t = BotKind::Human)]
+    pub corp_agent: BotKind,
+
+    /// Which `netrunner_bots` agent (if any) controls the Runner side. See
+    /// `corp_agent`'s doc comment for the `Human`/headless-mode caveat.
+    #[arg(long, value_enum, default_value_t = BotKind::Human)]
+    pub runner_agent: BotKind,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,4 +48,12 @@ pub enum ViewAs {
     Corp,
     Runner,
     Omniscient,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BotKind {
+    Human,
+    Random,
+    Heuristic,
+    Mcts,
 }

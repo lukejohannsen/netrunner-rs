@@ -14,6 +14,7 @@ use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{mask_state_for_player, GamePhase, GameState, PublicGameState, RunState, ServerId, Side};
 
 use crate::app::{describe_action, App};
+use crate::bots;
 use crate::config::{Config, ViewAs};
 use crate::decks;
 
@@ -26,7 +27,9 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let seed = config.seed.unwrap_or_else(rand::random);
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
 
-    let mut app = App::new(state, registry, config.view_as);
+    let corp_agent = bots::make_agent(config.corp_agent, Side::Corp, seed);
+    let runner_agent = bots::make_agent(config.runner_agent, Side::Runner, seed.wrapping_add(1));
+    let mut app = App::new(state, registry, config.view_as, corp_agent, runner_agent);
 
     let mut terminal = ratatui::init();
     let result = run_event_loop(&mut terminal, &mut app);

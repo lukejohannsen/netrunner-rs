@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
+netrunner_bots = { path = "../netrunner_bots" }
 ratatui = "0.29"
 crossterm = "0.28"
 clap = { version = "4", features = ["derive"] }
