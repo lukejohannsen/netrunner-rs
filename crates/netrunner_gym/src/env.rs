@@ -21,7 +21,7 @@ use netrunner_core::rules::{current_actor, get_action_mask, ActionSpace, Deck, G
 use netrunner_core::view::build_client_view;
 
 use crate::fixtures;
-use crate::observation::encode_observation;
+use netrunner_bots::observation::encode_observation;
 
 pub const ACTION_SPACE_SIZE: usize = ActionSpace::SIZE;
 
@@ -271,7 +271,7 @@ mod tests {
     #[test]
     fn observation_length_matches_obs_size() {
         let env = env(Side::Corp, 2);
-        assert_eq!(env.observation().len(), crate::observation::OBS_SIZE);
+        assert_eq!(env.observation().len(), netrunner_bots::observation::OBS_SIZE);
     }
 
     #[test]

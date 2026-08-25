@@ -9,3 +9,19 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 rand = "0.9"
 rayon = "1"
+ort = { version = "2.0.0-rc.13", optional = true, default-features = false, features = [
+    "std",
+    "ndarray",
+    "download-binaries",
+    "copy-dylibs",
+    "tls-rustls",
+] }
+ndarray = { version = "0.17", optional = true }
+
+[features]
+# ONNX Runtime-backed PolicyEvaluator (`onnx_policy::OnnxPolicyEvaluator`).
+# Off by default: `ort`'s `download-binaries` default feature fetches a
+# prebuilt ONNX Runtime shared library at build time, which is unnecessary
+# weight for callers who only need the deterministic baseline
+# (`UniformPolicyEvaluator`)/search machinery (`PuctAgent`).
+onnx = ["dep:ort", "dep:ndarray"]

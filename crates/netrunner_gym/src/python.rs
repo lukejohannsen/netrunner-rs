@@ -12,7 +12,7 @@ use pyo3::prelude::*;
 use netrunner_core::rules::Side;
 
 use crate::env::{NetrunnerEnv, Opponent, OutOfRangeIndex, ACTION_SPACE_SIZE};
-use crate::observation::OBS_SIZE;
+use netrunner_bots::observation::OBS_SIZE;
 
 fn parse_side(side: &str) -> PyResult<Side> {
     match side {

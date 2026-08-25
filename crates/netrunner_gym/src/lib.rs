@@ -2,8 +2,12 @@
 //! `netrunner_core`'s fixed 724-slot `ActionSpace`/`get_action_mask`.
 //!
 //! Split into two layers:
-//! - `env` (plus `fixtures`/`observation`): a plain-Rust environment with
-//!   no PyO3 types in its API, fully unit-testable via plain `cargo test`.
+//! - `env` (plus `fixtures`): a plain-Rust environment with no PyO3 types
+//!   in its API, fully unit-testable via plain `cargo test`. Its
+//!   observation encoder lives in `netrunner_bots::observation` (shared
+//!   with `netrunner_bots::onnx_policy`, not owned here — `netrunner_gym`
+//!   already depends on `netrunner_bots`, and the reverse would be a
+//!   dependency cycle) and is re-exported below for convenience.
 //! - `python`: a thin `#[pyclass]` shim translating to Python-native types
 //!   only (no `numpy`), registered below as the `netrunner_gym` extension
 //!   module. The real `gymnasium.Env` subclass (`action_space`/
@@ -19,11 +23,10 @@
 
 pub mod env;
 pub mod fixtures;
-pub mod observation;
 mod python;
 
 pub use env::{NetrunnerEnv, Opponent, OutOfRangeIndex, StepOutcome, ACTION_SPACE_SIZE};
-pub use observation::{encode_observation, OBS_SIZE};
+pub use netrunner_bots::observation::{encode_observation, OBS_SIZE};
 
 use pyo3::prelude::*;
 

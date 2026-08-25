@@ -26,6 +26,9 @@ pub mod determinize;
 pub mod eval;
 pub mod heuristic;
 pub mod mcts;
+#[cfg(feature = "onnx")]
+pub mod onnx_policy;
+pub mod observation;
 pub mod policy;
 pub mod puct;
 pub mod random;
@@ -36,6 +39,9 @@ pub use determinize::determinize;
 pub use eval::evaluate_state;
 pub use heuristic::HeuristicAgent;
 pub use mcts::MctsAgent;
+#[cfg(feature = "onnx")]
+pub use onnx_policy::{OnnxPolicyError, OnnxPolicyEvaluator};
+pub use observation::{encode_observation, OBS_SIZE};
 pub use policy::{PolicyEvaluator, UniformPolicyEvaluator};
 pub use puct::{PuctAgent, PuctConfig};
 pub use random::RandomAgent;

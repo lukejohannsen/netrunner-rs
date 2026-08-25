@@ -1,6 +1,12 @@
-//! A fixed-size `f32` feature encoding of a `ClientView`, for the `"obs"`
-//! half of the Gymnasium `Dict` observation space (`"action_mask"` is
-//! `netrunner_core::rules::get_action_mask` directly — see `crate::env`).
+//! A fixed-size `f32` feature encoding of a `ClientView` — the shared
+//! observation encoder for both `netrunner_gym` (its Gymnasium `Dict`
+//! observation space's `"obs"` half; `"action_mask"` is
+//! `netrunner_core::rules::get_action_mask` directly) and
+//! `netrunner_bots::onnx_policy::OnnxPolicyEvaluator` (its trained model's
+//! `"obs"` input tensor). Living here rather than in `netrunner_gym` keeps
+//! both consumers on the exact same encoder — `netrunner_gym` already
+//! depends on `netrunner_bots`, and the reverse would be a dependency
+//! cycle.
 //!
 //! Deliberately a simple, self-contained baseline: scalar counts and
 //! normalized resource values only, no card-identity embedding. A user
