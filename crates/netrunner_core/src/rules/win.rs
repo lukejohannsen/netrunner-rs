@@ -110,10 +110,12 @@ mod tests {
                 rig: Vec::new(),
                 heap: Vec::new(),
                 scored_agendas: runner_scored,
+                link_strength: 0,
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed: 0,
             rng_step: 0,
         }

@@ -145,16 +145,7 @@ fn close_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
             events.extend(open_window_if_at_checkpoint(state));
             Ok(events)
         }
-        RunPhase::EncounterIce => {
-            // Auto-fire anything the Runner didn't break, then pass the ICE
-            // (continue_run's EncounterIce arm now sees zero pending).
-            let mut events = ability::resolve_unbroken_subroutines(state)?;
-            if state.active_run.is_some() {
-                events.extend(run::advance_run(state, RunAction::Continue)?);
-                events.extend(open_window_if_at_checkpoint(state));
-            }
-            Ok(events)
-        }
+        RunPhase::EncounterIce => resolve_encounter_ice(state),
         RunPhase::Success => {
             // This window was opened by `complete_run`. Now actually
             // access — the logic `complete_run` used to run inline.
@@ -172,6 +163,24 @@ fn close_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
         }
         RunPhase::Initiation | RunPhase::AccessingCard | RunPhase::Ended => Ok(Vec::new()),
     }
+}
+
+/// Fires unbroken subroutines on the ICE currently being encountered, then
+/// — unless doing so just parked a fresh `Effect::Trace`
+/// (`GameState::active_trace` is `Some`) — advances past the ICE and opens a
+/// checkpoint window if warranted. Shared by `close_window`'s `EncounterIce`
+/// arm and `rules::trace::submit_runner_bid`'s post-resolution resumption:
+/// both are "the subroutine loop just became unblocked, try to finish this
+/// ICE." The `active_trace.is_none()` guard is needed even for the plain
+/// `close_window` path: if a subroutine fired while a window was closing
+/// parks a trace, this must not advance the run before the trace resolves.
+pub(crate) fn resolve_encounter_ice(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = ability::resolve_unbroken_subroutines(state)?;
+    if state.active_run.is_some() && state.active_trace.is_none() {
+        events.extend(run::advance_run(state, RunAction::Continue)?);
+        events.extend(open_window_if_at_checkpoint(state));
+    }
+    Ok(events)
 }
 
 #[cfg(test)]
@@ -207,10 +216,12 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
+                link_strength: 0,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed: 0,
             rng_step: 0,
         }

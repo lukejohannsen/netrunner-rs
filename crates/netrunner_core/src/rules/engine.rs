@@ -7,6 +7,7 @@ use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run::{self, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState, SubroutineStatus};
 use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, Side};
+use crate::rules::trace;
 use crate::rules::turn;
 
 pub fn apply_action(
@@ -14,6 +15,17 @@ pub fn apply_action(
     registry: &CardRegistry,
     action: PlayerAction,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    // A trace admits no "stays legal during this" exceptions (unlike a
+    // PaidAbilityWindow, which lets RezIce/BreakSubroutine/ActivateAbility
+    // through) — nothing else should happen until both bids are in. A
+    // single centralized guard here is simpler and harder to miss than
+    // threading a per-handler check through ~15 existing functions.
+    if let Some(trace) = &state.active_trace
+        && !matches!(action, PlayerAction::SubmitCorpTraceBid { .. } | PlayerAction::SubmitRunnerTraceBid { .. })
+    {
+        let awaiting = if trace.corp_bid.is_none() { Side::Corp } else { Side::Runner };
+        return Err(RulesError::ActionBlockedByActiveTrace { awaiting });
+    }
     match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
         PlayerAction::DrawCardClick => draw_card_click(state),
@@ -57,6 +69,8 @@ pub fn apply_action(
             decline_access_trigger(state, registry, card_id)
         }
         PlayerAction::PassPriority { side } => pass_priority_action(state, registry, side),
+        PlayerAction::SubmitCorpTraceBid { amount } => submit_corp_trace_bid(state, amount),
+        PlayerAction::SubmitRunnerTraceBid { amount } => submit_runner_trace_bid(state, amount),
     }
 }
 
@@ -728,6 +742,20 @@ fn pass_priority_action(
     Ok((next, events))
 }
 
+/// Resolves `PlayerAction::SubmitCorpTraceBid`, per its doc comment.
+fn submit_corp_trace_bid(state: &GameState, amount: u32) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = trace::submit_corp_bid(&mut next, amount)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::SubmitRunnerTraceBid`, per its doc comment.
+fn submit_runner_trace_bid(state: &GameState, amount: u32) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = trace::submit_runner_bid(&mut next, amount)?;
+    Ok((next, events))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -805,10 +833,12 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
+                link_strength: 0,
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed: 0,
             rng_step: 0,
         }
@@ -844,10 +874,12 @@ mod tests {
                 stack: (0..stack_size).map(|i| CardId(format!("stack_card_{i}"))).collect(),
                 rig: Vec::new(),
                 heap: Vec::new(),
+                link_strength: 0,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed: 0,
             rng_step: 0,
         }
@@ -2089,6 +2121,73 @@ mod tests {
                 expected: GamePhase::Action(Side::Corp),
                 actual: GamePhase::Action(Side::Runner),
             })
+        );
+    }
+
+    #[test]
+    fn ordinary_actions_are_blocked_while_a_trace_is_active() {
+        let mut state = corp_state(3, 5);
+        state.active_trace = Some(crate::rules::state::TraceState {
+            initiating_card: None,
+            base_strength: 2,
+            corp_bid: None,
+            effect_on_success: Effect::GiveTags(1),
+            resume: crate::rules::state::TraceResume::None,
+        });
+
+        let result = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp });
+
+        assert_eq!(result, Err(RulesError::ActionBlockedByActiveTrace { awaiting: Side::Corp }));
+    }
+
+    #[test]
+    fn trace_as_operation_end_to_end() {
+        let card_id = CardId("sea_source".to_string());
+        let state = corp_state_with_hq_and_installed(3, 5, vec![card_id.clone()], Vec::new());
+        let mut registry = CardRegistry::new();
+        let mut card = test_card("sea_source", Side::Corp, CardType::Operation, 0, None);
+        card.triggers = vec![TriggeredEffect {
+            trigger: Trigger::OnPlay,
+            effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) }],
+        }];
+        registry.insert(card);
+
+        let (after_play, play_events) =
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: card_id.clone() })
+                .expect("playing the operation should succeed");
+        assert!(after_play.active_trace.is_some(), "trace should be parked awaiting the Corp's bid");
+        assert_eq!(
+            play_events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone() },
+                GameEvent::TraceInitiated { base: 2, initiating_card: Some(card_id) },
+            ]
+        );
+
+        // Only trace-bid actions are legal while the trace is pending.
+        assert_eq!(
+            apply_action(&after_play, &registry, PlayerAction::GainCreditClick { side: Side::Corp }),
+            Err(RulesError::ActionBlockedByActiveTrace { awaiting: Side::Corp })
+        );
+
+        let (after_corp_bid, _) = apply_action(&after_play, &registry, PlayerAction::SubmitCorpTraceBid { amount: 0 })
+            .expect("corp bid should succeed");
+        let (after_runner_bid, bid_events) =
+            apply_action(&after_corp_bid, &registry, PlayerAction::SubmitRunnerTraceBid { amount: 0 })
+                .expect("runner bid should succeed");
+
+        assert!(after_runner_bid.active_trace.is_none());
+        assert_eq!(after_runner_bid.runner.tags, 1, "runner underbid a strength-2 trace with 0 link/bid");
+        assert_eq!(
+            bid_events,
+            vec![
+                GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
+                GameEvent::TraceRunnerBidSubmitted { runner_bid: 0, total_strength: 0 },
+                GameEvent::TraceSuccessful { corp_total: 2, runner_total: 0 },
+                GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
+            ]
         );
     }
 

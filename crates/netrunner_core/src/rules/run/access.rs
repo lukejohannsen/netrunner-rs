@@ -708,10 +708,12 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
+                link_strength: 0,
             },
             phase: crate::rules::state::GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed,
             rng_step: 0,
         }

@@ -240,4 +240,25 @@ pub enum PlayerAction {
     /// checkpoints described above — see
     /// `rules::paid_ability`.
     PassPriority { side: Side },
+    /// Corp commits `amount` credits on top of the base trace strength that
+    /// an `Effect::Trace` parked in `GameState::active_trace`. Corp-only, no
+    /// click cost — a bidding step, not a basic click action, same class as
+    /// `RezIce`/`BreakSubroutine`. Legal only while `active_trace` is `Some`
+    /// with its `corp_bid` still unset (`RulesError::TraceNotAwaitingCorpBid`
+    /// otherwise); `RulesError::NotEnoughCredits` if unaffordable. While a
+    /// trace is active, every other `PlayerAction` is rejected with
+    /// `RulesError::ActionBlockedByActiveTrace` — see `engine::apply_action`.
+    /// See `rules::trace::submit_corp_bid`.
+    SubmitCorpTraceBid { amount: u32 },
+    /// Runner commits `amount` credits (added to `RunnerState::link_strength`)
+    /// against the Corp's already-submitted trace strength. Runner-only.
+    /// Legal only while `active_trace` is `Some` with `corp_bid` set
+    /// (`RulesError::TraceNotAwaitingRunnerBid` otherwise);
+    /// `RulesError::NotEnoughCredits` if unaffordable. Resolves the trace
+    /// immediately: if the Runner's total meets or beats the Corp's, the
+    /// trace is avoided; otherwise its `effect_on_success` fires. If this
+    /// trace was one of the ICE's own subroutines, resumes firing any
+    /// remaining pending subroutines and re-advancing the run afterward —
+    /// see `rules::trace::submit_runner_bid`.
+    SubmitRunnerTraceBid { amount: u32 },
 }

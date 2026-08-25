@@ -4,7 +4,7 @@ use crate::dsl::CardId;
 use crate::rules::run::{RunState, ServerId};
 use crate::rules::state::{
     CorpState, GamePhase, GameState, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
-    PlayerResources, RunnerState, Side,
+    PlayerResources, RunnerState, Side, TraceState,
 };
 
 /// A card zone whose contents are secret to everyone but its owner. The
@@ -69,13 +69,18 @@ pub struct PublicRunnerState {
     pub heap: Vec<CardId>,
     /// Never masked — stolen Agendas sit in a fully public score area.
     pub scored_agendas: Vec<CardId>,
+    /// Never masked — static link strength, like `tags`, is plain public
+    /// information (relevant to both sides during a trace).
+    pub link_strength: u32,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
 /// count, and unrezzed installed cards have their identity stripped unless
 /// the viewer owns them. `phase` is never masked — turn structure is public.
 /// `paid_ability_window` is likewise never masked — both players always see
-/// whose priority it is and the current pass count.
+/// whose priority it is and the current pass count. `active_trace` is
+/// likewise never masked — both sides always see the trace strength and
+/// whose bid is pending, matching the real game.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicGameState {
     pub corp: PublicCorpState,
@@ -83,6 +88,7 @@ pub struct PublicGameState {
     pub phase: GamePhase,
     pub active_run: Option<RunState>,
     pub paid_ability_window: Option<PaidAbilityWindow>,
+    pub active_trace: Option<TraceState>,
 }
 
 pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState {
@@ -92,6 +98,7 @@ pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState
         phase: state.phase,
         active_run: state.active_run.clone(),
         paid_ability_window: state.paid_ability_window.clone(),
+        active_trace: state.active_trace.clone(),
     }
 }
 
@@ -145,6 +152,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         rig: runner.rig.iter().map(mask_installed_runner_card).collect(),
         heap: runner.heap.clone(),
         scored_agendas: runner.scored_agendas.clone(),
+        link_strength: runner.link_strength,
     }
 }
 
@@ -170,10 +178,12 @@ mod tests {
                 rig: Vec::new(),
                 heap: Vec::new(),
                 scored_agendas: Vec::new(),
+                link_strength: 0,
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed: 0,
             rng_step: 0,
         }
@@ -287,6 +297,7 @@ mod tests {
             }],
             heap: vec![CardId("easy_mark".to_string())],
             scored_agendas: vec![CardId("priority_requisition".to_string())],
+            link_strength: 0,
         }
     }
 
@@ -297,6 +308,7 @@ mod tests {
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed: 0,
             rng_step: 0,
         }

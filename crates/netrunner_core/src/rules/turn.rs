@@ -236,10 +236,12 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
+                link_strength: 0,
             },
             phase: GamePhase::Action(active_turn),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed: 0,
             rng_step: 0,
         }

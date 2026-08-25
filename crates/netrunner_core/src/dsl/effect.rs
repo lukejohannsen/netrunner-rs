@@ -89,6 +89,16 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         restrict_to: Option<IceType>,
     },
+    /// Establishes a trace of strength `base` (plus whatever the Corp
+    /// commits on top once bidding begins). Does not resolve `on_success`
+    /// synchronously — unlike every other variant, this effect alone cannot
+    /// complete within one `evaluate_effect` call, since it spans two future
+    /// `PlayerAction`s (the Corp's bid, then the Runner's). `evaluate_effect`
+    /// instead parks the pending state in `GameState::active_trace` and
+    /// returns immediately; `rules::trace::submit_runner_bid` is what
+    /// eventually evaluates `on_success`, if the trace succeeds. `Box`ed
+    /// since this is the first `Effect` variant that nests another `Effect`.
+    Trace { base: u32, on_success: Box<Effect> },
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -158,5 +168,13 @@ mod tests {
             serde_json::from_str::<Effect>(no_restrict_json).unwrap(),
             Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }
         );
+    }
+
+    #[test]
+    fn trace_round_trips_through_json() {
+        let trace = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) };
+        let trace_json = serde_json::to_string(&trace).unwrap();
+        assert_eq!(trace_json, r#"{"Trace":{"base":3,"on_success":{"GiveTags":1}}}"#);
+        assert_eq!(serde_json::from_str::<Effect>(&trace_json).unwrap(), trace);
     }
 }

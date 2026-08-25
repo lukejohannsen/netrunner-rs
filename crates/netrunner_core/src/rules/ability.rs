@@ -4,7 +4,7 @@ use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, RunPhase, SubroutineStatus};
-use crate::rules::state::{Credits, GamePhase, GameState, Side};
+use crate::rules::state::{Credits, GamePhase, GameState, Side, TraceResume, TraceState};
 
 /// Applies a single, already-resolved `Effect` to `state` in place.
 ///
@@ -185,6 +185,20 @@ pub fn evaluate_effect(
             }
             Ok(events)
         }
+
+        Effect::Trace { base, on_success } => {
+            if state.active_trace.is_some() {
+                return Err(RulesError::TraceAlreadyActive);
+            }
+            state.active_trace = Some(TraceState {
+                initiating_card: acting_card.cloned(),
+                base_strength: *base,
+                corp_bid: None,
+                effect_on_success: (**on_success).clone(),
+                resume: TraceResume::None,
+            });
+            Ok(vec![GameEvent::TraceInitiated { base: *base, initiating_card: acting_card.cloned() }])
+        }
     }
 }
 
@@ -204,6 +218,14 @@ pub fn resolve_unbroken_subroutines(state: &mut GameState) -> Result<Vec<GameEve
             break;
         }
 
+        // A subroutine we just fired parked a Trace, which spans two future
+        // PlayerActions — stop here rather than firing the next pending
+        // subroutine underneath it. `rules::trace::submit_runner_bid` calls
+        // this function again once the trace resolves, resuming the loop.
+        if state.active_trace.is_some() {
+            break;
+        }
+
         // Immutable read only — ends before any mutation below, so it
         // never overlaps with the `&mut state` passed to transition_subroutine/evaluate_effect.
         let Some(index) = state.active_run.as_ref().and_then(|run| {
@@ -217,6 +239,12 @@ pub fn resolve_unbroken_subroutines(state: &mut GameState) -> Result<Vec<GameEve
         let fired_events = evaluate_effect(state, &effect, None)?;
         events.push(GameEvent::SubroutineFired { card_id, index, effect });
         events.extend(fired_events);
+
+        // If that subroutine's effect was a Trace, mark it so the eventual
+        // resolution knows to resume this loop afterward.
+        if let Some(trace) = state.active_trace.as_mut() {
+            trace.resume = TraceResume::ResumeSubroutines;
+        }
     }
 
     Ok(events)
@@ -436,10 +464,12 @@ mod tests {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
+                link_strength: 0,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed: 0,
             rng_step: 0,
         }
@@ -1371,5 +1401,70 @@ mod tests {
                 vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
             );
         }
+    }
+
+    #[test]
+    fn trace_effect_parks_pending_state_and_does_not_resolve_immediately() {
+        let mut state = game_state();
+        let effect = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) };
+
+        let events = evaluate_effect(&mut state, &effect, None).unwrap();
+
+        assert_eq!(events, vec![GameEvent::TraceInitiated { base: 3, initiating_card: None }]);
+        assert_eq!(state.runner.tags, 0, "on_success must not fire yet");
+        let trace = state.active_trace.expect("trace should be parked");
+        assert_eq!(trace.base_strength, 3);
+        assert_eq!(trace.corp_bid, None);
+        assert_eq!(trace.effect_on_success, Effect::GiveTags(1));
+        assert_eq!(trace.resume, TraceResume::None);
+    }
+
+    #[test]
+    fn trace_effect_while_already_active_errors() {
+        let mut state = game_state();
+        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) }, None)
+            .unwrap();
+
+        let result =
+            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(2)) }, None);
+
+        assert_eq!(result, Err(RulesError::TraceAlreadyActive));
+        assert_eq!(state.active_trace.unwrap().base_strength, 3, "original trace must be untouched");
+    }
+
+    #[test]
+    fn resolve_unbroken_subroutines_stops_at_a_trace_subroutine_and_marks_resume() {
+        let mut state = game_state();
+        let mut ice = test_ice("ice_wall", 0, 2, true);
+        ice.subroutines[0].definition.effect =
+            Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun) };
+        ice.subroutines[1].definition.effect = Effect::GiveTags(5);
+        state.active_run = Some(RunState {
+            access_state: None,
+            server: ServerId::Hq,
+            phase: RP::EncounterIce,
+            ice: vec![ice],
+            position: 0,
+            jack_out_permitted: true,
+        });
+
+        let events = resolve_unbroken_subroutines(&mut state).unwrap();
+
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!(run.ice[0].subroutines[0].status, SubroutineStatus::Resolved);
+        assert_eq!(run.ice[0].subroutines[1].status, SubroutineStatus::Pending, "must not fire while trace pending");
+        let trace = state.active_trace.expect("trace should be parked");
+        assert_eq!(trace.resume, TraceResume::ResumeSubroutines);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::SubroutineFired {
+                    card_id: CardId("ice_wall".to_string()),
+                    index: 0,
+                    effect: Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun) },
+                },
+                GameEvent::TraceInitiated { base: 2, initiating_card: None },
+            ]
+        );
     }
 }

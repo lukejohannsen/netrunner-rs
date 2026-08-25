@@ -47,4 +47,9 @@ pub enum GameEvent {
     PriorityPassed { side: Side },
     PaidAbilityWindowClosed,
     StrengthBoosted { card_id: CardId, new_strength: i32, delta: i32, duration: BoostDuration },
+    TraceInitiated { base: u32, initiating_card: Option<CardId> },
+    TraceCorpBidSubmitted { corp_bid: u32, total_strength: u32 },
+    TraceRunnerBidSubmitted { runner_bid: u32, total_strength: u32 },
+    TraceAvoided { corp_total: u32, runner_total: u32 },
+    TraceSuccessful { corp_total: u32, runner_total: u32 },
 }

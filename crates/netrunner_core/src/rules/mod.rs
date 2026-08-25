@@ -8,6 +8,7 @@ mod masking;
 mod paid_ability;
 mod run;
 mod state;
+mod trace;
 mod turn;
 mod win;
 
@@ -28,6 +29,6 @@ pub use run::{
 };
 pub use state::{
     AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard, InstalledRunnerCard,
-    MemoryUnits, PaidAbilityWindow, PlayerResources, RunnerState, Side,
+    MemoryUnits, PaidAbilityWindow, PlayerResources, RunnerState, Side, TraceResume, TraceState,
 };
 pub use turn::end_turn;

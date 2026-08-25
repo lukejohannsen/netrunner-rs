@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::CardId;
+use crate::dsl::{CardId, Effect};
 use crate::rules::run::{RunState, ServerId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -173,6 +173,12 @@ pub struct RunnerState {
     /// Agendas the Runner has stolen, in steal order. Fully public — never
     /// masked. See `CorpState::scored_agendas`'s doc comment.
     pub scored_agendas: Vec<CardId>,
+    /// Static link strength, added to the Runner's bid when resolving a
+    /// trace (see `TraceState`). No Identity-card mechanic exists in this
+    /// engine yet and no `Effect` variant currently raises this — it starts
+    /// (and normally stays) at `0` until a future identity/hardware system
+    /// lands. Public information, same treatment as `tags`.
+    pub link_strength: u32,
 }
 
 impl RunnerState {
@@ -246,6 +252,47 @@ pub struct PaidAbilityWindow {
     pub return_phase: Box<GamePhase>,
 }
 
+/// What to do once a trace resolves (avoided or not), set by whichever
+/// caller of `evaluate_effect` actually knows the answer. `evaluate_effect`
+/// itself has no such context (it doesn't know if it's resolving a
+/// subroutine, an on-play trigger, or anything else), so `TraceState`
+/// starts with `None` and `ability::resolve_unbroken_subroutines` upgrades
+/// it to `ResumeSubroutines` immediately after firing a subroutine whose
+/// effect turned out to be a trace. No continuation stack is needed:
+/// resuming just means calling `resolve_unbroken_subroutines` again, which
+/// re-scans `RunIce::subroutines` fresh and picks up wherever it left off —
+/// the same "re-derive from existing state" idiom `close_window` already
+/// uses.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum TraceResume {
+    None,
+    ResumeSubroutines,
+}
+
+/// A trace in progress. Lives as a sibling field on `GameState`, not nested
+/// in `RunState` — a trace can be initiated by a standalone Operation with
+/// no active run at all (Corp plays it during `GamePhase::Action(Side::
+/// Corp)`), as well as by an ICE subroutine mid-`EncounterIce`, so `RunState`
+/// can't be the only home for it. While `Some`, `engine::apply_action`
+/// rejects every `PlayerAction` except `SubmitCorpTraceBid`/
+/// `SubmitRunnerTraceBid` — unlike `PaidAbilityWindow`, a trace admits no
+/// "stays legal during this" exceptions.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TraceState {
+    /// Card whose effect initiated this trace, threaded to `effect_on_success`'s
+    /// `acting_card` context exactly like `evaluate_effect`'s own parameter.
+    /// `None` for a subroutine-triggered trace, mirroring
+    /// `resolve_unbroken_subroutines`'s existing `None` passed to
+    /// `evaluate_effect` for every subroutine.
+    pub initiating_card: Option<CardId>,
+    pub base_strength: u32,
+    /// `None` until `PlayerAction::SubmitCorpTraceBid` sets it — gates
+    /// whether the pending action is the Corp's bid or the Runner's.
+    pub corp_bid: Option<u32>,
+    pub effect_on_success: Effect,
+    pub resume: TraceResume,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameState {
     pub corp: CorpState,
@@ -253,6 +300,7 @@ pub struct GameState {
     pub phase: GamePhase,
     pub active_run: Option<RunState>,
     pub paid_ability_window: Option<PaidAbilityWindow>,
+    pub active_trace: Option<TraceState>,
     /// Fixed seed for this game's deterministic pseudo-randomness (e.g.
     /// which HQ card a run accesses). Never mutated after construction —
     /// only `rng_step` advances — so replaying the same `(GameState,
@@ -299,10 +347,12 @@ impl GameState {
                 stack: Vec::new(),
                 rig: Vec::new(),
                 heap: Vec::new(),
+                link_strength: 0,
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
+            active_trace: None,
             seed,
             rng_step: 0,
         }
@@ -374,6 +424,7 @@ mod tests {
             rig: vec![card("corroder", 2, 1, 3)],
             heap: Vec::new(),
             scored_agendas: Vec::new(),
+            link_strength: 0,
         };
 
         runner.reset_encounter_strength_buffs();
@@ -398,6 +449,7 @@ mod tests {
             rig: vec![card("corroder", 2, 1, 3)],
             heap: Vec::new(),
             scored_agendas: Vec::new(),
+            link_strength: 0,
         };
 
         runner.reset_turn_strength_buffs();

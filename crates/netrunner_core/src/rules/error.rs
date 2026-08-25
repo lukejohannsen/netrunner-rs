@@ -138,4 +138,16 @@ pub enum RulesError {
 
     #[error("a self-reference (CardTarget::ThisCard or Cost::TrashSelf) requires an acting card, but none was available here")]
     MissingActingCardContext,
+
+    #[error("a trace is already active — cannot start a second one before it resolves")]
+    TraceAlreadyActive,
+
+    #[error("no trace is currently awaiting the Corp's bid")]
+    TraceNotAwaitingCorpBid,
+
+    #[error("no trace is currently awaiting the Runner's bid")]
+    TraceNotAwaitingRunnerBid,
+
+    #[error("cannot take that action while a trace is active (awaiting {awaiting:?}'s bid)")]
+    ActionBlockedByActiveTrace { awaiting: Side },
 }
