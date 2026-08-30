@@ -1,0 +1,17 @@
+[package]
+name = "netrunner_selfplay"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+netrunner_core = { path = "../netrunner_core" }
+netrunner_bots = { path = "../netrunner_bots" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+rayon = "1"
+rand = "0.9"
+
+[features]
+onnx = ["netrunner_bots/onnx"]

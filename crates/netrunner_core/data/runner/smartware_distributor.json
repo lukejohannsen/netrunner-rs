@@ -1,0 +1,49 @@
+{
+  "id": "smartware_distributor",
+  "title": "Smartware Distributor",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": {
+                "ThisCardCountersAtMost": 0
+              }
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "RemoveCounters": 1
+                },
+                {
+                  "GainCredits": [
+                    "Runner",
+                    1
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "AddCounters": 3
+      }
+    }
+  ],
+  "numeric_id": 30033,
+  "is_playable": true
+}

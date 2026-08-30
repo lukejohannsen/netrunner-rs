@@ -3,9 +3,13 @@ mod card;
 mod cost;
 mod effect;
 mod trigger;
+mod zone;
 
 pub use ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
-pub use card::{Card, CardId, CardSubtype, CardType, IceType, TriggeredEffect};
+pub use card::{
+    CardDefinition, CardId, CardSubtype, CardType, CardValidationError, CounterKind, IceType, StrengthModifier, TriggeredEffect,
+};
 pub use cost::Cost;
-pub use effect::{BoostDuration, CardTarget, DamageType, Effect, StackZone, SubroutineBreakCount};
+pub use effect::{Amount, BoostDuration, CardTarget, DamageType, Effect, StackZone, SubroutineBreakCount};
 pub use trigger::Trigger;
+pub use zone::{card_matches_filter, CardFilter, CardZoneRef};

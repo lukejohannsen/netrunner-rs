@@ -1,0 +1,88 @@
+{
+  "id": "ansel_1_0",
+  "title": "Ansel 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 6,
+  "strength": 4,
+  "click_breakable": true,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed Runner card.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OpponentInstalled",
+          "filter": "Any",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OpponentDiscard"
+        }
+      }
+    },
+    {
+      "text": "You may install 1 card from HQ or Archives.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "InstallFromZoneIgnoringCost": {
+                    "card_id": "",
+                    "origin_zone": "OwnHq",
+                    "into": "Archives",
+                    "slot": null,
+                    "insert_after": null
+                  }
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": "Any",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "InstallFromZoneIgnoringCost": {
+                    "card_id": "",
+                    "origin_zone": "OwnArchives",
+                    "into": "Archives",
+                    "slot": null,
+                    "insert_after": null
+                  }
+                }
+              }
+            },
+            {
+              "Sequence": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "text": "The Runner cannot steal or trash Corp cards for the remainder of this run.",
+      "effect": "PreventStealAndTrashForRemainderOfRun"
+    }
+  ],
+  "numeric_id": 30038,
+  "is_playable": true
+}

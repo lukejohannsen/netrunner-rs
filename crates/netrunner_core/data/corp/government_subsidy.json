@@ -1,0 +1,25 @@
+{
+  "id": "government_subsidy",
+  "title": "Government Subsidy",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 10,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            15
+          ]
+        }
+      ]
+    }
+  ],
+  "subtypes": [
+    "Transaction"
+  ],
+  "numeric_id": 30064,
+  "is_playable": true
+}

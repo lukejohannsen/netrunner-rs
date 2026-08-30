@@ -1,0 +1,24 @@
+{
+  "id": "weyland_consortium_built_to_last",
+  "title": "Weyland Consortium: Built to Last",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "triggers": [
+    {
+      "trigger": "OnAdvance",
+      "requirement": "WasFirstAdvancementThisCard",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30059,
+  "is_playable": true
+}

@@ -10,7 +10,7 @@
 //! why the baseline card pool alone isn't a legal deck for either side.
 
 use netrunner_core::cards::{self, CardRegistry};
-use netrunner_core::dsl::{Card, CardId, CardType};
+use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::rules::{Deck, Side};
 
 const CORP_IDENTITY: &str = "haas_bioroid_engineering_the_future";
@@ -25,8 +25,8 @@ const FILLER_AGENDA_COUNT: u32 = 6;
 const FILLER_ASSET_COUNT: u32 = 2;
 const FILLER_EVENT_COUNT: u32 = 9;
 
-fn blank_card(id: String, side: Side, card_type: CardType) -> Card {
-    Card {
+fn blank_card(id: String, side: Side, card_type: CardType) -> CardDefinition {
+    CardDefinition {
         title: id.clone(),
         id: CardId(id),
         side,
@@ -46,6 +46,8 @@ fn blank_card(id: String, side: Side, card_type: CardType) -> Card {
         play_requirement: None,
         recurring_credits: None,
         first_install_discount: None,
+        memory_cost: None,
+        counter_kind: None, numeric_id: None, faction: None, type_line: None, keywords: Vec::new(), set_code: None, influence_cost: None, deck_limit: None, artist: None, image_url: None, memory_bonus: None, max_hand_size_bonus: None, install_cost_discount_if: None, installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, is_playable: true,
     }
 }
 
@@ -63,7 +65,7 @@ fn filler_event_id(index: u32) -> String {
 
 pub fn kate_vs_hb_registry() -> CardRegistry {
     let mut registry = CardRegistry::new();
-    cards::register_baseline_set(&mut registry);
+    cards::register_playable_cards(&mut registry);
 
     for index in 0..FILLER_AGENDA_COUNT {
         let mut agenda = blank_card(filler_agenda_id(index), Side::Corp, CardType::Agenda);

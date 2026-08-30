@@ -159,8 +159,15 @@ mod tests {
         assert!(result.is_err());
     }
 
+    /// Pinned deliberately: the Python-side observation/action shapes are
+    /// built against this constant, so a change here is a breaking change
+    /// for any trained policy and must be an explicit decision, not a
+    /// silent consequence of adding a card mechanic. Grew 724 → 1024 across
+    /// the System Gateway work, which added several new player-facing
+    /// decisions (card selection, server choice, paid-choice accept/decline,
+    /// install-on-ice, click-to-break).
     #[test]
-    fn action_space_size_constant_is_724() {
-        assert_eq!(ACTION_SPACE_SIZE, 724);
+    fn action_space_size_constant_is_pinned() {
+        assert_eq!(ACTION_SPACE_SIZE, 1024);
     }
 }

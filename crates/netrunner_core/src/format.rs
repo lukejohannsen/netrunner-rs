@@ -1,13 +1,14 @@
 //! Null Signal Games (NSG) competitive format definitions.
 //!
-//! Distinct from `card::pack::PackInfo` (raw pack metadata) and `catalog::
-//! CardCatalog` (the full card pool) — this module answers "given a format,
-//! which packs and cards are legal," a question neither of those types
-//! answers on its own. Pure, static, in-memory data: `netrunner_core` has no
-//! I/O, so there is no live-synced feed of NSG's actual current rotation or
-//! banlist here. The tables below are a deliberately small, illustrative
-//! seed (scoped to the packs this crate's own embedded catalog actually
-//! ships, `catalog::CardCatalog::load_default_core_sets`'s "sg"/"elev") for
+//! Distinct from `card::pack::PackInfo` (raw pack metadata) and
+//! `cards::CardRegistry` (the full card pool) — this module answers "given a
+//! format, which packs and cards are legal," a question neither of those
+//! types answers on its own. Pure, static, in-memory data: `netrunner_core`
+//! has no I/O, so there is no live-synced feed of NSG's actual current
+//! rotation or banlist here. The tables below are a deliberately small,
+//! illustrative seed (scoped to the packs this crate's own embedded sets
+//! actually ship, `cards::netrunnerdb::load_embedded_netrunnerdb_sets`'s
+//! "sg"/"elev") for
 //! a maintainer to extend as new packs/banlist updates are published — not
 //! a claim of being NSG's current authoritative rotation or banlist.
 
@@ -42,7 +43,7 @@ pub enum NsgFormat {
 #[derive(Debug, Clone, Default)]
 pub struct FormatRules {
     /// `None` means every pack is legal (Eternal). `Some(set)` restricts
-    /// legality to exactly these `CardDefinition::pack_code` values.
+    /// legality to exactly these `CardDefinition::set_code` values.
     pub allowed_packs: Option<HashSet<&'static str>>,
     pub banned: HashSet<CardId>,
     pub restricted: HashSet<CardId>,

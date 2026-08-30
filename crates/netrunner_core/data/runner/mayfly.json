@@ -1,0 +1,48 @@
+{
+  "id": "mayfly",
+  "title": "Mayfly",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "strength": 1,
+  "memory_cost": 2,
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      }
+    }
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30032,
+  "is_playable": true
+}

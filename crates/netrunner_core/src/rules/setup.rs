@@ -4,11 +4,16 @@ use crate::rules::ability;
 use crate::rules::deck::{validate_deck, Deck};
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
-use crate::rules::state::{Credits, GamePhase, GameState, Side};
+use crate::rules::state::{Credits, GamePhase, GameState, MemoryUnits, Side};
 use crate::rules::turn;
 
 const STARTING_CREDITS: u32 = 5;
 const OPENING_HAND_SIZE: u32 = 5;
+/// Every Runner identity's base rig capacity in this engine (real Netrunner
+/// varies this per-identity; no identity-level override mechanism exists
+/// yet — see `CardDefinition::memory_cost`'s doc comment for the matching per-Program
+/// side of this budget).
+const RUNNER_BASE_MEMORY_UNITS: u32 = 4;
 
 impl GameState {
     /// Validates both decks, builds a fresh, deterministically-seeded
@@ -39,6 +44,7 @@ impl GameState {
 
         state.corp.resources.credits = Credits(STARTING_CREDITS);
         state.runner.resources.credits = Credits(STARTING_CREDITS);
+        state.runner.memory_units = MemoryUnits(RUNNER_BASE_MEMORY_UNITS);
 
         state.corp.r_and_d = expand_deck(corp_deck);
         state.runner.stack = expand_deck(runner_deck);
@@ -63,6 +69,16 @@ impl GameState {
             registry.get(&corp_deck.identity).and_then(|c| c.recurring_credits).unwrap_or(0);
         state.corp.recurring_credits_max = recurring_credits_max;
         state.corp.recurring_credits = recurring_credits_max;
+
+        // Identity-level max-hand-size bonus (e.g. Haas-Bioroid: Precision
+        // Design's "+1 maximum hand size"), read once here — same pattern
+        // as `recurring_credits_max` above — for whichever side's identity
+        // declares one. `0` (the common case) for an identity with no such
+        // trait.
+        state.corp.max_hand_size_bonus =
+            registry.get(&corp_deck.identity).and_then(|c| c.max_hand_size_bonus).unwrap_or(0);
+        state.runner.max_hand_size_bonus =
+            registry.get(&runner_deck.identity).and_then(|c| c.max_hand_size_bonus).unwrap_or(0);
 
         state.phase = GamePhase::Mulligan(Side::Corp);
 
@@ -190,47 +206,44 @@ fn advance_past_mulligan(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardType};
+    use crate::dsl::{CardDefinition, CardType};
     use crate::rules::action::PlayerAction;
     use crate::rules::engine::apply_action;
 
-    fn identity(id: &str, side: Side, min_deck_size: u32) -> Card {
-        Card {
+    /// See `turn::tests::close_all_windows`'s doc comment — same helper,
+    /// duplicated here since that one lives in a private `mod tests`.
+    fn close_all_windows(mut state: GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let mut events = Vec::new();
+        while let Some(window) = &state.paid_ability_window {
+            let side = window.active_priority;
+            let (next, ev) = apply_action(&state, registry, PlayerAction::PassPriority { side })
+                .expect("pass priority should succeed");
+            state = next;
+            events.extend(ev);
+        }
+        (state, events)
+    }
+
+    fn identity(id: &str, side: Side, min_deck_size: u32) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side,
             card_type: CardType::Identity,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
             min_deck_size: Some(min_deck_size),
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
-    fn filler(id: &str, side: Side) -> Card {
-        Card {
+    fn filler(id: &str, side: Side) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side,
             card_type: if side == Side::Corp { CardType::Asset } else { CardType::Event },
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
@@ -288,6 +301,14 @@ mod tests {
 
         assert_eq!(state.corp.resources.credits, Credits(5));
         assert_eq!(state.runner.resources.credits, Credits(5));
+    }
+
+    #[test]
+    fn setup_gives_runner_base_memory_units() {
+        let (registry, corp_deck, runner_deck) = setup_fixtures();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 42).unwrap();
+
+        assert_eq!(state.runner.memory_units, crate::rules::state::MemoryUnits(RUNNER_BASE_MEMORY_UNITS));
     }
 
     #[test]
@@ -364,19 +385,16 @@ mod tests {
         let (state, _) = GameState::setup(&corp_deck, &runner_deck, &registry, 42).unwrap();
         let (after_corp, _) = apply_action(&state, &registry, PlayerAction::KeepHand).unwrap();
 
-        let (next, events) = apply_action(&after_corp, &registry, PlayerAction::KeepHand).unwrap();
+        let (next, mut events) = apply_action(&after_corp, &registry, PlayerAction::KeepHand).unwrap();
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         assert_eq!(next.phase, GamePhase::Action(Side::Corp));
         assert_eq!(next.corp.resources.clicks.0, 3);
         assert_eq!(next.corp.hq.len(), 6); // 5 opening hand + 1 mandatory draw
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::HandKept { side: Side::Runner },
-                GameEvent::TurnStarted { side: Side::Corp, clicks: 3 },
-                GameEvent::CardDrawn { side: Side::Corp },
-            ]
-        );
+        assert!(events.contains(&GameEvent::HandKept { side: Side::Runner }));
+        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
+        assert!(events.contains(&GameEvent::CardDrawn { side: Side::Corp }));
     }
 
     #[test]
@@ -401,7 +419,9 @@ mod tests {
         let (state, _) = GameState::setup(&corp_deck, &runner_deck, &registry, 42).unwrap();
         let (after_corp, _) = apply_action(&state, &registry, PlayerAction::KeepHand).unwrap();
 
-        let (next, events) = apply_action(&after_corp, &registry, PlayerAction::TakeMulligan).unwrap();
+        let (next, mut events) = apply_action(&after_corp, &registry, PlayerAction::TakeMulligan).unwrap();
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         assert_eq!(next.phase, GamePhase::Action(Side::Corp));
         assert_eq!(next.runner.grip.len(), 5);
@@ -415,6 +435,7 @@ mod tests {
         let (state, _) = GameState::setup(&corp_deck, &runner_deck, &registry, 42).unwrap();
         let (after_corp, _) = apply_action(&state, &registry, PlayerAction::KeepHand).unwrap();
         let (after_runner, _) = apply_action(&after_corp, &registry, PlayerAction::KeepHand).unwrap();
+        let (after_runner, _) = close_all_windows(after_runner, &registry);
 
         let result = apply_action(&after_runner, &registry, PlayerAction::KeepHand);
 

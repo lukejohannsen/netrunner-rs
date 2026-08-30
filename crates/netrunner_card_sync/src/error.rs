@@ -26,5 +26,5 @@ pub enum SyncError {
     Http(#[from] reqwest::Error),
 
     #[error("failed to load embedded default core sets: {0}")]
-    Catalog(#[from] netrunner_core::catalog::CardCatalogError),
+    EmbeddedSets(#[from] netrunner_core::cards::EmbeddedSetsError),
 }

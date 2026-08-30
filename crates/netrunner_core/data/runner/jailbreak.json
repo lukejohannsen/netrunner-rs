@@ -1,0 +1,43 @@
+{
+  "id": "jailbreak",
+  "title": "Jailbreak",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "allowed_servers": [
+              "Hq",
+              "RnD"
+            ],
+            "on_success": {
+              "Sequence": [
+                {
+                  "DrawCards": [
+                    "Runner",
+                    1
+                  ]
+                },
+                {
+                  "AddAdditionalAccess": {
+                    "server": "Hq",
+                    "count": 1
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30028,
+  "is_playable": true
+}

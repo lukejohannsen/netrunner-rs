@@ -1,0 +1,54 @@
+{
+  "id": "nico_campaign",
+  "title": "Nico Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "effects": [
+        {
+          "AddCounters": 9
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": 3
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            3
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "DrawCards": [
+                    "Corp",
+                    1
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "trash_cost": 2,
+  "numeric_id": 30037,
+  "is_playable": true
+}

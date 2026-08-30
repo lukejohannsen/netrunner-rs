@@ -1,0 +1,41 @@
+{
+  "id": "clearinghouse",
+  "title": "Clearinghouse",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "advancement_requirement": 0,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "DealDamageAmount": [
+                      "Meat",
+                      "HostedAdvancementTokens"
+                    ]
+                  },
+                  {
+                    "TrashCard": "ThisCard"
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30061,
+  "is_playable": true
+}

@@ -1,0 +1,24 @@
+{
+  "id": "noise",
+  "title": "Noise: Hacker Extraordinaire",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnVirusInstalled",
+      "effects": [
+        {
+          "TrashCard": {
+            "TopOfStack": {
+              "side": "Corp",
+              "zone": "RAndD"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

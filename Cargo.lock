@@ -3297,6 +3297,7 @@ dependencies = [
  "netrunner_card_sync",
  "netrunner_core",
  "netrunner_server",
+ "netrunner_single_player",
  "rand 0.9.5",
  "ratatui",
  "serde_json",
@@ -3336,6 +3337,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "netrunner_selfplay"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "netrunner_bots",
+ "netrunner_core",
+ "rand 0.9.5",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "netrunner_server"
 version = "0.1.0"
 dependencies = [
@@ -3351,6 +3366,14 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "netrunner_single_player"
+version = "0.1.0"
+dependencies = [
+ "netrunner_bots",
+ "netrunner_core",
 ]
 
 [[package]]

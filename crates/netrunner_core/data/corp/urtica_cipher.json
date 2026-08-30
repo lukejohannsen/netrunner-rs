@@ -1,0 +1,30 @@
+{
+  "id": "urtica_cipher",
+  "title": "Urtica Cipher",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "advancement_requirement": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            2
+          ]
+        },
+        {
+          "DealDamageAmount": [
+            "Net",
+            "HostedAdvancementTokens"
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30045,
+  "is_playable": true
+}

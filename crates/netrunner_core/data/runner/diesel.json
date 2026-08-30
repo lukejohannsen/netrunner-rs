@@ -1,0 +1,21 @@
+{
+  "id": "diesel",
+  "title": "Diesel",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            3
+          ]
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

@@ -1,14 +1,15 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, Cost, Trigger};
+use crate::dsl::{CardId, CardSubtype, CardType, Cost, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
+use crate::rules::pending_choice;
 use crate::rules::run::{self, RunAction, RunPhase};
 use crate::rules::setup;
-use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, Side};
+use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, Side};
 use crate::rules::trace;
 use crate::rules::turn;
 use crate::rules::win;
@@ -47,13 +48,33 @@ pub fn apply_action(
         let awaiting = if trace.corp_bid.is_none() { Side::Corp } else { Side::Runner };
         return Err(RulesError::ActionBlockedByActiveTrace { awaiting });
     }
+    // A parked `PendingPaidChoice`/`PendingDecision` admits no "stays legal
+    // during this" exceptions either, mirroring `active_trace`'s guard
+    // above exactly — see `Effect::OfferPaidChoice`/`PresentChoice`'s doc
+    // comments.
+    if let Some(side) = state.pending_paid_choice.as_ref().map(|p| p.side)
+        && !matches!(action, PlayerAction::AcceptPendingPaidChoice { .. } | PlayerAction::DeclinePendingPaidChoice)
+    {
+        return Err(RulesError::ActionBlockedByPendingPaidChoice { side });
+    }
+    if let Some(side) = pending_choice::pending_decision_chooser(state)
+        && !matches!(
+            action,
+            PlayerAction::ResolvePendingChoice { .. }
+                | PlayerAction::ToggleCardSelection { .. }
+                | PlayerAction::ConfirmCardSelection
+                | PlayerAction::ChooseServerForPendingDecision { .. }
+        )
+    {
+        return Err(RulesError::ActionBlockedByPendingDecision { side });
+    }
     match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
-        PlayerAction::DrawCardClick => draw_card_click(state),
+        PlayerAction::DrawCardClick => draw_card_click(state, registry),
         PlayerAction::InstallCard { card_id, zone, slot } => {
             install_card(state, registry, card_id, zone, slot)
         }
-        PlayerAction::RezIce { ice_id } => rez_ice(state, ice_id),
+        PlayerAction::RezIce { ice_id } => rez_ice(state, registry, ice_id),
         PlayerAction::InitiateRun { server } => initiate_run(state, registry, server),
         PlayerAction::ContinueRun => continue_run(state, registry),
         PlayerAction::JackOut => jack_out(state, registry),
@@ -64,8 +85,15 @@ pub fn apply_action(
         PlayerAction::InstallProgram { card_id, memory_cost } => {
             install_program(state, registry, card_id, memory_cost)
         }
+        PlayerAction::InstallResource { card_id } => install_resource(state, registry, card_id),
+        PlayerAction::InstallProgramOnIce { card_id, host_ice_id, memory_cost } => {
+            install_program_on_ice(state, registry, card_id, host_ice_id, memory_cost)
+        }
         PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
             break_subroutine(state, ice_id, subroutine_index, registry)
+        }
+        PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index } => {
+            break_subroutine_with_click(state, ice_id, subroutine_index, registry)
         }
         PlayerAction::EndTurn => turn::end_turn(state, registry),
         PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id, registry),
@@ -97,6 +125,16 @@ pub fn apply_action(
         PlayerAction::PassPriority { side } => pass_priority_action(state, registry, side),
         PlayerAction::SubmitCorpTraceBid { amount } => submit_corp_trace_bid(state, amount),
         PlayerAction::SubmitRunnerTraceBid { amount } => submit_runner_trace_bid(state, registry, amount),
+        PlayerAction::AcceptPendingPaidChoice { cost_option_index } => {
+            accept_pending_paid_choice(state, registry, cost_option_index)
+        }
+        PlayerAction::DeclinePendingPaidChoice => decline_pending_paid_choice(state, registry),
+        PlayerAction::ResolvePendingChoice { option_index } => resolve_pending_choice(state, registry, option_index),
+        PlayerAction::ToggleCardSelection { card_id } => toggle_card_selection(state, registry, card_id),
+        PlayerAction::ConfirmCardSelection => confirm_card_selection(state, registry),
+        PlayerAction::ChooseServerForPendingDecision { server } => {
+            choose_server_for_pending_decision(state, registry, server)
+        }
     }
 }
 
@@ -140,7 +178,7 @@ fn gain_credit_click(
     ))
 }
 
-fn draw_card_click(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+fn draw_card_click(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
@@ -152,6 +190,10 @@ fn draw_card_click(state: &GameState) -> Result<(GameState, Vec<GameEvent>), Rul
         next.runner.grip.push(card);
         events.push(GameEvent::CardDrawn { side });
     }
+
+    let basic_draw_event = GameEvent::BasicDrawActionTaken { side };
+    events.push(basic_draw_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &basic_draw_event)?);
 
     Ok((next, events))
 }
@@ -192,6 +234,8 @@ fn install_card(
         slot,
         rezzed: false,
         advancement_tokens: 0,
+        counters: 0,
+        installed_this_turn: true,
     });
     let installed_event = GameEvent::CardInstalled {
         side,
@@ -208,10 +252,19 @@ fn install_card(
     Ok((next, events))
 }
 
-fn rez_ice(state: &GameState, ice_id: CardId) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+fn rez_ice(
+    state: &GameState,
+    registry: &CardRegistry,
+    ice_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
-    let rez_window_open =
-        matches!(&state.active_run, Some(run) if run.phase == RunPhase::ApproachIce);
+    // Priority-independent: legal during the Corp's own Action phase, or —
+    // regardless of whose turn it is — while any PaidAbilityWindow is open,
+    // or (kept for states that reached ApproachIce without a window
+    // literally attached, e.g. hand-built test fixtures) while a run is at
+    // RunPhase::ApproachIce specifically.
+    let rez_window_open = state.paid_ability_window.is_some()
+        || matches!(&state.active_run, Some(run) if run.phase == RunPhase::ApproachIce);
     if !rez_window_open {
         require_phase(state, GamePhase::Action(side))?;
     }
@@ -232,6 +285,20 @@ fn rez_ice(state: &GameState, ice_id: CardId) -> Result<(GameState, Vec<GameEven
         installed.rezzed = true;
         installed.server
     };
+
+    let card_def = registry
+        .get(&ice_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+    // Tread Lightly-style "+3 credits to rez cost during this run" modifier,
+    // if this ICE's server is the one being run — applied to the printed
+    // cost before paying, never allowed to go negative.
+    let rez_cost_modifier = next
+        .active_run
+        .as_ref()
+        .filter(|run| run.server == server)
+        .map_or(0, |run| run.ice_rez_cost_modifier);
+    let rez_cost = (card_def.cost as i32 + rez_cost_modifier).max(0) as u32;
+    let mut events = ability::pay_cost(&mut next, side, &Cost::Credits(rez_cost), Some(&ice_id))?;
 
     // If this rez happens during this ICE's own `ApproachIce` window (the
     // normal "rez window"), also flip the matching `RunIce.rezzed` so
@@ -255,7 +322,10 @@ fn rez_ice(state: &GameState, ice_id: CardId) -> Result<(GameState, Vec<GameEven
     // Games priority rule 4.
     paid_ability::note_window_action(&mut next, side);
 
-    Ok((next, vec![GameEvent::IceRezzed { card: ice_id, server }]))
+    let rezzed_event = GameEvent::IceRezzed { card: ice_id, server };
+    events.push(rezzed_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &rezzed_event)?);
+    Ok((next, events))
 }
 
 fn initiate_run(
@@ -268,6 +338,13 @@ fn initiate_run(
     if state.active_run.is_some() {
         return Err(RulesError::RunAlreadyInProgress);
     }
+    // Without this, a run could be initiated mid-`StartOfTurn`/`EndOfTurn`
+    // window (whose checkpoint keeps `state.phase` at `Action(Runner)`/
+    // unrelated), leaving it orphaned once the window closes and hands
+    // control to the other side — `active_run.is_some()` alone used to be
+    // enough here since only run-checkpoint windows existed, all of which
+    // already implied an active run; that invariant no longer holds.
+    paid_ability::require_no_window(state)?;
 
     let mut next = state.clone();
     spend_click(&mut next, side)?;
@@ -303,13 +380,25 @@ fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Ve
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
-    let events = run::advance_run(&mut next, RunAction::JackOut, registry)?;
+    let mut events = run::advance_run(&mut next, RunAction::JackOut, registry)?;
+    // Snapshotted before `active_run` is cleared, mirroring `run::access`'s
+    // `RunCompleted` site — see `Trigger::OnRunEnded`'s doc comment.
+    if let Some(run) = next.active_run.as_ref() {
+        next.last_completed_run = Some(crate::rules::state::CompletedRun::snapshot(run));
+    }
     next.active_run = None;
     // A window can be open here (e.g. mid-ApproachIce on the second+ ICE,
     // where jack_out_permitted is already true from a prior pass) — clear it
     // too, or it would survive with no active_run left to ever close it
     // against, permanently blocking every ordinary action afterward.
     next.paid_ability_window = None;
+
+    let jacked_out_event = events
+        .iter()
+        .find(|e| matches!(e, GameEvent::RunJackedOut { .. }))
+        .cloned()
+        .expect("run::advance_run(RunAction::JackOut) always emits RunJackedOut on success");
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &jacked_out_event)?);
 
     Ok((next, events))
 }
@@ -373,7 +462,7 @@ fn play_event(
     // tagged") — checked before its credit cost is paid, mirroring
     // `activate_ability`'s identical placement for `AbilityDef::requirement`.
     if let Some(requirement) = &card_def.play_requirement {
-        ability::check_requirement(&next, requirement)?;
+        ability::check_requirement(&next, requirement, side, Some(&card_id), registry)?;
     }
 
     let mut events = vec![GameEvent::ClickSpent { side }];
@@ -412,12 +501,13 @@ fn play_operation(
         return Err(RulesError::CardNotOperation { card: card_id });
     }
     if let Some(requirement) = &card_def.play_requirement {
-        ability::check_requirement(&next, requirement)?;
+        ability::check_requirement(&next, requirement, side, Some(&card_id), registry)?;
     }
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
-    next.corp.archives.push(card_id.clone());
+    // A played Operation resolved in the open, so the Runner has seen it.
+    next.corp.archives.push(ArchivedCard::faceup(card_id.clone()));
     // `dispatch_event` resolves both `OnPlay` and, for Transaction-subtype
     // Operations, the Weyland Consortium: Building a Better World-style
     // identity reaction (unconditional — no per-turn gate, unlike
@@ -432,7 +522,7 @@ fn play_operation(
 /// Seeds a newly-installed rig card's `base_strength` from the registry's
 /// printed `strength` — mirrors `build_run_ice`'s identical seed-once
 /// pattern for `RunIce::current_strength`. `0` for Hardware/non-strength
-/// Programs (`Card::strength` is `None`).
+/// Programs (`CardDefinition::strength` is `None`).
 fn seed_rig_card(registry: &CardRegistry, card_id: CardId) -> Result<InstalledRunnerCard, RulesError> {
     let card_def = registry
         .get(&card_id)
@@ -442,27 +532,70 @@ fn seed_rig_card(registry: &CardRegistry, card_id: CardId) -> Result<InstalledRu
         card: card_id,
         encounter_strength_buff: 0,
         turn_strength_buff: 0,
+        counters: 0,
+        hosted_on_ice: None,
     })
 }
 
-/// The credit cost to charge for installing a Program/Hardware this turn:
-/// `base_cost` reduced by the Runner identity's `Card::
-/// first_install_discount`, if one exists and hasn't already been applied
-/// this turn (`RunnerState::first_install_discount_used_this_turn`) — e.g.
-/// Kate "Mac" McCaffrey: Digital Tinker. Consumes the flag on `next` if the
-/// discount applies. Not a `Trigger`/`Effect` — see `Card::
-/// first_install_discount`'s doc comment for why this is a direct cost
-/// modifier instead.
-fn discounted_install_cost(next: &mut GameState, registry: &CardRegistry, base_cost: u32) -> u32 {
+/// Which kind of Runner install `discounted_install_cost`/
+/// `applicable_first_install_discount` is pricing — Kate "Mac" McCaffrey's
+/// identity discount applies to Program *or* Hardware installs, but DZMZ
+/// Optimizer's rig-card discount ("the first program you install") is
+/// Program-only, and neither ever applies to Resources (no baseline or
+/// System Gateway card discounts those). This distinction didn't exist
+/// before M5 — `install_resource` was, prior to this, incorrectly eligible
+/// for the identity discount too; this fixes that alongside generalizing
+/// the mechanism to also look at rig cards.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InstallKind {
+    Hardware,
+    Program,
+    Resource,
+}
+
+/// The first-install-of-the-turn discount applicable to an install of
+/// `kind`, from either source: the Runner's identity (`CardDefinition::
+/// first_install_discount`, applies to Hardware or Program — e.g. Kate "Mac"
+/// McCaffrey), or any installed rig card declaring the same field (applies
+/// to Program installs only — e.g. DZMZ Optimizer's "the first program you
+/// install each turn costs 1 credit less"). Identity takes priority if
+/// somehow both are present (no real deck can field both Kate and DZMZ
+/// simultaneously as separate discount *sources* meaningfully stacking, so
+/// this ordering is arbitrary-but-harmless). `0` if neither applies or
+/// `kind` is `Resource`.
+fn applicable_first_install_discount(state: &GameState, registry: &CardRegistry, kind: InstallKind) -> u32 {
+    if kind != InstallKind::Resource
+        && let Some(identity) = state.runner.identity.as_ref()
+        && let Some(discount) = registry.get(identity).and_then(|c| c.first_install_discount)
+    {
+        return discount;
+    }
+    if kind == InstallKind::Program {
+        for rig_card in &state.runner.rig {
+            if let Some(discount) = registry.get(&rig_card.card).and_then(|c| c.first_install_discount) {
+                return discount;
+            }
+        }
+    }
+    0
+}
+
+/// The credit cost to charge for installing a Runner card of `kind` this
+/// turn: `base_cost` reduced by `applicable_first_install_discount`, if any
+/// and it hasn't already been applied this turn
+/// (`RunnerState::first_install_discount_used_this_turn` — shared across
+/// every discount source, since e.g. Kate and DZMZ are mutually exclusive
+/// in a real deck). Consumes the flag on `next` if the discount applies.
+/// Not a `Trigger`/`Effect` — see `CardDefinition::first_install_discount`'s
+/// doc comment for why this is a direct cost modifier instead.
+fn discounted_install_cost(next: &mut GameState, registry: &CardRegistry, base_cost: u32, kind: InstallKind) -> u32 {
     if next.runner.first_install_discount_used_this_turn {
         return base_cost;
     }
-    let Some(identity) = next.runner.identity.as_ref() else {
+    let discount = applicable_first_install_discount(next, registry, kind);
+    if discount == 0 {
         return base_cost;
-    };
-    let Some(discount) = registry.get(identity).and_then(|c| c.first_install_discount) else {
-        return base_cost;
-    };
+    }
     next.runner.first_install_discount_used_this_turn = true;
     base_cost.saturating_sub(discount)
 }
@@ -482,12 +615,39 @@ fn install_hardware(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
-    let cost = discounted_install_cost(&mut next, registry, card_def.cost);
+    // "Limit 1 console per player" (e.g. Carnivore, Pennyshaver, Pantograph)
+    // — checked after the ordinary phase/click/hand checks above, matching
+    // every other card-specific rejection in this function (e.g.
+    // `MismatchedMemoryCost` in `install_program`) running only once the
+    // action is otherwise well-formed.
+    if card_def.subtypes.contains(&CardSubtype::Console)
+        && next.runner.rig.iter().any(|installed| {
+            registry.get(&installed.card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Console))
+        })
+    {
+        return Err(RulesError::ConsoleLimitExceeded);
+    }
+
+    let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Hardware);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
+    // MU/max-hand-size bonuses (e.g. a console's "+1[mu]", T400 Memory
+    // Diamond's "+1 maximum hand size") take effect immediately on install.
+    // Deliberately one-way: neither is decremented if this Hardware later
+    // leaves play — see `RunnerState::max_hand_size_bonus`'s doc comment.
+    // Threading a `CardRegistry` through every trash path (`ability::
+    // trash_card`/`trash_this_card`/`pay_cost`) to refund these correctly
+    // would be a much larger refactor than this milestone's actual cards
+    // need; revisit if a future card's balance depends on the refund.
+    if let Some(bonus) = card_def.memory_bonus {
+        next.runner.memory_units = MemoryUnits(next.runner.memory_units.0 + bonus);
+    }
+    if let Some(bonus) = card_def.max_hand_size_bonus {
+        next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
+    }
     events.push(GameEvent::HardwareInstalled { side, card: card_id });
 
     Ok((next, events))
@@ -517,7 +677,26 @@ fn install_program(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
-    let cost = discounted_install_cost(&mut next, registry, card_def.cost);
+    // A registered `memory_cost` is authoritative — the caller-supplied
+    // value must match it exactly. `None` (the common case for a card with
+    // no `memory_cost` set yet) leaves the caller free to name any value,
+    // preserving this action's existing behavior for every card that
+    // hasn't been migrated to declare one.
+    if let Some(expected) = card_def.memory_cost
+        && expected != requested
+    {
+        return Err(RulesError::MismatchedMemoryCost { expected, actual: requested });
+    }
+    let mut cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Program);
+    // A conditional per-card discount (e.g. Carmen: "-2 to install if you
+    // made a successful run this turn") stacks independently on top of the
+    // once-per-turn identity/rig-card discount above — no shared
+    // consumption flag, since it's re-evaluated fresh every time.
+    if let Some((requirement, amount)) = &card_def.install_cost_discount_if
+        && ability::check_requirement(&next, requirement, side, Some(&card_id), registry).is_ok()
+    {
+        cost = cost.saturating_sub(*amount);
+    }
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
@@ -533,24 +712,177 @@ fn install_program(
     Ok((next, events))
 }
 
+/// Resolves `PlayerAction::InstallProgramOnIce`, per its doc comment.
+/// Mirrors `install_program` almost exactly (same memory/cost handling,
+/// same `ProgramInstalled` event so `OnVirusInstalled`/Cookbook-style
+/// dispatch keeps working uniformly for a hosted Trojan) — the only two
+/// differences are the `installs_on_ice`/host-is-ICE validation up front,
+/// and stamping `hosted_on_ice` on the seeded rig card afterward.
+fn install_program_on_ice(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+    host_ice_id: CardId,
+    memory_cost: u8,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if !card_def.installs_on_ice {
+        return Err(RulesError::NotATrojanProgram(card_id));
+    }
+    if !state
+        .corp
+        .installed
+        .iter()
+        .any(|c| c.card == host_ice_id && c.slot == InstallSlot::Ice)
+    {
+        return Err(RulesError::HostIsNotIce(host_ice_id));
+    }
+
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+    take_from_grip(&mut next, side, &card_id)?;
+
+    let available = next.runner.memory_units.0;
+    let requested = memory_cost as u32;
+    next.runner.memory_units = next
+        .runner
+        .memory_units
+        .spend(requested)
+        .ok_or(RulesError::InsufficientMemory { available, requested })?;
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if let Some(expected) = card_def.memory_cost
+        && expected != requested
+    {
+        return Err(RulesError::MismatchedMemoryCost { expected, actual: requested });
+    }
+    let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Program);
+
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
+    let mut rig_card = seed_rig_card(registry, card_id.clone())?;
+    rig_card.hosted_on_ice = Some(host_ice_id);
+    next.runner.rig.push(rig_card);
+    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost };
+    events.push(installed_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
+
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::InstallResource`, per its doc comment. Mirrors
+/// `install_hardware` (no memory-unit reservation), but — like
+/// `install_program` — dispatches its own installed-event afterward, since
+/// a Resource is the only Runner install kind so far whose `OnInstall`
+/// trigger needs to fire against the just-installed card itself (e.g. Red
+/// Team/Telework Contract's "when you install this resource, load N
+/// credits onto it").
+fn install_resource(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+    take_from_grip(&mut next, side, &card_id)?;
+
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Resource);
+
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
+    let rig_card = seed_rig_card(registry, card_id.clone())?;
+    next.runner.rig.push(rig_card);
+    let installed_event = GameEvent::ResourceInstalled { side, card: card_id };
+    events.push(installed_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
+
+    Ok((next, events))
+}
+
 fn break_subroutine(
     state: &GameState,
-    // Not cross-checked against `RunState::ice` — see `PlayerAction::BreakSubroutine`'s doc comment.
-    _ice_id: CardId,
+    ice_id: CardId,
     subroutine_index: usize,
     registry: &CardRegistry,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
 
-    // `step_subroutine` (via `advance_run`) now does its own bounds/status
+    // Cross-check `ice_id` against the ICE actually being encountered before
+    // delegating — `transition_subroutine` identifies the right `RunIce`
+    // positionally (`run.position`), not by `ice_id`, so it can't catch a
+    // caller-supplied mismatch on its own. See
+    // `PlayerAction::BreakSubroutine`'s doc comment.
+    let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+    if run.phase != RunPhase::EncounterIce {
+        return Err(RulesError::NotInEncounter);
+    }
+    let current_ice = run.ice.get(run.position).ok_or(RulesError::NotInEncounter)?;
+    if current_ice.card_id != ice_id {
+        return Err(RulesError::MismatchedIceId {
+            expected: current_ice.card_id.clone(),
+            actual: ice_id,
+        });
+    }
+
+    // `step_subroutine` (via `advance_run`) does its own bounds/status
     // validation against `RunIce::subroutines`, so there's no need to
-    // duplicate a pre-check here — just forward the index.
+    // duplicate that here — just forward the index.
     let mut next = state.clone();
     let events = run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index), registry)?;
     // Priority-independent like RezIce (not gated on whose priority it is),
     // but still gives the other side a fresh chance to respond if a window
     // is open.
+    paid_ability::note_window_action(&mut next, side);
+
+    Ok((next, events))
+}
+
+/// `PlayerAction::BreakSubroutineWithClick`'s handler — identical
+/// legality/delegation shape to `break_subroutine`, plus the
+/// `click_breakable` gate and a click cost instead of no cost at all.
+fn break_subroutine_with_click(
+    state: &GameState,
+    ice_id: CardId,
+    subroutine_index: usize,
+    registry: &CardRegistry,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Runner;
+    require_phase(state, GamePhase::Action(side))?;
+
+    let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+    if run.phase != RunPhase::EncounterIce {
+        return Err(RulesError::NotInEncounter);
+    }
+    let current_ice = run.ice.get(run.position).ok_or(RulesError::NotInEncounter)?;
+    if current_ice.card_id != ice_id {
+        return Err(RulesError::MismatchedIceId {
+            expected: current_ice.card_id.clone(),
+            actual: ice_id,
+        });
+    }
+    if !registry.get(&ice_id).is_some_and(|c| c.click_breakable) {
+        return Err(RulesError::IceNotClickBreakable(ice_id));
+    }
+
+    let mut next = state.clone();
+    spend_click(&mut next, side)?;
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index), registry)?);
     paid_ability::note_window_action(&mut next, side);
 
     Ok((next, events))
@@ -618,16 +950,36 @@ fn activate_ability(
         return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
     }
     if let Some(requirement) = &ability.requirement {
-        ability::check_requirement(state, requirement)?;
+        ability::check_requirement(state, requirement, side, Some(&card_id), registry)?;
     }
 
     let mut next = state.clone();
     let mut events = Vec::new();
     if let Some(cost) = &ability.cost {
-        events.extend(ability::pay_cost(&mut next, side, cost, Some(&card_id))?);
+        // A conditional per-ability discount (e.g. Marjanah: "-1 to use if
+        // you made a successful run this turn") only meaningfully applies
+        // to `Cost::Credits` — re-evaluated fresh every activation, no
+        // once-per-turn consumption, unlike `first_install_discount`.
+        let discounted = match (cost, &ability.cost_discount_if) {
+            (Cost::Credits(amount), Some((requirement, discount)))
+                if ability::check_requirement(&next, requirement, side, Some(&card_id), registry).is_ok() =>
+            {
+                Cost::Credits(amount.saturating_sub(*discount))
+            }
+            _ => cost.clone(),
+        };
+        events.extend(ability::pay_cost(&mut next, side, &discounted, Some(&card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
     events.extend(ability::evaluate_effect(&mut next, &ability.effect, Some(&card_id), registry)?);
+    // `check_requirement` above only reads — without this, a `Paid`
+    // ability's `EffectRequirement::OncePerTurn` (e.g. Telework Contract's
+    // click ability) would never actually get marked used and could be
+    // activated any number of times per turn. Mirrors
+    // `process_card_triggers`'s own check-then-consume ordering.
+    if let Some(requirement) = &ability.requirement {
+        ability::consume_requirement(&mut next, requirement, side);
+    }
     paid_ability::note_window_action(&mut next, side);
 
     Ok((next, events))
@@ -666,7 +1018,10 @@ fn advance_card(
 
     installed.advancement_tokens += 1;
     let advancement_tokens = installed.advancement_tokens;
-    events.push(GameEvent::CardAdvanced { card: card_id, advancement_tokens });
+    next.last_advancement_was_first = advancement_tokens == 1;
+    let advanced_event = GameEvent::CardAdvanced { card: card_id, advancement_tokens };
+    events.push(advanced_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &advanced_event)?);
 
     Ok((next, events))
 }
@@ -681,6 +1036,11 @@ fn score_agenda(
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
+    // Luminal Transubstantiation's lockout. Checked here as well as filtered
+    // out of `legal_actions` so the two can't disagree.
+    if state.corp.cannot_score_agendas_this_turn {
+        return Err(RulesError::CannotScoreAgendasThisTurn);
+    }
 
     let position = state
         .corp
@@ -689,6 +1049,7 @@ fn score_agenda(
         .position(|installed| installed.card == card_id)
         .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
     let advancement_tokens = state.corp.installed[position].advancement_tokens;
+    let server = state.corp.installed[position].server;
 
     let card_def = registry
         .get(&card_id)
@@ -711,8 +1072,10 @@ fn score_agenda(
     next.corp.installed.remove(position);
     next.corp.scored_agendas.push(card_id.clone());
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
+    next.corp.agenda_points_scored_this_turn =
+        next.corp.agenda_points_scored_this_turn.saturating_add(agenda_points);
 
-    let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points };
+    let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server };
     let mut events = vec![GameEvent::ClickSpent { side }, scored_event.clone()];
     // `dispatch_event` fires the agenda's own "on score" text (e.g. Hostile
     // Takeover), then the Corp identity's reactive ability if one is set
@@ -909,21 +1272,99 @@ fn submit_runner_trace_bid(
     Ok((next, events))
 }
 
+/// Resolves `PlayerAction::AcceptPendingPaidChoice`, per its doc comment.
+fn accept_pending_paid_choice(
+    state: &GameState,
+    registry: &CardRegistry,
+    cost_option_index: Option<usize>,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = pending_choice::resolve_accept(&mut next, registry, cost_option_index)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::DeclinePendingPaidChoice`, per its doc comment.
+fn decline_pending_paid_choice(
+    state: &GameState,
+    registry: &CardRegistry,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = pending_choice::resolve_decline(&mut next, registry)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::ResolvePendingChoice`, per its doc comment.
+fn resolve_pending_choice(
+    state: &GameState,
+    registry: &CardRegistry,
+    option_index: usize,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = pending_choice::resolve_choice(&mut next, registry, option_index)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::ToggleCardSelection`, per its doc comment.
+fn toggle_card_selection(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = pending_choice::resolve_toggle_card_selection(&mut next, registry, card_id)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::ConfirmCardSelection`, per its doc comment.
+fn confirm_card_selection(
+    state: &GameState,
+    registry: &CardRegistry,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = pending_choice::resolve_confirm_card_selection(&mut next, registry)?;
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::ChooseServerForPendingDecision`, per its doc comment.
+fn choose_server_for_pending_decision(
+    state: &GameState,
+    registry: &CardRegistry,
+    server: ServerTarget,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = pending_choice::resolve_choose_server(&mut next, registry, server)?;
+    Ok((next, events))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::dsl::{
-        AbilityDef, BoostDuration, Card, CardType, Cost, Effect, IceType, SubroutineBreakCount,
+        AbilityDef, BoostDuration, CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount,
         SubroutineDef, TriggeredEffect,
     };
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
-    use crate::rules::state::{AgendaPoints, Clicks, Credits, PaidAbilityWindow, PlayerResources};
+    use crate::rules::state::{AgendaPoints, Clicks, Credits, PaidAbilityWindow, PlayerResources, WindowCheckpoint};
 
     /// An empty registry, for every test that doesn't exercise
     /// `PlayerAction::ActivateAbility` and so doesn't need real card
     /// definitions.
     fn registry() -> CardRegistry {
         CardRegistry::new()
+    }
+
+    /// See `turn::tests::close_all_windows`'s doc comment — same helper,
+    /// duplicated here since that one lives in a private `mod tests`.
+    fn close_all_windows(mut state: GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let mut events = Vec::new();
+        while let Some(window) = &state.paid_ability_window {
+            let side = window.active_priority;
+            let (next, ev) = apply_action(&state, registry, PlayerAction::PassPriority { side })
+                .expect("pass priority should succeed");
+            state = next;
+            events.extend(ev);
+        }
+        (state, events)
     }
 
     /// Builds a `RunIce` with `subroutine_count` placeholder `Pending`
@@ -960,38 +1401,28 @@ mod tests {
 
     fn corp_state(clicks: u32, credits: u32) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
-                scored_agendas: Vec::new(),
+            corp: crate::rules::state::CorpState {
                 resources: PlayerResources {
                     credits: Credits(credits),
                     clicks: Clicks(clicks),
                     agenda_points: AgendaPoints(0),
                 },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
+                ..Default::default()
             },
-            runner: crate::rules::state::RunnerState { identity: None,
-                scored_agendas: Vec::new(),
+            runner: crate::rules::state::RunnerState {
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: crate::rules::state::MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
@@ -1001,38 +1432,30 @@ mod tests {
     /// (identity doesn't matter for the tests using this — only counts do).
     fn runner_state(clicks: u32, stack_size: u32, grip_size: u32) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
-                scored_agendas: Vec::new(),
+            corp: crate::rules::state::CorpState {
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
                     agenda_points: AgendaPoints(0),
                 },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
+                ..Default::default()
             },
-            runner: crate::rules::state::RunnerState { identity: None,
-                scored_agendas: Vec::new(),
+            runner: crate::rules::state::RunnerState {
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(clicks),
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: crate::rules::state::MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
                 grip: (0..grip_size).map(|i| CardId(format!("grip_card_{i}"))).collect(),
                 stack: (0..stack_size).map(|i| CardId(format!("stack_card_{i}"))).collect(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
@@ -1101,6 +1524,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CardDrawn { side: Side::Runner },
+                GameEvent::BasicDrawActionTaken { side: Side::Runner },
             ]
         );
     }
@@ -1143,7 +1567,10 @@ mod tests {
         assert_eq!(next.runner.stack.len(), 0);
         assert_eq!(next.runner.grip.len(), 3);
         assert_eq!(next.runner.resources.clicks, Clicks(1));
-        assert_eq!(events, vec![GameEvent::ClickSpent { side: Side::Runner }]);
+        assert_eq!(
+            events,
+            vec![GameEvent::ClickSpent { side: Side::Runner }, GameEvent::BasicDrawActionTaken { side: Side::Runner }]
+        );
     }
 
     #[test]
@@ -1170,11 +1597,12 @@ mod tests {
         assert_eq!(
             next.corp.installed,
             vec![InstalledCard {
-                advancement_tokens: 0,
                 card: card_id.clone(),
-                server: ServerId::Hq,
                 slot: InstallSlot::Ice,
-                rezzed: false,
+                // Seamless Launch's eligibility marker — set by every
+                // install, cleared at the Corp's next turn start.
+                installed_this_turn: true,
+                ..Default::default()
             }]
         );
         assert_eq!(
@@ -1284,26 +1712,57 @@ mod tests {
     }
 
     #[test]
-    fn corp_rez_ice_flips_installed_card_and_costs_nothing() {
+    fn corp_rez_ice_flips_installed_card_and_pays_registry_cost() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: card_id.clone(),
-            server: ServerId::Hq,
             slot: InstallSlot::Ice,
-            rezzed: false,
+            ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
-        let (next, events) = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() })
+        let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 1, None)]);
+        let (next, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: card_id.clone() })
             .expect("action should succeed");
 
         assert!(next.corp.installed[0].rezzed);
         assert_eq!(next.corp.resources.clicks, Clicks(3));
-        assert_eq!(next.corp.resources.credits, Credits(5));
+        assert_eq!(next.corp.resources.credits, Credits(4));
         assert_eq!(
             events,
-            vec![GameEvent::IceRezzed { card: card_id, server: ServerId::Hq }]
+            vec![
+                GameEvent::CreditsSpent { side: Side::Corp, amount: 1 },
+                GameEvent::IceRezzed { card: card_id, server: ServerId::Hq },
+            ]
         );
+    }
+
+    #[test]
+    fn corp_rez_ice_with_insufficient_credits_returns_not_enough_credits() {
+        let card_id = CardId("ice_wall".to_string());
+        let installed = vec![InstalledCard {
+            card: card_id.clone(),
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        }];
+        let state = corp_state_with_hq_and_installed(3, 0, Vec::new(), installed);
+        let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 1, None)]);
+        let result = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: card_id });
+
+        assert_eq!(result, Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 0, requested: 1 }));
+    }
+
+    #[test]
+    fn corp_rez_ice_for_card_missing_from_registry_returns_card_not_found_in_registry() {
+        let card_id = CardId("ice_wall".to_string());
+        let installed = vec![InstalledCard {
+            card: card_id.clone(),
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        }];
+        let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
+        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() });
+
+        assert_eq!(result, Err(RulesError::CardNotFoundInRegistry(card_id)));
     }
 
     #[test]
@@ -1334,11 +1793,10 @@ mod tests {
     fn corp_rez_ice_already_rezzed_returns_already_rezzed() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: card_id.clone(),
-            server: ServerId::Hq,
             slot: InstallSlot::Ice,
             rezzed: true,
+            ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() });
@@ -1350,22 +1808,21 @@ mod tests {
     fn corp_can_rez_ice_during_run_approach_ice_even_though_phase_is_runner_action() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: card_id.clone(),
-            server: ServerId::Hq,
             slot: InstallSlot::Ice,
-            rezzed: false,
+            ..Default::default()
         }];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, false)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
-        let (next, events) = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() })
+        let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 0, None)]);
+        let (next, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: card_id.clone() })
             .expect("Corp should be able to rez ICE during the Runner's run");
 
         assert!(next.corp.installed[0].rezzed);
@@ -1374,7 +1831,10 @@ mod tests {
         assert_eq!(next.corp.resources.credits, Credits(5));
         assert_eq!(
             events,
-            vec![GameEvent::IceRezzed { card: card_id, server: ServerId::Hq }]
+            vec![
+                GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
+                GameEvent::IceRezzed { card: card_id, server: ServerId::Hq },
+            ]
         );
     }
 
@@ -1384,30 +1844,30 @@ mod tests {
         let inner = CardId("inner_ice".to_string());
         let installed = vec![
             InstalledCard {
-                advancement_tokens: 0,
                 card: outer.clone(),
-                server: ServerId::Hq,
                 slot: InstallSlot::Ice,
-                rezzed: false,
+                ..Default::default()
             },
             InstalledCard {
-                advancement_tokens: 0,
                 card: inner.clone(),
-                server: ServerId::Hq,
                 slot: InstallSlot::Ice,
-                rezzed: false,
+                ..Default::default()
             },
         ];
         let mut state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("outer_ice", 0, 1, false), test_ice("inner_ice", 0, 1, false)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
-        let (next, _events) = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: inner.clone() })
+        let registry = CardRegistry::from_cards(vec![
+            test_card("outer_ice", Side::Corp, CardType::Ice(IceType::Barrier), 0, None),
+            test_card("inner_ice", Side::Corp, CardType::Ice(IceType::Barrier), 0, None),
+        ]);
+        let (next, _events) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: inner.clone() })
             .expect("Corp should be able to pre-emptively rez ICE the run hasn't reached yet");
 
         assert!(next.corp.installed.iter().find(|c| c.card == inner).unwrap().rezzed);
@@ -1425,12 +1885,8 @@ mod tests {
         assert_eq!(next.runner.resources.clicks, Clicks(2));
         assert_eq!(
             next.active_run,
-            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-                server: ServerId::Hq,
-                phase: RunPhase::Initiation,
-                ice: Vec::new(),
-                position: 0,
-                jack_out_permitted: false,
+            Some(RunState {
+                ..Default::default()
             })
         );
         assert_eq!(
@@ -1448,18 +1904,15 @@ mod tests {
     #[test]
     fn runner_initiate_run_populates_ice_from_installed_ice_outermost_first() {
         let outer = InstalledCard {
-            advancement_tokens: 0,
             card: CardId("outer_ice".to_string()),
-            server: ServerId::Hq,
             slot: InstallSlot::Ice,
-            rezzed: false,
+            ..Default::default()
         };
         let inner = InstalledCard {
-            advancement_tokens: 0,
             card: CardId("inner_ice".to_string()),
-            server: ServerId::Hq,
             slot: InstallSlot::Ice,
             rezzed: true,
+            ..Default::default()
         };
         let state = corp_state_with_hq_and_installed(0, 0, Vec::new(), vec![outer, inner]);
         let mut state = state;
@@ -1493,18 +1946,15 @@ mod tests {
     fn runner_initiate_run_ignores_root_installs_and_other_servers_ice() {
         let installed = vec![
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("some_upgrade".to_string()),
-                server: ServerId::Hq,
-                slot: InstallSlot::Root,
-                rezzed: false,
+                ..Default::default()
             },
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("remote_ice".to_string()),
                 server: ServerId::Remote(0),
                 slot: InstallSlot::Ice,
                 rezzed: true,
+                ..Default::default()
             },
         ];
         let mut state = corp_state_with_hq_and_installed(0, 0, Vec::new(), installed);
@@ -1518,26 +1968,41 @@ mod tests {
     }
 
     #[test]
-    fn runner_initiate_run_defaults_unregistered_ice_to_blank() {
+    fn runner_initiate_run_with_unregistered_ice_returns_card_not_found_in_registry() {
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: CardId("mystery_ice".to_string()),
-            server: ServerId::Hq,
             slot: InstallSlot::Ice,
-            rezzed: false,
+            ..Default::default()
         }];
         let mut state = corp_state_with_hq_and_installed(0, 0, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
         state.runner = runner_state(3, 5, 3).runner;
 
-        let (next, _events) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
+        let result = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq });
+
+        assert_eq!(result, Err(RulesError::CardNotFoundInRegistry(CardId("mystery_ice".to_string()))));
+    }
+
+    #[test]
+    fn runner_initiate_run_with_registered_ice_missing_strength_and_subroutines_still_builds_blank_defaults() {
+        let installed = vec![InstalledCard {
+            card: CardId("vanilla_ice".to_string()),
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        }];
+        let mut state = corp_state_with_hq_and_installed(0, 0, Vec::new(), installed);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = runner_state(3, 5, 3).runner;
+        let registry = CardRegistry::from_cards(vec![test_card("vanilla_ice", Side::Corp, CardType::Ice(IceType::Barrier), 0, None)]);
+
+        let (next, _events) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq })
             .expect("action should succeed");
 
         let ice = next.active_run.unwrap().ice;
         assert_eq!(
             ice,
             vec![RunIce {
-                card_id: CardId("mystery_ice".to_string()),
+                card_id: CardId("vanilla_ice".to_string()),
                 current_strength: 0,
                 ice_type: IceType::Barrier,
                 subroutines: Vec::new(),
@@ -1563,12 +2028,12 @@ mod tests {
     #[test]
     fn runner_initiate_run_with_run_already_active_returns_run_already_in_progress() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let result = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::RnD });
 
         assert_eq!(result, Err(RulesError::RunAlreadyInProgress));
@@ -1588,12 +2053,12 @@ mod tests {
     #[test]
     fn runner_jack_out_ends_run_clears_active_run_no_click_cost() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let (next, events) =
             apply_action(&state, &registry(), PlayerAction::JackOut).expect("action should succeed");
 
@@ -1627,19 +2092,18 @@ mod tests {
     #[test]
     fn runner_jack_out_during_initial_approach_returns_illegal_jack_out_window() {
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: CardId("ice_wall".to_string()),
-            server: ServerId::Hq,
             slot: InstallSlot::Ice,
-            rezzed: false,
+            ..Default::default()
         }];
         let mut state = corp_state_with_hq_and_installed(0, 0, Vec::new(), installed);
         state.phase = GamePhase::Action(Side::Runner);
         state.runner = runner_state(3, 5, 3).runner;
+        let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 0, None)]);
 
-        let (after_initiate, _) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
+        let (after_initiate, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq })
             .expect("initiate run should succeed");
-        let result = apply_action(&after_initiate, &registry(), PlayerAction::JackOut);
+        let result = apply_action(&after_initiate, &registry, PlayerAction::JackOut);
 
         assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::Initiation }));
         assert!(after_initiate.active_run.is_some());
@@ -1668,12 +2132,11 @@ mod tests {
         // unlike `RunPhase::Success` (legal there — the "approach server"
         // jack-out window; see `runner_jack_out_succeeds_on_ice_less_server_before_access`).
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            ice: Vec::new(),
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let result = apply_action(&state, &registry(), PlayerAction::JackOut);
 
         assert_eq!(
@@ -1685,12 +2148,12 @@ mod tests {
     #[test]
     fn runner_can_initiate_run_again_after_jacking_out() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let (after_jack_out, _) =
             apply_action(&state, &registry(), PlayerAction::JackOut).expect("jack out should succeed");
@@ -1703,15 +2166,15 @@ mod tests {
 
         assert_eq!(
             after_initiate.active_run,
-            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
+            Some(RunState {
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
-                ice: Vec::new(),
                 position: 0,
                 // `initiate_run` always starts a fresh run with the
                 // jack-out window closed (Netrunner/Null Signal Games rule 1) — it only opens
                 // via `continue_run`, which this test never calls.
                 jack_out_permitted: false,
+                ..Default::default()
             })
         );
     }
@@ -1719,12 +2182,11 @@ mod tests {
     #[test]
     fn runner_complete_run_clears_active_run_after_success() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::Success,
-            ice: Vec::new(),
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let (state, complete_events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
         assert_eq!(complete_events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
@@ -1749,12 +2211,12 @@ mod tests {
     #[test]
     fn runner_complete_run_before_success_returns_run_not_concluded() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let result = apply_action(&state, &registry(), PlayerAction::CompleteRun);
 
         assert_eq!(
@@ -1788,12 +2250,11 @@ mod tests {
     #[test]
     fn runner_can_initiate_run_again_after_completing_previous_run() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::Success,
-            ice: Vec::new(),
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let (state, _) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("complete run should succeed");
@@ -1810,15 +2271,15 @@ mod tests {
 
         assert_eq!(
             after_initiate.active_run,
-            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
+            Some(RunState {
                 server: ServerId::RnD,
                 phase: RunPhase::Initiation,
-                ice: Vec::new(),
                 position: 0,
                 // `initiate_run` always starts a fresh run with the
                 // jack-out window closed (Netrunner/Null Signal Games rule 1) — it only opens
                 // via `continue_run`, which this test never calls.
                 jack_out_permitted: false,
+                ..Default::default()
             })
         );
     }
@@ -1827,13 +2288,11 @@ mod tests {
     fn runner_complete_run_against_hq_parks_the_run_awaiting_an_access_choice() {
         let mut state = runner_state(3, 5, 3);
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::Success,
-            ice: Vec::new(),
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let (state, complete_events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
         assert_eq!(complete_events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
@@ -1862,8 +2321,12 @@ mod tests {
         assert_eq!(next.paid_ability_window.as_ref().unwrap().active_priority, Side::Runner);
         assert_eq!(
             next.active_run,
-            Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
+            Some(RunState {
+                cards_accessed_count: 1,
                 access_state: Some(run::AccessState {
+                    // Set when the card was presented, and left in place
+                    // for the rest of its `PendingChoice`.
+                    currently_accessing: Some(CardId("hedge_fund".to_string())),
                     server: ServerId::Hq,
                     unaccessed_cards: Vec::new(),
                     resolved_cards: Vec::new(),
@@ -1875,24 +2338,21 @@ mod tests {
                         steal_cost: None,
                     },
                 }),
-                server: ServerId::Hq,
                 phase: RunPhase::AccessingCard,
-                ice: Vec::new(),
-                position: 0,
-             jack_out_permitted: true,})
+                jack_out_permitted: true,
+                ..Default::default()
+            })
         );
     }
 
     #[test]
     fn runner_complete_run_against_empty_hq_completes_immediately() {
         let mut state = runner_state(3, 5, 3);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::Success,
-            ice: Vec::new(),
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let (state, _) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
         let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
@@ -1914,29 +2374,25 @@ mod tests {
     #[test]
     fn corp_end_turn_via_apply_action_hands_control_to_runner() {
         let state = corp_state(0, 5);
-        let (next, events) =
+        let (next, mut events) =
             apply_action(&state, &registry(), PlayerAction::EndTurn).expect("action should succeed");
+        let (next, close_events) = close_all_windows(next, &registry());
+        events.extend(close_events);
 
         assert_eq!(next.phase, GamePhase::Action(Side::Runner));
         assert_eq!(next.runner.resources.clicks, Clicks(4));
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::TurnEnded { side: Side::Corp },
-                GameEvent::TurnStarted { side: Side::Runner, clicks: 4 },
-            ]
-        );
+        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Corp }));
+        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Runner, clicks: 4 }));
     }
 
     #[test]
     fn runner_continue_run_steps_through_phases_with_no_click_cost() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
-            phase: RunPhase::Initiation,
+        state.active_run = Some(RunState {
             ice: vec![test_ice("ice_wall", 0, 0, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         // Initiation -> ApproachIce, opening a Paid Ability Window there.
         let (state, events) =
@@ -2003,12 +2459,12 @@ mod tests {
     #[test]
     fn runner_continue_run_with_subroutines_pending_propagates_error() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let result = apply_action(&state, &registry(), PlayerAction::ContinueRun);
 
@@ -2177,7 +2633,8 @@ mod tests {
         // Paid 5 to play, then the OnPlay trigger grants 9 back — net +4.
         assert_eq!(next.corp.resources.credits, Credits(9));
         assert!(next.corp.hq.is_empty());
-        assert_eq!(next.corp.archives, vec![card_id.clone()]);
+        // A played Operation resolves in the open.
+        assert_eq!(next.corp.archives, vec![ArchivedCard::faceup(card_id.clone())]);
         assert_eq!(
             events,
             vec![
@@ -2505,6 +2962,43 @@ mod tests {
     }
 
     #[test]
+    fn install_program_with_matching_registry_memory_cost_succeeds() {
+        let card_id = CardId("corroder".to_string());
+        let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
+        let mut reg = registry();
+        let mut corroder = test_card("corroder", Side::Runner, CardType::Program, 0, None);
+        corroder.memory_cost = Some(1);
+        reg.insert(corroder);
+
+        let (next, _events) = apply_action(
+            &state,
+            &reg,
+            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 1 },
+        )
+        .expect("action should succeed");
+
+        assert_eq!(next.runner.memory_units, crate::rules::state::MemoryUnits(3));
+    }
+
+    #[test]
+    fn install_program_with_mismatched_memory_cost_returns_mismatched_memory_cost() {
+        let card_id = CardId("corroder".to_string());
+        let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
+        let mut reg = registry();
+        let mut corroder = test_card("corroder", Side::Runner, CardType::Program, 0, None);
+        corroder.memory_cost = Some(1);
+        reg.insert(corroder);
+
+        let result = apply_action(
+            &state,
+            &reg,
+            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 2 },
+        );
+
+        assert_eq!(result, Err(RulesError::MismatchedMemoryCost { expected: 1, actual: 2 }));
+    }
+
+    #[test]
     fn install_hardware_seeds_zero_base_strength_for_non_strength_card() {
         let card_id = CardId("clone_chip".to_string());
         let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
@@ -2525,12 +3019,12 @@ mod tests {
     fn runner_break_subroutine_decrements_pending_on_current_ice() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 2, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let (next, events) = apply_action(
             &state,
             &registry(),
@@ -2585,12 +3079,12 @@ mod tests {
     fn runner_break_subroutine_with_index_out_of_range_returns_invalid_subroutine_index() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let result = apply_action(
             &state,
             &registry(),
@@ -2604,12 +3098,12 @@ mod tests {
     fn runner_break_subroutine_outside_encounter_ice_returns_not_in_encounter() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         let result = apply_action(
             &state,
             &registry(),
@@ -2617,6 +3111,30 @@ mod tests {
         );
 
         assert_eq!(result, Err(RulesError::NotInEncounter));
+    }
+
+    #[test]
+    fn runner_break_subroutine_with_mismatched_ice_id_returns_error() {
+        let mut state = runner_state(3, 0, 0);
+        state.active_run = Some(RunState {
+            phase: RunPhase::EncounterIce,
+            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            jack_out_permitted: true,
+            ..Default::default()
+        });
+        let result = apply_action(
+            &state,
+            &registry(),
+            PlayerAction::BreakSubroutine { ice_id: CardId("some_other_ice".to_string()), subroutine_index: 0 },
+        );
+
+        assert_eq!(
+            result,
+            Err(RulesError::MismatchedIceId {
+                expected: CardId("ice_wall".to_string()),
+                actual: CardId("some_other_ice".to_string()),
+            })
+        );
     }
 
     #[test]
@@ -2655,12 +3173,11 @@ mod tests {
         InstalledRunnerCard {
             card: CardId(card_id.to_string()),
             base_strength,
-            encounter_strength_buff: 0,
-            turn_strength_buff: 0,
+            ..Default::default()
         }
     }
 
-    /// A minimal `Card` with the given install/play `cost` and
+    /// A minimal `CardDefinition` with the given install/play `cost` and
     /// `advancement_requirement`, no abilities — used by the
     /// `InstallCard`/`PlayEvent`/`AdvanceCard` cost/advancement tests, which
     /// only care about those two fields.
@@ -2670,27 +3187,20 @@ mod tests {
         card_type: CardType,
         cost: u32,
         advancement_requirement: Option<u32>,
-    ) -> Card {
-        Card {
+    ) -> CardDefinition {
+        CardDefinition {
             id: CardId(card_id.to_string()),
             title: card_id.to_string(),
             side,
             card_type,
             cost,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
             advancement_requirement,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
-    /// A minimal `Card` whose only `abilities` entry is the given
+    /// A minimal `CardDefinition` whose only `abilities` entry is the given
     /// `trigger`/`cost`/`effect` — everything about the card besides its id,
     /// side, and that one ability is irrelevant to `activate_ability`'s
     /// logic, so it's held to placeholder values.
@@ -2700,23 +3210,15 @@ mod tests {
         trigger: Trigger,
         cost: Option<Cost>,
         effect: Effect,
-    ) -> Card {
-        Card {
+    ) -> CardDefinition {
+        CardDefinition {
             id: CardId(card_id.to_string()),
             title: card_id.to_string(),
             side,
             card_type: CardType::Program,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: vec![AbilityDef { trigger, cost, requirement: None, effect }],
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            abilities: vec![AbilityDef { trigger, cost, requirement: None, effect, cost_discount_if: None }],
+            is_playable: true,
+            ..Default::default()
         }
     }
 
@@ -2726,12 +3228,12 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -2771,12 +3273,12 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -2853,12 +3355,12 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 2, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -2897,12 +3399,12 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 1)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 3, 1, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -2944,12 +3446,12 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -2980,12 +3482,12 @@ mod tests {
             let mut state = runner_state(3, 0, 0);
             state.runner.resources.credits = Credits(5);
             state.runner.rig = vec![installed_runner_card("corroder", 2)];
-            state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-                server: ServerId::Hq,
+            state.active_run = Some(RunState {
                 phase: RunPhase::EncounterIce,
                 ice: vec![test_ice_of_type("some_ice", 2, 1, true, wrong_type)],
-                position: 0,
-             jack_out_permitted: true,});
+                jack_out_permitted: true,
+                ..Default::default()
+            });
 
             let mut registry = CardRegistry::new();
             registry.insert(test_card_with_ability(
@@ -3025,12 +3527,12 @@ mod tests {
             let mut state = runner_state(3, 0, 0);
             state.runner.resources.credits = Credits(5);
             state.runner.rig = vec![installed_runner_card("mimic", 2)];
-            state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-                server: ServerId::Hq,
+            state.active_run = Some(RunState {
                 phase: RunPhase::EncounterIce,
                 ice: vec![test_ice_of_type("some_ice", 2, 1, true, ice_type)],
-                position: 0,
-             jack_out_permitted: true,});
+                jack_out_permitted: true,
+                ..Default::default()
+            });
 
             let mut registry = CardRegistry::new();
             registry.insert(test_card_with_ability(
@@ -3058,18 +3560,18 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
-            position: 0,
-         jack_out_permitted: false,});
+            ..Default::default()
+        });
         // A window is open with one pass already in (Corp holds priority
         // after the Runner's first pass); the Runner activates instead.
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Runner,
             consecutive_passes: 1,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let mut registry = CardRegistry::new();
@@ -3099,17 +3601,17 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
-            position: 0,
-         jack_out_permitted: false,});
+            ..Default::default()
+        });
         // Corp currently holds priority — the Runner tries to act anyway.
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Corp,
             consecutive_passes: 1,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let mut registry = CardRegistry::new();
@@ -3140,6 +3642,7 @@ mod tests {
             active_priority: Side::Runner,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Corp)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let result = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp });
@@ -3153,20 +3656,17 @@ mod tests {
     #[test]
     fn rez_ice_by_non_priority_side_during_window_still_succeeds_and_resets_passes() {
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: CardId("ice_wall".to_string()),
-            server: ServerId::Hq,
             slot: InstallSlot::Ice,
-            rezzed: false,
+            ..Default::default()
         }];
         let mut state = runner_state(3, 0, 0);
         state.corp.installed = installed;
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 0, 0, false)],
-            position: 0,
-         jack_out_permitted: false,});
+            ..Default::default()
+        });
         // It's the Runner's priority, but Rez is priority-independent —
         // the Corp can still act, and doing so should give the Runner a
         // fresh chance to respond (reset passes, toggle priority to Runner).
@@ -3174,10 +3674,12 @@ mod tests {
             active_priority: Side::Runner,
             consecutive_passes: 1,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
+        let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 0, None)]);
 
         let (next, _events) =
-            apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) })
+            apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) })
                 .expect("action should succeed");
 
         let window = next.paid_ability_window.expect("window should stay open");
@@ -3190,18 +3692,18 @@ mod tests {
     #[test]
     fn jack_out_during_an_open_window_clears_the_window() {
         let mut state = runner_state(3, 0, 0);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            // Second ICE's approach — jack_out_permitted is true because
-            // the first ICE has already been passed.
             ice: vec![test_ice("ice_wall", 0, 0, true), test_ice("enigma", 0, 0, true)],
             position: 1,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Runner,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let (next, _events) =
@@ -3218,11 +3720,9 @@ mod tests {
     fn corp_activate_ability_on_unrezzed_asset_returns_card_not_active() {
         let card_id = CardId("pad_campaign".to_string());
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: card_id.clone(),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
-            rezzed: false,
+            ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
 
@@ -3250,12 +3750,12 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(0);
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice("ice_wall", 0, 0, true)],
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -3332,9 +3832,8 @@ mod tests {
         let installed = vec![InstalledCard {
             card: card_id.clone(),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
-            rezzed: false,
             advancement_tokens: 1,
+            ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         let mut registry = CardRegistry::new();
@@ -3366,9 +3865,7 @@ mod tests {
         let installed = vec![InstalledCard {
             card: card_id.clone(),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
-            rezzed: false,
-            advancement_tokens: 0,
+            ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         let mut registry = CardRegistry::new();
@@ -3421,9 +3918,7 @@ mod tests {
         let installed = vec![InstalledCard {
             card: card_id.clone(),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
-            rezzed: false,
-            advancement_tokens: 0,
+            ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 0, Vec::new(), installed);
         let mut registry = CardRegistry::new();
@@ -3648,18 +4143,16 @@ mod tests {
     /// `PendingChoice`/`PendingInteractiveTrigger` decision — used by the
     /// access-time paid-ability-window tests below.
     fn run_accessing(server: ServerId, phase: run::AccessPhase) -> RunState {
-        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
+        RunState {
             server,
             phase: RunPhase::AccessingCard,
-            ice: Vec::new(),
-            position: 0,
             access_state: Some(run::AccessState {
                 server,
-                unaccessed_cards: Vec::new(),
-                resolved_cards: Vec::new(),
                 phase,
+                ..Default::default()
             }),
             jack_out_permitted: true,
+            ..Default::default()
         }
     }
 
@@ -3687,6 +4180,7 @@ mod tests {
             active_priority: Side::Runner,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let mut registry = CardRegistry::new();
@@ -3724,6 +4218,7 @@ mod tests {
             active_priority: Side::Runner,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let mut registry = CardRegistry::new();
@@ -3755,17 +4250,17 @@ mod tests {
         let card_id = CardId("hedge_fund".to_string());
         let mut state = runner_state(3, 0, 0);
         state.corp.installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: CardId("pad_campaign".to_string()),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
             rezzed: true,
+            ..Default::default()
         }];
         state.active_run = Some(run_accessing(ServerId::Hq, pending_choice(&card_id)));
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Corp,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let mut registry = CardRegistry::new();
@@ -3799,6 +4294,7 @@ mod tests {
             active_priority: Side::Runner,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         };
 
         for action in [
@@ -3823,6 +4319,7 @@ mod tests {
             active_priority: Side::Runner,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         };
 
         for action in [
@@ -3850,6 +4347,7 @@ mod tests {
             active_priority: Side::Corp,
             consecutive_passes: 1,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let (next, events) =
@@ -3880,6 +4378,7 @@ mod tests {
             active_priority: Side::Corp,
             consecutive_passes: 1,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let (next, _events) =
@@ -3905,14 +4404,12 @@ mod tests {
         let card_a = CardId("card_a".to_string());
         let card_b = CardId("card_b".to_string());
         let mut state = runner_state(3, 0, 0);
-        state.corp.archives = vec![card_a.clone(), card_b.clone()];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
+        state.corp.archives = vec![ArchivedCard::facedown(card_a.clone()), ArchivedCard::facedown(card_b.clone())];
+        state.active_run = Some(RunState {
             server: ServerId::Archives,
             phase: RunPhase::Success,
-            ice: Vec::new(),
-            position: 0,
-            access_state: None,
             jack_out_permitted: true,
+            ..Default::default()
         });
         let mut registry = CardRegistry::new();
         registry.insert(test_card("card_a", Side::Corp, CardType::Asset, 0, None));
@@ -3993,18 +4490,16 @@ mod tests {
         // activation below only succeeds because the first activation's
         // encounter-duration boost is still applied.
         state.runner.rig = vec![installed_runner_card("corroder", 1)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
-            position: 0,
-            jack_out_permitted: false,
+            ..Default::default()
         });
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Runner,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let mut registry = CardRegistry::new();
@@ -4023,6 +4518,7 @@ mod tests {
                 count: SubroutineBreakCount::Fixed(1),
                 restrict_to: Some(IceType::Barrier),
             },
+            cost_discount_if: None,
         });
         registry.insert(card);
 
@@ -4065,9 +4561,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.runner.resources.credits = Credits(5);
         state.runner.rig = vec![installed_runner_card("mimic", 2)];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {
                 card_id: CardId("ice_wall".to_string()),
@@ -4087,13 +4581,13 @@ mod tests {
                 ],
                 rezzed: true,
             }],
-            position: 0,
-            jack_out_permitted: false,
+            ..Default::default()
         });
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Runner,
             consecutive_passes: 0,
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
+            checkpoint: WindowCheckpoint::Run,
         });
 
         let mut registry = CardRegistry::new();

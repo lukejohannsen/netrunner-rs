@@ -23,8 +23,8 @@ pub async fn run(action: CardsAction) -> Result<(), Box<dyn std::error::Error>> 
                 (false, false) => SyncScope::Sets(set),
                 (false, true) => return Err("specify --all or at least one --set <code>".into()),
             };
-            let catalog = sync.sync_from_netrunnerdb(scope).await?;
-            println!("Synced. Catalog now has {} card(s).", catalog.len());
+            let registry = sync.sync_from_netrunnerdb(scope).await?;
+            println!("Synced. Catalog now has {} card(s).", registry.len());
         }
     }
 

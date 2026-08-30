@@ -1,0 +1,39 @@
+{
+  "id": "malapert_data_vault",
+  "title": "Malapert Data Vault",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnRAndD",
+                  "filter": "NonAgenda",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": true,
+                  "shuffle_after": true,
+                  "destination": "OwnHq"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "trash_cost": 4,
+  "numeric_id": 30066,
+  "is_playable": true
+}

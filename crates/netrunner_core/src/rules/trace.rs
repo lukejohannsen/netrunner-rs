@@ -85,7 +85,7 @@ mod tests {
     use super::*;
     use crate::dsl::{CardId, Effect};
     use crate::rules::event::GameEvent;
-    use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId, SubroutineStatus};
+    use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase, RunState, SubroutineStatus};
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, CorpState, GamePhase, MemoryUnits, PlayerResources, RunnerState,
         TraceState,
@@ -93,30 +93,20 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
-                scored_agendas: Vec::new(),
+            corp: CorpState {
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
+                ..Default::default()
             },
-            runner: RunnerState { identity: None,
-                scored_agendas: Vec::new(),
+            runner: RunnerState {
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(4), agenda_points: AgendaPoints(0) },
                 memory_units: MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
@@ -231,8 +221,7 @@ mod tests {
     }
 
     fn ice_with_trace_pending_resume(remaining_effect: Effect, on_success: Effect) -> RunState {
-        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            server: ServerId::Hq,
+        RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {
                 card_id: CardId("ice_wall".to_string()),
@@ -255,9 +244,7 @@ mod tests {
                 ],
                 rezzed: true,
             }],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
+            ..Default::default()
         }
     }
 

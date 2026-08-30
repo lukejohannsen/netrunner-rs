@@ -1,0 +1,22 @@
+{
+  "id": "weyland_consortium_building_a_better_world",
+  "title": "Weyland Consortium: Building a Better World",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnTransactionPlayed",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

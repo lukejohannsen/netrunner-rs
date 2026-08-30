@@ -1,0 +1,40 @@
+{
+  "id": "superconducting_hub",
+  "title": "Superconducting Hub",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "GainMaxHandSize": [
+            "Corp",
+            2
+          ]
+        },
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "DrawCards": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30070,
+  "is_playable": true
+}

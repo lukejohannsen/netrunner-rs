@@ -7,7 +7,7 @@ use crate::rules::state::Side;
 
 /// Flat copy-limit applied to every non-identity card in a deck. Real
 /// Netrunner allows some identities/cards to override this — no field
-/// exists anywhere on `dsl::Card` to source such an override from, and
+/// exists anywhere on `dsl::CardDefinition` to source such an override from, and
 /// inventing one would be a speculative schema guess with zero precedent
 /// in this data-driven card model, so only the flat limit is enforced.
 pub const MAX_COPIES_PER_CARD: u32 = 3;
@@ -43,6 +43,9 @@ pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result
             actual: identity.side,
         });
     }
+    if !identity.is_playable {
+        return Err(RulesError::UnplayableCard(deck.identity.clone()));
+    }
     let min_deck_size = identity
         .min_deck_size
         .ok_or_else(|| RulesError::IdentityMissingMinDeckSize { card: deck.identity.clone() })?;
@@ -58,6 +61,9 @@ pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result
             .get(card_id)
             .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
 
+        if !card.is_playable {
+            return Err(RulesError::UnplayableCard(card_id.clone()));
+        }
         if *count > MAX_COPIES_PER_CARD {
             return Err(RulesError::TooManyCopies { card: card_id.clone(), count: *count, max: MAX_COPIES_PER_CARD });
         }
@@ -97,7 +103,7 @@ pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result
 /// size). The `+2` ceiling matches historical Netrunner/Null Signal Games
 /// competition-legality rules — an inferred completion of the brief's
 /// minimum-only formula, not a free invention.
-fn agenda_point_range(size: u32) -> (u32, u32) {
+pub(crate) fn agenda_point_range(size: u32) -> (u32, u32) {
     let min = if size >= 45 { 20 + 2 * ((size - 45) / 5) } else { 18 };
     (min, min + 2)
 }
@@ -105,49 +111,32 @@ fn agenda_point_range(size: u32) -> (u32, u32) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::Card;
+    use crate::dsl::CardDefinition;
 
-    fn identity(id: &str, side: Side, min_deck_size: u32) -> Card {
-        Card {
+    fn identity(id: &str, side: Side, min_deck_size: u32) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side,
             card_type: CardType::Identity,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
             min_deck_size: Some(min_deck_size),
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
-    fn card(id: &str, side: Side, card_type: CardType) -> Card {
-        Card {
+    fn card(id: &str, side: Side, card_type: CardType) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side,
             card_type,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
-    fn agenda(id: &str, points: u32) -> Card {
+    fn agenda(id: &str, points: u32) -> CardDefinition {
         let mut c = card(id, Side::Corp, CardType::Agenda);
         c.agenda_points = Some(points);
         c
@@ -254,6 +243,34 @@ mod tests {
                 expected: Side::Runner,
                 actual: Side::Corp,
             })
+        );
+    }
+
+    #[test]
+    fn validate_deck_fails_when_identity_is_not_playable() {
+        let mut registry = CardRegistry::new();
+        let mut unplayable_identity = identity("corp_id", Side::Corp, 45);
+        unplayable_identity.is_playable = false;
+        registry.insert(unplayable_identity);
+        let deck = Deck { identity: CardId("corp_id".to_string()), cards: Vec::new() };
+
+        assert_eq!(
+            validate_deck(&deck, Side::Corp, &registry),
+            Err(RulesError::UnplayableCard(CardId("corp_id".to_string())))
+        );
+    }
+
+    #[test]
+    fn validate_deck_fails_when_a_card_is_not_playable() {
+        let (mut registry, mut deck) = valid_corp_registry_and_deck();
+        let mut unplayable_card = card("catalog_only_card", Side::Corp, CardType::Asset);
+        unplayable_card.is_playable = false;
+        registry.insert(unplayable_card);
+        deck.cards.push((CardId("catalog_only_card".to_string()), 1));
+
+        assert_eq!(
+            validate_deck(&deck, Side::Corp, &registry),
+            Err(RulesError::UnplayableCard(CardId("catalog_only_card".to_string())))
         );
     }
 

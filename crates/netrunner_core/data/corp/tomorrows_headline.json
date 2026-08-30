@@ -1,0 +1,29 @@
+{
+  "id": "tomorrows_headline",
+  "title": "Tomorrowʼs Headline",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "GiveTags": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "effects": [
+        {
+          "GiveTags": 1
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30052,
+  "is_playable": true
+}

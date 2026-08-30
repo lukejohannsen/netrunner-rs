@@ -1,0 +1,84 @@
+{
+  "id": "tao_salonga",
+  "title": "Tāo Salonga: Telepresence Magician",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OpponentInstalled",
+                  "filter": {
+                    "CardType": {
+                      "Ice": "Barrier"
+                    }
+                  },
+                  "min": 2,
+                  "max": 2,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "SwapInstalledIce": [
+                      "",
+                      ""
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OpponentInstalled",
+                  "filter": {
+                    "CardType": {
+                      "Ice": "Barrier"
+                    }
+                  },
+                  "min": 2,
+                  "max": 2,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "SwapInstalledIce": [
+                      "",
+                      ""
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30019,
+  "is_playable": true
+}

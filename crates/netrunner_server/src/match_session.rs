@@ -148,7 +148,14 @@ impl MatchSession {
 /// out attempting their mandatory draw (the one other unprompted win path —
 /// see `turn::enter_start_of_turn`'s doc comment); anything else defaults
 /// to the ordinary agenda-point threshold.
-fn classify_end_reason(events: &[GameEvent], winner: Side, state: &GameState) -> GameEndReason {
+///
+/// `pub` (not just used internally by `MatchSession::run`) so any other
+/// caller building its own end-of-match summary from a final `GameState`
+/// plus its trailing `GameEvent`s — e.g. `netrunner_cli`'s
+/// `SinglePlayerSession`-backed local TUI mode — gets the identical
+/// classification remote/`MatchSession`-driven play already shows, instead
+/// of re-deriving the same heuristic.
+pub fn classify_end_reason(events: &[GameEvent], winner: Side, state: &GameState) -> GameEndReason {
     if events.iter().any(|event| matches!(event, GameEvent::RunnerFlatlined)) {
         return GameEndReason::Flatline;
     }

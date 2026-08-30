@@ -20,3 +20,20 @@ pub trait BotAgent: Send {
     /// receives the full current `view` on every call.
     fn observe(&mut self, _event: &GameEvent) {}
 }
+
+/// Lets a boxed trait object stand in for `impl BotAgent` — the same
+/// "forward to the inner value" pattern as `policy::PolicyEvaluator`'s own
+/// `impl PolicyEvaluator for Box<dyn PolicyEvaluator>`. Needed by any caller
+/// that only has a `Box<dyn BotAgent>` (e.g. `netrunner_cli::bots::
+/// make_agent`'s return type) but wants to wrap it in something generic
+/// over a concrete, sized `A: BotAgent` — such as `agent_adapter::
+/// BotAgentIndexAdapter<A>`.
+impl BotAgent for Box<dyn BotAgent> {
+    fn select_action(&mut self, view: &ClientView, registry: &CardRegistry) -> PlayerAction {
+        (**self).select_action(view, registry)
+    }
+
+    fn observe(&mut self, event: &GameEvent) {
+        (**self).observe(event)
+    }
+}

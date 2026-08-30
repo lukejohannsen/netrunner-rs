@@ -1,0 +1,58 @@
+{
+  "id": "red_team",
+  "title": "Red Team",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "AddCounters": 12
+        }
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "effects": [
+        {
+          "RemoveCounters": 3
+        },
+        {
+          "GainCredits": [
+            "Runner",
+            3
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseServer": {
+          "chooser": "Runner",
+          "rez_cost_delta": 0,
+          "bonus_run_credits": 0
+        }
+      }
+    }
+  ],
+  "numeric_id": 30018,
+  "is_playable": true
+}

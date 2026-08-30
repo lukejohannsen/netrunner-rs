@@ -1,0 +1,24 @@
+{
+  "id": "offworld_office",
+  "title": "Offworld Office",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            7
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30067,
+  "is_playable": true
+}

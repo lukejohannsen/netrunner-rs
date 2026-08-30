@@ -3,7 +3,8 @@ use crate::dsl::CardId;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
-use crate::rules::state::{Clicks, GamePhase, GameState, Side};
+use crate::rules::paid_ability;
+use crate::rules::state::{ArchivedCard, Clicks, GamePhase, GameState, Side, WindowCheckpoint};
 
 /// Clicks the Corp receives at the start of each turn. A base turn-structure
 /// constant of the game, not a card rule — same category as the "1 click"
@@ -26,8 +27,9 @@ fn clicks_for(side: Side) -> u32 {
 /// by `state.runner.brain_damage`, which never heals.
 fn max_hand_size(state: &GameState, side: Side) -> usize {
     match side {
-        Side::Corp => CORP_MAX_HAND_SIZE,
-        Side::Runner => RUNNER_MAX_HAND_SIZE.saturating_sub(state.runner.brain_damage),
+        Side::Corp => CORP_MAX_HAND_SIZE + state.corp.max_hand_size_bonus as usize,
+        Side::Runner => (RUNNER_MAX_HAND_SIZE + state.runner.max_hand_size_bonus as usize)
+            .saturating_sub(state.runner.brain_damage),
     }
 }
 
@@ -81,29 +83,37 @@ fn take_from_hand(state: &mut GameState, side: Side, card_id: &CardId) -> Result
 /// Runner's `heap`) — both fully public zones, unlike `hq`/`grip`.
 fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
     match side {
-        Side::Corp => state.corp.archives.push(card_id),
+        // A Corp discard from HQ goes facedown — the Runner never saw it.
+        Side::Corp => state.corp.archives.push(ArchivedCard::facedown(card_id)),
         Side::Runner => state.runner.heap.push(card_id),
     }
 }
 
-/// End the active side's turn. Hands control to the other side via
-/// [`enter_start_of_turn`] if the ending side's hand is within its max hand
-/// size (`CORP_MAX_HAND_SIZE`/`RUNNER_MAX_HAND_SIZE`); otherwise transitions
-/// to `GamePhase::Discard { side, required }` first — control only passes
-/// once `PlayerAction::DiscardCard` (via [`discard_card`]) clears it.
+/// End the active side's turn. Opens a `WindowCheckpoint::EndOfTurn { side }`
+/// paid ability window; closing it hands control to the other side via
+/// [`finish_end_turn`] (see that function's doc comment for what happens
+/// next — the hand-size/`Discard`/[`enter_start_of_turn`] logic this
+/// function used to run inline).
 ///
-/// Deliberately NOT modeled: start/end-of-turn card triggers (needs the
-/// `dsl` trigger system wired into the engine, which doesn't happen yet).
+/// Deliberately NOT modeled: individual `Trigger::OnTurnStart`-style card
+/// reactions to the end-of-turn window itself (only the window/priority
+/// machinery is generic — no card currently has an end-of-turn trigger).
 ///
 /// Credits are untouched — they carry over turn to turn. The ending side's
 /// own stale clicks are also left untouched rather than zeroed: every
 /// click-spending action is already gated by `engine::require_phase`, so
 /// leftover clicks are inert until that side's own next `end_turn`.
-pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+pub fn end_turn(state: &GameState, _registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = require_action_phase(state)?;
     if state.active_run.is_some() {
         return Err(RulesError::CannotEndTurnWhileRunActive);
     }
+    // Without this, `EndTurn` would stay legal throughout the `EndOfTurn`
+    // window it itself opens (that window keeps `state.phase ==
+    // Action(side)`, so `require_action_phase` alone doesn't catch it),
+    // letting it be resubmitted mid-window and silently reset priority back
+    // to `side` regardless of who actually holds it.
+    paid_ability::require_no_window(state)?;
 
     let mut next = state.clone();
     let mut events = vec![GameEvent::TurnEnded { side }];
@@ -114,17 +124,61 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
         // `CannotEndTurnWhileRunActive`, so there's no run-boundary
         // ambiguity to worry about here.
         next.runner.reset_turn_strength_buffs();
+        // Snapshot before `enter_start_of_turn` (reached via this same
+        // `EndOfTurn` window, or via `discard_card` if a mandatory discard
+        // intervenes first) resets `made_successful_run_this_turn` for the
+        // Runner's new turn — see `EffectRequirement::
+        // RunnerMadeSuccessfulRunLastTurn`'s doc comment.
+        next.runner.made_successful_run_last_turn = next.runner.made_successful_run_this_turn;
     }
 
-    let over_by = hand_size(&next, side).saturating_sub(max_hand_size(&next, side));
-    if over_by > 0 {
-        next.phase = GamePhase::Discard { side, required: over_by };
-        events.push(GameEvent::DiscardPending { side, required: over_by });
-    } else {
-        enter_start_of_turn(&mut next, &mut events, side.other(), registry)?;
-    }
+    events.push(paid_ability::open_window_for(&mut next, side, WindowCheckpoint::EndOfTurn { side }));
 
     Ok((next, events))
+}
+
+/// Resumes what [`end_turn`]'s `WindowCheckpoint::EndOfTurn` window was
+/// pausing: the hand-size check `end_turn` used to run inline. Hands control
+/// to the other side via [`enter_start_of_turn`] if `side`'s hand is within
+/// its max hand size (`CORP_MAX_HAND_SIZE`/`RUNNER_MAX_HAND_SIZE`); otherwise
+/// transitions to `GamePhase::Discard { side, required }` first — control
+/// only passes once `PlayerAction::DiscardCard` (via [`discard_card`])
+/// clears it. Called only from `paid_ability::close_window`'s `EndOfTurn`
+/// arm.
+/// Emits `GameEvent::DiscardPhaseEnded` for `side` and dispatches whatever
+/// reacts to it. Called from both places a discard phase can end — cleared
+/// by `discard_card`, or skipped outright by `finish_end_turn` when the side
+/// was already within hand size — so `Trigger::OnDiscardPhaseEnd` fires
+/// exactly once per turn either way.
+fn dispatch_discard_phase_end(
+    state: &mut GameState,
+    side: Side,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let event = GameEvent::DiscardPhaseEnded { side };
+    let mut events = vec![event.clone()];
+    events.extend(dispatcher::dispatch_event(state, registry, &event)?);
+    Ok(events)
+}
+
+pub(crate) fn finish_end_turn(
+    state: &mut GameState,
+    side: Side,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+    let over_by = hand_size(state, side).saturating_sub(max_hand_size(state, side));
+    if over_by > 0 {
+        state.phase = GamePhase::Discard { side, required: over_by };
+        events.push(GameEvent::DiscardPending { side, required: over_by });
+    } else {
+        // The discard phase ends here even though it was skipped outright —
+        // in rules terms the phase still happened, so anything keyed on its
+        // end (Jinteki: Restoring Humanity) must still fire.
+        events.extend(dispatch_discard_phase_end(state, side, registry)?);
+        enter_start_of_turn(state, &mut events, side.other(), registry)?;
+    }
+    Ok(events)
 }
 
 /// Discard `card_id` from hand to satisfy a pending mandatory discard (see
@@ -146,6 +200,7 @@ pub fn discard_card(
 
     let remaining = required - 1; // `required > 0` is an invariant of the Discard phase.
     if remaining == 0 {
+        events.extend(dispatch_discard_phase_end(&mut next, side, registry)?);
         enter_start_of_turn(&mut next, &mut events, side.other(), registry)?;
     } else {
         next.phase = GamePhase::Discard { side, required: remaining };
@@ -200,9 +255,19 @@ pub(crate) fn enter_start_of_turn(
 
         next.corp.first_install_used_this_turn = false;
         next.corp.recurring_credits = next.corp.recurring_credits_max;
+        next.corp.once_per_turn_used.clear();
+        next.corp.agenda_points_scored_this_turn = 0;
+        next.corp.cannot_score_agendas_this_turn = false;
+        // Everything still installed was necessarily installed on an earlier
+        // turn — Seamless Launch's "did not install this turn" eligibility.
+        for installed in &mut next.corp.installed {
+            installed.installed_this_turn = false;
+        }
     } else {
         next.runner.first_hq_run_used_this_turn = false;
         next.runner.first_install_discount_used_this_turn = false;
+        next.runner.once_per_turn_used.clear();
+        next.runner.made_successful_run_this_turn = false;
     }
 
     // `Trigger::OnTurnStart` — e.g. PAD Campaign's "gain 1 credit". Only
@@ -212,7 +277,12 @@ pub(crate) fn enter_start_of_turn(
     // same scoping from `GameEvent::TurnStarted::side`.
     events.extend(dispatcher::dispatch_event(next, registry, &turn_started_event)?);
 
-    next.phase = GamePhase::Action(next_side);
+    // Open a paid ability window before handing control over, giving both
+    // sides a chance to fire a `Trigger::Paid` ability at the top of the new
+    // turn. `next.phase` stays `StartOfTurn(next_side)` while it's open;
+    // closing it (`paid_ability::close_window`'s `StartOfTurn` arm) sets
+    // `phase = Action(next_side)`.
+    events.push(paid_ability::open_window_for(next, next_side, WindowCheckpoint::StartOfTurn { side: next_side }));
     Ok(())
 }
 
@@ -220,10 +290,34 @@ pub(crate) fn enter_start_of_turn(
 mod tests {
     use super::*;
     use crate::dsl::CardId;
-    use crate::rules::run::{RunPhase, RunState, ServerId};
+    use crate::rules::action::PlayerAction;
+    use crate::rules::run::{RunPhase, RunState};
     use crate::rules::state::{
         AgendaPoints, CorpState, Credits, MemoryUnits, PlayerResources, RunnerState,
     };
+
+    /// Resolves every `PaidAbilityWindow` open on `state` by having whichever
+    /// side currently holds priority submit `PlayerAction::PassPriority`,
+    /// repeatedly, until none remains — e.g. an `EndOfTurn` window closing
+    /// into a fresh `StartOfTurn` window, which itself needs closing before
+    /// `state.phase` actually reaches `Action(_)`. Every test in this module
+    /// that used to assert an immediate post-`end_turn`/`discard_card` phase
+    /// now needs this, since both functions pause at a window rather than
+    /// completing the transition inline. Goes through the public
+    /// `apply_action` entry point (rather than calling `paid_ability::
+    /// pass_priority` directly) so this same helper is copyable verbatim
+    /// into any other module's test suite.
+    pub(crate) fn close_all_windows(mut state: GameState, registry: &CardRegistry) -> (GameState, Vec<GameEvent>) {
+        let mut events = Vec::new();
+        while let Some(window) = &state.paid_ability_window {
+            let side = window.active_priority;
+            let (next, ev) = crate::rules::apply_action(&state, registry, PlayerAction::PassPriority { side })
+                .expect("pass priority should succeed");
+            state = next;
+            events.extend(ev);
+        }
+        (state, events)
+    }
 
     fn game_state(
         active_turn: Side,
@@ -233,38 +327,28 @@ mod tests {
         runner_credits: u32,
     ) -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
-                scored_agendas: Vec::new(),
+            corp: CorpState {
                 resources: PlayerResources {
                     credits: Credits(corp_credits),
                     clicks: Clicks(corp_clicks),
                     agenda_points: AgendaPoints(0),
                 },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
+                ..Default::default()
             },
-            runner: RunnerState { identity: None,
-                scored_agendas: Vec::new(),
+            runner: RunnerState {
                 resources: PlayerResources {
                     credits: Credits(runner_credits),
                     clicks: Clicks(runner_clicks),
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(active_turn),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
@@ -273,17 +357,15 @@ mod tests {
     #[test]
     fn corp_ending_turn_hands_control_to_runner_with_four_clicks() {
         let state = game_state(Side::Corp, 0, 5, 0, 2);
-        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::new();
+        let (next, mut events) = end_turn(&state, &registry).expect("should succeed");
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         assert_eq!(next.phase, GamePhase::Action(Side::Runner));
         assert_eq!(next.runner.resources.clicks, Clicks(4));
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::TurnEnded { side: Side::Corp },
-                GameEvent::TurnStarted { side: Side::Runner, clicks: 4 },
-            ]
-        );
+        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Corp }));
+        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Runner, clicks: 4 }));
     }
 
     #[test]
@@ -292,18 +374,16 @@ mod tests {
         // A non-empty R&D so the Corp's mandatory draw succeeds rather than
         // decking out — this test is about the click handoff, not deck-out.
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
-        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::new();
+        let (next, mut events) = end_turn(&state, &registry).expect("should succeed");
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         assert_eq!(next.phase, GamePhase::Action(Side::Corp));
         assert_eq!(next.corp.resources.clicks, Clicks(3));
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::TurnEnded { side: Side::Runner },
-                GameEvent::TurnStarted { side: Side::Corp, clicks: 3 },
-                GameEvent::CardDrawn { side: Side::Corp },
-            ]
-        );
+        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Runner }));
+        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
+        assert!(events.contains(&GameEvent::CardDrawn { side: Side::Corp }));
     }
 
     #[test]
@@ -316,23 +396,60 @@ mod tests {
     }
 
     #[test]
+    fn end_turn_opens_an_end_of_turn_window_giving_the_ending_side_priority_first() {
+        let state = game_state(Side::Corp, 0, 5, 0, 2);
+        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+
+        let window = next.paid_ability_window.expect("an EndOfTurn window should be open");
+        assert_eq!(window.checkpoint, WindowCheckpoint::EndOfTurn { side: Side::Corp });
+        assert_eq!(window.active_priority, Side::Corp);
+        assert_eq!(window.consecutive_passes, 0);
+        assert_eq!(events, vec![GameEvent::TurnEnded { side: Side::Corp }, GameEvent::PaidAbilityWindowOpened { side: Side::Corp }]);
+        // Control hasn't actually passed yet — this is still the ending side's turn.
+        assert_eq!(next.phase, GamePhase::Action(Side::Corp));
+    }
+
+    #[test]
+    fn enter_start_of_turn_opens_a_start_of_turn_window_after_mandatory_draw_and_ontrunstart_triggers() {
+        let mut state = game_state(Side::Runner, 0, 5, 0, 2);
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
+        let registry = CardRegistry::new();
+
+        let (state, mut events) = end_turn(&state, &registry).expect("should succeed");
+        let side = state.paid_ability_window.as_ref().expect("EndOfTurn window should be open").active_priority;
+        let (state, ev) = crate::rules::apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("first pass should succeed");
+        events.extend(ev);
+        let side = state.paid_ability_window.as_ref().expect("still open after one pass").active_priority;
+        let (state, ev) = crate::rules::apply_action(&state, &registry, PlayerAction::PassPriority { side })
+            .expect("second pass should close the EndOfTurn window and open a StartOfTurn one");
+        events.extend(ev);
+
+        // Corp already drew (mandatory draw is part of entering their turn).
+        assert!(state.corp.hq.contains(&CardId("hedge_fund".to_string())));
+        assert_eq!(state.phase, GamePhase::StartOfTurn(Side::Corp));
+        let window = state.paid_ability_window.expect("a StartOfTurn window should be open");
+        assert_eq!(window.checkpoint, WindowCheckpoint::StartOfTurn { side: Side::Corp });
+        assert_eq!(window.active_priority, Side::Corp);
+        assert!(events.contains(&GameEvent::CardDrawn { side: Side::Corp }));
+        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
+    }
+
+    #[test]
     fn runner_ending_turn_gives_corp_a_mandatory_draw_into_hq() {
         let mut state = game_state(Side::Runner, 0, 5, 0, 2);
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())];
-        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::new();
+        let (next, mut events) = end_turn(&state, &registry).expect("should succeed");
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         // Draws from the top of R&D, i.e. the end of the Vec (mirrors
         // RunnerState::stack's convention).
         assert_eq!(next.corp.r_and_d, vec![CardId("hedge_fund".to_string())]);
         assert_eq!(next.corp.hq, vec![CardId("ice_wall".to_string())]);
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::TurnEnded { side: Side::Runner },
-                GameEvent::TurnStarted { side: Side::Corp, clicks: 3 },
-                GameEvent::CardDrawn { side: Side::Corp },
-            ]
-        );
+        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Runner }));
+        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
+        assert!(events.contains(&GameEvent::CardDrawn { side: Side::Corp }));
     }
 
     #[test]
@@ -346,6 +463,7 @@ mod tests {
             base_strength: 2,
             encounter_strength_buff: 1,
             turn_strength_buff: 3,
+            ..Default::default()
         }];
 
         let (next, _events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
@@ -360,50 +478,49 @@ mod tests {
     fn corp_ending_turn_gives_no_draw_since_only_the_corp_draws_automatically() {
         let mut state = game_state(Side::Corp, 0, 5, 0, 2);
         state.runner.stack = vec![CardId("sure_gamble".to_string())];
-        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::new();
+        let (next, mut events) = end_turn(&state, &registry).expect("should succeed");
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         // Control passed to the Runner, so no automatic draw happens here —
         // only the Corp draws automatically at the start of their turn.
         assert_eq!(next.runner.stack, vec![CardId("sure_gamble".to_string())]);
         assert!(next.runner.grip.is_empty());
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::TurnEnded { side: Side::Corp },
-                GameEvent::TurnStarted { side: Side::Runner, clicks: 4 },
-            ]
-        );
+        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Corp }));
+        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Runner, clicks: 4 }));
+        assert!(!events.contains(&GameEvent::CardDrawn { side: Side::Runner }));
     }
 
     #[test]
     fn mandatory_draw_with_empty_rd_ends_game_with_runner_win() {
         let state = game_state(Side::Runner, 0, 5, 0, 2);
-        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::new();
+        let (next, mut events) = end_turn(&state, &registry).expect("should succeed");
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         // Deck-out: the Corp can't make their mandatory draw, so the game
         // ends immediately — no underflow/panic, but also no turn starts
-        // (no clicks refilled, no `TurnStarted`).
+        // (no clicks refilled, no `TurnStarted`), and no further window
+        // opens once `GameOver` is reached.
         assert!(next.corp.hq.is_empty());
         assert_eq!(next.phase, GamePhase::GameOver(Side::Runner));
         assert_eq!(next.corp.resources.clicks, Clicks(0));
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::TurnEnded { side: Side::Runner },
-                GameEvent::GameOver { winner: Side::Runner },
-            ]
-        );
+        assert_eq!(next.paid_ability_window, None);
+        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Runner }));
+        assert!(events.contains(&GameEvent::GameOver { winner: Side::Runner }));
+        assert!(!events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
     }
 
     #[test]
     fn ending_turn_while_a_run_is_active_errors() {
         let mut state = game_state(Side::Runner, 0, 5, 0, 2);
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, access_state: None,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: Vec::new(),
-            position: 0,
-         jack_out_permitted: true,});
+            jack_out_permitted: true,
+            ..Default::default()
+        });
 
         assert_eq!(end_turn(&state, &CardRegistry::new()), Err(RulesError::CannotEndTurnWhileRunActive));
     }
@@ -425,25 +542,25 @@ mod tests {
     fn ending_turn_over_hand_size_transitions_to_discard_instead_of_next_start_of_turn() {
         let mut state = game_state(Side::Corp, 0, 5, 0, 2);
         state.corp.hq = (0..6).map(|i| CardId(format!("card_{i}"))).collect();
-        let (next, events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::new();
+        let (next, mut events) = end_turn(&state, &registry).expect("should succeed");
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         assert_eq!(next.phase, GamePhase::Discard { side: Side::Corp, required: 1 });
         // Control has NOT passed to the Runner yet — clicks are untouched.
         assert_eq!(next.runner.resources.clicks, Clicks(0));
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::TurnEnded { side: Side::Corp },
-                GameEvent::DiscardPending { side: Side::Corp, required: 1 },
-            ]
-        );
+        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Corp }));
+        assert!(events.contains(&GameEvent::DiscardPending { side: Side::Corp, required: 1 }));
     }
 
     #[test]
     fn ending_turn_within_hand_size_skips_discard_entirely() {
         let mut state = game_state(Side::Corp, 0, 5, 0, 2);
         state.corp.hq = (0..5).map(|i| CardId(format!("card_{i}"))).collect();
-        let (next, _events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::new();
+        let (next, _events) = end_turn(&state, &registry).expect("should succeed");
+        let (next, _close_events) = close_all_windows(next, &registry);
 
         assert_eq!(next.phase, GamePhase::Action(Side::Runner));
     }
@@ -454,21 +571,20 @@ mod tests {
         state.phase = GamePhase::Discard { side: Side::Corp, required: 1 };
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
 
-        let (next, events) =
-            discard_card(&state, CardId("hedge_fund".to_string()), &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::new();
+        let (next, mut events) =
+            discard_card(&state, CardId("hedge_fund".to_string()), &registry).expect("should succeed");
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
 
         assert!(next.corp.hq.is_empty());
-        assert_eq!(next.corp.archives, vec![CardId("hedge_fund".to_string())]);
+        // A Corp discard from HQ goes facedown.
+        assert_eq!(next.corp.archives, vec![ArchivedCard::facedown(CardId("hedge_fund".to_string()))]);
         // Last mandatory discard cleared: control passes to the Runner.
         assert_eq!(next.phase, GamePhase::Action(Side::Runner));
         assert_eq!(next.runner.resources.clicks, Clicks(4));
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::CardDiscarded { side: Side::Corp, card: CardId("hedge_fund".to_string()) },
-                GameEvent::TurnStarted { side: Side::Runner, clicks: 4 },
-            ]
-        );
+        assert!(events.contains(&GameEvent::CardDiscarded { side: Side::Corp, card: CardId("hedge_fund".to_string()) }));
+        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Runner, clicks: 4 }));
     }
 
     #[test]
@@ -480,8 +596,10 @@ mod tests {
         // decking out — this test is about the heap mechanic, not deck-out.
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
 
+        let registry = CardRegistry::new();
         let (next, _events) =
-            discard_card(&state, CardId("sure_gamble".to_string()), &CardRegistry::new()).expect("should succeed");
+            discard_card(&state, CardId("sure_gamble".to_string()), &registry).expect("should succeed");
+        let (next, _close_events) = close_all_windows(next, &registry);
 
         assert!(next.runner.grip.is_empty());
         assert_eq!(next.runner.heap, vec![CardId("sure_gamble".to_string())]);

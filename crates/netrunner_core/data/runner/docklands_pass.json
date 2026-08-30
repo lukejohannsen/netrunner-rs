@@ -1,0 +1,25 @@
+{
+  "id": "docklands_pass",
+  "title": "Docklands Pass",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRunOnHq",
+      "requirement": {
+        "OncePerTurn": "docklands_pass"
+      },
+      "effects": [
+        {
+          "AddAdditionalAccess": {
+            "server": "Hq",
+            "count": 1
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30013,
+  "is_playable": true
+}

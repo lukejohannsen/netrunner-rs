@@ -1,0 +1,53 @@
+{
+  "id": "tranquilizer",
+  "title": "Tranquilizer",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 2,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "subtypes": [
+    "Virus"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "AddCounters": 1
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtLeast": 3
+            },
+            "effect": {
+              "DerezCard": "HostIce"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtLeast": 3
+            },
+            "effect": {
+              "DerezCard": "HostIce"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "counter_kind": "Virus",
+  "numeric_id": 30017,
+  "is_playable": true
+}

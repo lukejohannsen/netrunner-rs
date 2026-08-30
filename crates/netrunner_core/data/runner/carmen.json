@@ -1,0 +1,44 @@
+{
+  "id": "carmen",
+  "title": "Carmen",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 5,
+  "strength": 2,
+  "memory_cost": 1,
+  "install_cost_discount_if": [
+    "MadeSuccessfulRunThisTurn",
+    2
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 3,
+          "duration": "Encounter"
+        }
+      }
+    }
+  ],
+  "numeric_id": 30015,
+  "is_playable": true
+}

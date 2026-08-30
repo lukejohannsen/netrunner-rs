@@ -1,0 +1,22 @@
+{
+  "id": "palisade",
+  "title": "Palisade",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 2,
+  "strength_modifier": {
+    "WhileProtectingRemote": 2
+  },
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 30072,
+  "is_playable": true
+}

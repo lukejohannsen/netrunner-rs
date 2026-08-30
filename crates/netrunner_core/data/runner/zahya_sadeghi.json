@@ -1,0 +1,28 @@
+{
+  "id": "zahya_sadeghi",
+  "title": "Zahya Sadeghi: Versatile Smuggler",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "requirement": {
+        "And": [
+          "LastRunWasOnHqOrRnD",
+          {
+            "OncePerTurn": "zahya_sadeghi"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "GainCreditsPerCardAccessedThisRun": "Runner"
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30010,
+  "is_playable": true
+}

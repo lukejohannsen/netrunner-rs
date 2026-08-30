@@ -1,0 +1,39 @@
+{
+  "id": "nbn_reality_plus",
+  "title": "NBN: Reality Plus",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "triggers": [
+    {
+      "trigger": "OnTagsGiven",
+      "requirement": {
+        "OncePerTurn": "nbn_reality_plus"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Corp",
+                  2
+                ]
+              },
+              {
+                "DrawCards": [
+                  "Corp",
+                  2
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30051,
+  "is_playable": true
+}

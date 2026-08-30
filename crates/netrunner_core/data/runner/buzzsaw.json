@@ -1,0 +1,40 @@
+{
+  "id": "buzzsaw",
+  "title": "Buzzsaw",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 3,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "CodeGate"
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      }
+    }
+  ],
+  "numeric_id": 30005,
+  "is_playable": true
+}

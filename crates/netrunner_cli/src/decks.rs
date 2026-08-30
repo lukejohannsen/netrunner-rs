@@ -2,7 +2,7 @@
 //! Engineering the Future (Corp) matchup for headless self-play and the
 //! interactive TUI's single-game bootstrap.
 //!
-//! `netrunner_core::cards::register_baseline_set` alone can't reach a legal
+//! `netrunner_core::cards::register_playable_cards` alone can't reach a legal
 //! deck for either side: the baseline pool has only 7 Corp cards (max 21
 //! copies, and only `hostile_takeover` is an Agenda — max 3 agenda points)
 //! and 6 Runner cards (max 18 copies), while `validate_deck` requires 45
@@ -12,7 +12,7 @@
 //! baseline set to close that gap, without touching `netrunner_core` itself.
 
 use netrunner_core::cards::{self, CardRegistry};
-use netrunner_core::dsl::{Card, CardId, CardType};
+use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::rules::{Deck, Side};
 
 const CORP_IDENTITY: &str = "haas_bioroid_engineering_the_future";
@@ -35,8 +35,8 @@ const FILLER_ASSET_COUNT: u32 = 2;
 /// 18 — 45 cards total, satisfying the 45-card Runner requirement.
 const FILLER_EVENT_COUNT: u32 = 9;
 
-fn blank_card(id: String, side: Side, card_type: CardType) -> Card {
-    Card {
+fn blank_card(id: String, side: Side, card_type: CardType) -> CardDefinition {
+    CardDefinition {
         title: id.clone(),
         id: CardId(id),
         side,
@@ -56,6 +56,8 @@ fn blank_card(id: String, side: Side, card_type: CardType) -> Card {
         play_requirement: None,
         recurring_credits: None,
         first_install_discount: None,
+        memory_cost: None,
+        counter_kind: None, numeric_id: None, faction: None, type_line: None, keywords: Vec::new(), set_code: None, influence_cost: None, deck_limit: None, artist: None, image_url: None, memory_bonus: None, max_hand_size_bonus: None, install_cost_discount_if: None, installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, is_playable: true,
     }
 }
 
@@ -75,7 +77,7 @@ fn filler_event_id(index: u32) -> String {
 /// module's filler cards.
 pub fn kate_vs_hb_registry() -> CardRegistry {
     let mut registry = CardRegistry::new();
-    cards::register_baseline_set(&mut registry);
+    cards::register_playable_cards(&mut registry);
 
     for index in 0..FILLER_AGENDA_COUNT {
         let mut agenda = blank_card(filler_agenda_id(index), Side::Corp, CardType::Agenda);

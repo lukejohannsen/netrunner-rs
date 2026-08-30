@@ -1,0 +1,39 @@
+{
+  "id": "orbital_superiority",
+  "title": "Orbital Superiority",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": "IsTagged",
+            "effect": {
+              "DealDamage": [
+                "Meat",
+                4
+              ]
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": "IsTagged"
+            },
+            "effect": {
+              "GiveTags": 1
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30068,
+  "is_playable": true
+}

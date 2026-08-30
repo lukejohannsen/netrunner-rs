@@ -5,7 +5,7 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessPhase, AccessState, RunPhase, ServerId};
-use crate::rules::state::{GamePhase, GameState, InstallSlot, Side};
+use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallSlot, Side};
 use crate::rules::win::check_win_conditions;
 
 /// Root (non-ICE) installs on `server` — ICE is excluded via
@@ -62,8 +62,10 @@ fn compute_accessed_cards(state: &mut GameState, server: ServerId) -> Vec<CardId
             accessed.extend(root_installs_on(state, server));
             accessed
         }
-        // Archives is fully public; a successful run accesses all of it.
-        ServerId::Archives => state.corp.archives.clone(),
+        // A successful run accesses everything in Archives, facedown
+        // cards included — accessing them is exactly how the Runner sees
+        // them.
+        ServerId::Archives => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
         ServerId::Remote(_) => root_installs_on(state, server),
     }
 }
@@ -102,6 +104,14 @@ fn enter_pending_choice(
     server: ServerId,
     card_id: &CardId,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    // Mark the card as being accessed *before* its `OnAccessed` reaction
+    // runs, so a trap that trashes itself out of that trigger is still
+    // recognized as seen by the Runner (and lands faceup in Archives). See
+    // `AccessState::currently_accessing`.
+    if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
+        access.currently_accessing = Some(card_id.clone());
+    }
+
     // Dispatched from the `CardAccessed { card, server }` shape directly —
     // this function doesn't itself emit `CardAccessed` (see the doc comment
     // above), only `dispatch_event`'s `OnAccessed` reaction to it.
@@ -274,6 +284,7 @@ pub fn access_server(
         .as_mut()
         .expect("engine::complete_run confirmed active_run is Some before calling access_server");
     run.phase = RunPhase::AccessingCard;
+    run.cards_accessed_count = accessed.len() as u32;
 
     if accessed.len() == 1 {
         let card_id = accessed.into_iter().next().unwrap();
@@ -281,7 +292,7 @@ pub fn access_server(
         // immediately (with either `PendingInteractiveTrigger` or, via
         // `enter_pending_choice`, the real `PendingChoice`). `AccessState`
         // must exist first since both paths borrow `run.access_state.as_mut()`.
-        run.access_state = Some(AccessState {
+        run.access_state = Some(AccessState { currently_accessing: None,
             server,
             unaccessed_cards: Vec::new(),
             resolved_cards: Vec::new(),
@@ -290,7 +301,7 @@ pub fn access_server(
 
         present_card_for_access(state, registry, server, &card_id)
     } else {
-        run.access_state = Some(AccessState {
+        run.access_state = Some(AccessState { currently_accessing: None,
             server,
             unaccessed_cards: accessed.clone(),
             resolved_cards: Vec::new(),
@@ -437,8 +448,12 @@ fn advance_or_finish(
 
     match access.unaccessed_cards.len() {
         0 => {
+            state.last_completed_run = Some(crate::rules::state::CompletedRun::snapshot(run));
             state.active_run = None;
-            Ok(vec![GameEvent::RunCompleted { server }])
+            let completed_event = GameEvent::RunCompleted { server };
+            let mut events = vec![completed_event.clone()];
+            events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed_event)?);
+            Ok(events)
         }
         1 => {
             let next_card = access.unaccessed_cards.remove(0);
@@ -458,6 +473,9 @@ pub fn resolve_steal(
     card_id: &CardId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    if state.active_run.as_ref().is_some_and(|r| r.runner_cannot_steal_or_trash) {
+        return Err(RulesError::StealAndTrashPreventedThisRun);
+    }
     let pending = require_pending(state, card_id)?;
     if !pending.mandatory_steal && pending.steal_cost.is_none() {
         return Err(RulesError::NotInAccessPhase);
@@ -479,6 +497,12 @@ pub fn resolve_steal(
     }
 
     state.runner.scored_agendas.push(card_id.clone());
+    // Counted for `Trigger::OnRunEnded` consumers that gate on "if the
+    // Runner stole any agendas during that run" (AMAZE Amusements), since
+    // the `RunState` itself is gone by the time that trigger fires.
+    if let Some(run) = state.active_run.as_mut() {
+        run.agendas_stolen_this_run = run.agendas_stolen_this_run.saturating_add(1);
+    }
     let agenda_points = registry.get(card_id).and_then(|c| c.agenda_points).unwrap_or(0);
     state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(agenda_points);
     let stolen_event = GameEvent::AgendaStolen { card: card_id.clone(), agenda_points };
@@ -496,7 +520,7 @@ pub fn resolve_steal(
 /// Root-slot Corp install) and pushes it onto Archives — unless it was
 /// already being accessed *from* Archives, in which case it's already
 /// there and this is a no-op.
-fn move_to_archives(state: &mut GameState, card_id: &CardId, server: ServerId) {
+fn move_to_archives(state: &mut GameState, registry: &CardRegistry, card_id: &CardId, server: ServerId) {
     if server == ServerId::Archives {
         return;
     }
@@ -505,9 +529,54 @@ fn move_to_archives(state: &mut GameState, card_id: &CardId, server: ServerId) {
     } else if let Some(pos) = state.corp.r_and_d.iter().position(|c| c == card_id) {
         state.corp.r_and_d.remove(pos);
     } else if let Some(pos) = state.corp.installed.iter().position(|c| &c.card == card_id) {
+        let was_root = state.corp.installed[pos].slot == InstallSlot::Root;
         state.corp.installed.remove(pos);
+        // "(If the Runner trashes this card while accessing it, this ability
+        // still applies for the remainder of this run.)" — record it so
+        // `Trigger::OnRunEnded` can still reach it from the registry once
+        // it's no longer installed. Scoped to this run's own `RunState`, so
+        // it cannot leak into a later run. Only the access-trash path
+        // records this; an effect-driven trash of a persistent upgrade
+        // mid-run does not, since no card in this set needs that and the
+        // `Cost::TrashSelf` path has no registry to check the flag against.
+        if was_root
+            && registry.get(card_id).is_some_and(|card| card.persistent_after_trash)
+            && let Some(run) = state.active_run.as_mut()
+        {
+            run.persistent_trashed_upgrades.push(card_id.clone());
+        }
     }
-    state.corp.archives.push(card_id.clone());
+    // The Runner just accessed this card, so it lands faceup.
+    state.corp.archives.push(ArchivedCard::faceup(card_id.clone()));
+}
+
+/// Resolves `Effect::TrashCurrentlyAccessedCard` — trashes whatever card is
+/// currently pending in `AccessPhase::PendingChoice`, skipping its
+/// `trash_cost` entirely (unlike `resolve_trash`, which charges it). e.g.
+/// Carnivore's "trash 2 cards from your grip: trash the card you are
+/// accessing." `RulesError::NotInAccessPhase` if the Runner isn't currently
+/// mid-resolution of a specific accessed card.
+pub fn trash_currently_accessed_card_without_cost(
+    state: &mut GameState,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let run = state.active_run.as_ref().ok_or(RulesError::NotInAccessPhase)?;
+    if run.phase != RunPhase::AccessingCard {
+        return Err(RulesError::NotInAccessPhase);
+    }
+    let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
+    let AccessPhase::PendingChoice { card_id, .. } = &access.phase else {
+        return Err(RulesError::NotInAccessPhase);
+    };
+    let card_id = card_id.clone();
+    let server = access.server;
+
+    move_to_archives(state, registry, &card_id, server);
+    let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 0 };
+    let mut events = vec![trashed_event.clone()];
+    events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
+    events.extend(advance_or_finish(state, registry, server, card_id)?);
+    Ok(events)
 }
 
 /// Resolves `PlayerAction::TrashAccessedCard`. See its doc comment for the
@@ -517,6 +586,9 @@ pub fn resolve_trash(
     card_id: &CardId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    if state.active_run.as_ref().is_some_and(|r| r.runner_cannot_steal_or_trash) {
+        return Err(RulesError::StealAndTrashPreventedThisRun);
+    }
     let pending = require_pending(state, card_id)?;
     let cost = pending.trash_cost.ok_or(RulesError::NotInAccessPhase)?;
 
@@ -526,7 +598,7 @@ pub fn resolve_trash(
     }
 
     let mut events = ability::pay_cost(state, Side::Runner, &Cost::Credits(cost), Some(card_id))?;
-    move_to_archives(state, card_id, pending.server);
+    move_to_archives(state, registry, card_id, pending.server);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost };
     events.push(trashed_event.clone());
     events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
@@ -543,7 +615,8 @@ pub fn resolve_pass(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let pending = require_pending(state, card_id)?;
-    if pending.mandatory_steal {
+    let steal_blocked = state.active_run.as_ref().is_some_and(|r| r.runner_cannot_steal_or_trash);
+    if pending.mandatory_steal && !steal_blocked {
         return Err(RulesError::MandatoryStealViolation { card: card_id.clone() });
     }
 
@@ -640,7 +713,7 @@ pub fn resolve_decline_to_avoid(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, Trigger, TriggeredEffect};
+    use crate::dsl::{CardDefinition, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, Trigger, TriggeredEffect};
     use crate::rules::run::state::RunState;
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, InstalledCard, MemoryUnits, PlayerResources, RunnerState,
@@ -654,80 +727,65 @@ mod tests {
         CardRegistry::new()
     }
 
-    /// A minimal Agenda `Card` worth `points` — everything besides id and
+    /// A minimal Agenda `CardDefinition` worth `points` — everything besides id and
     /// `agenda_points` is irrelevant to these tests.
-    fn agenda_card(id: &str, points: u32) -> Card {
-        Card {
+    fn agenda_card(id: &str, points: u32) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side: Side::Corp,
             card_type: CardType::Agenda,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
             advancement_requirement: Some(points),
             agenda_points: Some(points),
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
     /// A NAPD-Contract-style Agenda: worth `points`, but costs `steal_cost`
     /// credits to steal instead of being a mandatory free steal.
-    fn costed_agenda_card(id: &str, points: u32, steal_cost: u32) -> Card {
-        Card { steal_cost: Some(Cost::Credits(steal_cost)), ..agenda_card(id, points) }
+    fn costed_agenda_card(id: &str, points: u32, steal_cost: u32) -> CardDefinition {
+        CardDefinition { steal_cost: Some(Cost::Credits(steal_cost)), ..agenda_card(id, points) }
     }
 
-    /// A minimal non-Agenda Asset `Card` with the given `trash_cost` —
+    /// A minimal non-Agenda Asset `CardDefinition` with the given `trash_cost` —
     /// everything besides id and `trash_cost` is irrelevant to these tests.
-    fn trashable_card(id: &str, trash_cost: u32) -> Card {
-        Card {
+    fn trashable_card(id: &str, trash_cost: u32) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side: Side::Corp,
             card_type: CardType::Asset,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
             trash_cost: Some(trash_cost),
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
-    /// A minimal non-Agenda, non-trashable Asset `Card` with an
+    /// A minimal non-Agenda, non-trashable Asset `CardDefinition` with an
     /// `OnAccessed` trigger firing `effects` — Snare!/Fetal AI-style traps.
-    fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> Card {
-        Card {
+    fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> CardDefinition {
+        CardDefinition {
             triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }
     }
 
-    /// A trashable `Card` (see `trashable_card`) with an
+    /// A trashable `CardDefinition` (see `trashable_card`) with an
     /// `OnTrashedFromAccess` trigger firing `effects` — Shock!-style.
-    fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> Card {
-        Card {
+    fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> CardDefinition {
+        CardDefinition {
             triggers: vec![TriggeredEffect { trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
             ..trashable_card(id, trash_cost)
         }
     }
 
-    /// A minimal non-Agenda, non-trashable Asset `Card` with an
+    /// A minimal non-Agenda, non-trashable Asset `CardDefinition` with an
     /// `InteractiveOnAccess` trigger — Fetal AI-style "pay `cost` to avoid
     /// `effects`."
-    fn card_with_interactive_on_access(id: &str, cost: Cost, effects: Vec<Effect>) -> Card {
-        Card {
+    fn card_with_interactive_on_access(id: &str, cost: Cost, effects: Vec<Effect>) -> CardDefinition {
+        CardDefinition {
             interactive_on_access: Some(InteractiveOnAccess { cost, effects }),
             trash_cost: None,
             ..trashable_card(id, 0)
@@ -737,7 +795,12 @@ mod tests {
     /// A run against `server` already in `RunPhase::Success`, ready for
     /// `access_server` to park in `AccessingCard`.
     fn run_in_success(server: ServerId) -> RunState {
-        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0, server, phase: RunPhase::Success, ice: Vec::new(), position: 0, access_state: None , jack_out_permitted: true}
+        RunState {
+            server,
+            phase: RunPhase::Success,
+            jack_out_permitted: true,
+            ..Default::default()
+        }
     }
 
     fn game_state(
@@ -748,7 +811,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
+            corp: crate::rules::state::CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0, agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
                 scored_agendas: Vec::new(),
                 resources: PlayerResources {
                     credits: Credits(0),
@@ -757,29 +820,25 @@ mod tests {
                 },
                 hq,
                 r_and_d,
-                archives,
+                // Plain fixture cards nobody has seen yet — facedown, the
+                // ordinary state for anything discarded into Archives.
+                archives: archives.into_iter().map(ArchivedCard::facedown).collect(),
                 installed,
             },
-            runner: RunnerState { identity: None,
-                scored_agendas: Vec::new(),
+            runner: RunnerState {
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: crate::rules::state::GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed,
             rng_step: 0,
         }
@@ -990,7 +1049,7 @@ mod tests {
             Vec::new(),
             0,
         );
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(),
             access_replacement: Some((ServerId::Hq, Effect::GainCredits(Side::Runner, 8))),
             ..run_in_success(ServerId::Hq)
         });
@@ -1017,7 +1076,7 @@ mod tests {
             Vec::new(),
             0,
         );
-        state.active_run = Some(RunState {
+        state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(),
             access_replacement: Some((ServerId::RnD, Effect::GainCredits(Side::Runner, 8))),
             ..run_in_success(ServerId::Hq)
         });
@@ -1038,18 +1097,14 @@ mod tests {
     fn accessing_hq_yields_hq_card_and_root_installed_upgrades() {
         let installed = vec![
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("ice_wall".to_string()),
-                server: ServerId::Hq,
                 slot: InstallSlot::Ice,
                 rezzed: true,
+                ..Default::default()
             },
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("ash_2_0".to_string()),
-                server: ServerId::Hq,
-                slot: InstallSlot::Root,
-                rezzed: false,
+                ..Default::default()
             },
         ];
         let mut state = game_state(
@@ -1085,18 +1140,16 @@ mod tests {
     fn accessing_rnd_yields_rnd_card_and_root_installed_upgrades() {
         let installed = vec![
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("wraparound".to_string()),
                 server: ServerId::RnD,
                 slot: InstallSlot::Ice,
                 rezzed: true,
+                ..Default::default()
             },
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("crisium_grid".to_string()),
                 server: ServerId::RnD,
-                slot: InstallSlot::Root,
-                rezzed: false,
+                ..Default::default()
             },
         ];
         let mut state = game_state(
@@ -1135,25 +1188,23 @@ mod tests {
     fn accessing_remote_skips_installed_ice_and_yields_only_root_installs() {
         let installed = vec![
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("ice_wall".to_string()),
                 server: ServerId::Remote(0),
                 slot: InstallSlot::Ice,
                 rezzed: true,
+                ..Default::default()
             },
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("pad_campaign".to_string()),
                 server: ServerId::Remote(0),
-                slot: InstallSlot::Root,
-                rezzed: false,
+                ..Default::default()
             },
             InstalledCard {
-                advancement_tokens: 0,
                 card: CardId("enigma".to_string()),
                 server: ServerId::Remote(1),
                 slot: InstallSlot::Ice,
                 rezzed: true,
+                ..Default::default()
             },
         ];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
@@ -1170,11 +1221,11 @@ mod tests {
     #[test]
     fn accessing_remote_with_only_ice_yields_no_events() {
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: CardId("ice_wall".to_string()),
             server: ServerId::Remote(0),
             slot: InstallSlot::Ice,
             rezzed: true,
+            ..Default::default()
         }];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         assert_eq!(access_server(&mut state, ServerId::Remote(0), &registry()).unwrap(), Vec::new());
@@ -1366,11 +1417,10 @@ mod tests {
     fn trashing_an_installed_asset_pays_its_trash_cost_and_moves_it_to_archives() {
         let registry = CardRegistry::from_cards(vec![trashable_card("pad_campaign", 2)]);
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: CardId("pad_campaign".to_string()),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
             rezzed: true,
+            ..Default::default()
         }];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.runner.resources.credits = Credits(3);
@@ -1382,7 +1432,8 @@ mod tests {
 
         assert_eq!(state.runner.resources.credits, Credits(1));
         assert!(state.corp.installed.is_empty());
-        assert_eq!(state.corp.archives, vec![card_id.clone()]);
+        // Accessed and trashed by the Runner, so it lands faceup.
+        assert_eq!(state.corp.archives, vec![ArchivedCard::faceup(card_id.clone())]);
         assert_eq!(
             events,
             vec![
@@ -1397,11 +1448,10 @@ mod tests {
     fn trashing_with_insufficient_credits_errors() {
         let registry = CardRegistry::from_cards(vec![trashable_card("pad_campaign", 2)]);
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: CardId("pad_campaign".to_string()),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
             rezzed: true,
+            ..Default::default()
         }];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.runner.resources.credits = Credits(1);
@@ -1772,11 +1822,10 @@ mod tests {
             vec![Effect::DealDamage(DamageType::Net, 1)],
         )]);
         let installed = vec![InstalledCard {
-            advancement_tokens: 0,
             card: CardId("shock".to_string()),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
             rezzed: true,
+            ..Default::default()
         }];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.runner.resources.credits = Credits(3);
@@ -2182,7 +2231,7 @@ mod tests {
         );
     }
 
-    /// A minimal non-Agenda, non-trashable Asset `Card` with both an
+    /// A minimal non-Agenda, non-trashable Asset `CardDefinition` with both an
     /// `InteractiveOnAccess` trigger and a normal `OnAccessed` trigger —
     /// proves the two compose (the normal trigger still fires once the
     /// interactive decision resolves).
@@ -2191,8 +2240,8 @@ mod tests {
         cost: Cost,
         avoided_effects: Vec<Effect>,
         on_accessed_effects: Vec<Effect>,
-    ) -> Card {
-        Card {
+    ) -> CardDefinition {
+        CardDefinition {
             interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects }),
             triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
             trash_cost: None,
@@ -2247,8 +2296,8 @@ mod tests {
 
     /// An Agenda (see `agenda_card`) with an `InteractiveOnAccess` trigger —
     /// Fetal AI's actual card shape (a damage trap that's also an Agenda).
-    fn agenda_with_interactive_on_access(id: &str, points: u32, cost: Cost, effects: Vec<Effect>) -> Card {
-        Card { interactive_on_access: Some(InteractiveOnAccess { cost, effects }), ..agenda_card(id, points) }
+    fn agenda_with_interactive_on_access(id: &str, points: u32, cost: Cost, effects: Vec<Effect>) -> CardDefinition {
+        CardDefinition { interactive_on_access: Some(InteractiveOnAccess { cost, effects }), ..agenda_card(id, points) }
     }
 
     #[test]
@@ -2370,7 +2419,7 @@ mod tests {
         assert!(state.corp.hq.is_empty());
         // Exactly one copy — not duplicated by a stale PendingChoice being
         // acted on afterward.
-        assert_eq!(state.corp.archives, vec![CardId("shock_ish".to_string())]);
+        assert_eq!(state.corp.archives, vec![ArchivedCard::faceup(CardId("shock_ish".to_string()))]);
         assert_eq!(state.active_run, None, "the run should complete, not hang on a phantom PendingChoice");
         assert_eq!(
             events,

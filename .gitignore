@@ -1,1 +1,12 @@
+# Rust build folder
 /target
+
+# Python virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Generated self-play training artifacts
+/data/selfplay/
+/checkpoints/

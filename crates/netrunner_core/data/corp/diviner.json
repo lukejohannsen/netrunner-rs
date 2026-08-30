@@ -1,0 +1,34 @@
+{
+  "id": "diviner",
+  "title": "Diviner",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Do 1 net damage. If you trash a card this way with a printed play or install cost that is an odd number, end the run. (0 is not odd.)",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": "LastDamageTrashedOddCostCard",
+              "effect": "EndTheRun"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 30046,
+  "is_playable": true
+}

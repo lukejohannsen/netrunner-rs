@@ -1,0 +1,24 @@
+{
+  "id": "the_makers_eye",
+  "title": "The Maker's Eye",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "InitiateRun": "RnD"
+        },
+        {
+          "AddAdditionalAccess": {
+            "server": "RnD",
+            "count": 2
+          }
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

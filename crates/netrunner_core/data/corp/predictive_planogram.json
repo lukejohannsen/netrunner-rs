@@ -1,0 +1,63 @@
+{
+  "id": "predictive_planogram",
+  "title": "Predictive Planogram",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "Not": "IsTagged"
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      3
+                    ]
+                  },
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      3
+                    ]
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "EffectIf": {
+            "condition": "IsTagged",
+            "effect": {
+              "Sequence": [
+                {
+                  "GainCredits": [
+                    "Corp",
+                    3
+                  ]
+                },
+                {
+                  "DrawCards": [
+                    "Corp",
+                    3
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30056,
+  "is_playable": true
+}

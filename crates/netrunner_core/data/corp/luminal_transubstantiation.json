@@ -1,0 +1,25 @@
+{
+  "id": "luminal_transubstantiation",
+  "title": "Luminal Transubstantiation",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "GainClicks": [
+            "Corp",
+            3
+          ]
+        },
+        "PreventScoringForRemainderOfTurn"
+      ]
+    }
+  ],
+  "numeric_id": 30036,
+  "is_playable": true
+}

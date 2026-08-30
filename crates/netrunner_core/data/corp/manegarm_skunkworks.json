@@ -1,0 +1,36 @@
+{
+  "id": "manegarm_skunkworks",
+  "title": "Manegarm Skunkworks",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnApproachServer",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "AnyOf": [
+                {
+                  "Clicks": 2
+                },
+                {
+                  "Credits": 5
+                }
+              ]
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": "EndTheRun"
+          }
+        }
+      ]
+    }
+  ],
+  "trash_cost": 3,
+  "numeric_id": 30042,
+  "is_playable": true
+}

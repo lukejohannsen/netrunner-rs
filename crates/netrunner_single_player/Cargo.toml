@@ -1,0 +1,14 @@
+[package]
+name = "netrunner_single_player"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+netrunner_core = { path = "../netrunner_core" }
+netrunner_bots = { path = "../netrunner_bots" }
+
+[features]
+# Forwards to netrunner_bots' onnx feature so IndexedOnnxAgent (and its
+# tests) are reachable from this crate without adding a direct `ort`
+# dependency here.
+onnx = ["netrunner_bots/onnx"]

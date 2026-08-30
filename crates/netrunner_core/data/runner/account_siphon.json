@@ -1,0 +1,42 @@
+{
+  "id": "account_siphon",
+  "title": "Account Siphon",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "InitiateRun": "Hq"
+        },
+        {
+          "SetAccessReplacement": {
+            "server": "Hq",
+            "effect": {
+              "Sequence": [
+                {
+                  "LoseCredits": [
+                    "Corp",
+                    5
+                  ]
+                },
+                {
+                  "GainCredits": [
+                    "Runner",
+                    10
+                  ]
+                },
+                {
+                  "GiveTags": 2
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

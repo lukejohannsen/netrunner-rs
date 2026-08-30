@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
+use crate::dsl::ability::EffectRequirement;
 use crate::dsl::card::{CardId, IceType};
+use crate::dsl::cost::Cost;
+use crate::dsl::zone::{CardFilter, CardZoneRef};
 use crate::rules::{ServerId, Side};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -38,12 +41,19 @@ pub enum CardTarget {
     /// The top card of an ordered deck zone, without needing to name it —
     /// covers "mill" effects (trash without revealing).
     TopOfStack { side: Side, zone: StackZone },
+    /// The Corp ICE that `acting_card` (a Trojan Program hosted via
+    /// `PlayerAction::InstallProgramOnIce`) is currently hosted on —
+    /// resolved via `InstalledRunnerCard::hosted_on_ice`, then treated
+    /// exactly like `CorpInstalled` (including cascade-trash) once found.
+    /// `RulesError::UnresolvedCardTarget` if `acting_card` isn't a hosted
+    /// card. e.g. Tranquilizer's "derez host ice" once counters reach 3.
+    HostIce,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Effect {
     /// `Side` is explicit — even though most cards only ever grant
-    /// credits to their own controller (and `Card::side` already implies
+    /// credits to their own controller (and `CardDefinition::side` already implies
     /// that), an explicit target lets a card affect the opponent instead.
     GainCredits(Side, u32),
     /// Renamed from `InflictDamage`. `usize` (not `u32`) matches
@@ -96,6 +106,16 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         restrict_to: Option<IceType>,
     },
+    /// Breaks up to `count` pending subroutines on the ICE currently being
+    /// encountered — identical to `BreakSubroutines` except it skips the
+    /// breaker-strength-vs-ICE-strength contest (and the subtype
+    /// restriction) entirely. For hosted-counter-cost break abilities that
+    /// have no printed strength stat at all and never contest it — e.g.
+    /// Botulus's "hosted virus counter: break 1 subroutine on host ice."
+    /// Deliberately a separate variant rather than an `ignore_strength`
+    /// flag on `BreakSubroutines` itself, to avoid touching that effect's
+    /// ~25 existing construction sites for one card's exception.
+    BreakSubroutinesUnconditionally { count: SubroutineBreakCount },
     /// Establishes a trace of strength `base` (plus whatever the Corp
     /// commits on top once bidding begins). Does not resolve `on_success`
     /// synchronously — unlike every other variant, this effect alone cannot
@@ -131,6 +151,17 @@ pub enum Effect {
     /// requires. Stops and propagates immediately if any inner `Effect`
     /// errors, same "no rollback of already-applied effects" convention as
     /// `resolve_unbroken_subroutines`/`process_card_triggers`.
+    ///
+    /// Also stops (without erroring) the instant an inner `Effect` parks
+    /// something spanning future `PlayerAction`s (a trace, a prevention
+    /// window, `OfferPaidChoice`, `PresentChoice`, or `PromptChooseCards`/
+    /// `PromptChooseServer`) — there is no mechanism to resume a `Sequence`
+    /// partway through once control returns from one of those, so any
+    /// remaining effects after the parking one are simply never reached.
+    /// **Don't chain two independently-parking effects in one `Sequence`**
+    /// (e.g. two `PromptChooseCards` back to back) — the second would
+    /// silently never run. Chain through the parking effect's own `then`
+    /// field instead (see Longevity Serum's card JSON for the pattern).
     Sequence(Vec<Effect>),
     /// Symmetric opposite of `GainCredits` — saturating, never errors even
     /// if `side` can't actually afford it (mirrors `GainCredits`'s own
@@ -141,6 +172,10 @@ pub enum Effect {
     /// costs the Corp a click this way yet, so — like `GiveTags`/
     /// `GiveBadPublicity` — deliberately no `Side` param). Saturating.
     LoseClicks(u32),
+    /// Grants `side` extra clicks — e.g. Luminal Transubstantiation's "gain
+    /// [click][click][click]" on score. Takes a `Side` (unlike
+    /// `LoseClicks`) because the only card needing it is Corp-side.
+    GainClicks(Side, u32),
     /// Initiates a run on `server`, exactly like `PlayerAction::InitiateRun`
     /// (same `RunState` shape, `RulesError::RunAlreadyInProgress` guard) but
     /// without spending a click — the enclosing `PlayEvent`/`PlayOperation`
@@ -150,6 +185,314 @@ pub enum Effect {
     /// Siphon) by simply listing `InitiateRun` before the access-modifying
     /// effect(s) that follow it.
     InitiateRun(ServerId),
+    /// Saturating-reduces the `amount` of a `PendingPreventionKind::Damage`
+    /// currently parked in `GameState::pending_prevention` (a card's
+    /// `Trigger::Paid` ability activated during the resulting
+    /// `WindowCheckpoint::Prevention` window — e.g. a future "Feedback
+    /// Filter"-style card). `RulesError::NoPendingPrevention` if nothing is
+    /// parked, `RulesError::PreventionKindMismatch` if what's parked isn't
+    /// `Damage`.
+    PreventDamage(usize),
+    /// Marks a parked `PendingPreventionKind::Trash` as prevented outright —
+    /// trash prevention is binary (all-or-nothing per instance), unlike
+    /// damage's incremental `amount`. Same error conditions as
+    /// `PreventDamage`, mismatched on `Trash` instead of `Damage`.
+    PreventTrash,
+    /// Saturating-adds `amount` generic counters (see `dsl::card::
+    /// CounterKind`) to whichever card activated this effect — always
+    /// `acting_card`, the same target `BoostStrength` uses, since a
+    /// counter-placing effect is always a card's own ability/trigger
+    /// putting counters on itself. `RulesError::UnresolvedCardTarget` if
+    /// `acting_card` is `None`, `RulesError::CardNotActive` if it names a
+    /// card that's neither a rezzed Corp install nor a Runner rig card.
+    AddCounters(u32),
+    /// Saturating-removes `amount` generic counters from `acting_card`. Same
+    /// target/error rules as `AddCounters`.
+    RemoveCounters(u32),
+    /// Unconditionally sets the active run's `jack_out_permitted` flag —
+    /// e.g. Karunā's first subroutine ("do 2 net damage. The Runner may jack
+    /// out."), where jacking out is normally only permitted before
+    /// `RunPhase::Success`. `RulesError::NoActiveRun` if there's no run to
+    /// grant it on.
+    PermitJackOut,
+    /// Evaluates `effect` only if `condition` holds; otherwise silently
+    /// no-ops (`Ok(Vec::new())`) — the same soft-gate convention
+    /// `dsl::card::TriggeredEffect::requirement` already uses, but usable
+    /// inline inside an effect list/`Sequence` rather than only at a
+    /// trigger's top level. Which side's context (e.g. `EffectRequirement::
+    /// OncePerTurn`) `condition` is checked against is resolved from
+    /// `acting_card`'s own registry `side` — see `evaluate_effect`'s
+    /// `EffectIf` arm.
+    EffectIf { condition: EffectRequirement, effect: Box<Effect> },
+    /// Offers `side` a choice: pay `cost` (resolving `if_paid`), or don't
+    /// (resolving `if_declined`) — e.g. Funhouse's subroutine ("give the
+    /// Runner 1 tag unless they pay 4 credits") or Anoetic Void ("the Corp
+    /// may pay 2 credits and trash 2 HQ cards to end the run"). Doesn't
+    /// resolve synchronously: parks a `state::PendingPaidChoice` and
+    /// returns immediately, mirroring `Effect::Trace`'s "spans future
+    /// `PlayerAction`s" shape. Resolved via `PlayerAction::
+    /// AcceptPendingPaidChoice`/`DeclinePendingPaidChoice`
+    /// (`rules::pending_choice`).
+    ///
+    /// Deliberately a second, non-run-scoped mechanism alongside
+    /// `dsl::ability::InteractiveOnAccess` rather than a generalization of
+    /// it: `InteractiveOnAccess` is intrinsically tied to `RunState::
+    /// access_state`/`AccessPhase::PendingInteractiveTrigger` and can't
+    /// represent a choice with no active run at all (a standalone
+    /// Operation, an on-rez/on-approach trigger before access begins). Both
+    /// converge on the same "park state, block unrelated actions, resume
+    /// via dedicated `PlayerAction`s" idiom `TraceState`/`PendingPrevention`
+    /// already established.
+    OfferPaidChoice { side: Side, cost: Cost, if_paid: Box<Effect>, if_declined: Box<Effect> },
+    /// Presents `chooser` with a choice of which one `Effect` among
+    /// `options` resolves — e.g. Wildcat Strike ("resolve 1 of the
+    /// following of the Corp's choice"), NBN: Reality Plus ("gain 2
+    /// credits or draw 2 cards"). Parks a `state::PendingDecision::
+    /// ChooseEffect` and returns immediately, resolved via `PlayerAction::
+    /// ResolvePendingChoice`.
+    PresentChoice { chooser: Side, options: Vec<Effect> },
+    /// Grants `side` 1 credit for each card accessed during the just-ended
+    /// run (`GameState::last_completed_run`) — e.g. Zahya Sadeghi's "gain 1
+    /// credit for each time you accessed a card during that run." A
+    /// narrowly-scoped one-off (rather than a general dynamic-amount
+    /// system, which no card needs yet) — see this variant's tracking note
+    /// in `ROADMAP.md` for the planned future generalization.
+    GainCreditsPerCardAccessedThisRun(Side),
+    /// Offers `side` a choice of up to `max` (at least `min`) cards from
+    /// `source` matching `filter`, optionally moving the chosen cards to
+    /// `destination` (shuffling it afterward if `shuffle_after`), then
+    /// evaluating `then` (if present) with the *first* selected card as
+    /// `acting_card` context — e.g. Sprint's "shuffle 2 cards from HQ into
+    /// R&D", Mutual Favor's "search your stack for 1 icebreaker", Above the
+    /// Law's "you may trash 1 installed resource", Send a Message's "rez 1
+    /// installed ICE, ignoring costs" (`destination: None`, `then: Some(
+    /// RezInstalledIgnoringCost(..))` — the placeholder `CardId` inside
+    /// `then` is ignored; `ConfirmCardSelection`'s resolution substitutes
+    /// the actual selected card via `acting_card`, the same substitution
+    /// convention `Effect::TrashCard(CardTarget::ThisCard)` already uses).
+    ///
+    /// Silently no-ops (`Ok(Vec::new())`) without parking anything if fewer
+    /// than `min` cards are actually available in `source` — the same
+    /// "nothing to do" leniency `Effect::DrawCards`/`TrashCard`'s "already
+    /// trashed" case already establish — e.g. Hansei Review's "if there are
+    /// any cards in HQ, trash 1 of them" needs no separate `EffectIf` gate
+    /// because of this.
+    ///
+    /// Doesn't resolve synchronously: parks a `state::PendingDecision::
+    /// ChooseCards` and returns immediately, resolved via `PlayerAction::
+    /// ToggleCardSelection`/`ConfirmCardSelection`.
+    PromptChooseCards {
+        side: Side,
+        source: CardZoneRef,
+        filter: CardFilter,
+        min: u32,
+        max: u32,
+        /// Whether the chosen cards' identities are revealed to the
+        /// opponent — recorded on the resulting `GameEvent::CardsSelected`
+        /// for now; doesn't yet integrate with `masking`'s per-card hidden-
+        /// identity rules (no consumer needs that distinction enforced
+        /// yet).
+        reveal: bool,
+        shuffle_after: bool,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        destination: Option<CardZoneRef>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
+    },
+    /// Lets `chooser` pick any server to run, then initiates a run against
+    /// it — e.g. Tread Lightly ("run any server; during that run, ICE rez
+    /// cost is increased by 3"), Overclock ("run any server; you can spend
+    /// 5 hosted credits during that run"). `rez_cost_delta`/
+    /// `bonus_run_credits` seed the resulting `RunState`'s matching fields
+    /// (`0`/`0` for a plain "run any server" with no further modifier).
+    /// Doesn't resolve synchronously: parks a `state::PendingDecision::
+    /// ChooseServer` and returns immediately, resolved via `PlayerAction::
+    /// ChooseServerForPendingDecision`.
+    PromptChooseServer {
+        chooser: Side,
+        rez_cost_delta: i32,
+        bonus_run_credits: u32,
+        /// Restricts the offer to these servers — e.g. Jailbreak's "Run HQ
+        /// or R&D". `None` (the default, and the shape every pre-Jailbreak
+        /// card authored) means any server, including a fresh remote.
+        /// Honored by `legal_actions` so an excluded server is never even
+        /// offered, keeping the action mask and the resolver in agreement.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        allowed_servers: Option<Vec<ServerId>>,
+        /// Evaluated if and when the resulting run succeeds, via
+        /// `run::RunState::on_success_effect` — e.g. Jailbreak's "If
+        /// successful, draw 1 card and ... access 1 additional card". An
+        /// `AddAdditionalAccess` inside it has its `server` treated as an
+        /// ignored placeholder and rewritten to the server actually chosen,
+        /// the same substitution convention `PromptChooseCards::then` uses
+        /// for `RezInstalledIgnoringCost`. `RunSucceeded` fires before
+        /// access is computed, so an access bonus granted here still
+        /// applies to that same breach.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        on_success: Option<Box<Effect>>,
+    },
+    /// Rezzes `card_id`, an already-installed Corp card, skipping the
+    /// credit-cost payment `PlayerAction::RezIce` would otherwise require —
+    /// e.g. Send a Message's "rez 1 installed ICE, ignoring all costs".
+    /// Mirrors `engine::rez_ice`'s state transition (flips `InstalledCard::
+    /// rezzed`, syncs the matching `RunIce::rezzed` if mid-`ApproachIce`,
+    /// dispatches `Trigger::OnRez`) minus the payment step —
+    /// `RulesError::CardNotInstalled`/`RulesError::AlreadyRezzed` under the
+    /// same conditions `rez_ice` itself would reject. Deliberately
+    /// duplicates (rather than shares) `rez_ice`'s state-mutation lines: the
+    /// two live in different modules (`ability`/`engine`) and the paid path
+    /// additionally needs `paid_ability::note_window_action`, which this
+    /// free variant has no priority-window context to call.
+    RezInstalledIgnoringCost(CardId),
+    /// Removes *every* counter currently on `acting_card` and grants `side`
+    /// that many credits — e.g. Pennyshaver's "place 1 credit on this
+    /// hardware, then take all credits from it." A narrowly-scoped one-off
+    /// (like `GainCreditsPerCardAccessedThisRun`) rather than a general
+    /// dynamic-amount system, which no card needs yet — the M4 plan
+    /// section claimed hosted-credit-pool cards would need no new `Effect`
+    /// variants at all, but "take a variable amount, not a fixed N" is a
+    /// genuine gap the fixed-`u32` `RemoveCounters`/`GainCredits` pair
+    /// can't express. Same `RulesError::UnresolvedCardTarget`/
+    /// `CardNotEligibleForCounters` error conditions as `AddCounters`/
+    /// `RemoveCounters` (delegates to the same `modify_counters` helper).
+    TakeAllCountersAsCredits(Side),
+    /// Permanently grants `side` `amount` additional max hand size —
+    /// e.g. Superconducting Hub's "you get +2 maximum hand size" (fired
+    /// from its own `Trigger::OnAgendaScored`). Adds to `CorpState`/
+    /// `RunnerState::max_hand_size_bonus`; never decremented (see that
+    /// field's doc comment).
+    GainMaxHandSize(Side, u32),
+    /// Trashes the card currently pending in `run::AccessPhase::
+    /// PendingChoice` — the card the Runner is actively accessing — for
+    /// free, skipping its `trash_cost` entirely (unlike `PlayerAction::
+    /// TrashAccessedCard`/`run::access::resolve_trash`, which charges it).
+    /// e.g. Carnivore's "trash 2 cards from your grip: trash the card you
+    /// are accessing." `RulesError::NotInAccessPhase` if the Runner isn't
+    /// actually mid-access of a specific card right now. See
+    /// `run::access::trash_currently_accessed_card_without_cost`.
+    TrashCurrentlyAccessedCard,
+    /// Flips a rezzed Corp installed card back face-down — the only
+    /// player/effect-driven derez path (rez itself is otherwise one-way
+    /// via `PlayerAction::RezIce`). `target` is almost always
+    /// `CardTarget::HostIce` in practice (e.g. Tranquilizer's "derez host
+    /// ice" once 3+ virus counters accumulate) but composes with any
+    /// `CardTarget` that resolves to a Corp installed card.
+    DerezCard(CardTarget),
+    /// Gains `credits_per_counter` credits for each of `acting_card`'s own
+    /// hosted counters — a narrow, proportional one-off distinct from
+    /// `TakeAllCountersAsCredits`'s flat 1-per-counter payout and from
+    /// `GainCreditsPerCardAccessedThisRun`'s unrelated read, kept
+    /// deliberately separate from removing the counters (the caller pairs
+    /// it with its own cost/cleanup, e.g. Fermenter's "[click], [trash]:
+    /// gain 2 credits for each hosted virus counter" — the `TrashSelf`
+    /// cost already disposes of the card and its counters together, so
+    /// this effect only needs to read the count once). To be folded into a
+    /// general `Amount` vocabulary alongside `TakeAllCountersAsCredits`/
+    /// `GainCreditsPerCardAccessedThisRun` in a later milestone.
+    GainCreditsPerCounter { side: Side, credits_per_counter: u32 },
+    /// Exchanges two Corp ICE's `server`/`slot` positions in place — e.g.
+    /// Tāo Salonga's "you may swap 2 installed pieces of ice." Both
+    /// `CardId`s are authored as unused placeholders in JSON (the real
+    /// targets aren't known until the Runner picks them) and substituted
+    /// at `PendingDecision::ChooseCards` resolution time, the same
+    /// "acting-context substitution" convention `Effect::
+    /// RezInstalledIgnoringCost` already established for a single target —
+    /// extended here to two. `RulesError::CardNotInstalled` if either
+    /// doesn't resolve to a currently-installed ICE;
+    /// `RulesError::CannotSwapIceDuringActiveRun` if either is part of the
+    /// current `active_run`'s already-built `RunState::ice` (swapping
+    /// positions mid-run would desync that snapshot from `CorpState::
+    /// installed`).
+    SwapInstalledIce(CardId, CardId),
+    /// Installs `card_id` (a placeholder substituted at `PendingDecision::
+    /// ChooseCards` resolution time, same convention as `SwapInstalledIce`)
+    /// from `origin_zone` (fixed at authoring — `OwnHq` or `OwnArchives`)
+    /// into `into` (a placeholder substituted with `source_card`'s own
+    /// currently-installed server), skipping its install cost entirely.
+    /// `slot`: `None` infers `Ice` for `CardType::Ice(_)` and `Root`
+    /// otherwise (Ansel 1.0's "install 1 card" is type-agnostic); `Some`
+    /// pins it explicitly (Brân 1.0's subroutine only ever offers ICE, but
+    /// authors it explicitly for clarity). `insert_after`: `None` appends
+    /// to the end of `CorpState::installed` (Ansel 1.0 — no positional
+    /// requirement in its text); `Some(host_card_id)` (substituted from
+    /// `source_card`, same as `into`) inserts immediately after that
+    /// card's own index instead, which — since `CorpState::installed`'s
+    /// vec order is install order and `run::engine::build_run_ice` derives
+    /// a server's ICE sequence positionally from it — is exactly what
+    /// Brân 1.0's "directly inward from this ice" means structurally.
+    InstallFromZoneIgnoringCost {
+        card_id: CardId,
+        origin_zone: CardZoneRef,
+        into: ServerId,
+        slot: Option<crate::rules::InstallSlot>,
+        insert_after: Option<CardId>,
+    },
+    /// Sets `RunState::runner_cannot_steal_or_trash`, blocking `PlayerAction::
+    /// StealAgenda`/`TrashAccessedCard` for the remainder of the current
+    /// run — e.g. Ansel 1.0's third subroutine. `RulesError::NoActiveRun`
+    /// if there's no run to apply it to. Cleared automatically when the run
+    /// ends (`RunState` isn't carried between runs), never persists past it.
+    PreventStealAndTrashForRemainderOfRun,
+    /// Sets `CorpState::cannot_score_agendas_this_turn`, blocking any
+    /// further `PlayerAction::ScoreAgenda` for the remainder of the Corp's
+    /// turn — e.g. Luminal Transubstantiation's "You cannot score agendas
+    /// for the remainder of the turn". Unlike
+    /// `PreventStealAndTrashForRemainderOfRun` this needs no active-run
+    /// guard: it's turn-scoped, cleared by `turn::enter_start_of_turn`.
+    PreventScoringForRemainderOfTurn,
+    /// Places `0` advancement counters on `acting_card` — e.g. Seamless
+    /// Launch's "place 2 advancement counters on 1 installed card". Distinct
+    /// from `AddCounters`, which targets the generic `counters` field;
+    /// advancement tokens are their own thing (`InstalledCard::
+    /// advancement_tokens`, what `ScoreAgenda` reads). Authored as the
+    /// `then` of a `PromptChooseCards`, so `acting_card` is the card the
+    /// Corp just selected. `RulesError::CardNotInstalled` if that card isn't
+    /// a Corp install (only Corp cards can be advanced).
+    AddAdvancementTokens(u32),
+    /// `Effect::DealDamage` with `amount` resolved dynamically via
+    /// `Amount` instead of authored as a flat `usize` — e.g. Neurospike's
+    /// "X net damage, X = agenda points scored this turn." Delegates to the
+    /// exact same `damage::apply_damage`/prevention-parking logic
+    /// `DealDamage` itself uses once the amount is resolved.
+    DealDamageAmount(DamageType, Amount),
+    /// `Effect::AddAdditionalAccess` with `count` resolved dynamically via
+    /// `Amount` — e.g. Conduit's "access X additional cards, X = hosted
+    /// virus counters." Same `Hq`/`RnD`-only, silent-no-op-elsewhere
+    /// semantics as the fixed-count variant.
+    AddAdditionalAccessAmount { server: ServerId, amount: Amount },
+    /// `Effect::BoostStrength` with `amount` resolved dynamically via
+    /// `Amount` — e.g. Unity's "+X strength, X = installed icebreakers."
+    BoostStrengthAmount { amount: Amount, duration: BoostDuration },
+}
+
+/// A dynamically-resolved quantity, computed at effect-evaluation time via
+/// `rules::ability::resolve_amount` rather than authored as a flat literal —
+/// the counterpart to plain `u32` fields on effects like `DealDamage`/
+/// `AddAdditionalAccess`/`BoostStrength` for the handful of cards whose text
+/// scales with some other piece of state. Deliberately a small, closed set
+/// (not a general expression language) — extend only when a real card needs
+/// a new formula. `TakeAllCountersAsCredits`/`GainCreditsPerCounter`/
+/// `GainCreditsPerCardAccessedThisRun` predate this enum and aren't folded
+/// into it (no behavior change, no card needs the refactor yet) — see
+/// ROADMAP.md's tracking note for the planned future consolidation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Amount {
+    /// A plain literal — lets an amount-typed effect field be authored with
+    /// an ordinary fixed number when no dynamic formula is needed.
+    Fixed(u32),
+    /// Sum of printed agenda points on agendas the Corp has scored this
+    /// turn (`CorpState::agenda_points_scored_this_turn`) — e.g. Neurospike.
+    AgendaPointsScoredThisTurn,
+    /// `acting_card`'s own hosted generic counter count — e.g. Conduit's
+    /// R&D-access bonus.
+    HostedCounters,
+    /// `acting_card`'s own hosted advancement token count (Corp installed
+    /// cards only) — e.g. Clearinghouse, Urtica Cipher.
+    HostedAdvancementTokens,
+    /// Count of Runner-installed icebreakers (`dsl::zone::CardFilter::
+    /// Icebreaker`'s heuristic), including `acting_card` itself if it
+    /// qualifies — e.g. Unity's pump ability.
+    InstalledIcebreakerCount,
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -219,6 +562,14 @@ mod tests {
             serde_json::from_str::<Effect>(no_restrict_json).unwrap(),
             Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }
         );
+    }
+
+    #[test]
+    fn permit_jack_out_round_trips_through_json() {
+        let effect = Effect::PermitJackOut;
+        let json = serde_json::to_string(&effect).unwrap();
+        assert_eq!(json, r#""PermitJackOut""#);
+        assert_eq!(serde_json::from_str::<Effect>(&json).unwrap(), effect);
     }
 
     #[test]

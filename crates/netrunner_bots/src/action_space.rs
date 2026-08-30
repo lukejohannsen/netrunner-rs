@@ -53,51 +53,29 @@ pub fn step_index(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::dsl::{Card, CardId, CardType};
+    use netrunner_core::dsl::{CardDefinition, CardId, CardType};
     use netrunner_core::rules::{
         apply_action, legal_actions, AgendaPoints, Clicks, CorpState, Credits, GamePhase, MemoryUnits,
         PlayerResources, RunnerState, Side,
     };
 
-    fn blank_card(id: &str, side: Side, card_type: CardType, cost: u32) -> Card {
-        Card {
+    fn blank_card(id: &str, side: Side, card_type: CardType, cost: u32) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side,
             card_type,
             cost,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None,
-            subtypes: Vec::new(),
-            play_requirement: None,
-            recurring_credits: None,
-            first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
     fn empty_runner() -> RunnerState {
         RunnerState {
-            identity: None,
-            scored_agendas: Vec::new(),
             resources: PlayerResources { credits: Credits(0), clicks: Clicks(0), agenda_points: AgendaPoints(0) },
             memory_units: MemoryUnits(0),
-            brain_damage: 0,
-            tags: 0,
-            grip: Vec::new(),
-            stack: Vec::new(),
-            rig: Vec::new(),
-            heap: Vec::new(),
-            link_strength: 0,
-            first_hq_run_used_this_turn: false,
-            first_install_discount_used_this_turn: false,
+            ..Default::default()
         }
     }
 
@@ -114,17 +92,9 @@ mod tests {
         state.phase = GamePhase::Action(Side::Corp);
         state.runner = empty_runner();
         state.corp = CorpState {
-            identity: None,
-            bad_publicity: 0,
-            first_install_used_this_turn: false,
-            recurring_credits: 0,
-            recurring_credits_max: 0,
-            scored_agendas: Vec::new(),
             resources: PlayerResources { credits: Credits(10), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
             hq: vec![CardId("hedge_fund".to_string()), CardId("pad_campaign".to_string())],
-            r_and_d: Vec::new(),
-            archives: Vec::new(),
-            installed: Vec::new(),
+            ..Default::default()
         };
         (registry, state)
     }

@@ -1,0 +1,12 @@
+{
+  "id": "t400_memory_diamond",
+  "title": "T400 Memory Diamond",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [],
+  "memory_bonus": 1,
+  "max_hand_size_bonus": 1,
+  "numeric_id": 30031,
+  "is_playable": true
+}

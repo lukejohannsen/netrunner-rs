@@ -18,7 +18,8 @@ use crate::cards::CardRegistry;
 use crate::dsl::CardId;
 use crate::rules::{
     legal_actions_for, mask_state_for_player, GamePhase, GameState, InstallSlot, MaskedZone, PaidAbilityWindow,
-    PlayerAction, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunState, ServerId, Side, TraceState,
+    PendingPrevention, PlayerAction, PublicArchivedCard, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunState, ServerId, Side,
+    TraceState,
 };
 
 /// Installed cards on one server, split by slot — generalizes the grouping
@@ -42,7 +43,10 @@ pub struct CorpClientView {
     /// Deck order/contents are never revealed, even to their owner — see
     /// this module's doc comment.
     pub rd_count: usize,
-    pub archives: Vec<CardId>,
+    /// Archives as this viewer sees it: always the full pile shape, with a
+    /// facedown card's identity hidden from the Runner. See
+    /// `masking::PublicArchivedCard`.
+    pub archives: Vec<PublicArchivedCard>,
     pub servers: Vec<ServerView>,
     pub scored_agendas: Vec<CardId>,
 }
@@ -82,6 +86,9 @@ pub struct ClientView {
     pub active_run: Option<PublicRunState>,
     pub paid_ability_window: Option<PaidAbilityWindow>,
     pub active_trace: Option<TraceState>,
+    pub pending_prevention: Option<PendingPrevention>,
+    pub pending_paid_choice: Option<crate::rules::PendingPaidChoice>,
+    pub pending_decision: Option<crate::rules::PendingDecision>,
     /// `legal_actions_for(state, registry, side)` — only the actions this
     /// viewer may actually submit.
     pub legal_actions: Vec<PlayerAction>,
@@ -178,6 +185,9 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
         active_run: public.active_run,
         paid_ability_window: public.paid_ability_window,
         active_trace: public.active_trace,
+        pending_prevention: public.pending_prevention,
+        pending_paid_choice: public.pending_paid_choice,
+        pending_decision: public.pending_decision,
         legal_actions: legal_actions_for(state, registry, side),
     }
 }
@@ -185,82 +195,52 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardType, IceType};
+    use crate::dsl::{CardDefinition, CardType, IceType};
     use crate::rules::{
         AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, InstalledCard, MemoryUnits, PlayerResources,
-        PublicAccessPhase, RunIce, RunPhase, RunState, RunnerState,
+        PublicAccessPhase, RunIce, RunPhase, RunState, RunnerState, WindowCheckpoint,
     };
 
-    fn blank_card(id: &str, side: Side, card_type: CardType) -> Card {
-        Card {
+    fn blank_card(id: &str, side: Side, card_type: CardType) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side,
             card_type,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None,
-            subtypes: Vec::new(),
-            play_requirement: None,
-            recurring_credits: None,
-            first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
     fn empty_corp() -> CorpState {
         CorpState {
-            identity: None,
-            bad_publicity: 0,
-            first_install_used_this_turn: false,
-            recurring_credits: 0,
-            recurring_credits_max: 0,
-            scored_agendas: Vec::new(),
             resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
             hq: vec![CardId("hedge_fund".to_string())],
             r_and_d: vec![CardId("ice_wall".to_string()), CardId("enigma".to_string())],
-            archives: Vec::new(),
             installed: vec![
                 InstalledCard {
                     card: CardId("ice_wall".to_string()),
-                    server: ServerId::Hq,
                     slot: InstallSlot::Ice,
-                    rezzed: false,
-                    advancement_tokens: 0,
+                    ..Default::default()
                 },
                 InstalledCard {
                     card: CardId("pad_campaign".to_string()),
                     server: ServerId::Remote(0),
-                    slot: InstallSlot::Root,
                     rezzed: true,
-                    advancement_tokens: 0,
+                    ..Default::default()
                 },
             ],
+            ..Default::default()
         }
     }
 
     fn empty_runner() -> RunnerState {
         RunnerState {
-            identity: None,
-            scored_agendas: Vec::new(),
             resources: PlayerResources { credits: Credits(5), clicks: Clicks(4), agenda_points: AgendaPoints(0) },
             memory_units: MemoryUnits(4),
-            brain_damage: 0,
-            tags: 0,
             grip: vec![CardId("sure_gamble".to_string())],
             stack: vec![CardId("diesel".to_string())],
-            rig: Vec::new(),
-            heap: Vec::new(),
-            link_strength: 0,
-            first_hq_run_used_this_turn: false,
-            first_install_discount_used_this_turn: false,
+            ..Default::default()
         }
     }
 
@@ -321,7 +301,6 @@ mod tests {
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
-            server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
             ice: vec![RunIce {
                 card_id: CardId("ice_wall".to_string()),
@@ -330,18 +309,12 @@ mod tests {
                 subroutines: Vec::new(),
                 rezzed: false,
             }],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
-            bad_publicity_credits: 0,
-            additional_rd_access: 0,
-            additional_hq_access: 0,
-            access_replacement: None,
+            ..Default::default()
         });
         state.paid_ability_window =
-            Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase) });
+            Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase), checkpoint: WindowCheckpoint::Run });
 
-        let registry = CardRegistry::new();
+        let registry = CardRegistry::from_cards(vec![blank_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier))]);
         let rez = PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) };
 
         let corp_view = build_client_view(&state, &registry, Side::Corp);
@@ -367,14 +340,8 @@ mod tests {
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
-            server: ServerId::Hq,
             phase: RunPhase::AccessingCard,
-            ice: Vec::new(),
-            position: 0,
             access_state: Some(AccessState {
-                server: ServerId::Hq,
-                unaccessed_cards: Vec::new(),
-                resolved_cards: Vec::new(),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("hedge_fund".to_string()),
                     can_trash: false,
@@ -382,12 +349,10 @@ mod tests {
                     mandatory_steal: false,
                     steal_cost: None,
                 },
+                ..Default::default()
             }),
             jack_out_permitted: true,
-            bad_publicity_credits: 0,
-            additional_rd_access: 0,
-            additional_hq_access: 0,
-            access_replacement: None,
+            ..Default::default()
         });
 
         let registry = CardRegistry::new();

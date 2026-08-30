@@ -1,0 +1,22 @@
+{
+  "id": "pad_campaign",
+  "title": "PAD Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "trash_cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

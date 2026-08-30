@@ -1,0 +1,22 @@
+{
+  "id": "neurospike",
+  "title": "Neurospike",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "DealDamageAmount": [
+            "Net",
+            "AgendaPointsScoredThisTurn"
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30049,
+  "is_playable": true
+}

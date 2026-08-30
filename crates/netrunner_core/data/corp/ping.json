@@ -1,0 +1,29 @@
+{
+  "id": "ping",
+  "title": "Ping",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 2,
+  "strength": 1,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "requirement": "RezzedDuringRunAgainstThisServer",
+      "effects": [
+        {
+          "GiveTags": 1
+        }
+      ]
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 30055,
+  "is_playable": true
+}

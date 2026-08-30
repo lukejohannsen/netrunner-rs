@@ -16,4 +16,7 @@ pub enum CardConversionError {
 
     #[error("field {field:?} had a negative value {value}, expected non-negative")]
     NegativeValue { field: &'static str, value: i32 },
+
+    #[error("ice keywords {0:?} don't start with a recognized ice subtype (Barrier/Code Gate/Sentry)")]
+    UnrecognizedIceKeywords(String),
 }

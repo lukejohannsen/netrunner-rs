@@ -256,68 +256,37 @@ fn weighted_index(actions: &[PlayerAction], rng: &mut StdRng) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::dsl::{Card, CardId, CardType, IceType};
+    use netrunner_core::dsl::{CardDefinition, CardId, CardType, IceType};
     use netrunner_core::rules::{
-        AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, InstallSlot, InstalledCard, InstalledRunnerCard,
+        AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, InstalledCard, InstalledRunnerCard,
         MemoryUnits, PaidAbilityWindow, PlayerResources, RunIce, RunPhase, RunState, RunnerState, ServerId, SubroutineStatus,
+        WindowCheckpoint,
     };
     use netrunner_core::view::build_client_view;
 
-    fn blank_card(id: &str, card_type: CardType) -> Card {
-        Card {
+    fn blank_card(id: &str, card_type: CardType) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side: Side::Corp,
             card_type,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None,
-            subtypes: Vec::new(),
-            play_requirement: None,
-            recurring_credits: None,
-            first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
     fn empty_runner() -> RunnerState {
         RunnerState {
-            identity: None,
-            scored_agendas: Vec::new(),
             resources: PlayerResources { credits: Credits(0), clicks: Clicks(0), agenda_points: AgendaPoints(0) },
             memory_units: MemoryUnits(0),
-            brain_damage: 0,
-            tags: 0,
-            grip: Vec::new(),
-            stack: Vec::new(),
-            rig: Vec::new(),
-            heap: Vec::new(),
-            link_strength: 0,
-            first_hq_run_used_this_turn: false,
-            first_install_discount_used_this_turn: false,
+            ..Default::default()
         }
     }
 
     fn empty_corp() -> CorpState {
         CorpState {
-            identity: None,
-            bad_publicity: 0,
-            first_install_used_this_turn: false,
-            recurring_credits: 0,
-            recurring_credits_max: 0,
-            scored_agendas: Vec::new(),
             resources: PlayerResources { credits: Credits(0), clicks: Clicks(0), agenda_points: AgendaPoints(0) },
-            hq: Vec::new(),
-            r_and_d: Vec::new(),
-            archives: Vec::new(),
-            installed: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -360,11 +329,9 @@ mod tests {
         state.runner.rig = vec![InstalledRunnerCard {
             card: CardId("corroder".to_string()),
             base_strength: 2,
-            encounter_strength_buff: 0,
-            turn_strength_buff: 0,
+            ..Default::default()
         }];
         state.active_run = Some(RunState {
-            server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {
                 card_id: CardId("wall_of_static".to_string()),
@@ -380,16 +347,14 @@ mod tests {
                 }],
                 rezzed: true,
             }],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
-            bad_publicity_credits: 0,
-            additional_rd_access: 0,
-            additional_hq_access: 0,
-            access_replacement: None,
+            ..Default::default()
         });
-        state.paid_ability_window =
-            Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase) });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Run,
+            return_phase: Box::new(state.phase),
+        });
 
         let view = build_client_view(&state, &registry, Side::Runner);
         assert!(!view.legal_actions.is_empty());
@@ -416,9 +381,8 @@ mod tests {
         state.corp.installed = vec![InstalledCard {
             card: CardId("winning_agenda".to_string()),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
-            rezzed: false,
             advancement_tokens: 3,
+            ..Default::default()
         }];
 
         let view = build_client_view(&state, &registry, Side::Corp);

@@ -1,0 +1,50 @@
+{
+  "id": "funhouse",
+  "title": "Funhouse",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 5,
+  "strength": 4,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "TakeTags": 1
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": "EndTheRun"
+          }
+        }
+      ]
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag unless they pay 4 credits.",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 4
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "GiveTags": 1
+          }
+        }
+      }
+    }
+  ],
+  "numeric_id": 30054,
+  "is_playable": true
+}

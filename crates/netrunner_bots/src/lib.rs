@@ -22,10 +22,13 @@
 
 pub mod action_space;
 pub mod agent;
+pub mod agent_adapter;
 pub mod determinize;
 pub mod eval;
 pub mod heuristic;
 pub mod mcts;
+#[cfg(feature = "onnx")]
+pub mod onnx_fixture;
 #[cfg(feature = "onnx")]
 pub mod onnx_policy;
 pub mod observation;
@@ -35,13 +38,16 @@ pub mod random;
 
 pub use action_space::{legal_indices, step_index, IndexedActionError};
 pub use agent::BotAgent;
+#[cfg(feature = "onnx")]
+pub use agent_adapter::IndexedOnnxAgent;
+pub use agent_adapter::{Agent, BotAgentIndexAdapter, IndexedHeuristicAgent, IndexedRandomAgent};
 pub use determinize::determinize;
 pub use eval::evaluate_state;
 pub use heuristic::HeuristicAgent;
 pub use mcts::MctsAgent;
 #[cfg(feature = "onnx")]
 pub use onnx_policy::{OnnxPolicyError, OnnxPolicyEvaluator};
-pub use observation::{encode_observation, OBS_SIZE};
+pub use observation::{encode_observation, to_observation_vector, OBS_SIZE};
 pub use policy::{PolicyEvaluator, UniformPolicyEvaluator};
-pub use puct::{PuctAgent, PuctConfig};
+pub use puct::{ActionStat, PuctAgent, PuctConfig, PuctSearchStats};
 pub use random::RandomAgent;

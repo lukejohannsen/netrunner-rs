@@ -1,0 +1,11 @@
+{
+  "id": "kate_mccaffrey",
+  "title": "Kate \"Mac\" McCaffrey: Digital Tinker",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "first_install_discount": 1,
+  "triggers": [],
+  "is_playable": true
+}

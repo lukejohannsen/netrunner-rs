@@ -1,0 +1,22 @@
+{
+  "id": "amaze_amusements",
+  "title": "AMAZE Amusements",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnRunEnded",
+      "requirement": "StoleAgendaDuringLastRun",
+      "effects": [
+        {
+          "GiveTags": 2
+        }
+      ]
+    }
+  ],
+  "trash_cost": 3,
+  "persistent_after_trash": true,
+  "numeric_id": 30058,
+  "is_playable": true
+}

@@ -1,0 +1,42 @@
+{
+  "id": "longevity_serum",
+  "title": "Longevity Serum",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 0,
+            "max": 99,
+            "reveal": false,
+            "shuffle_after": false,
+            "destination": "OwnArchives",
+            "then": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": "Any",
+                "min": 0,
+                "max": 3,
+                "reveal": false,
+                "shuffle_after": true,
+                "destination": "OwnRAndD"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30044,
+  "is_playable": true
+}

@@ -1,0 +1,34 @@
+{
+  "id": "sprint",
+  "title": "Sprint",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            3
+          ]
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": "Any",
+            "min": 2,
+            "max": 2,
+            "reveal": false,
+            "shuffle_after": true,
+            "destination": "OwnRAndD"
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30041,
+  "is_playable": true
+}

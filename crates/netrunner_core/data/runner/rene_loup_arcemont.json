@@ -1,0 +1,32 @@
+{
+  "id": "rene_loup_arcemont",
+  "title": "René \"Loup\" Arcemont: Party Animal",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "requirement": {
+        "OncePerTurn": "rene_loup_arcemont"
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30001,
+  "is_playable": true
+}

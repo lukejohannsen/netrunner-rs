@@ -1,0 +1,55 @@
+{
+  "id": "conduit",
+  "title": "Conduit",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "memory_cost": 1,
+  "subtypes": [
+    "Virus"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRunOnRnD",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "AddCounters": 1
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "InitiateRun": "RnD"
+          },
+          {
+            "AddAdditionalAccessAmount": {
+              "server": "RnD",
+              "amount": "HostedCounters"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "counter_kind": "Virus",
+  "numeric_id": 30024,
+  "is_playable": true
+}

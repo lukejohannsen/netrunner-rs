@@ -8,7 +8,7 @@
 //! of inventing a shared crate for ~100 lines.
 
 use netrunner_core::cards::{self, CardRegistry};
-use netrunner_core::dsl::{Card, CardId, CardType};
+use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::rules::{Deck, Side};
 
 const CORP_IDENTITY: &str = "haas_bioroid_engineering_the_future";
@@ -23,27 +23,14 @@ const FILLER_AGENDA_COUNT: u32 = 6;
 const FILLER_ASSET_COUNT: u32 = 2;
 const FILLER_EVENT_COUNT: u32 = 9;
 
-fn blank_card(id: String, side: Side, card_type: CardType) -> Card {
-    Card {
+fn blank_card(id: String, side: Side, card_type: CardType) -> CardDefinition {
+    CardDefinition {
         title: id.clone(),
         id: CardId(id),
         side,
         card_type,
-        cost: 0,
-        triggers: Vec::new(),
-        abilities: Vec::new(),
-        trash_cost: None,
-        steal_cost: None,
-        advancement_requirement: None,
-        agenda_points: None,
-        min_deck_size: None,
-        strength: None,
-        subroutines: Vec::new(),
-        interactive_on_access: None,
-        subtypes: Vec::new(),
-        play_requirement: None,
-        recurring_credits: None,
-        first_install_discount: None,
+        is_playable: true,
+        ..Default::default()
     }
 }
 
@@ -61,7 +48,7 @@ fn filler_event_id(index: u32) -> String {
 
 pub fn kate_vs_hb_registry() -> CardRegistry {
     let mut registry = CardRegistry::new();
-    cards::register_baseline_set(&mut registry);
+    cards::register_playable_cards(&mut registry);
 
     for index in 0..FILLER_AGENDA_COUNT {
         let mut agenda = blank_card(filler_agenda_id(index), Side::Corp, CardType::Agenda);

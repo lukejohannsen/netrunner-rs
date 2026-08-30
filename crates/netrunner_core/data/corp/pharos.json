@@ -1,0 +1,36 @@
+{
+  "id": "pharos",
+  "title": "Pharos",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 7,
+  "strength": 5,
+  "advancement_requirement": 0,
+  "strength_modifier": {
+    "WhileHostedAdvancementsAtLeast": {
+      "threshold": 3,
+      "bonus": 5
+    }
+  },
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": 1
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 30063,
+  "is_playable": true
+}

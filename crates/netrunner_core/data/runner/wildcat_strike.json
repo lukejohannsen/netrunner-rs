@@ -1,0 +1,35 @@
+{
+  "id": "wildcat_strike",
+  "title": "Wildcat Strike",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GainCredits": [
+                  "Runner",
+                  6
+                ]
+              },
+              {
+                "DrawCards": [
+                  "Runner",
+                  4
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30002,
+  "is_playable": true
+}

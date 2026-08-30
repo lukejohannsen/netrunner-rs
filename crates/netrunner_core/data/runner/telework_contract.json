@@ -1,0 +1,53 @@
+{
+  "id": "telework_contract",
+  "title": "Telework Contract",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "AddCounters": 9
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "OncePerTurn": "telework_contract"
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveCounters": 3
+          },
+          {
+            "GainCredits": [
+              "Runner",
+              3
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 30027,
+  "is_playable": true
+}

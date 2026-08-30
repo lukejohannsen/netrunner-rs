@@ -34,6 +34,13 @@ pub const MAX_SUBROUTINES: usize = 8;
 pub const MAX_ABILITIES_PER_CARD: usize = 4;
 pub const MAX_ACCESS_SELECTION: usize = MAX_HAND_SIZE;
 pub const MAX_TRACE_BID: u32 = 30;
+/// The largest `Cost::AnyOf` any System Gateway card offers (Manegarm
+/// Skunkworks: clicks or credits) — widen if a future card needs more
+/// alternatives.
+pub const MAX_COST_CHOICE_OPTIONS: usize = 2;
+/// The largest `Effect::PresentChoice` option list any System Gateway card
+/// offers — widen if a future card needs more.
+pub const MAX_PENDING_CHOICE_OPTIONS: usize = 2;
 
 /// `Hq`/`RnD`/`Archives` plus `MAX_REMOTE_SERVERS` numbered remotes.
 const ZONE_COUNT: usize = 3 + MAX_REMOTE_SERVERS;
@@ -42,7 +49,7 @@ const ZONE_COUNT: usize = 3 + MAX_REMOTE_SERVERS;
 // `_START` is the previous segment's start plus its length, computed as a
 // const expression so the table can't drift out of sync with `SIZE`.
 const UNIT_START: usize = 0;
-const UNIT_LEN: usize = 8;
+const UNIT_LEN: usize = 9;
 
 const GAIN_CREDIT_START: usize = UNIT_START + UNIT_LEN;
 const GAIN_CREDIT_LEN: usize = 2;
@@ -107,13 +114,49 @@ const CORP_TRACE_BID_LEN: usize = MAX_TRACE_BID as usize + 1;
 const RUNNER_TRACE_BID_START: usize = CORP_TRACE_BID_START + CORP_TRACE_BID_LEN;
 const RUNNER_TRACE_BID_LEN: usize = MAX_TRACE_BID as usize + 1;
 
+// `AcceptPendingPaidChoice`'s `cost_option_index`: local 0 means `None`
+// (the pending cost isn't `Cost::AnyOf`), local `1 + i` means
+// `Some(i)`.
+const ACCEPT_PENDING_PAID_CHOICE_START: usize = RUNNER_TRACE_BID_START + RUNNER_TRACE_BID_LEN;
+const ACCEPT_PENDING_PAID_CHOICE_LEN: usize = 1 + MAX_COST_CHOICE_OPTIONS;
+
+const RESOLVE_PENDING_CHOICE_START: usize = ACCEPT_PENDING_PAID_CHOICE_START + ACCEPT_PENDING_PAID_CHOICE_LEN;
+const RESOLVE_PENDING_CHOICE_LEN: usize = MAX_PENDING_CHOICE_OPTIONS;
+
+/// `ToggleCardSelection` is encoded by position within the pending
+/// `PendingDecision::ChooseCards`'s *raw* zone contents (see
+/// `pending_choice::zone_card_ids`) — the largest such zone any System
+/// Gateway card selects from is an installed-card list
+/// (`MAX_INSTALLED_PER_SIDE`), which dominates the hand-sized zones
+/// (HQ/Archives/R&D/Stack/Grip/Heap, all `<= MAX_HAND_SIZE`).
+const TOGGLE_CARD_SELECTION_START: usize = RESOLVE_PENDING_CHOICE_START + RESOLVE_PENDING_CHOICE_LEN;
+const TOGGLE_CARD_SELECTION_LEN: usize = MAX_INSTALLED_PER_SIDE;
+
+const CONFIRM_CARD_SELECTION_START: usize = TOGGLE_CARD_SELECTION_START + TOGGLE_CARD_SELECTION_LEN;
+
+const CHOOSE_SERVER_START: usize = CONFIRM_CARD_SELECTION_START + 1;
+const CHOOSE_SERVER_LEN: usize = ZONE_COUNT;
+
+const INSTALL_RESOURCE_START: usize = CHOOSE_SERVER_START + CHOOSE_SERVER_LEN;
+const INSTALL_RESOURCE_LEN: usize = MAX_HAND_SIZE;
+
+/// `InstallProgramOnIce` — every Trojan Program hand slot crossed with
+/// every installed-ICE slot (`MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE`).
+/// The single largest segment in the whole encoding (M6/hosting) —
+/// deliberately verified against the plan's estimate rather than assumed.
+const INSTALL_PROGRAM_ON_ICE_START: usize = INSTALL_RESOURCE_START + INSTALL_RESOURCE_LEN;
+const INSTALL_PROGRAM_ON_ICE_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE;
+
+const BREAK_SUBROUTINE_WITH_CLICK_START: usize = INSTALL_PROGRAM_ON_ICE_START + INSTALL_PROGRAM_ON_ICE_LEN;
+const BREAK_SUBROUTINE_WITH_CLICK_LEN: usize = MAX_SUBROUTINES;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = RUNNER_TRACE_BID_START + RUNNER_TRACE_BID_LEN;
+    pub const SIZE: usize = BREAK_SUBROUTINE_WITH_CLICK_START + BREAK_SUBROUTINE_WITH_CLICK_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -133,6 +176,7 @@ impl ActionSpace {
             PlayerAction::KeepHand => Some(UNIT_START + 5),
             PlayerAction::TakeMulligan => Some(UNIT_START + 6),
             PlayerAction::RemoveTag => Some(UNIT_START + 7),
+            PlayerAction::DeclinePendingPaidChoice => Some(UNIT_START + 8),
 
             PlayerAction::GainCreditClick { side } => Some(GAIN_CREDIT_START + side_index(*side)),
             PlayerAction::PassPriority { side } => Some(PASS_PRIORITY_START + side_index(*side)),
@@ -160,6 +204,14 @@ impl ActionSpace {
             PlayerAction::InstallProgram { card_id, .. } => {
                 Some(INSTALL_PROGRAM_START + bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?)
             }
+            PlayerAction::InstallResource { card_id } => {
+                Some(INSTALL_RESOURCE_START + bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?)
+            }
+            PlayerAction::InstallProgramOnIce { card_id, host_ice_id, .. } => {
+                let hand_slot = bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?;
+                let ice_slot = bounded_position_installed(&state.corp.installed, host_ice_id, MAX_INSTALLED_PER_SIDE)?;
+                Some(INSTALL_PROGRAM_ON_ICE_START + hand_slot * MAX_INSTALLED_PER_SIDE + ice_slot)
+            }
             PlayerAction::PlayOperation { card_id } => {
                 Some(PLAY_OPERATION_START + bounded_position(&state.corp.hq, card_id, MAX_HAND_SIZE)?)
             }
@@ -167,6 +219,10 @@ impl ActionSpace {
             PlayerAction::BreakSubroutine { subroutine_index, .. } => {
                 (*subroutine_index < MAX_SUBROUTINES).then_some(BREAK_SUBROUTINE_START + subroutine_index)
             }
+
+            PlayerAction::BreakSubroutineWithClick { subroutine_index, .. } => (*subroutine_index
+                < MAX_SUBROUTINES)
+                .then_some(BREAK_SUBROUTINE_WITH_CLICK_START + subroutine_index),
 
             PlayerAction::DiscardCard { card_id } => {
                 let GamePhase::Discard { side, .. } = state.phase else { return None };
@@ -222,6 +278,31 @@ impl ActionSpace {
             PlayerAction::SubmitRunnerTraceBid { amount } => {
                 (*amount <= MAX_TRACE_BID).then_some(RUNNER_TRACE_BID_START + *amount as usize)
             }
+
+            PlayerAction::AcceptPendingPaidChoice { cost_option_index } => match cost_option_index {
+                None => Some(ACCEPT_PENDING_PAID_CHOICE_START),
+                Some(i) => (*i < MAX_COST_CHOICE_OPTIONS).then_some(ACCEPT_PENDING_PAID_CHOICE_START + 1 + i),
+            },
+
+            PlayerAction::ResolvePendingChoice { option_index } => {
+                (*option_index < MAX_PENDING_CHOICE_OPTIONS).then_some(RESOLVE_PENDING_CHOICE_START + option_index)
+            }
+
+            PlayerAction::ToggleCardSelection { card_id } => {
+                let crate::rules::state::PendingDecision::ChooseCards { side, source, .. } =
+                    state.pending_decision.as_ref()?
+                else {
+                    return None;
+                };
+                let ids = crate::rules::pending_choice::zone_card_ids(state, *side, source);
+                Some(TOGGLE_CARD_SELECTION_START + bounded_position(&ids, card_id, TOGGLE_CARD_SELECTION_LEN)?)
+            }
+
+            PlayerAction::ConfirmCardSelection => Some(CONFIRM_CARD_SELECTION_START),
+
+            PlayerAction::ChooseServerForPendingDecision { server } => {
+                Some(CHOOSE_SERVER_START + encode_zone(*server)?)
+            }
         }
     }
 
@@ -241,7 +322,8 @@ impl ActionSpace {
                 4 => PlayerAction::EndTurn,
                 5 => PlayerAction::KeepHand,
                 6 => PlayerAction::TakeMulligan,
-                _ => PlayerAction::RemoveTag,
+                7 => PlayerAction::RemoveTag,
+                _ => PlayerAction::DeclinePendingPaidChoice,
             });
         }
         if let Some(local) = in_segment(index, GAIN_CREDIT_START, GAIN_CREDIT_LEN) {
@@ -277,7 +359,7 @@ impl ActionSpace {
             let card_id = state.runner.grip.get(local)?.clone();
             // Matches `legal_actions.rs::play_card_candidates`'s own
             // behavior: no data-driven memory-cost stat exists on
-            // `dsl::Card` yet, so this is never a real choice today either.
+            // `dsl::CardDefinition` yet, so this is never a real choice today either.
             return Some(PlayerAction::InstallProgram { card_id, memory_cost: 0 });
         }
         if let Some(local) = in_segment(index, PLAY_OPERATION_START, PLAY_OPERATION_LEN) {
@@ -342,6 +424,53 @@ impl ActionSpace {
         }
         if let Some(local) = in_segment(index, RUNNER_TRACE_BID_START, RUNNER_TRACE_BID_LEN) {
             return Some(PlayerAction::SubmitRunnerTraceBid { amount: local as u32 });
+        }
+        if let Some(local) = in_segment(index, ACCEPT_PENDING_PAID_CHOICE_START, ACCEPT_PENDING_PAID_CHOICE_LEN) {
+            let cost_option_index = if local == 0 { None } else { Some(local - 1) };
+            return Some(PlayerAction::AcceptPendingPaidChoice { cost_option_index });
+        }
+        if let Some(local) = in_segment(index, RESOLVE_PENDING_CHOICE_START, RESOLVE_PENDING_CHOICE_LEN) {
+            return Some(PlayerAction::ResolvePendingChoice { option_index: local });
+        }
+        if let Some(local) = in_segment(index, TOGGLE_CARD_SELECTION_START, TOGGLE_CARD_SELECTION_LEN) {
+            let crate::rules::state::PendingDecision::ChooseCards { side, source, .. } =
+                state.pending_decision.as_ref()?
+            else {
+                return None;
+            };
+            let card_id = crate::rules::pending_choice::zone_card_ids(state, *side, source).get(local)?.clone();
+            return Some(PlayerAction::ToggleCardSelection { card_id });
+        }
+        if index == CONFIRM_CARD_SELECTION_START {
+            return Some(PlayerAction::ConfirmCardSelection);
+        }
+        if let Some(local) = in_segment(index, CHOOSE_SERVER_START, CHOOSE_SERVER_LEN) {
+            return Some(PlayerAction::ChooseServerForPendingDecision { server: decode_zone(local)? });
+        }
+        if let Some(local) = in_segment(index, INSTALL_RESOURCE_START, INSTALL_RESOURCE_LEN) {
+            let card_id = state.runner.grip.get(local)?.clone();
+            return Some(PlayerAction::InstallResource { card_id });
+        }
+        // Must stay the LAST check: `INSTALL_PROGRAM_ON_ICE_START` is
+        // defined after every other segment in the const chain above, and
+        // `in_segment` eagerly computes `index - start` (via `then_some`,
+        // not a lazily-evaluated `then`) even when the range test fails —
+        // checking this segment any earlier would underflow-panic for
+        // every smaller index that reaches this line before matching an
+        // earlier segment.
+        if let Some(local) = in_segment(index, INSTALL_PROGRAM_ON_ICE_START, INSTALL_PROGRAM_ON_ICE_LEN) {
+            let hand_slot = local / MAX_INSTALLED_PER_SIDE;
+            let ice_slot = local % MAX_INSTALLED_PER_SIDE;
+            let card_id = state.runner.grip.get(hand_slot)?.clone();
+            let host_ice_id = state.corp.installed.get(ice_slot)?.card.clone();
+            return Some(PlayerAction::InstallProgramOnIce { card_id, host_ice_id, memory_cost: 0 });
+        }
+        // Same out-of-order-panic hazard as `INSTALL_PROGRAM_ON_ICE` above —
+        // `BREAK_SUBROUTINE_WITH_CLICK` is defined last in the const chain,
+        // so its check must stay last here too.
+        if let Some(local) = in_segment(index, BREAK_SUBROUTINE_WITH_CLICK_START, BREAK_SUBROUTINE_WITH_CLICK_LEN) {
+            let ice_id = current_ice_id(state)?;
+            return Some(PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: local });
         }
         None
     }
@@ -467,7 +596,7 @@ fn pending_interactive_card(state: &GameState) -> Option<CardId> {
 mod tests {
     use super::*;
     use crate::cards::CardRegistry;
-    use crate::dsl::{AbilityDef, Card, CardType, Cost, Effect, IceType, SubroutineDef, Trigger, TriggeredEffect};
+    use crate::dsl::{AbilityDef, CardDefinition, CardType, Cost, Effect, IceType, SubroutineDef, Trigger, TriggeredEffect};
     use crate::rules::run::{AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, SubroutineStatus};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, Credits, InstalledRunnerCard, MemoryUnits, PlayerResources, RunnerState,
@@ -476,44 +605,26 @@ mod tests {
     fn base_state() -> GameState {
         GameState {
             corp: CorpState {
-                identity: None,
-                bad_publicity: 0,
-                first_install_used_this_turn: false,
-                recurring_credits: 0,
-                recurring_credits_max: 0,
-                scored_agendas: Vec::new(),
                 resources: PlayerResources { credits: Credits(10), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
+                ..Default::default()
             },
             runner: RunnerState {
-                identity: None,
-                scored_agendas: Vec::new(),
                 resources: PlayerResources { credits: Credits(10), clicks: Clicks(4), agenda_points: AgendaPoints(0) },
                 memory_units: MemoryUnits(10),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0,
-                first_hq_run_used_this_turn: false,
-                first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
     }
 
-    fn hedge_fund() -> Card {
-        Card {
+    fn hedge_fund() -> CardDefinition {
+        CardDefinition {
             id: CardId("hedge_fund".to_string()),
             title: "Hedge Fund".to_string(),
             side: Side::Corp,
@@ -524,36 +635,25 @@ mod tests {
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
                 requirement: None,
             }],
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None,
-            subtypes: Vec::new(),
-            play_requirement: None,
-            recurring_credits: None,
-            first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
-    fn corroder() -> Card {
-        Card {
+    fn corroder() -> CardDefinition {
+        CardDefinition {
             id: CardId("corroder".to_string()),
             title: "Corroder".to_string(),
             side: Side::Runner,
             card_type: CardType::Program,
             cost: 2,
-            triggers: Vec::new(),
             abilities: vec![
                 AbilityDef {
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     requirement: None,
                     effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::BoostDuration::Encounter },
+                    cost_discount_if: None,
                 },
                 AbilityDef {
                     trigger: Trigger::Paid,
@@ -563,20 +663,12 @@ mod tests {
                         count: crate::dsl::SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),
                     },
+                    cost_discount_if: None,
                 },
             ],
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
             strength: Some(2),
-            subroutines: Vec::new(),
-            interactive_on_access: None,
-            subtypes: Vec::new(),
-            play_requirement: None,
-            recurring_credits: None,
-            first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
@@ -627,16 +719,9 @@ mod tests {
         state.runner.rig = vec![InstalledRunnerCard {
             card: CardId("corroder".to_string()),
             base_strength: 2,
-            encounter_strength_buff: 0,
-            turn_strength_buff: 0,
+            ..Default::default()
         }];
         state.active_run = Some(RunState {
-            additional_rd_access: 0,
-            additional_hq_access: 0,
-            access_replacement: None,
-            bad_publicity_credits: 0,
-            access_state: None,
-            server: ServerId::Hq,
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {
                 card_id: CardId("ice_wall".to_string()),
@@ -649,8 +734,7 @@ mod tests {
                 }],
                 rezzed: true,
             }],
-            position: 0,
-            jack_out_permitted: false,
+            ..Default::default()
         });
 
         assert_roundtrips(&state, &registry);
@@ -714,19 +798,11 @@ mod tests {
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
-            additional_rd_access: 0,
-            additional_hq_access: 0,
-            access_replacement: None,
-            bad_publicity_credits: 0,
             server: ServerId::Remote(0),
             phase: RunPhase::AccessingCard,
-            ice: Vec::new(),
-            position: 0,
             jack_out_permitted: true,
             access_state: Some(AccessState {
                 server: ServerId::Remote(0),
-                unaccessed_cards: Vec::new(),
-                resolved_cards: Vec::new(),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("agenda_x".to_string()),
                     can_trash: false,
@@ -734,7 +810,9 @@ mod tests {
                     mandatory_steal: true,
                     steal_cost: None,
                 },
+                ..Default::default()
             }),
+            ..Default::default()
         });
 
         assert_roundtrips(&state, &registry);
@@ -766,16 +844,7 @@ mod tests {
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
-            additional_rd_access: 0,
-            additional_hq_access: 0,
-            access_replacement: None,
-            bad_publicity_credits: 0,
-            access_state: None,
-            server: ServerId::Hq,
             phase: RunPhase::ApproachIce,
-            // `ApproachIce` is only structurally valid with an ice actually
-            // at `position` — an unrezzed one so `Continue` auto-passes it
-            // cleanly.
             ice: vec![RunIce {
                 card_id: CardId("ice_wall".to_string()),
                 current_strength: 0,
@@ -783,8 +852,7 @@ mod tests {
                 subroutines: Vec::new(),
                 rezzed: false,
             }],
-            position: 0,
-            jack_out_permitted: false,
+            ..Default::default()
         });
 
         let legal = legal_actions(&state, &registry);
@@ -796,11 +864,118 @@ mod tests {
     }
 
     #[test]
+    fn pending_paid_choice_roundtrips_and_matches_mask() {
+        let mut state = base_state();
+        state.pending_paid_choice = Some(crate::rules::state::PendingPaidChoice {
+            side: Side::Corp,
+            cost: Cost::AnyOf(vec![Cost::Clicks(2), Cost::Credits(5)]),
+            if_paid: Effect::Sequence(Vec::new()),
+            if_declined: Effect::GiveTags(1),
+            source_card: None,
+            resume: crate::rules::state::PendingPaidChoiceResume::None,
+        });
+        let registry = CardRegistry::new();
+
+        let legal = legal_actions(&state, &registry);
+        assert!(legal.contains(&PlayerAction::DeclinePendingPaidChoice));
+        assert!(legal.contains(&PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(0) }));
+        assert!(legal.contains(&PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(1) }));
+        assert!(!legal.contains(&PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }));
+
+        assert_roundtrips(&state, &registry);
+        assert_mask_matches_legal_actions(&state, &registry);
+    }
+
+    #[test]
+    fn pending_decision_roundtrips_and_matches_mask() {
+        let mut state = base_state();
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
+            source_card: None,
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let registry = CardRegistry::new();
+
+        let legal = legal_actions(&state, &registry);
+        assert!(legal.contains(&PlayerAction::ResolvePendingChoice { option_index: 0 }));
+        assert!(legal.contains(&PlayerAction::ResolvePendingChoice { option_index: 1 }));
+
+        assert_roundtrips(&state, &registry);
+        assert_mask_matches_legal_actions(&state, &registry);
+    }
+
+    #[test]
+    fn choose_cards_decision_roundtrips_and_matches_mask() {
+        let mut state = base_state();
+        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: crate::dsl::CardZoneRef::OwnHq,
+            filter: crate::dsl::CardFilter::Any,
+            min: 0,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(crate::dsl::CardZoneRef::OwnArchives),
+            then: None,
+            selected: Vec::new(),
+            source_card: None,
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let mut registry = CardRegistry::new();
+        registry.insert(hedge_fund());
+
+        let legal = legal_actions(&state, &registry);
+        assert!(legal.contains(&PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) }));
+        assert!(legal.contains(&PlayerAction::ConfirmCardSelection));
+
+        assert_roundtrips(&state, &registry);
+        assert_mask_matches_legal_actions(&state, &registry);
+    }
+
+    #[test]
+    fn choose_server_decision_roundtrips_and_matches_mask() {
+        let mut state = base_state();
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseServer {
+            chooser: Side::Runner,
+            rez_cost_delta: 3,
+            bonus_run_credits: 0,
+            allowed_servers: None,
+            on_success: None,
+            source_card: None,
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let registry = CardRegistry::new();
+
+        let legal = legal_actions(&state, &registry);
+        assert!(legal.contains(&PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }));
+        assert!(legal.contains(&PlayerAction::ChooseServerForPendingDecision { server: ServerId::Archives }));
+
+        assert_roundtrips(&state, &registry);
+        assert_mask_matches_legal_actions(&state, &registry);
+    }
+
+    #[test]
     fn action_space_size_is_stable() {
         // A regression guard: this constant is part of any trained model's
         // input/output shape — changing it is a breaking change that
         // should be a deliberate, visible diff, not a silent side effect
         // of touching an unrelated segment.
-        assert_eq!(ActionSpace::SIZE, 724);
+        // M2 added 6: `DeclinePendingPaidChoice` (+1, folded into UNIT),
+        // `AcceptPendingPaidChoice` (+3: none-or-one-of-2 `AnyOf` options),
+        // `ResolvePendingChoice` (+2: one-of-2 `PresentChoice` options).
+        // M3 added 34: `ToggleCardSelection` (+20, `MAX_INSTALLED_PER_SIDE`
+        // — Ballista/Retribution/Above the Law select among up to 20
+        // installed cards, the largest zone any `PendingDecision::
+        // ChooseCards` reads from), `ConfirmCardSelection` (+1),
+        // `ChooseServerForPendingDecision` (+13, `ZONE_COUNT`).
+        // +12 (MAX_HAND_SIZE) over M3's 764, for the new `InstallResource`
+        // segment — the Runner previously had no action to install a
+        // `CardType::Resource` card into the Rig at all.
+        // +240 (MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE = 12 * 20) over M5's
+        // 776, for the new `InstallProgramOnIce` segment (M6/hosting) — by
+        // far the largest single addition in the whole plan.
+        assert_eq!(ActionSpace::SIZE, 1024);
     }
 }

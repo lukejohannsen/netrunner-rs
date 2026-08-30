@@ -1,0 +1,33 @@
+{
+  "id": "tithe",
+  "title": "Tithe",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 1,
+  "strength": 1,
+  "subroutines": [
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Gain 1 credit.",
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          1
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 30073,
+  "is_playable": true
+}

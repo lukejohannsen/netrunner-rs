@@ -19,6 +19,7 @@ use rand::Rng;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{
+    ArchivedCard,
     AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard,
     InstalledRunnerCard, MaskedZone, MemoryUnits, PlayerResources, PublicAccessPhase, RunIce, RunState, RunnerState, Side,
 };
@@ -67,7 +68,11 @@ fn visible_card_ids(view: &ClientView) -> HashSet<CardId> {
     if let Some(cards) = &view.corp.hq_cards {
         ids.extend(cards.iter().cloned());
     }
-    ids.extend(view.corp.archives.iter().cloned());
+    // Only Archives cards whose identity this viewer can actually see —
+    // a facedown card is hidden from the Runner (`PublicArchivedCard::card`
+    // is `None`), so it must be sampled from the pool like any other
+    // unknown, not treated as already-visible.
+    ids.extend(view.corp.archives.iter().filter_map(|a| a.card.clone()));
     ids.extend(view.corp.scored_agendas.iter().cloned());
     for server in &view.corp.servers {
         for card in server.ice.iter().chain(server.root.iter()) {
@@ -117,7 +122,7 @@ fn visible_card_ids(view: &ClientView) -> HashSet<CardId> {
 
 fn build_pools(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) -> Pools {
     let visible = visible_card_ids(view);
-    let corp_cards: Vec<&netrunner_core::dsl::Card> = registry.iter().filter(|c| c.side == Side::Corp && !visible.contains(&c.id)).collect();
+    let corp_cards: Vec<&netrunner_core::dsl::CardDefinition> = registry.iter().filter(|c| c.side == Side::Corp && !visible.contains(&c.id)).collect();
     let runner_cards: Vec<CardId> =
         registry.iter().filter(|c| c.side == Side::Runner && !visible.contains(&c.id)).map(|c| c.id.clone()).collect();
 
@@ -148,6 +153,10 @@ fn determinize_installed(server_view: &netrunner_core::view::ServerView, pools: 
         slot: InstallSlot::Ice,
         rezzed: card.rezzed,
         advancement_tokens: card.advancement_tokens,
+        counters: 0,
+        // `ClientView` doesn't carry install timing; a rollout re-derives it
+        // from its own play-out, same approximation as `counters` above.
+        installed_this_turn: false,
     });
     let root = server_view.root.iter().map(|card| InstalledCard {
         card: card.card.clone().unwrap_or_else(|| pools.corp_root.draw()),
@@ -155,6 +164,10 @@ fn determinize_installed(server_view: &netrunner_core::view::ServerView, pools: 
         slot: InstallSlot::Root,
         rezzed: card.rezzed,
         advancement_tokens: card.advancement_tokens,
+        counters: 0,
+        // `ClientView` doesn't carry install timing; a rollout re-derives it
+        // from its own play-out, same approximation as `counters` above.
+        installed_this_turn: false,
     });
     ice.chain(root).collect()
 }
@@ -215,6 +228,10 @@ fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardR
 
     let access_state = run.access_state.as_ref().map(|access| AccessState {
         server: access.server,
+        // Internal bookkeeping for the window in which a card's own
+        // `OnAccessed` trigger runs; never surfaced in `ClientView`, and a
+        // rollout re-derives it from its own play-out.
+        currently_accessing: None,
         unaccessed_cards: determinize_access_cards(&access.unaccessed_cards, &mut pools.corp_any),
         resolved_cards: determinize_access_cards(&access.resolved_cards, &mut pools.corp_any),
         phase: determinize_access_phase(&access.phase, &mut pools.corp_any),
@@ -230,7 +247,16 @@ fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardR
         bad_publicity_credits: 0,
         additional_rd_access: 0,
         additional_hq_access: 0,
-        access_replacement: None,
+        access_replacement: None, cards_accessed_count: 0, ice_rez_cost_modifier: 0, bonus_run_credits: 0,
+        runner_cannot_steal_or_trash: false,
+        // Approximated, like `cards_accessed_count`/`bad_publicity_credits`
+        // above: `ClientView` doesn't carry either, and both only matter at
+        // the moment the run ends (`Trigger::OnRunEnded`), which a
+        // determinized mid-run rollout re-derives from its own play-out
+        // rather than from the sampled starting point.
+        agendas_stolen_this_run: 0,
+        persistent_trashed_upgrades: Vec::new(),
+        on_success_effect: None,
     }
 }
 
@@ -247,7 +273,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         bad_publicity: view.corp.bad_publicity,
         first_install_used_this_turn: false,
         recurring_credits: 0,
-        recurring_credits_max: 0,
+        recurring_credits_max: 0, agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
         scored_agendas: view.corp.scored_agendas.clone(),
         resources: PlayerResources {
             credits: Credits(view.corp.credits),
@@ -256,7 +282,19 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         },
         hq: determinize_zone(&view.corp.hq_cards, view.corp.hq_count, &mut pools.corp_any),
         r_and_d: pools.corp_any.draw_n(view.corp.rd_count),
-        archives: view.corp.archives.clone(),
+        archives: view
+            .corp
+            .archives
+            .iter()
+            .map(|archived| match &archived.card {
+                Some(card) => ArchivedCard { card: card.clone(), facedown: archived.facedown },
+                // Facedown and hidden from this viewer: the count and
+                // orientation are known, the identity is not, so draw a
+                // plausible one from the same pool every other hidden zone
+                // samples from.
+                None => ArchivedCard { card: pools.corp_any.draw(), facedown: true },
+            })
+            .collect(),
         installed,
     };
 
@@ -269,6 +307,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             base_strength: card.current_strength,
             encounter_strength_buff: 0,
             turn_strength_buff: 0,
+            counters: 0,
+            hosted_on_ice: None,
         })
         .collect();
 
@@ -289,7 +329,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         heap: view.runner.heap.clone(),
         link_strength: view.runner.link_strength,
         first_hq_run_used_this_turn: false,
-        first_install_discount_used_this_turn: false,
+        first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0,
     };
 
     let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools));
@@ -301,6 +341,15 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         active_run,
         paid_ability_window: view.paid_ability_window.clone(),
         active_trace: view.active_trace.clone(),
+        pending_prevention: view.pending_prevention.clone(),
+        pending_paid_choice: view.pending_paid_choice.clone(),
+        pending_decision: view.pending_decision.clone(),
+        // Transient scratch fields with no player-facing/masked
+        // representation (see their doc comments on `GameState`) — a
+        // determinized hypothetical state has no history to reconstruct
+        // them from, so they start blank, same as a fresh `GameState::new`.
+        last_discarded_cards: Vec::new(),
+        last_completed_run: None, last_advancement_was_first: false,
         seed: rng.random(),
         rng_step: 0,
     }
@@ -309,37 +358,25 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::dsl::{Card, CardType, IceType};
+    use netrunner_core::dsl::{CardDefinition, CardType, IceType};
     use netrunner_core::rules::{
         AgendaPoints as AP, Clicks as C, CorpState as CS, Credits as Cr, GamePhase, GameState as CoreGameState,
         InstallSlot as CoreInstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits as MU, PlayerResources as PR,
-        RunnerState as RS, ServerId,
+        RunnerState as RS,
     };
     use netrunner_core::view::build_client_view;
     use rand::rngs::StdRng;
     use rand::SeedableRng;
 
-    fn blank_card(id: &str, side: Side, card_type: CardType) -> Card {
-        Card {
+    fn blank_card(id: &str, side: Side, card_type: CardType) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side,
             card_type,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
             strength: Some(2),
-            subroutines: Vec::new(),
-            interactive_on_access: None,
-            subtypes: Vec::new(),
-            play_requirement: None,
-            recurring_credits: None,
-            first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
@@ -362,7 +399,7 @@ mod tests {
                 bad_publicity: 0,
                 first_install_used_this_turn: false,
                 recurring_credits: 0,
-                recurring_credits_max: 0,
+                recurring_credits_max: 0, agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
                 scored_agendas: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
                 hq: vec![CardId("hedge_fund".to_string())],
@@ -370,10 +407,8 @@ mod tests {
                 archives: Vec::new(),
                 installed: vec![InstalledCard {
                     card: CardId("corp_ice_0".to_string()),
-                    server: ServerId::Hq,
                     slot: CoreInstallSlot::Ice,
-                    rezzed: false,
-                    advancement_tokens: 0,
+                    ..Default::default()
                 }],
             },
             runner: RS {
@@ -385,16 +420,21 @@ mod tests {
                 tags: 0,
                 grip: vec![CardId("sure_gamble".to_string())],
                 stack: vec![CardId("runner_card_0".to_string()), CardId("runner_card_1".to_string()), CardId("runner_card_2".to_string())],
-                rig: vec![InstalledRunnerCard { card: CardId("runner_card_3".to_string()), base_strength: 2, encounter_strength_buff: 0, turn_strength_buff: 0 }],
+                rig: vec![InstalledRunnerCard {
+                    card: CardId("runner_card_3".to_string()),
+                    base_strength: 2,
+                    ..Default::default()
+                }],
                 heap: Vec::new(),
                 link_strength: 0,
                 first_hq_run_used_this_turn: false,
-                first_install_discount_used_this_turn: false,
+                first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0,
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 1,
             rng_step: 0,
         }

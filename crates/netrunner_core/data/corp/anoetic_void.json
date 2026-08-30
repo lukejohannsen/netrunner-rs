@@ -1,0 +1,50 @@
+{
+  "id": "anoetic_void",
+  "title": "Anoetic Void",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnApproachServer",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "LoseCredits": [
+                      "Corp",
+                      2
+                    ]
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnHq",
+                      "filter": "Any",
+                      "min": 2,
+                      "max": 2,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "destination": "OwnArchives",
+                      "then": "EndTheRun"
+                    }
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "trash_cost": 1,
+  "numeric_id": 30050,
+  "is_playable": true
+}

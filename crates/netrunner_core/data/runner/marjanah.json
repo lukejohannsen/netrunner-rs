@@ -1,0 +1,44 @@
+{
+  "id": "marjanah",
+  "title": "Marjanah",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "strength": 1,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "cost_discount_if": [
+        "MadeSuccessfulRunThisTurn",
+        1
+      ],
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      }
+    }
+  ],
+  "numeric_id": 30016,
+  "is_playable": true
+}

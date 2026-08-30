@@ -1,0 +1,26 @@
+{
+  "id": "hostile_takeover",
+  "title": "Hostile Takeover",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            7
+          ]
+        },
+        {
+          "GiveBadPublicity": 1
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

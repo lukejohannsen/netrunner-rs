@@ -1,0 +1,22 @@
+{
+  "id": "scorched_earth",
+  "title": "Scorched Earth",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            4
+          ]
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

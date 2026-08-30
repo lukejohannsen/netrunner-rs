@@ -1,0 +1,51 @@
+{
+  "id": "regolith_mining_license",
+  "title": "Regolith Mining License",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "effects": [
+        {
+          "AddCounters": 15
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveCounters": 3
+          },
+          {
+            "GainCredits": [
+              "Corp",
+              3
+            ]
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "ThisCardCountersAtMost": 0
+              },
+              "effect": {
+                "TrashCard": "ThisCard"
+              }
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "trash_cost": 3,
+  "numeric_id": 30071,
+  "is_playable": true
+}

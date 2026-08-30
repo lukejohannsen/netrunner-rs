@@ -1,0 +1,23 @@
+{
+  "id": "gabriel_santiago",
+  "title": "Gabriel Santiago: Consummate Professional",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRunOnHq",
+      "requirement": "FirstSuccessfulHqRunThisTurn",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

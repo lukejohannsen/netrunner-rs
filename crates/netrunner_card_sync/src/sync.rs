@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 
 use netrunner_core::card::{NetrunnerDbCardDto, NetrunnerDbPackDto, PackInfo};
-use netrunner_core::catalog::{convert_dtos_lenient, CardCatalog};
+use netrunner_core::cards::{convert_dtos_lenient, load_embedded_netrunnerdb_sets, CardRegistry};
 
 use crate::cache_path::resolve_cache_file;
 use crate::error::SyncError;
@@ -14,8 +14,8 @@ const NETRUNNERDB_PACKS_URL: &str = "https://netrunnerdb.com/api/2.0/public/pack
 /// NetrunnerDB wraps every public API list response in a
 /// `{"success": bool, "data": [...]}` envelope rather than returning a bare
 /// array. The embedded fixture files store the unwrapped `data` array
-/// directly (see `netrunner_core::catalog`), so this envelope is only
-/// needed when talking to the live API.
+/// directly (see `netrunner_core::cards::netrunnerdb`), so this envelope is
+/// only needed when talking to the live API.
 #[derive(Debug, Deserialize)]
 struct NetrunnerDbEnvelope<T> {
     data: Vec<T>,
@@ -58,20 +58,20 @@ impl NetrunnerDbSync {
         Self { http_client: reqwest::Client::new(), cache_file }
     }
 
-    /// Builds the in-memory catalog WITHOUT any network call: embedded
+    /// Builds the in-memory registry WITHOUT any network call: embedded
     /// defaults as the base layer, with the disk cache (if present) merged
     /// on top. A missing cache file is not an error.
-    pub fn load_catalog(&self) -> Result<CardCatalog, SyncError> {
-        let mut catalog = CardCatalog::load_default_core_sets()?;
-        catalog.merge(self.read_cached_catalog()?.into_definitions());
-        Ok(catalog)
+    pub fn load_registry(&self) -> Result<CardRegistry, SyncError> {
+        let mut registry = load_embedded_netrunnerdb_sets()?;
+        registry.merge(self.read_cached_registry()?.iter().cloned());
+        Ok(registry)
     }
 
     /// Fetches NetrunnerDB's full card list, filters to `scope`, merges the
     /// filtered cards into the *persisted* cache (so syncing one set does
     /// not evict previously-cached other sets), writes the updated cache
-    /// atomically, then returns `load_catalog()`'s result.
-    pub async fn sync_from_netrunnerdb(&self, scope: SyncScope) -> Result<CardCatalog, SyncError> {
+    /// atomically, then returns `load_registry()`'s result.
+    pub async fn sync_from_netrunnerdb(&self, scope: SyncScope) -> Result<CardRegistry, SyncError> {
         let bytes = self.http_client.get(NETRUNNERDB_CARDS_URL).send().await?.bytes().await?;
         self.ingest_fetched_payload(&bytes, &scope).await
     }
@@ -86,10 +86,10 @@ impl NetrunnerDbSync {
 
     /// Everything after the HTTP fetch: parse the raw JSON body, filter by
     /// scope, merge onto the persisted cache, write it back, and recompose
-    /// the full in-memory catalog. Exercised directly by tests with a
+    /// the full in-memory registry. Exercised directly by tests with a
     /// fixture byte slice — no network access needed to test this half of
     /// the pipeline.
-    async fn ingest_fetched_payload(&self, body: &[u8], scope: &SyncScope) -> Result<CardCatalog, SyncError> {
+    async fn ingest_fetched_payload(&self, body: &[u8], scope: &SyncScope) -> Result<CardRegistry, SyncError> {
         let envelope: NetrunnerDbEnvelope<NetrunnerDbCardDto> = serde_json::from_slice(body)?;
         let scoped = filter_by_scope(envelope.data, scope);
         // Best-effort: NetrunnerDB's live card list naturally exceeds this
@@ -104,17 +104,22 @@ impl NetrunnerDbSync {
             }
         }
 
-        let mut persisted = self.read_cached_catalog()?;
+        let mut persisted = self.read_cached_registry()?;
         persisted.merge(new_defs);
         self.write_cache_atomically(&serde_json::to_vec(&persisted)?).await?;
 
-        self.load_catalog()
+        self.load_registry()
     }
 
-    fn read_cached_catalog(&self) -> Result<CardCatalog, SyncError> {
+    /// A parse failure (e.g. a cache file written by a pre-unification
+    /// version of this crate, in the old `CardCatalog` wire shape) is
+    /// treated the same as a missing file — start fresh — rather than a
+    /// hard error, since the alternative is every sync failing forever for
+    /// anyone with a stale cache.
+    fn read_cached_registry(&self) -> Result<CardRegistry, SyncError> {
         match std::fs::read(&self.cache_file) {
-            Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(CardCatalog::new()),
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes).unwrap_or_default()),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(CardRegistry::new()),
             Err(source) => Err(SyncError::ReadCacheFile { path: self.cache_file.clone(), source }),
         }
     }
@@ -150,7 +155,7 @@ fn temp_file_path(target: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::card::CardType;
+    use netrunner_core::dsl::CardType;
 
     fn sample_payload() -> Vec<u8> {
         br#"{
@@ -222,21 +227,21 @@ mod tests {
     #[tokio::test]
     async fn ingest_all_scope_merges_every_card() {
         let (sync, _dir) = sync_with_temp_cache();
-        let catalog = sync.ingest_fetched_payload(&sample_payload(), &SyncScope::All).await.expect("ingest succeeds");
+        let registry = sync.ingest_fetched_payload(&sample_payload(), &SyncScope::All).await.expect("ingest succeeds");
 
-        assert!(catalog.filter_by_type(CardType::Event).count() >= 2);
-        assert!(catalog.get_by_title("Card From SG").is_some());
-        assert!(catalog.get_by_title("Card From Elevation").is_some());
+        assert!(registry.iter().filter(|c| c.card_type == CardType::Event).count() >= 2);
+        assert!(registry.get_by_title("Card From SG").is_some());
+        assert!(registry.get_by_title("Card From Elevation").is_some());
     }
 
     #[tokio::test]
     async fn ingest_scoped_to_one_set_excludes_the_other() {
         let (sync, _dir) = sync_with_temp_cache();
         let scope = SyncScope::Sets(vec!["sg".to_string()]);
-        let catalog = sync.ingest_fetched_payload(&sample_payload(), &scope).await.expect("ingest succeeds");
+        let registry = sync.ingest_fetched_payload(&sample_payload(), &scope).await.expect("ingest succeeds");
 
-        assert!(catalog.get_by_title("Card From SG").is_some());
-        assert!(catalog.get_by_title("Card From Elevation").is_none());
+        assert!(registry.get_by_title("Card From SG").is_some());
+        assert!(registry.get_by_title("Card From Elevation").is_none());
     }
 
     #[tokio::test]
@@ -247,12 +252,12 @@ mod tests {
             .await
             .expect("first ingest succeeds");
 
-        let catalog = sync
+        let registry = sync
             .ingest_fetched_payload(&sample_payload(), &SyncScope::Sets(vec!["elev".to_string()]))
             .await
             .expect("second ingest succeeds");
 
-        assert!(catalog.get_by_title("Card From SG").is_some(), "earlier-cached set should survive");
-        assert!(catalog.get_by_title("Card From Elevation").is_some());
+        assert!(registry.get_by_title("Card From SG").is_some(), "earlier-cached set should survive");
+        assert!(registry.get_by_title("Card From Elevation").is_some());
     }
 }

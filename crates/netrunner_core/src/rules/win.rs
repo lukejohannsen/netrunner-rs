@@ -7,7 +7,7 @@ const WINNING_AGENDA_POINTS: u32 = 7;
 
 /// Looks up `card_id`'s printed agenda point value from `registry`. Returns
 /// `None` if the card isn't in the registry, or is registered but isn't an
-/// Agenda (`dsl::Card::agenda_points` is `None`) — that `None` is the gate
+/// Agenda (`dsl::CardDefinition::agenda_points` is `None`) — that `None` is the gate
 /// `run::access_server` uses to decide whether an accessed card is even an
 /// Agenda at all, not just a defaulted value, so it stays `Option<u32>`
 /// rather than collapsing to a bare `u32`.
@@ -55,67 +55,52 @@ pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Card, CardType};
+    use crate::dsl::{CardDefinition, CardType};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, Credits, MemoryUnits, PlayerResources, RunnerState,
     };
 
-    /// A minimal Agenda `Card` worth `points` — everything besides id, side,
+    /// A minimal Agenda `CardDefinition` worth `points` — everything besides id, side,
     /// and `agenda_points` is irrelevant to these tests.
-    fn agenda_card(id: &str, side: Side, points: u32) -> Card {
-        Card {
+    fn agenda_card(id: &str, side: Side, points: u32) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side,
             card_type: CardType::Agenda,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
             advancement_requirement: Some(points),
             agenda_points: Some(points),
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
     fn game_state(corp_scored: Vec<CardId>, runner_scored: Vec<CardId>) -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
+            corp: CorpState {
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
                     agenda_points: AgendaPoints(0),
                 },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
                 scored_agendas: corp_scored,
+                ..Default::default()
             },
-            runner: RunnerState { identity: None,
+            runner: RunnerState {
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
                 scored_agendas: runner_scored,
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
@@ -201,22 +186,14 @@ mod tests {
     fn agenda_value_looks_up_registered_agenda_points() {
         let registry = CardRegistry::from_cards(vec![
             agenda_card("priority_requisition", Side::Corp, 3),
-            Card {
+            CardDefinition {
                 id: CardId("hedge_fund".to_string()),
                 title: "Hedge Fund".to_string(),
                 side: Side::Corp,
                 card_type: CardType::Operation,
                 cost: 5,
-                triggers: Vec::new(),
-                abilities: Vec::new(),
-                trash_cost: None,
-                steal_cost: None,
-                advancement_requirement: None,
-                agenda_points: None,
-                min_deck_size: None,
-                strength: None,
-                subroutines: Vec::new(),
-                interactive_on_access: None, subtypes: Vec::new(), play_requirement: None, recurring_credits: None, first_install_discount: None,
+                is_playable: true,
+                ..Default::default()
             },
         ]);
 

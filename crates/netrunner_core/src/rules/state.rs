@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardId, Effect};
+use crate::dsl::{CardFilter, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect};
 use crate::rules::run::{RunState, ServerId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,7 +60,7 @@ impl MemoryUnits {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlayerResources {
     pub credits: Credits,
     pub clicks: Clicks,
@@ -90,9 +92,78 @@ pub struct InstalledCard {
     /// information even on an unrezzed card — never masked (see
     /// `masking::PublicInstalledCard`).
     pub advancement_tokens: u32,
+    /// Generic counters (virus/power/credit — see `dsl::card::CounterKind`)
+    /// placed by `Effect::AddCounters`/removed by `Effect::RemoveCounters`.
+    /// Not yet exposed through `masking::PublicInstalledCard` — no card
+    /// uses this yet, so there's no visibility question to answer until one
+    /// does.
+    #[serde(default)]
+    pub counters: u32,
+    /// Whether this card was installed during the Corp's current turn —
+    /// read by `dsl::zone::CardFilter::NotInstalledThisTurn` (Seamless
+    /// Launch's "1 installed card that you did not install this turn").
+    /// Set at `engine::install_card`, cleared for every installed card at
+    /// the start of each Corp turn (`turn::enter_start_of_turn`). Public
+    /// information — install timing is visible to both players even for an
+    /// unrezzed card, same as `advancement_tokens`.
+    #[serde(default)]
+    pub installed_this_turn: bool,
 }
 
+/// Every field at its neutral value, so test fixtures can spell out only the
+/// fields they care about via `..Default::default()` instead of restating all
+/// of them and breaking every time one is added (see `dsl::CardDefinition`'s
+/// `Default` for the same rationale and the M9 precedent).
+///
+/// `card`, `server`, and `slot` have no meaningful neutral value — an empty
+/// `CardId` names no card, and every real install picks a server and slot
+/// deliberately. The placeholders exist only so `Default` can be implemented
+/// at all; any caller that cares must override them. Production construction
+/// sites deliberately do **not** use this — they stay exhaustive so the
+/// compiler forces a decision about each new field.
+impl Default for InstalledCard {
+    fn default() -> Self {
+        Self {
+            card: CardId(String::new()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Root,
+            rezzed: false,
+            advancement_tokens: 0,
+            counters: 0,
+            installed_this_turn: false,
+        }
+    }
+}
+
+/// One card in the Corp's Archives, plus which way up it is.
+///
+/// A card is faceup exactly when the Runner has already seen it — trashed
+/// from play while rezzed, a resolved Operation, or a card the Runner
+/// accessed and trashed. It is facedown when the Runner never saw it: the
+/// Corp's own discards from HQ, cards milled off R&D, and unrezzed installs
+/// trashed off the table. Only the orientation is public to the Runner; a
+/// facedown card's identity is masked out of their view.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArchivedCard {
+    pub card: CardId,
+    pub facedown: bool,
+}
+
+impl ArchivedCard {
+    /// The Runner has seen this card — a rezzed install trashed off the
+    /// table, a resolved Operation, or a card they accessed and trashed.
+    pub fn faceup(card: CardId) -> Self {
+        ArchivedCard { card, facedown: false }
+    }
+
+    /// The Runner never saw this card — a Corp discard from HQ, an R&D
+    /// mill, or an unrezzed install trashed off the table.
+    pub fn facedown(card: CardId) -> Self {
+        ArchivedCard { card, facedown: true }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CorpState {
     /// Corp's identity card, set once by `GameState::setup`. `None` before
     /// a real game is set up — `GameState::new()`'s bare/empty state (used
@@ -105,11 +176,12 @@ pub struct CorpState {
     pub hq: Vec<CardId>,
     /// Corp's deck — hidden from the Runner in the masked view.
     pub r_and_d: Vec<CardId>,
-    /// Corp's discard pile. Unlike `hq`/`r_and_d`, Archives is fully public —
-    /// never masked in the masked view (see `RunnerState::rig`'s doc comment
-    /// for the same pattern). Nothing currently populates this (no
-    /// discard/trash mechanic exists yet); starts empty.
-    pub archives: Vec<CardId>,
+    /// Corp's discard pile. Unlike `hq`/`r_and_d`, the *shape* of Archives
+    /// is public — both players always see how many cards are here and
+    /// which way up each one is — but a facedown card's identity is hidden
+    /// from the Runner (see `masking::PublicArchivedCard`). The Corp always
+    /// sees its own zone in full.
+    pub archives: Vec<ArchivedCard>,
     pub installed: Vec<InstalledCard>,
     /// Agendas the Corp has scored, in scoring order. Fully public — never
     /// masked, same treatment as `archives`. `win::check_win_conditions`
@@ -137,17 +209,71 @@ pub struct CorpState {
     /// start of every Corp turn.
     pub recurring_credits: u32,
     /// The size `recurring_credits` refills to each Corp turn, set once at
-    /// `GameState::setup` from the Corp identity's registry `Card::
+    /// `GameState::setup` from the Corp identity's registry `CardDefinition::
     /// recurring_credits` (`0` for an identity with no such pool, e.g.
     /// every identity but NBN: Making News in the baseline set).
     pub recurring_credits_max: u32,
+    /// Sum of printed agenda points on agendas scored this Corp turn — read
+    /// by `dsl::effect::Amount::AgendaPointsScoredThisTurn` (e.g.
+    /// Neurospike). Incremented in `engine::score_agenda`, reset to `0` at
+    /// the start of every Corp turn (`turn::enter_start_of_turn`).
+    #[serde(default)]
+    pub agenda_points_scored_this_turn: u32,
+    /// Tags consumed by `EffectRequirement::OncePerTurn(tag)` gates the Corp
+    /// has already fired this turn — the generalized replacement for adding
+    /// another bespoke per-effect bool alongside `first_install_used_this_turn`.
+    /// Cleared at the start of every Corp turn (`turn::enter_start_of_turn`).
+    #[serde(default)]
+    pub once_per_turn_used: HashSet<String>,
+    /// Permanent additive bonus to the Corp's max hand size (`turn::
+    /// max_hand_size`), set once at `GameState::setup` from the Corp
+    /// identity's registry `CardDefinition::max_hand_size_bonus` — e.g.
+    /// Haas-Bioroid: Precision Design's "+1 maximum hand size". `0` for the
+    /// common case (no such identity trait). Unlike `recurring_credits_max`,
+    /// this never refills/resets — it's a one-time, permanent addition, the
+    /// same treatment `RunnerState::brain_damage` gives the Runner's side
+    /// (just additive instead of subtractive).
+    #[serde(default)]
+    pub max_hand_size_bonus: u32,
+    /// Whether the Corp is barred from scoring any further agenda for the
+    /// remainder of this turn — set by Luminal Transubstantiation's own
+    /// score trigger ("You cannot score agendas for the remainder of the
+    /// turn"), reset at the start of every Corp turn
+    /// (`turn::enter_start_of_turn`). Enforced in
+    /// `legal_actions::advance_score_trash_candidates` so `ScoreAgenda` is
+    /// never even offered, keeping the action mask and `engine::score_agenda`'s
+    /// own guard in agreement.
+    #[serde(default)]
+    pub cannot_score_agendas_this_turn: bool,
+    /// Cards removed from the game entirely — Spin Doctor's "Remove this
+    /// asset from the game" cost. Deliberately *not* Archives: a removed
+    /// card must never be recurrable, accessible, or counted by anything
+    /// reading the discard pile (e.g. Jinteki: Restoring Humanity's
+    /// facedown-in-Archives check). Public information, never masked; write
+    /// only, since nothing in this card pool ever reads a card back out.
+    #[serde(default)]
+    pub removed_from_game: Vec<CardId>,
+}
+
+impl CorpState {
+    /// Whether `card_id` is in Archives at all, regardless of orientation.
+    pub fn archives_contains(&self, card_id: &CardId) -> bool {
+        self.archives.iter().any(|a| &a.card == card_id)
+    }
+
+    /// Whether Archives holds at least one facedown card — backs
+    /// `EffectRequirement::ArchivesHasFacedownCard` (Jinteki: Restoring
+    /// Humanity).
+    pub fn has_facedown_in_archives(&self) -> bool {
+        self.archives.iter().any(|a| a.facedown)
+    }
 }
 
 /// A Runner card installed in the Rig (Hardware or Program), with the
 /// per-instance runtime state needed for icebreaker strength: Corp's
 /// `InstalledCard` already carries per-instance state (`advancement_tokens`)
 /// alongside its `CardId` lookup key, but the Runner side had nothing
-/// analogous — mutable strength buffs can't live on `dsl::Card` itself,
+/// analogous — mutable strength buffs can't live on `dsl::CardDefinition` itself,
 /// since that's a single shared/immutable definition in `CardRegistry`, not
 /// a per-instance object.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -169,6 +295,24 @@ pub struct InstalledRunnerCard {
     /// (unlike `RunIce::current_strength`) because an `Encounter` buff and a
     /// `Turn` buff can be live simultaneously and must expire independently.
     pub turn_strength_buff: i32,
+    /// Generic counters (virus/power/credit — see `dsl::card::CounterKind`)
+    /// placed by `Effect::AddCounters`/removed by `Effect::RemoveCounters`.
+    /// Not yet exposed through `masking::PublicInstalledRunnerCard` — no
+    /// card uses this yet, so there's no visibility question to answer
+    /// until one does.
+    #[serde(default)]
+    pub counters: u32,
+    /// The Corp installed ICE this card is hosted on, if it was installed
+    /// via `PlayerAction::InstallProgramOnIce` (a Trojan Program, `dsl::
+    /// CardDefinition::installs_on_ice`) — e.g. Botulus, Tranquilizer.
+    /// `None` for every ordinary Rig card. A hosted card otherwise behaves
+    /// exactly like any other Rig entry (same strength/counter machinery)
+    /// — this field only records *where* it's attached, for cascade-trash
+    /// (see `ability::cascade_trash_hosted_programs`) and for abilities
+    /// that need to reference their own host (e.g. `EffectRequirement::
+    /// EncounteringHostIce`, `CardTarget::HostIce`).
+    #[serde(default)]
+    pub hosted_on_ice: Option<CardId>,
 }
 
 impl InstalledRunnerCard {
@@ -178,7 +322,24 @@ impl InstalledRunnerCard {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// Every field at its neutral value, for test fixtures — see
+/// `InstalledCard`'s `Default` for the full rationale. `card` is the only
+/// field with no meaningful neutral value; every caller that cares must
+/// override it. Production sites stay exhaustive.
+impl Default for InstalledRunnerCard {
+    fn default() -> Self {
+        Self {
+            card: CardId(String::new()),
+            base_strength: 0,
+            encounter_strength_buff: 0,
+            turn_strength_buff: 0,
+            counters: 0,
+            hosted_on_ice: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunnerState {
     /// Runner's identity card, set once by `GameState::setup`. `None`
     /// before a real game is set up — see `CorpState::identity`'s doc
@@ -220,13 +381,46 @@ pub struct RunnerState {
     /// fired this turn. Reset to `false` at the start of every Runner turn;
     /// consumed the same way as `CorpState::first_install_used_this_turn`.
     pub first_hq_run_used_this_turn: bool,
-    /// Whether the Runner's identity install-cost discount (`Card::
+    /// Whether the Runner's identity install-cost discount (`CardDefinition::
     /// first_install_discount`, e.g. Kate "Mac" McCaffrey) has already been
     /// applied to a Program/Hardware install this turn. Reset to `false` at
     /// the start of every Runner turn; consumed directly by
     /// `engine::install_hardware`/`install_program` (not a `Trigger`/
-    /// `Effect` — see `Card::first_install_discount`'s doc comment for why).
+    /// `Effect` — see `CardDefinition::first_install_discount`'s doc comment for why).
     pub first_install_discount_used_this_turn: bool,
+    /// Tags consumed by `EffectRequirement::OncePerTurn(tag)` gates the
+    /// Runner has already fired this turn — see `CorpState::
+    /// once_per_turn_used`'s doc comment for the full rationale. Cleared at
+    /// the start of every Runner turn.
+    #[serde(default)]
+    pub once_per_turn_used: HashSet<String>,
+    /// Whether the Runner has made at least one successful run this turn
+    /// (any server) — set by `dispatcher::dispatch_event`'s `RunSucceeded`
+    /// arm, reset to `false` at the start of every Runner turn. Backs
+    /// `EffectRequirement::RunnerMadeSuccessfulRunLastTurn` via
+    /// `made_successful_run_last_turn` below, and (from M5 on) install-cost
+    /// discounts like Carmen's.
+    #[serde(default)]
+    pub made_successful_run_this_turn: bool,
+    /// Snapshot of `made_successful_run_this_turn` taken when the Runner's
+    /// turn ends (`turn::end_turn`), read by `EffectRequirement::
+    /// RunnerMadeSuccessfulRunLastTurn` — e.g. Public Trail's play
+    /// requirement ("play only if the Runner made a successful run during
+    /// their last turn").
+    #[serde(default)]
+    pub made_successful_run_last_turn: bool,
+    /// Permanent additive bonus to the Runner's max hand size (`turn::
+    /// max_hand_size`) — the sum of every installed Hardware's registry
+    /// `CardDefinition::max_hand_size_bonus` (e.g. T400 Memory Diamond's
+    /// "+1 maximum hand size") plus any Agenda-scored `Effect::
+    /// GainMaxHandSize` (e.g. Superconducting Hub) and identity-level bonus
+    /// read once at `GameState::setup`. Deliberately one-way/permanent —
+    /// unlike `memory_bonus`, this crate makes no attempt to decrement it
+    /// if the granting Hardware later leaves play (see `engine::
+    /// install_hardware`'s doc comment for the same simplification and its
+    /// rationale).
+    #[serde(default)]
+    pub max_hand_size_bonus: u32,
 }
 
 impl RunnerState {
@@ -294,24 +488,52 @@ pub enum GamePhase {
     GameOver(Side),
 }
 
+/// What a `PaidAbilityWindow` is pausing, and therefore what closing it must
+/// resume. `Run` re-derives its continuation purely from `state.active_run`'s
+/// current `RunPhase`, exactly as `close_window` always has — this variant
+/// exists so non-run checkpoints have an explicit alternative to encode,
+/// since `active_run` is `None` for them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WindowCheckpoint {
+    Run,
+    /// Opened once `side`'s mandatory start-of-turn steps (click refill,
+    /// mandatory draw, `Trigger::OnTurnStart` reactions) have already
+    /// resolved. Closing sets `state.phase = GamePhase::Action(side)`.
+    StartOfTurn { side: Side },
+    /// Opened once `side`'s end-of-turn cleanup (turn-duration strength-buff
+    /// reset) has resolved, before the mandatory hand-size check. Closing
+    /// resumes exactly where `turn::end_turn` paused: `turn::finish_end_turn`.
+    EndOfTurn { side: Side },
+    /// Opened the instant a `DealDamage`/`TrashCard` effect is parked in
+    /// `GameState::pending_prevention` (only when at least one installed/
+    /// rigged card actually has a matching `Effect::PreventDamage`/
+    /// `PreventTrash` `Paid` ability — see `ability::evaluate_effect`'s
+    /// `DealDamage`/`TrashCard` arms). Closing applies whatever's left
+    /// unprevented via `paid_ability::close_window`'s `Prevention` arm.
+    Prevention,
+}
+
 /// A Paid Ability Window (PAW) — a priority-passing sub-loop that pauses the
 /// run flow so both sides get a chance to fire paid abilities (rez ICE,
 /// activate a `Trigger::Paid` ability, break a subroutine) before the engine
 /// auto-advances past a checkpoint (ICE approach, ICE encounter, pre-access,
-/// or a pending per-card access decision). Lives as a sibling field on
-/// `GameState`, not folded into `GamePhase` — mirrors `RunPhase`'s existing
-/// precedent of never changing `state.phase` mid-run (see this file's
-/// `GamePhase` doc comment).
+/// a pending per-card access decision, or a turn boundary). Lives as a
+/// sibling field on `GameState`, not folded into `GamePhase` — mirrors
+/// `RunPhase`'s existing precedent of never changing `state.phase` mid-run
+/// (see this file's `GamePhase` doc comment); the `StartOfTurn`/`EndOfTurn`
+/// checkpoints extend that same precedent to turn boundaries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PaidAbilityWindow {
     pub active_priority: Side,
     pub consecutive_passes: u8,
+    /// What this window is pausing — determines how `close_window` resumes.
+    pub checkpoint: WindowCheckpoint,
     /// Snapshot of `state.phase` at the moment the window opened. Not
-    /// currently read anywhere — `GamePhase` never changes mid-run, so this
-    /// is always `Action(Side::Runner)` for every window today (all four
-    /// checkpoints live inside a run). Kept for forward compatibility with a
-    /// hypothetical future non-run window, where restoring `state.phase` on
-    /// close would actually matter.
+    /// currently read anywhere — every checkpoint's `close_window` arm
+    /// either re-derives its continuation from `active_run` (`Run`) or
+    /// carries its own `side` (`StartOfTurn`/`EndOfTurn`). Kept for forward
+    /// compatibility with a hypothetical future checkpoint that genuinely
+    /// needs to restore an arbitrary prior phase.
     pub return_phase: Box<GamePhase>,
 }
 
@@ -342,7 +564,7 @@ pub enum TraceResume {
 /// "stays legal during this" exceptions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TraceState {
-    /// Card whose effect initiated this trace, threaded to `effect_on_success`'s
+    /// CardDefinition whose effect initiated this trace, threaded to `effect_on_success`'s
     /// `acting_card` context exactly like `evaluate_effect`'s own parameter.
     /// `None` for a subroutine-triggered trace, mirroring
     /// `resolve_unbroken_subroutines`'s existing `None` passed to
@@ -356,6 +578,183 @@ pub struct TraceState {
     pub resume: TraceResume,
 }
 
+/// What to do once a `PendingPrevention` resolves, mirroring `TraceResume`'s
+/// exact role/rationale — `ability::resolve_unbroken_subroutines` upgrades
+/// this to `ResumeSubroutines` immediately after firing a subroutine whose
+/// effect turned out to be a `DealDamage`/`TrashCard` that got parked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PreventionResume {
+    None,
+    ResumeSubroutines,
+}
+
+/// Which kind of `PendingPrevention` is parked — used only to name the two
+/// sides of a mismatch in `RulesError::PreventionKindMismatch`;
+/// `PendingPreventionKind` itself carries the actual payload.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PreventionKind {
+    Damage,
+    Trash,
+}
+
+/// What's parked, waiting on a `WindowCheckpoint::Prevention` window before
+/// it actually applies. `prevented` tracks how much of it has been
+/// prevented so far — incrementally for `Damage` (`Effect::PreventDamage`
+/// saturating-reduces `amount`), all-or-nothing for `Trash`
+/// (`Effect::PreventTrash` sets it outright, since real Netrunner trash
+/// prevention isn't partial).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PendingPreventionKind {
+    Damage { damage_type: DamageType, amount: usize, prevented: usize },
+    Trash { target: CardTarget, prevented: bool },
+}
+
+/// An effect paused mid-resolution so both sides get a `PaidAbilityWindow`
+/// to respond with a matching `Effect::PreventDamage`/`PreventTrash` `Paid`
+/// ability before it actually applies — the same "park in `GameState`,
+/// block unrelated actions via the window that's opened alongside it, and
+/// resume on window close" idiom `TraceState` already established for
+/// `Effect::Trace`. Lives as a sibling field on `GameState`, not nested in
+/// `RunState`, for the same reason `TraceState` does: a standalone
+/// Operation with no active run can deal damage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingPrevention {
+    pub kind: PendingPreventionKind,
+    /// CardDefinition whose effect triggered this — same role as `TraceState::
+    /// initiating_card`/`evaluate_effect`'s `acting_card` parameter.
+    pub source_card: Option<CardId>,
+    pub resume: PreventionResume,
+}
+
+/// What to do once a `PendingPaidChoice` resolves, mirroring `TraceResume`/
+/// `PreventionResume`'s exact role — `ability::resolve_unbroken_subroutines`
+/// upgrades this to `ResumeSubroutines` immediately after firing a
+/// subroutine whose effect turned out to be an `Effect::OfferPaidChoice`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PendingPaidChoiceResume {
+    None,
+    ResumeSubroutines,
+}
+
+/// A parked `Effect::OfferPaidChoice`, awaiting `PlayerAction::
+/// AcceptPendingPaidChoice`/`DeclinePendingPaidChoice`. Lives as a sibling
+/// field on `GameState`, not nested in `RunState`, for the same reason
+/// `TraceState`/`PendingPrevention` do: a standalone Operation with no
+/// active run can offer one (e.g. Public Trail). While `Some`,
+/// `engine::apply_action` rejects every `PlayerAction` except the two
+/// above — see `Effect::OfferPaidChoice`'s doc comment for why this is a
+/// deliberate second mechanism alongside `dsl::ability::
+/// InteractiveOnAccess` rather than a generalization of it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingPaidChoice {
+    pub side: Side,
+    pub cost: Cost,
+    pub if_paid: Effect,
+    pub if_declined: Effect,
+    /// CardDefinition whose effect offered this choice — same role as
+    /// `TraceState::initiating_card`.
+    pub source_card: Option<CardId>,
+    pub resume: PendingPaidChoiceResume,
+}
+
+/// Mirrors `PendingPaidChoiceResume` for a parked `PendingDecision`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PendingChoiceResume {
+    None,
+    ResumeSubroutines,
+}
+
+/// A decision parked by an `Effect`, awaiting a resolving `PlayerAction`.
+/// Lives as a sibling field on `GameState`, same rationale as
+/// `PendingPaidChoice`. Currently exactly one shape is needed; more
+/// variants (e.g. choosing cards from a zone) are expected in later
+/// milestones.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PendingDecision {
+    /// `Effect::PresentChoice` parked this — `chooser` picks one of
+    /// `options` via `PlayerAction::ResolvePendingChoice`.
+    ChooseEffect {
+        chooser: Side,
+        options: Vec<Effect>,
+        source_card: Option<CardId>,
+        resume: PendingChoiceResume,
+    },
+    /// `Effect::PromptChooseCards` parked this. `selected` is the
+    /// in-progress selection, toggled via `PlayerAction::
+    /// ToggleCardSelection` and committed via `PlayerAction::
+    /// ConfirmCardSelection` (which validates `selected.len()` falls within
+    /// `min..=max`).
+    ChooseCards {
+        side: Side,
+        source: CardZoneRef,
+        filter: CardFilter,
+        min: u32,
+        max: u32,
+        reveal: bool,
+        shuffle_after: bool,
+        destination: Option<CardZoneRef>,
+        then: Option<Box<Effect>>,
+        selected: Vec<CardId>,
+        source_card: Option<CardId>,
+        resume: PendingChoiceResume,
+    },
+    /// `Effect::PromptChooseServer` parked this — `chooser` picks any
+    /// `ServerId` via `PlayerAction::ChooseServerForPendingDecision`, which
+    /// initiates a run against it (seeding the new `RunState`'s
+    /// `ice_rez_cost_modifier`/`bonus_run_credits` from this variant's
+    /// fields — `0`/`0` for a plain "run any server").
+    ChooseServer {
+        chooser: Side,
+        rez_cost_delta: i32,
+        bonus_run_credits: u32,
+        /// `None` means any server; otherwise only these are offered — see
+        /// `Effect::PromptChooseServer::allowed_servers`.
+        allowed_servers: Option<Vec<ServerId>>,
+        /// Seeded onto the resulting `run::RunState::on_success_effect` —
+        /// see `Effect::PromptChooseServer::on_success`.
+        on_success: Option<Box<Effect>>,
+        source_card: Option<CardId>,
+        resume: PendingChoiceResume,
+    },
+}
+
+/// A snapshot of a just-concluded run, taken immediately before
+/// `GameState::active_run` is cleared so cards reacting to
+/// `Trigger::OnRunEnded` can still see what happened during it (by which
+/// point the `RunState` itself is gone). See `dispatcher::dispatch_event`'s
+/// `Trigger::OnRunEnded` arm for which conclusions record one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompletedRun {
+    pub server: ServerId,
+    /// `RunState::cards_accessed_count` at conclusion — backs
+    /// `Effect::GainCreditsPerCardAccessedThisRun` (Zahya Sadeghi).
+    pub cards_accessed: u32,
+    /// How many agendas the Runner stole during the run — backs
+    /// `EffectRequirement::StoleAgendaDuringLastRun` (AMAZE Amusements).
+    pub agendas_stolen: u32,
+    /// `RunState::persistent_trashed_upgrades` at conclusion: Root-slot
+    /// Corp cards flagged `persistent_after_trash` that the Runner trashed
+    /// *during* this run. Carried here so `Trigger::OnRunEnded` can still
+    /// fire them even though they are no longer in `CorpState::installed` —
+    /// that outliving-its-own-trash behavior is the entire point.
+    pub persistent_trashed_upgrades: Vec<CardId>,
+}
+
+impl CompletedRun {
+    /// Captures the run-scoped facts `Trigger::OnRunEnded` consumers need,
+    /// immediately before the caller clears `GameState::active_run`. Every
+    /// site that concludes a run and dispatches `OnRunEnded` goes through
+    /// here, so the three of them cannot drift apart.
+    pub fn snapshot(run: &RunState) -> Self {
+        CompletedRun {
+            server: run.server,
+            cards_accessed: run.cards_accessed_count,
+            agendas_stolen: run.agendas_stolen_this_run,
+            persistent_trashed_upgrades: run.persistent_trashed_upgrades.clone(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameState {
     pub corp: CorpState,
@@ -364,6 +763,43 @@ pub struct GameState {
     pub active_run: Option<RunState>,
     pub paid_ability_window: Option<PaidAbilityWindow>,
     pub active_trace: Option<TraceState>,
+    pub pending_prevention: Option<PendingPrevention>,
+    /// A parked `Effect::OfferPaidChoice` awaiting resolution — see
+    /// `PendingPaidChoice`'s doc comment.
+    #[serde(default)]
+    pub pending_paid_choice: Option<PendingPaidChoice>,
+    /// A parked `Effect::PresentChoice` awaiting resolution — see
+    /// `PendingDecision`'s doc comment.
+    #[serde(default)]
+    pub pending_decision: Option<PendingDecision>,
+    /// The `CardId`s `damage::apply_damage` discarded on its most recent
+    /// call — overwritten (not appended) every call, empty if nothing was
+    /// discarded (an empty deck, or `amount == 0`). Backs
+    /// `EffectRequirement::LastDamageTrashedOddCostCard` — e.g. Diviner's
+    /// subroutine, which needs to know what its own preceding `DealDamage`
+    /// (in the same `Sequence`) just discarded, information `Sequence`'s
+    /// evaluation loop doesn't otherwise thread between effects.
+    #[serde(default)]
+    pub last_discarded_cards: Vec<CardId>,
+    /// A snapshot of the most recently concluded run (its normal
+    /// `RunCompleted`/`RunJackedOut`/`RunEndedByEffect` conclusions only —
+    /// see `dispatcher::dispatch_event`'s `Trigger::OnRunEnded` arm doc
+    /// comment), set right before `active_run` is cleared. Backs
+    /// `EffectRequirement::LastRunWasOnHqOrRnD`/`StoleAgendaDuringLastRun`
+    /// and `Effect::GainCreditsPerCardAccessedThisRun` — e.g. Zahya
+    /// Sadeghi, AMAZE Amusements. Overwritten each time a run concludes;
+    /// `None` before any run has ever finished.
+    #[serde(default)]
+    pub last_completed_run: Option<CompletedRun>,
+    /// Whether `engine::advance_card`'s most recent call was the first
+    /// advancement the targeted card had ever received (`advancement_tokens
+    /// == 1` immediately after incrementing) — overwritten every call, same
+    /// "transient state field, not a threaded event payload" shape as
+    /// `last_discarded_cards`. Backs `EffectRequirement::
+    /// WasFirstAdvancementThisCard` — e.g. Weyland Consortium: Built to
+    /// Last. `false` before any card has ever been advanced.
+    #[serde(default)]
+    pub last_advancement_was_first: bool,
     /// Fixed seed for this game's deterministic pseudo-randomness (e.g.
     /// which HQ card a run accesses). Never mutated after construction —
     /// only `rng_step` advances — so replaying the same `(GameState,
@@ -376,6 +812,36 @@ pub struct GameState {
     pub rng_step: u64,
 }
 
+/// The empty starting state, every zone clear and every counter zero. This
+/// is the **one** exhaustive `GameState` literal in the crate: `new` builds
+/// on it, and test fixtures reach it via `..Default::default()`. Adding a
+/// field to `GameState` therefore still fails to compile right here, forcing
+/// a deliberate choice about its neutral value in exactly one place instead
+/// of across ~43 test literals.
+///
+/// `phase` starts at `GamePhase::Action(Side::Corp)`, matching the real
+/// game's turn order — the same value `GameState::new` has always used.
+impl Default for GameState {
+    fn default() -> Self {
+        GameState {
+            corp: CorpState::default(),
+            runner: RunnerState::default(),
+            phase: GamePhase::Action(Side::Corp),
+            active_run: None,
+            paid_ability_window: None,
+            active_trace: None,
+            pending_prevention: None,
+            pending_paid_choice: None,
+            pending_decision: None,
+            last_discarded_cards: Vec::new(),
+            last_completed_run: None,
+            last_advancement_was_first: false,
+            seed: 0,
+            rng_step: 0,
+        }
+    }
+}
+
 impl GameState {
     /// A fresh game state seeded for deterministic pseudo-randomness. Corp
     /// and Runner zones start empty and resources start at zero — real game
@@ -383,42 +849,7 @@ impl GameState {
     /// callers populate `corp`/`runner` after construction. `phase` starts at
     /// `GamePhase::Action(Side::Corp)`, matching the real game's turn order.
     pub fn new(seed: u64) -> Self {
-        GameState {
-            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
-                scored_agendas: Vec::new(),
-                resources: PlayerResources {
-                    credits: Credits(0),
-                    clicks: Clicks(0),
-                    agenda_points: AgendaPoints(0),
-                },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
-            },
-            runner: RunnerState { identity: None,
-                scored_agendas: Vec::new(),
-                resources: PlayerResources {
-                    credits: Credits(0),
-                    clicks: Clicks(0),
-                    agenda_points: AgendaPoints(0),
-                },
-                memory_units: MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
-            },
-            phase: GamePhase::Action(Side::Corp),
-            active_run: None,
-            paid_ability_window: None,
-            active_trace: None,
-            seed,
-            rng_step: 0,
-        }
+        GameState { seed, ..GameState::default() }
     }
 
     /// Whether the game has concluded. A pure query over `phase` — every
@@ -473,6 +904,7 @@ mod tests {
             base_strength: base,
             encounter_strength_buff: encounter_buff,
             turn_strength_buff: turn_buff,
+            ..Default::default()
         }
     }
 
@@ -483,21 +915,15 @@ mod tests {
 
     #[test]
     fn reset_encounter_strength_buffs_zeroes_only_encounter_buff() {
-        let mut runner = RunnerState { identity: None,
+        let mut runner = RunnerState {
             resources: PlayerResources {
                 credits: Credits(0),
                 clicks: Clicks(0),
                 agenda_points: AgendaPoints(0),
             },
             memory_units: MemoryUnits(0),
-            brain_damage: 0,
-            tags: 0,
-            grip: Vec::new(),
-            stack: Vec::new(),
             rig: vec![card("corroder", 2, 1, 3)],
-            heap: Vec::new(),
-            scored_agendas: Vec::new(),
-            link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+            ..Default::default()
         };
 
         runner.reset_encounter_strength_buffs();
@@ -508,21 +934,15 @@ mod tests {
 
     #[test]
     fn reset_turn_strength_buffs_zeroes_only_turn_buff() {
-        let mut runner = RunnerState { identity: None,
+        let mut runner = RunnerState {
             resources: PlayerResources {
                 credits: Credits(0),
                 clicks: Clicks(0),
                 agenda_points: AgendaPoints(0),
             },
             memory_units: MemoryUnits(0),
-            brain_damage: 0,
-            tags: 0,
-            grip: Vec::new(),
-            stack: Vec::new(),
             rig: vec![card("corroder", 2, 1, 3)],
-            heap: Vec::new(),
-            scored_agendas: Vec::new(),
-            link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+            ..Default::default()
         };
 
         runner.reset_turn_strength_buffs();

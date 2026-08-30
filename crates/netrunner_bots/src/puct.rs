@@ -217,14 +217,22 @@ impl PuctAgent {
         let config = PuctConfig { iterations: config.iterations.max(1), max_depth: config.max_depth.max(1), ..config };
         Self { side, seed, evaluator: Box::new(evaluator), config }
     }
-}
 
-impl BotAgent for PuctAgent {
-    fn select_action(&mut self, view: &ClientView, registry: &CardRegistry) -> PlayerAction {
-        assert!(!view.legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
-        if view.legal_actions.len() == 1 {
-            return view.legal_actions[0].clone();
-        }
+    /// Runs a full PUCT search from `view`/`registry` and returns every
+    /// root visit/value stat gathered, rather than collapsing straight to
+    /// a single chosen `PlayerAction` like `select_action` does. Exists so
+    /// callers that need the search's full visit-count distribution (e.g.
+    /// recording an AlphaZero-style policy target) don't have to duplicate
+    /// PUCT's tree-search internals to get it — `select_action` itself is
+    /// now just this plus a final `max_by`.
+    ///
+    /// Unlike `select_action`, this always runs the search even when only
+    /// one action is legal (a single-edge root's stats are still
+    /// meaningful shape-wise); callers that want `select_action`'s cheap
+    /// short-circuit should check `view.legal_actions.len()` themselves
+    /// first.
+    pub fn search(&mut self, view: &ClientView, registry: &CardRegistry) -> PuctSearchStats {
+        assert!(!view.legal_actions.is_empty(), "PuctAgent::search requires at least one legal action");
 
         let mut rng = StdRng::seed_from_u64(self.seed);
         self.seed = self.seed.wrapping_add(1);
@@ -241,13 +249,58 @@ impl BotAgent for PuctAgent {
         // side-filtered `view.legal_actions` is the authoritative
         // candidate list, matching `MctsAgent::new_root`'s same choice to
         // trust it over recomputing legality.
-        view.legal_actions
+        let mut visit_counts = vec![0u32; ActionSpace::SIZE];
+        let actions: Vec<ActionStat> = view
+            .legal_actions
             .iter()
-            .filter_map(|action| root.stats_for(action).map(|(visits, total_value)| (action, visits, total_value)))
-            .max_by(|(_, a_visits, a_value), (_, b_visits, b_value)| {
-                a_visits.cmp(b_visits).then_with(|| a_value.partial_cmp(b_value).unwrap_or(std::cmp::Ordering::Equal))
+            .filter_map(|action| {
+                let index = ActionSpace::index_of(&root.state, action)?;
+                let (visits, total_value) = root.stats_for(action)?;
+                visit_counts[index] = visits;
+                Some(ActionStat { index, action: action.clone(), visits, total_value })
             })
-            .map(|(action, _, _)| action.clone())
+            .collect();
+
+        PuctSearchStats { visit_counts, actions }
+    }
+}
+
+/// One root edge's outcome from `PuctAgent::search`: which `ActionSpace`
+/// index/`PlayerAction` it is, and how many visits/how much total value
+/// PUCT accumulated on it.
+#[derive(Debug, Clone)]
+pub struct ActionStat {
+    pub index: usize,
+    pub action: PlayerAction,
+    pub visits: u32,
+    pub total_value: f64,
+}
+
+/// Full result of one `PuctAgent::search` call.
+#[derive(Debug, Clone)]
+pub struct PuctSearchStats {
+    /// Length `ActionSpace::SIZE`; zero everywhere except the indices
+    /// covered by `actions` below.
+    pub visit_counts: Vec<u32>,
+    /// One entry per `view.legal_actions` that the root actually searched.
+    pub actions: Vec<ActionStat>,
+}
+
+impl BotAgent for PuctAgent {
+    fn select_action(&mut self, view: &ClientView, registry: &CardRegistry) -> PlayerAction {
+        assert!(!view.legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
+        if view.legal_actions.len() == 1 {
+            return view.legal_actions[0].clone();
+        }
+
+        let stats = self.search(view, registry);
+        stats
+            .actions
+            .iter()
+            .max_by(|a, b| {
+                a.visits.cmp(&b.visits).then_with(|| a.total_value.partial_cmp(&b.total_value).unwrap_or(std::cmp::Ordering::Equal))
+            })
+            .map(|stat| stat.action.clone())
             .unwrap_or_else(|| view.legal_actions[0].clone())
     }
 }
@@ -256,68 +309,36 @@ impl BotAgent for PuctAgent {
 mod tests {
     use super::*;
     use crate::policy::UniformPolicyEvaluator;
-    use netrunner_core::dsl::{Card, CardId, CardType};
+    use netrunner_core::dsl::{CardDefinition, CardId, CardType};
     use netrunner_core::rules::{
-        legal_actions, AgendaPoints, Clicks, CorpState, Credits, GamePhase, InstallSlot, InstalledCard, MemoryUnits,
+        legal_actions, AgendaPoints, Clicks, CorpState, Credits, GamePhase, InstalledCard, MemoryUnits,
         PlayerResources, RunnerState, ServerId,
     };
     use netrunner_core::view::build_client_view;
 
-    fn blank_card(id: &str, card_type: CardType) -> Card {
-        Card {
+    fn blank_card(id: &str, card_type: CardType) -> CardDefinition {
+        CardDefinition {
             id: CardId(id.to_string()),
             title: id.to_string(),
             side: Side::Corp,
             card_type,
-            cost: 0,
-            triggers: Vec::new(),
-            abilities: Vec::new(),
-            trash_cost: None,
-            steal_cost: None,
-            advancement_requirement: None,
-            agenda_points: None,
-            min_deck_size: None,
-            strength: None,
-            subroutines: Vec::new(),
-            interactive_on_access: None,
-            subtypes: Vec::new(),
-            play_requirement: None,
-            recurring_credits: None,
-            first_install_discount: None,
+            is_playable: true,
+            ..Default::default()
         }
     }
 
     fn empty_runner() -> RunnerState {
         RunnerState {
-            identity: None,
-            scored_agendas: Vec::new(),
             resources: PlayerResources { credits: Credits(0), clicks: Clicks(0), agenda_points: AgendaPoints(0) },
             memory_units: MemoryUnits(0),
-            brain_damage: 0,
-            tags: 0,
-            grip: Vec::new(),
-            stack: Vec::new(),
-            rig: Vec::new(),
-            heap: Vec::new(),
-            link_strength: 0,
-            first_hq_run_used_this_turn: false,
-            first_install_discount_used_this_turn: false,
+            ..Default::default()
         }
     }
 
     fn empty_corp() -> CorpState {
         CorpState {
-            identity: None,
-            bad_publicity: 0,
-            first_install_used_this_turn: false,
-            recurring_credits: 0,
-            recurring_credits_max: 0,
-            scored_agendas: Vec::new(),
             resources: PlayerResources { credits: Credits(0), clicks: Clicks(0), agenda_points: AgendaPoints(0) },
-            hq: Vec::new(),
-            r_and_d: Vec::new(),
-            archives: Vec::new(),
-            installed: Vec::new(),
+            ..Default::default()
         }
     }
 
@@ -378,9 +399,8 @@ mod tests {
         state.corp.installed = vec![InstalledCard {
             card: CardId("winning_agenda".to_string()),
             server: ServerId::Remote(0),
-            slot: InstallSlot::Root,
-            rezzed: false,
             advancement_tokens: 3,
+            ..Default::default()
         }];
 
         let view = build_client_view(&state, &registry, Side::Corp);

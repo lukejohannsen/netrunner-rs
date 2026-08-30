@@ -1,0 +1,23 @@
+{
+  "id": "overclock",
+  "title": "Overclock",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 5
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30029,
+  "is_playable": true
+}

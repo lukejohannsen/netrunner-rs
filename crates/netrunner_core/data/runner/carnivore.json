@@ -1,0 +1,40 @@
+{
+  "id": "carnivore",
+  "title": "Carnivore",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "requirement": {
+        "And": [
+          {
+            "OncePerTurn": "carnivore"
+          },
+          "CurrentlyAccessingACard"
+        ]
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": "Any",
+          "min": 2,
+          "max": 2,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "OwnHeap",
+          "then": "TrashCurrentlyAccessedCard"
+        }
+      }
+    }
+  ],
+  "memory_bonus": 1,
+  "subtypes": [
+    "Console"
+  ],
+  "numeric_id": 30003,
+  "is_playable": true
+}

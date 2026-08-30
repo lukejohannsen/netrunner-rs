@@ -1,0 +1,25 @@
+{
+  "id": "snare",
+  "title": "Snare!",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 4,
+  "trash_cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            3
+          ]
+        },
+        {
+          "GiveTags": 1
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

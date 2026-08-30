@@ -1,0 +1,11 @@
+{
+  "id": "nbn_making_news",
+  "title": "NBN: Making News",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "recurring_credits": 2,
+  "triggers": [],
+  "is_playable": true
+}

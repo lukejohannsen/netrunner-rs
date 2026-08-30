@@ -77,6 +77,16 @@ pub fn encode_observation(state: &GameState, registry: &CardRegistry, side: Side
     encode_view(&view)
 }
 
+/// Alias for `encode_observation`, named to match the `to_observation_vector`
+/// shape a caller might expect. A free function, not a `GameState` method —
+/// encoding needs a `CardRegistry` and `Side`, and keeping RL-specific
+/// encoding out of `netrunner_core::GameState` itself is the whole point of
+/// this module living here rather than in `netrunner_core` (see this
+/// module's doc comment).
+pub fn to_observation_vector(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<f32> {
+    encode_observation(state, registry, side)
+}
+
 fn encode_view(view: &ClientView) -> Vec<f32> {
     let (self_credits, self_clicks, self_agenda_points, opp_credits, opp_clicks, opp_agenda_points) = match view.side {
         Side::Corp => (

@@ -1,0 +1,53 @@
+{
+  "id": "fermenter",
+  "title": "Fermenter",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "subtypes": [
+    "Virus"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCreditsPerCounter": {
+              "side": "Runner",
+              "credits_per_counter": 2
+            }
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "counter_kind": "Virus",
+  "numeric_id": 30007,
+  "is_playable": true
+}

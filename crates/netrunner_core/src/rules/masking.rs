@@ -2,9 +2,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::dsl::{CardId, Cost, IceType};
 use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
-use crate::rules::state::{
-    CorpState, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
-    PlayerResources, RunnerState, Side, TraceState,
+use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
+    PendingPrevention, PlayerResources, RunnerState, Side, TraceState,
 };
 
 /// A card zone whose contents are secret to everyone but its owner. The
@@ -38,8 +37,11 @@ pub struct PublicCorpState {
     pub resources: PlayerResources,
     pub hq: MaskedZone,
     pub r_and_d: MaskedZone,
-    /// Never masked — Archives is a fully public zone in the real game.
-    pub archives: Vec<CardId>,
+    /// Partially masked: the Runner always sees how many cards are in
+    /// Archives and which way up each one is, but a facedown card's
+    /// identity is hidden from them. The Corp always sees its own zone in
+    /// full. See `PublicArchivedCard`.
+    pub archives: Vec<PublicArchivedCard>,
     pub installed: Vec<PublicInstalledCard>,
     /// Never masked — scored Agendas sit in a fully public score area.
     pub scored_agendas: Vec<CardId>,
@@ -146,7 +148,8 @@ pub struct PublicRunState {
 /// `paid_ability_window` is likewise never masked — both players always see
 /// whose priority it is and the current pass count. `active_trace` is
 /// likewise never masked — both sides always see the trace strength and
-/// whose bid is pending, matching the real game.
+/// whose bid is pending, matching the real game. `pending_prevention` gets
+/// the same treatment, same rationale.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicGameState {
     pub corp: PublicCorpState,
@@ -155,6 +158,12 @@ pub struct PublicGameState {
     pub active_run: Option<PublicRunState>,
     pub paid_ability_window: Option<PaidAbilityWindow>,
     pub active_trace: Option<TraceState>,
+    pub pending_prevention: Option<PendingPrevention>,
+    /// Fully public — a pending paid choice/decision (who's offered it, its
+    /// cost/options) carries no hidden information, same treatment as
+    /// `active_trace`/`pending_prevention`.
+    pub pending_paid_choice: Option<crate::rules::state::PendingPaidChoice>,
+    pub pending_decision: Option<crate::rules::state::PendingDecision>,
 }
 
 pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState {
@@ -165,6 +174,9 @@ pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState
         active_run: state.active_run.as_ref().map(|run| mask_run_state(run, player)),
         paid_ability_window: state.paid_ability_window.clone(),
         active_trace: state.active_trace.clone(),
+        pending_prevention: state.pending_prevention.clone(),
+        pending_paid_choice: state.pending_paid_choice.clone(),
+        pending_decision: state.pending_decision.clone(),
     }
 }
 
@@ -246,12 +258,31 @@ fn mask_installed_card(installed: &InstalledCard, owner_view: bool) -> PublicIns
     }
 }
 
+/// One Archives card as seen by a given viewer. `facedown` is public to
+/// both sides — everyone can see the shape of the pile — but `card` is
+/// `None` for a facedown card viewed by the Runner, who has never seen it.
+/// The Corp, looking at its own zone, always gets `Some`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicArchivedCard {
+    /// `None` only when the card is facedown and the viewer is the Runner.
+    pub card: Option<CardId>,
+    pub facedown: bool,
+}
+
+fn mask_archived_card(archived: &ArchivedCard, owner_view: bool) -> PublicArchivedCard {
+    let visible = owner_view || !archived.facedown;
+    PublicArchivedCard {
+        card: visible.then(|| archived.card.clone()),
+        facedown: archived.facedown,
+    }
+}
+
 fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
     PublicCorpState {
         resources: corp.resources.clone(),
         hq: mask_zone(&corp.hq, owner_view),
         r_and_d: mask_zone(&corp.r_and_d, owner_view),
-        archives: corp.archives.clone(),
+        archives: corp.archives.iter().map(|a| mask_archived_card(a, owner_view)).collect(),
         installed: corp
             .installed
             .iter()
@@ -262,6 +293,17 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
     }
 }
 
+/// Deliberately still `effective_strength()`, not `ability::
+/// computed_runner_strength` — `mask_state_for_player`'s whole call chain has
+/// no `CardRegistry` parameter today (a much wider signature change than
+/// this milestone's actual cards justify: it would ripple into every
+/// consumer crate's `mask_state_for_player` call site). A card with a
+/// `StrengthModifier` (e.g. Echelon) therefore displays its strength here
+/// without that live bonus — the *mechanical* result (`Effect::
+/// BreakSubroutines`'s strength contest, which does call
+/// `computed_runner_strength`) is unaffected and always correct; only this
+/// masked-view number can lag behind it. Revisit if a real UI consumer ever
+/// needs the displayed number to match.
 fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
     PublicInstalledRunnerCard { card: card.card.clone(), current_strength: card.effective_strength() }
 }
@@ -289,33 +331,27 @@ mod tests {
     fn game_state(corp: CorpState) -> GameState {
         GameState {
             corp,
-            runner: RunnerState { identity: None,
+            runner: RunnerState {
                 resources: PlayerResources {
                     credits: Credits(0),
                     clicks: Clicks(0),
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                scored_agendas: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(Side::Corp),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
     }
 
     fn corp_state_with_cards() -> CorpState {
-        CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
+        CorpState {
             resources: PlayerResources {
                 credits: Credits(5),
                 clicks: Clicks(3),
@@ -323,14 +359,12 @@ mod tests {
             },
             hq: vec![CardId("hedge_fund".to_string())],
             r_and_d: vec![CardId("ice_wall".to_string()), CardId("enigma".to_string())],
-            archives: vec![CardId("cyberdex_trial".to_string())],
+            archives: vec![ArchivedCard::facedown(CardId("cyberdex_trial".to_string()))],
             installed: vec![
                 InstalledCard {
                     card: CardId("ice_wall".to_string()),
-                    server: ServerId::Hq,
                     slot: InstallSlot::Ice,
-                    rezzed: false,
-                    advancement_tokens: 0,
+                    ..Default::default()
                 },
                 InstalledCard {
                     card: CardId("enigma".to_string()),
@@ -338,9 +372,11 @@ mod tests {
                     slot: InstallSlot::Ice,
                     rezzed: true,
                     advancement_tokens: 2,
+                    ..Default::default()
                 },
             ],
             scored_agendas: vec![CardId("hostile_takeover".to_string())],
+            ..Default::default()
         }
     }
 
@@ -403,26 +439,24 @@ mod tests {
     }
 
     fn runner_state_with_cards() -> RunnerState {
-        RunnerState { identity: None,
+        RunnerState {
             resources: PlayerResources {
                 credits: Credits(5),
                 clicks: Clicks(3),
                 agenda_points: AgendaPoints(0),
             },
             memory_units: MemoryUnits(4),
-            brain_damage: 0,
-            tags: 0,
             grip: vec![CardId("sure_gamble".to_string())],
             stack: vec![CardId("modded".to_string()), CardId("clone_chip".to_string())],
             rig: vec![InstalledRunnerCard {
                 card: CardId("gordian_blade".to_string()),
                 base_strength: 2,
                 encounter_strength_buff: 1,
-                turn_strength_buff: 0,
+                ..Default::default()
             }],
             heap: vec![CardId("easy_mark".to_string())],
             scored_agendas: vec![CardId("priority_requisition".to_string())],
-            link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+            ..Default::default()
         }
     }
 
@@ -434,6 +468,7 @@ mod tests {
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
@@ -467,14 +502,30 @@ mod tests {
     }
 
     #[test]
-    fn corp_archives_is_never_masked() {
+    fn a_facedown_archives_card_hides_its_identity_from_the_runner_but_not_the_corp() {
         let state = game_state(corp_state_with_cards());
         let masked_for_corp = mask_state_for_player(&state, Side::Corp);
         let masked_for_runner = mask_state_for_player(&state, Side::Runner);
 
-        let expected = vec![CardId("cyberdex_trial".to_string())];
-        assert_eq!(masked_for_corp.corp.archives, expected);
-        assert_eq!(masked_for_runner.corp.archives, expected);
+        // The Corp always sees its own zone in full.
+        assert_eq!(
+            masked_for_corp.corp.archives,
+            vec![PublicArchivedCard { card: Some(CardId("cyberdex_trial".to_string())), facedown: true }]
+        );
+        // The Runner sees the pile's shape — one card, facedown — but never
+        // learns which card it is.
+        assert_eq!(masked_for_runner.corp.archives, vec![PublicArchivedCard { card: None, facedown: true }]);
+    }
+
+    #[test]
+    fn a_faceup_archives_card_is_visible_to_both_sides() {
+        let mut corp = corp_state_with_cards();
+        corp.archives = vec![ArchivedCard::faceup(CardId("hedge_fund".to_string()))];
+        let state = game_state(corp);
+
+        let expected = vec![PublicArchivedCard { card: Some(CardId("hedge_fund".to_string())), facedown: false }];
+        assert_eq!(mask_state_for_player(&state, Side::Corp).corp.archives, expected);
+        assert_eq!(mask_state_for_player(&state, Side::Runner).corp.archives, expected);
     }
 
     #[test]
@@ -594,13 +645,9 @@ mod tests {
             server,
             phase: if access_state.is_some() { RunPhase::AccessingCard } else { RunPhase::ApproachIce },
             ice,
-            position: 0,
             access_state,
             jack_out_permitted: true,
-            bad_publicity_credits: 0,
-            additional_rd_access: 0,
-            additional_hq_access: 0,
-            access_replacement: None,
+            ..Default::default()
         }
     }
 
@@ -641,9 +688,7 @@ mod tests {
     #[test]
     fn accessed_hq_card_identity_is_hidden_from_corp_but_visible_to_runner() {
         let access = AccessState {
-            server: ServerId::Hq,
             unaccessed_cards: vec![CardId("agenda".to_string())],
-            resolved_cards: Vec::new(),
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("hedge_fund".to_string()),
                 can_trash: false,
@@ -651,6 +696,7 @@ mod tests {
                 mandatory_steal: false,
                 steal_cost: None,
             },
+            ..Default::default()
         };
         let run = run_state(ServerId::Hq, Vec::new(), Some(access));
         let state = state_with_run(run);
@@ -673,8 +719,6 @@ mod tests {
     fn accessed_archives_card_identity_is_visible_to_both_sides() {
         let access = AccessState {
             server: ServerId::Archives,
-            unaccessed_cards: Vec::new(),
-            resolved_cards: Vec::new(),
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("cyberdex_trial".to_string()),
                 can_trash: false,
@@ -682,6 +726,7 @@ mod tests {
                 mandatory_steal: false,
                 steal_cost: None,
             },
+            ..Default::default()
         };
         let run = run_state(ServerId::Archives, Vec::new(), Some(access));
         let state = state_with_run(run);

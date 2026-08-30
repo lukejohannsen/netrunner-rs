@@ -1,0 +1,35 @@
+{
+  "id": "leech",
+  "title": "Leech",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "subtypes": [
+    "Virus"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRunOnCentralServer",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "effect": {
+        "ModifyStrength": -1
+      }
+    }
+  ],
+  "counter_kind": "Virus",
+  "numeric_id": 30008,
+  "is_playable": true
+}

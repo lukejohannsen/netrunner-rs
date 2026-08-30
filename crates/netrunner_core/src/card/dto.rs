@@ -45,6 +45,14 @@ pub struct NetrunnerDbCardDto {
     pub base_link: Option<i32>,
     #[serde(default)]
     pub uniqueness: Option<bool>,
+    /// Illustrator credit — captured (unlike most of this DTO's deliberately
+    /// undeclared fields) because `CardDefinition::artist` sources from it.
+    #[serde(default)]
+    pub illustrator: Option<String>,
+    /// Per-card max-copies-in-a-deck override — captured because
+    /// `CardDefinition::deck_limit` sources from it.
+    #[serde(default)]
+    pub deck_limit: Option<i32>,
 }
 
 #[cfg(test)]
@@ -115,7 +123,7 @@ mod tests {
     }
 
     #[test]
-    fn ignores_unrecognized_fields() {
+    fn ignores_fields_not_yet_modeled_but_captures_illustrator_and_deck_limit() {
         let json = r#"{
             "code": "30002",
             "title": "Wildcat Strike",
@@ -125,11 +133,14 @@ mod tests {
             "pack_code": "sg",
             "cost": 2,
             "illustrator": "David Lei",
+            "deck_limit": 3,
             "flavor": "flavor text",
             "images": { "large": "https://example.com/x.png" }
         }"#;
 
         let dto: NetrunnerDbCardDto = serde_json::from_str(json).expect("valid card JSON");
         assert_eq!(dto.cost, Some(2));
+        assert_eq!(dto.illustrator.as_deref(), Some("David Lei"));
+        assert_eq!(dto.deck_limit, Some(3));
     }
 }

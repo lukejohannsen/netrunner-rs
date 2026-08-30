@@ -1,0 +1,43 @@
+{
+  "id": "echelon",
+  "title": "Echelon",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 0,
+  "memory_cost": 1,
+  "strength_modifier": {
+    "PerInstalledIcebreaker": 1
+  },
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Sentry"
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      }
+    }
+  ],
+  "numeric_id": 30025,
+  "is_playable": true
+}

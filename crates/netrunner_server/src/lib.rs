@@ -14,5 +14,5 @@ pub mod match_session;
 pub mod net;
 pub mod protocol;
 
-pub use match_session::{MatchSession, PlayerSlot};
+pub use match_session::{classify_end_reason, MatchSession, PlayerSlot};
 pub use protocol::{ClientMessage, GameEndReason, ServerMessage};

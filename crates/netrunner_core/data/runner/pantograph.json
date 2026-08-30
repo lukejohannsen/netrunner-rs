@@ -1,0 +1,37 @@
+{
+  "id": "pantograph",
+  "title": "Pantograph",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "memory_bonus": 1,
+  "subtypes": [
+    "Console"
+  ],
+  "numeric_id": 30023,
+  "is_playable": true
+}

@@ -1,0 +1,18 @@
+{
+  "id": "wall_of_static",
+  "title": "Wall of Static",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 3,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [],
+  "is_playable": true
+}

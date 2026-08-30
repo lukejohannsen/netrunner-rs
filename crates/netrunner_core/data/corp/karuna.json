@@ -1,0 +1,38 @@
+{
+  "id": "karuna",
+  "title": "Karunā",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 4,
+  "strength": 3,
+  "subroutines": [
+    {
+      "text": "Do 2 net damage. The Runner may jack out.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Net",
+              2
+            ]
+          },
+          "PermitJackOut"
+        ]
+      }
+    },
+    {
+      "text": "Do 2 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          2
+        ]
+      }
+    }
+  ],
+  "triggers": [],
+  "numeric_id": 30047,
+  "is_playable": true
+}

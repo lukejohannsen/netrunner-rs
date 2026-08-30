@@ -7,3 +7,17 @@ edition = "2024"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+
+[features]
+# Adds `cards::load_registry_from_dirs`, a filesystem card-JSON loader for
+# EXTERNAL card directories (user homebrew, custom sets, iterating on card
+# JSON without recompiling). The first-party sets do not need it: they are
+# embedded at compile time by `build.rs` and registered through
+# `cards::register_playable_cards`, so the default build ships every
+# playable card with no I/O at all.
+#
+# Off by default so the crate's default build stays exactly as I/O-free as
+# AGENTS.md's "netrunner_core MUST NOT depend on... any I/O framework" rule
+# intends — `std::fs` is standard library, not a framework, and only ever
+# compiled in when a consumer crate opts into this feature.
+fs-loader = []

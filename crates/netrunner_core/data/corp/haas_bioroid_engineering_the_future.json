@@ -1,0 +1,23 @@
+{
+  "id": "haas_bioroid_engineering_the_future",
+  "title": "Haas-Bioroid: Engineering the Future",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "requirement": "FirstInstallThisTurn",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

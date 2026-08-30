@@ -1,0 +1,33 @@
+{
+  "id": "jinteki_personal_evolution",
+  "title": "Jinteki: Personal Evolution",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "effects": [
+        {
+          "DealDamage": [
+            "Net",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "is_playable": true
+}

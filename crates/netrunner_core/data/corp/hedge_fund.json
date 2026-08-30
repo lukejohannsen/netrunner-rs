@@ -1,0 +1,22 @@
+{
+  "id": "hedge_fund",
+  "title": "Hedge Fund",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            9
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30075,
+  "is_playable": true
+}

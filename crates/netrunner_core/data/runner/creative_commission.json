@@ -1,0 +1,32 @@
+{
+  "id": "creative_commission",
+  "title": "Creative Commission",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            5
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "RunnerClicksAtLeast": 1
+            },
+            "effect": {
+              "LoseClicks": 1
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30020,
+  "is_playable": true
+}

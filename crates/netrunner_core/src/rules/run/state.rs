@@ -67,7 +67,7 @@ pub struct EncounteredSubroutine {
 pub struct RunIce {
     pub card_id: CardId,
     pub current_strength: i32,
-    /// This ICE's subtype, seeded from `Card::card_type`'s `CardType::Ice(_)`
+    /// This ICE's subtype, seeded from `CardDefinition::card_type`'s `CardType::Ice(_)`
     /// at `engine::build_run_ice` — the data `Effect::BreakSubroutines`'s
     /// `restrict_to` gate compares against. Defaults to `IceType::Barrier`
     /// for an unregistered card (same leniency as `current_strength`'s `0`
@@ -138,7 +138,34 @@ pub struct AccessState {
     pub unaccessed_cards: Vec<CardId>,
     /// Cards already fully resolved (stolen/trashed/passed) this access.
     pub resolved_cards: Vec<CardId>,
+    /// The card currently being presented to the Runner, set *before* its
+    /// `Trigger::OnAccessed` reaction is dispatched and therefore before
+    /// `phase` becomes the matching `PendingChoice`. Exists so a card that
+    /// trashes itself out of that very trigger (an ambush like Shock!) is
+    /// still known to have been seen by the Runner, and so lands faceup in
+    /// Archives — `phase` alone can't answer that, since it's still the
+    /// placeholder at dispatch time. `None` outside that window.
+    #[serde(default)]
+    pub currently_accessing: Option<CardId>,
     pub phase: AccessPhase,
+}
+
+/// Every field at its neutral value, for test fixtures — see
+/// `rules::state::InstalledCard`'s `Default` for the full rationale.
+/// `server` and `phase` have no meaningful neutral value (every real access
+/// targets a specific server in a specific phase); the placeholders exist
+/// only so `Default` can be implemented, and any caller that cares must
+/// override them. Production sites stay exhaustive.
+impl Default for AccessState {
+    fn default() -> Self {
+        Self {
+            server: ServerId::Hq,
+            unaccessed_cards: Vec::new(),
+            resolved_cards: Vec::new(),
+            currently_accessing: None,
+            phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
+        }
+    }
 }
 
 /// A run in progress (or just concluded) — the sub-state-machine embedded in
@@ -194,4 +221,103 @@ pub struct RunState {
     /// wins) — no error, since only ever one replacement can matter per
     /// access and this can only occur from malformed card authoring.
     pub access_replacement: Option<(ServerId, Effect)>,
+    /// How many cards this run's access presented in total, set once by
+    /// `run::access::access_server` when it computes the accessed set (`0`
+    /// if the run hasn't reached access yet, or accessed an empty zone).
+    /// Read (not decremented) when the run concludes — see `GameState::
+    /// last_completed_run`/`Effect::GainCreditsPerCardAccessedThisRun` —
+    /// same "naturally discarded when this `RunState` is dropped/replaced"
+    /// lifecycle as `additional_rd_access`.
+    #[serde(default)]
+    pub cards_accessed_count: u32,
+    /// A per-credit-cost delta applied to the Corp's rez cost for every
+    /// piece of ICE rezzed while this run is active (see `engine::rez_ice`'s
+    /// cost computation) — e.g. Tread Lightly's "+3 credits" for the
+    /// duration of the run it initiates. Naturally discarded when this
+    /// `RunState` is dropped/replaced, same lifecycle as
+    /// `bad_publicity_credits`. Usually `0`.
+    #[serde(default)]
+    pub ice_rez_cost_modifier: i32,
+    /// An effect to evaluate if and when this run succeeds — e.g.
+    /// Jailbreak's "If successful, draw 1 card and ... access 1 additional
+    /// card". Seeded by `pending_choice::resolve_choose_server` (with any
+    /// `AddAdditionalAccess` already rewritten to the chosen server) and
+    /// evaluated once by `dispatcher`'s `GameEvent::RunSucceeded` arm,
+    /// which fires *before* access is computed — so an access bonus granted
+    /// here still applies to that same breach. Exists because an Event card
+    /// is never installed and so can't carry a `Trigger::OnSuccessfulRun`
+    /// of its own the way an installed card (e.g. Red Team) can. `None` for
+    /// every ordinary run. Naturally discarded when this `RunState` is
+    /// dropped/replaced, same lifecycle as `bad_publicity_credits`.
+    #[serde(default)]
+    pub on_success_effect: Option<Box<Effect>>,
+    /// A temporary Runner credit pool for this run only, set once at run
+    /// start by whatever initiated it (e.g. Overclock's "place 5 credits on
+    /// this event, then run any server — you can spend hosted credits
+    /// during that run"), spendable via `ability::pay_cost`'s `Cost::
+    /// Credits` arm the same way `bad_publicity_credits` already is.
+    /// Naturally discarded when this `RunState` is dropped/replaced.
+    /// Usually `0`.
+    #[serde(default)]
+    pub bonus_run_credits: u32,
+    /// Blocks `PlayerAction::StealAgenda`/`TrashAccessedCard` for the
+    /// remainder of this run once set (`Effect::
+    /// PreventStealAndTrashForRemainderOfRun`) — e.g. Ansel 1.0's third
+    /// subroutine. Naturally discarded when this `RunState` is
+    /// dropped/replaced, same lifecycle as `bonus_run_credits`.
+    #[serde(default)]
+    pub runner_cannot_steal_or_trash: bool,
+    /// How many agendas the Runner has stolen during this run
+    /// (`run::access::resolve_steal`). Snapshotted into
+    /// `state::CompletedRun::agendas_stolen` when the run concludes, since
+    /// `Trigger::OnRunEnded` fires after this `RunState` is gone — backs
+    /// AMAZE Amusements' "if the Runner stole any agendas during that run".
+    #[serde(default)]
+    pub agendas_stolen_this_run: u32,
+    /// Root-slot Corp cards flagged `CardDefinition::persistent_after_trash`
+    /// that were trashed during this run while it was running against their
+    /// own server — e.g. AMAZE Amusements, whose ability explicitly still
+    /// applies "for the remainder of this run" after the Runner trashes it
+    /// on access. Snapshotted into `state::CompletedRun` at conclusion so
+    /// `Trigger::OnRunEnded` can fire them from the registry even though
+    /// they have left `CorpState::installed`. Naturally discarded when this
+    /// `RunState` is dropped/replaced, so the persistence cannot leak into
+    /// a later run.
+    #[serde(default)]
+    pub persistent_trashed_upgrades: Vec<CardId>,
+}
+
+/// Every field at its neutral value, for test fixtures — see
+/// `rules::state::InstalledCard`'s `Default` for the full rationale. This is
+/// the struct that motivated M10.5: it has absorbed a new field in five
+/// consecutive milestones, and before this impl every one of those additions
+/// broke ~97 test literals.
+///
+/// `server` and `phase` have no meaningful neutral value — every real run
+/// targets a chosen server and starts at `Initiation`. The placeholders exist
+/// only so `Default` can be implemented; any caller that cares must override
+/// them. The real run constructors in `run::engine` deliberately stay
+/// exhaustive so the compiler keeps forcing a decision about each new field.
+impl Default for RunState {
+    fn default() -> Self {
+        Self {
+            server: ServerId::Hq,
+            phase: RunPhase::Initiation,
+            ice: Vec::new(),
+            position: 0,
+            access_state: None,
+            jack_out_permitted: false,
+            bad_publicity_credits: 0,
+            additional_rd_access: 0,
+            additional_hq_access: 0,
+            access_replacement: None,
+            cards_accessed_count: 0,
+            ice_rez_cost_modifier: 0,
+            bonus_run_credits: 0,
+            runner_cannot_steal_or_trash: false,
+            agendas_stolen_this_run: 0,
+            persistent_trashed_upgrades: Vec::new(),
+            on_success_effect: None,
+        }
+    }
 }

@@ -1,0 +1,35 @@
+{
+  "id": "whitespace",
+  "title": "Whitespace",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 2,
+  "strength": 0,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "The Runner loses 3 credits.",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          3
+        ]
+      }
+    },
+    {
+      "text": "If the Runner has 6 credits or less, end the run.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "RunnerCreditsAtMost": 6
+          },
+          "effect": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "numeric_id": 30074,
+  "is_playable": true
+}

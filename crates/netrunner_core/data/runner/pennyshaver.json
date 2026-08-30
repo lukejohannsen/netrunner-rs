@@ -1,0 +1,41 @@
+{
+  "id": "pennyshaver",
+  "title": "Pennyshaver",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "AddCounters": 1
+          },
+          {
+            "TakeAllCountersAsCredits": "Runner"
+          }
+        ]
+      }
+    }
+  ],
+  "memory_bonus": 1,
+  "subtypes": [
+    "Console"
+  ],
+  "numeric_id": 30014,
+  "is_playable": true
+}

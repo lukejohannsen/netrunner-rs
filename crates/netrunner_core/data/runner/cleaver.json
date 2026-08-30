@@ -1,0 +1,40 @@
+{
+  "id": "cleaver",
+  "title": "Cleaver",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 3,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 2
+          },
+          "restrict_to": "Barrier"
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 1,
+          "duration": "Encounter"
+        }
+      }
+    }
+  ],
+  "memory_cost": 1,
+  "numeric_id": 30006,
+  "is_playable": true
+}

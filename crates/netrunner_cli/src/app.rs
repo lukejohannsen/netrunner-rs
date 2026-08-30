@@ -116,6 +116,40 @@ impl App {
     }
 }
 
+/// What `tui::{draw_header, draw_board, draw_actions}` need to render one
+/// frame — implemented by `App` (the remote/channel-backed path) and by
+/// `tui::LocalUiState` (the local `netrunner_single_player`-backed path),
+/// so both share the same rendering code instead of duplicating it.
+pub trait RenderableView {
+    fn registry(&self) -> &CardRegistry;
+    fn human_side(&self) -> Side;
+    fn view(&self) -> Option<&ClientView>;
+    fn selected(&self) -> usize;
+    fn legal_action_labels(&self) -> Vec<String>;
+}
+
+impl RenderableView for App {
+    fn registry(&self) -> &CardRegistry {
+        &self.registry
+    }
+
+    fn human_side(&self) -> Side {
+        self.human_side
+    }
+
+    fn view(&self) -> Option<&ClientView> {
+        self.view.as_ref()
+    }
+
+    fn selected(&self) -> usize {
+        self.selected
+    }
+
+    fn legal_action_labels(&self) -> Vec<String> {
+        self.legal_actions().iter().map(|action| describe_action(action, &self.registry)).collect()
+    }
+}
+
 /// Human-readable label for a `PlayerAction`, resolving `CardId`s to
 /// registry titles where available.
 pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String {
@@ -138,8 +172,15 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::PlayOperation { card_id } => format!("Play {}", title(card_id)),
         PlayerAction::InstallHardware { card_id } => format!("Install {}", title(card_id)),
         PlayerAction::InstallProgram { card_id, .. } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallResource { card_id } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallProgramOnIce { card_id, host_ice_id, .. } => {
+            format!("Install {} onto {}", title(card_id), title(host_ice_id))
+        }
         PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
             format!("Break subroutine {subroutine_index} on {}", title(ice_id))
+        }
+        PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index } => {
+            format!("Break subroutine {subroutine_index} on {} (spend a click)", title(ice_id))
         }
         PlayerAction::EndTurn => "End turn".to_string(),
         PlayerAction::DiscardCard { card_id } => format!("Discard {}", title(card_id)),
@@ -161,6 +202,13 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::PassPriority { side } => format!("Pass priority ({side:?})"),
         PlayerAction::SubmitCorpTraceBid { amount } => format!("Bid {amount} (Corp trace)"),
         PlayerAction::SubmitRunnerTraceBid { amount } => format!("Bid {amount} (Runner trace)"),
+        PlayerAction::AcceptPendingPaidChoice { cost_option_index: None } => "Accept".to_string(),
+        PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(i) } => format!("Accept (option {i})"),
+        PlayerAction::DeclinePendingPaidChoice => "Decline".to_string(),
+        PlayerAction::ResolvePendingChoice { option_index } => format!("Choose option {option_index}"),
+        PlayerAction::ToggleCardSelection { card_id } => format!("Toggle selection of {}", title(card_id)),
+        PlayerAction::ConfirmCardSelection => "Confirm selection".to_string(),
+        PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?}"),
     }
 }
 

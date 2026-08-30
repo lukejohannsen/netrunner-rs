@@ -1,0 +1,41 @@
+{
+  "id": "spin_doctor",
+  "title": "Spin Doctor",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "RemoveSelfFromGame",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": "Any",
+          "min": 0,
+          "max": 2,
+          "reveal": false,
+          "shuffle_after": true,
+          "destination": "OwnRAndD"
+        }
+      }
+    }
+  ],
+  "numeric_id": 30053,
+  "is_playable": true
+}

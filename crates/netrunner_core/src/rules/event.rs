@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{BoostDuration, CardId, DamageType, Effect};
+use crate::dsl::{BoostDuration, CardId, CardTarget, DamageType, Effect};
 use crate::rules::run::ServerId;
 use crate::rules::state::Side;
 
@@ -20,15 +20,27 @@ pub enum GameEvent {
     RunCompleted { server: ServerId },
     CardInstalled { side: Side, card: CardId, server: ServerId },
     IceRezzed { card: CardId, server: ServerId },
+    /// A rezzed Corp installed card was flipped back face-down —
+    /// `Effect::DerezCard`'s only emission site. No player-driven derez
+    /// action exists (rez itself is otherwise one-way).
+    CardDerezzed { card: CardId },
+    /// `Effect::SwapInstalledIce` exchanged `a`'s and `b`'s server/slot
+    /// positions.
+    IceSwapped { a: CardId, b: CardId },
     RunInitiated { server: ServerId },
     EventPlayed { side: Side, card: CardId },
     OperationPlayed { side: Side, card: CardId },
     HardwareInstalled { side: Side, card: CardId },
     ProgramInstalled { side: Side, card: CardId, memory_cost: u8 },
+    ResourceInstalled { side: Side, card: CardId },
     CardAccessed { card: CardId, server: ServerId },
     TurnEnded { side: Side },
     TurnStarted { side: Side, clicks: u32 },
     DiscardPending { side: Side, required: usize },
+    /// `side`'s discard phase has ended — emitted whether they actually
+    /// discarded or were already within hand size. Drives
+    /// `Trigger::OnDiscardPhaseEnd`.
+    DiscardPhaseEnded { side: Side },
     CardDiscarded { side: Side, card: CardId },
     AgendaStolen { card: CardId, agenda_points: u32 },
     DamageTaken { damage_type: DamageType, amount: usize },
@@ -37,6 +49,10 @@ pub enum GameEvent {
     TagsGiven { side: Side, amount: u32 },
     TagsPurged { side: Side },
     CardTrashed { side: Side, card: CardId },
+    /// A card left play permanently, bypassing the discard pile — Spin
+    /// Doctor's `Cost::RemoveSelfFromGame`. Distinct from `CardTrashed`
+    /// so a listener can tell "in Archives" from "gone".
+    CardRemovedFromGame { side: Side, card: CardId },
     RunEndedByEffect { server: ServerId },
     GameOver { winner: Side },
     AbilityActivated { side: Side, card_id: CardId, ability_index: usize },
@@ -55,6 +71,15 @@ pub enum GameEvent {
     TagRemoved { side: Side },
     TagsRemoved { side: Side, amount: u32 },
     BadPublicityCreditsSpent { amount: u32 },
+    BonusRunCreditsSpent { amount: u32 },
+    /// A `PendingDecision::ChooseCards` was confirmed — `cards` is the
+    /// committed selection, `revealed` mirrors the originating `Effect::
+    /// PromptChooseCards::reveal`.
+    CardsSelected { side: Side, cards: Vec<CardId>, revealed: bool },
+    /// `Effect::PromptChooseCards` parked a `PendingDecision::ChooseCards`.
+    PendingCardSelectionOffered { side: Side, min: u32, max: u32 },
+    /// `Effect::PromptChooseServer` parked a `PendingDecision::ChooseServer`.
+    PendingServerChoiceOffered { chooser: Side },
     BadPublicityGiven { amount: u32 },
     BadPublicityRemoved { amount: u32 },
     HandKept { side: Side },
@@ -64,6 +89,32 @@ pub enum GameEvent {
     AccessReplaced { server: ServerId },
     CreditsLost { side: Side, amount: u32 },
     ClicksLost { side: Side, amount: u32 },
+    ClicksGained { side: Side, amount: u32 },
     RecurringCreditsSpent { amount: u32 },
-    AgendaScored { card: CardId, agenda_points: u32 },
+    AgendaScored { card: CardId, agenda_points: u32, server: ServerId },
+    DamageAboutToResolve { damage_type: DamageType, amount: usize },
+    TrashAboutToResolve { target: CardTarget },
+    DamagePrevented { amount: usize },
+    TrashPrevented { target: CardTarget },
+    CountersAdded { card: CardId, amount: u32 },
+    CountersRemoved { card: CardId, amount: u32 },
+    JackOutPermitted { server: ServerId },
+    MaxHandSizeGained { side: Side, amount: u32 },
+    /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw
+    /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble
+    /// still only emits `CardDrawn`). Feeds `Trigger::OnBasicDrawAction`.
+    BasicDrawActionTaken { side: Side },
+    /// A player chose one of `Effect::PresentChoice`'s options
+    /// (`state::PendingDecision::ChooseEffect`) is now awaiting
+    /// `PlayerAction::ResolvePendingChoice`.
+    PendingChoicePresented { chooser: Side, option_count: usize },
+    /// `PlayerAction::ResolvePendingChoice` picked this option.
+    PendingChoiceResolved { chooser: Side, option_index: usize },
+    /// `Effect::OfferPaidChoice` parked a `state::PendingPaidChoice`,
+    /// awaiting `PlayerAction::AcceptPendingPaidChoice`/
+    /// `DeclinePendingPaidChoice`.
+    PendingPaidChoiceOffered { side: Side },
+    /// The pending paid choice was accepted (its cost paid) or declined.
+    PendingPaidChoiceAccepted { side: Side },
+    PendingPaidChoiceDeclined { side: Side },
 }

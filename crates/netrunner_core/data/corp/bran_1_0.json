@@ -1,0 +1,85 @@
+{
+  "id": "bran_1_0",
+  "title": "Brân 1.0",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Barrier"
+  },
+  "cost": 6,
+  "strength": 6,
+  "click_breakable": true,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "You may install 1 piece of ice from HQ or Archives directly inward from this ice, ignoring all costs.",
+      "effect": {
+        "PresentChoice": {
+          "chooser": "Corp",
+          "options": [
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnHq",
+                "filter": {
+                  "CardType": {
+                    "Ice": "Barrier"
+                  }
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "InstallFromZoneIgnoringCost": {
+                    "card_id": "",
+                    "origin_zone": "OwnHq",
+                    "into": "Archives",
+                    "slot": "Ice",
+                    "insert_after": ""
+                  }
+                }
+              }
+            },
+            {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnArchives",
+                "filter": {
+                  "CardType": {
+                    "Ice": "Barrier"
+                  }
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "InstallFromZoneIgnoringCost": {
+                    "card_id": "",
+                    "origin_zone": "OwnArchives",
+                    "into": "Archives",
+                    "slot": "Ice",
+                    "insert_after": ""
+                  }
+                }
+              }
+            },
+            {
+              "Sequence": []
+            }
+          ]
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 30039,
+  "is_playable": true
+}

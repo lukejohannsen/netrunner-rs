@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, Effect, IceType};
+use crate::dsl::{CardId, CardType, Effect, IceType, StrengthModifier};
 use crate::rules::ability::evaluate_effect;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
@@ -10,35 +10,47 @@ use crate::rules::state::{GameState, InstallSlot, InstalledCard};
 
 /// Builds one `RunIce` from an `InstalledCard` known to be ICE (caller
 /// filters by `InstallSlot::Ice`), looking up strength/subroutines from
-/// `registry`. Never errors: a `card_id` absent from `registry` (or missing
-/// `strength`/`subroutines`) degrades to a blank 0-strength/no-subroutines
-/// ICE that can't block anything, mirroring
-/// `run::access::compute_pending_choice`'s existing leniency for
-/// unrecognized cards.
-fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> RunIce {
-    let card_def = registry.get(&installed.card);
-    let current_strength = card_def.and_then(|c| c.strength).unwrap_or(0);
-    let ice_type = card_def
-        .and_then(|c| match &c.card_type {
-            CardType::Ice(ice_type) => Some(*ice_type),
-            _ => None,
-        })
-        .unwrap_or(IceType::Barrier);
+/// `registry`. Errors with `RulesError::CardNotFoundInRegistry` if
+/// `installed.card` isn't registered at all — a deck referencing a card
+/// outside the loaded registry is a real authoring/setup error, not
+/// something to silently paper over. A *present* but sparse `CardDefinition` (no
+/// `strength`/`subroutines` set) still leniently defaults to a blank
+/// 0-strength/no-subroutines ICE, which is legitimate for a vanilla ICE —
+/// mirrors `run::access::compute_pending_choice`'s existing leniency there.
+fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<RunIce, RulesError> {
+    let card_def = registry
+        .get(&installed.card)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(installed.card.clone()))?;
+    // Bakes any `StrengthModifier` into the seeded value once, at the moment
+    // this ICE is first encountered during a run — its condition (server
+    // type, hosted advancement count) is fixed for the run's duration in
+    // every case this schema models, so a live per-query recompute isn't
+    // needed here (unlike Runner breakers' `PerInstalledIcebreaker`, which
+    // genuinely can change mid-game — see `ability::computed_runner_strength`).
+    // `Effect::ModifyStrength`'s existing deltas (e.g. Leech) still apply
+    // correctly on top, since they mutate this same `current_strength` field.
+    let modifier_bonus = match card_def.strength_modifier {
+        Some(StrengthModifier::WhileProtectingRemote(bonus)) if matches!(installed.server, ServerId::Remote(_)) => bonus,
+        Some(StrengthModifier::WhileHostedAdvancementsAtLeast { threshold, bonus })
+            if installed.advancement_tokens >= threshold =>
+        {
+            bonus
+        }
+        _ => 0,
+    };
+    let current_strength = card_def.strength.unwrap_or(0) + modifier_bonus;
+    let ice_type = match &card_def.card_type {
+        CardType::Ice(ice_type) => *ice_type,
+        _ => IceType::Barrier,
+    };
     let subroutines = card_def
-        .map(|c| {
-            c.subroutines
-                .iter()
-                .enumerate()
-                .map(|(id, def)| EncounteredSubroutine {
-                    id,
-                    definition: def.clone(),
-                    status: SubroutineStatus::Pending,
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+        .subroutines
+        .iter()
+        .enumerate()
+        .map(|(id, def)| EncounteredSubroutine { id, definition: def.clone(), status: SubroutineStatus::Pending })
+        .collect();
 
-    RunIce { card_id: installed.card.clone(), current_strength, ice_type, subroutines, rezzed: installed.rezzed }
+    Ok(RunIce { card_id: installed.card.clone(), current_strength, ice_type, subroutines, rezzed: installed.rezzed })
 }
 
 /// Sets `state.active_run` to a freshly-initiated run on `server` — shared
@@ -61,9 +73,10 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .iter()
         .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
         .map(|installed| build_run_ice(installed, registry))
-        .collect();
+        .collect::<Result<Vec<_>, _>>()?;
 
-    state.active_run = Some(RunState {
+    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(),
+        on_success_effect: None,
         additional_rd_access: 0,
         additional_hq_access: 0,
         access_replacement: None,
@@ -77,6 +90,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         // is passed (or the server approach step is reached with none
         // installed).
         jack_out_permitted: false,
+        cards_accessed_count: 0, ice_rez_cost_modifier: 0, bonus_run_credits: 0, runner_cannot_steal_or_trash: false,
     });
     Ok(())
 }
@@ -320,38 +334,28 @@ mod tests {
 
     fn game_state() -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
-                scored_agendas: Vec::new(),
+            corp: CorpState {
                 resources: PlayerResources {
                     credits: Credits(5),
                     clicks: Clicks(3),
                     agenda_points: AgendaPoints(0),
                 },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
+                ..Default::default()
             },
-            runner: RunnerState { identity: None,
-                scored_agendas: Vec::new(),
+            runner: RunnerState {
                 resources: PlayerResources {
                     credits: Credits(5),
                     clicks: Clicks(4),
                     agenda_points: AgendaPoints(0),
                 },
                 memory_units: MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
@@ -367,13 +371,13 @@ mod tests {
         position: usize,
         jack_out_permitted: bool,
     ) -> RunState {
-        RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
+        RunState {
             server: ServerId::Hq,
             phase,
             ice,
             position,
-            access_state: None,
             jack_out_permitted,
+            ..Default::default()
         }
     }
 
@@ -607,6 +611,7 @@ mod tests {
             base_strength: 2,
             encounter_strength_buff: 1,
             turn_strength_buff: 3,
+            ..Default::default()
         }];
         state.active_run = Some(run_state(
             RunPhase::EncounterIce,

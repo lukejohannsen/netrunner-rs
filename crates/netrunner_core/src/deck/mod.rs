@@ -1,16 +1,19 @@
-//! Deckbuilding-time decklists, validated against the catalog/format layer
-//! (`catalog::CardCatalog`, `format::NsgFormat`) rather than the rules
-//! engine's playable `dsl::Card` model.
+//! Deckbuilding-time decklists, validated against the same unified
+//! `cards::CardRegistry`/`dsl::CardDefinition` model the rules engine plays
+//! from — but keyed by `card::CardId` (NetrunnerDB's numeric codes, via
+//! `CardRegistry::get_by_numeric_id`) and checking deckbuilding-legality
+//! concerns (`influence_cost`, `set_code`, `faction`) against NSG's
+//! competitive formats (`format::NsgFormat`).
 //!
 //! Distinct from `rules::deck::Deck`/`rules::deck::validate_deck`, which
-//! validate a deck against `cards::CardRegistry` (the engine's gameplay AST,
-//! keyed by `dsl::CardId` string slugs) purely for whether `GameState::
-//! setup` can play it — structural rules only, no influence/faction/pack
-//! legality, since `dsl::Card` carries none of that data. This module
-//! validates the deckbuilding concerns `CardDefinition` *does* carry
-//! (`influence_cost`, `pack_code`, `faction`) against NSG's competitive
-//! formats, keyed by `card::CardId` (NetrunnerDB's numeric codes) — the two
-//! validators serve different questions and neither supersedes the other.
+//! validate a deck against the same `CardRegistry` but keyed by the
+//! engine-native `dsl::CardId` string slug and checking gameplay-
+//! executability only — structural rules plus `CardDefinition::is_playable`,
+//! no influence/faction/pack legality. A NetrunnerDB-sourced `Decklist` may
+//! legitimately reference cards this engine has no DSL data for yet
+//! (`is_playable: false`); this validator doesn't reject those, since that's
+//! not the question it answers — the two validators serve different
+//! questions and neither supersedes the other.
 
 use std::collections::HashMap;
 

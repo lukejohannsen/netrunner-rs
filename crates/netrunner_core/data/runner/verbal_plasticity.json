@@ -1,0 +1,25 @@
+{
+  "id": "verbal_plasticity",
+  "title": "Verbal Plasticity",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnBasicDrawAction",
+      "requirement": {
+        "OncePerTurn": "verbal_plasticity"
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Runner",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30034,
+  "is_playable": true
+}

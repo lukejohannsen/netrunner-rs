@@ -1,0 +1,22 @@
+{
+  "id": "sure_gamble",
+  "title": "Sure Gamble",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 5,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "GainCredits": [
+            "Runner",
+            9
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30030,
+  "is_playable": true
+}

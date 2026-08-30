@@ -1,0 +1,24 @@
+{
+  "id": "enigma",
+  "title": "Enigma",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 2,
+  "subroutines": [
+    {
+      "text": "The Runner loses 1 click.",
+      "effect": {
+        "LoseClicks": 1
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "triggers": [],
+  "is_playable": true
+}

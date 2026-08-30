@@ -26,12 +26,12 @@ pub enum PlayerAction {
     /// accesses on a remote server.
     InstallCard { card_id: CardId, zone: TargetZone, slot: InstallSlot },
     /// Flip an already-installed card face-up. Corp-only. No click cost (rez is
-    /// not a click action) and no credit cost yet — rez cost is data-driven
-    /// per-card via `dsl::Card`, and no `CardRegistry` is wired into the engine
-    /// yet. Permitted either during the Corp's own `GamePhase::Action`, or —
-    /// regardless of whose turn it is — while a run is active and in
-    /// `RunPhase::ApproachIce` (the rez window), since `phase` never changes
-    /// mid-run.
+    /// not a click action). Pays `ice_id`'s registry `cost` in credits via
+    /// `ability::pay_cost` — `RulesError::CardNotFoundInRegistry` if `ice_id`
+    /// isn't in the registry, `RulesError::NotEnoughCredits` if the Corp can't
+    /// afford it. Permitted either during the Corp's own `GamePhase::Action`,
+    /// or — regardless of whose turn it is — while any `PaidAbilityWindow` is
+    /// open, since `phase` never changes mid-run/mid-window.
     RezIce { ice_id: CardId },
     /// Spend 1 click, start a run on `server`. Runner-only. The resulting
     /// `RunState::ice` is left empty — populating real ICE requires a
@@ -87,19 +87,46 @@ pub enum PlayerAction {
     /// `memory_cost` memory units. Runner-only. No credit cost yet, for the
     /// same reason as `PlayEvent`.
     InstallProgram { card_id: CardId, memory_cost: u8 },
+    /// Spend 1 click and `card_id`'s registry `cost` in credits, move
+    /// `card_id` from the Grip into the Rig. Runner-only. Mirrors
+    /// `InstallHardware` exactly (no memory-unit reservation, unlike
+    /// `InstallProgram`) — added because no action previously existed for
+    /// installing a `CardType::Resource` card at all (`Resource`s could
+    /// only ever leave the Rig via `TrashResource`, never enter it).
+    InstallResource { card_id: CardId },
+    /// Spend 1 click and `card_id`'s registry cost in credits, move
+    /// `card_id` from the Grip onto the Corp ICE named by `host_ice_id`
+    /// (`state::InstalledRunnerCard::hosted_on_ice`) rather than into the
+    /// ordinary Rig-install flow. Runner-only. `card_id` must be a Trojan
+    /// Program (`dsl::CardDefinition::installs_on_ice == true`) and
+    /// `host_ice_id` must be a real Corp `InstalledCard` with `slot ==
+    /// InstallSlot::Ice` — rezzed or not, real rules allow hosting on
+    /// unrezzed ICE. Mirrors `InstallProgram` otherwise (same memory-unit
+    /// reservation/cost computation) — e.g. Botulus, Tranquilizer.
+    InstallProgramOnIce { card_id: CardId, host_ice_id: CardId, memory_cost: u8 },
     /// Break the next pending subroutine on the ICE currently being
     /// encountered. Runner-only; delegates to `run::advance_run`'s
-    /// `RunAction::BreakSubroutine`. `ice_id` isn't cross-checked against
-    /// `RunState::ice[position].card_id` — it's accepted as caller-provided
-    /// context only, since `transition_subroutine` already identifies the
-    /// right `RunIce` positionally (`run.position`), not by `ice_id`; a
-    /// mismatched `ice_id` here silently breaks whatever's actually being
-    /// encountered rather than erroring (a real, separate, pre-existing
-    /// gap). `subroutine_index` addresses one specific
-    /// `EncounteredSubroutine` by its `id`/index within
-    /// `RunIce::subroutines`, bounds/status-checked by
+    /// `RunAction::BreakSubroutine`. `ice_id` is cross-checked against
+    /// `RunState::ice[position].card_id` before delegating —
+    /// `RulesError::MismatchedIceId` if it doesn't match the ICE actually
+    /// being encountered, since `transition_subroutine` itself identifies the
+    /// right `RunIce` positionally (`run.position`), not by `ice_id`, and so
+    /// can't catch a caller-supplied mismatch on its own. `subroutine_index`
+    /// addresses one specific `EncounteredSubroutine` by its `id`/index
+    /// within `RunIce::subroutines`, bounds/status-checked by
     /// `transition_subroutine`.
     BreakSubroutine { ice_id: CardId, subroutine_index: usize },
+    /// Breaks a subroutine by spending a Runner click instead of matching a
+    /// breaker to it — Bioroid-style ICE only (`dsl::CardDefinition::
+    /// click_breakable == true`, e.g. Ansel 1.0, Brân 1.0). A dedicated
+    /// action rather than a `Cost`/`AbilityDef`, since the existing
+    /// `ActivateAbility` legality model only ever offers a card's own
+    /// abilities to its own controller, and this needs the *other* side to
+    /// act on a card it doesn't own. Same `ice_id`/`subroutine_index`
+    /// cross-checking as `BreakSubroutine`, plus `RulesError::
+    /// IceNotClickBreakable` if the ICE isn't flagged, plus the ordinary
+    /// `RulesError::NotEnoughClicks` if the Runner can't pay.
+    BreakSubroutineWithClick { ice_id: CardId, subroutine_index: usize },
     /// End the active side's turn, handing control to the other side and
     /// refilling their clicks to the fixed per-turn allotment (Corp 3 / Runner
     /// 4). Symmetric — no `side` field; the acting side is whichever side
@@ -296,4 +323,43 @@ pub enum PlayerAction {
     /// remaining pending subroutines and re-advancing the run afterward —
     /// see `rules::trace::submit_runner_bid`.
     SubmitRunnerTraceBid { amount: u32 },
+    /// Pays a pending `Effect::OfferPaidChoice`'s cost, resolving its
+    /// `if_paid` effect. Whichever side `state.pending_paid_choice::side`
+    /// names — no explicit `side` field, same phase-inference convention as
+    /// `SubmitCorpTraceBid`/`SubmitRunnerTraceBid`. `cost_option_index`
+    /// selects which alternative to pay when the pending cost is
+    /// `Cost::AnyOf`; ignored (and may be omitted) otherwise.
+    /// `RulesError::NoPendingPaidChoice` if none is parked. While a
+    /// `PendingPaidChoice` is parked, every other `PlayerAction` except
+    /// this and `DeclinePendingPaidChoice` is rejected with
+    /// `RulesError::ActionBlockedByPendingPaidChoice` — see
+    /// `engine::apply_action`.
+    AcceptPendingPaidChoice { cost_option_index: Option<usize> },
+    /// Declines a pending `Effect::OfferPaidChoice`, resolving its
+    /// `if_declined` effect instead — no cost is paid.
+    /// `RulesError::NoPendingPaidChoice` if none is parked.
+    DeclinePendingPaidChoice,
+    /// Resolves a pending `Effect::PresentChoice` by picking
+    /// `options[option_index]`. `RulesError::NoPendingDecision` if none is
+    /// parked, `RulesError::InvalidChoiceIndex` if out of range. While a
+    /// `PendingDecision` is parked, every other `PlayerAction` is rejected
+    /// with `RulesError::ActionBlockedByPendingDecision` — see
+    /// `engine::apply_action`.
+    ResolvePendingChoice { option_index: usize },
+    /// Adds `card_id` to (or removes it from, if already present) the
+    /// in-progress selection of a pending `PendingDecision::ChooseCards`.
+    /// `RulesError::NoPendingDecision` if none is parked (or a different
+    /// variant is); `RulesError::CardNotEligibleForSelection` if `card_id`
+    /// isn't currently a legal candidate (not present in the pending
+    /// decision's `source` zone, or doesn't match its `filter`).
+    ToggleCardSelection { card_id: CardId },
+    /// Commits the in-progress selection of a pending `PendingDecision::
+    /// ChooseCards`. `RulesError::NoPendingDecision` if none is parked (or a
+    /// different variant is); `RulesError::CardSelectionOutOfRange` if the
+    /// current selection's size falls outside `min..=max`.
+    ConfirmCardSelection,
+    /// Picks `server` for a pending `PendingDecision::ChooseServer`,
+    /// initiating a run against it. `RulesError::NoPendingDecision` if none
+    /// is parked (or a different variant is).
+    ChooseServerForPendingDecision { server: ServerId },
 }

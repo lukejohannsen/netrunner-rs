@@ -6,25 +6,32 @@
 
 use crate::cards::CardRegistry;
 use crate::rules::ability;
+use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, AccessPhase, RunAction, RunPhase};
-use crate::rules::state::{GamePhase, GameState, PaidAbilityWindow, Side};
+use crate::rules::state::{GamePhase, GameState, PaidAbilityWindow, PendingPreventionKind, PreventionResume, Side, WindowCheckpoint};
+use crate::rules::turn;
 
-/// Opens a PAW: the active-turn side gets priority first (Netrunner/Null
-/// Signal Games priority rule 1). Only ever called while `state.phase ==
-/// Action(_)` — the only phase a run (and therefore a window) can exist in.
+/// Opens a PAW at `checkpoint` with `active_priority` getting priority first
+/// (Netrunner/Null Signal Games priority rule 1). The general form behind
+/// `open_window`/`open_window_if_at_checkpoint` (run checkpoints) and
+/// `turn::end_turn`/`turn::enter_start_of_turn` (turn-boundary checkpoints).
+pub(crate) fn open_window_for(state: &mut GameState, active_priority: Side, checkpoint: WindowCheckpoint) -> GameEvent {
+    state.paid_ability_window =
+        Some(PaidAbilityWindow { active_priority, consecutive_passes: 0, checkpoint, return_phase: Box::new(state.phase) });
+    GameEvent::PaidAbilityWindowOpened { side: active_priority }
+}
+
+/// Opens a PAW at `WindowCheckpoint::Run`: the active-turn side gets
+/// priority first. Only ever called while `state.phase == Action(_)` — the
+/// only phase a run (and therefore a run-checkpoint window) can exist in.
 pub(crate) fn open_window(state: &mut GameState) -> GameEvent {
     let active_priority = match state.phase {
         GamePhase::Action(side) => side,
         _ => unreachable!("open_window only called during Action(_) / mid-run"),
     };
-    state.paid_ability_window = Some(PaidAbilityWindow {
-        active_priority,
-        consecutive_passes: 0,
-        return_phase: Box::new(state.phase),
-    });
-    GameEvent::PaidAbilityWindowOpened { side: active_priority }
+    open_window_for(state, active_priority, WindowCheckpoint::Run)
 }
 
 /// Opens a fresh window if the run just landed on `ApproachIce`/
@@ -69,13 +76,18 @@ pub(crate) fn require_no_window(state: &GameState) -> Result<(), RulesError> {
 /// always get a chance to respond. Called from `RezIce`'s, `BreakSubroutine`'s,
 /// and `ActivateAbility`'s success paths — a no-op if no window is open.
 ///
-/// Also defensively clears a now-stale window if the action ended the run
-/// out from under it (e.g. a `Trigger::Paid` ability's `Effect::EndTheRun`
-/// firing mid-window) — leaving a window open with no active run would
-/// permanently block every ordinary action afterward, since it could never
-/// be closed (`close_window` only resumes a run step; there'd be none).
+/// Also defensively clears a now-stale `WindowCheckpoint::Run` window if the
+/// action ended the run out from under it (e.g. a `Trigger::Paid` ability's
+/// `Effect::EndTheRun` firing mid-window) — leaving a run window open with no
+/// active run would permanently block every ordinary action afterward, since
+/// it could never be closed (`close_run_window` only resumes a run step;
+/// there'd be none). Scoped to `Run` specifically: `StartOfTurn`/`EndOfTurn`
+/// windows have no active run by construction, so `active_run.is_none()`
+/// alone can't be the staleness signal for them the way it is for `Run`.
 pub(crate) fn note_window_action(state: &mut GameState, side: Side) {
-    if state.active_run.is_none() {
+    let is_stale_run_window = state.active_run.is_none()
+        && matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run));
+    if is_stale_run_window {
         state.paid_ability_window = None;
         return;
     }
@@ -116,21 +128,83 @@ pub(crate) fn pass_priority(
     window.consecutive_passes += 1;
 
     if window.consecutive_passes >= 2 {
+        // Capture the checkpoint before clearing — `close_window` resumes
+        // based on it, and nothing else remembers which checkpoint this
+        // window belonged to once `paid_ability_window` is `None`.
+        let checkpoint = window.checkpoint;
         events.push(GameEvent::PaidAbilityWindowClosed);
         state.paid_ability_window = None;
-        events.extend(close_window(state, registry)?);
+        events.extend(close_window(state, registry, checkpoint)?);
     } else {
         window.active_priority = acting_side.other();
     }
     Ok(events)
 }
 
-/// Auto-advances whatever run step was paused, once both sides have passed
-/// (rule 3). Keys off `state.active_run`'s *current* `RunPhase` — untouched
-/// while the window was open, since nothing a window permits (`RezIce`,
-/// `BreakSubroutine`, `ActivateAbility`) mutates `RunPhase` itself — rather
-/// than needing a separate discriminant on `PaidAbilityWindow`.
-fn close_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+/// Auto-advances whatever step was paused, once both sides have passed
+/// (rule 3), per `checkpoint`.
+fn close_window(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    checkpoint: WindowCheckpoint,
+) -> Result<Vec<GameEvent>, RulesError> {
+    match checkpoint {
+        WindowCheckpoint::Run => close_run_window(state, registry),
+        WindowCheckpoint::StartOfTurn { side } => {
+            state.phase = GamePhase::Action(side);
+            Ok(Vec::new())
+        }
+        WindowCheckpoint::EndOfTurn { side } => turn::finish_end_turn(state, side, registry),
+        WindowCheckpoint::Prevention => close_prevention_window(state, registry),
+    }
+}
+
+/// `close_window`'s `WindowCheckpoint::Prevention` arm: applies whatever's
+/// left unprevented, emits `DamagePrevented`/`TrashPrevented` for whatever
+/// was, and — if this was parked mid-subroutine-resolution — resumes
+/// `resolve_encounter_ice`'s loop, mirroring `close_run_window`'s
+/// `EncounterIce` arm's own resumption call.
+fn close_prevention_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let pending = state
+        .pending_prevention
+        .take()
+        .expect("WindowCheckpoint::Prevention implies pending_prevention is Some");
+
+    let mut events = match pending.kind {
+        PendingPreventionKind::Damage { damage_type, amount, prevented } => {
+            let mut events = Vec::new();
+            if prevented > 0 {
+                events.push(GameEvent::DamagePrevented { amount: prevented });
+            }
+            events.extend(damage::apply_damage(state, damage_type, amount.saturating_sub(prevented)));
+            events
+        }
+        PendingPreventionKind::Trash { target, prevented } => {
+            if prevented {
+                vec![GameEvent::TrashPrevented { target }]
+            } else {
+                // Calls `ability::trash_card` directly rather than
+                // re-evaluating `Effect::TrashCard` through
+                // `evaluate_effect` — that entry point re-checks whether to
+                // park a *new* prevention window, which would loop forever
+                // here (the card granting the ability doesn't get "used up"
+                // by one activation).
+                ability::trash_card(state, &target, pending.source_card.as_ref())?
+            }
+        }
+    };
+
+    if pending.resume == PreventionResume::ResumeSubroutines {
+        events.extend(resolve_encounter_ice(state, registry)?);
+    }
+    Ok(events)
+}
+
+/// `close_window`'s `WindowCheckpoint::Run` arm. Keys off `state.active_run`'s
+/// *current* `RunPhase` — untouched while the window was open, since nothing
+/// a window permits (`RezIce`, `BreakSubroutine`, `ActivateAbility`) mutates
+/// `RunPhase` itself — rather than needing a separate discriminant.
+fn close_run_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
     let Some(run_phase) = state.active_run.as_ref().map(|r| r.phase) else {
         return Ok(Vec::new());
     };
@@ -179,7 +253,19 @@ pub(crate) fn resolve_encounter_ice(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = ability::resolve_unbroken_subroutines(state, registry)?;
-    if state.active_run.is_some() && state.active_trace.is_none() {
+    // A subroutine's effect can itself park a *further* pending decision
+    // (e.g. Ballista's subroutine offers a choice whose "trash a program"
+    // branch is itself an `Effect::PromptChooseCards`) — `resolve_choice`/
+    // `resolve_accept`/`resolve_decline` all call this function assuming
+    // whatever they just resolved is fully settled, but it may not be.
+    // Must not advance the run out from under a decision that's still
+    // awaiting a `PlayerAction`.
+    if state.active_run.is_some()
+        && state.active_trace.is_none()
+        && state.pending_prevention.is_none()
+        && state.pending_paid_choice.is_none()
+        && state.pending_decision.is_none()
+    {
         events.extend(run::advance_run(state, RunAction::Continue, registry)?);
         events.extend(open_window_if_at_checkpoint(state));
     }
@@ -189,10 +275,9 @@ pub(crate) fn resolve_encounter_ice(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{CardId, Effect, IceType, SubroutineDef};
+    use crate::dsl::{CardId, DamageType, Effect, IceType, SubroutineDef};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
-    use crate::rules::state::{
-        AgendaPoints, Clicks, Credits, CorpState, MemoryUnits, PlayerResources, RunnerState,
+    use crate::rules::state::{ArchivedCard, AgendaPoints, Clicks, Credits, CorpState, MemoryUnits, PendingPrevention, PlayerResources, RunnerState,
     };
 
     fn registry() -> CardRegistry {
@@ -201,30 +286,20 @@ mod tests {
 
     fn base_state() -> GameState {
         GameState {
-            corp: CorpState { identity: None, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0,
-                scored_agendas: Vec::new(),
+            corp: CorpState {
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
-                hq: Vec::new(),
-                r_and_d: Vec::new(),
-                archives: Vec::new(),
-                installed: Vec::new(),
+                ..Default::default()
             },
-            runner: RunnerState { identity: None,
-                scored_agendas: Vec::new(),
+            runner: RunnerState {
                 resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
                 memory_units: MemoryUnits(0),
-                brain_damage: 0,
-                tags: 0,
-                grip: Vec::new(),
-                stack: Vec::new(),
-                rig: Vec::new(),
-                heap: Vec::new(),
-                link_strength: 0, first_hq_run_used_this_turn: false, first_install_discount_used_this_turn: false,
+                ..Default::default()
             },
             phase: GamePhase::Action(Side::Runner),
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
             seed: 0,
             rng_step: 0,
         }
@@ -262,13 +337,10 @@ mod tests {
     #[test]
     fn single_pass_toggles_priority_and_leaves_window_open() {
         let mut state = base_state();
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![run_ice(true, Vec::new())],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
+            ..Default::default()
         });
         open_window(&mut state);
 
@@ -283,13 +355,10 @@ mod tests {
     #[test]
     fn second_consecutive_pass_closes_window_and_auto_advances() {
         let mut state = base_state();
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![run_ice(true, Vec::new())],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
+            ..Default::default()
         });
         open_window(&mut state);
 
@@ -337,13 +406,10 @@ mod tests {
     #[test]
     fn note_window_action_resets_passes_and_toggles_priority() {
         let mut state = base_state();
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![run_ice(true, Vec::new())],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
+            ..Default::default()
         });
         open_window(&mut state);
         pass_priority(&mut state, &registry(), Side::Runner).expect("pass should succeed");
@@ -370,13 +436,10 @@ mod tests {
     #[test]
     fn approach_ice_window_close_with_unrezzed_ice_auto_passes_without_encounter() {
         let mut state = base_state();
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![run_ice(false, Vec::new())],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
+            ..Default::default()
         });
         open_window(&mut state);
 
@@ -402,13 +465,10 @@ mod tests {
     #[test]
     fn encounter_ice_window_close_auto_fires_unbroken_subroutines() {
         let mut state = base_state();
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![run_ice(true, vec![pending_subroutine()])],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
+            ..Default::default()
         });
         open_window(&mut state);
 
@@ -437,13 +497,10 @@ mod tests {
     fn success_window_close_presenting_a_single_card_opens_a_fresh_access_window() {
         let mut state = base_state();
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::Success,
-            ice: Vec::new(),
-            position: 0,
-            access_state: None,
             jack_out_permitted: true,
+            ..Default::default()
         });
         open_window(&mut state);
 
@@ -472,14 +529,13 @@ mod tests {
         // Archives access every card in it, so two cards there yields a
         // `SelectNextCard` choice rather than a single `PendingChoice` —
         // deliberately not a checkpoint (no cost is at stake in ordering).
-        state.corp.archives = vec![CardId("card_1".to_string()), CardId("card_2".to_string())];
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
+        state.corp.archives =
+            vec![ArchivedCard::facedown(CardId("card_1".to_string())), ArchivedCard::facedown(CardId("card_2".to_string()))];
+        state.active_run = Some(RunState {
             server: ServerId::Archives,
             phase: RunPhase::Success,
-            ice: Vec::new(),
-            position: 0,
-            access_state: None,
             jack_out_permitted: true,
+            ..Default::default()
         });
         open_window(&mut state);
 
@@ -501,13 +557,10 @@ mod tests {
             definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun },
             status: SubroutineStatus::Pending,
         };
-        state.active_run = Some(RunState { additional_rd_access: 0, additional_hq_access: 0, access_replacement: None, bad_publicity_credits: 0,
-            server: ServerId::Hq,
+        state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![run_ice(true, vec![end_the_run_subroutine])],
-            position: 0,
-            access_state: None,
-            jack_out_permitted: false,
+            ..Default::default()
         });
         open_window(&mut state);
 
@@ -529,5 +582,81 @@ mod tests {
         );
         assert!(state.active_run.is_none(), "the run must end cleanly, not error or half-transition");
         assert!(state.paid_ability_window.is_none());
+    }
+
+    #[test]
+    fn prevention_window_close_applies_remaining_unprevented_damage_and_emits_damage_prevented() {
+        let mut state = base_state();
+        state.runner.grip = vec![CardId("card_0".to_string()), CardId("card_1".to_string()), CardId("card_2".to_string())];
+        state.pending_prevention = Some(PendingPrevention {
+            kind: PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 3, prevented: 1 },
+            source_card: None,
+            resume: PreventionResume::None,
+        });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Prevention,
+            return_phase: Box::new(state.phase),
+        });
+
+        pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
+        let events = pass_priority(&mut state, &registry(), Side::Corp).expect("second pass should succeed");
+
+        assert!(state.pending_prevention.is_none());
+        assert!(state.paid_ability_window.is_none());
+        // 3 damage parked, 1 already prevented — 2 actually land.
+        assert_eq!(state.runner.grip.len(), 1);
+        assert_eq!(state.runner.heap.len(), 2);
+        assert!(events.contains(&GameEvent::DamagePrevented { amount: 1 }));
+        assert!(events.contains(&GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 }));
+    }
+
+    #[test]
+    fn prevention_window_parked_mid_subroutine_resolution_resumes_remaining_subroutines_on_close() {
+        let mut state = base_state();
+        state.runner.grip = vec![CardId("card_0".to_string())];
+        state.active_run = Some(RunState {
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce {
+                card_id: CardId("ice_wall".to_string()),
+                current_strength: 0,
+                ice_type: IceType::Barrier,
+                subroutines: vec![
+                    EncounteredSubroutine {
+                        id: 0,
+                        definition: SubroutineDef { text: "damage".to_string(), effect: Effect::DealDamage(DamageType::Net, 1) },
+                        status: SubroutineStatus::Resolved,
+                    },
+                    EncounteredSubroutine {
+                        id: 1,
+                        definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun },
+                        status: SubroutineStatus::Pending,
+                    },
+                ],
+                rezzed: true,
+            }],
+            ..Default::default()
+        });
+        state.pending_prevention = Some(PendingPrevention {
+            kind: PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 1, prevented: 0 },
+            source_card: None,
+            resume: PreventionResume::ResumeSubroutines,
+        });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Prevention,
+            return_phase: Box::new(state.phase),
+        });
+
+        pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
+        pass_priority(&mut state, &registry(), Side::Corp).expect("second pass should succeed");
+
+        assert!(state.runner.grip.is_empty(), "the parked damage should have applied");
+        assert!(
+            state.active_run.is_none(),
+            "the remaining pending EndTheRun subroutine must fire once the prevention window closes"
+        );
     }
 }

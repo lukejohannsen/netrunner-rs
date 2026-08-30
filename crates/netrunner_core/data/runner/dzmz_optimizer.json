@@ -1,0 +1,12 @@
+{
+  "id": "dzmz_optimizer",
+  "title": "DZMZ Optimizer",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "triggers": [],
+  "memory_bonus": 1,
+  "first_install_discount": 1,
+  "numeric_id": 30022,
+  "is_playable": true
+}

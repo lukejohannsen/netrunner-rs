@@ -1,0 +1,24 @@
+{
+  "id": "jinteki_restoring_humanity",
+  "title": "Jinteki: Restoring Humanity",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 40,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": "ArchivesHasFacedownCard",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 30043,
+  "is_playable": true
+}
