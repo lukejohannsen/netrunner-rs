@@ -1,0 +1,76 @@
+{
+  "id": "quick_and_dirty",
+  "name": "Quick and Dirty",
+  "side": "Corp",
+  "identity": "weyland_consortium_built_to_last",
+  "cards": [
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 2
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "government_subsidy",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "public_trail",
+      "count": 3
+    },
+    {
+      "card": "retribution",
+      "count": 3
+    },
+    {
+      "card": "sprint",
+      "count": 2
+    },
+    {
+      "card": "malapert_data_vault",
+      "count": 2
+    },
+    {
+      "card": "palisade",
+      "count": 3
+    },
+    {
+      "card": "pharos",
+      "count": 3
+    },
+    {
+      "card": "funhouse",
+      "count": 2
+    },
+    {
+      "card": "whitespace",
+      "count": 3
+    },
+    {
+      "card": "ballista",
+      "count": 3
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    }
+  ]
+}

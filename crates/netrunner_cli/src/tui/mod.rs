@@ -11,7 +11,6 @@ use ratatui::text::{Line, Span};
 use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph, Wrap};
 use ratatui::Frame;
 
-use netrunner_bots::BotAgentIndexAdapter;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{ActionSpace, GameEvent, GamePhase, GameState, PlayerAction, ServerId, Side};
@@ -78,17 +77,15 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         _ => return Err("interactive mode requires exactly one human-controlled side (neither --corp nor --runner is human)".into()),
     };
 
-    let registry = decks::kate_vs_hb_registry();
-    let (corp_deck, runner_deck) = decks::kate_vs_hb_decks();
+    let registry = decks::sample_deck_registry();
+    let (corp_deck, runner_deck) = decks::sample_decks(&config.corp_deck, &config.runner_deck)?;
     let seed = config.seed.unwrap_or_else(rand::random);
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
 
     let bot_side = human_side.other();
     let bot_kind = if human_side == Side::Corp { config.runner } else { config.corp };
-    let bot_driver: Box<dyn PlayerDriver> = Box::new(BotAgentIndexAdapter::new(
-        bots::make_agent(bot_kind, bot_side, seed.wrapping_add(1)).expect("bot side resolved to a non-Human BotKind"),
-        bot_side,
-    ));
+    let bot_driver: Box<dyn PlayerDriver> =
+        bots::make_driver(bot_kind, bot_side, seed.wrapping_add(1), &config.model)?;
 
     let ui = Rc::new(RefCell::new(LocalUiState::new(registry.clone(), human_side)));
     let terminal = Rc::new(RefCell::new(ratatui::init()));

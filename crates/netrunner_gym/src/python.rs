@@ -170,4 +170,15 @@ mod tests {
     fn action_space_size_constant_is_pinned() {
         assert_eq!(ACTION_SPACE_SIZE, 1024);
     }
+
+    /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's
+    /// input width, baked into every exported ONNX file, so a change must
+    /// be deliberate rather than a side effect of touching the encoder.
+    /// Grew 30 → 990 when card-identity planes were added — the scalar-only
+    /// encoding made every same-size hand look identical to the network,
+    /// which capped a trained policy at generic tempo play.
+    #[test]
+    fn obs_size_constant_is_pinned() {
+        assert_eq!(OBS_SIZE, 990);
+    }
 }

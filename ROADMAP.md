@@ -69,7 +69,28 @@ All 75 playable *System Gateway* cards are implemented, tested, and `is_playable
 - [ ] **Structured Match Logging:** Create an append-only match log/replay format (JSON-Lines) emitted by `MatchSession`.
 - [ ] **TUI Replay Viewer:** Add replay playback capabilities to `netrunner_cli` for post-match analysis and step-by-step review.
 
-### 3. Dedicated Gym & Self-Play Harness (`netrunner_gym`)
+### 3. Training Decks & Self-Play Data (`netrunner_core::decks`, `netrunner_selfplay`) — DONE
+Null Signal Games' seven published *System Gateway*-only sample decklists are embedded as data (`crates/netrunner_core/data/decks/*.json`, compiled in by `build.rs` exactly like the card files) and reachable via `netrunner_core::decks`. Three Runner and four Corp decks give **twelve matchups**, which self-play rotates through and local play selects with `--corp-deck`/`--runner-deck`. `every_sample_deck_is_legal` asserts all seven pass `rules::deck::validate_deck`; `every_sample_deck_matchup_finishes` (`netrunner_single_player`) plays all twelve to a result.
+- [x] **Real decks replace the blank-filler fixture.** Self-play previously dealt a Kate-vs-HB pair padded with synthetic blank cards — an 18-blank-agenda Corp deck behind 6 ICE. Every one of 5,000 recorded games ended in a Corp loss, so the value head trained against a constant, and no System Gateway card appeared in a single game.
+- [x] **Card-identity observation.** `netrunner_bots::observation` grew from 30 scalars to `OBS_SIZE = 990`: the scalars plus five card-identity planes over a fixed 192-slot vocabulary (own hand, own installed, opponent's visible installed, own discard, opponent's visible discard), all read from a masked `ClientView`. The old encoding had no card-identity features at all, so two different hands of the same size were literally the same input — a policy could learn tempo but never card choice. The vocabulary is fixed-size and ordered by `numeric_id` so a future set appends rather than shifting slots out from under an exported model.
+- [x] **A trained policy is playable.** `netrunner_cli --corp onnx --model <path>` (feature `onnx`) puts a trained network in the opponent seat via `SinglePlayerSession`. Until this existed, `BotKind` had no ONNX variant, so `checkpoints/latest_policy.onnx` could be produced but never loaded into a game.
+- [x] **Engine and search bugs found by running real decks** — none reachable with the old fixture:
+  - *Send a Message* offered already-rezzed ice as rez targets, so `PromptChooseCards`' availability guard parked a decision whose every selection failed `AlreadyRezzed` — `ConfirmCardSelection` was never legal while the parked decision blocked every other action. Fixed with `CardFilter::UnrezzedIce`.
+  - `ToggleCardSelection` is keyed by `CardId`, so two copies of the same card could never both be selected. Any "choose N" over a zone holding fewer than N *distinct* cards deadlocked the same way — *Carnivore* ("trash 2 cards from your grip") against a grip of two identical cards. Toggling now cycles through copy counts.
+  - `determinize` resampled the stack out from under a parked card-selection, discarding cards the chooser could demonstrably already see. None of the caller's legal actions then decoded against the sampled root, so `PuctAgent::search` returned an empty action list and self-play panicked.
+  - Greedy self-play action selection is a pure function of visit counts, so toggling one card on and off is a perfect two-cycle it never escapes — even with `ConfirmCardSelection` legal. `netrunner_selfplay` now falls back to sampling after `MAX_GREEDY_REPEATS` identical choices.
+- Combined effect on a 12-game smoke run: games hitting the 10,000-step budget went **8 of 12 → 0 of 12**, median game length 6,674 → 171 steps, and outcomes went from a single constant value to a real win/loss split.
+
+**Running a training loop** (self-play → PyTorch → ONNX → promote, repeat):
+```bash
+source scripts/venv/bin/activate    # torch + onnx already installed
+python3 scripts/run_iteration_loop.py --iterations 50 --games-per-iter 100 --simulations 200
+```
+Then play the result: `cargo run -p netrunner_cli --features onnx -- --runner human --corp onnx --corp-deck discretion_advised --runner-deck stolen_goods`.
+
+*Elevation* remains embedded as catalog-only metadata with no DSL implementations, so the fourteen SG+Elevation sample decklists on the same NSG page are not yet buildable.
+
+### 4. Dedicated Gym & Self-Play Harness (`netrunner_gym`)
 - [ ] **`ClientView`-Driven Gym API:** Update `netrunner_gym`'s `reset()` / `step()` interface to consume masked `ClientView` states rather than omniscient `GameState`, enforcing fog-of-war during training.
 - [ ] **Vectorized Feature Extraction:** Map game states, card types, and legal actions into dense tensor/numerical observations for machine learning models and Python bindings (via `pyo3`).
 - [ ] **Headless Self-Play Benchmark Suite:** Build a multi-threaded headless runner in `netrunner_gym` to execute high-volume self-play matches between bot versions for Elo calibration and policy evaluation.

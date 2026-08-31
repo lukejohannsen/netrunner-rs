@@ -1,0 +1,76 @@
+{
+  "id": "advanced_yomi",
+  "name": "Advanced Yomi",
+  "side": "Corp",
+  "identity": "jinteki_restoring_humanity",
+  "cards": [
+    {
+      "card": "longevity_serum",
+      "count": 1
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 2
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "clearinghouse",
+      "count": 3
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "urtica_cipher",
+      "count": 3
+    },
+    {
+      "card": "hansei_review",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "anoetic_void",
+      "count": 2
+    },
+    {
+      "card": "palisade",
+      "count": 3
+    },
+    {
+      "card": "diviner",
+      "count": 3
+    },
+    {
+      "card": "whitespace",
+      "count": 3
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "karuna",
+      "count": 3
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    }
+  ]
+}

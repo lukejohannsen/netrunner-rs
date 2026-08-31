@@ -1299,6 +1299,100 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceRezzed { .. })));
     }
 
+    /// Scoring *Send a Message* with every installed ice already rezzed
+    /// must not park a card-selection nothing can resolve.
+    ///
+    /// It used to: the filter accepted any installed ice, so
+    /// `PromptChooseCards`' "are there at least `min` targets?" guard saw
+    /// four and parked — but confirming any of them failed with
+    /// `AlreadyRezzed`, so `ConfirmCardSelection` was never legal while the
+    /// parked decision blocked every other action. A real game reached this
+    /// and hung until the step budget ran out; found by the sample-deck
+    /// matchup sweep in `netrunner_single_player`.
+    #[test]
+    fn send_a_message_no_ops_when_every_installed_ice_is_already_rezzed() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard {
+                card: CardId("send_a_message".to_string()),
+                server: ServerId::Remote(0),
+                advancement_tokens: 5,
+                ..Default::default()
+            },
+            crate::rules::InstalledCard {
+                card: CardId("ice_wall".to_string()),
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            },
+        ];
+
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ScoreAgenda { card_id: CardId("send_a_message".to_string()) },
+        )
+        .expect("score send a message");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+            .expect("choosing the rez option is still legal");
+
+        assert!(
+            state.pending_decision.is_none(),
+            "with no unrezzed ice the choice must no-op, not park an unresolvable decision"
+        );
+        assert!(
+            !crate::rules::legal_actions(&state, &registry).is_empty(),
+            "the Corp must still have somewhere to go"
+        );
+    }
+
+    /// Already-rezzed ice must not even be offered as a rez target.
+    #[test]
+    fn send_a_message_only_offers_unrezzed_ice() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.installed = vec![
+            crate::rules::InstalledCard {
+                card: CardId("send_a_message".to_string()),
+                server: ServerId::Remote(0),
+                advancement_tokens: 5,
+                ..Default::default()
+            },
+            crate::rules::InstalledCard {
+                card: CardId("ice_wall".to_string()),
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            },
+            crate::rules::InstalledCard {
+                card: CardId("enigma".to_string()),
+                slot: InstallSlot::Ice,
+                ..Default::default()
+            },
+        ];
+
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ScoreAgenda { card_id: CardId("send_a_message".to_string()) },
+        )
+        .expect("score send a message");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+            .expect("choose to rez an installed ICE");
+
+        let toggles: Vec<CardId> = crate::rules::legal_actions(&state, &registry)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { card_id } => Some(card_id),
+                _ => None,
+            })
+            .collect();
+
+        assert_eq!(toggles, vec![CardId("enigma".to_string())], "only the unrezzed ice is a legal target");
+    }
+
     #[test]
     fn send_a_message_also_reacts_when_the_agenda_is_stolen() {
         let registry = sg_registry();

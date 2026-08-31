@@ -17,3 +17,9 @@ tokio = { workspace = true }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
 serde_json = { workspace = true }
+
+[features]
+# Enables `--corp onnx` / `--runner onnx`: playing against a policy network
+# trained by `scripts/run_iteration_loop.py`. Off by default because it
+# pulls in the ONNX runtime, which not every build of the TUI wants.
+onnx = ["netrunner_bots/onnx"]

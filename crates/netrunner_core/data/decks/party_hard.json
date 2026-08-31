@@ -1,0 +1,68 @@
+{
+  "id": "party_hard",
+  "name": "Party Hard",
+  "side": "Runner",
+  "identity": "rene_loup_arcemont",
+  "cards": [
+    {
+      "card": "overclock",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "wildcat_strike",
+      "count": 3
+    },
+    {
+      "card": "carnivore",
+      "count": 3
+    },
+    {
+      "card": "docklands_pass",
+      "count": 2
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 3
+    },
+    {
+      "card": "cookbook",
+      "count": 3
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 3
+    },
+    {
+      "card": "buzzsaw",
+      "count": 2
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "cleaver",
+      "count": 2
+    },
+    {
+      "card": "botulus",
+      "count": 3
+    },
+    {
+      "card": "fermenter",
+      "count": 3
+    },
+    {
+      "card": "leech",
+      "count": 2
+    }
+  ]
+}

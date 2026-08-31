@@ -1,0 +1,80 @@
+{
+  "id": "discretion_advised",
+  "name": "Discretion Advised",
+  "side": "Corp",
+  "identity": "haas_bioroid_precision_design",
+  "cards": [
+    {
+      "card": "luminal_transubstantiation",
+      "count": 1
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 1
+    },
+    {
+      "card": "nico_campaign",
+      "count": 3
+    },
+    {
+      "card": "urtica_cipher",
+      "count": 3
+    },
+    {
+      "card": "government_subsidy",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "seamless_launch",
+      "count": 2
+    },
+    {
+      "card": "sprint",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 2
+    },
+    {
+      "card": "palisade",
+      "count": 3
+    },
+    {
+      "card": "pharos",
+      "count": 1
+    },
+    {
+      "card": "whitespace",
+      "count": 3
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 3
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    }
+  ]
+}

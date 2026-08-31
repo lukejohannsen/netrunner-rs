@@ -1,0 +1,76 @@
+{
+  "id": "hyper_velocity",
+  "name": "Hyper Velocity",
+  "side": "Corp",
+  "identity": "nbn_reality_plus",
+  "cards": [
+    {
+      "card": "orbital_superiority",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 1
+    },
+    {
+      "card": "tomorrows_headline",
+      "count": 1
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "hansei_review",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "neurospike",
+      "count": 2
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "public_trail",
+      "count": 3
+    },
+    {
+      "card": "amaze_amusements",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 2
+    },
+    {
+      "card": "palisade",
+      "count": 3
+    },
+    {
+      "card": "ping",
+      "count": 3
+    },
+    {
+      "card": "funhouse",
+      "count": 3
+    },
+    {
+      "card": "whitespace",
+      "count": 3
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    }
+  ]
+}

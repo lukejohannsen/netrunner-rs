@@ -65,6 +65,23 @@ pub struct Config {
     /// the server assigns whichever side is available.
     #[arg(long, value_enum)]
     pub side: Option<SideArg>,
+
+    /// Path to the trained ONNX policy driving `--corp onnx`/`--runner onnx`
+    /// — the artifact `scripts/run_iteration_loop.py` promotes each
+    /// iteration. Ignored unless a side is set to `onnx`.
+    #[arg(long, default_value = "checkpoints/latest_policy.onnx")]
+    pub model: String,
+
+    /// Which System Gateway sample deck the Corp plays, by id (e.g.
+    /// `discretion_advised`). See `netrunner_core::decks`; run with an
+    /// unknown id to be shown the full list.
+    #[arg(long = "corp-deck", default_value = "discretion_advised")]
+    pub corp_deck: String,
+
+    /// Which System Gateway sample deck the Runner plays, by id (e.g.
+    /// `stolen_goods`).
+    #[arg(long = "runner-deck", default_value = "stolen_goods")]
+    pub runner_deck: String,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -73,6 +90,13 @@ pub enum BotKind {
     Random,
     Heuristic,
     Mcts,
+    /// A policy network trained by `scripts/run_iteration_loop.py`, loaded
+    /// from `--model`. Requires building with `--features onnx`, and is
+    /// supported only in local interactive play: it evaluates a full
+    /// `GameState` rather than a masked `ClientView`, so unlike the other
+    /// agents it cannot be handed to a `netrunner_server` match, where the
+    /// bot must see only what its side is allowed to.
+    Onnx,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]

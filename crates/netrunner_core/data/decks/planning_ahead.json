@@ -1,0 +1,72 @@
+{
+  "id": "planning_ahead",
+  "name": "Planning Ahead",
+  "side": "Runner",
+  "identity": "tao_salonga",
+  "cards": [
+    {
+      "card": "creative_commission",
+      "count": 3
+    },
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 2
+    },
+    {
+      "card": "vrcation",
+      "count": 3
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 3
+    },
+    {
+      "card": "pantograph",
+      "count": 2
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "telework_contract",
+      "count": 3
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 2
+    },
+    {
+      "card": "cleaver",
+      "count": 2
+    },
+    {
+      "card": "echelon",
+      "count": 2
+    },
+    {
+      "card": "mayfly",
+      "count": 2
+    },
+    {
+      "card": "unity",
+      "count": 2
+    },
+    {
+      "card": "conduit",
+      "count": 2
+    },
+    {
+      "card": "tranquilizer",
+      "count": 3
+    }
+  ]
+}

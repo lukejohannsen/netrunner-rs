@@ -1,0 +1,76 @@
+{
+  "id": "stolen_goods",
+  "name": "Stolen Goods",
+  "side": "Runner",
+  "identity": "zahya_sadeghi",
+  "cards": [
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "overclock",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 3
+    },
+    {
+      "card": "vrcation",
+      "count": 3
+    },
+    {
+      "card": "docklands_pass",
+      "count": 2
+    },
+    {
+      "card": "pennyshaver",
+      "count": 3
+    },
+    {
+      "card": "t400_memory_diamond",
+      "count": 1
+    },
+    {
+      "card": "red_team",
+      "count": 3
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 2
+    },
+    {
+      "card": "buzzsaw",
+      "count": 2
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "marjanah",
+      "count": 2
+    },
+    {
+      "card": "conduit",
+      "count": 1
+    },
+    {
+      "card": "leech",
+      "count": 2
+    }
+  ]
+}

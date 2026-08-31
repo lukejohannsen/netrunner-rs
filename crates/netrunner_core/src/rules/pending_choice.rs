@@ -117,6 +117,14 @@ fn instance_matches_filter(
             // never eligible rather than silently always-eligible.
             Side::Runner => false,
         },
+        // Only an unrezzed installed Corp card can be a rez target. The
+        // Runner has no rez state, so a rig card is never eligible.
+        CardFilter::UnrezzedIce => match owning_side(chooser, zone) {
+            Side::Corp => {
+                state.corp.installed.iter().find(|c| &c.card == card_id).is_some_and(|c| !c.rezzed)
+            }
+            Side::Runner => false,
+        },
         _ => true,
     }
 }
@@ -317,14 +325,33 @@ pub(crate) fn resolve_toggle_card_selection(
     // subsequent mutation needs it mutably.
     let (side, source, filter) = (*side, source.clone(), filter.clone());
 
-    if !eligible_cards(state, registry, side, &source, &filter).contains(&card_id) {
+    let eligible = eligible_cards(state, registry, side, &source, &filter);
+    if !eligible.contains(&card_id) {
         return Err(RulesError::CardNotEligibleForSelection(card_id));
     }
+    // How many physical copies of this card the zone actually holds. A zone
+    // is a `Vec<CardId>`, so three copies of Botulus are three entries with
+    // the same id.
+    let available_copies = eligible.iter().filter(|id| *id == &card_id).count();
+
     let Some(PendingDecision::ChooseCards { selected, max, .. }) = state.pending_decision.as_mut() else {
         unreachable!("checked above");
     };
-    if let Some(pos) = selected.iter().position(|c| c == &card_id) {
-        selected.remove(pos);
+    let selected_copies = selected.iter().filter(|id| *id == &card_id).count();
+
+    // Toggling cycles through copy counts rather than flipping a single
+    // bit: each toggle selects one more copy until every copy the zone
+    // holds is selected, and the next toggle clears them all.
+    //
+    // Selecting by id alone used to cap the selection at one copy per id,
+    // which deadlocked any "choose N" whose zone held fewer than N
+    // *distinct* cards. Carnivore ("trash 2 cards from your grip") against
+    // a grip of two copies of one card is the reachable case: the
+    // availability guard counts two entries and parks the decision, but the
+    // selection could never reach two, so `ConfirmCardSelection` was never
+    // legal while the parked decision blocked every other action.
+    if selected_copies >= available_copies {
+        selected.retain(|id| id != &card_id);
         return Ok(Vec::new());
     }
     // Deselecting is always allowed (above), but selecting past `max` is
@@ -762,5 +789,78 @@ mod tests {
         assert!(legal.contains(&deselect), "deselecting an already-selected card must stay legal");
         let (state, _) = crate::rules::apply_action(&state, &registry, deselect).expect("deselecting");
         assert!(crate::rules::legal_actions(&state, &registry).contains(&third));
+    }
+
+    /// Two copies of the *same* card must both be selectable.
+    ///
+    /// `selected` is keyed by `CardId`, so toggling used to flip a single
+    /// bit per id and cap the selection at one copy. Any "choose N" whose
+    /// zone held fewer than N *distinct* cards then deadlocked: the
+    /// availability guard counts physical copies and parks the decision,
+    /// but the selection could never reach `min`, so
+    /// `ConfirmCardSelection` was never legal while the parked decision
+    /// blocked every other action. Carnivore ("trash 2 cards from your
+    /// grip") against a grip holding two copies of one card is the
+    /// reachable case; found by self-play over the sample decks.
+    #[test]
+    fn duplicate_copies_of_one_card_can_fill_a_selection() {
+        use crate::dsl::{CardFilter, CardZoneRef};
+        use crate::rules::state::PendingChoiceResume;
+
+        let mut registry = CardRegistry::new();
+        let id = CardId("botulus".to_string());
+        registry.insert(crate::dsl::CardDefinition {
+            title: id.0.clone(),
+            id: id.clone(),
+            side: Side::Runner,
+            card_type: crate::dsl::CardType::Program,
+            is_playable: true,
+            ..Default::default()
+        });
+
+        let mut state = game_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        // A grip of exactly two copies of one card — one distinct id.
+        state.runner.grip = vec![id.clone(), id.clone()];
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Runner,
+            source: CardZoneRef::OwnGrip,
+            filter: CardFilter::Any,
+            min: 2,
+            max: 2,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(CardZoneRef::OwnHeap),
+            then: None,
+            selected: Vec::new(),
+            source_card: None,
+            resume: PendingChoiceResume::None,
+        });
+
+        let toggle = PlayerAction::ToggleCardSelection { card_id: id.clone() };
+
+        // Confirming is not legal yet: nothing is selected.
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::ConfirmCardSelection));
+
+        // Two toggles select both physical copies.
+        for _ in 0..2 {
+            let (next, _) = crate::rules::apply_action(&state, &registry, toggle.clone()).expect("select a copy");
+            state = next;
+        }
+        let Some(PendingDecision::ChooseCards { selected, .. }) = &state.pending_decision else {
+            panic!("decision still parked");
+        };
+        assert_eq!(selected.len(), 2, "both copies should be selected");
+
+        assert!(
+            crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::ConfirmCardSelection),
+            "a full selection must be confirmable"
+        );
+
+        let (state, _) =
+            crate::rules::apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert!(state.pending_decision.is_none());
+        assert!(state.runner.grip.is_empty(), "both copies left the grip");
+        assert_eq!(state.runner.heap.len(), 2, "both copies reached the heap");
     }
 }

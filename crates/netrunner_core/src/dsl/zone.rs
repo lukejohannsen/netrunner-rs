@@ -64,6 +64,22 @@ pub enum CardFilter {
     /// `ToggleCardSelection` validation, and `PromptChooseCards`'s
     /// availability check — already goes through.
     NotInstalledThisTurn,
+    /// An installed piece of ice that is **not already rezzed** — the only
+    /// legal target of "rez 1 installed piece of ice" (*Send a Message*).
+    ///
+    /// Like [`CardFilter::NotInstalledThisTurn`] this is a property of the
+    /// installed instance rather than the definition, so the real check
+    /// lives in `rules::pending_choice::eligible_cards`.
+    ///
+    /// Authoring this as a plain `CardType(Ice(_))` deadlocked the game:
+    /// every installed ice counted as eligible, so `PromptChooseCards`'
+    /// park-time "are there at least `min` targets?" guard passed even when
+    /// all of them were already rezzed — and then every possible selection
+    /// made `ConfirmCardSelection` fail with `AlreadyRezzed`, leaving a
+    /// parked decision that nothing could resolve while it blocked every
+    /// other action. Excluding rezzed ice here restores that guard: with no
+    /// unrezzed ice the effect correctly no-ops instead of parking.
+    UnrezzedIce,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -83,6 +99,9 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
             types.iter().any(|t| card_matches_filter(card, &CardFilter::CardType(t.clone())))
         }
         CardFilter::Icebreaker => card.card_type == CardType::Program && card.strength.is_some(),
+        // The definition-level half: it must be ice at all. The
+        // "not rezzed" half is instance-level, applied by `eligible_cards`.
+        CardFilter::UnrezzedIce => matches!(card.card_type, CardType::Ice(_)),
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.
         CardFilter::NotInstalledThisTurn => true,

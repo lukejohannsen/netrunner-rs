@@ -22,6 +22,20 @@ fn headless_kind(kind: BotKind) -> BotKind {
 }
 
 pub async fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    // `MatchSession` drives its bots from a masked `ClientView`, and the
+    // ONNX policy evaluates a full `GameState`, so it has no `BotAgent`
+    // form to hand over here. Reject it explicitly — otherwise
+    // `make_agent`'s `None` would hit the `expect` below as a panic.
+    for (side, kind) in [("--corp", config.corp), ("--runner", config.runner)] {
+        if matches!(kind, BotKind::Onnx) {
+            return Err(format!(
+                "{side} onnx is not supported in --headless mode; it is available in local \
+                 interactive play (drop --headless)"
+            )
+            .into());
+        }
+    }
+
     let registry = decks::kate_vs_hb_registry();
     let (corp_deck, runner_deck) = decks::kate_vs_hb_decks();
     let base_seed = config.seed.unwrap_or_else(rand::random);

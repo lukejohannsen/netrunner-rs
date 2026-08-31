@@ -112,10 +112,72 @@ pub fn kate_vs_hb_decks() -> (Deck, Deck) {
     (corp_deck, runner_deck)
 }
 
+/// The card pool for local play against the published sample decks: every
+/// implemented card, with no synthetic filler.
+///
+/// Unlike [`kate_vs_hb_registry`], this needs no filler at all — the
+/// System Gateway pool is large enough to build real, legal decks from.
+pub fn sample_deck_registry() -> CardRegistry {
+    let mut registry = CardRegistry::new();
+    cards::register_playable_cards(&mut registry);
+    registry
+}
+
+/// Looks up a Corp and a Runner sample deck by id.
+///
+/// An unknown id reports the ids that *do* exist, so `--corp-deck` is
+/// discoverable without consulting the source.
+pub fn sample_decks(corp_id: &str, runner_id: &str) -> Result<(Deck, Deck), String> {
+    fn find(id: &str, side: Side) -> Result<Deck, String> {
+        match netrunner_core::decks::by_id(id) {
+            Some(deck) if deck.side == side => Ok(deck.to_deck()),
+            Some(deck) => Err(format!("sample deck {id:?} is a {:?} deck, not {side:?}", deck.side)),
+            None => {
+                let available: Vec<String> = netrunner_core::decks::for_side(side)
+                    .into_iter()
+                    .map(|deck| format!("{} ({})", deck.id, deck.name))
+                    .collect();
+                Err(format!("no {side:?} sample deck named {id:?}; available: {}", available.join(", ")))
+            }
+        }
+    }
+    Ok((find(corp_id, Side::Corp)?, find(runner_id, Side::Runner)?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use netrunner_core::rules::{validate_deck, GameState};
+
+    #[test]
+    fn sample_decks_resolve_and_are_legal() {
+        let registry = sample_deck_registry();
+        let (corp_deck, runner_deck) =
+            sample_decks("discretion_advised", "stolen_goods").expect("both ids exist");
+
+        assert_eq!(validate_deck(&corp_deck, Side::Corp, &registry), Ok(()));
+        assert_eq!(validate_deck(&runner_deck, Side::Runner, &registry), Ok(()));
+        assert!(GameState::setup(&corp_deck, &runner_deck, &registry, 5).is_ok());
+    }
+
+    #[test]
+    fn the_cli_defaults_name_real_decks() {
+        // Keeps `Config::corp_deck`/`runner_deck`'s defaults honest — a
+        // renamed deck file would otherwise break the CLI's no-flag path.
+        assert!(sample_decks("discretion_advised", "stolen_goods").is_ok());
+    }
+
+    #[test]
+    fn an_unknown_deck_id_lists_the_real_ones() {
+        let error = sample_decks("not_a_deck", "stolen_goods").expect_err("unknown id");
+        assert!(error.contains("discretion_advised"), "error should list available decks: {error}");
+    }
+
+    #[test]
+    fn asking_for_a_runner_deck_in_the_corp_slot_is_rejected() {
+        let error = sample_decks("stolen_goods", "stolen_goods").expect_err("wrong side");
+        assert!(error.contains("not Corp"), "{error}");
+    }
 
     #[test]
     fn decks_are_individually_legal() {

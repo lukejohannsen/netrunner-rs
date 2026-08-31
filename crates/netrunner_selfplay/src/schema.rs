@@ -26,4 +26,12 @@ pub struct GameTrajectory {
     pub steps: Vec<SelfPlayStep>,
     /// `+1.0` Corp win, `-1.0` Runner win, `0.0` draw / step-limit cutoff.
     pub outcome_corp: f32,
+    /// Which sample-deck pairing produced this game
+    /// (`"<corp_deck_id>_vs_<runner_deck_id>"`).
+    ///
+    /// Recorded so a training set stays attributable to the decks behind
+    /// it. Without this, the previous pipeline's 5,000 games gave no way to
+    /// tell from the data that every one of them came from a single broken
+    /// fixture in which the Corp lost 100% of the time.
+    pub matchup: String,
 }

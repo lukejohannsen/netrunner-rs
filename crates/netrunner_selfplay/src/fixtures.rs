@@ -1,121 +1,107 @@
-//! Builds a legal 45-card Kate "Mac" McCaffrey (Runner) vs. Haas-Bioroid:
-//! Engineering the Future (Corp) matchup for self-play games.
+//! Supplies the real System Gateway matchups self-play trains on.
 //!
-//! Deliberately a near-identical copy of `netrunner_gym::fixtures` (itself
-//! a documented copy of `netrunner_server::fixtures`, in turn a copy of
-//! `netrunner_cli::decks`) rather than a shared dependency — see that
-//! module's own doc comment for why each crate needing a real playable
-//! matchup keeps its own small copy instead of inventing a shared crate
-//! for ~100 lines.
+//! This used to build a Kate "Mac" McCaffrey vs. Haas-Bioroid: Engineering
+//! the Future deck pair padded to legal size with blank filler cards. That
+//! fixture produced training data with no learning signal: the Corp deck
+//! was 18 blank agendas and 2 blank assets in 45 cards behind only 6 ICE,
+//! so the Runner walked in and stole, and every one of 5,000 recorded games
+//! ended in a Corp loss. A constant outcome teaches a value head nothing,
+//! and no System Gateway card appeared in a single game.
+//!
+//! Decks now come from `netrunner_core::decks` — Null Signal Games' seven
+//! published System Gateway sample decklists, giving twelve real matchups
+//! over the whole implemented card set.
 
 use netrunner_core::cards::{self, CardRegistry};
-use netrunner_core::dsl::{CardDefinition, CardId, CardType};
-use netrunner_core::rules::{Deck, Side};
+use netrunner_core::decks::{self, SampleDeck};
+use netrunner_core::rules::Deck;
 
-const CORP_IDENTITY: &str = "haas_bioroid_engineering_the_future";
-const RUNNER_IDENTITY: &str = "kate_mccaffrey";
-
-const BASELINE_CORP_CARDS: [&str; 7] =
-    ["hedge_fund", "scorched_earth", "hostile_takeover", "pad_campaign", "snare", "enigma", "wall_of_static"];
-const BASELINE_RUNNER_CARDS: [&str; 6] =
-    ["sure_gamble", "diesel", "the_makers_eye", "account_siphon", "corroder", "gordian_blade"];
-
-const FILLER_AGENDA_COUNT: u32 = 6;
-const FILLER_ASSET_COUNT: u32 = 2;
-const FILLER_EVENT_COUNT: u32 = 9;
-
-fn blank_card(id: String, side: Side, card_type: CardType) -> CardDefinition {
-    CardDefinition {
-        title: id.clone(),
-        id: CardId(id),
-        side,
-        card_type,
-        cost: 0,
-        triggers: Vec::new(),
-        abilities: Vec::new(),
-        trash_cost: None,
-        steal_cost: None,
-        advancement_requirement: None,
-        agenda_points: None,
-        min_deck_size: None,
-        strength: None,
-        subroutines: Vec::new(),
-        interactive_on_access: None,
-        subtypes: Vec::new(),
-        play_requirement: None,
-        recurring_credits: None,
-        first_install_discount: None,
-        memory_cost: None,
-        counter_kind: None, numeric_id: None, faction: None, type_line: None, keywords: Vec::new(), set_code: None, influence_cost: None, deck_limit: None, artist: None, image_url: None, memory_bonus: None, max_hand_size_bonus: None, install_cost_discount_if: None, installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, is_playable: true,
-    }
-}
-
-fn filler_agenda_id(index: u32) -> String {
-    format!("filler_agenda_{index}")
-}
-
-fn filler_asset_id(index: u32) -> String {
-    format!("filler_asset_{index}")
-}
-
-fn filler_event_id(index: u32) -> String {
-    format!("filler_event_{index}")
-}
-
-pub fn kate_vs_hb_registry() -> CardRegistry {
+/// The card pool for every self-play game: every implemented card, with no
+/// synthetic filler.
+pub fn registry() -> CardRegistry {
     let mut registry = CardRegistry::new();
     cards::register_playable_cards(&mut registry);
-
-    for index in 0..FILLER_AGENDA_COUNT {
-        let mut agenda = blank_card(filler_agenda_id(index), Side::Corp, CardType::Agenda);
-        agenda.advancement_requirement = Some(3);
-        agenda.agenda_points = Some(1);
-        registry.insert(agenda);
-    }
-    for index in 0..FILLER_ASSET_COUNT {
-        registry.insert(blank_card(filler_asset_id(index), Side::Corp, CardType::Asset));
-    }
-    for index in 0..FILLER_EVENT_COUNT {
-        registry.insert(blank_card(filler_event_id(index), Side::Runner, CardType::Event));
-    }
-
     registry
 }
 
-pub fn kate_vs_hb_decks() -> (Deck, Deck) {
-    let mut corp_cards: Vec<(CardId, u32)> =
-        BASELINE_CORP_CARDS.into_iter().map(|id| (CardId(id.to_string()), 3)).collect();
-    corp_cards.extend((0..FILLER_AGENDA_COUNT).map(|index| (CardId(filler_agenda_id(index)), 3)));
-    corp_cards.extend((0..FILLER_ASSET_COUNT).map(|index| (CardId(filler_asset_id(index)), 3)));
+/// One playable pairing: the two decks plus the ids that identify it in a
+/// recorded trajectory.
+#[derive(Debug, Clone)]
+pub struct Matchup {
+    pub corp: SampleDeck,
+    pub runner: SampleDeck,
+}
 
-    let mut runner_cards: Vec<(CardId, u32)> =
-        BASELINE_RUNNER_CARDS.into_iter().map(|id| (CardId(id.to_string()), 3)).collect();
-    runner_cards.extend((0..FILLER_EVENT_COUNT).map(|index| (CardId(filler_event_id(index)), 3)));
+impl Matchup {
+    /// `"<corp_id>_vs_<runner_id>"` — recorded in each trajectory so a
+    /// training run's data stays attributable to the decks that produced it.
+    pub fn id(&self) -> String {
+        format!("{}_vs_{}", self.corp.id, self.runner.id)
+    }
 
-    let corp_deck = Deck { identity: CardId(CORP_IDENTITY.to_string()), cards: corp_cards };
-    let runner_deck = Deck { identity: CardId(RUNNER_IDENTITY.to_string()), cards: runner_cards };
-    (corp_deck, runner_deck)
+    pub fn decks(&self) -> (Deck, Deck) {
+        (self.corp.to_deck(), self.runner.to_deck())
+    }
+}
+
+/// Every Corp/Runner pairing of the sample decks, in deterministic order.
+pub fn matchups() -> Vec<Matchup> {
+    decks::matchups().into_iter().map(|(corp, runner)| Matchup { corp, runner }).collect()
+}
+
+/// The matchup whose [`Matchup::id`] is `id`, if one exists.
+pub fn matchup_by_id(id: &str) -> Option<Matchup> {
+    matchups().into_iter().find(|matchup| matchup.id() == id)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::rules::{validate_deck, GameState};
+    use netrunner_core::rules::{validate_deck, GameState, Side};
 
     #[test]
-    fn decks_are_individually_legal() {
-        let registry = kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = kate_vs_hb_decks();
+    fn every_matchup_is_legal_and_sets_up() {
+        let registry = registry();
+        let matchups = matchups();
+        assert_eq!(matchups.len(), 12);
 
-        assert_eq!(validate_deck(&corp_deck, Side::Corp, &registry), Ok(()));
-        assert_eq!(validate_deck(&runner_deck, Side::Runner, &registry), Ok(()));
+        for matchup in matchups {
+            let (corp_deck, runner_deck) = matchup.decks();
+            assert_eq!(validate_deck(&corp_deck, Side::Corp, &registry), Ok(()), "{}", matchup.id());
+            assert_eq!(validate_deck(&runner_deck, Side::Runner, &registry), Ok(()), "{}", matchup.id());
+            assert!(GameState::setup(&corp_deck, &runner_deck, &registry, 42).is_ok(), "{}", matchup.id());
+        }
     }
 
     #[test]
-    fn decks_pass_full_game_setup() {
-        let registry = kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = kate_vs_hb_decks();
+    fn matchup_ids_are_unique_and_resolvable() {
+        let ids: Vec<String> = matchups().iter().map(Matchup::id).collect();
+        let unique: std::collections::HashSet<&String> = ids.iter().collect();
+        assert_eq!(ids.len(), unique.len(), "matchup ids must be unique");
 
-        assert!(GameState::setup(&corp_deck, &runner_deck, &registry, 42).is_ok());
+        for id in &ids {
+            assert!(matchup_by_id(id).is_some(), "{id} should resolve");
+        }
+        assert!(matchup_by_id("not_a_matchup").is_none());
+    }
+
+    /// The blank-filler fixture this module replaced had no real cards in
+    /// it at all; guard against regressing to anything like it.
+    #[test]
+    fn decks_contain_only_real_registered_cards() {
+        let registry = registry();
+        for matchup in matchups() {
+            for deck in [&matchup.corp, &matchup.runner] {
+                for entry in &deck.cards {
+                    let card = registry.get(&entry.card).unwrap_or_else(|| panic!("{:?} is registered", entry.card));
+                    assert!(card.is_playable, "{:?} must be playable", entry.card);
+                    assert!(
+                        !card.id.0.starts_with("filler_"),
+                        "{:?} looks like synthetic filler",
+                        entry.card
+                    );
+                }
+            }
+        }
     }
 }

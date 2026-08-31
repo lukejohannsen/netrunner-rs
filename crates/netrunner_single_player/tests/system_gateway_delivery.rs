@@ -118,3 +118,45 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
         }
     }
 }
+
+/// The same sweep, over Null Signal Games' published System Gateway sample
+/// decklists rather than the coverage-oriented deck above.
+///
+/// These are the decks self-play trains on and the decks a human faces in
+/// local play, so a matchup that cannot finish is a matchup that produces
+/// unusable training data and an unplayable game. The mechanic-coverage
+/// sweep above does not catch this: it plays one fixed deck pair, while
+/// these are twelve real pairings whose card interactions differ.
+#[test]
+fn every_sample_deck_matchup_finishes() {
+    for (index, (corp_deck, runner_deck)) in netrunner_core::decks::matchups().into_iter().enumerate() {
+        for seed in 0..3u64 {
+            let registry = sg_registry();
+            let label = format!("{}_vs_{} seed {seed}", corp_deck.id, runner_deck.id);
+            let (state, _events) =
+                GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed)
+                    .unwrap_or_else(|e| panic!("{label}: sample decks should set up cleanly: {e:?}"));
+
+            // Alternate which side is random so both sides' decisions get
+            // explored across the sweep.
+            let corp_is_random = index % 2 == 0;
+            let (corp, runner): (Box<dyn PlayerDriver>, Box<dyn PlayerDriver>) = if corp_is_random {
+                (
+                    Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Corp)),
+                    Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Runner, seed), Side::Runner)),
+                )
+            } else {
+                (
+                    Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Corp, seed), Side::Corp)),
+                    Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Runner)),
+                )
+            };
+
+            let (final_state, _history) = SinglePlayerSession::new(state, registry, corp, runner).run();
+            assert!(
+                matches!(final_state.phase, GamePhase::GameOver(_)),
+                "{label}: expected GameOver within {MAX_STEPS} steps"
+            );
+        }
+    }
+}

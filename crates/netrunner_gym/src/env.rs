@@ -108,8 +108,8 @@ pub struct NetrunnerEnv {
 
 impl NetrunnerEnv {
     pub fn new(agent_side: Side, seed: u64, opponent: Opponent, max_episode_steps: u32) -> Self {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::registry();
+        let (corp_deck, runner_deck) = fixtures::decks_for_seed(seed);
         let opponent_seed = seed ^ 0xC0FF_EE00_C0FF_EE00;
 
         // `GameState::setup` needs a real `GameState` before `reset` can
@@ -142,6 +142,12 @@ impl NetrunnerEnv {
     pub fn reset(&mut self, seed: Option<u64>) -> (Vec<f32>, Vec<bool>) {
         if let Some(seed) = seed {
             self.seed = seed;
+            // The matchup is a function of the seed, so a reseeded episode
+            // gets the pairing that seed selects rather than staying pinned
+            // to whichever one construction happened to pick.
+            let (corp_deck, runner_deck) = fixtures::decks_for_seed(seed);
+            self.corp_deck = corp_deck;
+            self.runner_deck = runner_deck;
         }
         self.opponent = self.opponent_kind.build(self.agent_side.other(), self.opponent_seed);
         let (state, _events) = GameState::setup(&self.corp_deck, &self.runner_deck, &self.registry, self.seed)

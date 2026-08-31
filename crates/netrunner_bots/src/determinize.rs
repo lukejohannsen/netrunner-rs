@@ -17,11 +17,12 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardId, CardType};
+use netrunner_core::dsl::{CardId, CardType, CardZoneRef};
 use netrunner_core::rules::{
     ArchivedCard,
     AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard,
-    InstalledRunnerCard, MaskedZone, MemoryUnits, PlayerResources, PublicAccessPhase, RunIce, RunState, RunnerState, Side,
+    InstalledRunnerCard, MaskedZone, MemoryUnits, PendingDecision, PlayerAction, PlayerResources, PublicAccessPhase,
+    RunIce, RunState, RunnerState, Side,
 };
 use netrunner_core::view::ClientView;
 
@@ -334,7 +335,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
 
     let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools));
 
-    GameState {
+    let mut state = GameState {
         corp,
         runner,
         phase: view.phase,
@@ -352,6 +353,70 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         last_completed_run: None, last_advancement_was_first: false,
         seed: rng.random(),
         rng_step: 0,
+    };
+
+    reseat_selectable_cards(&mut state, view);
+    state
+}
+
+/// Puts the cards a parked card-selection can act on back into the sampled
+/// state.
+///
+/// `r_and_d` and `stack` are always resampled from a pool, since their
+/// contents are hidden. But a parked `PendingDecision::ChooseCards` that
+/// searches one of them — *Mutual Favor* searching the stack for an
+/// icebreaker, say — has **already revealed** its eligible cards to the
+/// chooser: they arrive as `ToggleCardSelection` entries in
+/// `legal_actions`. Resampling the zone throws that revealed information
+/// away, so those cards can vanish from the sampled world.
+///
+/// The consequence was not a subtly worse search but a hard failure: with
+/// none of the caller's legal actions decoding against the sampled root,
+/// `PuctAgent::search` returned an empty action list, violating its own
+/// "at least one legal action" contract and panicking self-play. Zone
+/// *counts* stay fixed here — those are public — so re-seating overwrites
+/// sampled filler rather than growing the zone.
+fn reseat_selectable_cards(state: &mut GameState, view: &ClientView) {
+    let Some(PendingDecision::ChooseCards { side, source, selected, .. }) = &view.pending_decision else {
+        return;
+    };
+
+    let mut required: Vec<CardId> = view
+        .legal_actions
+        .iter()
+        .filter_map(|action| match action {
+            PlayerAction::ToggleCardSelection { card_id } => Some(card_id.clone()),
+            _ => None,
+        })
+        .collect();
+    // Already-selected cards must survive too, or confirming the selection
+    // would fail against the sampled zone.
+    required.extend(selected.iter().cloned());
+    required.dedup();
+    if required.is_empty() {
+        return;
+    }
+
+    // Only the resampled hidden zones need repair. Hands are already taken
+    // verbatim from the view when the viewer owns them, and archives, heap
+    // and installed cards are public.
+    let zone = match (side, source) {
+        (Side::Corp, CardZoneRef::OwnRAndD) => &mut state.corp.r_and_d,
+        (Side::Runner, CardZoneRef::OwnStack) => &mut state.runner.stack,
+        _ => return,
+    };
+
+    let required_set: HashSet<&CardId> = required.iter().collect();
+    for card in &required {
+        if zone.contains(card) {
+            continue;
+        }
+        // Overwrite a card that isn't itself required; if every slot is
+        // spoken for there is nothing safe to displace, so stop.
+        match zone.iter().position(|existing| !required_set.contains(existing)) {
+            Some(index) => zone[index] = card.clone(),
+            None => break,
+        }
     }
 }
 
@@ -494,5 +559,67 @@ mod tests {
         }
         let ice = &sample.corp.installed[0];
         assert!(matches!(registry.get(&ice.card).unwrap().card_type, CardType::Ice(_)));
+    }
+
+    /// A parked card-selection's targets must survive determinization.
+    ///
+    /// The stack is resampled from a pool because its contents are hidden,
+    /// but a `ChooseCards` searching it has already revealed its eligible
+    /// cards to the chooser — they arrive as `ToggleCardSelection` entries
+    /// in `legal_actions`. Resampling them away left a root state where
+    /// none of those actions decoded, so `PuctAgent::search` returned an
+    /// empty action list and self-play panicked.
+    #[test]
+    fn a_parked_selections_targets_survive_determinization() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef};
+        use netrunner_core::rules::PendingChoiceResume;
+
+        let mut registry = netrunner_core::cards::CardRegistry::new();
+        // A pool of decoys the sampler would otherwise fill the stack with.
+        for index in 0..12 {
+            registry.insert(blank_card(&format!("decoy_{index}"), Side::Runner, CardType::Event));
+        }
+        let target = CardId("target_breaker".to_string());
+        registry.insert(blank_card(&target.0, Side::Runner, CardType::Program));
+
+        let mut state = CoreGameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.stack = vec![target.clone(); 1];
+        state.runner.stack.extend((0..9).map(|i| CardId(format!("decoy_{i}"))));
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Runner,
+            source: CardZoneRef::OwnStack,
+            filter: CardFilter::Icebreaker,
+            min: 1,
+            max: 1,
+            reveal: true,
+            shuffle_after: true,
+            destination: Some(CardZoneRef::OwnGrip),
+            then: None,
+            selected: Vec::new(),
+            source_card: None,
+            resume: PendingChoiceResume::None,
+        });
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(
+            view.legal_actions.contains(&PlayerAction::ToggleCardSelection { card_id: target.clone() }),
+            "the engine should be offering the breaker as a selectable target"
+        );
+
+        // Many samples: the target must survive every one, not most.
+        for seed in 0..25u64 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let sampled = determinize(&view, &registry, &mut rng);
+            assert!(
+                sampled.runner.stack.contains(&target),
+                "seed {seed}: a selectable card was sampled out of the stack"
+            );
+            assert_eq!(
+                sampled.runner.stack.len(),
+                state.runner.stack.len(),
+                "seed {seed}: zone size is public and must not change"
+            );
+        }
     }
 }
