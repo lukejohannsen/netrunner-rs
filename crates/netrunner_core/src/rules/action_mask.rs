@@ -28,7 +28,19 @@ use crate::rules::run::{AccessPhase, ServerId};
 use crate::rules::state::{GamePhase, GameState, InstallSlot, Side};
 
 pub const MAX_HAND_SIZE: usize = 12;
-pub const MAX_INSTALLED_PER_SIDE: usize = 20;
+/// Raised 20 → 32 after real games overflowed it. This module's doc
+/// comment used to claim "real games essentially never reach these caps";
+/// for this one that was simply wrong — ordinary System Gateway matchups
+/// reach 23-24 installed Corp cards (ICE on three centrals plus several
+/// remotes, each with contents), at which point `RezIce` on the outermost
+/// cards had no index. A legal action with no index is invisible to
+/// `get_action_mask`, and when it is the *only* legal action the mask is
+/// empty and `netrunner_bots`' index adapter has nothing to fall back to.
+///
+/// 32 leaves real headroom rather than just clearing the observed figure:
+/// remote servers are unbounded in principle, so this cap should sit well
+/// above anything a game plausibly produces.
+pub const MAX_INSTALLED_PER_SIDE: usize = 32;
 pub const MAX_REMOTE_SERVERS: usize = 10;
 pub const MAX_SUBROUTINES: usize = 8;
 pub const MAX_ABILITIES_PER_CARD: usize = 4;
@@ -1054,6 +1066,15 @@ mod tests {
         // +20 (MAX_INSTALLED_PER_SIDE) over 1025 for
         // `ChooseTriggerToResolve`, picking which of your own simultaneous
         // triggers resolves next. Appended for the same reason.
-        assert_eq!(ActionSpace::SIZE, 1045);
+        //
+        // 1045 → 1357 when `MAX_INSTALLED_PER_SIDE` went 20 → 32, because
+        // real games overflowed 20 (see that constant's doc comment).
+        // **Unlike every previous growth, this one SHIFTS indices rather
+        // than appending** — the constant sizes 26 segments spread through
+        // the space, so everything after the first of them moves. An
+        // exported policy's outputs do not survive it; the model needs
+        // retraining, not just a wider head. Prefer appending when there is
+        // a choice; there wasn't one here.
+        assert_eq!(ActionSpace::SIZE, 1357);
     }
 }
