@@ -9,9 +9,11 @@
 //! path, where a bot must see only the masked `ClientView` its side is
 //! entitled to. [`make_driver`] returns an index-based `PlayerDriver` for
 //! the local `SinglePlayerSession` path, which is also the only place
-//! `BotKind::Onnx` works: `OnnxPolicyEvaluator` evaluates a whole
-//! `GameState`, so it cannot be dropped into the masked path without
-//! handing it information its side should not have.
+//! `BotKind::Onnx` works — a shape restriction, not a privacy one.
+//! `OnnxPolicyEvaluator` takes a whole `GameState` but encodes through
+//! `encode_observation`, which builds a `ClientView` for its own side, so
+//! its features are masked exactly like the view-based agents'. It simply
+//! has no `BotAgent` form to hand a `PlayerSlot::Bot`.
 
 use netrunner_bots::{BotAgent, BotAgentIndexAdapter, HeuristicAgent, MctsAgent, RandomAgent};
 use netrunner_core::rules::Side;

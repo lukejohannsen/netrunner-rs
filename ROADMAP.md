@@ -1,121 +1,174 @@
 # Netrunner Workspace Roadmap
 
-Canonical single source of truth for engine mechanics, client-server infrastructure, single-player card data, and AI bot development across `netrunner_core`, `netrunner_card_sync`, `netrunner_server`, `netrunner_cli`, `netrunner_bots`, and `netrunner_gym`.
+Canonical single source of truth for engine mechanics, client-server infrastructure, single-player card data, and AI bot development across `netrunner_core`, `netrunner_bots`, `netrunner_single_player`, `netrunner_server`, `netrunner_cli`, `netrunner_gym`, `netrunner_selfplay`, and `netrunner_card_sync`.
+
+**Current goal:** a solid single-player Netrunner, then expansion into network play.
+
+**Health as of the last full review:** 739 tests passing, 0 failing, 1 ignored (network-gated live sync). `cargo clippy --workspace --all-targets` completely silent. The engine's purity boundary, determinism model, and masking layer all hold. Remaining work is about *seams* — the places single-player and network play currently diverge — not about engine rot.
 
 ---
 
 ## 🚀 Shipped & Verified Milestones
 
 ### Core Engine & Rules Primitives (`netrunner_core`)
-- [x] **Phase & Priority State Machines:** Integrated `GamePhase` state machine (`StartOfTurn`, `Action`, `Discard`, `GameOver`) and priority-based `PaidAbilityWindow` system (ICE approach/encounter, pre-access, and per-card access decisions).
+- [x] **Phase & Priority State Machines:** `GamePhase` (`Mulligan`, `StartOfTurn`, `Action`, `Discard`, `GameOver`) and priority-based `PaidAbilityWindow` (ICE approach/encounter, pre-access, per-card access decisions, start/end of turn).
 - [x] **ICE Stack & Jack-out Windows:** Dynamic `RunIce` resolution from installed Corp cards and four Netrunner-compliant jack-out legality windows.
-- [x] **Access Phase Plumbing:** Multi-card access selection (`SelectNextCard`), post-access decisions (`StealAgenda`, `TrashAccessedCard`, `PassAccessedCard`), automatic on-access triggers (`OnAccessed`, `OnTrashedFromAccess`), and interactive triggers (`PayToAvoidAccessTrigger`/`DeclineAccessTrigger`, e.g., *Fetal AI*).
-- [x] **Deck-Out & Victory Resolution:** Start-of-turn deck-out checks, agenda point victory detection via `CardRegistry`, and public Heap/Archives tracking.
-- [x] **Icebreaker & Economy Primitives:** Rig state with `Encounter`/`Turn` strength buff tracking, subtype-gated subroutine breaking (`restrict_to: Option<IceType>`), and `OnPlay` event/operation economy boosters (*Sure Gamble*, *Hedge Fund*).
-- [x] **Self-Reference Card Triggers:** `CardTarget::ThisCard`/`Cost::TrashSelf` dynamic resolution for paid abilities and self-trashing access traps.
+- [x] **Access Phase Plumbing:** Multi-card access selection (`SelectNextCard`), post-access decisions (`StealAgenda`, `TrashAccessedCard`, `PassAccessedCard`), automatic on-access triggers, and interactive triggers (`PayToAvoidAccessTrigger`/`DeclineAccessTrigger`, e.g. *Fetal AI*).
+- [x] **Deck-Out & Victory Resolution:** Start-of-turn deck-out checks, agenda point victory via `CardRegistry`, public Heap/Archives tracking.
+- [x] **Icebreaker & Economy Primitives:** Rig state with `Encounter`/`Turn` strength buff tracking, subtype-gated subroutine breaking (`restrict_to`), `OnPlay` economy operations.
+- [x] **Self-Reference Card Triggers:** `CardTarget::ThisCard` / `Cost::TrashSelf` dynamic resolution.
+- [x] **Deterministic replay foundation:** `seed` + `rng_step` live inside `GameState`, so `apply_action` is pure and any recorded action history replays bit-identically (asserted by `single_player_test.rs`). This underpins replay, MCTS, and server authority alike.
+- [x] **Legality by construction:** `rules::legal_actions` generates candidates and keeps only those `apply_action` actually accepts, so legality can never drift from enforcement. Costs a clone per candidate — do not "optimize" without a profile proving it matters.
 
 ### Network, Masking & Client Architecture (`netrunner_server` & `netrunner_cli`)
-- [x] **Client-Server Architecture & Masked State (`ClientView`)**
-  - Perspective masking and fog-of-war for Corp/Runner hidden information.
-  - State leak prevention ensuring game integrity for human and bot players.
-- [x] **Transport-Agnostic Channel Layer**
-  - Decoupled `ClientMessage` and `ServerMessage` definitions for uniform `MatchSession` execution.
-- [x] **Real WebSocket Transport (`tokio-tungstenite`)**
-  - Standalone daemon mode (`netrunner_server --serve`) with TCP upgrade and WebSocket streaming.
-  - Remote client mode (`netrunner_cli --mode remote`) with `Connect` handshakes, two-human lobby pairing, and embedded bot hosting.
-  - Verified live TUI socket driving and clean client/server channel bridges.
+- [x] **Masked per-seat state (`ClientView`)** — perspective masking and fog of war for Corp/Runner hidden information, enforced at the engine boundary.
+- [x] **Transport-Agnostic Channel Layer** — `ClientMessage`/`ServerMessage` decoupled from transport, uniform `MatchSession` execution.
+- [x] **Real WebSocket Transport (`tokio-tungstenite`)** — `netrunner_server --serve` daemon, `netrunner_cli --mode remote` with `Connect` handshakes and two-human lobby pairing, verified live TUI socket driving.
+
+> **Known shape, recorded deliberately:** the server sends **full masked `ClientView` snapshots** after every action, not deltas. That is the current design, not an oversight. See Phase 4 for when deltas become worth it.
 
 ---
 
-## 📇 Phase 1: Single-Player Engine Completeness & Card Data (Immediate Focus)
+## 📇 Phase 1: Single-Player Completeness (Immediate Focus)
 
-### 1. Card Data, Storage & NetrunnerDB Ingestion
-- [x] **Unified Card Model (`netrunner_core`) — DONE:** Collapsed the two previously-parallel card systems (`dsl::Card`/`CardRegistry`, the only thing that ever powered gameplay, and the separate NetrunnerDB-metadata-only `card::CardDefinition`/`catalog::CardCatalog`/`deck::Decklist`) into one: `dsl::Card` renamed to `CardDefinition` and extended with `numeric_id`/`faction`/`type_line`/`keywords`/`set_code`/`influence_cost`/`deck_limit`/`artist`/`image_url`/`is_playable`, all optional/defaulted except `is_playable: bool` (`false` for catalog-only entries with no DSL data, `true` for every hand-authored card). `CardRegistry` gained a `by_numeric_id` secondary index (`get_by_numeric_id`) plus `get_by_title`/`merge`, so NetrunnerDB-sourced data and hand-authored gameplay data now live in one pool, cross-referenceable by either id scheme. `catalog::CardCatalog` and the old `card::CardDefinition`/`card::CardType` are deleted; NetrunnerDB DTO→struct conversion moved to `cards::netrunnerdb` (also now infers `IceType` from keywords and captures `illustrator`/`deck_limit`, previously silently dropped). `deck::validator::validate_deck` and `netrunner_card_sync` (`NetrunnerDbSync::load_registry`/`sync_from_netrunnerdb`) now operate on `CardRegistry` directly instead of the old `CardCatalog`. `rules::deck::validate_deck` rejects any deck referencing an `is_playable: false` card (`RulesError::UnplayableCard`), so `GameState::setup` can never be handed a catalog-only card.
-- [x] **Bundled Gateway & Elevation Core Sets (`netrunner_core`)**: Embed *System Gateway* and *Elevation* JSON fixtures directly into `netrunner_core` (`include_str!`) for zero-dependency offline availability while maintaining strict no-I/O crate boundaries.
-- [x] **Dedicated Sync & Cache Crate (`netrunner_card_sync`)**: Establish a dedicated workspace crate (`netrunner_card_sync`) handling async network I/O, NetrunnerDB API v2 synchronization, and cross-platform disk caching without polluting `netrunner_core`. Also wired into `netrunner_cli cards {list-sets,sync}`.
-- [x] **Cross-Platform Cache Directory Resolution**: Utilize standard cross-platform path resolution via `dirs::cache_dir()` in `netrunner_card_sync` to target OS-specific cache locations (`~/.cache/netrunner`, `~/Library/Caches/netrunner`, `%LOCALAPPDATA%\netrunner`) across Windows, macOS, and Linux.
-- [ ] **Null Signal Games Format Support**: Enforce official [Null Signal Games Supported Formats](https://nullsignal.games/players/supported-formats/) (Startup, Standard, Eternal, Snapshot), including rotation tracking, card banlists, points restrictions, and legality checks prior to match start.
+Ordered by what stands between the engine and a person playing a full, satisfying game of their own deck.
 
-### 2. System Gateway Card Set (`netrunner_core`) — DONE
-All 75 playable *System Gateway* cards are implemented, tested, and `is_playable: true`. They are authored JSON-only in `crates/netrunner_core/data/{corp,runner}/*.json` and reach every consumer through `cards::register_playable_cards` in the default build — see "JSON Card Loading" below. Coverage is enforced mechanically by `every_system_gateway_card_is_implemented_or_explicitly_excluded`, which requires each of the 77 printed cards to have either an implementation or an `SG_UNIMPLEMENTED` entry stating why. **That test is the gate for calling any future set complete** — *Elevation* is already embedded as catalog-only data and would need the same treatment.
-- [x] **DSL primitives added, in dependency order:** foundational fixes (`CardDefinition::validate()`'s agenda-field bug, Upgrade installability, generalized `EffectRequirement::OncePerTurn`); new triggers (`OnRez`, `OnApproachServer`, `OnRunEnded`, `OnBasicDrawAction`, `OnAdvance`, `OnDiscardPhaseEnd`); the decision primitives (`Effect::OfferPaidChoice`/`PresentChoice`/`PromptChooseCards`/`PromptChooseServer` parking a `PendingPaidChoice`/`PendingDecision`, resolved by dedicated actions); `dsl::zone::{CardZoneRef,CardFilter}` for zone search and target selection; hosted-credit pools; MU and max-hand-size bonuses, console-singleton enforcement, conditional cost discounts; **hosting** for Trojan programs; **bioroid click-to-break** (`PlayerAction::BreakSubroutineWithClick`, `CardDefinition.click_breakable`); dynamic amounts (`Amount`) and conditional strength (`StrengthModifier` + `computed_strength`); persistent-after-trash upgrades; facedown-card tracking in Archives (`CorpState.archives: Vec<ArchivedCard>`, with a new masking rule — orientation and count are public, a facedown card's identity is hidden from the Runner); and remove-from-game (`Cost::RemoveSelfFromGame`, `CorpState.removed_from_game`). `ActionSpace::SIZE` grew 724 → 1024 as new player-facing decisions were added.
-- [x] **Two identities are permanently out of scope**: *The Catalyst: Convention Breaker* and *The Syndicate: Profit over Principle* have `stripped_text: "Starter game only."` — no rules text exists to implement, so they stay `is_playable: false` indefinitely (they are the only two `SG_UNIMPLEMENTED` entries).
-- [x] **Three reprints share ids with pre-existing baseline cards**: *Sure Gamble*, *Hedge Fund*, and *Cleaver* are System Gateway reprints of cards the baseline set already had — handled by keeping the single existing definition rather than authoring duplicates (`cards::sg_reprint_dedup_tests`). *Cleaver*'s pre-existing definition had its paid-ability costs transposed relative to the printed card; fixed as a data-correctness bugfix.
-- [x] **Bot-driven sweep**: `no_panics_or_deadlocks_across_many_seeds_system_gateway` (`netrunner_single_player`) plays two all-real-card System Gateway decks, chosen for mechanic coverage rather than realism, across many seeds and both agent seatings. It is the only test that drives the whole mechanic surface through real agents instead of scripted `apply_action` calls, and it earned its keep immediately — see "Engine bugs found by the sweep" below.
-- [x] **Engine bugs found by the sweep** (all three were reachable in ordinary play, none by any per-card test):
-  - `current_actor` never accounted for `pending_paid_choice`/`pending_decision`, so a decision parked *while a paid-ability window was open* named the window's priority holder instead of the decision's chooser — leaving a player with no legal action at all. Its precedence now mirrors `apply_action`'s blocking guards exactly.
-  - `Effect::PromptChooseServer` parked a choice resolvable only by `run::start_run`, without checking no run was already active — an unresolvable decision that blocked every action. It now fails the precondition at park time, so `legal_actions`' dry-run probe filters out the activating ability instead.
-  - `ToggleCardSelection` enforced eligibility but not `max`, so a selection could grow past the bound `ConfirmCardSelection` requires, escapable only by toggling back down.
+### 1. Deck Import End-to-End — **top priority**
+- [ ] **Convert a validated `Decklist` into a playable `rules::Deck`.** Nothing anywhere does this today, so a user still cannot paste a decklist and start a match. All the hard parts already exist:
+  - `deck::Decklist` already deserializes the NetrunnerDB/community JSON export shape.
+  - `deck::validator::validate_deck` already enforces influence, side, format legality, per-card `deck_limit`, and agenda-point ratios.
+  - `rules::deck::validate_deck` already enforces copy limits, agenda points, and `is_playable`.
+  - `decks::SampleDeck::to_deck()` is the conversion pattern to imitate.
+- [ ] **Reconcile the three deck types and two validators.** `deck::Decklist` (import), `rules::Deck` (setup input), and `decks::SampleDeck` (embedded samples) coexist with two independent validators that duplicate `MAX_COPIES_PER_CARD` on purpose. Decide the intended pipeline — import shape → validation → runtime shape — and document which validator owns which rule, so a caller knows which to invoke.
+- [ ] **Wire it to the CLI:** a `--deck <path>` flow that loads, validates with readable errors, and starts a local match.
 
-### 3. Deckbuilding & Single-Player Customization
-- [ ] **Deck Import & Validation:** Parse client-provided decklists (NetrunnerDB IDs, JSON, or text formats). Enforce faction influence limits, deck size minimums, agenda point ratios, and identity constraints. `deck::validator::validate_deck` already enforces all of this against `CardRegistry` (influence, faction, set/pack legality, per-card `deck_limit`, agenda points) — what's still missing is an end-to-end "user pastes/uploads a decklist and starts a local match" flow; no code anywhere converts a validated `Decklist` into a `rules::Deck` `GameState::setup` can consume.
-- [x] **Rules Engine & Complex Mechanics Expansion:** Generic counters (`Effect::AddCounters`/`RemoveCounters`, `InstalledCard`/`InstalledRunnerCard::counters`) and **hosting** (`InstalledRunnerCard.hosted_on_ice`, `PlayerAction::InstallProgramOnIce`, cascade-trash-on-unhost) are both done, the latter built specifically against System Gateway's Trojan programs (*Botulus*, *Tranquilizer*) once real cards needed it, per this section's own stated build-on-demand philosophy — see "System Gateway Card Set" below. Multi-stage trace attempts and paid-ability windows during run phases were already in place; remaining edge cases are tracked per-card as they're discovered, not as an open-ended item.
+### 2. Make Game State Legible to a UI
+- [ ] **Expose card counters through `masking`/`ClientView`.** `InstalledCard`/`InstalledRunnerCard` both carry `counters: u32`, but `PublicInstalledCard` has no counters field at all — so a Runner cannot see virus counters on their own *Botulus*, and neither side sees credits on a *Nico Campaign*. Blocks any real UI. The masking rule is straightforward: always visible to the owner, and visible to the opponent once the card is rezzed/faceup; hidden on an unrezzed Corp card (the original reason for the omission).
+- [ ] **Add a turn counter to `GameState`.** There is none — `netrunner_single_player::history` reconstructs turn numbers externally. Needed for UI display, replay scrubbing, and any "on turn N" effect.
 
-### 4. Core Engine Windows & Integrity (`netrunner_core`)
-- [x] **Asynchronous Start-of-Turn Windows:** `enter_start_of_turn`/`end_turn` now pause at a `WindowCheckpoint::StartOfTurn`/`EndOfTurn` paid-ability window (closed via `PlayerAction::PassPriority`) instead of transitioning inline.
-- [x] **Expanded Priority Checkpoints:** Priority windows now exist at start/end of turn as well as every run checkpoint. Post-action windows (after an ordinary click action) remain unimplemented.
-- [ ] **Dynamic Discard Re-checks:** Dynamically evaluate hand size limits during `GamePhase::Discard` to account for mid-discard draws or hand-size modifications.
-- [x] **Generalized Prevent/Replace Effects:** `Effect::DealDamage`/`TrashCard` can be prevented via a `PendingPrevention`/`WindowCheckpoint::Prevention` window (opened only when a matching `Paid` `PreventDamage`/`PreventTrash` ability is in play). The generic "one side may pay X or else Y happens" primitive predicted here now exists as `Effect::OfferPaidChoice`/`GameState.pending_paid_choice` (plus its sibling `Effect::PresentChoice`/`PendingDecision::ChooseEffect` for "choose 1 of N effects" and `PendingDecision::ChooseCards`/`ChooseServer` for zone-search/target-selection) — built once System Gateway's *Funhouse*/*Manegarm Skunkworks*/*Anoetic Void* actually needed it, confirming the earlier analysis that it wants a direct single-side-choice shape, not `PendingPrevention`'s two-side priority-passing window. See "System Gateway Card Set" below.
-- [x] **JSON Card Loading — DONE:** Cards are authored one-per-file under `crates/netrunner_core/data/{corp,runner}/`, concatenated by `build.rs` at compile time and embedded via `include_str!` (`cards::embedded`), so `cards::register_playable_cards` serves every playable card to every consumer with no feature flag and no runtime I/O. The hardcoded Rust builders and the JSON-vs-Rust parity test are deleted — JSON is now the single source of truth. Printed metadata is joined from the embedded NetrunnerDB catalog on `numeric_id` rather than restated per card, guarded by a printed-value parity test (which caught a real bug on first run: *Malapert Data Vault* was rezzing for 0 instead of 1). `cards::load_registry_from_dirs`/`fs-loader` is re-scoped to external card directories (homebrew, custom sets, no-recompile iteration).
+### 3. Rules Gaps Worth Closing
+- [ ] **Purge virus counters as a basic Corp action.** Missing entirely. Real Netrunner's purge is a 3-click basic Corp action removing all virus counters. System Gateway ships *Botulus*, *Leech*, and *Fermenter*, so **the Corp currently has no counterplay to virus strategies at all** — a live gameplay hole inside a set otherwise marked complete.
+- [ ] **Rename `Cost::PurgeTags`.** It zeroes the Runner's *tags*, not virus counters. The name will actively mislead whoever implements the real purge above. `Cost::ClearTags` or similar.
+- [ ] **Dynamic discard re-checks.** `GamePhase::Discard` locks in a count on entry; needs re-checking if mid-discard triggers alter hand size or max hand size.
+- [ ] **Player-chosen simultaneous trigger order.** `dispatcher::dispatch_event` fires matching triggers in install order. The rules give the active player the choice of ordering among simultaneous triggers. Rarely decisive, but it is a real divergence.
+- [ ] **Post-action paid-ability window.** Windows exist at every run checkpoint and at turn boundaries; a generic window after an ordinary click action does not.
+
+### 4. Engine Hygiene Before the Next Set
+- [ ] **Effect resolution context.** `last_discarded_cards`, `last_completed_run`, and `last_advancement_was_first` are scratchpad fields on `GameState` that exist only because a `Sequence`'s evaluation loop cannot thread context between effects. Replace with a resolution-context struct passed through `evaluate_effect` before a fourth one is added. See AGENTS.md's State Hygiene Rule.
+- [ ] **Per-card recurring credits.** `CorpState::recurring_credits` is a single Corp-wide pool sourced only from the identity. Real recurring credits are per-card (*Cyberfeeder*, *Net Mercur*). The pool needs to move onto `InstalledCard`/`InstalledRunnerCard` before any such card can be implemented.
+
+### 5. Format Support
+- [ ] **Null Signal Games Format Support.** Enforce the official [supported formats](https://nullsignal.games/players/supported-formats/) (Startup, Standard, Eternal, Snapshot) — rotation tracking, banlists, points restrictions, legality checks before match start. `format.rs` currently holds a deliberately small illustrative seed scoped to the embedded sets, and says so honestly; it is not a claim of NSG's authoritative current rotation.
+
+### 6. Card Data & Ingestion — DONE
+- [x] **Unified Card Model:** the two previously-parallel card systems collapsed into one `dsl::CardDefinition` + `CardRegistry`, cross-referenceable by registry `id` or `numeric_id`. `rules::deck::validate_deck` rejects any deck referencing an `is_playable: false` card, so `GameState::setup` can never receive a catalog-only card.
+- [x] **JSON Card Loading:** cards authored one-per-file under `data/{corp,runner}/`, concatenated by `build.rs` and embedded via `include_str!`. `cards::register_playable_cards` serves every playable card to every consumer with no feature flag and no runtime I/O. The hardcoded Rust card builders are deleted — JSON is the single source of truth. Printed metadata is joined from the embedded NetrunnerDB catalog on `numeric_id` rather than restated per card (this parity test caught a real bug on first run: *Malapert Data Vault* rezzing for 0 instead of 1).
+- [x] **Bundled Gateway & Elevation sets**, embedded for offline, zero-I/O availability.
+- [x] **Dedicated Sync & Cache Crate (`netrunner_card_sync`):** async NetrunnerDB API v2 sync and cross-platform disk caching (`dirs::cache_dir()`), wired into `netrunner_cli cards {list-sets,sync}`, without polluting `netrunner_core`.
+- [x] **Schema additions, all built on demand against real cards:** memory cost, generic counters (`Virus`/`Power`/`Credit` + `AddCounters`/`RemoveCounters`/`Cost::RemoveCounters`), and hosting (`InstalledRunnerCard.hosted_on_ice`, `PlayerAction::InstallProgramOnIce`, cascade-trash-on-unhost) for Trojan programs. Upgrades hosted on ICE remain unmodeled — no card needs it.
+
+### 7. System Gateway Card Set — DONE
+All 75 playable *System Gateway* cards are implemented, tested, and `is_playable: true`, authored JSON-only. Coverage is enforced by `every_system_gateway_card_is_implemented_or_explicitly_excluded`, which requires each of the 77 printed cards to have an implementation or an `SG_UNIMPLEMENTED` entry stating why. **That test is the gate for calling any future set complete.**
+- [x] **DSL primitives added, in dependency order:** foundational fixes (`CardDefinition::validate()`'s agenda-field bug, Upgrade installability, generalized `OncePerTurn`); new triggers (`OnRez`, `OnApproachServer`, `OnRunEnded`, `OnBasicDrawAction`, `OnAdvance`, `OnDiscardPhaseEnd`); decision primitives (`OfferPaidChoice`/`PresentChoice`/`PromptChooseCards`/`PromptChooseServer` parking a `PendingPaidChoice`/`PendingDecision`); `dsl::zone::{CardZoneRef,CardFilter}`; hosted credit pools; MU and max-hand-size bonuses; console-singleton enforcement; conditional cost discounts; hosting for Trojans; bioroid click-to-break; dynamic amounts and conditional strength; persistent-after-trash upgrades; facedown Archives tracking (with its own masking rule — orientation and count public, a facedown card's identity hidden from the Runner); and remove-from-game. `ActionSpace::SIZE` grew 724 → 1024.
+- [x] **Two identities permanently out of scope:** *The Catalyst: Convention Breaker* and *The Syndicate: Profit over Principle* carry `stripped_text: "Starter game only."` — no rules text exists to implement. They are the only two `SG_UNIMPLEMENTED` entries.
+- [x] **Three reprints share ids with baseline cards:** *Sure Gamble*, *Hedge Fund*, *Cleaver* — handled by keeping the single existing definition. *Cleaver*'s pre-existing definition had transposed paid-ability costs; fixed as a data-correctness bug.
+- [x] **Engine bugs found by the bot-driven sweep** (all reachable in ordinary play, none by any per-card test):
+  - `current_actor` ignored `pending_paid_choice`/`pending_decision`, so a decision parked *while a paid-ability window was open* named the window's priority holder instead of the decision's chooser — leaving a player with no legal action at all. Its precedence now mirrors `apply_action`'s blocking guards exactly (trace → paid choice → decision → window → phase). **These two must stay in sync; that is how this was found.**
+  - `Effect::PromptChooseServer` parked a choice resolvable only by `run::start_run` without checking no run was active — an unresolvable decision blocking every action.
+  - `ToggleCardSelection` enforced eligibility but not `max`, so a selection could grow past the bound `ConfirmCardSelection` requires.
+
+**DSL growth baseline:** at System Gateway completion, **14 of 66 `Effect` variants are used by exactly one card**, against a healthily reused core (`PromptChooseCards` 17 cards, `PresentChoice` 16, `EffectIf` 12). Measure the next set against this ratio — see AGENTS.md's DSL Growth Rule.
 
 ---
 
-## 🧠 Phase 2: Bot Intelligence, Replay Infrastructure & Gym Harness
+## 🔗 Phase 1.5: Session Unification (the single-player → network bridge)
 
-### 1. MCTS Determinization & Information Horizon
-- [ ] **State Determinization in `netrunner_bots`:** Sample plausible hidden state distributions from a `ClientView` so `MctsAgent` can perform valid tree rollouts without unmasked state leaks or panics.
+**This is the highest-value architectural work in the repo right now.** Four crates independently re-implement the same match loop — `current_actor` → get action → `apply_action` → check `GameOver` — each with its own copy of `MAX_STEPS = 10_000`:
 
-### 2. Action Replay Protocol & Match Logging
-- [ ] **Structured Match Logging:** Create an append-only match log/replay format (JSON-Lines) emitted by `MatchSession`.
-- [ ] **TUI Replay Viewer:** Add replay playback capabilities to `netrunner_cli` for post-match analysis and step-by-step review.
+| Driver | Sync/async | Sees | Action shape | Seat trait |
+|---|---|---|---|---|
+| `netrunner_single_player::SinglePlayerSession` | sync | **raw `GameState`** | `ActionSpace` index | `PlayerDriver` |
+| `netrunner_server::MatchSession` | async | masked `ClientView` | `PlayerAction` | `BotAgent` |
+| `netrunner_cli::headless` | async | — | — | — |
+| `netrunner_gym::env` | sync | masked (via `encode_observation`) | index | `BotAgent` |
 
-### 3. Training Decks & Self-Play Data (`netrunner_core::decks`, `netrunner_selfplay`) — DONE
-Null Signal Games' seven published *System Gateway*-only sample decklists are embedded as data (`crates/netrunner_core/data/decks/*.json`, compiled in by `build.rs` exactly like the card files) and reachable via `netrunner_core::decks`. Three Runner and four Corp decks give **twelve matchups**, which self-play rotates through and local play selects with `--corp-deck`/`--runner-deck`. `every_sample_deck_is_legal` asserts all seven pass `rules::deck::validate_deck`; `every_sample_deck_matchup_finishes` (`netrunner_single_player`) plays all twelve to a result.
-- [x] **Real decks replace the blank-filler fixture.** Self-play previously dealt a Kate-vs-HB pair padded with synthetic blank cards — an 18-blank-agenda Corp deck behind 6 ICE. Every one of 5,000 recorded games ended in a Corp loss, so the value head trained against a constant, and no System Gateway card appeared in a single game.
-- [x] **Card-identity observation.** `netrunner_bots::observation` grew from 30 scalars to `OBS_SIZE = 990`: the scalars plus five card-identity planes over a fixed 192-slot vocabulary (own hand, own installed, opponent's visible installed, own discard, opponent's visible discard), all read from a masked `ClientView`. The old encoding had no card-identity features at all, so two different hands of the same size were literally the same input — a policy could learn tempo but never card choice. The vocabulary is fixed-size and ordered by `numeric_id` so a future set appends rather than shifting slots out from under an exported model.
-- [x] **A trained policy is playable.** `netrunner_cli --corp onnx --model <path>` (feature `onnx`) puts a trained network in the opponent seat via `SinglePlayerSession`. Until this existed, `BotKind` had no ONNX variant, so `checkpoints/latest_policy.onnx` could be produced but never loaded into a game.
-- [x] **Engine and search bugs found by running real decks** — none reachable with the old fixture:
-  - *Send a Message* offered already-rezzed ice as rez targets, so `PromptChooseCards`' availability guard parked a decision whose every selection failed `AlreadyRezzed` — `ConfirmCardSelection` was never legal while the parked decision blocked every other action. Fixed with `CardFilter::UnrezzedIce`.
-  - `ToggleCardSelection` is keyed by `CardId`, so two copies of the same card could never both be selected. Any "choose N" over a zone holding fewer than N *distinct* cards deadlocked the same way — *Carnivore* ("trash 2 cards from your grip") against a grip of two identical cards. Toggling now cycles through copy counts.
-  - `determinize` resampled the stack out from under a parked card-selection, discarding cards the chooser could demonstrably already see. None of the caller's legal actions then decoded against the sampled root, so `PuctAgent::search` returned an empty action list and self-play panicked.
-  - Greedy self-play action selection is a pure function of visit counts, so toggling one card on and off is a perfect two-cycle it never escapes — even with `ConfirmCardSelection` legal. `netrunner_selfplay` now falls back to sampling after `MAX_GREEDY_REPEATS` identical choices.
-- Combined effect on a 12-game smoke run: games hitting the 10,000-step budget went **8 of 12 → 0 of 12**, median game length 6,674 → 171 steps, and outcomes went from a single constant value to a real win/loss split.
+Their own doc comments admit the duplication ("Mirrors the decision-loop shape of `MatchSession`", "Shape mirrors `MatchSession::run`"). Two consequences are already live:
+
+- **The local path masks by client convention, not by interface.** `PlayerDriver::select_action` receives the raw `&GameState`, so the seat boundary itself enforces nothing. The TUI's human seat (`tui/mod.rs`) is well-behaved and calls `build_client_view` itself before rendering — but that is the client choosing to be polite, exactly the anti-pattern AGENTS.md §2 now bans. The network path gets this right structurally: a `MatchSession` channel seat *cannot* see anything but a `ClientView`. Porting the local path onto the same seat interface is what makes local masking structural rather than voluntary.
+- **The network path cannot show a game log.** `MatchSession` discards each action's `Vec<GameEvent>` after one-shot use in `classify_end_reason`. `MatchHistory` lives in `netrunner_single_player` and is unreachable from the server, so the TUI's event log only populates on the local path.
+
+### Target design: one core-owned decision loop, four seat types, masked by default
+
+- [ ] **Extract the shared loop** into a session driver owning `current_actor` → action → `apply_action` → `GameOver` **once**, with `MAX_STEPS` as a single constant. Home it in `netrunner_core` if it stays dependency-free, or a thin `netrunner_session` crate if the async split demands it.
+- [ ] **Unify the seat interface on `ClientView` + `PlayerAction`.** `BotAgent` already has this shape. `PlayerDriver`'s `(&GameState, mask, index)` shape becomes an adapter layered on top, for the RL path — the only caller that genuinely needs `ActionSpace` indices. This closes the unmasked-state hole in the local human path.
+- [ ] **Collapse seats into one enum:** `Bot`, `LocalHuman`, `Channel`, `Indexed` (RL). Sync vs. async is a property of how the driver is *pumped*, not a reason to fork rules flow — a step-function shape (`fn step(&mut self) -> SessionStep`) lets `netrunner_cli` pump it synchronously and `netrunner_server` pump it inside `tokio`.
+- [ ] **Move `MatchHistory` into the shared driver** so both paths record actions and events. This simultaneously delivers the structured match log below and gives the network path a game log.
+
+**Migration order, each step leaving the tree green:** extract the shared loop → port `MatchSession` → port `SinglePlayerSession` (the adapter keeps `PlayerDriver` working for `netrunner_gym`/`netrunner_selfplay`) → port `netrunner_cli::headless` → collapse `netrunner_gym::env`'s fast-forward onto it.
+
+---
+
+## 🧠 Phase 2: Bot Intelligence, Replay & Gym Harness
+
+### 1. Determinization — DONE
+- [x] **State determinization in `netrunner_bots`.** `determinize` samples a plausible concrete `GameState` from a masked `ClientView` and is wired into `HeuristicAgent`, `MctsAgent`, and `PuctAgent`. `MctsAgent` resamples independently per parallel tree, making it genuine (if basic) Information Set MCTS.
+
+### 2. Action Replay Protocol & Match Logging — mostly done
+- [x] **Action/event recording and verified replay.** `MatchHistory`/`HistoryEntry` record `(turn_number, side, action, events)`; an integration test re-applies a recorded history and asserts a bit-identical final state.
+- [ ] **Emit it as JSON-Lines.** Needs `Serialize` on `HistoryEntry`/`MatchHistory` and a writer. Blocked on nothing — but do it as part of Phase 1.5 so both drivers get it, rather than wiring it to `SinglePlayerSession` alone.
+- [ ] **TUI Replay Viewer** in `netrunner_cli` for step-by-step post-match review.
+
+### 3. Training Decks & Self-Play Data — DONE
+Null Signal Games' seven published System Gateway sample decklists are embedded as data (`data/decks/*.json`, compiled in by `build.rs`) and reachable via `netrunner_core::decks`. Three Runner and four Corp decks give twelve matchups; self-play rotates through them and local play selects with `--corp-deck`/`--runner-deck`. `every_sample_deck_is_legal` asserts all seven validate; `every_sample_deck_matchup_finishes` plays all twelve to a result.
+- [x] **Real decks replaced the blank-filler fixture.** Self-play previously used a synthetic pair — an 18-blank-agenda Corp deck behind 6 ICE. All 5,000 recorded games ended in a Corp loss, so the value head trained against a constant and no System Gateway card ever appeared.
+- [x] **Card-identity observation.** `OBS_SIZE = 990`: scalars plus five card-identity planes over a fixed 192-slot vocabulary ordered by `numeric_id`, so a future set appends rather than shifting slots out from under an exported model. The old 30-scalar encoding had no card-identity features at all — two different hands of the same size were literally the same input.
+- [x] **A trained policy is playable.** `netrunner_cli --corp onnx --model <path>` (feature `onnx`) seats a trained network via `SinglePlayerSession`.
+- [x] **Engine and search bugs found by running real decks** — none reachable with the old fixture: *Send a Message* offering already-rezzed ice as rez targets (fixed with `CardFilter::UnrezzedIce`); `ToggleCardSelection` keyed by `CardId` so two copies of a card could never both be selected, deadlocking any "choose N" over a zone with fewer than N *distinct* cards (*Carnivore* against two identical grip cards) — toggling now cycles through copy counts; `determinize` resampling the stack out from under a parked card-selection; and greedy self-play action selection being a perfect two-cycle when toggling one card on and off (now falls back to sampling after `MAX_GREEDY_REPEATS`).
+- Combined effect on a 12-game smoke run: games hitting the 10,000-step budget went **8 of 12 → 0 of 12**, median game length **6,674 → 171 steps**, and outcomes went from a single constant value to a real win/loss split.
 
 **Running a training loop** (self-play → PyTorch → ONNX → promote, repeat):
 ```bash
 source scripts/venv/bin/activate    # torch + onnx already installed
 python3 scripts/run_iteration_loop.py --iterations 50 --games-per-iter 100 --simulations 200
 ```
-Then play the result: `cargo run -p netrunner_cli --features onnx -- --runner human --corp onnx --corp-deck discretion_advised --runner-deck stolen_goods`.
+Then play the result:
+```bash
+cargo run -p netrunner_cli --features onnx -- --runner human --corp onnx \
+  --corp-deck discretion_advised --runner-deck stolen_goods
+```
+
+### 4. Gym & Self-Play Harness (`netrunner_gym`)
+- [x] **Fog-of-war-respecting observations.** `encode_observation` builds a `ClientView` internally and encodes only that — training already runs under masking. (`env.rs` still holds a raw `GameState` field for stepping; cosmetic, and subsumed by Phase 1.5.)
+- [x] **Vectorized feature extraction.** Dense `OBS_SIZE`-length observations plus action masks over the fixed `ActionSpace`, exposed to Python via PyO3.
+- [ ] **Headless Self-Play Benchmark Suite:** multi-threaded high-volume bot-vs-bot runs for Elo calibration and policy evaluation.
 
 *Elevation* remains embedded as catalog-only metadata with no DSL implementations, so the fourteen SG+Elevation sample decklists on the same NSG page are not yet buildable.
 
-### 4. Dedicated Gym & Self-Play Harness (`netrunner_gym`)
-- [ ] **`ClientView`-Driven Gym API:** Update `netrunner_gym`'s `reset()` / `step()` interface to consume masked `ClientView` states rather than omniscient `GameState`, enforcing fog-of-war during training.
-- [ ] **Vectorized Feature Extraction:** Map game states, card types, and legal actions into dense tensor/numerical observations for machine learning models and Python bindings (via `pyo3`).
-- [ ] **Headless Self-Play Benchmark Suite:** Build a multi-threaded headless runner in `netrunner_gym` to execute high-volume self-play matches between bot versions for Elo calibration and policy evaluation.
-
 ---
 
-## 🏆 Phase 3: Bot Personalities, Elo Rating & Player Progression
+## 🏆 Phase 3: Bot Personalities, Elo & Player Progression
 
 ### 1. Bot Personalities & Playstyle Archetypes
-- [ ] **Configurable Bot Traits:** Define distinct bot archetypes (e.g., Fast-Rush Corp, Glacier/Late-Game Corp, Aggressive Runner, Trap/Net-Damage heavy).
-- [ ] **Biased Evaluation Function:** Adjust heuristic values and tree-search node evaluations to reflect specific bot personality traits during play.
+- [ ] **Configurable Bot Traits:** distinct archetypes (Fast-Rush Corp, Glacier/Late-Game Corp, Aggressive Runner, Trap/Net-Damage heavy).
+- [ ] **Biased Evaluation Function:** adjust heuristic values and tree-search node evaluations to reflect personality traits.
 
 ### 2. Rating & Elo Engine
-- [ ] **Persistent Multi-Track Elo/Glicko-2 System:** Track separate ratings to reflect distinct competitive contexts:
-  - **Human vs. Human Elo:** Official rank for competitive match play against real opponents.
-  - **Human vs. Bot Elo:** Skill progression tracking for single-player practice sessions across difficulty tiers.
-  - **Bot Benchmark Elo:** Internal performance tracking for comparing bot algorithms (e.g., MCTS vs. Heuristic) against one another.
-- [ ] **Role-Specific Asymmetry:** Track independent ratings for **Corp** vs. **Runner** roles across all tracks (Human vs. Human, Human vs. Bot, and Bot vs. Bot) to reflect asymmetric skill mastery.
+- [ ] **Persistent Multi-Track Elo/Glicko-2 System:** separate ratings for Human vs. Human (competitive rank), Human vs. Bot (single-player skill progression across difficulty tiers), and Bot Benchmark (internal algorithm comparison).
+- [ ] **Role-Specific Asymmetry:** independent Corp and Runner ratings across all three tracks.
 
 ---
 
 ## 🌐 Phase 4: Network Resilience & Server Infrastructure
 
-### 1. Reconnection & Session Recovery
-- [ ] **Session Token Handshake:** Implement `session_token` reconnection logic, allowing dropped WebSocket clients to reconnect within $N$ seconds and re-sync state using a fresh `ClientView`.
+### 1. Event Stream to Clients
+- [ ] **Send `GameEvent`s to clients at all.** Currently `ServerMessage` carries only `ClientView` snapshots; engine events never reach a client, so a networked UI cannot narrate or animate what happened. Add events to `ServerMessage` first.
+- [ ] **Then mask them per viewer.** `GameEvent` variants stream raw card IDs and need recipient-specific sanitization (e.g. stripping unrevealed `CardAccessed` IDs for the non-accessing player). **Order matters:** this was previously scoped as sanitizing a stream that reaches clients — it doesn't yet. Build the stream, then the mask.
 
-### 2. Multi-Match Daemon & Matchmaking
-- [ ] **Multi-Room Server Daemon:** Expand `netrunner_server` beyond single-slot lobby pairing into a multi-room server handling concurrent matches, spectator channels, and turn timers.
+### 2. Reconnection & Session Recovery
+- [ ] **Session Token Handshake:** allow dropped WebSocket clients to reconnect within $N$ seconds and re-sync from a fresh `ClientView`.
+
+### 3. Multi-Match Daemon & Matchmaking
+- [ ] **Multi-Room Server Daemon:** expand beyond single-slot lobby pairing into concurrent matches, spectator channels, and turn timers.
+
+### 4. Transport Efficiency
+- [ ] **State deltas instead of full snapshots** — only once profiling shows full `ClientView` broadcasts are actually a bottleneck. Full snapshots are simple and correct; do not trade that away speculatively.

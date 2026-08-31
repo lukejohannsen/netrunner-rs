@@ -25,6 +25,6 @@ Do NOT hardcode individual card logic into Rust functions.
 - Effects must be composition-friendly primitives (e.g., `GainCredits(u32)`, `InflictDamage(DamageType, u32)`, `BreakSubroutine(u32)`, `ModifyStrength(i32)`).
 
 ### 4. ARCHITECTURAL BOUNDARIES
-- **crates/netrunner_core**: NO Bevy dependencies. NO I/O, networking, or random number generator (RNG) side-effects (pass a seed or explicit RNG context).
+- **crates/netrunner_core**: NO rendering dependencies. NO I/O, networking, or random number generator (RNG) side-effects (the seed and step counter live inside `GameState` itself, keeping `apply_action` pure).
 - **crates/netrunner_server**: Authoritative game runner. Manages state mutation, fog-of-war masking (scrubbing hidden hand cards from opposing players), and WebSocket/RPC message routing.
-- **crates/netrunner_client**: Visual presentation layer (Bevy ECS). Listens for state events and issues user intent actions to the core engine/server.
+- **Clients** (currently `crates/netrunner_cli`, a ratatui TUI): presentation only. A client renders a `ClientView` and submits a `PlayerAction` chosen from `view.legal_actions` — it never touches `GameState` and never re-derives legality. No rendering toolkit is mandated; see AGENTS.md §3.
