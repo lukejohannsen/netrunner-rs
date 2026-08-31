@@ -2,7 +2,6 @@
 members = [
     "crates/netrunner_core",
     "crates/netrunner_server",
-    "crates/netrunner_client",
     "crates/netrunner_gym",
     "crates/netrunner_cli",
     "crates/netrunner_bots",
@@ -16,5 +15,4 @@ resolver = "3"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1.0", features = ["full"] }
-bevy = "0.14"
 thiserror = "1.0"
