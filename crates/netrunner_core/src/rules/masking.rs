@@ -30,6 +30,22 @@ pub struct PublicInstalledCard {
     /// Never masked — advancement tokens are public info on the physical
     /// card, same as `server`/`rezzed`.
     pub advancement_tokens: u32,
+    /// Generic counters (see `dsl::card::CounterKind`), masked on exactly
+    /// the same condition as `card`: `Some` to the owner always, and to the
+    /// opponent once the card is rezzed; `None` on an unrezzed Corp card,
+    /// whose counters would otherwise leak what it is (a *Nico Campaign*
+    /// draining credits is recognisable long before it is rezzed).
+    ///
+    /// `Option<u32>` rather than a bare `u32` defaulting to `0` so a client
+    /// can tell "hidden" from "rezzed, and genuinely holds no counters" —
+    /// the two want different renderings, and collapsing them would make an
+    /// empty card look identical to a concealed one.
+    ///
+    /// The *kind* of counter is deliberately not carried here: it is a
+    /// static property on `CardDefinition`, and every client already holds
+    /// a `CardRegistry` to resolve titles, so duplicating it into the view
+    /// would be two sources of truth for one fact.
+    pub counters: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -58,6 +74,13 @@ pub struct PublicCorpState {
 pub struct PublicInstalledRunnerCard {
     pub card: CardId,
     pub current_strength: i32,
+    /// Generic counters (see `dsl::card::CounterKind`) — a bare `u32`, not
+    /// the `Option` its Corp counterpart carries. The asymmetry is not an
+    /// oversight: a rig card is always face-up (see `PublicRunnerState::
+    /// rig`), so there is no unrezzed state for counters to leak from and
+    /// therefore no visibility rule to express. Virus counters on *Botulus*
+    /// or credits on *Pennyshaver* are public the moment they are placed.
+    pub counters: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -255,6 +278,10 @@ fn mask_installed_card(installed: &InstalledCard, owner_view: bool) -> PublicIns
         rezzed: installed.rezzed,
         card: identity_visible.then(|| installed.card.clone()),
         advancement_tokens: installed.advancement_tokens,
+        // Same predicate as `card`, deliberately reusing the local rather
+        // than restating the condition: counters and identity are hidden
+        // together or not at all, and two copies of the rule could drift.
+        counters: identity_visible.then_some(installed.counters),
     }
 }
 
@@ -305,7 +332,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
 /// masked-view number can lag behind it. Revisit if a real UI consumer ever
 /// needs the displayed number to match.
 fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
-    PublicInstalledRunnerCard { card: card.card.clone(), current_strength: card.effective_strength() }
+    PublicInstalledRunnerCard { card: card.card.clone(), current_strength: card.effective_strength(), counters: card.counters }
 }
 
 fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerState {
@@ -341,12 +368,7 @@ mod tests {
                 ..Default::default()
             },
             phase: GamePhase::Action(Side::Corp),
-            active_run: None,
-            paid_ability_window: None,
-            active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
-            seed: 0,
-            rng_step: 0,
+            ..Default::default()
         }
     }
 
@@ -465,12 +487,7 @@ mod tests {
             corp: corp_state_with_cards(),
             runner,
             phase: GamePhase::Action(Side::Runner),
-            active_run: None,
-            paid_ability_window: None,
-            active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
-            seed: 0,
-            rng_step: 0,
+            ..Default::default()
         }
     }
 
@@ -541,6 +558,61 @@ mod tests {
         assert_eq!(masked_for_runner.corp.bad_publicity, 3);
     }
 
+    /// Counters follow the card's identity exactly: the Corp sees its own
+    /// unrezzed card's counters, the Runner sees `None` for the same card,
+    /// and both see them once it is rezzed.
+    ///
+    /// The hidden case is the one that matters — a *Nico Campaign*'s credit
+    /// count would otherwise identify an unrezzed asset outright.
+    #[test]
+    fn corp_installed_counters_are_masked_exactly_like_the_card_identity() {
+        let mut corp = corp_state_with_cards();
+        corp.installed[0].counters = 4; // ice_wall, unrezzed
+        corp.installed[1].counters = 7; // enigma, rezzed
+        let state = game_state(corp);
+
+        let for_corp = mask_state_for_player(&state, Side::Corp);
+        let for_runner = mask_state_for_player(&state, Side::Runner);
+
+        // Unrezzed: owner sees the count, opponent sees nothing at all.
+        assert_eq!(for_corp.corp.installed[0].counters, Some(4));
+        assert_eq!(for_runner.corp.installed[0].counters, None);
+        // ...and that is the same condition gating the identity itself.
+        assert!(for_corp.corp.installed[0].card.is_some());
+        assert!(for_runner.corp.installed[0].card.is_none());
+
+        // Rezzed: public to both.
+        assert_eq!(for_corp.corp.installed[1].counters, Some(7));
+        assert_eq!(for_runner.corp.installed[1].counters, Some(7));
+    }
+
+    /// A rezzed card holding no counters must stay distinguishable from one
+    /// whose counters are hidden — `Some(0)` versus `None`. Collapsing both
+    /// to `0` is the specific mistake this asserts against.
+    #[test]
+    fn zero_counters_on_a_rezzed_card_is_some_zero_not_none() {
+        let state = game_state(corp_state_with_cards());
+        let for_runner = mask_state_for_player(&state, Side::Runner);
+
+        assert_eq!(for_runner.corp.installed[1].counters, Some(0), "rezzed, genuinely empty");
+        assert_eq!(for_runner.corp.installed[0].counters, None, "unrezzed, concealed");
+    }
+
+    /// The Runner half carries no visibility rule at all — a rig card is
+    /// always face-up, so its counters are public the moment they land.
+    #[test]
+    fn runner_rig_counters_are_visible_to_both_sides() {
+        let mut runner = runner_state_with_cards();
+        runner.rig[0].counters = 3;
+        let state = game_state_with_runner(runner);
+
+        let for_corp = mask_state_for_player(&state, Side::Corp);
+        let for_runner = mask_state_for_player(&state, Side::Runner);
+
+        assert_eq!(for_corp.runner.rig[0].counters, 3);
+        assert_eq!(for_runner.runner.rig[0].counters, 3);
+    }
+
     #[test]
     fn runner_rig_is_never_masked() {
         let state = game_state_with_runner(runner_state_with_cards());
@@ -550,6 +622,7 @@ mod tests {
         let expected = vec![PublicInstalledRunnerCard {
             card: CardId("gordian_blade".to_string()),
             current_strength: 3,
+            counters: 0,
         }];
         assert_eq!(masked_for_corp.runner.rig, expected);
         assert_eq!(masked_for_runner.runner.rig, expected);

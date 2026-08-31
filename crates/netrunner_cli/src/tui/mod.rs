@@ -12,7 +12,7 @@ use ratatui::widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragra
 use ratatui::Frame;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::CardId;
+use netrunner_core::dsl::{CardId, CounterKind};
 use netrunner_core::rules::{ActionSpace, GameEvent, GamePhase, GameState, PlayerAction, ServerId, Side};
 use netrunner_core::view::{build_client_view, ClientView, ServerView};
 use netrunner_server::{classify_end_reason, GameEndReason, ServerMessage};
@@ -326,7 +326,8 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         GamePhase::GameOver(winner) => format!("Game over — {winner:?} wins"),
     };
     let text = format!(
-        "Phase: {phase_label} | You: {:?} | Corp: {}c {} AP:{} BP:{} | Runner: {}c {} Tags:{} MU:{} AP:{}",
+        "Turn {} | Phase: {phase_label} | You: {:?} | Corp: {}c {} AP:{} BP:{} | Runner: {}c {} Tags:{} MU:{} AP:{}",
+        view.turn,
         app.human_side(),
         view.corp.credits,
         click_pool(view.corp.clicks, CORP_MAX_CLICKS),
@@ -380,7 +381,10 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     if view.runner.rig.is_empty() {
         runner_lines.push(Line::from("(rig empty)"));
     } else {
-        runner_lines.extend(view.runner.rig.iter().map(|card| Line::from(format!("{} (str {})", card_title(&card.card, app.registry()), card.current_strength))));
+        runner_lines.extend(view.runner.rig.iter().map(|card| {
+            let counters = counter_label(Some(&card.card), card.counters, app.registry());
+            Line::from(format!("{} (str {}{counters})", card_title(&card.card, app.registry()), card.current_strength))
+        }));
     }
     frame.render_widget(
         Paragraph::new(runner_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Runner rig")),
@@ -392,10 +396,13 @@ fn format_server(server: &ServerView, registry: &CardRegistry) -> String {
     let describe = |card: &netrunner_core::rules::PublicInstalledCard| {
         let rez = if card.rezzed { "rezzed" } else { "unrezzed" };
         let label = card.card.as_ref().map(|id| card_title(id, registry)).unwrap_or_else(|| "???".to_string());
+        // `None` means this viewer may not see the count at all (unrezzed,
+        // and not theirs), which renders the same as "none placed".
+        let counters = counter_label(card.card.as_ref(), card.counters.unwrap_or(0), registry);
         if card.advancement_tokens > 0 {
-            format!("{label} ({rez}, {} adv)", card.advancement_tokens)
+            format!("{label} ({rez}, {} adv{counters})", card.advancement_tokens)
         } else {
-            format!("{label} ({rez})")
+            format!("{label} ({rez}{counters})")
         }
     };
     let cards: Vec<String> = server.ice.iter().chain(server.root.iter()).map(describe).collect();
@@ -473,4 +480,31 @@ fn centered_rect(percent_x: u16, percent_y: u16, area: Rect) -> Rect {
 
 fn card_title(id: &CardId, registry: &CardRegistry) -> String {
     registry.get(id).map(|c| c.title.clone()).unwrap_or_else(|| id.0.clone())
+}
+
+/// `", 3 virus"` for a card carrying counters, or `""` for one carrying
+/// none. The *kind* is looked up here rather than read off the view:
+/// `counter_kind` is static card data every client already has a
+/// `CardRegistry` for, so `masking` deliberately doesn't duplicate it into
+/// `PublicInstalledCard` (see that field's doc comment).
+///
+/// A zero count renders as nothing at all — every card would otherwise
+/// carry a permanent `0 counters` badge. That makes it visually identical
+/// to a card whose counters are *hidden*, which is fine here: the
+/// distinction is real in the view and a richer client may use it, but
+/// there is nothing useful for this one to draw in either case.
+fn counter_label(card: Option<&CardId>, counters: u32, registry: &CardRegistry) -> String {
+    if counters == 0 {
+        return String::new();
+    }
+    let kind = card
+        .and_then(|id| registry.get(id))
+        .and_then(|definition| definition.counter_kind)
+        .map(|kind| match kind {
+            CounterKind::Virus => "virus",
+            CounterKind::Power => "power",
+            CounterKind::Credit => "credits",
+        })
+        .unwrap_or("counters");
+    format!(", {counters} {kind}")
 }

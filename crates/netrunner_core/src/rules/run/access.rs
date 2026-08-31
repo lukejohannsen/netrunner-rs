@@ -835,12 +835,8 @@ mod tests {
                 ..Default::default()
             },
             phase: crate::rules::state::GamePhase::Action(Side::Corp),
-            active_run: None,
-            paid_ability_window: None,
-            active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
             seed,
-            rng_step: 0,
+            ..Default::default()
         }
     }
 

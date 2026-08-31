@@ -94,9 +94,10 @@ pub struct InstalledCard {
     pub advancement_tokens: u32,
     /// Generic counters (virus/power/credit — see `dsl::card::CounterKind`)
     /// placed by `Effect::AddCounters`/removed by `Effect::RemoveCounters`.
-    /// Not yet exposed through `masking::PublicInstalledCard` — no card
-    /// uses this yet, so there's no visibility question to answer until one
-    /// does.
+    /// Exposed through `masking::PublicInstalledCard::counters` under the
+    /// same visibility rule as the card's identity: visible to the owner
+    /// always, to the opponent once rezzed. Hidden on an unrezzed card,
+    /// where a credit total would betray what the card is.
     #[serde(default)]
     pub counters: u32,
     /// Whether this card was installed during the Corp's current turn —
@@ -297,9 +298,9 @@ pub struct InstalledRunnerCard {
     pub turn_strength_buff: i32,
     /// Generic counters (virus/power/credit — see `dsl::card::CounterKind`)
     /// placed by `Effect::AddCounters`/removed by `Effect::RemoveCounters`.
-    /// Not yet exposed through `masking::PublicInstalledRunnerCard` — no
-    /// card uses this yet, so there's no visibility question to answer
-    /// until one does.
+    /// Exposed through `masking::PublicInstalledRunnerCard::counters`
+    /// unmasked — a rig card is always face-up, so unlike the Corp's
+    /// `InstalledCard::counters` there is nothing here to hide.
     #[serde(default)]
     pub counters: u32,
     /// The Corp installed ICE this card is hosted on, if it was installed
@@ -822,6 +823,22 @@ pub struct GameState {
     pub corp: CorpState,
     pub runner: RunnerState,
     pub phase: GamePhase,
+    /// Which turn is underway, counting **each side's turn separately** —
+    /// `0` through both mulligans, `1` for the Corp's opening turn, `2` for
+    /// the Runner's first, and so on. Not a round counter.
+    ///
+    /// Incremented at the single point a turn actually begins
+    /// (`turn::enter_start_of_turn`, the only place `GameEvent::TurnStarted`
+    /// is emitted), and deliberately *after* its Corp deck-out check: a Corp
+    /// that cannot make its mandatory draw loses without the turn ever
+    /// starting, so that turn is never counted.
+    ///
+    /// `netrunner_single_player::MatchHistory` reads this rather than
+    /// reconstructing turn numbers by watching the event stream, which is
+    /// what it used to do — the reconstruction was correct but was a second
+    /// definition of the same fact, living outside the engine.
+    #[serde(default)]
+    pub turn: u32,
     pub active_run: Option<RunState>,
     pub paid_ability_window: Option<PaidAbilityWindow>,
     pub active_trace: Option<TraceState>,
@@ -897,6 +914,7 @@ impl Default for GameState {
             corp: CorpState::default(),
             runner: RunnerState::default(),
             phase: GamePhase::Action(Side::Corp),
+            turn: 0,
             active_run: None,
             paid_ability_window: None,
             active_trace: None,

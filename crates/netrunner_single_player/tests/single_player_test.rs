@@ -64,6 +64,24 @@ fn history_records_every_resolved_action_with_matching_turn_and_side() {
         last_turn = entry.turn_number;
     }
 
+    // The numbering now comes from `GameState::turn` rather than being
+    // reconstructed from the event stream, so pin the two properties that
+    // change would be most likely to break: mulligan actions stay at turn
+    // 0, and the counter climbs one at a time with no skipped turns.
+    assert!(
+        history.entries().iter().any(|entry| entry.turn_number == 1),
+        "Corp's opening turn should be numbered 1"
+    );
+    for pair in history.entries().windows(2) {
+        let (previous, next) = (pair[0].turn_number, pair[1].turn_number);
+        assert!(next - previous <= 1, "turn_number jumped {previous} -> {next}, skipping a turn");
+    }
+    assert_eq!(
+        final_state.turn,
+        history.entries().last().expect("non-empty").turn_number,
+        "the last action is logged under the turn the final state is in"
+    );
+
     // `netrunner_core::rules::win::check_win_conditions` only mutates
     // `state.phase` in place — it never emits its own `GameEvent::GameOver`
     // (only the separate deck-out path in `turn::enter_start_of_turn`
@@ -100,3 +118,4 @@ fn no_panics_or_deadlocks_across_many_seeds() {
         assert!(!history.is_empty(), "seed {seed}: history should be non-empty");
     }
 }
+
