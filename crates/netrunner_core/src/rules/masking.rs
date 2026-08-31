@@ -64,6 +64,11 @@ pub struct PublicCorpState {
     /// Never masked — Bad Publicity is public information in the real game,
     /// same treatment as `scored_agendas`.
     pub bad_publicity: u32,
+    /// Recurring credits still unspent this turn, and the pool they refill
+    /// to. Never masked: recurring credits sit as visible tokens on the
+    /// card that grants them, so both players can always count them.
+    pub recurring_credits: u32,
+    pub recurring_credits_max: u32,
 }
 
 /// A Runner rig card as seen by any viewer: never hidden (see
@@ -74,6 +79,12 @@ pub struct PublicCorpState {
 pub struct PublicInstalledRunnerCard {
     pub card: CardId,
     pub current_strength: i32,
+    /// Which piece of ICE this card is hosted on, for a Trojan Program
+    /// (Botulus, Tranquilizer). Never masked, for the same reason as the
+    /// rest of this struct: a rig card is face-up, and *where* it sits is
+    /// as visible as the card itself — a physical Trojan is literally
+    /// placed on the ICE it hosts on.
+    pub hosted_on_ice: Option<CardId>,
     /// Generic counters (see `dsl::card::CounterKind`) — a bare `u32`, not
     /// the `Option` its Corp counterpart carries. The asymmetry is not an
     /// oversight: a rig card is always face-up (see `PublicRunnerState::
@@ -169,6 +180,19 @@ pub struct PublicRunState {
     pub position: usize,
     pub access_state: Option<PublicAccessState>,
     pub jack_out_permitted: bool,
+    /// Credits this run may still draw from Bad Publicity. Never masked:
+    /// `PublicCorpState::bad_publicity` is already public, and how much of
+    /// it this run has spent is something both players track openly —
+    /// hiding it would make the Runner's affordable actions unreadable to
+    /// the Corp while changing nothing about what is knowable.
+    pub bad_publicity_credits: u32,
+    /// Run-scoped credits granted by a card for this run only. Public for
+    /// the same reason as `bad_publicity_credits`.
+    pub bonus_run_credits: u32,
+    /// Whether a card has barred stealing/trashing accessed cards for the
+    /// rest of this run. A run-scoped restriction announced when it
+    /// applies, so both players know it is in force.
+    pub runner_cannot_steal_or_trash: bool,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -264,6 +288,9 @@ fn mask_run_state(run: &RunState, player: Side) -> PublicRunState {
         position: run.position,
         access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible)),
         jack_out_permitted: run.jack_out_permitted,
+        bad_publicity_credits: run.bad_publicity_credits,
+        bonus_run_credits: run.bonus_run_credits,
+        runner_cannot_steal_or_trash: run.runner_cannot_steal_or_trash,
     }
 }
 
@@ -324,6 +351,8 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
             .collect(),
         scored_agendas: corp.scored_agendas.clone(),
         bad_publicity: corp.bad_publicity,
+        recurring_credits: corp.recurring_credits,
+        recurring_credits_max: corp.recurring_credits_max,
     }
 }
 
@@ -339,7 +368,12 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
 /// masked-view number can lag behind it. Revisit if a real UI consumer ever
 /// needs the displayed number to match.
 fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
-    PublicInstalledRunnerCard { card: card.card.clone(), current_strength: card.effective_strength(), counters: card.counters }
+    PublicInstalledRunnerCard {
+        card: card.card.clone(),
+        current_strength: card.effective_strength(),
+        hosted_on_ice: card.hosted_on_ice.clone(),
+        counters: card.counters,
+    }
 }
 
 fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerState {
@@ -621,6 +655,53 @@ mod tests {
     }
 
     #[test]
+    fn a_trojans_host_ice_is_visible_to_both_sides() {
+        let mut runner = runner_state_with_cards();
+        runner.rig[0].hosted_on_ice = Some(CardId("ice_wall".to_string()));
+        let state = game_state_with_runner(runner);
+
+        for side in [Side::Corp, Side::Runner] {
+            let masked = mask_state_for_player(&state, side);
+            assert_eq!(
+                masked.runner.rig[0].hosted_on_ice,
+                Some(CardId("ice_wall".to_string())),
+                "{side:?} should see where a Trojan is hosted"
+            );
+        }
+    }
+
+    #[test]
+    fn corp_recurring_credits_are_visible_to_both_sides() {
+        let mut state = game_state_with_runner(runner_state_with_cards());
+        state.corp.recurring_credits = 1;
+        state.corp.recurring_credits_max = 2;
+
+        for side in [Side::Corp, Side::Runner] {
+            let masked = mask_state_for_player(&state, side);
+            assert_eq!(masked.corp.recurring_credits, 1, "{side:?}");
+            assert_eq!(masked.corp.recurring_credits_max, 2, "{side:?}");
+        }
+    }
+
+    #[test]
+    fn run_scoped_credit_pools_and_restrictions_are_visible_to_both_sides() {
+        let mut state = game_state_with_runner(runner_state_with_cards());
+        state.active_run = Some(RunState {
+            bad_publicity_credits: 2,
+            bonus_run_credits: 3,
+            runner_cannot_steal_or_trash: true,
+            ..Default::default()
+        });
+
+        for side in [Side::Corp, Side::Runner] {
+            let run = mask_state_for_player(&state, side).active_run.expect("the run is public");
+            assert_eq!(run.bad_publicity_credits, 2, "{side:?}");
+            assert_eq!(run.bonus_run_credits, 3, "{side:?}");
+            assert!(run.runner_cannot_steal_or_trash, "{side:?}");
+        }
+    }
+
+    #[test]
     fn runner_rig_is_never_masked() {
         let state = game_state_with_runner(runner_state_with_cards());
         let masked_for_corp = mask_state_for_player(&state, Side::Corp);
@@ -629,6 +710,7 @@ mod tests {
         let expected = vec![PublicInstalledRunnerCard {
             card: CardId("gordian_blade".to_string()),
             current_strength: 3,
+            hosted_on_ice: None,
             counters: 0,
         }];
         assert_eq!(masked_for_corp.runner.rig, expected);

@@ -37,6 +37,11 @@ pub struct CorpClientView {
     pub clicks: u32,
     pub agenda_points: u32,
     pub bad_publicity: u32,
+    /// See `masking::PublicCorpState::recurring_credits` — public, and
+    /// carried so a determinized sample can reproduce what the Corp can
+    /// actually pay with.
+    pub recurring_credits: u32,
+    pub recurring_credits_max: u32,
     pub hq_count: usize,
     /// `Some` only when the viewer is the Corp.
     pub hq_cards: Option<Vec<CardId>>,
@@ -155,6 +160,8 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
         clicks: public.corp.resources.clicks.0,
         agenda_points: public.corp.resources.agenda_points.0,
         bad_publicity: public.corp.bad_publicity,
+        recurring_credits: public.corp.recurring_credits,
+        recurring_credits_max: public.corp.recurring_credits_max,
         hq_count: zone_count(&public.corp.hq),
         hq_cards: zone_cards(&public.corp.hq),
         rd_count: zone_count(&public.corp.r_and_d),

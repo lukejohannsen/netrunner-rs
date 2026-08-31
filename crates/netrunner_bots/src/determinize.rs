@@ -154,7 +154,12 @@ fn determinize_installed(server_view: &netrunner_core::view::ServerView, pools: 
         slot: InstallSlot::Ice,
         rezzed: card.rezzed,
         advancement_tokens: card.advancement_tokens,
-        counters: 0,
+        // `None` is genuine ignorance, not a drop: the view masks an
+        // unrezzed Corp card's counters because they would leak its
+        // identity, so 0 is the honest sample. When they *are* visible,
+        // carry them — zeroing a rezzed card's counters made its
+        // counter-costed abilities illegal in the sample.
+        counters: card.counters.unwrap_or(0),
         // `ClientView` doesn't carry install timing; a rollout re-derives it
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
@@ -165,7 +170,12 @@ fn determinize_installed(server_view: &netrunner_core::view::ServerView, pools: 
         slot: InstallSlot::Root,
         rezzed: card.rezzed,
         advancement_tokens: card.advancement_tokens,
-        counters: 0,
+        // `None` is genuine ignorance, not a drop: the view masks an
+        // unrezzed Corp card's counters because they would leak its
+        // identity, so 0 is the honest sample. When they *are* visible,
+        // carry them — zeroing a rezzed card's counters made its
+        // counter-costed abilities illegal in the sample.
+        counters: card.counters.unwrap_or(0),
         // `ClientView` doesn't carry install timing; a rollout re-derives it
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
@@ -250,11 +260,17 @@ fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardR
         position: run.position,
         access_state,
         jack_out_permitted: run.jack_out_permitted,
-        bad_publicity_credits: 0,
+        // Public and carried by the view — see `PublicRunState`. Zeroing
+        // these made the sample poorer than the information the searcher
+        // actually has: an action the Runner can really pay for out of
+        // Bad Publicity looked unaffordable, and a barred steal/trash
+        // looked permitted, in both cases deleting candidate actions.
+        bad_publicity_credits: run.bad_publicity_credits,
+        bonus_run_credits: run.bonus_run_credits,
+        runner_cannot_steal_or_trash: run.runner_cannot_steal_or_trash,
         additional_rd_access: 0,
         additional_hq_access: 0,
-        access_replacement: None, cards_accessed_count: 0, ice_rez_cost_modifier: 0, bonus_run_credits: 0,
-        runner_cannot_steal_or_trash: false,
+        access_replacement: None, cards_accessed_count: 0, ice_rez_cost_modifier: 0,
         // Approximated, like `cards_accessed_count`/`bad_publicity_credits`
         // above: `ClientView` doesn't carry either, and both only matter at
         // the moment the run ends (`Trigger::OnRunEnded`), which a
@@ -278,8 +294,12 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         identity: None,
         bad_publicity: view.corp.bad_publicity,
         first_install_used_this_turn: false,
-        recurring_credits: 0,
-        recurring_credits_max: 0, agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
+        // Public (visible tokens on the granting card) and carried by the
+        // view; zeroing them narrowed the Corp's affordable actions and
+        // trace-bid range in the sample.
+        recurring_credits: view.corp.recurring_credits,
+        recurring_credits_max: view.corp.recurring_credits_max,
+        agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
         scored_agendas: view.corp.scored_agendas.clone(),
         resources: PlayerResources {
             credits: Credits(view.corp.credits),
@@ -313,8 +333,15 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             base_strength: card.current_strength,
             encounter_strength_buff: 0,
             turn_strength_buff: 0,
-            counters: 0,
-            hosted_on_ice: None,
+            // Both public and both carried by the view. `counters` was
+            // simply being dropped, which made every counter-costed
+            // ability (Botulus, Leech, Pennyshaver) illegal in the sample;
+            // `hosted_on_ice` likewise, which made
+            // `EffectRequirement::EncounteringHostIce` fail
+            // unconditionally and so put every Trojan ability out of the
+            // search's reach entirely.
+            counters: card.counters,
+            hosted_on_ice: card.hosted_on_ice.clone(),
         })
         .collect();
 
@@ -630,5 +657,99 @@ mod tests {
                 "seed {seed}: zone size is public and must not change"
             );
         }
+    }
+
+    /// Public state the view carries must survive sampling.
+    ///
+    /// Each of these was previously hard-coded to zero/`None` here, which
+    /// is not a neutral approximation: every one of them gates a `Cost` or
+    /// an `EffectRequirement`, so zeroing them makes actions the searcher
+    /// can really take illegal *in the sample*, and the search then never
+    /// considers them. `hosted_on_ice` was the worst — `None` fails
+    /// `EncounteringHostIce` unconditionally, putting every Trojan's
+    /// ability permanently out of reach.
+    #[test]
+    fn public_run_and_card_state_survives_determinization() {
+        let mut registry = registry();
+        registry.insert(blank_card("botulus", Side::Runner, CardType::Program));
+
+        let mut state = CoreGameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.recurring_credits = 2;
+        state.corp.recurring_credits_max = 3;
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("corp_ice_0".to_string()),
+            server: netrunner_core::rules::ServerId::Remote(0),
+            slot: CoreInstallSlot::Ice,
+            rezzed: true,
+            counters: 4,
+            ..Default::default()
+        }];
+        state.runner.rig = vec![InstalledRunnerCard {
+            card: CardId("botulus".to_string()),
+            base_strength: 2,
+            counters: 3,
+            hosted_on_ice: Some(CardId("corp_ice_0".to_string())),
+            ..Default::default()
+        }];
+        state.active_run = Some(netrunner_core::rules::RunState {
+            server: netrunner_core::rules::ServerId::Remote(0),
+            phase: netrunner_core::rules::RunPhase::Initiation,
+            bad_publicity_credits: 2,
+            bonus_run_credits: 3,
+            runner_cannot_steal_or_trash: true,
+            ..Default::default()
+        });
+
+        for side in [Side::Corp, Side::Runner] {
+            let view = build_client_view(&state, &registry, side);
+            let mut rng = StdRng::seed_from_u64(7);
+            let sampled = determinize(&view, &registry, &mut rng);
+
+            let run = sampled.active_run.as_ref().expect("the run survives");
+            assert_eq!(run.bad_publicity_credits, 2, "{side:?}");
+            assert_eq!(run.bonus_run_credits, 3, "{side:?}");
+            assert!(run.runner_cannot_steal_or_trash, "{side:?}");
+
+            assert_eq!(sampled.runner.rig[0].counters, 3, "{side:?}");
+            assert_eq!(
+                sampled.runner.rig[0].hosted_on_ice,
+                Some(CardId("corp_ice_0".to_string())),
+                "{side:?}: a Trojan's host is public"
+            );
+
+            assert_eq!(sampled.corp.recurring_credits, 2, "{side:?}");
+            assert_eq!(sampled.corp.recurring_credits_max, 3, "{side:?}");
+            // Rezzed, so its counters are visible to both sides.
+            assert_eq!(sampled.corp.installed[0].counters, 4, "{side:?}");
+        }
+    }
+
+    /// The counterpart: an *unrezzed* Corp card's counters are masked
+    /// precisely so they cannot leak its identity, so the sample must not
+    /// invent them. `0` here is honest ignorance, not a dropped field.
+    #[test]
+    fn an_unrezzed_corp_cards_counters_stay_hidden_from_the_runner() {
+        let registry = registry();
+        let mut state = CoreGameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("corp_asset_0".to_string()),
+            server: netrunner_core::rules::ServerId::Remote(0),
+            slot: CoreInstallSlot::Root,
+            rezzed: false,
+            counters: 5,
+            ..Default::default()
+        }];
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let mut rng = StdRng::seed_from_u64(7);
+        let sampled = determinize(&view, &registry, &mut rng);
+        assert_eq!(sampled.corp.installed[0].counters, 0);
+
+        let corp_view = build_client_view(&state, &registry, Side::Corp);
+        let mut rng = StdRng::seed_from_u64(7);
+        let sampled = determinize(&corp_view, &registry, &mut rng);
+        assert_eq!(sampled.corp.installed[0].counters, 5, "the owner sees its own counters");
     }
 }
