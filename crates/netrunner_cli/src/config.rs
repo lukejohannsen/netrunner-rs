@@ -38,9 +38,13 @@ pub struct Config {
     /// `Human` agent can't make progress, `Human` is treated as `Random`
     /// instead (see `headless::run`). Interactive (non-headless) mode
     /// requires exactly one of `--corp`/`--runner` to be `Human` — the CLI
-    /// only ever hosts one human seat, submitting actions through a
-    /// `netrunner_server::MatchSession` channel exactly the way a real
-    /// (future) remote client would; the other side must be a bot.
+    /// only ever hosts one human seat; the other side must be a bot.
+    ///
+    /// Local interactive play runs synchronously on a
+    /// `netrunner_single_player::SinglePlayerSession` — no `MatchSession`,
+    /// no channel, no background task (see `tui::run_local`). `--mode
+    /// remote` is the path that submits actions over a channel to a real
+    /// `netrunner_server` match.
     #[arg(long, value_enum, default_value_t = BotKind::Human)]
     pub corp: BotKind,
 
@@ -49,8 +53,10 @@ pub struct Config {
     #[arg(long, value_enum, default_value_t = BotKind::Human)]
     pub runner: BotKind,
 
-    /// `Local` spawns an in-process `MatchSession` (the historical
-    /// behavior, unaffected by this flag's default). `Remote` instead
+    /// `Local` runs the match in this process: interactive play on a
+    /// synchronous `SinglePlayerSession` (`tui::run_local`), `--headless`
+    /// on an in-process `MatchSession` driving two bots (`headless::run`).
+    /// `Remote` instead
     /// connects to a `netrunner_server --serve` daemon over WebSocket at
     /// `--server`; `--corp`/`--runner`/`--headless`/`--games` are ignored
     /// in this mode — use `--side` to request a seat instead.
@@ -92,10 +98,13 @@ pub enum BotKind {
     Mcts,
     /// A policy network trained by `scripts/run_iteration_loop.py`, loaded
     /// from `--model`. Requires building with `--features onnx`, and is
-    /// supported only in local interactive play: it evaluates a full
-    /// `GameState` rather than a masked `ClientView`, so unlike the other
-    /// agents it cannot be handed to a `netrunner_server` match, where the
-    /// bot must see only what its side is allowed to.
+    /// supported only in local interactive play — not because it sees too
+    /// much (`OnnxPolicyEvaluator` encodes through `encode_observation`,
+    /// which builds a `ClientView` for its own side, so its features are
+    /// masked like every other agent's) but because it has no `BotAgent`
+    /// form: it implements the index-based `Agent`/`PlayerDriver` shape and
+    /// so cannot fill a `netrunner_server::PlayerSlot::Bot`. See
+    /// `bots::make_agent`, which returns `None` for this kind.
     Onnx,
 }
 
