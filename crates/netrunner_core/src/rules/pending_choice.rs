@@ -585,7 +585,7 @@ mod tests {
             pending_paid_choice: None,
             pending_decision: None,
             last_discarded_cards: Vec::new(),
-            last_completed_run: None, last_advancement_was_first: false,
+            last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,
         }
