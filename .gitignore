@@ -10,3 +10,6 @@ env/
 # Generated self-play training artifacts
 /data/selfplay/
 /checkpoints/
+
+# Local Claude Code state (per-machine agent settings and permissions)
+.claude/
