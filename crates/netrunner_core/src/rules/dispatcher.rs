@@ -21,7 +21,7 @@ use crate::rules::ability;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::ServerId;
-use crate::rules::state::{GameState, InstallSlot, Side};
+use crate::rules::state::{GamePhase, GameState, InstallSlot, Side};
 
 /// Given `event`, fires every installed card's matching `Trigger`s and
 /// returns the resulting `GameEvent`s, in firing order.
@@ -353,9 +353,18 @@ pub fn dispatch_event(
             fire_each(state, registry, &candidates, Trigger::OnBasicDrawAction)
         }
 
-        GameEvent::DamageAboutToResolve { .. } => fire_each(state, registry, &both_sides_candidates(state), Trigger::OnDamageAboutToResolve),
+        // Both of these reach cards on *either* side, so unlike the
+        // single-side audiences above they need the active-player-first
+        // rule applied explicitly — see `order_active_first`.
+        GameEvent::DamageAboutToResolve { .. } => {
+            let candidates = order_active_first(turn_active_side(state), both_sides_candidates(state));
+            fire_each(state, registry, &candidates, Trigger::OnDamageAboutToResolve)
+        }
 
-        GameEvent::TrashAboutToResolve { .. } => fire_each(state, registry, &both_sides_candidates(state), Trigger::OnTrashAboutToResolve),
+        GameEvent::TrashAboutToResolve { .. } => {
+            let candidates = order_active_first(turn_active_side(state), both_sides_candidates(state));
+            fire_each(state, registry, &candidates, Trigger::OnTrashAboutToResolve)
+        }
 
         _ => Ok(Vec::new()),
     }
@@ -364,15 +373,36 @@ pub fn dispatch_event(
 /// Rezzed Corp installs ∪ full Runner rig — the same audience `TurnStarted`'s
 /// arm collects per-side, unioned here since a prevention trigger could in
 /// principle belong to either side.
-fn both_sides_candidates(state: &GameState) -> Vec<CardId> {
+fn both_sides_candidates(state: &GameState) -> Vec<(Side, CardId)> {
     state
         .corp
         .installed
         .iter()
         .filter(|installed| installed.rezzed)
-        .map(|installed| installed.card.clone())
-        .chain(state.runner.rig.iter().map(|card| card.card.clone()))
+        .map(|installed| (Side::Corp, installed.card.clone()))
+        .chain(state.runner.rig.iter().map(|card| (Side::Runner, card.card.clone())))
         .collect()
+}
+
+/// Whose turn it currently is, for `order_active_first`'s benefit.
+///
+/// Every `GamePhase` variant carries a `Side`, so unlike `legal_actions::
+/// current_actor` (which returns `None` during `StartOfTurn`) this is
+/// total — which is exactly why the ordering sites read `phase` rather
+/// than asking who may act right now. Those differ mid-window: the Corp
+/// can hold priority during the Runner's turn, but the Runner is still the
+/// active player whose reactions resolve first.
+///
+/// `GameOver(side)` names the *winner* rather than an active player.
+/// Harmless: nothing dispatches triggers after the game has ended.
+fn turn_active_side(state: &GameState) -> Side {
+    match state.phase {
+        GamePhase::Mulligan(side)
+        | GamePhase::StartOfTurn(side)
+        | GamePhase::Action(side)
+        | GamePhase::Discard { side, .. }
+        | GamePhase::GameOver(side) => side,
+    }
 }
 
 /// Fires `trigger` against each of `candidates` in order, collecting events.
@@ -592,6 +622,67 @@ mod tests {
 
         assert_eq!(state.runner.resources.credits, Credits(6));
         assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
+    }
+
+    /// `DamageAboutToResolve`/`TrashAboutToResolve` are the only dispatches
+    /// whose audience spans both sides, so they are the only ones where
+    /// active-player-first is observable. It used to be ignored here:
+    /// `both_sides_candidates` emitted Corp before Runner unconditionally.
+    ///
+    /// No card in the current pool declares either trigger, so this pins
+    /// behavior that is unreachable in a real game today — it exists so the
+    /// first card that does declare one resolves in rules order.
+    #[test]
+    fn damage_about_to_resolve_fires_the_active_sides_reactions_first() {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger(
+            "corp_reactor",
+            Side::Corp,
+            Trigger::OnDamageAboutToResolve,
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+        registry.insert(card_with_trigger(
+            "runner_reactor",
+            Side::Runner,
+            Trigger::OnDamageAboutToResolve,
+            Effect::GainCredits(Side::Runner, 1),
+        ));
+
+        let both_installed = |state: &mut GameState| {
+            state.corp.installed = vec![crate::rules::state::InstalledCard {
+                card: CardId("corp_reactor".to_string()),
+                rezzed: true,
+                ..Default::default()
+            }];
+            state.runner.rig = vec![rig_card("runner_reactor")];
+        };
+        let damage = GameEvent::DamageAboutToResolve { damage_type: crate::dsl::DamageType::Net, amount: 1 };
+
+        let mut runner_turn = empty_state();
+        runner_turn.phase = GamePhase::Action(Side::Runner);
+        both_installed(&mut runner_turn);
+        let events = dispatch_event(&mut runner_turn, &registry, &damage).unwrap();
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CreditsGained { side: Side::Runner, amount: 1 },
+                GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+            ],
+            "on the Runner's turn the Runner's reaction resolves first"
+        );
+
+        let mut corp_turn = empty_state();
+        corp_turn.phase = GamePhase::Action(Side::Corp);
+        both_installed(&mut corp_turn);
+        let events = dispatch_event(&mut corp_turn, &registry, &damage).unwrap();
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+                GameEvent::CreditsGained { side: Side::Runner, amount: 1 },
+            ],
+            "on the Corp's turn the Corp's reaction resolves first"
+        );
     }
 
     #[test]
