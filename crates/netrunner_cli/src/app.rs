@@ -233,7 +233,7 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::StealAgenda { card_id } => format!("Steal {}", title(card_id)),
         PlayerAction::TrashAccessedCard { card_id } => format!("Trash {}", title(card_id)),
         PlayerAction::PassAccessedCard { card_id } => format!("Pass on {}", title(card_id)),
-        PlayerAction::PayToAvoidAccessTrigger { card_id } => format!("Pay to avoid {}'s trigger", title(card_id)),
+        PlayerAction::PayAccessTrigger { card_id } => format!("Pay to avoid {}'s trigger", title(card_id)),
         PlayerAction::DeclineAccessTrigger { card_id } => format!("Decline {}'s trigger", title(card_id)),
         PlayerAction::PassPriority { side } => format!("Pass priority ({side:?})"),
         PlayerAction::SubmitCorpTraceBid { amount } => format!("Bid {amount} (Corp trace)"),

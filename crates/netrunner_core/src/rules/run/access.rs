@@ -149,8 +149,8 @@ fn was_trashed(events: &[GameEvent], card_id: &CardId) -> bool {
     events.iter().any(|e| matches!(e, GameEvent::CardTrashed { card, .. } if card == card_id))
 }
 
-/// Like `enter_pending_choice`, but for callers (`resolve_pay_to_avoid`/
-/// `resolve_decline_to_avoid`) that may have already trashed `card_id`
+/// Like `enter_pending_choice`, but for callers (`resolve_pay_access_trigger`/
+/// `resolve_decline_access_trigger`) that may have already trashed `card_id`
 /// themselves (via the paid avoidance cost or the declined effects) before
 /// ever reaching `enter_pending_choice` — `enter_pending_choice`'s own
 /// self-trash check only sees events from *its* `Trigger::OnAccessed` call,
@@ -182,19 +182,36 @@ fn present_card_for_access(
 ) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server }];
 
-    if let Some(interactive) = registry.get(card_id).and_then(|c| c.interactive_on_access.as_ref()) {
+    // An unmet `requirement` means the trigger does not apply to *this*
+    // access at all (Snare! accessed in Archives), so nothing is parked and
+    // the card falls through to its ordinary `PendingChoice` below. Checked
+    // here, at presentation, rather than at resolution: parking a decision
+    // that then resolves to nothing would show the Runner a pause that
+    // reveals a trap fired, and cost the deciding side an action for
+    // nothing.
+    let applies = registry.get(card_id).and_then(|c| c.interactive_on_access.as_ref()).is_some_and(|interactive| {
+        interactive.requirement.as_ref().is_none_or(|requirement| {
+            let side = interactive.interaction.payer();
+            ability::check_requirement(state, requirement, side, &ability::ResolutionContext::for_card(Some(card_id)), registry)
+                .is_ok()
+        })
+    });
+
+    if let Some(interactive) = applies.then(|| registry.get(card_id).and_then(|c| c.interactive_on_access.as_ref())).flatten()
+    {
+        let decider = interactive.interaction.payer();
         let can_pay = match &interactive.cost {
-            Cost::Credits(amount) => state.runner.resources.credits.0 >= *amount,
+            Cost::Credits(amount) => state.resources(decider).credits.0 >= *amount,
             // Other cost kinds aren't precomputed elsewhere either
             // (`resolve_steal`'s `steal_cost` handling is the same) —
-            // `resolve_pay_to_avoid`'s `ability::pay_cost` call re-validates
-            // affordability for every `Cost` variant regardless.
+            // `resolve_pay_access_trigger`'s `ability::pay_cost` call
+            // re-validates affordability for every `Cost` variant regardless.
             _ => true,
         };
         let cost = interactive.cost.clone();
         let run = state.active_run.as_mut().expect("present_card_for_access called mid-access");
         let access = run.access_state.as_mut().expect("present_card_for_access called mid-access");
-        access.phase = AccessPhase::PendingInteractiveTrigger { card_id: card_id.clone(), cost, can_pay };
+        access.phase = AccessPhase::PendingInteractiveTrigger { card_id: card_id.clone(), cost, decider, can_pay };
         return Ok(events);
     }
 
@@ -625,12 +642,12 @@ pub fn resolve_pass(
     Ok(events)
 }
 
-/// The `AccessState` fields `resolve_pay_to_avoid`/`resolve_decline_to_avoid`
-/// need, pulled out by value for the same borrow-scoping reason as
-/// `PendingAccess`.
+/// The `AccessState` fields `resolve_access_trigger` needs, pulled out by
+/// value for the same borrow-scoping reason as `PendingAccess`.
 struct PendingInteractive {
     server: ServerId,
     cost: Cost,
+    decider: Side,
 }
 
 /// Confirms a run is parked in `RunPhase::AccessingCard` awaiting an
@@ -644,76 +661,106 @@ fn require_pending_interactive(state: &GameState, card_id: &CardId) -> Result<Pe
         return Err(RulesError::NotInAccessPhase);
     }
     let access = run.access_state.as_ref().ok_or(RulesError::NotInAccessPhase)?;
-    let AccessPhase::PendingInteractiveTrigger { card_id: pending, cost, .. } = &access.phase else {
+    let AccessPhase::PendingInteractiveTrigger { card_id: pending, cost, decider, .. } = &access.phase else {
         return Err(RulesError::NotInAccessPhase);
     };
     if pending != card_id {
         return Err(RulesError::NotInAccessPhase);
     }
 
-    Ok(PendingInteractive { server: access.server, cost: cost.clone() })
+    Ok(PendingInteractive { server: access.server, cost: cost.clone(), decider: *decider })
 }
 
-/// Resolves `PlayerAction::PayToAvoidAccessTrigger`. See its doc comment for
-/// the error conditions.
-pub fn resolve_pay_to_avoid(
+/// The one resolution path behind both `PlayerAction::PayAccessTrigger` and
+/// `PlayerAction::DeclineAccessTrigger`.
+///
+/// Paying and declining are mirror images — the card's `AccessInteraction`
+/// says which branch resolves `effects`, and the other branch resolves
+/// nothing — so this is one function taking `paid` rather than two that
+/// would have to be kept in step. Getting them out of step is exactly the
+/// class of bug the `current_actor`/`apply_action` precedence invariant
+/// exists to prevent, one layer up.
+fn resolve_access_trigger(
+    state: &mut GameState,
+    card_id: &CardId,
+    registry: &CardRegistry,
+    paid: bool,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let pending = require_pending_interactive(state, card_id)?;
+
+    let interaction = registry
+        .get(card_id)
+        .and_then(|c| c.interactive_on_access.as_ref())
+        .map(|interactive| interactive.interaction)
+        .unwrap_or_default();
+
+    let mut events = Vec::new();
+    if paid {
+        if let Cost::Credits(requested) = &pending.cost {
+            let available = state.resources(pending.decider).credits.0;
+            if available < *requested {
+                return Err(RulesError::CannotAffordAccessTriggerCost {
+                    card: card_id.clone(),
+                    available,
+                    requested: *requested,
+                });
+            }
+        }
+        events.extend(ability::pay_cost(state, pending.decider, &pending.cost, Some(card_id))?);
+    }
+
+    if paid != interaction.effects_resolve_on_decline() {
+        let effects = registry
+            .get(card_id)
+            .and_then(|c| c.interactive_on_access.as_ref())
+            .map(|interactive| interactive.effects.clone())
+            .unwrap_or_default();
+
+        for effect in &effects {
+            events.extend(ability::evaluate_effect(
+                state,
+                effect,
+                &mut ability::ResolutionContext::for_card(Some(card_id)),
+                registry,
+            )?);
+        }
+        // Only the effect-resolving branch can flatline the Runner, so the
+        // game-over check belongs here rather than around the whole body.
+        if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
+            events.extend(finish);
+            return Ok(events);
+        }
+    }
+
+    let choice_events = enter_pending_choice_unless_self_trashed(state, registry, pending.server, card_id, &events)?;
+    events.extend(choice_events);
+    Ok(events)
+}
+
+/// Resolves `PlayerAction::PayAccessTrigger`. See its doc comment for the
+/// error conditions.
+pub fn resolve_pay_access_trigger(
     state: &mut GameState,
     card_id: &CardId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let pending = require_pending_interactive(state, card_id)?;
-    if let Cost::Credits(requested) = &pending.cost {
-        let available = state.runner.resources.credits.0;
-        if available < *requested {
-            return Err(RulesError::CannotAffordAvoidanceCost {
-                card: card_id.clone(),
-                available,
-                requested: *requested,
-            });
-        }
-    }
-
-    let mut events = ability::pay_cost(state, Side::Runner, &pending.cost, Some(card_id))?;
-    let choice_events =
-        enter_pending_choice_unless_self_trashed(state, registry, pending.server, card_id, &events)?;
-    events.extend(choice_events);
-    Ok(events)
+    resolve_access_trigger(state, card_id, registry, true)
 }
 
 /// Resolves `PlayerAction::DeclineAccessTrigger`. See its doc comment for
 /// the error conditions.
-pub fn resolve_decline_to_avoid(
+pub fn resolve_decline_access_trigger(
     state: &mut GameState,
     card_id: &CardId,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let pending = require_pending_interactive(state, card_id)?;
-
-    let effects = registry
-        .get(card_id)
-        .and_then(|c| c.interactive_on_access.as_ref())
-        .map(|interactive| interactive.effects.clone())
-        .unwrap_or_default();
-
-    let mut events = Vec::new();
-    for effect in &effects {
-        events.extend(ability::evaluate_effect(state, effect, &mut ability::ResolutionContext::for_card(Some(card_id)), registry)?);
-    }
-    if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
-        events.extend(finish);
-        return Ok(events);
-    }
-
-    let choice_events =
-        enter_pending_choice_unless_self_trashed(state, registry, pending.server, card_id, &events)?;
-    events.extend(choice_events);
-    Ok(events)
+    resolve_access_trigger(state, card_id, registry, false)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{CardDefinition, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, Trigger, TriggeredEffect};
+    use crate::dsl::{AccessInteraction, CardDefinition, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, Trigger, TriggeredEffect};
     use crate::rules::run::state::RunState;
     use crate::rules::state::{
         AgendaPoints, Clicks, Credits, InstalledCard, MemoryUnits, PlayerResources, RunnerState,
@@ -786,7 +833,7 @@ mod tests {
     /// `effects`."
     fn card_with_interactive_on_access(id: &str, cost: Cost, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            interactive_on_access: Some(InteractiveOnAccess { cost, effects }),
+            interactive_on_access: Some(InteractiveOnAccess { cost, effects, interaction: AccessInteraction::default(), requirement: None }),
             trash_cost: None,
             ..trashable_card(id, 0)
         }
@@ -1986,6 +2033,7 @@ mod tests {
             AccessPhase::PendingInteractiveTrigger {
                 card_id: CardId("fetal_ai".to_string()),
                 cost: Cost::Credits(4),
+                decider: Side::Runner,
                 can_pay: true,
             }
         );
@@ -2013,7 +2061,7 @@ mod tests {
         access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
         let card_id = CardId("fetal_ai".to_string());
-        let events = resolve_pay_to_avoid(&mut state, &card_id, &registry).expect("paying should succeed");
+        let events = resolve_pay_access_trigger(&mut state, &card_id, &registry).expect("paying should succeed");
 
         assert_eq!(state.runner.resources.credits, Credits(1));
         // No damage — the effect was avoided.
@@ -2062,7 +2110,7 @@ mod tests {
 
         let card_id = CardId("fetal_ai".to_string());
         let events =
-            resolve_decline_to_avoid(&mut state, &card_id, &registry).expect("declining should succeed");
+            resolve_decline_access_trigger(&mut state, &card_id, &registry).expect("declining should succeed");
 
         // Credits untouched, but the 2 net damage landed.
         assert_eq!(state.runner.resources.credits, Credits(5));
@@ -2101,15 +2149,15 @@ mod tests {
 
         let card_id = CardId("fetal_ai".to_string());
         assert_eq!(
-            resolve_pay_to_avoid(&mut state, &card_id, &registry),
-            Err(RulesError::CannotAffordAvoidanceCost { card: card_id.clone(), available: 2, requested: 4 })
+            resolve_pay_access_trigger(&mut state, &card_id, &registry),
+            Err(RulesError::CannotAffordAccessTriggerCost { card: card_id.clone(), available: 2, requested: 4 })
         );
 
         // Untouched: still credits 2, still pending the same interactive trigger.
         assert_eq!(state.runner.resources.credits, Credits(2));
         assert_eq!(
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
-            AccessPhase::PendingInteractiveTrigger { card_id, cost: Cost::Credits(4), can_pay: false }
+            AccessPhase::PendingInteractiveTrigger { card_id, cost: Cost::Credits(4), decider: Side::Runner, can_pay: false }
         );
     }
 
@@ -2119,11 +2167,11 @@ mod tests {
         let card_id = CardId("fetal_ai".to_string());
 
         assert_eq!(
-            resolve_pay_to_avoid(&mut state, &card_id, &registry()),
+            resolve_pay_access_trigger(&mut state, &card_id, &registry()),
             Err(RulesError::NotInAccessPhase)
         );
         assert_eq!(
-            resolve_decline_to_avoid(&mut state, &card_id, &registry()),
+            resolve_decline_access_trigger(&mut state, &card_id, &registry()),
             Err(RulesError::NotInAccessPhase)
         );
 
@@ -2146,11 +2194,11 @@ mod tests {
 
         let wrong_card = CardId("not_pending".to_string());
         assert_eq!(
-            resolve_pay_to_avoid(&mut state, &wrong_card, &registry),
+            resolve_pay_access_trigger(&mut state, &wrong_card, &registry),
             Err(RulesError::NotInAccessPhase)
         );
         assert_eq!(
-            resolve_decline_to_avoid(&mut state, &wrong_card, &registry),
+            resolve_decline_access_trigger(&mut state, &wrong_card, &registry),
             Err(RulesError::NotInAccessPhase)
         );
     }
@@ -2176,7 +2224,7 @@ mod tests {
 
         let card_id = CardId("fetal_ai".to_string());
         let events =
-            resolve_decline_to_avoid(&mut state, &card_id, &registry).expect("declining should succeed");
+            resolve_decline_access_trigger(&mut state, &card_id, &registry).expect("declining should succeed");
 
         assert_eq!(state.active_run, None);
         assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
@@ -2238,7 +2286,7 @@ mod tests {
         on_accessed_effects: Vec<Effect>,
     ) -> CardDefinition {
         CardDefinition {
-            interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects }),
+            interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects, interaction: AccessInteraction::default(), requirement: None }),
             triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
@@ -2265,7 +2313,7 @@ mod tests {
         access_server(&mut state, ServerId::Archives, &registry).unwrap();
 
         let card_id = CardId("fetal_ai".to_string());
-        let events = resolve_pay_to_avoid(&mut state, &card_id, &registry).expect("paying should succeed");
+        let events = resolve_pay_access_trigger(&mut state, &card_id, &registry).expect("paying should succeed");
 
         // The avoided damage never landed, but the normal OnAccessed trigger
         // still fired once the interactive decision resolved.
@@ -2293,7 +2341,10 @@ mod tests {
     /// An Agenda (see `agenda_card`) with an `InteractiveOnAccess` trigger —
     /// Fetal AI's actual card shape (a damage trap that's also an Agenda).
     fn agenda_with_interactive_on_access(id: &str, points: u32, cost: Cost, effects: Vec<Effect>) -> CardDefinition {
-        CardDefinition { interactive_on_access: Some(InteractiveOnAccess { cost, effects }), ..agenda_card(id, points) }
+        CardDefinition {
+            interactive_on_access: Some(InteractiveOnAccess { cost, effects, interaction: AccessInteraction::default(), requirement: None }),
+            ..agenda_card(id, points)
+        }
     }
 
     #[test]
@@ -2318,7 +2369,7 @@ mod tests {
 
         let card_id = CardId("fetal_ai".to_string());
         // Can't afford to pay — decline, taking the damage.
-        resolve_decline_to_avoid(&mut state, &card_id, &registry).expect("declining should succeed");
+        resolve_decline_access_trigger(&mut state, &card_id, &registry).expect("declining should succeed");
         assert_eq!(state.runner.grip.len(), 0);
         assert_eq!(state.runner.heap.len(), 2);
 
@@ -2387,6 +2438,7 @@ mod tests {
             AccessPhase::PendingInteractiveTrigger {
                 card_id: CardId("fetal_ai".to_string()),
                 cost: Cost::Credits(4),
+                decider: Side::Runner,
                 can_pay: true,
             }
         );

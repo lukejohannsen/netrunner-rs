@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::cost::Cost;
 use crate::dsl::effect::Effect;
 use crate::dsl::trigger::Trigger;
+use crate::rules::Side;
 
 /// A single costed/manually-activated ability: when/how it fires
 /// (`trigger`), what must be paid to make it fire (`cost` — `None` for
@@ -111,6 +112,16 @@ pub enum EffectRequirement {
     /// (`state::ArchivedCard::facedown`) — e.g. Jinteki: Restoring
     /// Humanity's "if there is a facedown card in Archives".
     ArchivesHasFacedownCard,
+    /// The access currently being resolved is against Archives — read from
+    /// `active_run.access_state.server`, so it answers "where is the Runner
+    /// accessing this card *right now*", not where the card lives.
+    ///
+    /// Not composable from the existing vocabulary: nothing else in it can
+    /// see the accessed server at all. Exists for Snare!'s "when the Runner
+    /// accesses this asset anywhere except in Archives", which is spelled
+    /// `Not(AccessingArchives)` — hence the positive form here, leaving the
+    /// negation to the `Not` combinator that already exists.
+    AccessingArchives,
     /// The Runner has made at least one successful run this turn
     /// (`RunnerState::made_successful_run_this_turn`) — e.g. Mutual Favor's
     /// "if you made a successful run this turn, you may install [the found
@@ -178,19 +189,72 @@ pub enum EffectRequirement {
     WasFirstAdvancementThisCard,
 }
 
-/// An optional "may pay `cost` to prevent `effects`" access-time trigger —
-/// e.g. Fetal AI's "pay 2 [credit] to avoid 2 net damage." Lives on
+/// Who decides an `InteractiveOnAccess`, and what paying its cost does.
+///
+/// Both real printings are "may pay to change what happens on access", but
+/// they are mirror images of each other — opposite payer *and* opposite
+/// polarity — so one flag captures both rather than two near-identical
+/// mechanisms. Note that the effects always resolve on exactly one of the
+/// two branches, which is what keeps `resolve_access_trigger` a single
+/// function.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum AccessInteraction {
+    /// The Runner may pay `cost` to *prevent* `effects` — Fetal AI's "you
+    /// may pay 2 [credit] to avoid 2 net damage". Declining resolves them.
+    /// The default, so a card that states no interaction reads as the
+    /// original Runner-side avoidance this type was introduced for.
+    #[default]
+    RunnerPaysToPrevent,
+    /// The Corp may pay `cost` to *apply* `effects` — Snare!'s "you may pay
+    /// 4 [credit]. If you do, give the Runner 1 tag and do 3 net damage."
+    /// Declining resolves nothing.
+    CorpPaysToApply,
+}
+
+impl AccessInteraction {
+    /// The side that chooses, and pays if it chooses to.
+    pub fn payer(self) -> Side {
+        match self {
+            AccessInteraction::RunnerPaysToPrevent => Side::Runner,
+            AccessInteraction::CorpPaysToApply => Side::Corp,
+        }
+    }
+
+    /// Whether `effects` resolve when the payer *declines*. Paying always
+    /// does the opposite.
+    pub fn effects_resolve_on_decline(self) -> bool {
+        match self {
+            AccessInteraction::RunnerPaysToPrevent => true,
+            AccessInteraction::CorpPaysToApply => false,
+        }
+    }
+}
+
+/// An optional "may pay `cost` to change what `effects` do" access-time
+/// trigger — Fetal AI's "pay 2 [credit] to avoid 2 net damage", or Snare!'s
+/// "you may pay 4 [credit]" to inflict them. Lives on
 /// `dsl::card::CardDefinition::interactive_on_access`, `None` for the common case of
 /// no such trigger. Resolved before the card's normal (unconditional)
 /// `Trigger::OnAccessed` effects, via `rules::run::state::AccessPhase::
-/// PendingInteractiveTrigger` and `PlayerAction::PayToAvoidAccessTrigger`/
-/// `DeclineAccessTrigger` (`rules::run::access::resolve_pay_to_avoid`/
-/// `resolve_decline_to_avoid`).
+/// PendingInteractiveTrigger` and `PlayerAction::PayAccessTrigger`/
+/// `DeclineAccessTrigger` (`rules::run::access::resolve_pay_access_trigger`/
+/// `resolve_decline_access_trigger`).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct InteractiveOnAccess {
     pub cost: Cost,
     pub effects: Vec<Effect>,
+    /// Absent means `RunnerPaysToPrevent` — see `AccessInteraction`.
+    #[serde(default)]
+    pub interaction: AccessInteraction,
+    /// A precondition on the trigger firing at all, checked when the card
+    /// is presented for access. Unmet means no decision is parked and
+    /// access proceeds straight to its normal `PendingChoice` — the trigger
+    /// simply does not apply here. Snare!'s "anywhere except in Archives"
+    /// is `Not(AccessingArchives)`. `None` for a trigger that always
+    /// applies.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requirement: Option<EffectRequirement>,
 }
 
 /// A subroutine's printed text and the `Effect` it resolves into, when the

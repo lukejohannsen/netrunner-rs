@@ -1547,6 +1547,14 @@ pub fn check_requirement(
         EffectRequirement::ArchivesHasFacedownCard => {
             if state.corp.has_facedown_in_archives() { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::AccessingArchives => {
+            let accessing_archives = state
+                .active_run
+                .as_ref()
+                .and_then(|run| run.access_state.as_ref())
+                .is_some_and(|access| access.server == ServerId::Archives);
+            if accessing_archives { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::StoleAgendaDuringLastRun => {
             let stole = state.last_completed_run.as_ref().is_some_and(|run| run.agendas_stolen > 0);
             if stole { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -1713,6 +1721,7 @@ pub(crate) fn consume_requirement(state: &mut GameState, requirement: &EffectReq
         | EffectRequirement::LastRunWasOnHqOrRnD
         | EffectRequirement::StoleAgendaDuringLastRun
         | EffectRequirement::ArchivesHasFacedownCard
+        | EffectRequirement::AccessingArchives
         | EffectRequirement::MadeSuccessfulRunThisTurn
         | EffectRequirement::ThisCardCountersAtMost(_)
         | EffectRequirement::CurrentlyAccessingACard

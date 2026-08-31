@@ -83,7 +83,9 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let registry = decks::sample_deck_registry();
-    let (corp_deck, runner_deck) = decks::sample_decks(&config.corp_deck, &config.runner_deck)?;
+    let decks_dir = crate::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
+    let (corp_deck, runner_deck) =
+        decks::decks_for_match(&decks_dir, &config.corp_deck, &config.runner_deck, &registry, config.format.into())?;
     let seed = config.seed.unwrap_or_else(rand::random);
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
 

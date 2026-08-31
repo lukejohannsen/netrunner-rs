@@ -120,8 +120,8 @@ pub fn apply_action(
         PlayerAction::PassAccessedCard { card_id } => {
             pass_accessed_card(state, registry, card_id)
         }
-        PlayerAction::PayToAvoidAccessTrigger { card_id } => {
-            pay_to_avoid_access_trigger(state, registry, card_id)
+        PlayerAction::PayAccessTrigger { card_id } => {
+            pay_access_trigger(state, registry, card_id)
         }
         PlayerAction::DeclineAccessTrigger { card_id } => {
             decline_access_trigger(state, registry, card_id)
@@ -241,7 +241,7 @@ fn classify_action(action: &PlayerAction) -> ActionKind {
         | PlayerAction::StealAgenda { .. }
         | PlayerAction::TrashAccessedCard { .. }
         | PlayerAction::PassAccessedCard { .. }
-        | PlayerAction::PayToAvoidAccessTrigger { .. }
+        | PlayerAction::PayAccessTrigger { .. }
         | PlayerAction::DeclineAccessTrigger { .. }
         // Rez is not an action; paid abilities are used *in* windows, not
         // followed by new ones.
@@ -1383,8 +1383,8 @@ fn pass_accessed_card(
     Ok((next, events))
 }
 
-/// Resolves `PlayerAction::PayToAvoidAccessTrigger`, per its doc comment.
-fn pay_to_avoid_access_trigger(
+/// Resolves `PlayerAction::PayAccessTrigger`, per its doc comment.
+fn pay_access_trigger(
     state: &GameState,
     registry: &CardRegistry,
     card_id: CardId,
@@ -1392,7 +1392,7 @@ fn pay_to_avoid_access_trigger(
     require_phase(state, GamePhase::Action(Side::Runner))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_pay_to_avoid(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_pay_access_trigger(&mut next, &card_id, registry)?;
     events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
@@ -1406,7 +1406,7 @@ fn decline_access_trigger(
     require_phase(state, GamePhase::Action(Side::Runner))?;
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
-    let mut events = run::resolve_decline_to_avoid(&mut next, &card_id, registry)?;
+    let mut events = run::resolve_decline_access_trigger(&mut next, &card_id, registry)?;
     events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     Ok((next, events))
 }
@@ -4704,7 +4704,12 @@ mod tests {
     }
 
     fn pending_interactive_trigger(card_id: &CardId) -> run::AccessPhase {
-        run::AccessPhase::PendingInteractiveTrigger { card_id: card_id.clone(), cost: Cost::Credits(2), can_pay: true }
+        run::AccessPhase::PendingInteractiveTrigger {
+            card_id: card_id.clone(),
+            cost: Cost::Credits(2),
+            decider: Side::Runner,
+            can_pay: true,
+        }
     }
 
     #[test]
@@ -4860,7 +4865,7 @@ mod tests {
         };
 
         for action in [
-            PlayerAction::PayToAvoidAccessTrigger { card_id: card_id.clone() },
+            PlayerAction::PayAccessTrigger { card_id: card_id.clone() },
             PlayerAction::DeclineAccessTrigger { card_id: card_id.clone() },
         ] {
             let mut state = runner_state(3, 0, 0);

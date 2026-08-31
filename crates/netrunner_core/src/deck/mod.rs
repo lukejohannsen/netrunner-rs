@@ -14,6 +14,38 @@
 //! (`is_playable: false`); this validator doesn't reject those, since that's
 //! not the question it answers — the two validators serve different
 //! questions and neither supersedes the other.
+//!
+//! # The pipeline
+//!
+//! Both validators run on every deck, and `decks::DeckFile::validate` is the
+//! single seam that runs them, so no caller has to know which to invoke:
+//!
+//! ```text
+//! decks::DeckFile  (authored: slug-keyed, carries metadata)
+//!   ├─ to_deck()     → rules::Deck     → rules::deck::validate_deck
+//!   │                                    "can this engine play it?"
+//!   │                                    implemented cards, copy limit,
+//!   │                                    deck size, agenda points
+//!   └─ to_decklist() → deck::Decklist  → deck::validator::validate_deck
+//!                                        "is it legal to build?"
+//!                                        influence, format pool, banlist,
+//!                                        per-card deck_limit
+//! ```
+//!
+//! Gameplay executability is checked first: "references a card the engine
+//! cannot play" is a more fundamental complaint than "two influence over",
+//! and reporting it second would bury it.
+//!
+//! `Decklist` is reached by *converting* a `DeckFile`, never by parsing
+//! user-supplied NetrunnerDB JSON — deckbuilding happens against the cards
+//! this engine implements. The numeric-keyed shape exists because printed
+//! legality is defined over NetrunnerDB's metadata, and `numeric_id` is the
+//! join. That mapping is total for the embedded pool: every playable card
+//! carries a code, pinned by `every_playable_card_carries_a_numeric_id`.
+//!
+//! The one rule the two validators share is `rules::deck::agenda_point_range`,
+//! called from both. `MAX_COPIES_PER_CARD` is deliberately duplicated rather
+//! than shared — see `validator::MAX_COPIES_PER_CARD`.
 
 use std::collections::HashMap;
 

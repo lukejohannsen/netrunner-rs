@@ -5,7 +5,7 @@ mod effect;
 mod trigger;
 mod zone;
 
-pub use ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
+pub use ability::{AbilityDef, AccessInteraction, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 pub use card::{
     CardDefinition, CardId, CardSubtype, CardType, CardValidationError, CounterKind, IceType, StrengthModifier, TriggeredEffect,
 };

@@ -297,22 +297,22 @@ pub enum PlayerAction {
     /// prevent its `effects`. Runner-only. Legal only while a run is in
     /// `RunPhase::AccessingCard` and `card_id` matches the pending
     /// interactive trigger (`RulesError::NotInAccessPhase` otherwise);
-    /// `RulesError::CannotAffordAvoidanceCost` if the cost can't be paid.
+    /// `RulesError::CannotAffordAccessTriggerCost` if the cost can't be paid.
     /// Transitions straight to that card's normal `AccessPhase::
-    /// PendingChoice` afterward — see `run::access::resolve_pay_to_avoid`.
+    /// PendingChoice` afterward — see `run::access::resolve_pay_access_trigger`.
     /// Blocked while a Paid Ability Window is open
     /// (`RulesError::BlockedByPaidAbilityWindow`) — both sides must pass
     /// priority first via `PassPriority`. Resolving this action may itself
     /// open a fresh window for the card's `PendingChoice` — see
     /// `rules::paid_ability::open_window_if_at_checkpoint`.
-    PayToAvoidAccessTrigger { card_id: CardId },
+    PayAccessTrigger { card_id: CardId },
     /// Decline to pay the pending `AccessPhase::PendingInteractiveTrigger`'s
     /// `cost`, letting its `effects` resolve instead. Runner-only. Legal
     /// only while a run is in `RunPhase::AccessingCard` and `card_id`
     /// matches the pending interactive trigger (`RulesError::
     /// NotInAccessPhase` otherwise). Transitions to that card's normal
     /// `AccessPhase::PendingChoice` afterward, unless the effects ended the
-    /// game — see `run::access::resolve_decline_to_avoid`. Blocked while a
+    /// game — see `run::access::resolve_decline_access_trigger`. Blocked while a
     /// Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`)
     /// — both sides must pass priority first via `PassPriority`. Resolving
     /// this action may itself open a fresh window for the card's

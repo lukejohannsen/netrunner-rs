@@ -2,6 +2,7 @@
   "id": "quick_and_dirty",
   "name": "Quick and Dirty",
   "side": "Corp",
+  "category": "Sample",
   "identity": "weyland_consortium_built_to_last",
   "cards": [
     {

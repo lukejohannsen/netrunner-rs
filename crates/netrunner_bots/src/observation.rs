@@ -90,24 +90,55 @@ pub const PLANE_COUNT: usize = 5;
 
 pub const OBS_SIZE: usize = SCALAR_COUNT + PLANE_COUNT * CARD_VOCAB;
 
+/// Vocabulary-slot rank for a card's set. **Deliberately not release
+/// order** — it is the order sets were added to *this vocabulary*, which is
+/// the thing that has to stay stable.
+///
+/// Sorting purely by `numeric_id` was the original rule, and it delivers
+/// "a new set appends" only while every new set is numbered *above* the
+/// current pool. That stopped being true the moment the Core Set's printed
+/// metadata was backfilled: those cards were already in the vocabulary (at
+/// the tail, as entries with no `numeric_id`), and their `01xxx` codes sort
+/// below System Gateway's `30xxx` — which would have pushed all 75 System
+/// Gateway cards 19 slots along, corrupting every exported policy for a
+/// change that added no new card at all. Ranking the Core Set after the
+/// sets already ordered keeps every System Gateway slot exactly where it
+/// was.
+///
+/// A genuinely new set takes the next rank and appends, exactly as before.
+fn set_rank(set_code: Option<&str>) -> u32 {
+    match set_code {
+        Some("sg") => 0,
+        Some("elev") => 1,
+        Some("core") => 2,
+        _ => 3,
+    }
+}
+
 /// Maps a card id to its plane slot.
 ///
 /// Built once from `cards::register_playable_cards` — the canonical
 /// playable pool — rather than from whatever registry a caller passes, so
 /// the mapping is identical for every consumer and stable across processes.
-/// Ordered by `(numeric_id, id)`: NetrunnerDB numbers a set contiguously,
-/// so a future set's cards sort *after* today's and append to the tail
-/// instead of shifting existing slots out from under a trained model.
-/// Cards with no `numeric_id` (baseline and homebrew) sort last, by id.
+/// Ordered by `(set_rank, numeric_id, id)`: `set_rank` keeps whole sets
+/// from interleaving, and NetrunnerDB numbers a set contiguously, so within
+/// one set the printed order is stable. Cards with no `numeric_id`
+/// (homebrew, test fixtures) sort last, by id.
 fn vocabulary() -> &'static HashMap<CardId, usize> {
     static VOCABULARY: OnceLock<HashMap<CardId, usize>> = OnceLock::new();
     VOCABULARY.get_or_init(|| {
         let mut registry = CardRegistry::new();
         netrunner_core::cards::register_playable_cards(&mut registry);
 
-        let mut cards: Vec<(u32, String)> = registry
+        let mut cards: Vec<(u32, u32, String)> = registry
             .iter()
-            .map(|card| (card.numeric_id.map_or(u32::MAX, |numeric| numeric.0), card.id.0.clone()))
+            .map(|card| {
+                (
+                    set_rank(card.set_code.as_deref()),
+                    card.numeric_id.map_or(u32::MAX, |numeric| numeric.0),
+                    card.id.0.clone(),
+                )
+            })
             .collect();
         cards.sort();
 
@@ -115,7 +146,7 @@ fn vocabulary() -> &'static HashMap<CardId, usize> {
             .into_iter()
             .take(OVERFLOW_SLOT)
             .enumerate()
-            .map(|(index, (_numeric_id, id))| (CardId(id), index))
+            .map(|(index, (_rank, _numeric_id, id))| (CardId(id), index))
             .collect()
     })
 }
@@ -357,10 +388,15 @@ mod tests {
             vec!["rene_loup_arcemont", "wildcat_strike", "carnivore", "botulus", "buzzsaw", "cleaver"]
         );
 
-        // Cards with no `numeric_id` (the baseline pool) sort last, by id,
-        // so a new set slots in ahead of them without disturbing 0..=n.
+        // The Core Set sorts *after* System Gateway despite its far lower
+        // card numbers — the whole point of `set_rank`. Backfilling its
+        // printed metadata reordered those 19 baseline cards among
+        // themselves (slots 75..=93, printed order now rather than
+        // alphabetical) and moved no System Gateway card at all, which is
+        // the property deciding whether an exported policy survives a
+        // card-data change.
         let tail: Vec<&str> = by_slot.iter().rev().take(2).map(|(_, id)| id.as_str()).collect();
-        assert_eq!(tail, vec!["weyland_consortium_building_a_better_world", "wall_of_static"]);
+        assert_eq!(tail, vec!["wall_of_static", "enigma"]);
 
         assert!(vocabulary.len() <= OVERFLOW_SLOT, "vocabulary must leave the overflow slot free");
     }

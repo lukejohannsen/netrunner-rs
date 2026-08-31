@@ -3,23 +3,29 @@
   "title": "Snare!",
   "side": "Corp",
   "card_type": "Asset",
-  "cost": 4,
-  "trash_cost": 3,
-  "triggers": [
-    {
-      "trigger": "OnAccessed",
-      "effects": [
-        {
-          "DealDamage": [
-            "Net",
-            3
-          ]
-        },
-        {
-          "GiveTags": 1
-        }
-      ]
-    }
-  ],
+  "cost": 0,
+  "trash_cost": 0,
+  "triggers": [],
+  "interactive_on_access": {
+    "cost": {
+      "Credits": 4
+    },
+    "interaction": "CorpPaysToApply",
+    "requirement": {
+      "Not": "AccessingArchives"
+    },
+    "effects": [
+      {
+        "GiveTags": 1
+      },
+      {
+        "DealDamage": [
+          "Net",
+          3
+        ]
+      }
+    ]
+  },
+  "numeric_id": 1070,
   "is_playable": true
 }

@@ -3,7 +3,7 @@
   "title": "Account Siphon",
   "side": "Runner",
   "card_type": "Event",
-  "cost": 2,
+  "cost": 0,
   "triggers": [
     {
       "trigger": "OnPlay",
@@ -38,5 +38,6 @@
       ]
     }
   ],
+  "numeric_id": 1018,
   "is_playable": true
 }

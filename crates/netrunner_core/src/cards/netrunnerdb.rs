@@ -15,6 +15,13 @@ use crate::rules::Side;
 const SYSTEM_GATEWAY_JSON: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/cards/system_gateway.json"));
 const ELEVATION_JSON: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/cards/elevation.json"));
+/// The original 2012 Core Set. Embedded not because any of it is a current
+/// competitive pool — `format.rs` deliberately keeps `"core"` out of Startup
+/// and Snapshot — but because the baseline hand-authored cards this repo
+/// started from are Core Set printings, and without their catalog entries
+/// they carry no faction, influence cost, deck limit or set code, which is
+/// everything deckbuilding legality is computed from.
+const CORE_JSON: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/data/cards/core.json"));
 
 #[derive(Debug, thiserror::Error)]
 pub enum EmbeddedSetsError {
@@ -69,7 +76,8 @@ fn parse_keywords(keywords: Option<String>) -> Vec<String> {
 /// NetrunnerDB's `ice` `type_code` carries no `IceType` payload of its own —
 /// the subtype only appears as the first segment of the keyword list (e.g.
 /// `"Sentry - Bioroid - Destroyer"`). Every ICE in the currently-embedded
-/// sets carries exactly one of these three as its first keyword.
+/// sets carries exactly one of these three as its first keyword, once
+/// `CATALOG_UNMODELABLE` has removed the one printing that carries none.
 fn infer_ice_type(keywords: &[String]) -> Option<IceType> {
     match keywords.first().map(String::as_str) {
         Some("Barrier") => Some(IceType::Barrier),
@@ -197,17 +205,36 @@ pub fn convert_dtos_lenient(dtos: Vec<NetrunnerDbCardDto>) -> (Vec<CardDefinitio
     (definitions, skipped)
 }
 
-/// Parses both embedded core-set JSON fixtures (System Gateway, Elevation)
-/// and returns a `CardRegistry` of their catalog-only (`is_playable: false`)
-/// entries. Stays I/O-free — `include_str!` is a compile-time embed, not a
-/// runtime filesystem read.
+/// Parses every embedded catalog JSON fixture (System Gateway, Elevation,
+/// Core Set) and returns a `CardRegistry` of their catalog-only
+/// (`is_playable: false`) entries. Stays I/O-free — `include_str!` is a
+/// compile-time embed, not a runtime filesystem read.
 pub fn load_embedded_netrunnerdb_sets() -> Result<CardRegistry, EmbeddedSetsError> {
     let mut registry = CardRegistry::new();
-    for json in [SYSTEM_GATEWAY_JSON, ELEVATION_JSON] {
+    for json in [SYSTEM_GATEWAY_JSON, ELEVATION_JSON, CORE_JSON] {
         let dtos: Vec<NetrunnerDbCardDto> = serde_json::from_str(json)?;
-        registry.merge(convert_dtos(dtos)?);
+        let modelable = dtos.into_iter().filter(|dto| !is_unmodelable(&dto.code)).collect();
+        registry.merge(convert_dtos(modelable)?);
     }
     Ok(registry)
+}
+
+/// Catalog entries this crate's card schema cannot represent, keyed by
+/// NetrunnerDB code with a stated reason. Filtered out *before*
+/// `convert_dtos` rather than tolerated by `convert_dtos_lenient`, so an
+/// unexpected conversion failure still aborts loudly — the same
+/// explicit-exception-set discipline `SG_UNIMPLEMENTED` applies to card
+/// coverage, not a place to silence a real gap.
+const CATALOG_UNMODELABLE: &[(&str, &str)] = &[(
+    "01076",
+    "Data Mine — ICE whose keywords are \"Trap - AP\", with no Barrier/Code Gate/Sentry \
+     subtype at all. `CardType::Ice` carries a mandatory `IceType`; widening it to an \
+     `Option` would ripple through every `restrict_to` match and every ICE card file to \
+     accommodate a catalog-only card nothing implements.",
+)];
+
+fn is_unmodelable(code: &str) -> bool {
+    CATALOG_UNMODELABLE.iter().any(|(excluded, _)| *excluded == code)
 }
 
 #[cfg(test)]

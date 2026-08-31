@@ -7,5 +7,6 @@
   "min_deck_size": 45,
   "first_install_discount": 1,
   "triggers": [],
+  "numeric_id": 1033,
   "is_playable": true
 }

@@ -170,8 +170,9 @@ fn account_siphon_replaces_hq_access_and_accesses_zero_cards() {
     let (state, events) = run_to_completion_after_playing(state, &registry, "account_siphon");
 
     assert_eq!(state.corp.resources.credits, Credits(5), "Corp should lose 5 credits");
-    // Runner: started at 5, paid 2 to play Account Siphon, gained 10 from the siphon.
-    assert_eq!(state.runner.resources.credits, Credits(13));
+    // Runner: started at 5, paid 0 to play Account Siphon (it is printed at
+    // cost 0), gained 10 from the siphon.
+    assert_eq!(state.runner.resources.credits, Credits(15));
     assert_eq!(state.runner.tags, 2);
     assert_eq!(state.corp.hq.len(), 2, "HQ itself is untouched — access was replaced, not resolved");
     assert!(
@@ -248,12 +249,15 @@ fn pad_campaign_gains_one_credit_at_the_start_of_the_corps_next_turn() {
     assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 1 })));
 }
 
-#[test]
-fn snare_deals_three_net_damage_and_a_tag_when_accessed() {
+/// Runs the Runner into a Snare! installed in a remote, stopping at the
+/// access-time decision Snare! parks. `corp_credits` sets what the Corp has
+/// to spend on it.
+fn run_into_snare(corp_credits: u32) -> (crate::rules::GameState, CardRegistry) {
     let registry = registry();
     let mut state = base_state();
     state.phase = GamePhase::Action(Side::Runner);
     state.runner.resources.clicks = Clicks(4);
+    state.corp.resources.credits = Credits(corp_credits);
     state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
     state.corp.installed = vec![crate::rules::InstalledCard {
         card: CardId("snare".to_string()),
@@ -267,9 +271,33 @@ fn snare_deals_three_net_damage_and_a_tag_when_accessed() {
     let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open access window");
     let (state, _) =
         apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes access window");
-    let (state, events) =
+    let (state, _) =
         apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes access window, resolving access");
+    // A further window opens at the `PendingInteractiveTrigger` checkpoint
+    // itself; close it so the parked decision is what's actually pending.
+    let (state, _) = close_all_windows(state, &registry);
+    (state, registry)
+}
 
+/// Snare! is *the* card driving `AccessInteraction::CorpPaysToApply`: its
+/// printed text is "you may pay 4 [credit]. If you do, give the Runner 1 tag
+/// and do 3 net damage." Nothing fires until the Corp actually pays.
+#[test]
+fn snare_asks_the_corp_to_pay_and_deals_three_net_damage_and_a_tag_when_it_does() {
+    let (state, registry) = run_into_snare(5);
+
+    assert_eq!(
+        crate::rules::current_actor(&state),
+        Some(Side::Corp),
+        "Snare! asks the Corp to decide, even though the run makes it the Runner's action phase"
+    );
+    assert_eq!(state.runner.grip.len(), 5, "nothing resolves until the Corp pays");
+
+    let (state, events) =
+        apply_action(&state, &registry, PlayerAction::PayAccessTrigger { card_id: CardId("snare".to_string()) })
+            .expect("corp pays for snare");
+
+    assert_eq!(state.corp.resources.credits, Credits(1), "5 - 4 to fire Snare!");
     assert_eq!(state.runner.grip.len(), 2, "3 of the 5 grip cards should have been discarded to net damage");
     assert_eq!(state.runner.tags, 1);
     assert!(events.iter().any(|e| matches!(
@@ -277,6 +305,88 @@ fn snare_deals_three_net_damage_and_a_tag_when_accessed() {
         crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Net, amount: 3 }
     )));
     assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
+}
+
+#[test]
+fn snare_does_nothing_when_the_corp_declines_to_pay() {
+    let (state, registry) = run_into_snare(5);
+
+    let (state, _) =
+        apply_action(&state, &registry, PlayerAction::DeclineAccessTrigger { card_id: CardId("snare".to_string()) })
+            .expect("corp declines to pay for snare");
+
+    assert_eq!(state.corp.resources.credits, Credits(5), "declining costs nothing");
+    assert_eq!(state.runner.grip.len(), 5, "no net damage");
+    assert_eq!(state.runner.tags, 0, "no tag");
+}
+
+/// The affordability hint and the resolution guard must agree: a Corp that
+/// cannot pay is not offered the paying branch at all.
+#[test]
+fn a_corp_that_cannot_afford_snare_is_not_offered_the_option() {
+    let (state, registry) = run_into_snare(3);
+
+    let legal = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+    assert!(
+        !legal.iter().any(|a| matches!(a, PlayerAction::PayAccessTrigger { .. })),
+        "paying should not be offered at 3 credits against a cost of 4: {legal:?}"
+    );
+    assert!(
+        legal.iter().any(|a| matches!(a, PlayerAction::DeclineAccessTrigger { .. })),
+        "declining must stay available, or the Corp has no legal action at all: {legal:?}"
+    );
+
+    // The per-seat slice every real client gets must route the decision to
+    // exactly one side. Snare! is the only card that makes the *Corp* that
+    // side during the Runner's action phase, and neither sweep contains it
+    // — the view-based one runs System Gateway sample decks only — so this
+    // stands in for coverage they cannot give this path.
+    //
+    // Asserted as "the Runner is not offered the decision" rather than "the
+    // Runner has nothing to do": basic click actions are legal mid-run
+    // today (`engine::draw_card_click` guards on phase and windows but not
+    // on `active_run`), which is a separate, pre-existing question about
+    // acting during a run and not this trigger's to answer.
+    let runner_legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+    assert!(
+        !runner_legal.iter().any(|a| matches!(
+            a,
+            PlayerAction::PayAccessTrigger { .. } | PlayerAction::DeclineAccessTrigger { .. }
+        )),
+        "Snare!'s decision belongs to the Corp, not the Runner: {runner_legal:?}"
+    );
+}
+
+/// "When the Runner accesses this asset anywhere **except in Archives**" —
+/// a Snare! the Runner meets in Archives is inert, and must not even park a
+/// decision, or the pause itself would announce a trap that cannot fire.
+#[test]
+fn snare_offers_the_corp_nothing_when_accessed_from_archives() {
+    let registry = registry();
+    let mut state = base_state();
+    state.phase = GamePhase::Action(Side::Runner);
+    state.runner.resources.clicks = Clicks(4);
+    state.corp.resources.credits = Credits(10);
+    state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
+    state.corp.archives = vec![crate::rules::ArchivedCard {
+        card: CardId("snare".to_string()),
+        facedown: false,
+    }];
+
+    let (state, _) =
+        apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("initiate run");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open access window");
+    let (state, _) = close_all_windows(state, &registry);
+
+    assert_eq!(
+        crate::rules::current_actor(&state),
+        Some(Side::Runner),
+        "no Corp decision should be parked for a Snare! accessed in Archives"
+    );
+    assert_eq!(state.runner.grip.len(), 5, "an Archives Snare! deals no damage");
+    assert_eq!(state.runner.tags, 0);
+    assert_eq!(state.corp.resources.credits, Credits(10), "the Corp is never given the option to pay");
 }
 
 #[test]
@@ -2127,7 +2237,7 @@ mod system_gateway {
             PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), memory_cost: 1 },
         )
         .expect("install gordian blade");
-        assert_eq!(state.runner.resources.credits, Credits(7), "9 - 2 (cost), discount already used this turn");
+        assert_eq!(state.runner.resources.credits, Credits(5), "9 - 4 (cost), discount already used this turn");
     }
 
     #[test]
