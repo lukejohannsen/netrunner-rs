@@ -12,6 +12,19 @@ members = [
 ]
 resolver = "3"
 
+# Inherited by every crate via `license.workspace = true` /
+# `repository.workspace = true`, so these live in exactly one place rather
+# than nine copies that can drift apart.
+#
+# `GPL-3.0-or-later`, not `GPL-3.0-only`: this is the "either version 3 of
+# the License, or (at your option) any later version" form the GPL's own
+# recommended notice uses — see the "How to Apply These Terms" appendix at
+# the end of LICENSE. Change it here if the project ever needs to pin to v3
+# exactly.
+[workspace.package]
+license = "GPL-3.0-or-later"
+repository = "https://github.com/lukejohannsen/netrunner-rs"
+
 [workspace.dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
