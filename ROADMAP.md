@@ -44,6 +44,7 @@ Ordered by what stands between the engine and a person playing a full, satisfyin
 
 ### 2. Make Game State Legible to a UI
 - [ ] **Expose card counters through `masking`/`ClientView`.** `InstalledCard`/`InstalledRunnerCard` both carry `counters: u32`, but `PublicInstalledCard` has no counters field at all — so a Runner cannot see virus counters on their own *Botulus*, and neither side sees credits on a *Nico Campaign*. Blocks any real UI. The masking rule is straightforward: always visible to the owner, and visible to the opponent once the card is rezzed/faceup; hidden on an unrezzed Corp card (the original reason for the omission).
+  - **Hard prerequisite for Phase 1.75's booster stage**, which introduces *Leech* and *Conduit* specifically. A tutorial that teaches virus counters and then cannot render them is worse than no tutorial. Pull this forward if Learn to Play starts first.
 - [ ] **Add a turn counter to `GameState`.** There is none — `netrunner_single_player::history` reconstructs turn numbers externally. Needed for UI display, replay scrubbing, and any "on turn N" effect.
 
 ### 3. Rules Gaps Worth Closing
@@ -102,7 +103,8 @@ Ordered by what stands between the engine and a person playing a full, satisfyin
 ### 7. System Gateway Card Set — DONE
 All 75 playable *System Gateway* cards are implemented, tested, and `is_playable: true`, authored JSON-only. Coverage is enforced by `every_system_gateway_card_is_implemented_or_explicitly_excluded`, which requires each of the 77 printed cards to have an implementation or an `SG_UNIMPLEMENTED` entry stating why. **That test is the gate for calling any future set complete.**
 - [x] **DSL primitives added, in dependency order:** foundational fixes (`CardDefinition::validate()`'s agenda-field bug, Upgrade installability, generalized `OncePerTurn`); new triggers (`OnRez`, `OnApproachServer`, `OnRunEnded`, `OnBasicDrawAction`, `OnAdvance`, `OnDiscardPhaseEnd`); decision primitives (`OfferPaidChoice`/`PresentChoice`/`PromptChooseCards`/`PromptChooseServer` parking a `PendingPaidChoice`/`PendingDecision`); `dsl::zone::{CardZoneRef,CardFilter}`; hosted credit pools; MU and max-hand-size bonuses; console-singleton enforcement; conditional cost discounts; hosting for Trojans; bioroid click-to-break; dynamic amounts and conditional strength; persistent-after-trash upgrades; facedown Archives tracking (with its own masking rule — orientation and count public, a facedown card's identity hidden from the Runner); and remove-from-game. `ActionSpace::SIZE` grew 724 → 1024.
-- [x] **Two identities permanently out of scope:** *The Catalyst: Convention Breaker* and *The Syndicate: Profit over Principle* carry `stripped_text: "Starter game only."` — no rules text exists to implement. They are the only two `SG_UNIMPLEMENTED` entries.
+- [x] **Two identities out of scope *for competitive play*:** *The Catalyst: Convention Breaker* and *The Syndicate: Profit over Principle* carry `stripped_text: "Starter game only."` — no rules text exists to implement. They are the only two `SG_UNIMPLEMENTED` entries.
+  - **This was recorded as permanent; Phase 1.75 reverses it, deliberately.** The decision was correct while no tutorial mode existed — a blank identity legal in Standard is a deckbuilding hole, not a feature. But these are exactly the identities Null Signal's *Learn to Play* starter decks are built on, and "no rules text to implement" is precisely what makes them **trivial** to implement once there is a use for them. See Phase 1.75 §2.
 - [x] **Three reprints share ids with baseline cards:** *Sure Gamble*, *Hedge Fund*, *Cleaver* — handled by keeping the single existing definition. *Cleaver*'s pre-existing definition had transposed paid-ability costs; fixed as a data-correctness bug.
 - [x] **Engine bugs found by the bot-driven sweep** (all reachable in ordinary play, none by any per-card test):
   - `current_actor` ignored `pending_paid_choice`/`pending_decision`, so a decision parked *while a paid-ability window was open* named the window's priority holder instead of the decision's chooser — leaving a player with no legal action at all. Its precedence now mirrors `apply_action`'s blocking guards exactly (trace → paid choice → decision → window → phase). **These two must stay in sync; that is how this was found.**
@@ -137,6 +139,92 @@ Their own doc comments admit the duplication ("Mirrors the decision-loop shape o
 - [ ] **Move `MatchHistory` into the shared driver** so both paths record actions and events. This simultaneously delivers the structured match log below and gives the network path a game log.
 
 **Migration order, each step leaving the tree green:** extract the shared loop → port `MatchSession` → port `SinglePlayerSession` (the adapter keeps `PlayerDriver` working for `netrunner_gym`/`netrunner_selfplay`) → port `netrunner_cli::headless` → collapse `netrunner_gym::env`'s fast-forward onto it.
+
+---
+
+## 🎓 Phase 1.75: Learn to Play
+
+**The repo can play Netrunner but cannot teach it.** A new player launching `netrunner_cli` gets a flat list of legal actions and no explanation of clicks, servers, runs, or why any of it matters. Netrunner is famously hard to learn cold, and its asymmetry means learning it twice. This phase closes that, from both sides.
+
+Two stages, in order:
+
+1. **Scripted lessons** — gated, one-concept-at-a-time scenarios, a Corp track and a Runner track.
+2. **A faithful NSG starter game** — the official preset starter decks, 6 agenda points to win, booster-pack staging — so a graduate gets a feel for a real game unguided.
+
+> **The scripted lessons are our addition, not Null Signal's.** [Learn to Play](https://nullsignal.games/players/learn-to-play/) is a rulebook with training wheels, not a tutorial: fixed preset decks, a lowered 6-point win threshold, mechanics deferred to a booster pack (viruses, tags, meat damage, modal ice), and per-card clarifications keyed to the fixed deck. There are no scripted turns and no puzzles. Stage 2 is faithful to that; stage 1 is scaffolding NSG leaves to a human teacher. Don't "correct" stage 1 toward the source material later — the divergence is the point.
+
+**The card pool is already done.** All 32 starter-deck cards and all 11 booster cards are implemented, playable System Gateway cards. Nothing needs authoring — verified card by card against `data/{corp,runner}/`.
+
+**Placement, and why it is here rather than in Phase 1:** it does not need Phase 1's deck import, but it *does* need Phase 1.2's counter visibility (the booster stage teaches viruses). More importantly, the lesson driver is a `PlayerDriver` — the exact trait Phase 1.5 replaces. Landing this before Session Unification means porting it twice. That is the ordering rationale; it is written down so it is not re-litigated.
+
+### 1. Configurable match rules (`netrunner_core`)
+
+- [ ] **Replace the `WINNING_AGENDA_POINTS: u32 = 7` const (`rules/win.rs`) with a `MatchRules { winning_agenda_points: u32 }` struct on `GameState`** — `Default` = 7, `#[serde(default)]` so recorded histories still deserialize, read by `win::check_win_conditions`.
+  - **A struct rather than a bare `u32` field, deliberately.** This is the State Hygiene Rule applied *before* the debt accrues rather than after: the starter game already varies one rule, and the second variant knob should extend a struct instead of becoming another loose field. Note that a match rule is not cross-effect context — it is fixed at setup and never threaded between effects — so this is not the scratchpad pattern that rule bans.
+- [ ] **Make `deck::agenda_point_range` a function of the win threshold as well as deck size.** It currently hardcodes the 7-point assumption, which is why the starter deck fails validation today (see §3). The constraint: **34 cards at a 6-point win must admit 14 agenda points**, while `agenda_point_range_matches_size_derived_examples`' existing cases — `(40, 44) → (18, 20)`, `(45) → (20, 22)` — stay unchanged at 7.
+- This touches `win.rs`, so it is engine-level by AGENTS.md's Testing Rule: **run `NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_single_player --release` before merging.**
+
+### 2. Make the starter identities playable (`netrunner_core`)
+
+Reverses the decision recorded under Phase 1 §7 — see there for why.
+
+- [ ] **Author `data/corp/the_syndicate.json` and `data/runner/the_catalyst.json`** as hand-authored blank identities carrying `numeric_id` 30077/30076 and `min_deck_size` 34/30. Printed metadata joins from the catalog on `numeric_id` as usual — **do not edit the `data/cards/system_gateway.json` dump.** Hand-authored-alongside-catalog is the shape `sg_reprint_dedup_tests` already documents for *Hedge Fund*/*Sure Gamble*/*Cleaver*.
+- [ ] **Rewrite `starter_only_identities_have_no_rules_text_and_stay_permanently_unplayable`** (`cards/mod.rs`) to assert they are playable, **blank** (no abilities, no triggers), and carry the right `min_deck_size`. The blankness assertion is the one that matters — it is what keeps them honest as tutorial identities.
+- [ ] **Remove both `SG_UNIMPLEMENTED` entries** (`cards/embedded.rs`). `every_system_gateway_card_is_implemented_or_explicitly_excluded` requires an implementation *or* an exclusion, never both, so leaving them fails the gate.
+  - Its count assertion is written as `sg_total - SG_UNIMPLEMENTED.len()`, so the arithmetic self-adjusts — but only if **both** identities actually land. Implementing one and excluding the other fails it, which is the desired behaviour.
+  - **System Gateway then reads 77 of 77 rather than 75 of 77.** Update Phase 1 §7's headline count when this ships; it is the first set in the repo to reach genuinely complete coverage.
+
+### 3. Tutorial decks, without polluting self-play (`netrunner_core`)
+
+- [ ] **Add four decklists under `data/decks/`:** starter Corp (34) / Runner (30), boosted Corp (44) / Runner (40), from NSG's published lists.
+- [ ] **Add a `kind` field to `SampleDeck`** — `Sample` | `Starter` | `Boosted` — with `#[serde(default)]` so `deny_unknown_fields` doesn't force an edit to the seven existing deck files.
+- [ ] **`matchups()` must filter to `kind == Sample`.** This is the trap: `decks::matchups()` has four consumers — `netrunner_selfplay/src/fixtures.rs`, `netrunner_gym/src/fixtures.rs`, the sweep in `netrunner_single_player/tests/system_gateway_delivery.rs`, and the CLI lister in `netrunner_cli/src/decks.rs`. Dropping starter decks in unfiltered would silently start **training the policy network on tutorial decks**.
+- [ ] **Extend `every_sample_deck_is_legal` to validate the starter decks under their own `MatchRules`**, which implies a deck record carries its variant's win threshold rather than the validator guessing.
+
+### 4. Deterministic stacked openings (`netrunner_core`)
+
+- [ ] **Add a fixed-order setup path** — e.g. `GameState::setup_with_order(..., DeckOrder::{Shuffled, Fixed { corp, runner }})`, with today's `setup` becoming `Shuffled`. A lesson cannot teach a specific play if it cannot pin which cards are drawn.
+  - **`Fixed` must be validated as a permutation of the expanded deck**, so a lesson cannot smuggle in a card the decklist does not contain. Cheap, and it keeps `validate_deck` authoritative rather than bypassed.
+  - Draw convention, for whoever implements it: `corp.r_and_d` / `runner.stack` are plain `Vec<CardId>` and draws `pop()` from the **end** — the last element is the top card.
+
+### 5. Lesson content as data (`netrunner_core::tutorial`)
+
+- [ ] **Lessons live in `data/lessons/{corp,runner}/*.json`**, embedded by `build.rs` exactly like cards and decks, with `#[serde(deny_unknown_fields)]`. Never hardcoded in Rust — same house rule as cards, and for the same reason.
+- [ ] **A lesson is `{ stacked deck order, scripted opening, ordered steps }`.** The scripted opening fast-forwards to the position being taught (e.g. "turn 3, a rezzed *Palisade* protects a remote holding a 2-advanced agenda") via a `ScriptedDriver: PlayerDriver` returning canned `ActionSpace` indices, then handing over to the human.
+- [ ] **A step is `{ prose, allow: ActionPredicate, advance_when: EventPredicate }`**, advancing off the observed `Vec<GameEvent>` — reachable on the local path through `SinglePlayerSession::with_observer`.
+- Homed in `netrunner_core` because it depends only on `GameEvent`/`PlayerAction`/`ClientView` and must be reachable by any client, not just the TUI — the same reasoning that already puts `decks` there. It adds no dependencies.
+
+### 6. Gating that does not break the client contract (`netrunner_cli`)
+
+**This is the item most likely to be got wrong, so state the rule up front:**
+
+> **A lesson step narrows `view.legal_actions`; it never widens them.** Presenting a subset is a UI affordance, like sorting — it cannot make an illegal action legal, so it does not violate AGENTS.md §3's ban on a client re-deriving legality. Gating logic must never call `apply_action` and must never reimplement a legality check.
+
+- [ ] **Gate on a predicate plus an escape hatch, never on a fixed action index.** A step whose `allow` predicate matches nothing leaves the player with no action at all — the exact failure mode of all four deadlocks the sweep has found, reintroduced at the UI layer. A key that reveals the full action list is the escape.
+
+### 7. TUI work (`netrunner_cli`)
+
+- [ ] **A coaching/prose panel.** `tui/layout.rs` has two hardcoded builders (`build_layout`, `build_layout_with_log`); add a third or parameterize them.
+- [ ] **Build a modal system — there isn't one.** Today there is only the `centered_rect` + `Clear` + bordered-`Paragraph` idiom, with no popup stack and no key routing: both `App::handle_key` and `prompt_human`'s inline match dispatch keys unconditionally to the action list. A lesson intro/outro card needs a "modal open, swallow keys" branch that does not currently exist.
+- [ ] **`explain_action(action, registry) -> String`**, the mechanical sibling of `describe_action` (`app.rs`), which already matches exhaustively over all 42 `PlayerAction` variants. `PurgeVirusCounters`' cost-spelling label is the existing precedent for a pedagogical string.
+- [ ] **A run-phase strip** showing NSG's six run phases with the current one highlighted. High value, nearly free — `view.active_run.phase` is already on `ClientView`, and the [Run Timing Guide](https://nullsignal.games/players/learn-to-play/run-guide/) is the one reference both NSG role guides share, because runs are the fulcrum of each.
+- [ ] **Render `App::last_rejection`.** It is set from `ServerMessage::ActionRejected` and then **displayed nowhere**. Tolerable today; indefensible in a tutorial.
+- [ ] **A `Learn` subcommand** selecting side, lesson, and starter-vs-boosted: extend `config::Command` and the `match` in `main.rs`, which today has only `Cards` and `None` arms.
+
+### 8. The lesson tracks
+
+Intended scope, not a frozen spec — both sides, following NSG's own concept order.
+
+- [ ] **Corp** — clicks & the mandatory draw → playing an operation (*Hedge Fund*) → servers & installing (HQ/R&D/Archives vs. remotes) → ice & rezzing (*Palisade*) → advancing & scoring (*Offworld Office*) → defending a scripted run → traps & net damage (*Urtica Cipher*) → graduation.
+- [ ] **Runner** — clicks & credits (*Sure Gamble*) → programs & MU (*Cleaver*) → a first run on empty Archives, walking the six phases → breaking ice (boost strength, break the barrier) → accessing & stealing → R&D vs. Archives breaches and multi-access (*Jailbreak*) → jacking out, and when not to run (*Tread Lightly*) → graduation.
+- [ ] **Graduation hands off to the starter game:** starter decks, 6 points to win, no gating. The booster unlock is stage two and introduces viruses, tags, meat damage, and modal ice — the four things NSG withholds from a first game.
+
+### 9. Test gates
+
+- [ ] **Every lesson is completable** — drive each with a scripted driver playing the intended solution; assert every step advances and the lesson reaches its end state. The lesson analogue of `every_sample_deck_matchup_finishes`.
+- [ ] **Every gated step offers at least one action** at every point it is live. The deadlock analogue, and the reason §6 gates on a predicate rather than an index.
+- [ ] **Starter decks validate** under starter `MatchRules`, and the starter matchup plays to a result at 6 points.
+- [ ] **Replay determinism survives** the new `MatchRules` field — the existing bit-identical-replay assertion must still hold.
 
 ---
 
