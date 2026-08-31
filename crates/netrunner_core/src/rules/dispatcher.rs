@@ -21,7 +21,7 @@ use crate::rules::ability;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::ServerId;
-use crate::rules::state::{GamePhase, GameState, InstallSlot, Side};
+use crate::rules::state::{DeferredTrigger, GamePhase, GameState, InstallSlot, PendingDecision, Side};
 
 /// Given `event`, fires every installed card's matching `Trigger`s and
 /// returns the resulting `GameEvent`s, in firing order.
@@ -74,15 +74,15 @@ pub fn dispatch_event(
                 // avoid a virus program reacting to its own installation.
                 let other_rig_cards: Vec<CardId> =
                     state.runner.rig.iter().map(|c| c.card.clone()).filter(|id| id != card).collect();
-                for owner in other_rig_cards {
-                    events.extend(ability::process_card_triggers_targeting(
-                        state,
-                        registry,
-                        &owner,
-                        Trigger::OnVirusInstalled,
-                        card,
-                    )?);
-                }
+                let plan: Vec<DeferredTrigger> = other_rig_cards
+                    .iter()
+                    .map(|owner| DeferredTrigger {
+                        card: owner.clone(),
+                        trigger: Trigger::OnVirusInstalled,
+                        target: Some(card.clone()),
+                    })
+                    .collect();
+                events.extend(fire_plan(state, registry, &plan)?);
             }
             Ok(events)
         }
@@ -235,23 +235,24 @@ pub fn dispatch_event(
             }
             candidates.extend(state.runner.rig.iter().map(|card| (Side::Runner, card.card.clone())));
 
+            // Built as one flat plan rather than fired inline, so a
+            // blockage landing *between* two of the four triggers on the
+            // same card queues exactly what's left — see `fire_plan`.
+            let mut plan: Vec<DeferredTrigger> = Vec::new();
             for card_id in order_active_first(Side::Runner, candidates) {
-                events.extend(ability::process_card_triggers(state, registry, &card_id, Trigger::OnSuccessfulRun)?);
+                let due = |trigger| DeferredTrigger { card: card_id.clone(), trigger, target: None };
+                plan.push(due(Trigger::OnSuccessfulRun));
                 if *server == ServerId::Hq {
-                    events.extend(ability::process_card_triggers(state, registry, &card_id, Trigger::OnSuccessfulRunOnHq)?);
+                    plan.push(due(Trigger::OnSuccessfulRunOnHq));
                 }
                 if *server == ServerId::RnD {
-                    events.extend(ability::process_card_triggers(state, registry, &card_id, Trigger::OnSuccessfulRunOnRnD)?);
+                    plan.push(due(Trigger::OnSuccessfulRunOnRnD));
                 }
                 if matches!(server, ServerId::Hq | ServerId::RnD | ServerId::Archives) {
-                    events.extend(ability::process_card_triggers(
-                        state,
-                        registry,
-                        &card_id,
-                        Trigger::OnSuccessfulRunOnCentralServer,
-                    )?);
+                    plan.push(due(Trigger::OnSuccessfulRunOnCentralServer));
                 }
             }
+            events.extend(fire_plan(state, registry, &plan)?);
 
             // `Trigger::OnApproachServer` deliberately reuses this same
             // event (see the trigger's own doc comment) — audience is every
@@ -406,15 +407,175 @@ fn turn_active_side(state: &GameState) -> Side {
 }
 
 /// Fires `trigger` against each of `candidates` in order, collecting events.
+///
+/// Stops the moment one of them parks something blocking (a decision, a
+/// paid choice, a prevention window, a trace) and **queues the untouched
+/// remainder** on `GameState::deferred_triggers` rather than firing them
+/// underneath it. `drain_deferred_triggers` picks them back up once the
+/// blockage clears.
+///
+/// Before the queue existed this loop had no such guard, so e.g.
+/// *Clearinghouse*'s `OnTurnStart` (a `PresentChoice`, which parks a
+/// `PendingDecision`) let every later Corp `OnTurnStart` card resolve
+/// during its pending choice.
 fn fire_each(
     state: &mut GameState,
     registry: &CardRegistry,
     candidates: &[CardId],
     trigger: Trigger,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    let plan: Vec<DeferredTrigger> = candidates
+        .iter()
+        .map(|card| DeferredTrigger { card: card.clone(), trigger, target: None })
+        .collect();
+    fire_plan(state, registry, &plan)
+}
+
+/// Fires an ordered plan of triggers, stopping and queueing the untouched
+/// remainder the moment one of them parks something blocking.
+///
+/// The single guarded primitive every dispatch site funnels through — a
+/// flat `(card, trigger, target)` plan rather than a bare card list,
+/// because `RunSucceeded` fires up to four different triggers per card and
+/// a blockage can land *between* two of them on the same card. Building the
+/// whole plan up front makes "what's left" a simple slice in every case.
+fn fire_plan(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    plan: &[DeferredTrigger],
+) -> Result<Vec<GameEvent>, RulesError> {
+    if let Some(events) = offer_trigger_order(state, registry, plan)? {
+        return Ok(events);
+    }
     let mut events = Vec::new();
-    for card_id in candidates {
-        events.extend(ability::process_card_triggers(state, registry, card_id, trigger)?);
+    for (index, due) in plan.iter().enumerate() {
+        if state.is_resolution_blocked() {
+            state.deferred_triggers.extend(plan[index..].iter().cloned());
+            break;
+        }
+        events.extend(fire_one(state, registry, due)?);
+    }
+    Ok(events)
+}
+
+/// Whether `due`'s card actually declares the trigger it's planned for.
+///
+/// A plan is built from every card that *could* react (every rezzed
+/// install, every rig card); most of them declare no matching trigger and
+/// `process_card_triggers` no-ops on them. Filtering by this before
+/// counting is what keeps `ChooseTriggerOrder` from parking a pointless
+/// decision every time a player has two cards installed.
+///
+/// A cheap registry lookup, deliberately *not* a dry run: it does not
+/// evaluate `TriggeredEffect::requirement`, so a card whose requirement
+/// fails still counts. That over-counts rather than under-counts —
+/// offering a choice between two triggers where one turns out to no-op is
+/// harmless; silently picking an order the player was entitled to choose
+/// would not be.
+fn declares_trigger(registry: &CardRegistry, due: &DeferredTrigger) -> bool {
+    registry.get(&due.card).is_some_and(|card| card.triggers.iter().any(|t| t.trigger == due.trigger))
+}
+
+/// Parks a `PendingDecision::ChooseTriggerOrder` if `plan` holds two or
+/// more genuinely-reacting triggers belonging to **one** side, returning
+/// `Some` to say the dispatch has been handed to the player.
+///
+/// Real Netrunner gives a player the order of their own simultaneous
+/// triggers. Cross-side order is not theirs to choose — it is fixed by
+/// rule (`order_active_first`) — so a plan spanning both sides parks
+/// nothing and fires in the already-correct order.
+///
+/// `None` (fire immediately, no decision) whenever the order can't matter:
+/// fewer than two reacting cards, or a mixed-side plan.
+fn offer_trigger_order(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    plan: &[DeferredTrigger],
+) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    if state.is_resolution_blocked() {
+        return Ok(None);
+    }
+    let reacting: Vec<DeferredTrigger> =
+        plan.iter().filter(|due| declares_trigger(registry, due)).cloned().collect();
+    if reacting.len() < 2 {
+        return Ok(None);
+    }
+    let Some(chooser) = single_side_of(state, &reacting) else { return Ok(None) };
+
+    // Anything in `plan` that doesn't actually react still needs to not be
+    // lost — it no-ops, but queueing it keeps the plan's shape honest and
+    // costs nothing.
+    state.deferred_triggers.extend(plan.iter().filter(|due| !declares_trigger(registry, due)).cloned());
+    state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
+        chooser,
+        pending: reacting,
+        resume: crate::rules::state::PendingChoiceResume::None,
+    });
+    Ok(Some(vec![GameEvent::TriggerOrderPending { chooser }]))
+}
+
+/// The one side every card in `plan` belongs to, or `None` if they span
+/// both. A card is Corp's if it's among their installs, Runner's if it's
+/// in the rig or is their identity.
+fn single_side_of(state: &GameState, plan: &[DeferredTrigger]) -> Option<Side> {
+    let side_of = |card: &CardId| {
+        if state.corp.installed.iter().any(|c| &c.card == card) || state.corp.identity.as_ref() == Some(card) {
+            Some(Side::Corp)
+        } else if state.runner.rig.iter().any(|c| &c.card == card) || state.runner.identity.as_ref() == Some(card) {
+            Some(Side::Runner)
+        } else {
+            None
+        }
+    };
+    let first = side_of(&plan.first()?.card)?;
+    plan.iter().all(|due| side_of(&due.card) == Some(first)).then_some(first)
+}
+
+/// `fire_one` for callers outside this module — `pending_choice` firing
+/// the trigger a player just picked out of a `ChooseTriggerOrder`.
+pub(crate) fn fire_deferred(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    due: &DeferredTrigger,
+) -> Result<Vec<GameEvent>, RulesError> {
+    fire_one(state, registry, due)
+}
+
+/// Fires one planned trigger, routing through the targeting variant when
+/// the reacting card and the card its effect acts on differ.
+fn fire_one(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    due: &DeferredTrigger,
+) -> Result<Vec<GameEvent>, RulesError> {
+    match &due.target {
+        Some(target) => ability::process_card_triggers_targeting(state, registry, &due.card, due.trigger, target),
+        None => ability::process_card_triggers(state, registry, &due.card, due.trigger),
+    }
+}
+
+/// Fires whatever `fire_each` had to queue, once whatever blocked it has
+/// been resolved.
+///
+/// Called from exactly one place — `engine::apply_action`, after the action
+/// handler returns — rather than from each of the ~6 resolution paths in
+/// `pending_choice`. Same reasoning as `apply_action`'s existing
+/// `active_trace` guard: one centralized call is simpler and harder to miss
+/// than threading it through every handler, and this one additionally
+/// covers trace and prevention-window resolution, which a
+/// `pending_choice`-only drain would miss entirely.
+///
+/// Stops as soon as a drained trigger parks something new, leaving the rest
+/// queued for the next action — so a chain of parking triggers resolves one
+/// player decision at a time instead of deadlocking or dropping any.
+pub(crate) fn drain_deferred_triggers(
+    state: &mut GameState,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = Vec::new();
+    while !state.is_resolution_blocked() && !state.deferred_triggers.is_empty() {
+        let due = state.deferred_triggers.remove(0);
+        events.extend(fire_one(state, registry, &due)?);
     }
     Ok(events)
 }
@@ -473,7 +634,7 @@ mod tests {
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,
         }
@@ -683,6 +844,211 @@ mod tests {
             ],
             "on the Corp's turn the Corp's reaction resolves first"
         );
+    }
+
+    /// The *Clearinghouse* bug, in miniature: a trigger that parks a
+    /// decision must not let later triggers in the same dispatch resolve
+    /// underneath it. Clearinghouse's `OnTurnStart` is an
+    /// `Effect::PresentChoice`, which parks a `PendingDecision`, and before
+    /// the deferred-trigger queue every later reacting card fired anyway.
+    ///
+    /// Uses a deliberately **cross-side** audience
+    /// (`DamageAboutToResolve`), so no `ChooseTriggerOrder` is offered —
+    /// cross-side order is fixed by rule, not the player's to pick. That
+    /// isolates the deferral guard from the ordering layer built on top of
+    /// it; the same-side case is covered by
+    /// `two_same_side_reacting_cards_let_their_controller_pick_the_order`.
+    #[test]
+    fn a_trigger_that_parks_a_decision_defers_the_rest_instead_of_firing_under_it() {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger(
+            "runner_parks_a_choice",
+            Side::Runner,
+            Trigger::OnDamageAboutToResolve,
+            Effect::PresentChoice {
+                chooser: Side::Runner,
+                options: vec![Effect::GainCredits(Side::Runner, 5), Effect::Sequence(Vec::new())],
+            },
+        ));
+        registry.insert(card_with_trigger(
+            "corp_reactor",
+            Side::Corp,
+            Trigger::OnDamageAboutToResolve,
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+
+        let mut state = empty_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig_card("runner_parks_a_choice")];
+        state.corp.installed = vec![crate::rules::state::InstalledCard {
+            card: CardId("corp_reactor".to_string()),
+            rezzed: true,
+            ..Default::default()
+        }];
+        let corp_credits_before = state.corp.resources.credits;
+
+        let damage = GameEvent::DamageAboutToResolve { damage_type: crate::dsl::DamageType::Net, amount: 1 };
+        dispatch_event(&mut state, &registry, &damage).unwrap();
+
+        assert!(state.pending_decision.is_some(), "the Runner's card parked its choice, resolving first");
+        assert_eq!(
+            state.corp.resources.credits, corp_credits_before,
+            "the Corp's card must NOT have resolved underneath the pending choice"
+        );
+        assert_eq!(
+            state.deferred_triggers,
+            vec![DeferredTrigger {
+                card: CardId("corp_reactor".to_string()),
+                trigger: Trigger::OnDamageAboutToResolve,
+                target: None,
+            }],
+            "the untouched remainder is queued, not dropped"
+        );
+    }
+
+    /// Two of one player's own cards reacting to the same event is the
+    /// case the rules hand to that player: they pick the order. Reachable
+    /// with any two Corp `OnTurnStart` assets (7 System Gateway cards carry
+    /// that trigger).
+    #[test]
+    fn two_same_side_reacting_cards_let_their_controller_pick_the_order() {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger(
+            "pad_campaign",
+            Side::Corp,
+            Trigger::OnTurnStart,
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+        registry.insert(card_with_trigger(
+            "nico_campaign",
+            Side::Corp,
+            Trigger::OnTurnStart,
+            Effect::GainCredits(Side::Corp, 3),
+        ));
+
+        let mut state = empty_state();
+        let rezzed = |id: &str| crate::rules::state::InstalledCard {
+            card: CardId(id.to_string()),
+            rezzed: true,
+            ..Default::default()
+        };
+        state.corp.installed = vec![rezzed("pad_campaign"), rezzed("nico_campaign")];
+        let credits_before = state.corp.resources.credits;
+
+        dispatch_event(&mut state, &registry, &GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }).unwrap();
+
+        match state.pending_decision.as_ref() {
+            Some(PendingDecision::ChooseTriggerOrder { chooser, pending, .. }) => {
+                assert_eq!(*chooser, Side::Corp);
+                assert_eq!(pending.len(), 2);
+            }
+            other => panic!("expected a ChooseTriggerOrder, got {other:?}"),
+        }
+        assert_eq!(state.corp.resources.credits, credits_before, "nothing resolves until the order is picked");
+    }
+
+    /// The cost guard: a single reacting card is not a choice, so no
+    /// decision is parked. Without this the engine would interrupt for a
+    /// one-option "decision" every time one card reacted to anything.
+    #[test]
+    fn a_single_reacting_card_fires_directly_with_no_order_decision() {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger(
+            "pad_campaign",
+            Side::Corp,
+            Trigger::OnTurnStart,
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+
+        let mut state = empty_state();
+        let rezzed = |id: &str| crate::rules::state::InstalledCard {
+            card: CardId(id.to_string()),
+            rezzed: true,
+            ..Default::default()
+        };
+        // A second install that declares no `OnTurnStart` at all — it is in
+        // the candidate list but must not count toward "contestable".
+        state.corp.installed = vec![rezzed("pad_campaign"), rezzed("inert_card")];
+        let credits_before = state.corp.resources.credits;
+
+        dispatch_event(&mut state, &registry, &GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }).unwrap();
+
+        assert!(state.pending_decision.is_none(), "one reacting card is no choice at all");
+        assert_eq!(state.corp.resources.credits, credits_before.gain(1), "it just fired");
+    }
+
+    /// The queue is only a *deferral*, never a loss: draining it fires
+    /// exactly what was owed, once the blockage is gone.
+    #[test]
+    fn draining_fires_the_queued_triggers_once_the_blockage_clears() {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger(
+            "pad_campaign",
+            Side::Corp,
+            Trigger::OnTurnStart,
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+
+        let mut state = empty_state();
+        state.corp.installed = vec![crate::rules::state::InstalledCard {
+            card: CardId("pad_campaign".to_string()),
+            rezzed: true,
+            ..Default::default()
+        }];
+        state.deferred_triggers = vec![DeferredTrigger {
+            card: CardId("pad_campaign".to_string()),
+            trigger: Trigger::OnTurnStart,
+            target: None,
+        }];
+        let credits_before = state.corp.resources.credits;
+
+        let events = drain_deferred_triggers(&mut state, &registry).unwrap();
+
+        assert_eq!(state.corp.resources.credits, credits_before.gain(1));
+        assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Corp, amount: 1 }]);
+        assert!(state.deferred_triggers.is_empty(), "a fully drained queue is left empty");
+    }
+
+    /// A queued trigger that itself parks stops the drain and leaves
+    /// everything after it queued — so a chain of parking triggers resolves
+    /// one player decision at a time rather than dropping any.
+    #[test]
+    fn draining_stops_at_the_next_parking_trigger_and_keeps_the_rest_queued() {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger(
+            "parks_a_choice",
+            Side::Corp,
+            Trigger::OnTurnStart,
+            Effect::PresentChoice {
+                chooser: Side::Corp,
+                options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
+            },
+        ));
+        registry.insert(card_with_trigger(
+            "pad_campaign",
+            Side::Corp,
+            Trigger::OnTurnStart,
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+
+        let mut state = empty_state();
+        let rezzed = |id: &str| crate::rules::state::InstalledCard {
+            card: CardId(id.to_string()),
+            rezzed: true,
+            ..Default::default()
+        };
+        state.corp.installed = vec![rezzed("parks_a_choice"), rezzed("pad_campaign")];
+        let queued = |id: &str| DeferredTrigger {
+            card: CardId(id.to_string()),
+            trigger: Trigger::OnTurnStart,
+            target: None,
+        };
+        state.deferred_triggers = vec![queued("parks_a_choice"), queued("pad_campaign")];
+
+        drain_deferred_triggers(&mut state, &registry).unwrap();
+
+        assert!(state.pending_decision.is_some());
+        assert_eq!(state.deferred_triggers, vec![queued("pad_campaign")], "the rest stays queued");
     }
 
     #[test]

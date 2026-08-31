@@ -214,6 +214,19 @@ pub enum PlayerAction {
     /// (if pointless) way for the Corp to spend a turn, so `legal_actions`
     /// offers it whenever the clicks are there.
     PurgeVirusCounters,
+    /// Picks which of your own simultaneous triggers resolves next,
+    /// answering a parked `PendingDecision::ChooseTriggerOrder`. Either
+    /// side, whichever the decision names.
+    ///
+    /// Only ever legal while such a decision is parked, which only happens
+    /// when 2 or more of one player's own cards react to the same event —
+    /// the rules give that ordering to their controller. Cross-side order
+    /// is fixed by rule (`dispatcher::order_active_first`) and is never
+    /// offered here.
+    ///
+    /// `RulesError::CardNotActive` if `card_id` isn't one of the pending
+    /// triggers.
+    ChooseTriggerToResolve { card_id: CardId },
     /// Spend 1 click + 2 credits to trash `card_id`, an installed Runner
     /// Resource, off the Rig into the Heap. Corp-only, legal only while the
     /// Runner is tagged (`RulesError::RunnerNotTagged` otherwise). `card_id`'s

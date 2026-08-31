@@ -350,7 +350,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // determinized hypothetical state has no history to reconstruct
         // them from, so they start blank, same as a fresh `GameState::new`.
         last_discarded_cards: Vec::new(),
-        last_completed_run: None, last_advancement_was_first: false,
+        last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
         seed: rng.random(),
         rng_step: 0,
     };
@@ -499,7 +499,7 @@ mod tests {
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
             seed: 1,
             rng_step: 0,
         }

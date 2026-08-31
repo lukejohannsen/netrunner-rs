@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardFilter, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect};
+use crate::dsl::{CardFilter, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, Trigger};
 use crate::rules::run::{RunState, ServerId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -703,6 +703,30 @@ pub enum PendingDecision {
     /// initiates a run against it (seeding the new `RunState`'s
     /// `ice_rez_cost_modifier`/`bonus_run_credits` from this variant's
     /// fields — `0`/`0` for a plain "run any server").
+    /// Which of `pending` — several of one side's own triggers, all due
+    /// simultaneously — that side wants to resolve next. Parked by
+    /// `dispatcher::fire_plan` when two or more of a player's own cards
+    /// react to the same event; the rules give the ordering choice to
+    /// their controller.
+    ///
+    /// Resolved by `PlayerAction::ChooseTriggerToResolve`, which fires the
+    /// chosen one and re-parks the remainder, until one is left and fires
+    /// automatically. Cross-side order is **not** included: that is fixed
+    /// by rule (active player first, `dispatcher::order_active_first`) and
+    /// is nobody's choice, so `pending` only ever holds one side's cards.
+    ChooseTriggerOrder {
+        chooser: Side,
+        /// The still-unresolved triggers, in their default (install) order.
+        /// Always 2 or more — one reacting card fires directly with no
+        /// decision parked at all.
+        pending: Vec<DeferredTrigger>,
+        /// Carried for the same reason as every other variant's: a
+        /// subroutine's effect can dispatch an event that parks this (e.g.
+        /// damage reaching two reacting cards), and losing the
+        /// "resume subroutines afterwards" intent would strand the run
+        /// mid-encounter.
+        resume: PendingChoiceResume,
+    },
     ChooseServer {
         chooser: Side,
         rez_cost_delta: i32,
@@ -755,6 +779,31 @@ impl CompletedRun {
     }
 }
 
+/// One trigger that was due to fire but couldn't, because an earlier
+/// trigger in the same dispatch parked something blocking (see
+/// `GameState::is_resolution_blocked`).
+///
+/// Queued on `GameState::deferred_triggers` and fired by
+/// `dispatcher::drain_deferred_triggers` once the blockage clears. This is
+/// the engine's **only** continuation mechanism: without it, a dispatch
+/// that hit a parked decision either kept firing underneath it (the bug
+/// this fixes — *Clearinghouse* parks a `PresentChoice` from its
+/// `OnTurnStart`, and every other Corp `OnTurnStart` card then resolved
+/// during that pending choice) or would have had to drop the remainder,
+/// which is what `Effect::Sequence` still does.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeferredTrigger {
+    /// The card whose trigger is owed.
+    pub card: CardId,
+    pub trigger: Trigger,
+    /// Set only for the `ability::process_card_triggers_targeting` case,
+    /// where the reacting card and the card its effect acts on differ —
+    /// e.g. Cookbook reacting to a just-installed virus by placing a
+    /// counter on *that* program. `None` is the ordinary "acts on itself"
+    /// case.
+    pub target: Option<CardId>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GameState {
     pub corp: CorpState,
@@ -800,6 +849,14 @@ pub struct GameState {
     /// Last. `false` before any card has ever been advanced.
     #[serde(default)]
     pub last_advancement_was_first: bool,
+    /// Triggers owed but not yet fired, because an earlier trigger in the
+    /// same dispatch parked something blocking. Drained by
+    /// `dispatcher::drain_deferred_triggers` from `engine::apply_action`,
+    /// the single choke point every action passes through. Empty in the
+    /// overwhelmingly common case — a dispatch that hits no parked
+    /// decision never touches this. See `DeferredTrigger`.
+    #[serde(default)]
+    pub deferred_triggers: Vec<DeferredTrigger>,
     /// Fixed seed for this game's deterministic pseudo-randomness (e.g.
     /// which HQ card a run accesses). Never mutated after construction —
     /// only `rng_step` advances — so replaying the same `(GameState,
@@ -836,6 +893,7 @@ impl Default for GameState {
             last_discarded_cards: Vec::new(),
             last_completed_run: None,
             last_advancement_was_first: false,
+            deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,
         }
@@ -860,6 +918,27 @@ impl GameState {
     /// scope.
     pub fn is_over(&self) -> bool {
         matches!(self.phase, GamePhase::GameOver(_))
+    }
+
+    /// Whether something is parked that spans future `PlayerAction`s — a
+    /// trace awaiting bids, a prevention window, a paid choice, or a
+    /// decision. While any of these hold, no further effect or trigger may
+    /// resolve: the parked thing must be answered first.
+    ///
+    /// The **single** definition of that predicate. It was previously
+    /// spelled out inline in three places (`Effect::Sequence`,
+    /// `resolve_unbroken_subroutines`, and — by omission, which was the bug
+    /// — not at all in the trigger dispatch loops). Adding a new parked
+    /// state means updating this one function, not hunting for copies.
+    ///
+    /// Note this is *not* the same question as `legal_actions::
+    /// current_actor`, which resolves *who* may act next; this only asks
+    /// whether automatic resolution must stop.
+    pub fn is_resolution_blocked(&self) -> bool {
+        self.active_trace.is_some()
+            || self.pending_prevention.is_some()
+            || self.pending_paid_choice.is_some()
+            || self.pending_decision.is_some()
     }
 
     pub fn resources(&self, side: Side) -> &PlayerResources {

@@ -166,7 +166,8 @@ mod tests {
     /// the System Gateway work, which added several new player-facing
     /// decisions (card selection, server choice, paid-choice accept/decline,
     /// install-on-ice, click-to-break), then 1024 → 1025 for the Corp's
-    /// basic purge-virus-counters action.
+    /// basic purge-virus-counters action, then 1025 → 1045 for
+    /// `ChooseTriggerToResolve` (ordering your own simultaneous triggers).
     ///
     /// That last slot was *appended* rather than inserted into the
     /// payload-free `UNIT` segment where it would naturally belong, so
@@ -175,7 +176,7 @@ mod tests {
     /// width changed. Keep that property for future additions.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 1025);
+        assert_eq!(ACTION_SPACE_SIZE, 1045);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

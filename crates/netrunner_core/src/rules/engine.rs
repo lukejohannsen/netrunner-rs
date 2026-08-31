@@ -64,11 +64,12 @@ pub fn apply_action(
                 | PlayerAction::ToggleCardSelection { .. }
                 | PlayerAction::ConfirmCardSelection
                 | PlayerAction::ChooseServerForPendingDecision { .. }
+                | PlayerAction::ChooseTriggerToResolve { .. }
         )
     {
         return Err(RulesError::ActionBlockedByPendingDecision { side });
     }
-    match action {
+    let resolved = match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
         PlayerAction::DrawCardClick => draw_card_click(state, registry),
         PlayerAction::InstallCard { card_id, zone, slot } => {
@@ -136,7 +137,24 @@ pub fn apply_action(
         PlayerAction::ChooseServerForPendingDecision { server } => {
             choose_server_for_pending_decision(state, registry, server)
         }
-    }
+        PlayerAction::ChooseTriggerToResolve { card_id } => {
+            choose_trigger_to_resolve(state, registry, card_id)
+        }
+    }?;
+
+    // Fire anything a dispatch had to queue because a trigger parked a
+    // decision partway through (see `dispatcher::fire_plan`). Placed here,
+    // after every handler, for the same reason the `active_trace` guard
+    // above is centralized: one call is simpler and harder to miss than
+    // threading it through ~15 handlers — and this placement additionally
+    // covers trace and prevention-window resolution, which a
+    // `pending_choice`-only drain would miss.
+    //
+    // A no-op in the overwhelmingly common case: the queue is empty unless
+    // a trigger actually parked something.
+    let (mut next, mut events) = resolved;
+    events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
+    Ok((next, events))
 }
 
 fn require_phase(state: &GameState, expected: GamePhase) -> Result<(), RulesError> {
@@ -1347,6 +1365,16 @@ fn resolve_pending_choice(
     Ok((next, events))
 }
 
+fn choose_trigger_to_resolve(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = pending_choice::resolve_choose_trigger_to_resolve(&mut next, registry, card_id)?;
+    Ok((next, events))
+}
+
 /// Resolves `PlayerAction::ToggleCardSelection`, per its doc comment.
 fn toggle_card_selection(
     state: &GameState,
@@ -1465,7 +1493,7 @@ mod tests {
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,
         }
@@ -1498,7 +1526,7 @@ mod tests {
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,
         }
@@ -4144,6 +4172,143 @@ mod tests {
         let result = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters);
 
         assert!(result.is_err(), "purge is a basic click action, not a paid ability");
+    }
+
+    /// End-to-end proof that `apply_action`'s drain closes the loop: a
+    /// trigger parks a choice, the rest of the dispatch is queued, and
+    /// resolving that choice through a real `PlayerAction` fires the
+    /// remainder — no separate "now drain" step from the caller.
+    ///
+    /// The dispatch-level halves of this live in `dispatcher::tests`; this
+    /// one exists because the drain is wired at the `apply_action` choke
+    /// point, which those can't reach.
+    #[test]
+    fn resolving_a_parked_choice_drains_the_triggers_it_deferred() {
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            triggers: vec![TriggeredEffect {
+                trigger: Trigger::OnTurnStart,
+                effects: vec![Effect::PresentChoice {
+                    chooser: Side::Corp,
+                    options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
+                }],
+                requirement: None,
+            }],
+            ..test_card("parks_a_choice", Side::Corp, CardType::Asset, 0, None)
+        });
+        registry.insert(CardDefinition {
+            triggers: vec![TriggeredEffect {
+                trigger: Trigger::OnTurnStart,
+                effects: vec![Effect::GainCredits(Side::Corp, 1)],
+                requirement: None,
+            }],
+            ..test_card("pad_campaign", Side::Corp, CardType::Asset, 0, None)
+        });
+
+        let mut state = corp_state(3, 0);
+        let rezzed = |id: &str| InstalledCard {
+            card: CardId(id.to_string()),
+            rezzed: true,
+            ..Default::default()
+        };
+        state.corp.installed = vec![rezzed("parks_a_choice"), rezzed("pad_campaign")];
+        state.deferred_triggers = vec![crate::rules::state::DeferredTrigger {
+            card: CardId("pad_campaign".to_string()),
+            trigger: Trigger::OnTurnStart,
+            target: None,
+        }];
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
+            source_card: Some(CardId("parks_a_choice".to_string())),
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+
+        // Take the do-nothing option, so the only credits gained come from
+        // the deferred PAD Campaign trigger.
+        let (next, _events) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 })
+                .expect("resolving the parked choice should succeed");
+
+        assert_eq!(next.corp.resources.credits, Credits(1), "the deferred trigger fired on resolution");
+        assert!(next.deferred_triggers.is_empty(), "and the queue drained");
+        assert!(next.pending_decision.is_none());
+    }
+
+    /// Picking an order resolves *both* triggers, in the order picked, and
+    /// costs only one decision for two triggers — once one is left there is
+    /// no order to choose, so it drains automatically.
+    ///
+    /// Runs through real `apply_action` calls, so it also exercises
+    /// `current_actor` naming the chooser and the drain firing the
+    /// remainder — the precedence invariant that has deadlocked this engine
+    /// before.
+    #[test]
+    fn choosing_a_trigger_order_resolves_both_in_that_order_with_one_decision() {
+        let mut registry = CardRegistry::new();
+        let reactor = |id: &str, amount: u32| CardDefinition {
+            triggers: vec![TriggeredEffect {
+                trigger: Trigger::OnTurnStart,
+                effects: vec![Effect::GainCredits(Side::Corp, amount)],
+                requirement: None,
+            }],
+            ..test_card(id, Side::Corp, CardType::Asset, 0, None)
+        };
+        registry.insert(reactor("pad_campaign", 1));
+        registry.insert(reactor("nico_campaign", 3));
+
+        let mut state = corp_state(3, 0);
+        let rezzed = |id: &str| InstalledCard {
+            card: CardId(id.to_string()),
+            rezzed: true,
+            ..Default::default()
+        };
+        state.corp.installed = vec![rezzed("pad_campaign"), rezzed("nico_campaign")];
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Corp,
+            pending: vec![
+                crate::rules::state::DeferredTrigger {
+                    card: CardId("pad_campaign".to_string()),
+                    trigger: Trigger::OnTurnStart,
+                    target: None,
+                },
+                crate::rules::state::DeferredTrigger {
+                    card: CardId("nico_campaign".to_string()),
+                    trigger: Trigger::OnTurnStart,
+                    target: None,
+                },
+            ],
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+
+        assert_eq!(
+            crate::rules::current_actor(&state),
+            Some(Side::Corp),
+            "the chooser must be the one named to act"
+        );
+
+        // Pick the *second* card first — the point of the feature.
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ChooseTriggerToResolve { card_id: CardId("nico_campaign".to_string()) },
+        )
+        .expect("choosing a pending trigger should succeed");
+
+        assert!(next.pending_decision.is_none(), "one trigger left is no choice, so no second decision");
+        assert!(next.deferred_triggers.is_empty(), "and it drained in the same action");
+        assert_eq!(next.corp.resources.credits, Credits(4), "both fired: 3 then 1");
+
+        let gains: Vec<&GameEvent> =
+            events.iter().filter(|e| matches!(e, GameEvent::CreditsGained { .. })).collect();
+        assert_eq!(
+            gains,
+            vec![
+                &GameEvent::CreditsGained { side: Side::Corp, amount: 3 },
+                &GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+            ],
+            "the chosen card resolved first, ahead of its install order"
+        );
     }
 
     #[test]

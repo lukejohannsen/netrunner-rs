@@ -468,13 +468,13 @@ pub fn evaluate_effect(
                 events.extend(evaluate_effect(state, inner, acting_card, registry)?);
                 // Stop if that effect parked something spanning future
                 // `PlayerAction`s — see `Effect::Sequence`'s doc comment.
-                // Mirrors `resolve_unbroken_subroutines`'s exact "a parked
-                // decision interrupts further resolution" check.
-                if state.active_trace.is_some()
-                    || state.pending_prevention.is_some()
-                    || state.pending_paid_choice.is_some()
-                    || state.pending_decision.is_some()
-                {
+                //
+                // Unlike the trigger dispatch loops, a `Sequence` has no
+                // continuation: the remaining effects are simply never
+                // reached. That limitation is documented on `Effect::
+                // Sequence` itself and is unchanged by the deferred-trigger
+                // queue, which is trigger-level only.
+                if state.is_resolution_blocked() {
                     break;
                 }
             }
@@ -588,9 +588,13 @@ pub fn evaluate_effect(
             // Found by `no_panics_or_deadlocks_across_many_seeds_system_gateway`:
             // Red Team's `[click]: Run a central server…` was being offered
             // mid-run.
-            if state.active_run.is_some() {
-                return Err(RulesError::RunAlreadyInProgress);
-            }
+            //
+            // Shares `run::check_run_may_begin` with `start_run` itself
+            // rather than restating the condition — the two MUST agree, or
+            // this parks a decision `start_run` will refuse. See that
+            // function's doc comment; a narrower copy here is exactly what
+            // caused the original deadlock.
+            run::check_run_may_begin(state)?;
             state.pending_decision = Some(PendingDecision::ChooseServer {
                 chooser: *chooser,
                 rez_cost_delta: *rez_cost_delta,
@@ -684,11 +688,7 @@ pub fn resolve_unbroken_subroutines(
         // `rules::trace::submit_runner_bid`/`paid_ability::close_window`'s
         // `Prevention` arm call this function again once resolved, resuming
         // the loop.
-        if state.active_trace.is_some()
-            || state.pending_prevention.is_some()
-            || state.pending_paid_choice.is_some()
-            || state.pending_decision.is_some()
-        {
+        if state.is_resolution_blocked() {
             break;
         }
 
@@ -1605,7 +1605,7 @@ mod tests {
             active_run: None,
             paid_ability_window: None,
             active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false,
+            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,
         }
