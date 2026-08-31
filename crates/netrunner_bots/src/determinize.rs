@@ -192,9 +192,14 @@ fn determinize_access_phase(phase: &PublicAccessPhase, pool: &mut Pool) -> Acces
         PublicAccessPhase::SelectNextCard { selectable_cards } => {
             AccessPhase::SelectNextCard { selectable_cards: determinize_access_cards(selectable_cards, pool) }
         }
-        PublicAccessPhase::PendingInteractiveTrigger { card, cost, can_pay } => AccessPhase::PendingInteractiveTrigger {
+        // `decider` copies straight through rather than being re-derived
+        // from the sampled card: it is public information, and a search tree
+        // that disagreed with reality about whose decision is pending would
+        // evaluate the position for the wrong player entirely.
+        PublicAccessPhase::PendingInteractiveTrigger { card, cost, decider, can_pay } => AccessPhase::PendingInteractiveTrigger {
             card_id: card.clone().unwrap_or_else(|| pool.draw()),
             cost: cost.clone(),
+            decider: *decider,
             can_pay: *can_pay,
         },
         PublicAccessPhase::PendingChoice { card, can_trash, trash_cost, mandatory_steal, steal_cost } => AccessPhase::PendingChoice {

@@ -7,5 +7,6 @@
   "min_deck_size": 45,
   "recurring_credits": 2,
   "triggers": [],
+  "numeric_id": 1080,
   "is_playable": true
 }

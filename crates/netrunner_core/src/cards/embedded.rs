@@ -96,6 +96,31 @@ mod tests {
         }
     }
 
+    /// Every playable card must carry its catalog join key, because that key
+    /// is the *only* source of faction, influence cost, deck limit and set
+    /// code — everything deckbuilding legality is computed from. A card
+    /// without one is playable but not deckbuildable: it silently counts as
+    /// neutral, 0 influence, no set, so `deck::validator` would wave through
+    /// a deck it should reject.
+    ///
+    /// Nineteen baseline Core Set cards were in exactly that state until
+    /// their metadata was backfilled. This is what stops the next
+    /// hand-authored card from reintroducing the hole.
+    #[test]
+    fn every_playable_card_carries_a_numeric_id() {
+        let missing: Vec<String> = embedded_playable_cards()
+            .into_iter()
+            .filter(|card| card.numeric_id.is_none())
+            .map(|card| format!("{} ({})", card.title, card.id.0))
+            .collect();
+
+        assert!(
+            missing.is_empty(),
+            "these playable cards have no NetrunnerDB join key, so they carry no printed \
+             metadata and cannot be deckbuilt against: {missing:#?}"
+        );
+    }
+
     /// A misspelled key used to deserialize silently, leaving the intended
     /// field at its default — e.g. a typo'd `strength_modifier` would cost a
     /// card its bonus with no test failure. `deny_unknown_fields` makes that

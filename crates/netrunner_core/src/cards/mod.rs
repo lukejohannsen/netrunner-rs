@@ -69,10 +69,17 @@ mod sg_reprint_dedup_tests {
     /// NetrunnerDB conversion path slugs every card `nrdb_<numeric_id>`
     /// (`cards::netrunnerdb::convert_one`), which never collides with the
     /// hand-authored `hedge_fund`/`sure_gamble`/`cleaver` `dsl::CardId`
-    /// slug. This test proves only one of the two ever ends up
+    /// slug. This test proves only one of them ever ends up
     /// `is_playable: true` — `rules::deck::validate_deck` rejects the
-    /// other — not that the registry deduplicates them into a single
+    /// rest — not that the registry deduplicates them into a single
     /// entry.
+    ///
+    /// The expected count differs per title because these cards have been
+    /// printed a different number of times: *Hedge Fund* and *Sure Gamble*
+    /// are in the Core Set catalog as well as System Gateway's, so each
+    /// contributes its own `nrdb_<code>` entry, while *Cleaver* is System
+    /// Gateway only. Spelled out per title rather than collapsed to "more
+    /// than one" so an unexpected extra printing still fails here.
     #[test]
     fn hedge_fund_and_sure_gamble_have_exactly_one_playable_entry_after_merging_baseline_and_sg_catalog() {
         let mut registry = CardRegistry::new();
@@ -80,9 +87,13 @@ mod sg_reprint_dedup_tests {
         let sg_catalog = load_embedded_netrunnerdb_sets().expect("embedded sets should parse");
         registry.merge(sg_catalog.iter().cloned());
 
-        for title in ["Hedge Fund", "Sure Gamble", "Cleaver"] {
+        for (title, printings) in [("Hedge Fund", 3), ("Sure Gamble", 3), ("Cleaver", 2)] {
             let matches: Vec<_> = registry.iter().filter(|c| c.title == title).collect();
-            assert_eq!(matches.len(), 2, "expected both the hand-authored and catalog-only {title} entries to coexist");
+            assert_eq!(
+                matches.len(),
+                printings,
+                "expected the hand-authored {title} entry to coexist with its catalog printings"
+            );
             let playable: Vec<_> = matches.iter().filter(|c| c.is_playable).collect();
             assert_eq!(playable.len(), 1, "expected exactly one playable {title} entry, found {playable:?}");
         }

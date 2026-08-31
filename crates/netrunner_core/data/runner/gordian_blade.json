@@ -3,7 +3,7 @@
   "title": "Gordian Blade",
   "side": "Runner",
   "card_type": "Program",
-  "cost": 2,
+  "cost": 4,
   "strength": 2,
   "triggers": [],
   "abilities": [
@@ -36,5 +36,7 @@
       "requirement": "DuringEncounter"
     }
   ],
+  "memory_cost": 1,
+  "numeric_id": 1043,
   "is_playable": true
 }

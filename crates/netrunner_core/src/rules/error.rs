@@ -149,7 +149,7 @@ pub enum RulesError {
     CardNotOperation { card: CardId },
 
     #[error("attempted to pay {requested} credit(s) to avoid {card:?}'s access trigger but only has {available}")]
-    CannotAffordAvoidanceCost { card: CardId, available: u32, requested: u32 },
+    CannotAffordAccessTriggerCost { card: CardId, available: u32, requested: u32 },
 
     #[error("a self-reference (CardTarget::ThisCard or Cost::TrashSelf) requires an acting card, but none was available here")]
     MissingActingCardContext,

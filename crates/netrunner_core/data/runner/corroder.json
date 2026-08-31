@@ -36,5 +36,7 @@
       "requirement": "DuringEncounter"
     }
   ],
+  "memory_cost": 1,
+  "numeric_id": 1007,
   "is_playable": true
 }

@@ -117,8 +117,8 @@ const SELECT_CARD_TO_ACCESS_LEN: usize = MAX_ACCESS_SELECTION;
 const STEAL_AGENDA_START: usize = SELECT_CARD_TO_ACCESS_START + SELECT_CARD_TO_ACCESS_LEN;
 const TRASH_ACCESSED_CARD_START: usize = STEAL_AGENDA_START + 1;
 const PASS_ACCESSED_CARD_START: usize = TRASH_ACCESSED_CARD_START + 1;
-const PAY_TO_AVOID_START: usize = PASS_ACCESSED_CARD_START + 1;
-const DECLINE_TRIGGER_START: usize = PAY_TO_AVOID_START + 1;
+const PAY_ACCESS_TRIGGER_START: usize = PASS_ACCESSED_CARD_START + 1;
+const DECLINE_TRIGGER_START: usize = PAY_ACCESS_TRIGGER_START + 1;
 
 const CORP_TRACE_BID_START: usize = DECLINE_TRIGGER_START + 1;
 const CORP_TRACE_BID_LEN: usize = MAX_TRACE_BID as usize + 1;
@@ -315,7 +315,7 @@ impl ActionSpace {
             PlayerAction::StealAgenda { .. } => Some(STEAL_AGENDA_START),
             PlayerAction::TrashAccessedCard { .. } => Some(TRASH_ACCESSED_CARD_START),
             PlayerAction::PassAccessedCard { .. } => Some(PASS_ACCESSED_CARD_START),
-            PlayerAction::PayToAvoidAccessTrigger { .. } => Some(PAY_TO_AVOID_START),
+            PlayerAction::PayAccessTrigger { .. } => Some(PAY_ACCESS_TRIGGER_START),
             PlayerAction::DeclineAccessTrigger { .. } => Some(DECLINE_TRIGGER_START),
 
             PlayerAction::SubmitCorpTraceBid { amount } => {
@@ -459,8 +459,8 @@ impl ActionSpace {
         if index == PASS_ACCESSED_CARD_START {
             return Some(PlayerAction::PassAccessedCard { card_id: pending_choice_card(state)? });
         }
-        if index == PAY_TO_AVOID_START {
-            return Some(PlayerAction::PayToAvoidAccessTrigger { card_id: pending_interactive_card(state)? });
+        if index == PAY_ACCESS_TRIGGER_START {
+            return Some(PlayerAction::PayAccessTrigger { card_id: pending_interactive_card(state)? });
         }
         if index == DECLINE_TRIGGER_START {
             return Some(PlayerAction::DeclineAccessTrigger { card_id: pending_interactive_card(state)? });

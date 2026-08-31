@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dsl::{CardId, Cost, Effect, IceType, SubroutineDef};
+use crate::rules::state::Side;
 
 /// Which Corp zone/server a run targets. Central servers are singletons;
 /// Remote servers are numbered since multiple can exist simultaneously.
@@ -96,15 +97,22 @@ pub enum AccessPhase {
     /// `PendingChoice`.
     SelectNextCard { selectable_cards: Vec<CardId> },
     /// Offered instead of `PendingChoice` when the just-accessed card's
-    /// registry definition has an `InteractiveOnAccess` trigger (e.g. Fetal
-    /// AI's "pay 2c to avoid 2 net damage") — resolved first, via
-    /// `PlayerAction::PayToAvoidAccessTrigger`/`DeclineAccessTrigger`
-    /// (`run::access::resolve_pay_to_avoid`/`resolve_decline_to_avoid`),
-    /// before the card's normal `PendingChoice` is presented.
+    /// registry definition has an `InteractiveOnAccess` trigger (Fetal AI's
+    /// "pay 2c to avoid 2 net damage", Snare!'s "you may pay 4c" to inflict
+    /// its damage) — resolved first, via `PlayerAction::PayAccessTrigger`/
+    /// `DeclineAccessTrigger` (`run::access::resolve_pay_access_trigger`/
+    /// `resolve_decline_access_trigger`), before the card's normal
+    /// `PendingChoice` is presented.
     PendingInteractiveTrigger {
         card_id: CardId,
         cost: Cost,
-        /// Whether the Runner can currently afford `cost` (for
+        /// Which side chooses whether to pay — the card's
+        /// `AccessInteraction::payer`, denormalized onto the parked state
+        /// because `legal_actions::current_actor` takes no `CardRegistry`
+        /// and must still name the right player. Same reason `cost` and
+        /// `can_pay` live here rather than being re-read from the registry.
+        decider: Side,
+        /// Whether `decider` can currently afford `cost` (for
         /// `Cost::Credits`; `true` otherwise) — a precomputed hint, same
         /// role as `PendingChoice::can_trash`. Resolution re-checks
         /// affordability regardless.

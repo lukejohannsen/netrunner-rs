@@ -39,8 +39,17 @@ pub fn legal_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
 /// 2. A parked `PendingPaidChoice` awaits its payer.
 /// 3. A parked `PendingDecision` awaits its chooser.
 /// 4. An open paid ability window holds priority for one side.
-/// 5. Otherwise it's whichever side `GamePhase` names directly.
-/// 6. `StartOfTurn`/`GameOver` — no player decision is pending.
+/// 5. A parked interactive access trigger awaits its `decider`.
+/// 6. Otherwise it's whichever side `GamePhase` names directly.
+/// 7. `StartOfTurn`/`GameOver` — no player decision is pending.
+///
+/// Step 5 sits *after* the window rather than with the other parked states,
+/// because a paid-ability window legitimately opens at
+/// `AccessPhase::PendingInteractiveTrigger` and `engine::pay_access_trigger`
+/// refuses to resolve while one is open — so the window really does hold
+/// priority first. It sits *before* the phase because `GamePhase` is
+/// `Action(Runner)` throughout a run, which would name the Runner even when
+/// the card asks the Corp to pay (Snare!).
 ///
 /// Steps 1–3 must stay in exactly this order and ahead of step 4, because
 /// they mirror `engine::apply_action`'s blocking guards: each of those
@@ -64,9 +73,21 @@ pub fn current_actor(state: &GameState) -> Option<Side> {
     if let Some(window) = &state.paid_ability_window {
         return Some(window.active_priority);
     }
+    if let Some(side) = pending_access_trigger_decider(state) {
+        return Some(side);
+    }
     match state.phase {
         GamePhase::Mulligan(side) | GamePhase::Discard { side, .. } | GamePhase::Action(side) => Some(side),
         GamePhase::StartOfTurn(_) | GamePhase::GameOver(_) => None,
+    }
+}
+
+/// The side owing a decision on a parked `AccessPhase::
+/// PendingInteractiveTrigger`, if a run is parked on one.
+fn pending_access_trigger_decider(state: &GameState) -> Option<Side> {
+    match &state.active_run.as_ref()?.access_state.as_ref()?.phase {
+        AccessPhase::PendingInteractiveTrigger { decider, .. } => Some(*decider),
+        _ => None,
     }
 }
 
@@ -110,9 +131,16 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         | PlayerAction::StealAgenda { .. }
         | PlayerAction::TrashAccessedCard { .. }
         | PlayerAction::PassAccessedCard { .. }
-        | PlayerAction::PayToAvoidAccessTrigger { .. }
-        | PlayerAction::DeclineAccessTrigger { .. }
         | PlayerAction::SubmitRunnerTraceBid { .. } => Side::Runner,
+
+        // The only access actions that are not structurally the Runner's:
+        // whose decision this is depends on the card (Fetal AI asks the
+        // Runner, Snare! asks the Corp), so it is read from the parked
+        // state rather than assumed. Falls back to the Runner if nothing is
+        // parked, which cannot happen for an action already known legal.
+        PlayerAction::PayAccessTrigger { .. } | PlayerAction::DeclineAccessTrigger { .. } => {
+            pending_access_trigger_decider(state).unwrap_or(Side::Runner)
+        }
 
         PlayerAction::InstallCard { .. }
         | PlayerAction::RezIce { .. }
@@ -521,7 +549,7 @@ fn access_flow_candidates(state: &GameState) -> Vec<PlayerAction> {
             .map(|card_id| PlayerAction::SelectCardToAccess { card_id: card_id.clone() })
             .collect(),
         AccessPhase::PendingInteractiveTrigger { card_id, .. } => vec![
-            PlayerAction::PayToAvoidAccessTrigger { card_id: card_id.clone() },
+            PlayerAction::PayAccessTrigger { card_id: card_id.clone() },
             PlayerAction::DeclineAccessTrigger { card_id: card_id.clone() },
         ],
         AccessPhase::PendingChoice { card_id, can_trash, trash_cost, mandatory_steal, steal_cost } => {

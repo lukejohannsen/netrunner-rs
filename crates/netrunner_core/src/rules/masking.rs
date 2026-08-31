@@ -132,7 +132,13 @@ pub struct PublicRunIceIdentity {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PublicAccessPhase {
     SelectNextCard { selectable_cards: MaskedZone },
-    PendingInteractiveTrigger { card: Option<CardId>, cost: Cost, can_pay: bool },
+    /// `decider` is public: which side is being asked to pay is not hidden
+    /// information — both players watch the game wait on someone — and a
+    /// client cannot render whose decision it is without it. The card's
+    /// *identity* is still masked by the rule above, so the Corp being
+    /// asked to pay for an unrevealed R&D trap tells the Runner only that
+    /// some interactive trigger fired, which they can already see.
+    PendingInteractiveTrigger { card: Option<CardId>, cost: Cost, decider: Side, can_pay: bool },
     PendingChoice { card: Option<CardId>, can_trash: bool, trash_cost: Option<u32>, mandatory_steal: bool, steal_cost: Option<Cost> },
 }
 
@@ -221,9 +227,10 @@ fn mask_access_phase(phase: &AccessPhase, card_visible: bool) -> PublicAccessPha
         AccessPhase::SelectNextCard { selectable_cards } => {
             PublicAccessPhase::SelectNextCard { selectable_cards: mask_zone(selectable_cards, card_visible) }
         }
-        AccessPhase::PendingInteractiveTrigger { card_id, cost, can_pay } => PublicAccessPhase::PendingInteractiveTrigger {
+        AccessPhase::PendingInteractiveTrigger { card_id, cost, decider, can_pay } => PublicAccessPhase::PendingInteractiveTrigger {
             card: card_visible.then(|| card_id.clone()),
             cost: cost.clone(),
+            decider: *decider,
             can_pay: *can_pay,
         },
         AccessPhase::PendingChoice { card_id, can_trash, trash_cost, mandatory_steal, steal_cost } => PublicAccessPhase::PendingChoice {
