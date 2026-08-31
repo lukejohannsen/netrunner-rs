@@ -212,6 +212,7 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::ToggleCardSelection { card_id } => format!("Toggle selection of {}", title(card_id)),
         PlayerAction::ConfirmCardSelection => "Confirm selection".to_string(),
         PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?}"),
+        PlayerAction::ChooseTriggerToResolve { card_id } => format!("Resolve {} first", title(card_id)),
     }
 }
 

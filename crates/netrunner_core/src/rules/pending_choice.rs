@@ -22,6 +22,7 @@ pub(crate) fn pending_decision_chooser(state: &GameState) -> Option<Side> {
         PendingDecision::ChooseEffect { chooser, .. } => Some(*chooser),
         PendingDecision::ChooseCards { side, .. } => Some(*side),
         PendingDecision::ChooseServer { chooser, .. } => Some(*chooser),
+        PendingDecision::ChooseTriggerOrder { chooser, .. } => Some(*chooser),
     }
 }
 
@@ -34,7 +35,10 @@ pub(crate) fn mark_pending_decision_resume_subroutines(state: &mut GameState) {
     match state.pending_decision.as_mut() {
         Some(PendingDecision::ChooseEffect { resume, .. })
         | Some(PendingDecision::ChooseCards { resume, .. })
-        | Some(PendingDecision::ChooseServer { resume, .. }) => *resume = PendingChoiceResume::ResumeSubroutines,
+        | Some(PendingDecision::ChooseServer { resume, .. })
+        | Some(PendingDecision::ChooseTriggerOrder { resume, .. }) => {
+            *resume = PendingChoiceResume::ResumeSubroutines
+        }
         None => {}
     }
 }
@@ -306,6 +310,51 @@ pub(crate) fn resolve_choice(
         if let Some(pending) = state.pending_paid_choice.as_mut() {
             pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
         }
+        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+    }
+    Ok(events)
+}
+
+/// Resolves `PlayerAction::ChooseTriggerToResolve`: fires `card`'s share
+/// of a `PendingDecision::ChooseTriggerOrder` and re-parks the rest.
+///
+/// The remainder goes back onto `pending_decision` while 2 or more are
+/// left, and onto `deferred_triggers` when only 1 is — at that point
+/// there's no order left to choose, so `engine::apply_action`'s drain
+/// fires it with no further decision. That's what stops a run of N
+/// simultaneous triggers from costing N decisions instead of N-1.
+///
+/// Firing the chosen trigger may itself park something; the remainder is
+/// queued *before* firing so it survives that, and the drain picks it up
+/// once the new blockage clears.
+pub(crate) fn resolve_choose_trigger_to_resolve(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    card: CardId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(PendingDecision::ChooseTriggerOrder { chooser, pending, resume }) = state.pending_decision.take() else {
+        return Err(RulesError::NoPendingDecision);
+    };
+
+    let position = pending
+        .iter()
+        .position(|due| due.card == card)
+        .ok_or_else(|| RulesError::CardNotActive { side: chooser, card: card.clone() })?;
+    let mut remaining = pending;
+    let chosen = remaining.remove(position);
+
+    // Queue the remainder before firing, so a parking `chosen` can't strand
+    // it: either it re-parks as a decision (2+ left) or the drain takes it.
+    if remaining.len() >= 2 {
+        state.pending_decision = Some(PendingDecision::ChooseTriggerOrder { chooser, pending: remaining, resume });
+    } else {
+        state.deferred_triggers.splice(0..0, remaining);
+    }
+
+    let mut events = vec![GameEvent::TriggerOrderChosen { chooser, card }];
+    events.extend(crate::rules::dispatcher::fire_deferred(state, registry, &chosen)?);
+
+    if resume == PendingChoiceResume::ResumeSubroutines && !state.is_resolution_blocked() {
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
     Ok(events)

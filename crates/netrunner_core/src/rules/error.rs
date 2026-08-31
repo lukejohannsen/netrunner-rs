@@ -67,6 +67,9 @@ pub enum RulesError {
     #[error("a run is already in progress")]
     RunAlreadyInProgress,
 
+    #[error("a run cannot begin right now (phase {phase:?})")]
+    RunNotPermittedNow { phase: GamePhase },
+
     #[error("no active run to act on")]
     NoActiveRun,
 

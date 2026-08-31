@@ -588,9 +588,13 @@ pub fn evaluate_effect(
             // Found by `no_panics_or_deadlocks_across_many_seeds_system_gateway`:
             // Red Team's `[click]: Run a central server…` was being offered
             // mid-run.
-            if state.active_run.is_some() {
-                return Err(RulesError::RunAlreadyInProgress);
-            }
+            //
+            // Shares `run::check_run_may_begin` with `start_run` itself
+            // rather than restating the condition — the two MUST agree, or
+            // this parks a decision `start_run` will refuse. See that
+            // function's doc comment; a narrower copy here is exactly what
+            // caused the original deadlock.
+            run::check_run_may_begin(state)?;
             state.pending_decision = Some(PendingDecision::ChooseServer {
                 chooser: *chooser,
                 rez_cost_delta: *rez_cost_delta,

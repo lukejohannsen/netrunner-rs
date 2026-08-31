@@ -64,6 +64,7 @@ pub fn apply_action(
                 | PlayerAction::ToggleCardSelection { .. }
                 | PlayerAction::ConfirmCardSelection
                 | PlayerAction::ChooseServerForPendingDecision { .. }
+                | PlayerAction::ChooseTriggerToResolve { .. }
         )
     {
         return Err(RulesError::ActionBlockedByPendingDecision { side });
@@ -135,6 +136,9 @@ pub fn apply_action(
         PlayerAction::ConfirmCardSelection => confirm_card_selection(state, registry),
         PlayerAction::ChooseServerForPendingDecision { server } => {
             choose_server_for_pending_decision(state, registry, server)
+        }
+        PlayerAction::ChooseTriggerToResolve { card_id } => {
+            choose_trigger_to_resolve(state, registry, card_id)
         }
     }?;
 
@@ -1358,6 +1362,16 @@ fn resolve_pending_choice(
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let mut next = state.clone();
     let events = pending_choice::resolve_choice(&mut next, registry, option_index)?;
+    Ok((next, events))
+}
+
+fn choose_trigger_to_resolve(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let mut next = state.clone();
+    let events = pending_choice::resolve_choose_trigger_to_resolve(&mut next, registry, card_id)?;
     Ok((next, events))
 }
 
@@ -4219,6 +4233,82 @@ mod tests {
         assert_eq!(next.corp.resources.credits, Credits(1), "the deferred trigger fired on resolution");
         assert!(next.deferred_triggers.is_empty(), "and the queue drained");
         assert!(next.pending_decision.is_none());
+    }
+
+    /// Picking an order resolves *both* triggers, in the order picked, and
+    /// costs only one decision for two triggers — once one is left there is
+    /// no order to choose, so it drains automatically.
+    ///
+    /// Runs through real `apply_action` calls, so it also exercises
+    /// `current_actor` naming the chooser and the drain firing the
+    /// remainder — the precedence invariant that has deadlocked this engine
+    /// before.
+    #[test]
+    fn choosing_a_trigger_order_resolves_both_in_that_order_with_one_decision() {
+        let mut registry = CardRegistry::new();
+        let reactor = |id: &str, amount: u32| CardDefinition {
+            triggers: vec![TriggeredEffect {
+                trigger: Trigger::OnTurnStart,
+                effects: vec![Effect::GainCredits(Side::Corp, amount)],
+                requirement: None,
+            }],
+            ..test_card(id, Side::Corp, CardType::Asset, 0, None)
+        };
+        registry.insert(reactor("pad_campaign", 1));
+        registry.insert(reactor("nico_campaign", 3));
+
+        let mut state = corp_state(3, 0);
+        let rezzed = |id: &str| InstalledCard {
+            card: CardId(id.to_string()),
+            rezzed: true,
+            ..Default::default()
+        };
+        state.corp.installed = vec![rezzed("pad_campaign"), rezzed("nico_campaign")];
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Corp,
+            pending: vec![
+                crate::rules::state::DeferredTrigger {
+                    card: CardId("pad_campaign".to_string()),
+                    trigger: Trigger::OnTurnStart,
+                    target: None,
+                },
+                crate::rules::state::DeferredTrigger {
+                    card: CardId("nico_campaign".to_string()),
+                    trigger: Trigger::OnTurnStart,
+                    target: None,
+                },
+            ],
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+
+        assert_eq!(
+            crate::rules::current_actor(&state),
+            Some(Side::Corp),
+            "the chooser must be the one named to act"
+        );
+
+        // Pick the *second* card first — the point of the feature.
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ChooseTriggerToResolve { card_id: CardId("nico_campaign".to_string()) },
+        )
+        .expect("choosing a pending trigger should succeed");
+
+        assert!(next.pending_decision.is_none(), "one trigger left is no choice, so no second decision");
+        assert!(next.deferred_triggers.is_empty(), "and it drained in the same action");
+        assert_eq!(next.corp.resources.credits, Credits(4), "both fired: 3 then 1");
+
+        let gains: Vec<&GameEvent> =
+            events.iter().filter(|e| matches!(e, GameEvent::CreditsGained { .. })).collect();
+        assert_eq!(
+            gains,
+            vec![
+                &GameEvent::CreditsGained { side: Side::Corp, amount: 3 },
+                &GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+            ],
+            "the chosen card resolved first, ahead of its install order"
+        );
     }
 
     #[test]

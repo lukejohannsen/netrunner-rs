@@ -160,13 +160,25 @@ const BREAK_SUBROUTINE_WITH_CLICK_LEN: usize = MAX_SUBROUTINES;
 const PURGE_VIRUS_COUNTERS_START: usize = BREAK_SUBROUTINE_WITH_CLICK_START + BREAK_SUBROUTINE_WITH_CLICK_LEN;
 const PURGE_VIRUS_COUNTERS_LEN: usize = 1;
 
+/// `ChooseTriggerToResolve` is encoded by position within the parked
+/// `PendingDecision::ChooseTriggerOrder`'s own `pending` list, which is
+/// bounded by how many of one side's cards can react at once — at most
+/// every installed card plus their identity. `MAX_INSTALLED_PER_SIDE`
+/// covers it with room to spare, matching how `ToggleCardSelection` bounds
+/// its own zone-position encoding.
+///
+/// Appended, like `PurgeVirusCounters` before it — see that segment's doc
+/// comment for why nothing is ever inserted mid-space.
+const CHOOSE_TRIGGER_START: usize = PURGE_VIRUS_COUNTERS_START + PURGE_VIRUS_COUNTERS_LEN;
+const CHOOSE_TRIGGER_LEN: usize = MAX_INSTALLED_PER_SIDE;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = PURGE_VIRUS_COUNTERS_START + PURGE_VIRUS_COUNTERS_LEN;
+    pub const SIZE: usize = CHOOSE_TRIGGER_START + CHOOSE_TRIGGER_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -189,6 +201,16 @@ impl ActionSpace {
             PlayerAction::DeclinePendingPaidChoice => Some(UNIT_START + 8),
 
             PlayerAction::PurgeVirusCounters => Some(PURGE_VIRUS_COUNTERS_START),
+
+            PlayerAction::ChooseTriggerToResolve { card_id } => {
+                let Some(crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. }) =
+                    state.pending_decision.as_ref()
+                else {
+                    return None;
+                };
+                let slot = pending.iter().position(|due| &due.card == card_id)?;
+                (slot < CHOOSE_TRIGGER_LEN).then_some(CHOOSE_TRIGGER_START + slot)
+            }
 
             PlayerAction::GainCreditClick { side } => Some(GAIN_CREDIT_START + side_index(*side)),
             PlayerAction::PassPriority { side } => Some(PASS_PRIORITY_START + side_index(*side)),
@@ -487,6 +509,15 @@ impl ActionSpace {
         if in_segment(index, PURGE_VIRUS_COUNTERS_START, PURGE_VIRUS_COUNTERS_LEN).is_some() {
             return Some(PlayerAction::PurgeVirusCounters);
         }
+        if let Some(local) = in_segment(index, CHOOSE_TRIGGER_START, CHOOSE_TRIGGER_LEN) {
+            let crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. } =
+                state.pending_decision.as_ref()?
+            else {
+                return None;
+            };
+            let card_id = pending.get(local)?.card.clone();
+            return Some(PlayerAction::ChooseTriggerToResolve { card_id });
+        }
         None
     }
 }
@@ -725,16 +756,16 @@ mod tests {
     }
 
     /// The appended `PurgeVirusCounters` slot, checked explicitly rather
-    /// than only via `assert_roundtrips`: it is the last index in the
-    /// space, so an off-by-one in `SIZE` would put it out of range instead
-    /// of merely decoding wrong.
+    /// than only via `assert_roundtrips`, since a payload-free action in
+    /// its own one-wide segment is exactly where an off-by-one in the
+    /// segment chain would show up.
     #[test]
-    fn purge_virus_counters_occupies_the_final_slot_and_roundtrips() {
+    fn purge_virus_counters_roundtrips_in_its_own_segment() {
         let registry = CardRegistry::new();
         let state = base_state();
 
         let index = ActionSpace::index_of(&state, &PlayerAction::PurgeVirusCounters).expect("purge always encodes");
-        assert_eq!(index, ActionSpace::SIZE - 1, "purge was appended, so it is the last slot");
+        assert!(index < ActionSpace::SIZE);
         assert_eq!(ActionSpace::action_at(&state, index), Some(PlayerAction::PurgeVirusCounters));
 
         assert!(
@@ -971,6 +1002,11 @@ mod tests {
     #[test]
     fn choose_server_decision_roundtrips_and_matches_mask() {
         let mut state = base_state();
+        // A `ChooseServer` is only ever parked where a run may actually
+        // begin — the Runner's own action phase (`run::check_run_may_begin`).
+        // Parking one anywhere else is a state the engine can no longer
+        // produce, and every option would probe as illegal.
+        state.phase = GamePhase::Action(Side::Runner);
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseServer {
             chooser: Side::Runner,
             rez_cost_delta: 3,
@@ -1015,6 +1051,9 @@ mod tests {
         // added to the payload-free `UNIT` block it belongs with, so that
         // every pre-existing index keeps its meaning for an already-trained
         // policy — see `PURGE_VIRUS_COUNTERS_START`'s doc comment.
-        assert_eq!(ActionSpace::SIZE, 1025);
+        // +20 (MAX_INSTALLED_PER_SIDE) over 1025 for
+        // `ChooseTriggerToResolve`, picking which of your own simultaneous
+        // triggers resolves next. Appended for the same reason.
+        assert_eq!(ActionSpace::SIZE, 1045);
     }
 }

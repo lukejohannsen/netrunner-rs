@@ -703,6 +703,30 @@ pub enum PendingDecision {
     /// initiates a run against it (seeding the new `RunState`'s
     /// `ice_rez_cost_modifier`/`bonus_run_credits` from this variant's
     /// fields — `0`/`0` for a plain "run any server").
+    /// Which of `pending` — several of one side's own triggers, all due
+    /// simultaneously — that side wants to resolve next. Parked by
+    /// `dispatcher::fire_plan` when two or more of a player's own cards
+    /// react to the same event; the rules give the ordering choice to
+    /// their controller.
+    ///
+    /// Resolved by `PlayerAction::ChooseTriggerToResolve`, which fires the
+    /// chosen one and re-parks the remainder, until one is left and fires
+    /// automatically. Cross-side order is **not** included: that is fixed
+    /// by rule (active player first, `dispatcher::order_active_first`) and
+    /// is nobody's choice, so `pending` only ever holds one side's cards.
+    ChooseTriggerOrder {
+        chooser: Side,
+        /// The still-unresolved triggers, in their default (install) order.
+        /// Always 2 or more — one reacting card fires directly with no
+        /// decision parked at all.
+        pending: Vec<DeferredTrigger>,
+        /// Carried for the same reason as every other variant's: a
+        /// subroutine's effect can dispatch an event that parks this (e.g.
+        /// damage reaching two reacting cards), and losing the
+        /// "resume subroutines afterwards" intent would strand the run
+        /// mid-encounter.
+        resume: PendingChoiceResume,
+    },
     ChooseServer {
         chooser: Side,
         rez_cost_delta: i32,

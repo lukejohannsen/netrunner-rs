@@ -6,7 +6,7 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::action::RunAction;
 use crate::rules::run::state::{EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId, SubroutineStatus};
-use crate::rules::state::{GameState, InstallSlot, InstalledCard};
+use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side, WindowCheckpoint};
 
 /// Builds one `RunIce` from an `InstalledCard` known to be ICE (caller
 /// filters by `InstallSlot::Ice`), looking up strength/subroutines from
@@ -59,10 +59,105 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<R
 /// `Effect::InitiateRun` arm (a card's own "make a run" text, which doesn't
 /// spend an extra click — the enclosing `PlayEvent`/`PlayOperation` already
 /// did). `RulesError::RunAlreadyInProgress` if a run is already active.
-pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<(), RulesError> {
+/// Whether a run may begin right now — the **single** definition of that
+/// precondition.
+///
+/// Both [`start_run`] and `Effect::PromptChooseServer`'s *park-time* check
+/// call this. That pairing is load-bearing: `PromptChooseServer` parks a
+/// decision that only `start_run` can resolve, so if the two preconditions
+/// ever disagree, the decision parks unresolvably and — since a parked
+/// decision blocks every other action — deadlocks the game outright. The
+/// engine has already been bitten by exactly that once, when the park-time
+/// check tested only `active_run`.
+///
+/// A run requires the Runner's own action phase, no run already underway,
+/// and no end-of-turn window. That last clause is what a phase check alone
+/// misses: `WindowCheckpoint::EndOfTurn` deliberately keeps the phase it
+/// interrupted, so `Action(Runner)` stays true throughout it. Without the
+/// clause, a run-initiating paid ability (*Red Team*'s) could start a run
+/// during the Runner's end-of-turn window; `finish_end_turn` then handed
+/// the turn over with `active_run` still set, leaving the Corp with no
+/// legal action at all — `EndTurn` rejected by
+/// `CannotEndTurnWhileRunActive`, and the run not theirs to advance.
+/// `StartOfTurn` windows need no special case: they run under `phase ==
+/// StartOfTurn(_)`, which the phase check already rejects.
+///
+/// Errors surface through `legal_actions`' `apply_action` probe, so an
+/// ability that can't legally run right now simply isn't offered.
+/// Found by `no_panics_or_deadlocks_across_many_seeds_system_gateway`.
+pub(crate) fn check_run_may_begin(state: &GameState) -> Result<(), RulesError> {
     if state.active_run.is_some() {
         return Err(RulesError::RunAlreadyInProgress);
     }
+    let ending_turn = matches!(
+        state.paid_ability_window.as_ref().map(|w| w.checkpoint),
+        Some(WindowCheckpoint::EndOfTurn { .. })
+    );
+    if state.phase != GamePhase::Action(Side::Runner) || ending_turn {
+        return Err(RulesError::RunNotPermittedNow { phase: state.phase });
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod run_precondition_tests {
+    use super::*;
+    use crate::rules::state::PaidAbilityWindow;
+
+    fn runner_action_phase() -> GameState {
+        GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() }
+    }
+
+    #[test]
+    fn a_run_may_begin_in_the_runners_action_phase() {
+        assert_eq!(check_run_may_begin(&runner_action_phase()), Ok(()));
+    }
+
+    /// The deadlock this precondition exists for. *Red Team*'s
+    /// run-initiating paid ability is activatable during the Runner's
+    /// end-of-turn window — which keeps `phase == Action(Runner)`, so a
+    /// phase check alone would let it through. Starting a run there left
+    /// `active_run` set across the turn handoff, and the Corp then had no
+    /// legal action at all: `EndTurn` rejected by
+    /// `CannotEndTurnWhileRunActive`, and the run not theirs to advance.
+    #[test]
+    fn a_run_may_not_begin_during_the_runners_end_of_turn_window() {
+        let mut state = runner_action_phase();
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::EndOfTurn { side: Side::Runner },
+            return_phase: Box::new(state.phase),
+        });
+
+        assert_eq!(
+            check_run_may_begin(&state),
+            Err(RulesError::RunNotPermittedNow { phase: GamePhase::Action(Side::Runner) })
+        );
+    }
+
+    /// A `StartOfTurn` window needs no special case — it runs under
+    /// `StartOfTurn(_)`, which the phase check already rejects.
+    #[test]
+    fn a_run_may_not_begin_before_the_action_phase() {
+        let state = GameState { phase: GamePhase::StartOfTurn(Side::Runner), ..Default::default() };
+
+        assert_eq!(
+            check_run_may_begin(&state),
+            Err(RulesError::RunNotPermittedNow { phase: GamePhase::StartOfTurn(Side::Runner) })
+        );
+    }
+
+    #[test]
+    fn a_run_may_not_begin_during_the_corps_turn() {
+        let state = GameState { phase: GamePhase::Action(Side::Corp), ..Default::default() };
+
+        assert!(matches!(check_run_may_begin(&state), Err(RulesError::RunNotPermittedNow { .. })));
+    }
+}
+
+pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<(), RulesError> {
+    check_run_may_begin(state)?;
 
     // `corp.installed`'s Vec order is install order (oldest first); installs
     // only ever `.push()`, so oldest install = outermost ICE = index 0,

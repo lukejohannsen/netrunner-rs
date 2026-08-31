@@ -156,7 +156,8 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         PlayerAction::ResolvePendingChoice { .. }
         | PlayerAction::ToggleCardSelection { .. }
         | PlayerAction::ConfirmCardSelection
-        | PlayerAction::ChooseServerForPendingDecision { .. } => {
+        | PlayerAction::ChooseServerForPendingDecision { .. }
+        | PlayerAction::ChooseTriggerToResolve { .. } => {
             crate::rules::pending_choice::pending_decision_chooser(state)
                 .unwrap_or_else(|| unreachable!("{action:?} passed legal_actions but no PendingDecision is parked"))
         }
@@ -227,6 +228,11 @@ fn pending_decision_candidates(state: &GameState, registry: &CardRegistry) -> Ve
                 zones.retain(|server| allowed.contains(server));
             }
             zones.into_iter().map(|server| PlayerAction::ChooseServerForPendingDecision { server }).collect()
+        }
+        // Every still-unresolved trigger is a legal next pick — the choice
+        // is purely which order they resolve in, so none can be illegal.
+        Some(crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. }) => {
+            pending.iter().map(|due| PlayerAction::ChooseTriggerToResolve { card_id: due.card.clone() }).collect()
         }
     }
 }

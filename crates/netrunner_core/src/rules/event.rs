@@ -72,6 +72,13 @@ pub enum GameEvent {
     TraceSuccessful { corp_total: u32, runner_total: u32 },
     TagRemoved { side: Side },
     TagsRemoved { side: Side, amount: u32 },
+    /// Two or more of `chooser`'s own cards react to the same event, so
+    /// they get to pick the resolution order — a
+    /// `PendingDecision::ChooseTriggerOrder` is now parked.
+    TriggerOrderPending { chooser: Side },
+    /// `chooser` picked `card` as the next of their simultaneous triggers
+    /// to resolve.
+    TriggerOrderChosen { chooser: Side, card: CardId },
     /// `PlayerAction::PurgeVirusCounters` zeroed the virus counters on
     /// `cards`. Empty when the Corp purged an empty board, which is legal —
     /// the event still fires, since the action still happened and still
