@@ -20,7 +20,7 @@ use crate::dsl::{CardId, CardType, Trigger};
 use crate::rules::action::PlayerAction;
 use crate::rules::apply_action;
 use crate::rules::run::{AccessPhase, RunPhase, ServerId, SubroutineStatus};
-use crate::rules::state::{GamePhase, GameState, InstallSlot, Side};
+use crate::rules::state::{GamePhase, GameState, InstallId, InstallSlot, Side};
 
 pub fn legal_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     candidate_actions(state, registry)
@@ -165,13 +165,13 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         // during the Runner's own priority, or vice versa) — `phase`/
         // `current_actor` can't resolve this; ownership is a card-location
         // lookup instead.
-        PlayerAction::ActivateAbility { card_id, .. } => {
-            if state.corp.installed.iter().any(|c| c.card == *card_id) {
+        PlayerAction::ActivateAbility { target, .. } => {
+            if state.find_corp_install(*target).is_some() {
                 Side::Corp
-            } else if state.runner.rig.iter().any(|c| c.card == *card_id) {
+            } else if state.find_rig_install(*target).is_some() {
                 Side::Runner
             } else {
-                unreachable!("ActivateAbility({card_id:?}) passed legal_actions but owns no matching installed/rig card")
+                unreachable!("ActivateAbility({target:?}) passed legal_actions but owns no matching installed/rig card")
             }
         }
 
@@ -238,9 +238,9 @@ fn pending_decision_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         }
         Some(crate::rules::state::PendingDecision::ChooseCards { side, source, filter, .. }) => {
             let mut candidates: Vec<PlayerAction> =
-                crate::rules::pending_choice::eligible_cards(state, registry, *side, source, filter)
+                crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter)
                     .into_iter()
-                    .map(|card_id| PlayerAction::ToggleCardSelection { card_id })
+                    .map(|position| PlayerAction::ToggleCardSelection { position })
                     .collect();
             candidates.push(PlayerAction::ConfirmCardSelection);
             candidates
@@ -364,7 +364,7 @@ fn rez_ice_candidates(state: &GameState) -> Vec<PlayerAction> {
         .installed
         .iter()
         .filter(|c| !c.rezzed)
-        .map(|c| PlayerAction::RezIce { ice_id: c.card.clone() })
+        .map(|c| PlayerAction::RezIce { ice: c.install_id })
         .collect()
 }
 
@@ -416,21 +416,24 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
 /// ICE), mirroring `install_card_candidates`'s "every hand card × every
 /// matching zone" shape.
 fn install_program_on_ice_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
-    let host_ice: Vec<CardId> = state
+    // Hosts are collected as `InstallId`s, never `CardId`s. Unrezzed ICE is
+    // a legal host, so a `CardId` here put the identity of a card the
+    // Runner's own `ClientView` masks straight into their `legal_actions`.
+    let host_ice: Vec<InstallId> = state
         .corp
         .installed
         .iter()
         .filter(|c| c.slot == InstallSlot::Ice)
-        .map(|c| c.card.clone())
+        .map(|c| c.install_id)
         .collect();
     let mut candidates = Vec::new();
     for card_id in &state.runner.grip {
         let Some(card) = registry.get(card_id) else { continue };
         if card.card_type == CardType::Program && card.installs_on_ice {
-            for host_ice_id in &host_ice {
+            for host in &host_ice {
                 candidates.push(PlayerAction::InstallProgramOnIce {
                     card_id: card_id.clone(),
-                    host_ice_id: host_ice_id.clone(),
+                    host: *host,
                     memory_cost: 0,
                 });
             }
@@ -495,21 +498,24 @@ fn discard_candidates(state: &GameState) -> Vec<PlayerAction> {
 fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let mut candidates = Vec::new();
     for installed in state.corp.installed.iter().filter(|c| c.rezzed) {
-        candidates.extend(paid_ability_candidates(&installed.card, registry));
+        candidates.extend(paid_ability_candidates(&installed.card, installed.install_id, registry));
     }
     for rig_card in &state.runner.rig {
-        candidates.extend(paid_ability_candidates(&rig_card.card, registry));
+        candidates.extend(paid_ability_candidates(&rig_card.card, rig_card.install_id, registry));
     }
     candidates
 }
 
-fn paid_ability_candidates(card_id: &CardId, registry: &CardRegistry) -> Vec<PlayerAction> {
+/// Takes both the card (to look its abilities up) and the install (to name
+/// the target), so two copies of one card offer two distinct actions rather
+/// than collapsing onto whichever was installed first.
+fn paid_ability_candidates(card_id: &CardId, target: InstallId, registry: &CardRegistry) -> Vec<PlayerAction> {
     let Some(card) = registry.get(card_id) else { return Vec::new() };
     card.abilities
         .iter()
         .enumerate()
         .filter(|(_, ability)| ability.trigger == Trigger::Paid)
-        .map(|(ability_index, _)| PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index })
+        .map(|(ability_index, _)| PlayerAction::ActivateAbility { target, ability_index })
         .collect()
 }
 
@@ -520,18 +526,18 @@ fn advance_score_trash_candidates(state: &GameState, registry: &CardRegistry) ->
     for installed in &state.corp.installed {
         let Some(card) = registry.get(&installed.card) else { continue };
         if card.advancement_requirement.is_some() {
-            candidates.push(PlayerAction::AdvanceCard { card_id: installed.card.clone() });
+            candidates.push(PlayerAction::AdvanceCard { target: installed.install_id });
         }
         // Luminal Transubstantiation's lockout — mirrors the same guard in
         // `engine::score_agenda` so the mask never offers an action the
         // engine would reject.
         if card.card_type == CardType::Agenda && !state.corp.cannot_score_agendas_this_turn {
-            candidates.push(PlayerAction::ScoreAgenda { card_id: installed.card.clone() });
+            candidates.push(PlayerAction::ScoreAgenda { target: installed.install_id });
         }
     }
     for rig_card in &state.runner.rig {
         if registry.get(&rig_card.card).is_some_and(|c| c.card_type == CardType::Resource) {
-            candidates.push(PlayerAction::TrashResource { card_id: rig_card.card.clone() });
+            candidates.push(PlayerAction::TrashResource { target: rig_card.install_id });
         }
     }
     candidates
@@ -606,6 +612,7 @@ fn trace_bid_candidates(state: &GameState) -> Vec<PlayerAction> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::test_support::install_of;
     use crate::cards::CardRegistry;
     use crate::dsl::{AbilityDef, CardDefinition, Cost, Effect, IceType, SubroutineDef};
     use crate::rules::run::{AccessState, EncounteredSubroutine, RunIce, RunState};
@@ -712,6 +719,7 @@ mod tests {
         // One existing remote so both "existing remote" and "fresh remote"
         // zones are exercised, mirroring Ice's own zone list exactly.
         state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(1065),
             card: CardId("ice_wall".to_string()),
             server: ServerId::Remote(0),
             slot: InstallSlot::Ice,
@@ -825,6 +833,7 @@ mod tests {
         let mut state = corp_state(3, 5);
         state.phase = GamePhase::Action(Side::Runner);
         state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(1066),
             card: CardId("unrezzed_asset".to_string()),
             server: ServerId::Remote(0),
             ..Default::default()
@@ -857,7 +866,7 @@ mod tests {
 
         assert!(legal.contains(&PlayerAction::PassPriority { side: Side::Runner }));
         assert!(legal.contains(&PlayerAction::BreakSubroutine { ice_id: CardId("wall_of_static".to_string()), subroutine_index: 0 }));
-        assert!(legal.contains(&PlayerAction::ActivateAbility { card_id: CardId("corroder".to_string()), ability_index: 0 }));
+        assert!(legal.contains(&PlayerAction::ActivateAbility { target: install_of(&state, "corroder"), ability_index: 0 }));
         assert!(!legal.iter().any(|a| matches!(
             a,
             PlayerAction::GainCreditClick { .. }
@@ -1069,6 +1078,7 @@ mod tests {
     fn legal_actions_for_gives_priority_independent_rez_ice_to_the_owning_side_not_the_priority_holder() {
         let mut state = runner_state(3, 5);
         state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(1067),
             card: CardId("ice_wall".to_string()),
             slot: InstallSlot::Ice,
             ..Default::default()
@@ -1088,7 +1098,7 @@ mod tests {
             Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase), checkpoint: WindowCheckpoint::Run });
 
         let registry = CardRegistry::from_cards(vec![blank_card("ice_wall", CardType::Ice(IceType::Barrier))]);
-        let rez = PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) };
+        let rez = PlayerAction::RezIce { ice: install_of(&state, "ice_wall") };
         assert!(legal_actions(&state, &registry).contains(&rez));
 
         assert!(legal_actions_for(&state, &registry, Side::Corp).contains(&rez));
@@ -1123,7 +1133,7 @@ mod tests {
             ..Default::default()
         }];
 
-        let activate = PlayerAction::ActivateAbility { card_id: CardId("corroder".to_string()), ability_index: 0 };
+        let activate = PlayerAction::ActivateAbility { target: install_of(&state, "corroder"), ability_index: 0 };
         assert!(legal_actions_for(&state, &registry, Side::Runner).contains(&activate));
         assert!(!legal_actions_for(&state, &registry, Side::Corp).contains(&activate));
     }

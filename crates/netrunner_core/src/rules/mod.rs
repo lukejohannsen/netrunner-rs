@@ -10,10 +10,12 @@ mod event;
 mod legal_actions;
 mod masking;
 mod paid_ability;
-mod pending_choice;
+pub(crate) mod pending_choice;
 mod run;
 mod setup;
 mod state;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod trace;
 mod turn;
 mod win;
@@ -46,7 +48,7 @@ pub use run::{
 };
 pub use state::{
     ArchivedCard,
-    AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard,
+    AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard,
     MemoryUnits, PaidAbilityWindow, PendingChoiceResume, PendingDecision, PendingPaidChoice, PendingPaidChoiceResume,
     PendingPrevention, PendingPreventionKind, PlayerResources, PreventionKind, PreventionResume, RunnerState, Side,
     TraceResume, TraceState, WindowCheckpoint,

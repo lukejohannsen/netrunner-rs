@@ -24,7 +24,7 @@
                   "reveal": false,
                   "shuffle_after": false,
                   "then": {
-                    "RezInstalledIgnoringCost": ""
+                    "RezInstalledIgnoringCost": 0
                   }
                 }
               },
@@ -53,7 +53,7 @@
                   "reveal": false,
                   "shuffle_after": false,
                   "then": {
-                    "RezInstalledIgnoringCost": ""
+                    "RezInstalledIgnoringCost": 0
                   }
                 }
               },

@@ -7,9 +7,10 @@ use crate::cards::{register_playable_cards, CardRegistry};
 use crate::dsl::CardId;
 use crate::rules::{
     ArchivedCard,
-    apply_action, AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallSlot, MemoryUnits,
+    apply_action, AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstallSlot, MemoryUnits,
     PlayerAction, PlayerResources, RulesError, RunnerState, ServerId, Side,
 };
+use crate::rules::test_support::{fixture_install_id, install_of, position_of};
 
 fn registry() -> CardRegistry {
     let mut registry = CardRegistry::new();
@@ -232,7 +233,7 @@ fn pad_campaign_gains_one_credit_at_the_start_of_the_corps_next_turn() {
     // Started at 10, paid 2 to install — unrezzed installs stay silent at
     // start of turn, so this must be rezzed for the trigger to fire below.
     assert_eq!(state.corp.resources.credits, Credits(8));
-    let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("pad_campaign".to_string()) })
+    let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "pad_campaign") })
         .expect("rez pad campaign");
     // Rez also pays the card's registry cost (2 more): 8 -> 6.
     assert_eq!(state.corp.resources.credits, Credits(6));
@@ -260,6 +261,7 @@ fn run_into_snare(corp_credits: u32) -> (crate::rules::GameState, CardRegistry) 
     state.corp.resources.credits = Credits(corp_credits);
     state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
     state.corp.installed = vec![crate::rules::InstalledCard {
+        install_id: InstallId(1001),
         card: CardId("snare".to_string()),
         server: ServerId::Remote(0),
         ..Default::default()
@@ -394,6 +396,7 @@ fn cleaver_pumps_strength_and_breaks_up_to_two_barrier_subroutines() {
     state.runner.resources.credits = Credits(10);
     state.runner.grip = vec![CardId("cleaver".to_string())];
     state.corp.installed = vec![crate::rules::InstalledCard {
+        install_id: InstallId(1002),
         card: CardId("wall_of_static".to_string()),
         slot: InstallSlot::Ice,
         rezzed: true,
@@ -420,13 +423,13 @@ fn cleaver_pumps_strength_and_breaks_up_to_two_barrier_subroutines() {
     // Barrier subroutine (well within Cleaver's up-to-2 cap) for 1c. Each
     // activation flips window priority to the Corp, who has nothing to
     // activate and passes back.
-    let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { card_id: CardId("cleaver".to_string()), ability_index: 1 })
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "cleaver"), ability_index: 1 })
         .expect("pump strength");
     assert_eq!(state.runner.rig[0].effective_strength(), 4);
     let (state, _) =
         apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back to the runner");
 
-    let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { card_id: CardId("cleaver".to_string()), ability_index: 0 })
+    let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "cleaver"), ability_index: 0 })
         .expect("break subroutines");
 
     assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::SubroutineBroken { index: 0, .. })));
@@ -496,6 +499,7 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.resources.credits = Credits(0);
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1003),
             card: CardId("offworld_office".to_string()),
             server: ServerId::Remote(0),
             advancement_tokens: 4,
@@ -503,7 +507,7 @@ mod system_gateway {
         }];
 
         let (state, events) =
-            apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("offworld_office".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") })
                 .expect("offworld office should score");
 
         assert_eq!(state.corp.resources.credits, Credits(7));
@@ -520,6 +524,7 @@ mod system_gateway {
         state.corp.resources.credits = Credits(0);
         state.runner.grip = vec![CardId("grip_card_0".to_string())];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1004),
             card: CardId("tithe".to_string()),
             slot: InstallSlot::Ice,
             rezzed: true,
@@ -565,6 +570,7 @@ mod system_gateway {
         state.runner.resources.clicks = Clicks(4);
         state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1005),
             card: CardId("karuna".to_string()),
             slot: InstallSlot::Ice,
             rezzed: true,
@@ -605,6 +611,7 @@ mod system_gateway {
         state.runner.resources.credits = Credits(10);
         state.runner.grip = vec![CardId("buzzsaw".to_string())];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1006),
             card: CardId("enigma".to_string()),
             slot: InstallSlot::Ice,
             rezzed: true,
@@ -626,13 +633,13 @@ mod system_gateway {
         // Buzzsaw's base strength (3) already matches Enigma's (2), so break
         // its up-to-2 code gate subroutines outright for 1 credit — no pump
         // needed, but exercise the pump ability too for coverage.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { card_id: CardId("buzzsaw".to_string()), ability_index: 1 })
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "buzzsaw"), ability_index: 1 })
             .expect("pump strength");
         assert_eq!(state.runner.rig[0].effective_strength(), 4);
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back to the runner");
 
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { card_id: CardId("buzzsaw".to_string()), ability_index: 0 })
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "buzzsaw"), ability_index: 0 })
             .expect("break subroutines");
 
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::SubroutineBroken { index: 0, .. })));
@@ -650,6 +657,7 @@ mod system_gateway {
         state.runner.resources.credits = Credits(5);
         state.runner.stack = vec![CardId("stack_card".to_string())];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1007),
             card: CardId("pad_campaign".to_string()),
             server: ServerId::Remote(0),
             rezzed: true,
@@ -705,6 +713,7 @@ mod system_gateway {
 
     fn ice_installed(id: &str, server: ServerId, rezzed: bool) -> crate::rules::InstalledCard {
         crate::rules::InstalledCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             server,
             slot: InstallSlot::Ice,
@@ -751,7 +760,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ping");
         let (state, events) =
-            apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("ping".to_string()) }).expect("rez ping mid-approach");
+            apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ping") }).expect("rez ping mid-approach");
 
         assert_eq!(state.runner.tags, 1);
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TagsGiven { side: Side::Runner, amount: 1 })));
@@ -765,6 +774,7 @@ mod system_gateway {
         state.runner.resources.clicks = Clicks(4);
         state.runner.resources.credits = Credits(10);
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1010),
             card: CardId("manegarm_skunkworks".to_string()),
             rezzed: true,
             ..Default::default()
@@ -879,13 +889,14 @@ mod system_gateway {
         let registry = sg_registry();
         let mut state = base_state();
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1011),
             card: CardId("orbital_superiority".to_string()),
             server: ServerId::Remote(0),
             advancement_tokens: 4,
             ..Default::default()
         }];
 
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("orbital_superiority".to_string()) })
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "orbital_superiority") })
             .expect("score orbital superiority");
 
         assert_eq!(state.runner.tags, 1);
@@ -899,13 +910,14 @@ mod system_gateway {
         state.runner.tags = 1;
         state.runner.grip = (0..3).map(|i| CardId(format!("grip_card_{i}"))).collect();
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1012),
             card: CardId("orbital_superiority".to_string()),
             server: ServerId::Remote(0),
             advancement_tokens: 4,
             ..Default::default()
         }];
 
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("orbital_superiority".to_string()) })
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "orbital_superiority") })
             .expect("score orbital superiority");
 
         assert!(state.runner.grip.is_empty(), "4 meat damage against a 3-card grip should flatline");
@@ -925,7 +937,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ping");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("ping".to_string()) }).expect("rez ping, giving a tag");
+            apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ping") }).expect("rez ping, giving a tag");
 
         assert_eq!(state.runner.tags, 1);
         assert!(state.pending_decision.is_some(), "NBN: Reality Plus should have offered a choice");
@@ -1060,6 +1072,7 @@ mod system_gateway {
         state.corp.resources.credits = Credits(0);
         state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("government_subsidy".to_string())];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1013),
             card: CardId("longevity_serum".to_string()),
             server: ServerId::Remote(0),
             advancement_tokens: 3,
@@ -1067,12 +1080,12 @@ mod system_gateway {
         }];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("longevity_serum".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "longevity_serum") })
                 .expect("score longevity serum");
 
         // First ChooseCards: trash 1 of the 2 HQ cards.
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
                 .expect("toggle hedge_fund");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm HQ trash");
@@ -1106,12 +1119,12 @@ mod system_gateway {
         assert_eq!(hq_before_confirm.len(), 5, "2 starting + 3 drawn, Sprint itself already moved to Archives");
 
         let pick: Vec<CardId> = hq_before_confirm.into_iter().take(2).collect();
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: pick[0].clone() })
-                .expect("toggle first");
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: pick[1].clone() })
-                .expect("toggle second");
+        // HQ order is the selection's own indexing, so the first two cards
+        // are positions 0 and 1.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 })
+            .expect("toggle first");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 })
+            .expect("toggle second");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm sprint shuffle");
 
@@ -1137,7 +1150,7 @@ mod system_gateway {
         assert_eq!(state.corp.hq, vec![CardId("hedge_fund".to_string())]);
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
                 .expect("toggle hedge_fund");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm trash");
@@ -1161,7 +1174,7 @@ mod system_gateway {
                 .expect("play mutual favor");
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("corroder".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
                 .expect("toggle corroder (an icebreaker; sure_gamble is not offered)");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm search");
@@ -1181,12 +1194,14 @@ mod system_gateway {
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
         state.corp.installed = vec![
             crate::rules::InstalledCard {
+                install_id: InstallId(1014),
                 card: CardId("malapert_data_vault".to_string()),
                 server: ServerId::Remote(0),
                 rezzed: true,
                 ..Default::default()
             },
             crate::rules::InstalledCard {
+                install_id: InstallId(1015),
                 card: CardId("hostile_takeover".to_string()),
                 server: ServerId::Remote(0),
                 advancement_tokens: 2,
@@ -1197,14 +1212,14 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ScoreAgenda { card_id: CardId("hostile_takeover".to_string()) },
+            PlayerAction::ScoreAgenda { target: install_of(&state, "hostile_takeover") },
         )
         .expect("score hostile takeover from the vault's own server");
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to search R&D");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
                 .expect("toggle hedge_fund (non-agenda)");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm search");
@@ -1223,12 +1238,14 @@ mod system_gateway {
         state.corp.resources.credits = Credits(0);
         state.corp.installed = vec![
             crate::rules::InstalledCard {
+                install_id: InstallId(1016),
                 card: CardId("malapert_data_vault".to_string()),
                 server: ServerId::Remote(0),
                 rezzed: true,
                 ..Default::default()
             },
             crate::rules::InstalledCard {
+                install_id: InstallId(1017),
                 card: CardId("hostile_takeover".to_string()),
                 server: ServerId::Remote(1),
                 advancement_tokens: 2,
@@ -1239,7 +1256,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ScoreAgenda { card_id: CardId("hostile_takeover".to_string()) },
+            PlayerAction::ScoreAgenda { target: install_of(&state, "hostile_takeover") },
         )
         .expect("score hostile takeover from a different remote");
 
@@ -1251,6 +1268,7 @@ mod system_gateway {
         let registry = sg_registry();
         let mut state = base_state();
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1018),
             card: CardId("above_the_law".to_string()),
             server: ServerId::Remote(0),
             advancement_tokens: 3,
@@ -1262,14 +1280,14 @@ mod system_gateway {
         }];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("above_the_law".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "above_the_law") })
                 .expect("score above the law");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to trash a resource");
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ToggleCardSelection { card_id: CardId("verbal_plasticity".to_string()) },
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "verbal_plasticity") },
         )
         .expect("toggle verbal_plasticity");
         let (state, events) =
@@ -1287,6 +1305,7 @@ mod system_gateway {
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(4);
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1019),
             card: CardId("ballista".to_string()),
             slot: InstallSlot::Ice,
             rezzed: true,
@@ -1312,7 +1331,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("corp chooses to trash a program");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("corroder".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
                 .expect("toggle corroder");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm trash");
@@ -1339,7 +1358,7 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("retribution".to_string()) })
                 .expect("play retribution while the runner is tagged");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("corroder".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
                 .expect("toggle corroder");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm trash");
@@ -1368,12 +1387,14 @@ mod system_gateway {
         state.corp.resources.credits = Credits(0);
         state.corp.installed = vec![
             crate::rules::InstalledCard {
+                install_id: InstallId(1020),
                 card: CardId("send_a_message".to_string()),
                 server: ServerId::Remote(0),
                 advancement_tokens: 5,
                 ..Default::default()
             },
             crate::rules::InstalledCard {
+                install_id: InstallId(1021),
                 card: CardId("ice_wall".to_string()),
                 slot: InstallSlot::Ice,
                 ..Default::default()
@@ -1383,14 +1404,14 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ScoreAgenda { card_id: CardId("send_a_message".to_string()) },
+            PlayerAction::ScoreAgenda { target: install_of(&state, "send_a_message") },
         )
         .expect("score send a message");
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to rez an installed ICE");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("ice_wall".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") })
                 .expect("toggle ice_wall");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm rez");
@@ -1416,12 +1437,14 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.installed = vec![
             crate::rules::InstalledCard {
+                install_id: InstallId(1022),
                 card: CardId("send_a_message".to_string()),
                 server: ServerId::Remote(0),
                 advancement_tokens: 5,
                 ..Default::default()
             },
             crate::rules::InstalledCard {
+                install_id: InstallId(1023),
                 card: CardId("ice_wall".to_string()),
                 slot: InstallSlot::Ice,
                 rezzed: true,
@@ -1432,7 +1455,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ScoreAgenda { card_id: CardId("send_a_message".to_string()) },
+            PlayerAction::ScoreAgenda { target: install_of(&state, "send_a_message") },
         )
         .expect("score send a message");
 
@@ -1456,18 +1479,21 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.installed = vec![
             crate::rules::InstalledCard {
+                install_id: InstallId(1024),
                 card: CardId("send_a_message".to_string()),
                 server: ServerId::Remote(0),
                 advancement_tokens: 5,
                 ..Default::default()
             },
             crate::rules::InstalledCard {
+                install_id: InstallId(1025),
                 card: CardId("ice_wall".to_string()),
                 slot: InstallSlot::Ice,
                 rezzed: true,
                 ..Default::default()
             },
             crate::rules::InstalledCard {
+                install_id: InstallId(1026),
                 card: CardId("enigma".to_string()),
                 slot: InstallSlot::Ice,
                 ..Default::default()
@@ -1477,21 +1503,25 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ScoreAgenda { card_id: CardId("send_a_message".to_string()) },
+            PlayerAction::ScoreAgenda { target: install_of(&state, "send_a_message") },
         )
         .expect("score send a message");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to rez an installed ICE");
 
-        let toggles: Vec<CardId> = crate::rules::legal_actions(&state, &registry)
+        let toggles: Vec<usize> = crate::rules::legal_actions(&state, &registry)
             .into_iter()
             .filter_map(|action| match action {
-                PlayerAction::ToggleCardSelection { card_id } => Some(card_id),
+                PlayerAction::ToggleCardSelection { position } => Some(position),
                 _ => None,
             })
             .collect();
 
-        assert_eq!(toggles, vec![CardId("enigma".to_string())], "only the unrezzed ice is a legal target");
+        assert_eq!(
+            toggles,
+            vec![position_of(&state, "enigma")],
+            "only the unrezzed ice is a legal target"
+        );
     }
 
     #[test]
@@ -1503,11 +1533,13 @@ mod system_gateway {
         state.corp.resources.credits = Credits(0);
         state.corp.installed = vec![
             crate::rules::InstalledCard {
+                install_id: InstallId(1027),
                 card: CardId("send_a_message".to_string()),
                 server: ServerId::Remote(0),
                 ..Default::default()
             },
             crate::rules::InstalledCard {
+                install_id: InstallId(1028),
                 card: CardId("ice_wall".to_string()),
                 slot: InstallSlot::Ice,
                 ..Default::default()
@@ -1530,7 +1562,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to rez");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("ice_wall".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") })
                 .expect("toggle ice_wall");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm rez");
 
@@ -1547,6 +1579,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("tread_lightly".to_string())];
         state.corp.resources.credits = Credits(10);
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1029),
             card: CardId("ice_wall".to_string()),
             slot: InstallSlot::Ice,
             ..Default::default()
@@ -1565,7 +1598,7 @@ mod system_gateway {
 
         let ice_wall_cost = registry.get(&CardId("ice_wall".to_string())).unwrap().cost;
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ice_wall");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) })
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ice_wall") })
             .expect("rez ice_wall at the increased cost");
 
         assert_eq!(state.corp.resources.credits, Credits(10 - (ice_wall_cost + 3)));
@@ -1580,6 +1613,7 @@ mod system_gateway {
         state.corp.resources.credits = Credits(5);
         state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("government_subsidy".to_string())];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1030),
             card: CardId("anoetic_void".to_string()),
             server: ServerId::Remote(0),
             rezzed: true,
@@ -1596,13 +1630,13 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) },
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") },
         )
         .expect("toggle hedge_fund");
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ToggleCardSelection { card_id: CardId("government_subsidy".to_string()) },
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "government_subsidy") },
         )
         .expect("toggle government_subsidy");
         let (state, events) =
@@ -1639,6 +1673,7 @@ mod system_gateway {
 
     fn rig_card_with_counters(id: &str, counters: u32) -> crate::rules::InstalledRunnerCard {
         crate::rules::InstalledRunnerCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             counters,
             ..Default::default()
@@ -1647,6 +1682,7 @@ mod system_gateway {
 
     fn installed_with_counters(id: &str, server: ServerId, counters: u32) -> crate::rules::InstalledCard {
         crate::rules::InstalledCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             server,
             rezzed: true,
@@ -1680,7 +1716,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("red_team".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "red_team"), ability_index: 0 },
         )
         .expect("activate red team");
         let (state, events) =
@@ -1708,7 +1744,7 @@ mod system_gateway {
             let (next, _) = apply_action(
                 &state,
                 &registry,
-                PlayerAction::ActivateAbility { card_id: CardId("red_team".to_string()), ability_index: 0 },
+                PlayerAction::ActivateAbility { target: install_of(&state, "red_team"), ability_index: 0 },
             )
             .expect("activate red team");
             let (next, _) =
@@ -1776,7 +1812,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("telework_contract".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "telework_contract"), ability_index: 0 },
         )
         .expect("first activation this turn");
         assert_eq!(state.runner.rig[0].counters, 6, "partial spend leaves it in play");
@@ -1786,7 +1822,7 @@ mod system_gateway {
         let second_attempt = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("telework_contract".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "telework_contract"), ability_index: 0 },
         );
         assert!(second_attempt.is_err(), "once per turn should block a second activation the same turn");
     }
@@ -1803,7 +1839,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("telework_contract".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "telework_contract"), ability_index: 0 },
         )
         .expect("final activation drains to zero");
 
@@ -1834,7 +1870,7 @@ mod system_gateway {
         assert_eq!(state.corp.resources.credits, Credits(8), "10 - 2 (install cost)");
 
         let (state, events) =
-            apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("regolith_mining_license".to_string()) })
+            apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "regolith_mining_license") })
                 .expect("rez regolith mining license");
         assert_eq!(state.corp.installed[0].counters, 15);
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CountersAdded { amount: 15, .. })));
@@ -1842,7 +1878,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("regolith_mining_license".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "regolith_mining_license"), ability_index: 0 },
         )
         .expect("activate regolith mining license");
         assert_eq!(state.corp.installed[0].counters, 12, "partial spend leaves it in play");
@@ -1861,7 +1897,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("regolith_mining_license".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "regolith_mining_license"), ability_index: 0 },
         )
         .expect("final activation drains to zero");
 
@@ -1892,7 +1928,7 @@ mod system_gateway {
         .expect("install nico campaign");
         assert_eq!(state.corp.resources.credits, Credits(8));
         let (state, events) =
-            apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("nico_campaign".to_string()) })
+            apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "nico_campaign") })
                 .expect("rez nico campaign");
         assert_eq!(state.corp.resources.credits, Credits(6), "8 - 2 (rez cost)");
         assert_eq!(state.corp.installed[0].counters, 9);
@@ -1961,7 +1997,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("smartware_distributor".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "smartware_distributor"), ability_index: 0 },
         )
         .expect("load 3 credits onto it");
         assert_eq!(state.runner.rig[0].counters, 3);
@@ -2031,7 +2067,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("pennyshaver".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "pennyshaver"), ability_index: 0 },
         )
         .expect("place 1 more then take all hosted credits");
         assert_eq!(state.runner.rig[0].counters, 0, "took every hosted credit, leaving none behind");
@@ -2101,11 +2137,11 @@ mod system_gateway {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("carnivore".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "carnivore"), ability_index: 0 },
         );
         assert_eq!(result, Err(crate::rules::RulesError::RequirementNotMet));
         let legal = crate::rules::legal_actions(&state, &registry);
-        assert!(!legal.contains(&PlayerAction::ActivateAbility { card_id: CardId("carnivore".to_string()), ability_index: 0 }));
+        assert!(!legal.contains(&PlayerAction::ActivateAbility { target: install_of(&state, "carnivore"), ability_index: 0 }));
     }
 
     #[test]
@@ -2127,6 +2163,7 @@ mod system_gateway {
             CardId("diesel".to_string()),
         ];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: fixture_install_id("pad_campaign"),
             card: CardId("pad_campaign".to_string()),
             server: ServerId::Remote(0),
             rezzed: true,
@@ -2152,20 +2189,20 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("carnivore".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "carnivore"), ability_index: 0 },
         )
         .expect("activating parks the grip-selection decision");
 
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ToggleCardSelection { card_id: CardId("sure_gamble".to_string()) },
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "sure_gamble") },
         )
         .expect("select first grip card");
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ToggleCardSelection { card_id: CardId("diesel".to_string()) },
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "diesel") },
         )
         .expect("select second grip card");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
@@ -2192,7 +2229,7 @@ mod system_gateway {
         state.corp.installed[0].advancement_tokens = 4;
 
         let (state, events) =
-            apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("offworld_office".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") })
                 .expect("score offworld office");
         assert!(
             events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 1 })),
@@ -2310,6 +2347,7 @@ mod system_gateway {
             ..Default::default()
         }];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1034),
             card: CardId("wall_of_static".to_string()),
             slot: InstallSlot::Ice,
             rezzed: true,
@@ -2326,7 +2364,7 @@ mod system_gateway {
         let (state_no_run, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("marjanah".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "marjanah"), ability_index: 0 },
         )
         .expect("break without a successful run this turn");
         assert_eq!(state_no_run.runner.resources.credits, Credits(8), "10 - 2, no discount");
@@ -2336,7 +2374,7 @@ mod system_gateway {
         let (state_after_run, _) = apply_action(
             &state_with_run,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("marjanah".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state_with_run, "marjanah"), ability_index: 0 },
         )
         .expect("break after a successful run this turn");
         assert_eq!(state_after_run.runner.resources.credits, Credits(9), "10 - 1 (discounted)");
@@ -2352,7 +2390,7 @@ mod system_gateway {
         state.corp.installed[0].advancement_tokens = 3;
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("superconducting_hub".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "superconducting_hub") })
                 .expect("score superconducting hub");
         assert_eq!(state.corp.max_hand_size_bonus, 2);
 
@@ -2374,7 +2412,7 @@ mod system_gateway {
         state.corp.installed[0].advancement_tokens = 4;
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("offworld_office".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") })
                 .expect("score offworld office");
 
         let (state, _) = apply_action(
@@ -2386,7 +2424,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) },
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") },
         )
         .expect("select the archived card");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
@@ -2404,12 +2442,85 @@ mod system_gateway {
 
     fn corp_ice(id: &str, server: ServerId) -> crate::rules::InstalledCard {
         crate::rules::InstalledCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             server,
             slot: InstallSlot::Ice,
             rezzed: true,
             ..Default::default()
         }
+    }
+
+    /// Hosting a Trojan on **unrezzed** ICE is legal, and must not tell the
+    /// Runner what that ICE is.
+    ///
+    /// The second of the two identity leaks `InstallId` closed, and the one
+    /// the roadmap did not list: `install_program_on_ice_candidates` pairs
+    /// every Trojan with every installed piece of ICE — its own doc comment
+    /// says "rezzed or not — real rules allow hosting on unrezzed ICE" —
+    /// and it used to carry the host's real `CardId`. `action_owner`
+    /// assigns the action to the Runner, so the identity of a card their
+    /// own `ClientView` masks to `None` was written straight into a
+    /// candidate for `legal_actions_for(Runner)`.
+    ///
+    /// **It was latent rather than live, for a reason worth recording:**
+    /// `legal_actions` keeps only candidates `apply_action` accepts, and
+    /// the candidate is built with `memory_cost: 0` while
+    /// `install_program_on_ice` requires the registry's declared value —
+    /// `1` for both *Botulus* and *Tranquilizer*. So the leaking candidate
+    /// was filtered out before reaching any view. That filter is itself a
+    /// separate bug (no Trojan can currently be installed through
+    /// `legal_actions` at all); fixing it must not reopen this hole, which
+    /// is what the last assertion here guards.
+    ///
+    /// Withdrawing the action was never an option — real Netrunner allows
+    /// the host to be unrezzed — so the fix is that it names the install.
+    #[test]
+    fn hosting_a_trojan_on_unrezzed_ice_resolves_without_naming_the_ice() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("botulus".to_string())];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            card: CardId("wall_of_static".to_string()),
+            install_id: crate::rules::InstallId(1),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: false,
+            ..Default::default()
+        }];
+
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        let hq = view.corp.servers.iter().find(|s| s.server == ServerId::Hq).expect("HQ has ice");
+        assert_eq!(hq.ice[0].card, None, "the premise: the Runner cannot identify this ice");
+
+        // The rules half: an unrezzed host is a legal host, and the action
+        // resolves against the real card underneath without the Runner
+        // having had to name it.
+        let (hosted, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallProgramOnIce {
+                card_id: CardId("botulus".to_string()),
+                host: crate::rules::InstallId(1),
+                memory_cost: 1,
+            },
+        )
+        .expect("botulus hosts on unrezzed ice");
+        assert_eq!(hosted.runner.rig[0].hosted_on_ice, Some(CardId("wall_of_static".to_string())));
+
+        // The masking half, and the one that regresses if anyone reverts
+        // the payload to a `CardId`: nothing the Runner is offered may name
+        // the ice. Stated over the whole action list rather than over
+        // `InstallProgramOnIce` alone, so it still holds once that action
+        // becomes reachable.
+        assert!(
+            !format!("{:?}", view.legal_actions).contains("wall_of_static"),
+            "no legal action may name an ice this view masks: {:?}",
+            view.legal_actions
+        );
     }
 
     #[test]
@@ -2427,7 +2538,7 @@ mod system_gateway {
             &registry,
             PlayerAction::InstallProgramOnIce {
                 card_id: CardId("botulus".to_string()),
-                host_ice_id: CardId("wall_of_static".to_string()),
+                host: install_of(&state, "wall_of_static"),
                 memory_cost: 1,
             },
         )
@@ -2440,14 +2551,14 @@ mod system_gateway {
         let mask = crate::rules::get_action_mask(&state, &registry);
         let index = crate::rules::ActionSpace::index_of(
             &state,
-            &PlayerAction::ActivateAbility { card_id: CardId("botulus".to_string()), ability_index: 0 },
+            &PlayerAction::ActivateAbility { target: install_of(&state, "botulus"), ability_index: 0 },
         )
         .expect("the action is always encodable regardless of legality");
         assert!(!mask[index], "Botulus's ability must not be legal outside an encounter with its own host");
         assert!(apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("botulus".to_string()), ability_index: 0 }
+            PlayerAction::ActivateAbility { target: install_of(&state, "botulus"), ability_index: 0 }
         )
         .is_err());
 
@@ -2465,7 +2576,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("botulus".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "botulus"), ability_index: 0 },
         )
         .expect("break a subroutine using the hosted counter");
         assert_eq!(state.runner.rig[0].counters, 0, "the hosted counter was spent as the ability's cost");
@@ -2505,7 +2616,7 @@ mod system_gateway {
             &registry,
             PlayerAction::InstallProgramOnIce {
                 card_id: CardId("tranquilizer".to_string()),
-                host_ice_id: CardId("wall_of_static".to_string()),
+                host: install_of(&state, "wall_of_static"),
                 memory_cost: 1,
             },
         )
@@ -2568,7 +2679,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("leech".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "leech"), ability_index: 0 },
         )
         .expect("spend the hosted counter to weaken the ice");
         assert_eq!(state.runner.rig[0].counters, 0);
@@ -2591,7 +2702,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("fermenter".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "fermenter"), ability_index: 0 },
         )
         .expect("cash out fermenter");
 
@@ -2728,7 +2839,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
             .expect("corp passes, firing subroutine 1 and parking the trash choice");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("corroder".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
                 .expect("toggle corroder");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
             .expect("confirm trash, resuming subroutine resolution");
@@ -2739,7 +2850,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to install from HQ");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
                 .expect("toggle hedge_fund");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
             .expect("confirm install, ignoring cost, resuming subroutine resolution");
@@ -2778,7 +2889,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to install from HQ");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("ice_wall".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") })
                 .expect("toggle ice_wall");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
             .expect("confirm install, ignoring cost");
@@ -2819,29 +2930,29 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::AdvanceCard { card_id: CardId("hostile_takeover".to_string()) },
+            PlayerAction::AdvanceCard { target: install_of(&state, "hostile_takeover") },
         )
         .expect("advance once");
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::AdvanceCard { card_id: CardId("hostile_takeover".to_string()) },
+            PlayerAction::AdvanceCard { target: install_of(&state, "hostile_takeover") },
         )
         .expect("advance twice — hostile_takeover needs 2 advancement tokens to score");
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ScoreAgenda { card_id: CardId("hostile_takeover".to_string()) },
+            PlayerAction::ScoreAgenda { target: install_of(&state, "hostile_takeover") },
         )
         .expect("score hostile takeover, firing Tao Salonga's OnAgendaScored reaction");
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to swap");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("wall_of_static".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "wall_of_static") })
                 .expect("toggle wall_of_static");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("ice_wall".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") })
                 .expect("toggle ice_wall");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm swap");
 
@@ -2863,7 +2974,7 @@ mod system_gateway {
 
         let result = crate::rules::evaluate_effect(
             &mut state.clone(),
-            &crate::dsl::Effect::SwapInstalledIce(CardId("wall_of_static".to_string()), CardId("ice_wall".to_string())),
+            &crate::dsl::Effect::SwapInstalledIce(install_of(&state, "wall_of_static"), install_of(&state, "ice_wall")),
             &mut crate::rules::ResolutionContext::default(),
             &registry,
         );
@@ -2895,7 +3006,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::AdvanceCard { card_id: CardId("hostile_takeover".to_string()) },
+            PlayerAction::AdvanceCard { target: install_of(&state, "hostile_takeover") },
         )
         .expect("first advancement");
         assert_eq!(state.corp.resources.credits, Credits(3), "2 - 1 (advance cost) + 2 (Weyland's first-advancement bonus)");
@@ -2904,7 +3015,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::AdvanceCard { card_id: CardId("hostile_takeover".to_string()) },
+            PlayerAction::AdvanceCard { target: install_of(&state, "hostile_takeover") },
         )
         .expect("second advancement");
         assert_eq!(state.corp.resources.credits, Credits(2), "no further credits on a card's second+ advancement");
@@ -2922,7 +3033,7 @@ mod system_gateway {
         state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("offworld_office".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") })
                 .expect("score offworld office");
         assert_eq!(state.corp.agenda_points_scored_this_turn, 2);
 
@@ -2971,7 +3082,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("conduit".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "conduit"), ability_index: 0 },
         )
         .expect("activate conduit's run ability");
         assert_eq!(state.active_run.as_ref().unwrap().additional_rd_access, 2);
@@ -3020,7 +3131,7 @@ mod system_gateway {
         // Unity's pump ability (+X, X = installed icebreaker count = 3)
         // should bring it from base 1 to 4.
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ActivateAbility { card_id: CardId("unity".to_string()), ability_index: 1 })
+            apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "unity"), ability_index: 1 })
                 .expect("pump unity");
         assert_eq!(state.runner.rig[1].effective_strength(), 4, "Unity: 1 base + 3 (installed icebreaker count)");
     }
@@ -3144,6 +3255,7 @@ mod system_gateway {
     /// scenario below starts from.
     fn corp_root(id: &str, server: ServerId) -> crate::rules::InstalledCard {
         crate::rules::InstalledCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             server,
             rezzed: true,
@@ -3431,12 +3543,14 @@ mod system_gateway {
         state.corp.resources.clicks = Clicks(3);
         state.corp.installed = vec![
             crate::rules::InstalledCard {
+                install_id: InstallId(1039),
                 card: CardId("luminal_transubstantiation".to_string()),
                 server: ServerId::Remote(0),
                 advancement_tokens: 3,
                 ..Default::default()
             },
             crate::rules::InstalledCard {
+                install_id: InstallId(1040),
                 card: CardId("offworld_office".to_string()),
                 server: ServerId::Remote(1),
                 advancement_tokens: 4,
@@ -3447,7 +3561,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ScoreAgenda { card_id: CardId("luminal_transubstantiation".to_string()) },
+            PlayerAction::ScoreAgenda { target: install_of(&state, "luminal_transubstantiation") },
         )
         .expect("luminal should score");
 
@@ -3463,7 +3577,7 @@ mod system_gateway {
             .any(|action| matches!(action, PlayerAction::ScoreAgenda { .. }));
         assert!(!mask_offers_score, "no ScoreAgenda should be offered while the lockout holds");
         assert_eq!(
-            apply_action(&state, &registry, PlayerAction::ScoreAgenda { card_id: CardId("offworld_office".to_string()) }),
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") }),
             Err(crate::rules::RulesError::CannotScoreAgendasThisTurn)
         );
     }
@@ -3493,6 +3607,7 @@ mod system_gateway {
         let mut scored = base_state();
         scored.corp.resources.clicks = Clicks(3);
         scored.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1041),
             card: CardId("tomorrows_headline".to_string()),
             server: ServerId::Remote(0),
             advancement_tokens: 3,
@@ -3501,7 +3616,7 @@ mod system_gateway {
         let (scored, events) = apply_action(
             &scored,
             &registry,
-            PlayerAction::ScoreAgenda { card_id: CardId("tomorrows_headline".to_string()) },
+            PlayerAction::ScoreAgenda { target: install_of(&scored, "tomorrows_headline") },
         )
         .expect("tomorrow's headline should score");
         assert_eq!(scored.runner.tags, 1);
@@ -3529,6 +3644,7 @@ mod system_gateway {
         state.corp.resources.credits = Credits(5);
         state.corp.hq = vec![CardId("seamless_launch".to_string())];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1042),
             card: CardId("offworld_office".to_string()),
             server: ServerId::Remote(0),
             // Installed on an earlier turn — the eligible case.
@@ -3542,7 +3658,7 @@ mod system_gateway {
         let (state, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ToggleCardSelection { card_id: CardId("offworld_office".to_string()) },
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "offworld_office") },
         )
         .and_then(|(state, _)| apply_action(&state, &registry, PlayerAction::ConfirmCardSelection))
         .expect("confirm the advancement target");
@@ -3561,6 +3677,7 @@ mod system_gateway {
         state.corp.resources.credits = Credits(5);
         state.corp.hq = vec![CardId("seamless_launch".to_string())];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1043),
             card: CardId("offworld_office".to_string()),
             server: ServerId::Remote(0),
             installed_this_turn: true,
@@ -3590,12 +3707,13 @@ mod system_gateway {
             crate::rules::ArchivedCard::facedown(CardId("government_subsidy".to_string())),
         ];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1044),
             card: CardId("spin_doctor".to_string()),
             server: ServerId::Remote(0),
             ..Default::default()
         }];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("spin_doctor".to_string()) })
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "spin_doctor") })
             .expect("rez spin doctor");
         assert_eq!(state.corp.hq.len(), 2, "rezzing drew 2");
 
@@ -3604,7 +3722,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("spin_doctor".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "spin_doctor"), ability_index: 0 },
         )
         .expect("activate spin doctor");
 
@@ -3616,7 +3734,7 @@ mod system_gateway {
         assert_eq!(state.corp.removed_from_game, vec![CardId("spin_doctor".to_string())]);
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) })
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
                 .expect("pick an archives card");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm the shuffle");
 

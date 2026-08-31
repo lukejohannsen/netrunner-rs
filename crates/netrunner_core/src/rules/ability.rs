@@ -302,22 +302,34 @@ pub fn evaluate_effect(
 
         Effect::SwapInstalledIce(a, b) => {
             for id in [a, b] {
-                if !state.corp.installed.iter().any(|c| &c.card == id) {
-                    return Err(RulesError::CardNotInstalled { card: id.clone() });
-                }
-                if state.active_run.as_ref().is_some_and(|run| run.ice.iter().any(|i| &i.card_id == id)) {
-                    return Err(RulesError::CannotSwapIceDuringActiveRun(id.clone()));
+                let Some(installed) = state.find_corp_install(*id) else {
+                    return Err(RulesError::InstallNotFound(*id));
+                };
+                // The run's `RunState::ice` is a snapshot keyed by `CardId`;
+                // moving an install it names would desync it from
+                // `CorpState::installed`.
+                let card = installed.card.clone();
+                if state.active_run.as_ref().is_some_and(|run| run.ice.iter().any(|i| i.card_id == card)) {
+                    return Err(RulesError::CannotSwapIceDuringActiveRun(card));
                 }
             }
-            let pos_a = state.corp.installed.iter().position(|c| &c.card == a).expect("checked above");
-            let pos_b = state.corp.installed.iter().position(|c| &c.card == b).expect("checked above");
+            let pos_a =
+                state.corp.installed.iter().position(|c| c.install_id == *a).expect("checked above");
+            let pos_b =
+                state.corp.installed.iter().position(|c| c.install_id == *b).expect("checked above");
+            let (card_a, card_b) =
+                (state.corp.installed[pos_a].card.clone(), state.corp.installed[pos_b].card.clone());
             let (server_a, slot_a) = (state.corp.installed[pos_a].server, state.corp.installed[pos_a].slot);
             let (server_b, slot_b) = (state.corp.installed[pos_b].server, state.corp.installed[pos_b].slot);
             state.corp.installed[pos_a].server = server_b;
             state.corp.installed[pos_a].slot = slot_b;
             state.corp.installed[pos_b].server = server_a;
             state.corp.installed[pos_b].slot = slot_a;
-            Ok(vec![GameEvent::IceSwapped { a: a.clone(), b: b.clone() }])
+            // The event names the cards, not the installs: it feeds the
+            // match log and `Trigger` dispatch, neither of which reaches a
+            // client today (see ROADMAP Phase 4 §1 — events are not yet
+            // sent, let alone masked). Revisit when they are.
+            Ok(vec![GameEvent::IceSwapped { a: card_a, b: card_b }])
         }
 
         Effect::InstallFromZoneIgnoringCost { card_id, origin_zone, into, slot, insert_after } => {
@@ -348,6 +360,7 @@ pub fn evaluate_effect(
             });
             let new_card = crate::rules::InstalledCard {
                 card: card_id.clone(),
+                install_id: state.allocate_install_id(),
                 server: *into,
                 slot: resolved_slot,
                 rezzed: false,
@@ -610,7 +623,7 @@ pub fn evaluate_effect(
         }
 
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
-            let available = crate::rules::pending_choice::eligible_cards(state, registry, *side, source, filter);
+            let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter);
             if available.len() < *min as usize {
                 // Nothing to do — same "silently no-op" leniency
                 // `DrawCards`/`TrashCard`'s "already gone" case establish.
@@ -670,20 +683,21 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: *chooser }])
         }
 
-        Effect::RezInstalledIgnoringCost(card_id) => {
-            let server = {
+        Effect::RezInstalledIgnoringCost(install) => {
+            let (card_id, server) = {
                 let installed = state
                     .corp
                     .installed
                     .iter_mut()
-                    .find(|c| &c.card == card_id)
-                    .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+                    .find(|c| c.install_id == *install)
+                    .ok_or(RulesError::InstallNotFound(*install))?;
                 if installed.rezzed {
-                    return Err(RulesError::AlreadyRezzed { card: card_id.clone() });
+                    return Err(RulesError::AlreadyRezzed { card: installed.card.clone() });
                 }
                 installed.rezzed = true;
-                installed.server
+                (installed.card.clone(), installed.server)
             };
+            let card_id = &card_id;
             // Mirrors `engine::rez_ice`'s "sync the matching RunIce if
             // mid-ApproachIce" step — see this variant's doc comment for why
             // this duplicates rather than shares `rez_ice`'s lines.
@@ -1735,6 +1749,8 @@ pub(crate) fn consume_requirement(state: &mut GameState, requirement: &EffectReq
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::state::InstallId;
+    use crate::rules::test_support::fixture_install_id;
     use crate::dsl::{AbilityDef, CardDefinition, CardId, CardType, DamageType, IceType, SubroutineDef, TriggeredEffect};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase as RP, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{
@@ -1744,6 +1760,7 @@ mod tests {
 
     fn installed_runner_card(id: &str, base_strength: i32) -> InstalledRunnerCard {
         InstalledRunnerCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             base_strength,
             ..Default::default()
@@ -2465,6 +2482,7 @@ mod tests {
     fn trash_card_corp_installed_moves_card_to_archives() {
         let mut state = game_state();
         state.corp.installed.push(InstalledCard {
+            install_id: InstallId(1082),
             card: CardId("pad_campaign".to_string()),
             server: ServerId::Remote(0),
             rezzed: true,
@@ -2834,6 +2852,7 @@ mod tests {
     fn add_counters_on_a_corp_installed_card_increments_its_counters() {
         let mut state = game_state();
         state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(1083),
             card: CardId("some_asset".to_string()),
             server: ServerId::Remote(0),
             rezzed: true,
@@ -3390,6 +3409,7 @@ mod tests {
     fn rezzed_during_run_against_this_server_requirement_matches_only_the_active_run_server() {
         let mut state = game_state();
         state.corp.installed = vec![crate::rules::state::InstalledCard {
+            install_id: InstallId(1084),
             card: CardId("ping".to_string()),
             slot: crate::rules::state::InstallSlot::Ice,
             rezzed: true,

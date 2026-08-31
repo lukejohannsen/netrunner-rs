@@ -12,7 +12,7 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run;
-use crate::rules::state::{ArchivedCard, GameState, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side};
+use crate::rules::state::{ArchivedCard, GameState, InstallId, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side};
 
 /// Who `state.pending_decision` is currently awaiting a choice from, if
 /// anything is parked — used by `engine::apply_action`'s blocking guard and
@@ -79,56 +79,83 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
     }
 }
 
-/// The candidate `CardId`s currently eligible for `zone`/`filter`, from
-/// `chooser`'s perspective — `zone_card_ids` filtered down to those
-/// matching `filter`. Used both to validate `ToggleCardSelection` and to
-/// silently no-op `Effect::PromptChooseCards` when fewer than `min` cards
-/// exist at all.
-pub(crate) fn eligible_cards(
+/// The `InstallId`s in `zone`, positionally aligned with `zone_card_ids`,
+/// or `None` for a zone that holds no installs.
+///
+/// Exists so `ConfirmCardSelection` can hand an install-addressing `then`
+/// effect (`SwapInstalledIce`, `RezInstalledIgnoringCost`) the *install*
+/// the chooser picked, rather than re-deriving one from its `CardId` —
+/// which cannot tell two copies of a card apart.
+pub(crate) fn zone_install_ids(state: &GameState, chooser: Side, zone: &CardZoneRef) -> Option<Vec<InstallId>> {
+    match zone {
+        CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => match owning_side(chooser, zone) {
+            Side::Corp => Some(state.corp.installed.iter().map(|c| c.install_id).collect()),
+            Side::Runner => Some(state.runner.rig.iter().map(|c| c.install_id).collect()),
+        },
+        _ => None,
+    }
+}
+
+/// The **positions** within `zone_card_ids(chooser, zone)` currently
+/// eligible under `filter`. Used both to validate `ToggleCardSelection`
+/// and to silently no-op `Effect::PromptChooseCards` when fewer than `min`
+/// candidates exist at all.
+///
+/// Positions rather than `CardId`s, for the reason spelled out on
+/// `PlayerAction::ToggleCardSelection`: this list is handed to the chooser
+/// through `legal_actions`, and for a zone like `OpponentInstalled` it can
+/// contain cards the chooser's own `ClientView` masks. A position names
+/// the slot on the table without publishing what sits in it, and — unlike
+/// a `CardId` — distinguishes two copies of the same card.
+pub(crate) fn eligible_positions(
     state: &GameState,
     registry: &CardRegistry,
     chooser: Side,
     zone: &CardZoneRef,
     filter: &CardFilter,
-) -> Vec<CardId> {
+) -> Vec<usize> {
     zone_card_ids(state, chooser, zone)
         .into_iter()
-        .filter(|id| registry.get(id).is_some_and(|card| card_matches_filter(card, filter)))
-        .filter(|id| instance_matches_filter(state, chooser, zone, id, filter))
+        .enumerate()
+        .filter(|(_, id)| registry.get(id).is_some_and(|card| card_matches_filter(card, filter)))
+        .filter(|(position, _)| instance_matches_filter(state, chooser, zone, *position, filter))
+        .map(|(position, _)| position)
         .collect()
 }
 
 /// The instance-level half of `CardFilter`, which `card_matches_filter`
-/// can't answer from a `CardDefinition` alone. Only
-/// `CardFilter::NotInstalledThisTurn` needs it today; every other variant
-/// passes through.
+/// can't answer from a `CardDefinition` alone —
+/// `CardFilter::NotInstalledThisTurn` and `CardFilter::UnrezzedIce`; every
+/// other variant passes through.
+///
+/// Takes the candidate's `position` within `zone_card_ids`, not its
+/// `CardId`: both filters read per-instance state, and a find-by-`CardId`
+/// answered for the *first* copy — so with one *Tithe* rezzed and a second
+/// unrezzed, `UnrezzedIce` reported the wrong one, and
+/// `NotInstalledThisTurn` had the same flaw for a card installed twice.
 fn instance_matches_filter(
     state: &GameState,
     chooser: Side,
     zone: &CardZoneRef,
-    card_id: &CardId,
+    position: usize,
     filter: &CardFilter,
 ) -> bool {
+    // Both filters below read per-install state, so `position` may only be
+    // used to index an install list. For any other zone it is a position
+    // into HQ/the grip/a deck and indexes nothing here — the card is simply
+    // not installed, so neither filter can match it.
+    let installed_zone = matches!(zone, CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled);
+    let corp_install = (installed_zone && owning_side(chooser, zone) == Side::Corp)
+        .then(|| state.corp.installed.get(position))
+        .flatten();
+
     match filter {
-        CardFilter::NotInstalledThisTurn => match owning_side(chooser, zone) {
-            Side::Corp => state
-                .corp
-                .installed
-                .iter()
-                .find(|c| &c.card == card_id)
-                .is_some_and(|c| !c.installed_this_turn),
-            // No Runner card needs this restriction yet; a rig card is
-            // never eligible rather than silently always-eligible.
-            Side::Runner => false,
-        },
+        // No Runner card needs this restriction yet; a rig card is never
+        // eligible rather than silently always-eligible.
+        CardFilter::NotInstalledThisTurn => corp_install.is_some_and(|c| !c.installed_this_turn),
         // Only an unrezzed installed Corp card can be a rez target. The
         // Runner has no rez state, so a rig card is never eligible.
-        CardFilter::UnrezzedIce => match owning_side(chooser, zone) {
-            Side::Corp => {
-                state.corp.installed.iter().find(|c| &c.card == card_id).is_some_and(|c| !c.rezzed)
-            }
-            Side::Runner => false,
-        },
+        CardFilter::UnrezzedIce => corp_install.is_some_and(|c| !c.rezzed),
         _ => true,
     }
 }
@@ -364,43 +391,35 @@ pub(crate) fn resolve_choose_trigger_to_resolve(
 pub(crate) fn resolve_toggle_card_selection(
     state: &mut GameState,
     registry: &CardRegistry,
-    card_id: CardId,
+    position: usize,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let Some(PendingDecision::ChooseCards { side, source, filter, .. }) = state.pending_decision.as_ref() else {
         return Err(RulesError::NoPendingDecision);
     };
     // Cloned out so the immutable borrow of `state.pending_decision` ends
-    // here — `eligible_cards` needs `state` immutably too, and the
+    // here — `eligible_positions` needs `state` immutably too, and the
     // subsequent mutation needs it mutably.
     let (side, source, filter) = (*side, source.clone(), filter.clone());
 
-    let eligible = eligible_cards(state, registry, side, &source, &filter);
-    if !eligible.contains(&card_id) {
-        return Err(RulesError::CardNotEligibleForSelection(card_id));
+    if !eligible_positions(state, registry, side, &source, &filter).contains(&position) {
+        return Err(RulesError::CardNotEligibleForSelection(position));
     }
-    // How many physical copies of this card the zone actually holds. A zone
-    // is a `Vec<CardId>`, so three copies of Botulus are three entries with
-    // the same id.
-    let available_copies = eligible.iter().filter(|id| *id == &card_id).count();
 
     let Some(PendingDecision::ChooseCards { selected, max, .. }) = state.pending_decision.as_mut() else {
         unreachable!("checked above");
     };
-    let selected_copies = selected.iter().filter(|id| *id == &card_id).count();
 
-    // Toggling cycles through copy counts rather than flipping a single
-    // bit: each toggle selects one more copy until every copy the zone
-    // holds is selected, and the next toggle clears them all.
-    //
-    // Selecting by id alone used to cap the selection at one copy per id,
-    // which deadlocked any "choose N" whose zone held fewer than N
-    // *distinct* cards. Carnivore ("trash 2 cards from your grip") against
-    // a grip of two copies of one card is the reachable case: the
-    // availability guard counts two entries and parks the decision, but the
-    // selection could never reach two, so `ConfirmCardSelection` was never
-    // legal while the parked decision blocked every other action.
-    if selected_copies >= available_copies {
-        selected.retain(|id| id != &card_id);
+    // A plain toggle. This used to cycle through *copy counts* — each
+    // toggle selecting one more copy of the same `CardId` until the zone
+    // was exhausted, then clearing them all — because selecting by id
+    // could otherwise never pick two copies of one card, which deadlocked
+    // Carnivore ("trash 2 cards from your grip") against a grip holding two
+    // of the same card. Positions are distinct by construction, so the two
+    // copies are simply two selectable entries and the cycling machinery is
+    // gone. `carnivore_can_select_two_copies_of_the_same_card` still pins
+    // the behaviour that motivated it.
+    if let Some(existing) = selected.iter().position(|p| *p == position) {
+        selected.remove(existing);
         return Ok(Vec::new());
     }
     // Deselecting is always allowed (above), but selecting past `max` is
@@ -419,7 +438,7 @@ pub(crate) fn resolve_toggle_card_selection(
     if selected.len() as u32 >= *max {
         return Err(RulesError::CardSelectionFull { max: *max });
     }
-    selected.push(card_id);
+    selected.push(position);
     Ok(Vec::new())
 }
 
@@ -453,6 +472,23 @@ pub(crate) fn resolve_confirm_card_selection(
         // `ResolvePendingChoice` already establish for a malformed resolution.
         return Err(RulesError::CardSelectionOutOfRange { selected: count, min, max });
     }
+
+    // Positions are resolved to concrete cards **once, before any
+    // mutation**: every branch below removes cards from `source`, which
+    // would shift the positions still to be resolved.
+    let zone = zone_card_ids(state, side, &source);
+    let zone_installs = zone_install_ids(state, side, &source);
+    let positions = selected;
+    let selected: Vec<CardId> = positions
+        .iter()
+        .map(|p| zone.get(*p).cloned().ok_or(RulesError::CardNotEligibleForSelection(*p)))
+        .collect::<Result<_, _>>()?;
+    // The same selection as installs, for the `then` effects that address
+    // an install rather than a card. Empty when `source` is not an
+    // installed-card zone, in which case no such effect applies.
+    let selected_installs: Vec<InstallId> = zone_installs
+        .map(|ids| positions.iter().filter_map(|p| ids.get(*p).copied()).collect())
+        .unwrap_or_default();
 
     let mut events = vec![GameEvent::CardsSelected { side, cards: selected.clone(), revealed: reveal }];
 
@@ -517,10 +553,14 @@ pub(crate) fn resolve_confirm_card_selection(
         // since only `source_card`'s currently-installed `server` is
         // needed, not any zone-move machinery.
         let host_server = source_card.as_ref().and_then(|id| state.corp.installed.iter().find(|c| &c.card == id)).map(|c| c.server);
-        let effect = match (*effect, selected.as_slice()) {
-            (Effect::RezInstalledIgnoringCost(_), [chosen, ..]) => Effect::RezInstalledIgnoringCost(chosen.clone()),
-            (Effect::SwapInstalledIce(_, _), [a, b, ..]) => Effect::SwapInstalledIce(a.clone(), b.clone()),
-            (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..]) => {
+        // The two install-addressing effects substitute from
+        // `selected_installs`, not `selected`: with two copies of one ICE
+        // selected, two identical `CardId`s named the same install twice —
+        // `SwapInstalledIce` swapped a card with itself and no-opped.
+        let effect = match (*effect, selected.as_slice(), selected_installs.as_slice()) {
+            (Effect::RezInstalledIgnoringCost(_), _, [chosen, ..]) => Effect::RezInstalledIgnoringCost(*chosen),
+            (Effect::SwapInstalledIce(_, _), _, [a, b, ..]) => Effect::SwapInstalledIce(*a, *b),
+            (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
                 Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),
                     origin_zone,
@@ -529,7 +569,7 @@ pub(crate) fn resolve_confirm_card_selection(
                     insert_after: insert_after.and(source_card.clone()),
                 }
             }
-            (other, _) => other,
+            (other, _, _) => other,
         };
         events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(acting), registry)?);
     }
@@ -809,14 +849,14 @@ mod tests {
 
         // Fill the selection to `max`.
         for index in 0..2 {
-            let action = PlayerAction::ToggleCardSelection { card_id: CardId(format!("archived_{index}")) };
+            let action = PlayerAction::ToggleCardSelection { position: index };
             let (next, _) = crate::rules::apply_action(&state, &registry, action).expect("selecting within max");
             state = next;
         }
 
         // A third distinct card is refused, and — the part that actually
         // prevented the stall — is no longer offered as a legal action.
-        let third = PlayerAction::ToggleCardSelection { card_id: CardId("archived_2".to_string()) };
+        let third = PlayerAction::ToggleCardSelection { position: 2 };
         assert!(matches!(
             crate::rules::apply_action(&state, &registry, third.clone()),
             Err(RulesError::CardSelectionFull { max: 2 })
@@ -825,7 +865,7 @@ mod tests {
         assert!(!legal.contains(&third), "an at-capacity selection must not offer more cards: {legal:?}");
 
         // Deselecting stays legal, and frees a slot again.
-        let deselect = PlayerAction::ToggleCardSelection { card_id: CardId("archived_0".to_string()) };
+        let deselect = PlayerAction::ToggleCardSelection { position: 0 };
         assert!(legal.contains(&deselect), "deselecting an already-selected card must stay legal");
         let (state, _) = crate::rules::apply_action(&state, &registry, deselect).expect("deselecting");
         assert!(crate::rules::legal_actions(&state, &registry).contains(&third));
@@ -833,8 +873,8 @@ mod tests {
 
     /// Two copies of the *same* card must both be selectable.
     ///
-    /// `selected` is keyed by `CardId`, so toggling used to flip a single
-    /// bit per id and cap the selection at one copy. Any "choose N" whose
+    /// `selected` was once keyed by `CardId`, so toggling flipped a single
+    /// bit per id and capped the selection at one copy. Any "choose N" whose
     /// zone held fewer than N *distinct* cards then deadlocked: the
     /// availability guard counts physical copies and parks the decision,
     /// but the selection could never reach `min`, so
@@ -877,14 +917,17 @@ mod tests {
             resume: PendingChoiceResume::None,
         });
 
-        let toggle = PlayerAction::ToggleCardSelection { card_id: id.clone() };
+        // Two copies, two positions — which is the whole fix. The
+        // copy-count cycling this test was written against is gone;
+        // position 0 and position 1 are simply different actions.
+        let _ = &id;
 
         // Confirming is not legal yet: nothing is selected.
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::ConfirmCardSelection));
 
-        // Two toggles select both physical copies.
-        for _ in 0..2 {
-            let (next, _) = crate::rules::apply_action(&state, &registry, toggle.clone()).expect("select a copy");
+        for position in 0..2 {
+            let toggle = PlayerAction::ToggleCardSelection { position };
+            let (next, _) = crate::rules::apply_action(&state, &registry, toggle).expect("select a copy");
             state = next;
         }
         let Some(PendingDecision::ChooseCards { selected, .. }) = &state.pending_decision else {

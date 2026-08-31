@@ -13,7 +13,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{PlayerAction, Side};
+use netrunner_core::rules::{InstallId, InstallSlot, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
 use netrunner_server::{ClientMessage, HistoryEntry, ServerMessage};
@@ -44,12 +44,12 @@ pub const MAX_LOG_LINES: usize = 200;
 /// (`App`, fed by `ServerMessage::ActionLog`) and the local one
 /// (`tui::LocalUiState`, fed straight off `Session`'s history) so the two
 /// render identically.
-pub fn push_log_line(log: &mut Vec<String>, entry: &HistoryEntry, registry: &CardRegistry) {
+pub fn push_log_line(log: &mut Vec<String>, entry: &HistoryEntry, registry: &CardRegistry, view: Option<&ClientView>) {
     log.push(format!(
         "[turn {}] {:?}: {}",
         entry.turn_number,
         entry.side,
-        describe_action(&entry.action, registry)
+        describe_action(&entry.action, registry, view)
     ));
     if log.len() > MAX_LOG_LINES {
         let excess = log.len() - MAX_LOG_LINES;
@@ -94,7 +94,9 @@ impl App {
                     self.view = Some(*view);
                     self.last_rejection = None;
                 }
-                ServerMessage::ActionLog(entry) => push_log_line(&mut self.action_log, &entry, &self.registry),
+                ServerMessage::ActionLog(entry) => {
+                    push_log_line(&mut self.action_log, &entry, &self.registry, self.view.as_ref())
+                }
                 ServerMessage::ActionRejected { reason } => self.last_rejection = Some(reason),
                 ServerMessage::GameEnded { winner, reason } => self.game_ended = Some((winner, reason)),
                 ServerMessage::MatchJoined { .. } => {}
@@ -175,7 +177,7 @@ impl RenderableView for App {
     }
 
     fn legal_action_labels(&self) -> Vec<String> {
-        self.legal_actions().iter().map(|action| describe_action(action, &self.registry)).collect()
+        self.legal_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect()
     }
 
     fn action_log(&self) -> &[String] {
@@ -185,9 +187,46 @@ impl RenderableView for App {
 
 /// Human-readable label for a `PlayerAction`, resolving `CardId`s to
 /// registry titles where available.
-pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String {
+///
+/// `view` is what resolves an `InstallId` to something a person can read.
+/// It is optional because the action log has no view to hand — see
+/// `install_label` for what each case renders.
+pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Option<&ClientView>) -> String {
     let title = |card_id: &netrunner_core::dsl::CardId| -> String {
         registry.get(card_id).map(|c| c.title.clone()).unwrap_or_else(|| card_id.0.clone())
+    };
+
+    // An `InstallId` names a position on the table, not a card, so this
+    // renders whatever the *viewer* is entitled to see there:
+    //
+    // - a card they can identify → its title;
+    // - a card the view masks (an unrezzed Corp install) → where it sits,
+    //   never its title. Naming it here would reintroduce, in the UI, the
+    //   exact leak `InstallId` exists to close;
+    // - no view, or an install no longer on the table (a scored agenda) →
+    //   the bare id. Only the action log hits this, and only for a card
+    //   that has already left; a log line naming it would need the
+    //   recorded `GameEvent`s rather than the action alone.
+    let install_label = |id: &InstallId| -> String {
+        let Some(view) = view else { return format!("install #{}", id.0) };
+        for server in &view.corp.servers {
+            for card in server.ice.iter().chain(server.root.iter()) {
+                if card.install_id != *id {
+                    continue;
+                }
+                return match &card.card {
+                    Some(card_id) => title(card_id),
+                    None => {
+                        let kind = if card.slot == InstallSlot::Ice { "ice" } else { "card" };
+                        format!("the unrezzed {kind} at {:?}", server.server)
+                    }
+                };
+            }
+        }
+        match view.runner.rig.iter().find(|c| c.install_id == *id) {
+            Some(rig_card) => title(&rig_card.card),
+            None => format!("install #{}", id.0),
+        }
     };
 
     match action {
@@ -196,7 +235,7 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::InstallCard { card_id, zone, slot } => {
             format!("Install {} into {:?} ({:?})", title(card_id), zone, slot)
         }
-        PlayerAction::RezIce { ice_id } => format!("Rez {}", title(ice_id)),
+        PlayerAction::RezIce { ice } => format!("Rez {}", install_label(ice)),
         PlayerAction::InitiateRun { server } => format!("Run {server:?}"),
         PlayerAction::ContinueRun => "Continue run".to_string(),
         PlayerAction::JackOut => "Jack out".to_string(),
@@ -206,8 +245,8 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::InstallHardware { card_id } => format!("Install {}", title(card_id)),
         PlayerAction::InstallProgram { card_id, .. } => format!("Install {}", title(card_id)),
         PlayerAction::InstallResource { card_id } => format!("Install {}", title(card_id)),
-        PlayerAction::InstallProgramOnIce { card_id, host_ice_id, .. } => {
-            format!("Install {} onto {}", title(card_id), title(host_ice_id))
+        PlayerAction::InstallProgramOnIce { card_id, host, .. } => {
+            format!("Install {} onto {}", title(card_id), install_label(host))
         }
         PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
             format!("Break subroutine {subroutine_index} on {}", title(ice_id))
@@ -219,16 +258,16 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::DiscardCard { card_id } => format!("Discard {}", title(card_id)),
         PlayerAction::KeepHand => "Keep hand".to_string(),
         PlayerAction::TakeMulligan => "Mulligan".to_string(),
-        PlayerAction::ActivateAbility { card_id, ability_index } => {
-            format!("Activate ability {ability_index} on {}", title(card_id))
+        PlayerAction::ActivateAbility { target, ability_index } => {
+            format!("Activate ability {ability_index} on {}", install_label(target))
         }
-        PlayerAction::AdvanceCard { card_id } => format!("Advance {}", title(card_id)),
-        PlayerAction::ScoreAgenda { card_id } => format!("Score {}", title(card_id)),
+        PlayerAction::AdvanceCard { target } => format!("Advance {}", install_label(target)),
+        PlayerAction::ScoreAgenda { target } => format!("Score {}", install_label(target)),
         PlayerAction::RemoveTag => "Remove a tag".to_string(),
         // Spells out the click cost: it is the Corp's whole turn, which is
         // not obvious from the name alone at the point of choosing it.
         PlayerAction::PurgeVirusCounters => "Purge virus counters (3 clicks)".to_string(),
-        PlayerAction::TrashResource { card_id } => format!("Trash {}", title(card_id)),
+        PlayerAction::TrashResource { target } => format!("Trash {}", install_label(target)),
         PlayerAction::SelectCardToAccess { card_id } => format!("Access {}", title(card_id)),
         PlayerAction::StealAgenda { card_id } => format!("Steal {}", title(card_id)),
         PlayerAction::TrashAccessedCard { card_id } => format!("Trash {}", title(card_id)),
@@ -242,7 +281,10 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(i) } => format!("Accept (option {i})"),
         PlayerAction::DeclinePendingPaidChoice => "Decline".to_string(),
         PlayerAction::ResolvePendingChoice { option_index } => format!("Choose option {option_index}"),
-        PlayerAction::ToggleCardSelection { card_id } => format!("Toggle selection of {}", title(card_id)),
+        // A position, deliberately not resolved to a card: the zone it
+        // indexes may hold cards this viewer cannot identify, and the
+        // selection prompt renders the zone alongside this list anyway.
+        PlayerAction::ToggleCardSelection { position } => format!("Toggle selection of card {position}"),
         PlayerAction::ConfirmCardSelection => "Confirm selection".to_string(),
         PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?}"),
         PlayerAction::ChooseTriggerToResolve { card_id } => format!("Resolve {} first", title(card_id)),

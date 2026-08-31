@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::dsl::{CardId, IceType};
 use crate::rules::run::{RunPhase, ServerId};
-use crate::rules::state::{GamePhase, PreventionKind, Side};
+use crate::rules::state::{GamePhase, InstallId, PreventionKind, Side};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RulesError {
@@ -54,6 +54,15 @@ pub enum RulesError {
 
     #[error("no installed card {card:?} found")]
     CardNotInstalled { card: CardId },
+
+    /// An action named an install that is no longer on the table — trashed,
+    /// scored, or stolen since the action was offered. Distinct from
+    /// `CardNotInstalled`, which reports a *card* the engine's own effect
+    /// resolution could not find: this one reports a stale `InstallId` from
+    /// a `PlayerAction`, and carries no `CardId` because the whole point of
+    /// an `InstallId` is that the actor may not know which card it names.
+    #[error("no install {0:?} found on the table")]
+    InstallNotFound(InstallId),
 
     #[error("card {0:?} does not declare installs_on_ice and cannot be installed via InstallProgramOnIce")]
     NotATrojanProgram(CardId),
@@ -262,8 +271,8 @@ pub enum RulesError {
     #[error("cannot take that action while a decision is pending ({side:?} must resolve it)")]
     ActionBlockedByPendingDecision { side: Side },
 
-    #[error("card {0:?} is not a legal candidate for the pending card selection")]
-    CardNotEligibleForSelection(CardId),
+    #[error("position {0} is not a legal candidate for the pending card selection")]
+    CardNotEligibleForSelection(usize),
 
     #[error("the pending card selection already holds its maximum of {max} cards")]
     CardSelectionFull { max: u32 },

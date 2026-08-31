@@ -25,7 +25,7 @@ use crate::dsl::CardId;
 use crate::rules::action::PlayerAction;
 use crate::rules::legal_actions::legal_actions;
 use crate::rules::run::{AccessPhase, ServerId};
-use crate::rules::state::{GamePhase, GameState, InstallSlot, Side};
+use crate::rules::state::{GamePhase, GameState, InstallId, InstallSlot, Side};
 
 pub const MAX_HAND_SIZE: usize = 12;
 /// Raised 20 → 32 after real games overflowed it. This module's doc
@@ -141,6 +141,11 @@ const RESOLVE_PENDING_CHOICE_LEN: usize = MAX_PENDING_CHOICE_OPTIONS;
 /// Gateway card selects from is an installed-card list
 /// (`MAX_INSTALLED_PER_SIDE`), which dominates the hand-sized zones
 /// (HQ/Archives/R&D/Stack/Grip/Heap, all `<= MAX_HAND_SIZE`).
+///
+/// The action now *carries* that position, so encode and decode are the
+/// identity here and neither needs the `GameState` any more. This segment's
+/// meaning is unchanged — the payload caught up with the encoding, not the
+/// other way round.
 const TOGGLE_CARD_SELECTION_START: usize = RESOLVE_PENDING_CHOICE_START + RESOLVE_PENDING_CHOICE_LEN;
 const TOGGLE_CARD_SELECTION_LEN: usize = MAX_INSTALLED_PER_SIDE;
 
@@ -234,8 +239,8 @@ impl ActionSpace {
                 Some(INSTALL_CARD_START + (hand_slot * ZONE_COUNT + zone_idx) * 2 + slot_idx)
             }
 
-            PlayerAction::RezIce { ice_id } => {
-                let slot = bounded_position_installed(&state.corp.installed, ice_id, MAX_INSTALLED_PER_SIDE)?;
+            PlayerAction::RezIce { ice } => {
+                let slot = bounded_position_installed(&state.corp.installed, *ice, MAX_INSTALLED_PER_SIDE)?;
                 Some(REZ_ICE_START + slot)
             }
 
@@ -253,9 +258,9 @@ impl ActionSpace {
             PlayerAction::InstallResource { card_id } => {
                 Some(INSTALL_RESOURCE_START + bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?)
             }
-            PlayerAction::InstallProgramOnIce { card_id, host_ice_id, .. } => {
+            PlayerAction::InstallProgramOnIce { card_id, host, .. } => {
                 let hand_slot = bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?;
-                let ice_slot = bounded_position_installed(&state.corp.installed, host_ice_id, MAX_INSTALLED_PER_SIDE)?;
+                let ice_slot = bounded_position_installed(&state.corp.installed, *host, MAX_INSTALLED_PER_SIDE)?;
                 Some(INSTALL_PROGRAM_ON_ICE_START + hand_slot * MAX_INSTALLED_PER_SIDE + ice_slot)
             }
             PlayerAction::PlayOperation { card_id } => {
@@ -276,26 +281,26 @@ impl ActionSpace {
                 Some(DISCARD_CARD_START + bounded_position(hand, card_id, MAX_HAND_SIZE)?)
             }
 
-            PlayerAction::ActivateAbility { card_id, ability_index } => {
+            PlayerAction::ActivateAbility { target, ability_index } => {
                 if *ability_index >= MAX_ABILITIES_PER_CARD {
                     return None;
                 }
-                if let Some(slot) = bounded_position_installed(&state.corp.installed, card_id, MAX_INSTALLED_PER_SIDE) {
+                if let Some(slot) = bounded_position_installed(&state.corp.installed, *target, MAX_INSTALLED_PER_SIDE) {
                     Some(ACTIVATE_ABILITY_CORP_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 } else {
-                    let slot = bounded_position_rig(&state.runner.rig, card_id, MAX_INSTALLED_PER_SIDE)?;
+                    let slot = bounded_position_rig(&state.runner.rig, *target, MAX_INSTALLED_PER_SIDE)?;
                     Some(ACTIVATE_ABILITY_RUNNER_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 }
             }
 
-            PlayerAction::AdvanceCard { card_id } => {
-                Some(ADVANCE_CARD_START + bounded_position_installed(&state.corp.installed, card_id, MAX_INSTALLED_PER_SIDE)?)
+            PlayerAction::AdvanceCard { target } => {
+                Some(ADVANCE_CARD_START + bounded_position_installed(&state.corp.installed, *target, MAX_INSTALLED_PER_SIDE)?)
             }
-            PlayerAction::ScoreAgenda { card_id } => {
-                Some(SCORE_AGENDA_START + bounded_position_installed(&state.corp.installed, card_id, MAX_INSTALLED_PER_SIDE)?)
+            PlayerAction::ScoreAgenda { target } => {
+                Some(SCORE_AGENDA_START + bounded_position_installed(&state.corp.installed, *target, MAX_INSTALLED_PER_SIDE)?)
             }
-            PlayerAction::TrashResource { card_id } => {
-                Some(TRASH_RESOURCE_START + bounded_position_rig(&state.runner.rig, card_id, MAX_INSTALLED_PER_SIDE)?)
+            PlayerAction::TrashResource { target } => {
+                Some(TRASH_RESOURCE_START + bounded_position_rig(&state.runner.rig, *target, MAX_INSTALLED_PER_SIDE)?)
             }
 
             PlayerAction::SelectCardToAccess { card_id } => {
@@ -334,14 +339,11 @@ impl ActionSpace {
                 (*option_index < MAX_PENDING_CHOICE_OPTIONS).then_some(RESOLVE_PENDING_CHOICE_START + option_index)
             }
 
-            PlayerAction::ToggleCardSelection { card_id } => {
-                let crate::rules::state::PendingDecision::ChooseCards { side, source, .. } =
-                    state.pending_decision.as_ref()?
-                else {
-                    return None;
-                };
-                let ids = crate::rules::pending_choice::zone_card_ids(state, *side, source);
-                Some(TOGGLE_CARD_SELECTION_START + bounded_position(&ids, card_id, TOGGLE_CARD_SELECTION_LEN)?)
+            // The payload *is* the encoding now — no zone lookup, because
+            // `ToggleCardSelection` already carries the position this
+            // segment was always built from.
+            PlayerAction::ToggleCardSelection { position } => {
+                (*position < TOGGLE_CARD_SELECTION_LEN).then_some(TOGGLE_CARD_SELECTION_START + position)
             }
 
             PlayerAction::ConfirmCardSelection => Some(CONFIRM_CARD_SELECTION_START),
@@ -387,8 +389,8 @@ impl ActionSpace {
             return Some(PlayerAction::InstallCard { card_id, zone, slot });
         }
         if let Some(local) = in_segment(index, REZ_ICE_START, REZ_ICE_LEN) {
-            let ice_id = state.corp.installed.get(local)?.card.clone();
-            return Some(PlayerAction::RezIce { ice_id });
+            let ice = state.corp.installed.get(local)?.install_id;
+            return Some(PlayerAction::RezIce { ice });
         }
         if let Some(local) = in_segment(index, INITIATE_RUN_START, INITIATE_RUN_LEN) {
             return Some(PlayerAction::InitiateRun { server: decode_zone(local)? });
@@ -424,26 +426,26 @@ impl ActionSpace {
         if let Some(local) = in_segment(index, ACTIVATE_ABILITY_CORP_START, ACTIVATE_ABILITY_CORP_LEN) {
             let slot = local / MAX_ABILITIES_PER_CARD;
             let ability_index = local % MAX_ABILITIES_PER_CARD;
-            let card_id = state.corp.installed.get(slot)?.card.clone();
-            return Some(PlayerAction::ActivateAbility { card_id, ability_index });
+            let target = state.corp.installed.get(slot)?.install_id;
+            return Some(PlayerAction::ActivateAbility { target, ability_index });
         }
         if let Some(local) = in_segment(index, ACTIVATE_ABILITY_RUNNER_START, ACTIVATE_ABILITY_RUNNER_LEN) {
             let slot = local / MAX_ABILITIES_PER_CARD;
             let ability_index = local % MAX_ABILITIES_PER_CARD;
-            let card_id = state.runner.rig.get(slot)?.card.clone();
-            return Some(PlayerAction::ActivateAbility { card_id, ability_index });
+            let target = state.runner.rig.get(slot)?.install_id;
+            return Some(PlayerAction::ActivateAbility { target, ability_index });
         }
         if let Some(local) = in_segment(index, ADVANCE_CARD_START, ADVANCE_CARD_LEN) {
-            let card_id = state.corp.installed.get(local)?.card.clone();
-            return Some(PlayerAction::AdvanceCard { card_id });
+            let target = state.corp.installed.get(local)?.install_id;
+            return Some(PlayerAction::AdvanceCard { target });
         }
         if let Some(local) = in_segment(index, SCORE_AGENDA_START, SCORE_AGENDA_LEN) {
-            let card_id = state.corp.installed.get(local)?.card.clone();
-            return Some(PlayerAction::ScoreAgenda { card_id });
+            let target = state.corp.installed.get(local)?.install_id;
+            return Some(PlayerAction::ScoreAgenda { target });
         }
         if let Some(local) = in_segment(index, TRASH_RESOURCE_START, TRASH_RESOURCE_LEN) {
-            let card_id = state.runner.rig.get(local)?.card.clone();
-            return Some(PlayerAction::TrashResource { card_id });
+            let target = state.runner.rig.get(local)?.install_id;
+            return Some(PlayerAction::TrashResource { target });
         }
         if let Some(local) = in_segment(index, SELECT_CARD_TO_ACCESS_START, SELECT_CARD_TO_ACCESS_LEN) {
             let AccessPhase::SelectNextCard { selectable_cards } = access_phase(state)? else { return None };
@@ -479,13 +481,7 @@ impl ActionSpace {
             return Some(PlayerAction::ResolvePendingChoice { option_index: local });
         }
         if let Some(local) = in_segment(index, TOGGLE_CARD_SELECTION_START, TOGGLE_CARD_SELECTION_LEN) {
-            let crate::rules::state::PendingDecision::ChooseCards { side, source, .. } =
-                state.pending_decision.as_ref()?
-            else {
-                return None;
-            };
-            let card_id = crate::rules::pending_choice::zone_card_ids(state, *side, source).get(local)?.clone();
-            return Some(PlayerAction::ToggleCardSelection { card_id });
+            return Some(PlayerAction::ToggleCardSelection { position: local });
         }
         if index == CONFIRM_CARD_SELECTION_START {
             return Some(PlayerAction::ConfirmCardSelection);
@@ -508,8 +504,8 @@ impl ActionSpace {
             let hand_slot = local / MAX_INSTALLED_PER_SIDE;
             let ice_slot = local % MAX_INSTALLED_PER_SIDE;
             let card_id = state.runner.grip.get(hand_slot)?.clone();
-            let host_ice_id = state.corp.installed.get(ice_slot)?.card.clone();
-            return Some(PlayerAction::InstallProgramOnIce { card_id, host_ice_id, memory_cost: 0 });
+            let host = state.corp.installed.get(ice_slot)?.install_id;
+            return Some(PlayerAction::InstallProgramOnIce { card_id, host, memory_cost: 0 });
         }
         // Same out-of-order-panic hazard as `INSTALL_PROGRAM_ON_ICE` above —
         // `BREAK_SUBROUTINE_WITH_CLICK` is defined last in the const chain,
@@ -609,21 +605,32 @@ fn bounded_position(zone: &[CardId], card_id: &CardId, cap: usize) -> Option<usi
     (position < cap).then_some(position)
 }
 
+/// Where `id` sits in the Corp's install list, if it is still installed and
+/// within the encodable range.
+///
+/// Replaces a `bounded_position_installed` that searched by `CardId` and
+/// took the **first** match, so with three *Tithe* installed every
+/// `ScoreAgenda`/`AdvanceCard`/`RezIce` on the second or third encoded to
+/// the first one's slot — an action on those copies was simply unreachable
+/// through the mask. Searching by `InstallId` makes each copy its own slot.
+/// No segment moved: this is the same position arithmetic, now correct.
 fn bounded_position_installed(
     installed: &[crate::rules::state::InstalledCard],
-    card_id: &CardId,
+    id: InstallId,
     cap: usize,
 ) -> Option<usize> {
-    let position = installed.iter().position(|c| &c.card == card_id)?;
+    let position = installed.iter().position(|c| c.install_id == id)?;
     (position < cap).then_some(position)
 }
 
+/// The rig-side mirror of `bounded_position_installed`, and the same fix:
+/// two copies of one Resource are now two distinct `TrashResource` slots.
 fn bounded_position_rig(
     rig: &[crate::rules::state::InstalledRunnerCard],
-    card_id: &CardId,
+    id: InstallId,
     cap: usize,
 ) -> Option<usize> {
-    let position = rig.iter().position(|c| &c.card == card_id)?;
+    let position = rig.iter().position(|c| c.install_id == id)?;
     (position < cap).then_some(position)
 }
 
@@ -653,11 +660,13 @@ fn pending_interactive_card(state: &GameState) -> Option<CardId> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::test_support::{install_of, position_of};
     use crate::cards::CardRegistry;
     use crate::dsl::{AbilityDef, CardDefinition, CardType, Cost, Effect, IceType, SubroutineDef, Trigger, TriggeredEffect};
     use crate::rules::run::{AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, SubroutineStatus};
     use crate::rules::state::{
-        AgendaPoints, Clicks, CorpState, Credits, InstalledRunnerCard, MemoryUnits, PlayerResources, RunnerState,
+        AgendaPoints, Clicks, CorpState, Credits, InstalledCard, InstalledRunnerCard, MemoryUnits, PlayerResources,
+        RunnerState,
     };
 
     fn base_state() -> GameState {
@@ -746,6 +755,89 @@ mod tests {
         }
     }
 
+    /// Three copies of one card must occupy three distinct slots.
+    ///
+    /// This is ROADMAP Phase 1 §3's "`ActionSpace` aliases duplicate card
+    /// ids" bullet, as a regression test. `bounded_position_installed` used
+    /// to search `corp.installed` by `CardId` and take the **first** match,
+    /// so with three *Tithe* installed, `AdvanceCard`/`ScoreAgenda`/
+    /// `RezIce` on the second or third all encoded to the first one's
+    /// index. The action on those copies was not merely mis-indexed — it
+    /// was unreachable through the mask entirely, and an index decoded back
+    /// to an action naming the wrong card.
+    #[test]
+    fn three_copies_of_one_card_occupy_three_distinct_slots() {
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            id: CardId("tithe".to_string()),
+            title: "Tithe".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Agenda,
+            advancement_requirement: Some(3),
+            agenda_points: Some(1),
+            is_playable: true,
+            ..Default::default()
+        });
+
+        let mut state = base_state();
+        state.corp.installed = (0..3)
+            .map(|i| InstalledCard {
+                card: CardId("tithe".to_string()),
+                install_id: InstallId(i + 1),
+                server: ServerId::Remote(i),
+                ..Default::default()
+            })
+            .collect();
+
+        let indices: Vec<usize> = (0..3)
+            .map(|i| {
+                let action = PlayerAction::AdvanceCard { target: InstallId(i + 1) };
+                ActionSpace::index_of(&state, &action).expect("every copy has an index")
+            })
+            .collect();
+
+        assert_eq!(
+            indices,
+            vec![ADVANCE_CARD_START, ADVANCE_CARD_START + 1, ADVANCE_CARD_START + 2],
+            "each copy gets its own slot, in install order"
+        );
+
+        // And decoding is the exact inverse, so an index never names a
+        // different copy than the one it was encoded from.
+        for (offset, index) in indices.iter().enumerate() {
+            assert_eq!(
+                ActionSpace::action_at(&state, *index),
+                Some(PlayerAction::AdvanceCard { target: InstallId(offset as u32 + 1) })
+            );
+        }
+    }
+
+    /// The same aliasing, on the rig side.
+    #[test]
+    fn two_copies_of_one_resource_are_two_distinct_trash_slots() {
+        let mut state = base_state();
+        state.runner.rig = (0..2)
+            .map(|i| InstalledRunnerCard {
+                card: CardId("daily_casts".to_string()),
+                install_id: InstallId(i + 1),
+                ..Default::default()
+            })
+            .collect();
+
+        let first = ActionSpace::index_of(&state, &PlayerAction::TrashResource { target: InstallId(1) });
+        let second = ActionSpace::index_of(&state, &PlayerAction::TrashResource { target: InstallId(2) });
+        assert_eq!(first, Some(TRASH_RESOURCE_START));
+        assert_eq!(second, Some(TRASH_RESOURCE_START + 1));
+    }
+
+    /// An `InstallId` naming nothing on the table has no index, rather than
+    /// silently encoding to some other card's slot.
+    #[test]
+    fn an_install_id_that_matches_nothing_has_no_index() {
+        let state = base_state();
+        assert_eq!(ActionSpace::index_of(&state, &PlayerAction::RezIce { ice: InstallId(9_999) }), None);
+    }
+
     #[test]
     fn turn_one_corp_click_phase() {
         let mut registry = CardRegistry::new();
@@ -815,7 +907,7 @@ mod tests {
         let mask = get_action_mask(&state, &registry);
         let pump_index = ActionSpace::index_of(
             &state,
-            &PlayerAction::ActivateAbility { card_id: CardId("corroder".to_string()), ability_index: 0 },
+            &PlayerAction::ActivateAbility { target: install_of(&state, "corroder"), ability_index: 0 },
         )
         .unwrap();
         let break_index =
@@ -999,7 +1091,7 @@ mod tests {
         registry.insert(hedge_fund());
 
         let legal = legal_actions(&state, &registry);
-        assert!(legal.contains(&PlayerAction::ToggleCardSelection { card_id: CardId("hedge_fund".to_string()) }));
+        assert!(legal.contains(&PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") }));
         assert!(legal.contains(&PlayerAction::ConfirmCardSelection));
 
         assert_roundtrips(&state, &registry);
@@ -1070,6 +1162,17 @@ mod tests {
         // exported policy's outputs do not survive it; the model needs
         // retraining, not just a wider head. Prefer appending when there is
         // a choice; there wasn't one here.
+        //
+        // **Unchanged at 1357 by the `InstallId` conversion**, which is the
+        // point: `RezIce`/`AdvanceCard`/`ScoreAgenda`/`TrashResource`/
+        // `ActivateAbility`/`InstallProgramOnIce` were *already* encoded by
+        // position into `corp.installed`/`runner.rig`, and
+        // `ToggleCardSelection` by position into its zone. Only the
+        // `PlayerAction` payloads changed, to carry the position the
+        // encoding always used. No segment moved and no exported policy
+        // needs retraining — though slots that were previously unreachable
+        // (the second and third copy of a card, which the old
+        // first-match-by-`CardId` lookup could never address) now are.
         assert_eq!(ActionSpace::SIZE, 1357);
     }
 }

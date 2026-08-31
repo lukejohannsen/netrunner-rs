@@ -619,6 +619,8 @@ fn order_active_first(active: Side, mut candidates: Vec<(Side, CardId)>) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::state::InstallId;
+    use crate::rules::test_support::fixture_install_id;
     use crate::cards::CardRegistry;
     use crate::dsl::{CardDefinition, CardType, Effect, TriggeredEffect};
     use crate::rules::state::{
@@ -656,6 +658,7 @@ mod tests {
 
     fn rig_card(id: &str) -> InstalledRunnerCard {
         InstalledRunnerCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             ..Default::default()
         }
@@ -813,6 +816,7 @@ mod tests {
 
         let both_installed = |state: &mut GameState| {
             state.corp.installed = vec![crate::rules::state::InstalledCard {
+                install_id: InstallId(1073),
                 card: CardId("corp_reactor".to_string()),
                 rezzed: true,
                 ..Default::default()
@@ -883,6 +887,7 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.rig = vec![rig_card("runner_parks_a_choice")];
         state.corp.installed = vec![crate::rules::state::InstalledCard {
+            install_id: InstallId(1074),
             card: CardId("corp_reactor".to_string()),
             rezzed: true,
             ..Default::default()
@@ -936,6 +941,7 @@ mod tests {
 
         let mut state = empty_state();
         let rezzed = |id: &str| crate::rules::state::InstalledCard {
+            install_id: InstallId(1075),
             card: CardId(id.to_string()),
             rezzed: true,
             ..Default::default()
@@ -970,6 +976,7 @@ mod tests {
 
         let mut state = empty_state();
         let rezzed = |id: &str| crate::rules::state::InstalledCard {
+            install_id: InstallId(1076),
             card: CardId(id.to_string()),
             rezzed: true,
             ..Default::default()
@@ -999,6 +1006,7 @@ mod tests {
 
         let mut state = empty_state();
         state.corp.installed = vec![crate::rules::state::InstalledCard {
+            install_id: InstallId(1077),
             card: CardId("pad_campaign".to_string()),
             rezzed: true,
             ..Default::default()
@@ -1102,6 +1110,7 @@ mod tests {
 
         let mut state = empty_state();
         let rezzed = |id: &str| crate::rules::state::InstalledCard {
+            install_id: InstallId(1078),
             card: CardId(id.to_string()),
             rezzed: true,
             ..Default::default()
@@ -1143,12 +1152,14 @@ mod tests {
         let mut state = empty_state();
         state.corp.installed = vec![
             crate::rules::state::InstalledCard {
+                install_id: InstallId(1079),
                 card: CardId("manegarm".to_string()),
                 slot: crate::rules::state::InstallSlot::Root,
                 rezzed: true,
                 ..Default::default()
             },
             crate::rules::state::InstalledCard {
+                install_id: InstallId(1080),
                 card: CardId("unrezzed_upgrade".to_string()),
                 slot: crate::rules::state::InstallSlot::Root,
                 ..Default::default()
@@ -1206,6 +1217,7 @@ mod tests {
         let mut state = empty_state();
         state.runner.rig = vec![rig_card("mayfly")];
         state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1081),
             card: CardId("pad_campaign".to_string()),
             rezzed: true,
             ..Default::default()
