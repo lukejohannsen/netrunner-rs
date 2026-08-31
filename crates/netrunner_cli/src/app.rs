@@ -16,7 +16,7 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{PlayerAction, Side};
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
-use netrunner_server::{ClientMessage, ServerMessage};
+use netrunner_server::{ClientMessage, HistoryEntry, ServerMessage};
 
 pub struct App {
     pub registry: CardRegistry,
@@ -31,6 +31,30 @@ pub struct App {
     pub should_quit: bool,
     pub last_rejection: Option<String>,
     pub game_ended: Option<(Side, GameEndReason)>,
+    /// Rendered log of every resolved action, from `ServerMessage::
+    /// ActionLog`. Remote play had no log at all until the match driver
+    /// grew a `MatchHistory` the server could forward.
+    pub action_log: Vec<String>,
+}
+
+/// Cap on retained log lines, shared by both TUI paths.
+pub const MAX_LOG_LINES: usize = 200;
+
+/// Appends one resolved action to a capped log. Shared by the remote path
+/// (`App`, fed by `ServerMessage::ActionLog`) and the local one
+/// (`tui::LocalUiState`, fed straight off `Session`'s history) so the two
+/// render identically.
+pub fn push_log_line(log: &mut Vec<String>, entry: &HistoryEntry, registry: &CardRegistry) {
+    log.push(format!(
+        "[turn {}] {:?}: {}",
+        entry.turn_number,
+        entry.side,
+        describe_action(&entry.action, registry)
+    ));
+    if log.len() > MAX_LOG_LINES {
+        let excess = log.len() - MAX_LOG_LINES;
+        log.drain(0..excess);
+    }
 }
 
 impl App {
@@ -50,6 +74,7 @@ impl App {
             should_quit: false,
             last_rejection: None,
             game_ended: None,
+            action_log: Vec::new(),
         };
         app.drain_messages();
         app
@@ -69,6 +94,7 @@ impl App {
                     self.view = Some(*view);
                     self.last_rejection = None;
                 }
+                ServerMessage::ActionLog(entry) => push_log_line(&mut self.action_log, &entry, &self.registry),
                 ServerMessage::ActionRejected { reason } => self.last_rejection = Some(reason),
                 ServerMessage::GameEnded { winner, reason } => self.game_ended = Some((winner, reason)),
                 ServerMessage::MatchJoined { .. } => {}
@@ -126,6 +152,9 @@ pub trait RenderableView {
     fn view(&self) -> Option<&ClientView>;
     fn selected(&self) -> usize;
     fn legal_action_labels(&self) -> Vec<String>;
+    /// The running action log. Both paths have one now, so both render the
+    /// same four-region layout.
+    fn action_log(&self) -> &[String];
 }
 
 impl RenderableView for App {
@@ -147,6 +176,10 @@ impl RenderableView for App {
 
     fn legal_action_labels(&self) -> Vec<String> {
         self.legal_actions().iter().map(|action| describe_action(action, &self.registry)).collect()
+    }
+
+    fn action_log(&self) -> &[String] {
+        &self.action_log
     }
 }
 

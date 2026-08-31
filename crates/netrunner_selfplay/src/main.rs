@@ -23,14 +23,10 @@ use rayon::prelude::*;
 use netrunner_bots::{encode_observation, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator};
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
-use netrunner_core::rules::{current_actor, GamePhase, GameState, RulesError, Side};
-use netrunner_core::view::build_client_view;
+use netrunner_core::rules::{GamePhase, GameState, RulesError, Side};
+use netrunner_session::{Seat, Session, SessionStep, SubmitError};
 
 use schema::{GameTrajectory, SelfPlayStep};
-
-/// Guard against a stalled/looping game running forever — same budget as
-/// `netrunner_server::MatchSession::MAX_STEPS`.
-const MAX_STEPS: u32 = 10_000;
 
 #[derive(Parser)]
 #[command(about = "Runs PuctAgent vs. PuctAgent self-play games and writes training trajectories to disk.")]
@@ -64,6 +60,11 @@ struct Cli {
 enum SelfPlayError {
     #[error(transparent)]
     Rules(#[from] RulesError),
+    /// A `Session::submit` that the driver refused. Distinct from `Rules`
+    /// because it also covers "the match already ended" and "nobody has a
+    /// decision pending" — neither of which is an engine rejection.
+    #[error(transparent)]
+    Submit(#[from] SubmitError),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
@@ -175,7 +176,14 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
     let (corp_deck, runner_deck) = matchup.decks();
     let seed = game_index as u64;
 
-    let (mut state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
+    let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
+    // Both seats are `External`: a self-play seat needs `PuctAgent::search`
+    // for its visit counts, not `select_action`'s single chosen action, so
+    // the session cannot resolve either side itself. `without_history`
+    // because the trajectory below is the record that matters here, and
+    // this runs over millions of games.
+    let mut session =
+        Session::new(state, registry.clone(), Seat::External, Seat::External).without_history();
 
     let config = PuctConfig { iterations: cli.simulations.max(1), ..PuctConfig::default() };
     let mut corp_agent = PuctAgent::with_config(Side::Corp, seed, make_evaluator(Side::Corp, &cli.model_path)?, config);
@@ -190,23 +198,18 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
     let mut last_index: Option<usize> = None;
     let mut repeats = 0usize;
 
-    for _ in 0..MAX_STEPS {
-        if matches!(state.phase, GamePhase::GameOver(_)) {
-            break;
-        }
-        let Some(side) = current_actor(&state) else { break };
-        let view = build_client_view(&state, &registry, side);
-
+    // The session's own `MAX_STEPS` bounds this now; the local copy this
+    // loop used to carry is gone.
+    while let SessionStep::Awaiting { side, view } = session.step() {
         if view.legal_actions.len() == 1 {
             // No real decision was made, so there's nothing meaningful to
             // record — mirrors `PuctAgent::select_action`'s own
             // single-action short-circuit.
-            let (next, _events) = state.step(&registry, view.legal_actions[0].clone())?;
-            state = next;
+            session.submit(view.legal_actions[0].clone())?;
             continue;
         }
 
-        let observation = encode_observation(&state, &registry, side);
+        let observation = encode_observation(session.state(), &registry, side);
         let agent = match side {
             Side::Corp => &mut corp_agent,
             Side::Runner => &mut runner_agent,
@@ -219,12 +222,11 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
 
         steps.push(SelfPlayStep { observation, policy_target, action_taken: chosen.index, active_side: side as u8 });
 
-        let (next, _events) = state.step(&registry, chosen.action.clone())?;
-        state = next;
+        session.submit(chosen.action.clone())?;
         ply += 1;
     }
 
-    let outcome_corp = match state.phase {
+    let outcome_corp = match session.state().phase {
         GamePhase::GameOver(Side::Corp) => 1.0,
         GamePhase::GameOver(Side::Runner) => -1.0,
         _ => 0.0,

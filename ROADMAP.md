@@ -4,7 +4,7 @@ Canonical single source of truth for engine mechanics, client-server infrastruct
 
 **Current goal:** a solid single-player Netrunner, then expansion into network play.
 
-**Working order:** Phase 1 §2 (UI legibility — **done**) → Phase 1.5 (Session Unification) → Phase 1.75 (Learn to Play). Phase 1 §1 (Deck Import) depends on none of them and can slot in wherever a user-facing win is wanted.
+**Working order:** Phase 1 §2 (UI legibility — **done**) → Phase 1.5 (Session Unification — **done**) → Phase 1.75 (Learn to Play). Phase 1 §1 (Deck Import) depends on none of them and can slot in wherever a user-facing win is wanted.
 
 > Two items used to each claim primacy — §1 was labelled "top priority" while Phase 1.5 was "the highest-value architectural work in the repo right now." Both were accurate about their own axis and useless as an ordering. They are now scoped explicitly: §1 is the top **user-facing** gap, Phase 1.5 the highest-value **architectural** one, and the line above is the actual sequence.
 
@@ -135,30 +135,27 @@ All 75 playable *System Gateway* cards are implemented, tested, and `is_playable
 
 ---
 
-## 🔗 Phase 1.5: Session Unification (the single-player → network bridge)
+## 🔗 Phase 1.5: Session Unification (the single-player → network bridge) — DONE
 
-**This is the highest-value architectural work in the repo right now.** Four crates independently re-implement the same match loop — `current_actor` → get action → `apply_action` → check `GameOver` — each with its own copy of `MAX_STEPS = 10_000`:
+Five places independently re-implemented the same match loop — `current_actor` → get action → `apply_action` → check `GameOver` — each with its own step budget. There is now **one `MAX_STEPS`, in `netrunner_session`**, and every caller pumps the same driver.
 
-| Driver | Sync/async | Sees | Action shape | Seat trait |
-|---|---|---|---|---|
-| `netrunner_single_player::SinglePlayerSession` | sync | **raw `GameState`** | `ActionSpace` index | `PlayerDriver` |
-| `netrunner_server::MatchSession` | async | masked `ClientView` | `PlayerAction` | `BotAgent` |
-| `netrunner_cli::headless` | async | — | — | — |
-| `netrunner_gym::env` | sync | masked (via `encode_observation`) | index | `BotAgent` |
+- [x] **Extracted the shared loop** into `netrunner_session` (new crate, deps `netrunner_core` + `netrunner_bots` + `serde` + `thiserror`), sitting between `netrunner_bots` and every consumer. Homed in its own crate rather than `netrunner_core`: the seat enum holds a `Box<dyn BotAgent>`, which core cannot name.
+- [x] **Unified the seat interface on `ClientView` + `PlayerAction`.** The local human seat is now `Seat::External` and *structurally* cannot see `GameState` — the client-politeness hole is closed. `PlayerDriver` was **deleted outright**, not adapted: it was a blanket-impl'd clone of `netrunner_bots::Agent` with an identical signature, and every `Box<dyn PlayerDriver>` in the tree was already an `Indexed*Agent`. The index-based shape survives only inside `SinglePlayerSession`, which is the RL path.
+- [x] **Two seat variants, not four.** The plan called for `Bot`/`LocalHuman`/`Channel`/`Indexed`. Under a **pull-shaped** loop (`fn step(&mut self) -> SessionStep`, which yields `Awaiting { side, view }` and stops) the last three collapse into one: a seat the session cannot resolve itself. They differ only in who pumps and in the `PlayerAction` ↔ index conversion at the boundary, which is `ActionSpace::action_at`'s job. **Do not re-split them.**
+- [x] **`MatchHistory` moved into the driver**, so every path records actions and events — which is what gave the network path a game log (`ServerMessage::ActionLog`, one message per action; `App::action_log` renders it). Both TUI paths now share one four-region layout; the log-less `build_layout` is gone.
+- [x] **`GameEndReason`/`classify_end_reason` moved to `netrunner_session::outcome`**, re-exported from `netrunner_server` so the wire protocol is unchanged. `netrunner_cli` used to depend on the whole server crate purely to classify end reasons on its *offline* path.
 
-Their own doc comments admit the duplication ("Mirrors the decision-loop shape of `MatchSession`", "Shape mirrors `MatchSession::run`"). Two consequences are already live:
+**Ported:** `netrunner_server::MatchSession` (now purely the async pump), `SinglePlayerSession` (thin index adapter), `netrunner_cli`'s local TUI, `netrunner_gym::env`, `netrunner_selfplay`, and the fifth copy that lived in `post_action_windows_stay_rare`.
 
-- **The local path masks by client convention, not by interface.** `PlayerDriver::select_action` receives the raw `&GameState`, so the seat boundary itself enforces nothing. The TUI's human seat (`tui/mod.rs`) is well-behaved and calls `build_client_view` itself before rendering — but that is the client choosing to be polite, exactly the anti-pattern AGENTS.md §2 now bans. The network path gets this right structurally: a `MatchSession` channel seat *cannot* see anything but a `ClientView`. Porting the local path onto the same seat interface is what makes local masking structural rather than voluntary.
-- **The network path cannot show a game log.** `MatchSession` discards each action's `Vec<GameEvent>` after one-shot use in `classify_end_reason`. `MatchHistory` lives in `netrunner_single_player` and is unreachable from the server, so the TUI's event log only populates on the local path.
+**Two behavioural changes worth knowing:**
+- `netrunner_gym`'s budget was `1_000` *per fast-forward call*, reset on every call — so a pathological episode was effectively unbounded. It is now one `MAX_STEPS` for the whole episode. `max_episode_steps` truncation stays in the env; it is an RL concern.
+- `StallReason` splits `NoCurrentActor` / `NoLegalActions { side }` / `BudgetExhausted`, which the old `else { break }` conflated. `NoLegalActions` also stops a deadlocked position from *panicking*: every `BotAgent` asserts a non-empty `legal_actions`.
 
-### Target design: one core-owned decision loop, four seat types, masked by default
+### Known open bug: a Run-checkpoint window can hand priority to a side with no legal action
 
-- [ ] **Extract the shared loop** into a session driver owning `current_actor` → action → `apply_action` → `GameOver` **once**, with `MAX_STEPS` as a single constant. Home it in `netrunner_core` if it stays dependency-free, or a thin `netrunner_session` crate if the async split demands it.
-- [ ] **Unify the seat interface on `ClientView` + `PlayerAction`.** `BotAgent` already has this shape. `PlayerDriver`'s `(&GameState, mask, index)` shape becomes an adapter layered on top, for the RL path — the only caller that genuinely needs `ActionSpace` indices. This closes the unmasked-state hole in the local human path.
-- [ ] **Collapse seats into one enum:** `Bot`, `LocalHuman`, `Channel`, `Indexed` (RL). Sync vs. async is a property of how the driver is *pumped*, not a reason to fork rules flow — a step-function shape (`fn step(&mut self) -> SessionStep`) lets `netrunner_cli` pump it synchronously and `netrunner_server` pump it inside `tokio`.
-- [ ] **Move `MatchHistory` into the shared driver** so both paths record actions and events. This simultaneously delivers the structured match log below and gives the network path a game log.
+`current_actor` can name the Corp during a `WindowCheckpoint::Run` window while the Corp's `legal_actions` is empty — a genuine deadlock, reported as `StallReason::NoLegalActions`. Reproduce with `decks::matchups()[0]`, seed 2, view-based `RandomAgent` on both sides (`phase=Action(Runner)`, run at `EncounterIce`, window `active_priority=Corp`).
 
-**Migration order, each step leaving the tree green:** extract the shared loop → port `MatchSession` → port `SinglePlayerSession` (the adapter keeps `PlayerDriver` working for `netrunner_gym`/`netrunner_selfplay`) → port `netrunner_cli::headless` → collapse `netrunner_gym::env`'s fast-forward onto it.
+Invisible to the existing sweeps because they drive *index-based* agents, whose `ActionSpace` round trip does not reach it. Same discovery path as the `open_window` crash fixed in this phase (a subroutine flatlining the Runner mid-encounter with more ICE behind it, which panicked `build_client_view`). **Worth a dedicated view-based sweep** — the index-based sweeps have a blind spot this pair of bugs demonstrates.
 
 ---
 
@@ -175,7 +172,7 @@ Two stages, in order:
 
 **The card pool is already done.** All 32 starter-deck cards and all 11 booster cards are implemented, playable System Gateway cards. Nothing needs authoring — verified card by card against `data/{corp,runner}/`.
 
-**Placement, and why it is here rather than in Phase 1:** it does not need Phase 1's deck import, and its one hard prerequisite — Phase 1 §2's counter visibility, needed because the booster stage teaches viruses — **is now satisfied**. More importantly, the lesson driver is a `PlayerDriver` — the exact trait Phase 1.5 replaces. Landing this before Session Unification means porting it twice. That is the ordering rationale; it is written down so it is not re-litigated.
+**Placement, and why it is here rather than in Phase 1:** it does not need Phase 1's deck import, and its one hard prerequisite — Phase 1 §2's counter visibility, needed because the booster stage teaches viruses — **is now satisfied**. More importantly, the lesson driver was to be a `PlayerDriver` — the trait Phase 1.5 has now deleted. That ordering rationale has been discharged: build the lesson driver as a `netrunner_session::Seat::External` pumped by the lesson script, the same shape the local TUI now uses.
 
 ### 1. Configurable match rules (`netrunner_core`)
 

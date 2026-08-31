@@ -15,21 +15,15 @@
 
 use std::str::FromStr;
 
-use netrunner_bots::{evaluate_state, step_index as bots_step_index, BotAgent, HeuristicAgent, IndexedActionError, RandomAgent};
+use netrunner_bots::{evaluate_state, BotAgent, HeuristicAgent, IndexedActionError, RandomAgent};
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{current_actor, get_action_mask, ActionSpace, Deck, GamePhase, GameState, Side};
-use netrunner_core::view::build_client_view;
+use netrunner_core::rules::{get_action_mask, ActionSpace, Deck, GamePhase, GameState, Side};
+use netrunner_session::{Seat, Session, SubmitError};
 
 use crate::fixtures;
 use netrunner_bots::observation::encode_observation;
 
 pub const ACTION_SPACE_SIZE: usize = ActionSpace::SIZE;
-
-/// Guards the opponent fast-forward loop against ever looping unboundedly
-/// — mirrors `netrunner_server::match_session::MAX_STEPS`'s role, just
-/// scoped to "opponent decisions between two of the agent's own steps"
-/// rather than a whole game.
-const MAX_OPPONENT_FAST_FORWARD_STEPS: u32 = 1_000;
 
 /// Squash scale for `evaluate_state` deltas, matching
 /// `netrunner_bots::policy::UniformPolicyEvaluator`'s value-head
@@ -98,9 +92,13 @@ pub struct NetrunnerEnv {
     runner_deck: Deck,
     agent_side: Side,
     opponent_kind: Opponent,
-    opponent: Box<dyn BotAgent>,
     opponent_seed: u64,
-    state: GameState,
+    /// The shared match driver. The agent's own seat is `Seat::External`
+    /// (its action arrives from Python, long after the session would have
+    /// had to ask for it); the opponent is a `Seat::Agent` the session
+    /// resolves itself, which is what `fast_forward_opponent` now does by
+    /// simply pumping `run`.
+    session: Session,
     seed: u64,
     steps_this_episode: u32,
     max_episode_steps: u32,
@@ -119,14 +117,18 @@ impl NetrunnerEnv {
             GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("fixtures decks are legal by construction");
 
         let mut env = NetrunnerEnv {
+            session: build_session(
+                placeholder_state,
+                registry.clone(),
+                agent_side,
+                opponent.build(agent_side.other(), opponent_seed),
+            ),
             registry,
             corp_deck,
             runner_deck,
             agent_side,
             opponent_kind: opponent,
-            opponent: opponent.build(agent_side.other(), opponent_seed),
             opponent_seed,
-            state: placeholder_state,
             seed,
             steps_this_episode: 0,
             max_episode_steps: max_episode_steps.max(1),
@@ -149,10 +151,11 @@ impl NetrunnerEnv {
             self.corp_deck = corp_deck;
             self.runner_deck = runner_deck;
         }
-        self.opponent = self.opponent_kind.build(self.agent_side.other(), self.opponent_seed);
+        let opponent = self.opponent_kind.build(self.agent_side.other(), self.opponent_seed);
         let (state, _events) = GameState::setup(&self.corp_deck, &self.runner_deck, &self.registry, self.seed)
             .expect("fixtures decks are legal by construction");
-        self.state = state;
+        // A fresh `Session` per episode, which also resets its step budget.
+        self.session = build_session(state, self.registry.clone(), self.agent_side, opponent);
         self.steps_this_episode = 0;
 
         self.fast_forward_opponent();
@@ -160,15 +163,15 @@ impl NetrunnerEnv {
     }
 
     pub fn action_mask(&self) -> Vec<bool> {
-        get_action_mask(&self.state, &self.registry)
+        get_action_mask(self.session.state(), &self.registry)
     }
 
     pub fn observation(&self) -> Vec<f32> {
-        encode_observation(&self.state, &self.registry, self.agent_side)
+        encode_observation(self.session.state(), &self.registry, self.agent_side)
     }
 
     pub fn is_over(&self) -> bool {
-        matches!(self.state.phase, GamePhase::GameOver(_))
+        matches!(self.session.state().phase, GamePhase::GameOver(_))
     }
 
     /// Applies `index` as `agent_side`'s action, then fast-forwards through
@@ -183,15 +186,14 @@ impl NetrunnerEnv {
             return Err(OutOfRangeIndex(index));
         }
 
-        let value_before = evaluate_state(&self.state, self.agent_side);
+        let value_before = evaluate_state(self.session.state(), self.agent_side);
 
-        match bots_step_index(&self.state, &self.registry, index) {
-            Ok((next_state, _events)) => {
-                self.state = next_state;
+        match self.submit_index(index) {
+            Ok(()) => {
                 self.steps_this_episode += 1;
                 self.fast_forward_opponent();
 
-                let value_after = evaluate_state(&self.state, self.agent_side);
+                let value_after = evaluate_state(self.session.state(), self.agent_side);
                 let reward = (squash(value_after) - squash(value_before)) as f32;
                 let terminated = self.is_over();
                 let truncated = !terminated && self.steps_this_episode >= self.max_episode_steps;
@@ -218,36 +220,56 @@ impl NetrunnerEnv {
         }
     }
 
-    /// Repeatedly resolves whichever side isn't `agent_side` via the
-    /// embedded opponent `BotAgent`, exactly as `MatchSession::run` drives
-    /// a bot slot — see the module doc comment. Stops once it's
-    /// `agent_side`'s decision, the game ends, or the safety budget is
-    /// exhausted (treated the same as "stop": the caller's next
-    /// `action_mask`/`observation` call reflects wherever this left off).
-    fn fast_forward_opponent(&mut self) {
-        for _ in 0..MAX_OPPONENT_FAST_FORWARD_STEPS {
-            if self.is_over() {
-                return;
-            }
-            let Some(side) = current_actor(&self.state) else { return };
-            if side == self.agent_side {
-                return;
-            }
-
-            let view = build_client_view(&self.state, &self.registry, side);
-            if view.legal_actions.is_empty() {
-                return;
-            }
-            let action = self.opponent.select_action(&view, &self.registry);
-            match self.state.step(&self.registry, action) {
-                Ok((next, _events)) => self.state = next,
-                // The opponent only ever picks from `view.legal_actions`,
-                // so this should never actually happen — stop rather than
-                // loop forever on a state that can't advance.
-                Err(_) => return,
-            }
-        }
+    /// Applies one `ActionSpace` index as the agent's own action.
+    ///
+    /// Deliberately does **not** consult `current_actor` first, matching
+    /// the behaviour this replaced: `get_action_mask` is side-agnostic (see
+    /// `legal_actions`' doc comment — `RezIce` is legal for the Corp during
+    /// a Runner-priority window), so the mask this env hands Python
+    /// legitimately contains indices the engine will accept even when the
+    /// *other* side nominally holds priority. `Session::submit` is likewise
+    /// ungated for exactly this reason; re-deriving legality here would
+    /// start rejecting actions that succeed today and silently shift the
+    /// training distribution.
+    fn submit_index(&mut self, index: usize) -> Result<(), IndexedActionError> {
+        let action =
+            ActionSpace::action_at(self.session.state(), index).ok_or(IndexedActionError::NoActionAtIndex(index))?;
+        self.session.submit(action).map_err(|error| match error {
+            SubmitError::Rules(rules) => IndexedActionError::Rules(rules),
+            // `Ended` and `NoActor` are not rules rejections, but from
+            // Python's point of view they are the same thing as an index
+            // that will not apply right now: state untouched, penalty,
+            // episode carries on. `step_index` already reports `terminated`
+            // separately, so nothing is lost by folding them in here.
+            SubmitError::Ended | SubmitError::NoActor => IndexedActionError::NoActionAtIndex(index),
+        })
     }
+
+    /// Resolves every opponent decision until it is genuinely the agent's
+    /// turn, the game ends, or the session stalls.
+    ///
+    /// This used to be a hand-rolled copy of the match loop with its own
+    /// `1_000`-step budget that reset on every call — so a pathological
+    /// episode was effectively unbounded. `Session::run` resolves the
+    /// opponent's `Seat::Agent` decisions itself and stops at the agent's
+    /// `Awaiting`, under one `MAX_STEPS` budget for the whole episode.
+    fn fast_forward_opponent(&mut self) {
+        self.session.run();
+    }
+}
+
+/// The env's seat wiring, in one place because `new` and `reset` both need
+/// it: the agent is `External` (Python supplies its action), the opponent
+/// is an in-process `Seat::Agent` the session resolves during fast-forward.
+///
+/// `without_history`: an RL episode's `MatchHistory` is never read, and the
+/// env runs millions of them.
+fn build_session(state: GameState, registry: CardRegistry, agent_side: Side, opponent: Box<dyn BotAgent>) -> Session {
+    let (corp, runner) = match agent_side {
+        Side::Corp => (Seat::External, Seat::Agent(opponent)),
+        Side::Runner => (Seat::Agent(opponent), Seat::External),
+    };
+    Session::new(state, registry, corp, runner).without_history()
 }
 
 fn squash(value: f64) -> f64 {
@@ -271,7 +293,7 @@ mod tests {
         let env = env(Side::Runner, 1);
         let mask = env.action_mask();
         assert_eq!(mask.len(), ACTION_SPACE_SIZE);
-        assert_eq!(mask, get_action_mask(&env.state, &env.registry));
+        assert_eq!(mask, get_action_mask(env.session.state(), &env.registry));
     }
 
     #[test]
@@ -285,7 +307,10 @@ mod tests {
         for side in [Side::Corp, Side::Runner] {
             let mut env = env(side, 3);
             let (_obs, mask) = env.reset(Some(3));
-            assert!(env.is_over() || current_actor(&env.state) == Some(side));
+            // Equivalent to the old `current_actor(&env.state) == Some(side)`:
+            // fast-forward stops exactly where the session awaits the
+            // agent's own External seat.
+            assert!(env.is_over() || env.session.awaiting() == Some(side));
             assert_eq!(mask.len(), ACTION_SPACE_SIZE);
         }
     }

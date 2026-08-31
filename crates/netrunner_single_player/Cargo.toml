@@ -6,9 +6,13 @@ edition = "2024"
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
 netrunner_bots = { path = "../netrunner_bots" }
+netrunner_session = { path = "../netrunner_session" }
+
+[dev-dependencies]
+netrunner_session = { path = "../netrunner_session" }
 
 [features]
 # Forwards to netrunner_bots' onnx feature so IndexedOnnxAgent (and its
 # tests) are reachable from this crate without adding a direct `ort`
 # dependency here.
-onnx = ["netrunner_bots/onnx"]
+onnx = ["netrunner_bots/onnx", "netrunner_session/onnx"]

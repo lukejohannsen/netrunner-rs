@@ -1,161 +1,75 @@
-//! A synchronous, single-process match runner: drives a full game from an
-//! already-`GameState::setup` state to `GameOver`, resolving each pending
-//! decision to whichever side actually has one (`current_actor`) and
-//! getting that side's chosen `ActionSpace` index from a `PlayerDriver` —
-//! either a `netrunner_bots::Agent` (blanket-implemented as a
-//! `PlayerDriver` below) or a `HumanPromptDriver` wrapping a caller-supplied
-//! synchronous input callback. Mirrors the decision-loop shape of
-//! `netrunner_server::match_session::MatchSession` (`current_actor`/
-//! `apply_action`/`GamePhase::GameOver`), but synchronously and without any
-//! channel/async runtime — this crate depends on nothing but
-//! `netrunner_core` and `netrunner_bots`.
+//! The index-based adapter over `netrunner_session::Session`: drives a full
+//! match synchronously against two `netrunner_bots::Agent`s, which choose a
+//! fixed `ActionSpace` index rather than a `PlayerAction`.
+//!
+//! **This is the one place a seat still sees the raw `GameState`, and that
+//! is deliberate.** `netrunner_bots::Agent` exists for the RL path —
+//! `netrunner_gym`, `netrunner_selfplay`, and `IndexedOnnxAgent`, whose
+//! policy network is shaped around a whole `GameState` and a fixed action
+//! space. Every *other* seat in the workspace now goes through
+//! `netrunner_session::Seat::Agent` and can only ever see a masked
+//! `ClientView`. Confining the unmasked view to this adapter is the point:
+//! it used to be the shape of the local human path too, which meant the
+//! local TUI masked itself only by convention.
+//!
+//! The decision loop itself is gone from here — `current_actor`,
+//! `apply_action`, `MAX_STEPS` and the `MatchHistory` all live in
+//! `netrunner_session::Session`. What remains is the index ↔ `PlayerAction`
+//! conversion at the seat boundary.
 
+use netrunner_bots::Agent;
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{apply_action, current_actor, get_action_mask, ActionSpace, GamePhase, GameState, Side};
+use netrunner_core::rules::{get_action_mask, ActionSpace, GameState, Side};
+use netrunner_session::{MatchHistory, Seat, Session, SessionStep};
 
-use crate::history::{HistoryEntry, MatchHistory};
-
-/// Guard against a stalled/looping game running forever — same budget as
-/// `netrunner_server::match_session::MatchSession`'s own `MAX_STEPS`.
-pub const MAX_STEPS: u32 = 10_000;
-
-/// `SinglePlayerSession::with_observer`'s callback type.
-type ActionObserver = Box<dyn FnMut(&HistoryEntry)>;
-
-/// Picks one legal `ActionSpace` index (`0..ActionSpace::SIZE`) for the
-/// current `GameState`, guaranteed `mask[index]` is `true`.
-///
-/// Blanket-implemented for every `netrunner_bots::Agent` below, so
-/// `IndexedRandomAgent`/`IndexedHeuristicAgent`/`IndexedOnnxAgent` are
-/// already valid drivers with no adapter code needed. A synchronous human
-/// input handler implements this directly, or wraps a prompt callback in
-/// `HumanPromptDriver`.
-pub trait PlayerDriver {
-    fn select_action(&mut self, state: &GameState, registry: &CardRegistry, mask: &[bool]) -> usize;
-}
-
-impl<A: netrunner_bots::Agent> PlayerDriver for A {
-    fn select_action(&mut self, state: &GameState, registry: &CardRegistry, mask: &[bool]) -> usize {
-        netrunner_bots::Agent::select_action(self, state, registry, mask)
-    }
-}
-
-/// Wraps a synchronous human-input callback (e.g. "print the legal actions
-/// `mask`/`ActionSpace::action_at` decode to, read a choice, return its
-/// index") as a `PlayerDriver`. This crate performs no I/O itself — the
-/// callback is the embedding application's responsibility, so no
-/// stdin/terminal/UI dependency is pulled in here.
-pub struct HumanPromptDriver<F>
-where
-    F: FnMut(&GameState, &CardRegistry, &[bool]) -> usize,
-{
-    prompt: F,
-}
-
-impl<F> HumanPromptDriver<F>
-where
-    F: FnMut(&GameState, &CardRegistry, &[bool]) -> usize,
-{
-    pub fn new(prompt: F) -> Self {
-        Self { prompt }
-    }
-}
-
-impl<F> PlayerDriver for HumanPromptDriver<F>
-where
-    F: FnMut(&GameState, &CardRegistry, &[bool]) -> usize,
-{
-    fn select_action(&mut self, state: &GameState, registry: &CardRegistry, mask: &[bool]) -> usize {
-        (self.prompt)(state, registry, mask)
-    }
-}
+pub use netrunner_session::MAX_STEPS;
 
 /// A local, synchronous single-match host: owns the real `GameState` and
-/// runs it to completion against two `PlayerDriver`s, recording every
+/// runs it to completion against two index-based agents, recording every
 /// resolved action into a `MatchHistory`.
 pub struct SinglePlayerSession {
-    state: GameState,
-    registry: CardRegistry,
-    corp: Box<dyn PlayerDriver>,
-    runner: Box<dyn PlayerDriver>,
-    history: MatchHistory,
-    on_action: Option<ActionObserver>,
+    session: Session,
+    corp: Box<dyn Agent>,
+    runner: Box<dyn Agent>,
 }
 
 impl SinglePlayerSession {
-    pub fn new(state: GameState, registry: CardRegistry, corp: Box<dyn PlayerDriver>, runner: Box<dyn PlayerDriver>) -> Self {
-        Self { state, registry, corp, runner, history: MatchHistory::new(), on_action: None }
+    pub fn new(state: GameState, registry: CardRegistry, corp: Box<dyn Agent>, runner: Box<dyn Agent>) -> Self {
+        // Both seats are `External`: an index-based agent cannot be a
+        // `Seat::Agent`, which speaks `ClientView` + `PlayerAction`. The
+        // pump below is exactly that adapter.
+        Self { session: Session::new(state, registry, Seat::External, Seat::External), corp, runner }
     }
 
-    /// Registers a callback invoked once per resolved action (either side),
-    /// immediately after it's appended to the match history. The only
-    /// observation point external to `run`'s own blocking loop — a caller
-    /// that wants to narrate bot moves live (e.g. a UI's action log) has no
-    /// other way to see them, since `run` doesn't return control between
-    /// actions. Only `&HistoryEntry` is passed, not the resulting
-    /// `GameState` — a caller that also needs the post-action state has to
-    /// get it from its own `PlayerDriver`'s `state` parameter instead (only
-    /// available at that driver's own decision points).
-    pub fn with_observer(mut self, observer: impl FnMut(&HistoryEntry) + 'static) -> Self {
-        self.on_action = Some(Box::new(observer));
-        self
-    }
-
-    /// Runs the match to completion (or until `MAX_STEPS` is exhausted) and
-    /// returns the final `GameState` plus the full action/event history
+    /// Runs the match to completion (or until the step budget is exhausted)
+    /// and returns the final `GameState` plus the full action/event history
     /// recorded along the way. Callers check
     /// `matches!(final_state.phase, GamePhase::GameOver(_))` to tell a real
     /// conclusion from budget exhaustion.
     ///
-    /// **Turn-numbering convention:** each entry is recorded under
-    /// `GameState::turn` as read from the state the action was chosen
-    /// *against*, before `apply_action` produces the next one. So `0` covers
-    /// every Mulligan-phase action, turn `1` is Corp's opening turn, and the
-    /// action that causes a turn transition is itself still logged under the
-    /// turn that was ending — reading the pre-action state is precisely what
-    /// preserves that last property.
-    ///
-    /// This used to be reconstructed here by watching for
-    /// `GameEvent::TurnStarted` and incrementing a session-local counter
-    /// afterwards. Same numbers, but it was a second definition of a fact
-    /// the engine is now the authority on; `GameState::turn` increments at
-    /// the one place a turn begins.
+    /// See `netrunner_session::Session::step` for the turn-numbering
+    /// convention the history follows.
     pub fn run(mut self) -> (GameState, MatchHistory) {
-        for _ in 0..MAX_STEPS {
-            if matches!(self.state.phase, GamePhase::GameOver(_)) {
-                break;
-            }
-            let Some(side) = current_actor(&self.state) else { break };
+        // Ends on `Ended`, or on a stall the session already characterized.
+        while let SessionStep::Awaiting { side, .. } = self.session.step() {
+            let state = self.session.state();
+            let registry = self.session.registry();
+            let mask = get_action_mask(state, registry);
 
-            let mask = get_action_mask(&self.state, &self.registry);
-
-            let index = {
-                let SinglePlayerSession { state, registry, corp, runner, .. } = &mut self;
-                let driver: &mut Box<dyn PlayerDriver> = match side {
-                    Side::Corp => corp,
-                    Side::Runner => runner,
-                };
-                driver.select_action(state, registry, &mask)
+            let agent: &mut Box<dyn Agent> = match side {
+                Side::Corp => &mut self.corp,
+                Side::Runner => &mut self.runner,
             };
-            assert!(mask[index], "PlayerDriver for {side:?} selected illegal index {index}");
+            let index = agent.select_action(state, registry, &mask);
+            assert!(mask[index], "Agent for {side:?} selected illegal index {index}");
 
-            let action = ActionSpace::action_at(&self.state, index)
+            let action = ActionSpace::action_at(state, index)
                 .unwrap_or_else(|| panic!("index {index} does not decode to any action for the current state"));
 
-            let (next, events) = apply_action(&self.state, &self.registry, action.clone()).unwrap_or_else(|error| {
-                panic!("PlayerDriver for {side:?} chose a mask-legal index {index} that apply_action rejected: {error:?}")
+            self.session.submit(action).unwrap_or_else(|error| {
+                panic!("Agent for {side:?} chose a mask-legal index {index} that the engine rejected: {error:?}")
             });
-
-            // `self.state` is still the pre-action state here — that is what
-            // logs a turn-ending action under the turn it ended, rather than
-            // the one it started.
-            self.history.record(self.state.turn, side, action, events);
-            if let Some(observer) = self.on_action.as_mut() {
-                observer(self.history.entries().last().expect("just recorded"));
-            }
-
-            self.state = next;
         }
-        (self.state, self.history)
+        self.session.into_parts()
     }
 }

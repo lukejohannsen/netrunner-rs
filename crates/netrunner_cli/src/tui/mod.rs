@@ -1,7 +1,5 @@
 pub mod layout;
 
-use std::cell::RefCell;
-use std::rc::Rc;
 use std::time::Duration;
 
 use crossterm::event::{self, Event, KeyCode};
@@ -13,12 +11,12 @@ use ratatui::Frame;
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardId, CounterKind};
-use netrunner_core::rules::{ActionSpace, GameEvent, GamePhase, GameState, PlayerAction, ServerId, Side};
-use netrunner_core::view::{build_client_view, ClientView, ServerView};
-use netrunner_server::{classify_end_reason, GameEndReason, ServerMessage};
-use netrunner_single_player::{HistoryEntry, HumanPromptDriver, PlayerDriver, SinglePlayerSession};
+use netrunner_core::rules::{get_action_mask, ActionSpace, GamePhase, GameState, PlayerAction, ServerId, Side};
+use netrunner_core::view::{ClientView, ServerView};
+use netrunner_server::ServerMessage;
+use netrunner_session::{GameEndReason, Seat, Session, SessionStep, StallReason};
 
-use crate::app::{describe_action, App, RenderableView};
+use crate::app::{describe_action, push_log_line, App, RenderableView};
 use crate::bots;
 use crate::config::{Config, Mode};
 use crate::decks;
@@ -58,15 +56,22 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     result
 }
 
-/// Local, offline human-vs-bot play via `netrunner_single_player::
-/// SinglePlayerSession` — no `MatchSession`, no channel, no background
-/// task. Runs entirely synchronously on this thread: `SinglePlayerSession::
-/// run` blocks until `GameOver`, so the human's own input/render loop lives
-/// inside the `HumanPromptDriver` callback (`prompt_human`), and bot moves
-/// in between are narrated live via `with_observer` into `LocalUiState::
-/// action_log` — see this module's plan-time doc notes on why the board
-/// itself only redraws at human decision points (the observer only gets
-/// `&HistoryEntry`, not the resulting `GameState`).
+/// Local, offline human-vs-bot play, pumping a `netrunner_session::Session`
+/// directly — no `MatchSession`, no channel, no background task.
+///
+/// **The human seat is `Seat::External` and only ever sees the masked
+/// `ClientView` that `SessionStep::Awaiting` hands over.** That is the
+/// point of Phase 1.5: this path used to run through a `PlayerDriver`
+/// callback that received the raw `&GameState` and called
+/// `build_client_view` itself before rendering — masking by client
+/// convention rather than by interface. It is now structural, exactly as it
+/// already was for a channel-backed seat.
+///
+/// Inverting the control flow (the TUI owns the loop; the session is
+/// pulled) also removes the `Rc<RefCell<_>>` aliasing the old callback
+/// needed, lets I/O errors propagate with `?` instead of `.expect`, drops
+/// the `process::exit` that quitting mid-prompt required, and redraws the
+/// board after *bot* moves rather than only at human decision points.
 fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let human_side = match (config.corp, config.runner) {
         (crate::config::BotKind::Human, crate::config::BotKind::Human) => {
@@ -84,119 +89,128 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 
     let bot_side = human_side.other();
     let bot_kind = if human_side == Side::Corp { config.runner } else { config.corp };
-    let bot_driver: Box<dyn PlayerDriver> =
-        bots::make_driver(bot_kind, bot_side, seed.wrapping_add(1), &config.model)?;
+    let (bot_seat, mut indexed_bot) = build_bot_seat(bot_kind, bot_side, seed.wrapping_add(1), &config.model)?;
 
-    let ui = Rc::new(RefCell::new(LocalUiState::new(registry.clone(), human_side)));
-    let terminal = Rc::new(RefCell::new(ratatui::init()));
-
-    let human_driver: Box<dyn PlayerDriver> = {
-        let ui = Rc::clone(&ui);
-        let terminal = Rc::clone(&terminal);
-        Box::new(HumanPromptDriver::new(move |state: &GameState, registry: &CardRegistry, mask: &[bool]| {
-            prompt_human(&ui, &terminal, state, registry, mask)
-        }))
+    let (corp_seat, runner_seat) = match human_side {
+        Side::Corp => (Seat::External, bot_seat),
+        Side::Runner => (bot_seat, Seat::External),
     };
+    let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat);
 
-    let (corp_driver, runner_driver) = match human_side {
-        Side::Corp => (human_driver, bot_driver),
-        Side::Runner => (bot_driver, human_driver),
-    };
-
-    let observer_ui = Rc::clone(&ui);
-    let session = SinglePlayerSession::new(state, registry.clone(), corp_driver, runner_driver)
-        .with_observer(move |entry| observer_ui.borrow_mut().push_log_line(entry));
-
-    let (final_state, _history) = session.run();
-
-    let winner = match final_state.phase {
-        GamePhase::GameOver(winner) => winner,
-        _ => {
-            ratatui::restore();
-            return Err("match ended without reaching GameOver (step budget exhausted)".into());
-        }
-    };
-    let reason = classify_end_reason(&ui.borrow().last_events, winner, &final_state);
-
-    {
-        let mut ui_mut = ui.borrow_mut();
-        ui_mut.view = Some(build_client_view(&final_state, &registry, human_side));
-        ui_mut.legal_actions_cache.clear();
-    }
-    terminal.borrow_mut().draw(|frame| draw_local(frame, &ui.borrow(), Some((winner, reason))))?;
-
-    // Block on one final keypress before restoring the terminal, so the
-    // summary modal stays visible until the player is done reading it.
-    loop {
-        if event::poll(Duration::from_millis(100))?
-            && let Ok(Event::Key(key)) = event::read()
-            && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
-        {
-            break;
-        }
-    }
+    let mut ui = LocalUiState::new(registry, human_side);
+    let mut terminal = ratatui::init();
+    let result = drive_local(&mut terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side);
     ratatui::restore();
-    Ok(())
+    result
 }
 
-/// The `HumanPromptDriver` callback body for local play: renders the
-/// current position and blocks on keyboard input until the human submits a
-/// legal choice, returning its `ActionSpace` index. `mask`'s `true`
-/// positions are paired with the `PlayerAction` `ActionSpace::action_at`
-/// decodes them to (guaranteed `Some` for every masked-true index, per
-/// `get_action_mask`'s own construction) — no separate `index_of` round
-/// trip needed, since the index is already in hand from `mask`'s
-/// enumeration.
+/// Splits a `BotKind` into the session seat it becomes and, for the one
+/// kind that cannot be a `Seat::Agent`, the agent this module has to pump
+/// itself. Same shape as `netrunner_server::PlayerSlot::split`.
 ///
-/// `.expect`s on I/O here rather than propagating an error, since
-/// `HumanPromptDriver`'s callback signature returns a bare `usize` with no
-/// room for a `Result` — a broken terminal is treated as unrecoverable,
-/// same as `run_event_loop`'s `?` would treat it, just via panic instead of
-/// an `Err` return.
-fn prompt_human(
-    ui: &Rc<RefCell<LocalUiState>>,
-    terminal: &Rc<RefCell<ratatui::DefaultTerminal>>,
-    state: &GameState,
-    registry: &CardRegistry,
-    mask: &[bool],
-) -> usize {
-    let human_side = ui.borrow().human_side;
-    let view = build_client_view(state, registry, human_side);
-    let legal_actions_cache: Vec<(usize, PlayerAction)> = mask
-        .iter()
-        .enumerate()
-        .filter_map(|(index, &legal)| {
-            if !legal {
-                return None;
-            }
-            ActionSpace::action_at(state, index).map(|action| (index, action))
-        })
-        .collect();
-
-    {
-        let mut ui_mut = ui.borrow_mut();
-        ui_mut.view = Some(view);
-        ui_mut.legal_actions_cache = legal_actions_cache;
-        ui_mut.selected = 0;
+/// Every scripted kind is a plain `Seat::Agent` over a masked view.
+/// `BotKind::Onnx` is the exception: `OnnxPolicyEvaluator` evaluates a whole
+/// `GameState` against a fixed `ActionSpace`, so it has no `BotAgent` form
+/// and is pumped through the index-based adapter like the RL path. Giving it
+/// a view-based form would delete this branch — see `bots::make_agent`.
+fn build_bot_seat(
+    kind: crate::config::BotKind,
+    side: Side,
+    seed: u64,
+    model: &str,
+) -> Result<(Seat, Option<Box<dyn netrunner_bots::Agent>>), String> {
+    match kind {
+        crate::config::BotKind::Onnx => Ok((Seat::External, Some(bots::make_driver(kind, side, seed, model)?))),
+        _ => {
+            let agent = bots::make_agent(kind, side, seed)
+                .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
+            Ok((Seat::Agent(agent), None))
+        }
     }
+}
 
+/// The pull loop: step the session, render whatever it reports, and block
+/// on keyboard input only when the *human* seat is the one being asked.
+fn drive_local(
+    terminal: &mut ratatui::DefaultTerminal,
+    session: &mut Session,
+    ui: &mut LocalUiState,
+    mut indexed_bot: Option<&mut Box<dyn netrunner_bots::Agent>>,
+    human_side: Side,
+) -> Result<(), Box<dyn std::error::Error>> {
     loop {
-        terminal.borrow_mut().draw(|frame| draw_local(frame, &ui.borrow(), None)).expect("failed to draw the local TUI frame");
+        // `run` swallows the individual `Applied` steps a bot seat
+        // resolves, so mark the log first and replay the difference —
+        // the idiom that replaced `SinglePlayerSession::with_observer`.
+        let mark = session.history().len();
+        let step = session.run();
+        for entry in &session.history().entries()[mark..] {
+            push_log_line(&mut ui.action_log, entry, &ui.registry);
+        }
 
-        if event::poll(Duration::from_millis(100)).unwrap_or(false)
+        match step {
+            SessionStep::Awaiting { side, view } if side == human_side => {
+                ui.begin_decision(*view);
+                if prompt_human(terminal, session, ui)? {
+                    return Ok(());
+                }
+            }
+            // The ONNX bot seat: index-based, so the session cannot
+            // resolve it and hands it back here instead.
+            SessionStep::Awaiting { side, .. } => {
+                let agent = indexed_bot
+                    .as_mut()
+                    .expect("only the index-based ONNX bot seat is External, and it always has an agent");
+                let mask = get_action_mask(session.state(), session.registry());
+                let index = agent.select_action(session.state(), session.registry(), &mask);
+                let action = ActionSpace::action_at(session.state(), index)
+                    .ok_or_else(|| format!("the {side:?} policy chose index {index}, which decodes to no action"))?;
+                session.submit(action).map_err(|error| format!("the {side:?} policy chose an action the engine rejected: {error:?}"))?;
+            }
+            SessionStep::Ended { winner, reason } => {
+                ui.finish(session.view_for(human_side));
+                return show_game_over(terminal, ui, winner, reason);
+            }
+            SessionStep::Stalled(reason) => {
+                return Err(match reason {
+                    StallReason::BudgetExhausted => "match ended without reaching GameOver (step budget exhausted)".into(),
+                    StallReason::NoCurrentActor => "match stalled: no side has a decision pending".into(),
+                    StallReason::NoLegalActions { side } => {
+                        format!("match deadlocked: {side:?} has priority but no legal action").into()
+                    }
+                });
+            }
+            SessionStep::Applied { .. } => unreachable!("`run` only returns once it can no longer apply"),
+        }
+    }
+}
+
+/// Renders the current position and blocks on keyboard input until the
+/// human submits a legal choice. Returns `true` if they quit instead.
+///
+/// `mask`'s `true` positions are paired with the `PlayerAction`s
+/// `ActionSpace::action_at` decodes them to — except that the human seat
+/// now works straight off `view.legal_actions`, which is already the
+/// per-side filtered list, with no `ActionSpace` round trip at all.
+fn prompt_human(
+    terminal: &mut ratatui::DefaultTerminal,
+    session: &mut Session,
+    ui: &mut LocalUiState,
+) -> Result<bool, Box<dyn std::error::Error>> {
+    loop {
+        terminal.draw(|frame| draw_frame(frame, ui, None))?;
+
+        if event::poll(Duration::from_millis(100))?
             && let Ok(Event::Key(key)) = event::read()
         {
             match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => {
-                    ratatui::restore();
-                    std::process::exit(0);
-                }
-                KeyCode::Up | KeyCode::Char('k') => ui.borrow_mut().move_selection(-1),
-                KeyCode::Down | KeyCode::Char('j') => ui.borrow_mut().move_selection(1),
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
+                KeyCode::Up | KeyCode::Char('k') => ui.move_selection(-1),
+                KeyCode::Down | KeyCode::Char('j') => ui.move_selection(1),
                 KeyCode::Enter | KeyCode::Char(' ') => {
-                    let ui_ref = ui.borrow();
-                    if let Some((index, _)) = ui_ref.legal_actions_cache.get(ui_ref.selected) {
-                        return *index;
+                    if let Some(action) = ui.selected_action() {
+                        session.submit(action)?;
+                        return Ok(false);
                     }
                 }
                 _ => {}
@@ -205,50 +219,69 @@ fn prompt_human(
     }
 }
 
+/// Holds the end-of-match summary on screen until the player dismisses it.
+fn show_game_over(
+    terminal: &mut ratatui::DefaultTerminal,
+    ui: &LocalUiState,
+    winner: Side,
+    reason: GameEndReason,
+) -> Result<(), Box<dyn std::error::Error>> {
+    loop {
+        terminal.draw(|frame| draw_frame(frame, ui, Some((winner, reason))))?;
+        if event::poll(Duration::from_millis(100))?
+            && let Ok(Event::Key(key)) = event::read()
+            && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
+        {
+            return Ok(());
+        }
+    }
+}
+
 /// Local-play TUI state: the same renderable data `App` carries (registry,
-/// human side, current masked `ClientView`, selection), plus what only the
-/// local `SinglePlayerSession` path has — `legal_actions_cache` (index-
-/// paired, so `Enter` can resolve straight back to a `usize`), a running
-/// `action_log` narrating every resolved action (human or bot) via
-/// `SinglePlayerSession::with_observer`, and `last_events`, the most
-/// recently resolved action's events (needed for `classify_end_reason`'s
-/// end-of-match summary once the session finishes).
+/// human side, current masked `ClientView`, selection, action log).
+///
+/// It no longer keeps a `legal_actions_cache` of `(index, PlayerAction)`
+/// pairs, nor a `last_events` copy. The human seat submits a
+/// `PlayerAction` straight from `view.legal_actions` — no `ActionSpace`
+/// round trip — and `SessionStep::Ended` already carries the classified
+/// reason that `last_events` existed to reconstruct.
 struct LocalUiState {
     registry: CardRegistry,
     human_side: Side,
     view: Option<ClientView>,
-    legal_actions_cache: Vec<(usize, PlayerAction)>,
     selected: usize,
     action_log: Vec<String>,
-    last_events: Vec<GameEvent>,
 }
-
-const MAX_LOG_LINES: usize = 200;
 
 impl LocalUiState {
     fn new(registry: CardRegistry, human_side: Side) -> Self {
-        Self {
-            registry,
-            human_side,
-            view: None,
-            legal_actions_cache: Vec::new(),
-            selected: 0,
-            action_log: Vec::new(),
-            last_events: Vec::new(),
-        }
+        Self { registry, human_side, view: None, selected: 0, action_log: Vec::new() }
     }
 
-    fn push_log_line(&mut self, entry: &HistoryEntry) {
-        self.action_log.push(format!("[turn {}] {:?}: {}", entry.turn_number, entry.side, describe_action(&entry.action, &self.registry)));
-        if self.action_log.len() > MAX_LOG_LINES {
-            let excess = self.action_log.len() - MAX_LOG_LINES;
-            self.action_log.drain(0..excess);
-        }
-        self.last_events = entry.events.clone();
+    /// Installs the view the session just handed us for a fresh human
+    /// decision, resetting the highlight.
+    fn begin_decision(&mut self, view: ClientView) {
+        self.view = Some(view);
+        self.selected = 0;
+    }
+
+    /// Final board for the game-over screen: no decision is pending, so
+    /// nothing is selectable.
+    fn finish(&mut self, view: ClientView) {
+        self.view = Some(view);
+        self.selected = 0;
+    }
+
+    fn legal_actions(&self) -> &[PlayerAction] {
+        self.view.as_ref().map_or(&[], |view| view.legal_actions.as_slice())
+    }
+
+    fn selected_action(&self) -> Option<PlayerAction> {
+        self.legal_actions().get(self.selected).cloned()
     }
 
     fn move_selection(&mut self, delta: i32) {
-        let len = self.legal_actions_cache.len();
+        let len = self.legal_actions().len();
         if len == 0 {
             return;
         }
@@ -275,14 +308,18 @@ impl RenderableView for LocalUiState {
     }
 
     fn legal_action_labels(&self) -> Vec<String> {
-        self.legal_actions_cache.iter().map(|(_, action)| describe_action(action, &self.registry)).collect()
+        self.legal_actions().iter().map(|action| describe_action(action, &self.registry)).collect()
+    }
+
+    fn action_log(&self) -> &[String] {
+        &self.action_log
     }
 }
 
 fn run_event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
     while !app.should_quit {
         app.drain_messages();
-        terminal.draw(|frame| draw(frame, app))?;
+        terminal.draw(|frame| draw_frame(frame, app, app.game_ended))?;
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
         {
@@ -292,22 +329,16 @@ fn run_event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Res
     Ok(())
 }
 
-fn draw(frame: &mut Frame, app: &App) {
-    let regions = layout::build_layout(frame.area());
-    draw_header(frame, regions.header, app);
-    draw_board(frame, regions.board, app);
-    draw_actions(frame, regions.actions, app);
-    if let Some((winner, reason)) = app.game_ended {
-        draw_game_over_modal(frame, winner, reason);
-    }
-}
-
-fn draw_local(frame: &mut Frame, ui: &LocalUiState, game_over: Option<(Side, GameEndReason)>) {
+/// One renderer for both paths. The remote path used to fall back to the
+/// three-region `build_layout` purely because it had no log to show; now
+/// that `ServerMessage::ActionLog` feeds `App::action_log`, both sides
+/// render the same four regions.
+fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Side, GameEndReason)>) {
     let regions = layout::build_layout_with_log(frame.area());
     draw_header(frame, regions.header, ui);
     draw_board(frame, regions.board, ui);
     draw_actions(frame, regions.actions, ui);
-    draw_action_log(frame, regions.log, &ui.action_log);
+    draw_action_log(frame, regions.log, ui.action_log());
     if let Some((winner, reason)) = game_over {
         draw_game_over_modal(frame, winner, reason);
     }

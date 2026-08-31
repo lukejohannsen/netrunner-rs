@@ -14,11 +14,10 @@ mod common;
 use common::{sg_decks, sg_registry, SG_CORP_CARDS, SG_RUNNER_CARDS};
 use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, RandomAgent};
 use netrunner_core::dsl::CardId;
-use netrunner_core::rules::{
-    apply_action, current_actor, get_action_mask, validate_deck, ActionSpace, GamePhase, GameState, Side,
-    WindowCheckpoint,
-};
-use netrunner_single_player::{PlayerDriver, SinglePlayerSession, MAX_STEPS};
+use netrunner_bots::Agent;
+use netrunner_core::rules::{validate_deck, GamePhase, GameState, Side, WindowCheckpoint};
+use netrunner_session::{Seat, Session, SessionStep};
+use netrunner_single_player::{SinglePlayerSession, MAX_STEPS};
 
 /// The registry a consumer builds must contain System Gateway cards, and
 /// they must carry real DSL rules — not the `is_playable: false`,
@@ -65,9 +64,9 @@ fn a_match_of_system_gateway_decks_plays_to_completion() {
     let (corp_deck, runner_deck) = sg_decks();
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 11).expect("setup should succeed");
 
-    let corp: Box<dyn PlayerDriver> =
+    let corp: Box<dyn Agent> =
         Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Corp, 11), Side::Corp));
-    let runner: Box<dyn PlayerDriver> = Box::new(IndexedRandomAgent::new(RandomAgent::new(11), Side::Runner));
+    let runner: Box<dyn Agent> = Box::new(IndexedRandomAgent::new(RandomAgent::new(11), Side::Runner));
     let (final_state, history) = SinglePlayerSession::new(state, registry, corp, runner).run();
 
     assert!(matches!(final_state.phase, GamePhase::GameOver(_)), "expected the match to reach GameOver");
@@ -122,7 +121,7 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
             let (state, _events) =
                 GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
 
-            let (corp, runner): (Box<dyn PlayerDriver>, Box<dyn PlayerDriver>) = if runner_is_random {
+            let (corp, runner): (Box<dyn Agent>, Box<dyn Agent>) = if runner_is_random {
                 (
                     Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Corp, seed), Side::Corp)),
                     Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Runner)),
@@ -168,7 +167,7 @@ fn every_sample_deck_matchup_finishes() {
             // Alternate which side is random so both sides' decisions get
             // explored across the sweep.
             let corp_is_random = index % 2 == 0;
-            let (corp, runner): (Box<dyn PlayerDriver>, Box<dyn PlayerDriver>) = if corp_is_random {
+            let (corp, runner): (Box<dyn Agent>, Box<dyn Agent>) = if corp_is_random {
                 (
                     Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Corp)),
                     Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Runner, seed), Side::Runner)),
@@ -218,20 +217,27 @@ fn post_action_windows_stay_rare() {
     for seed in 0..16u64 {
         let registry = sg_registry();
         let (corp_deck, runner_deck) = sg_decks();
-        let (mut state, _events) =
+        let (state, _events) =
             GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
-        let mut corp = IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Corp, seed), Side::Corp);
-        let mut runner = IndexedRandomAgent::new(RandomAgent::new(seed), Side::Runner);
+        // The fifth hand-rolled copy of the match loop used to live here,
+        // because it has to inspect `paid_ability_window` *between* steps
+        // and `SinglePlayerSession::run` blocked until `GameOver`. A pull-
+        // shaped `Session` gives it that for free: peek at `state()`, then
+        // `step()`. The agents are the same ones the `Indexed*` aliases
+        // wrapped — `BotAgentIndexAdapter` is `build_client_view` plus an
+        // `index_of` round trip over exactly these — so same seed, same
+        // view, same decisions.
+        let mut session = Session::new(
+            state,
+            registry,
+            Seat::Agent(Box::new(HeuristicAgent::new(Side::Corp, seed))),
+            Seat::Agent(Box::new(RandomAgent::new(seed))),
+        );
         let mut was_open = false;
 
-        for _ in 0..MAX_STEPS {
-            if matches!(state.phase, GamePhase::GameOver(_)) {
-                break;
-            }
-            let Some(side) = current_actor(&state) else { break };
-
+        loop {
             let now_open = matches!(
-                state.paid_ability_window.as_ref().map(|window| window.checkpoint),
+                session.state().paid_ability_window.as_ref().map(|window| window.checkpoint),
                 Some(WindowCheckpoint::PostAction { .. })
             );
             // Count openings, not the steps spent inside one.
@@ -240,14 +246,10 @@ fn post_action_windows_stay_rare() {
             }
             was_open = now_open;
 
-            let mask = get_action_mask(&state, &registry);
-            let index = match side {
-                Side::Corp => corp.select_action(&state, &registry, &mask),
-                Side::Runner => runner.select_action(&state, &registry, &mask),
-            };
-            let action = ActionSpace::action_at(&state, index).expect("a masked-legal index always decodes");
-            state = apply_action(&state, &registry, action).expect("a legal action applies").0;
-            steps += 1;
+            match session.step() {
+                SessionStep::Applied { .. } => steps += 1,
+                _ => break,
+            }
         }
     }
 
