@@ -85,9 +85,34 @@ fn a_match_of_system_gateway_decks_plays_to_completion() {
 /// an unreachable state or a parked decision nothing can resolve. Both
 /// seatings are swept, since which side holds the random agent changes
 /// which decisions get explored.
+/// How many seeds the sweep walks, default 32.
+///
+/// Every deadlock this test has caught was one specific RNG path, so
+/// coverage scales with seed count — and the original 0..8 was
+/// demonstrably too narrow: of the three deadlocks found in this area, the
+/// Red Team end-of-turn run bug first appears at **seed 9** and was live on
+/// `main` while the committed sweep stayed green, and a second only
+/// surfaced because unrelated work reshuffled the RNG onto seed 4.
+///
+/// Costs roughly 1 second per seed in a debug build (both seatings). Raise
+/// it for a deep run before merging engine-level work:
+///
+/// ```text
+/// NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_single_player --release
+/// ```
+///
+/// Deliberately one test body rather than a second `#[ignore]`d deep copy:
+/// this repo has no CI, so `cargo test --workspace` on a developer machine
+/// is the only gate, and an ignored slow test is coverage that never runs.
+/// (The one `#[ignore]` precedent, `netrunner_card_sync`'s live sync, is
+/// gated on network access — an environmental reason, not merely speed.)
+fn sweep_seed_count() -> u64 {
+    std::env::var("NETRUNNER_SWEEP_SEEDS").ok().and_then(|value| value.parse().ok()).unwrap_or(32)
+}
+
 #[test]
 fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
-    for seed in 0..8 {
+    for seed in 0..sweep_seed_count() {
         for runner_is_random in [false, true] {
             let registry = sg_registry();
             let (corp_deck, runner_deck) = sg_decks();

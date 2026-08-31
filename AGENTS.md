@@ -78,7 +78,15 @@ Cross-effect context does NOT belong as new public fields on `GameState`.
 
 Per-card tests verify a card. They do not find interaction bugs.
 
-New mechanics MUST also be exercised through `no_panics_or_deadlocks_across_many_seeds_system_gateway` (`crates/netrunner_single_player/tests/system_gateway_delivery.rs`), which drives real agents across many seeds and both seatings. It is the only test hitting the whole mechanic surface through real agents rather than scripted `apply_action` calls, and it has already caught three deadlocks that were reachable in ordinary play and invisible to every per-card test — each one a state where a player had no legal action at all.
+New mechanics MUST also be exercised through `no_panics_or_deadlocks_across_many_seeds_system_gateway` (`crates/netrunner_single_player/tests/system_gateway_delivery.rs`), which drives real agents across many seeds and both seatings. It is the only test hitting the whole mechanic surface through real agents rather than scripted `apply_action` calls, and it has already caught four deadlocks that were reachable in ordinary play and invisible to every per-card test — each one a state where a player had no legal action at all.
+
+**Run it deep before merging engine-level work.** Each deadlock it has found was one specific RNG path, so coverage scales with seed count. The default (32 seeds) is sized for the inner loop; raise it with `NETRUNNER_SWEEP_SEEDS`:
+
+```bash
+NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_single_player --release
+```
+
+This matters because the range was once 8, and two of the deadlocks sat outside it — one of them live on `main` while the committed sweep stayed green. A failure names its `seed` and `runner_is_random`, so re-running just that case is a one-line override.
 
 Related mechanical gates, all of which must stay green:
 
