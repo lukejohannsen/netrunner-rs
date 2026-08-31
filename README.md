@@ -24,6 +24,11 @@ a reinforcement-learning environment — is a consumer of that one engine.
 - **Randomness lives inside the state.** `GameState` carries its own `seed` and `rng_step`, so
   `apply_action` stays a pure function of its two explicit inputs and replaying a recorded action
   history reproduces a bit-identical final state. No RNG is ever threaded in from outside.
+- **Decks are files you own.** A deck is a small JSON file — identity, card list, and the notes
+  you want alongside it (description, how-to-play prose in Markdown) — saved under your OS data
+  directory and buildable from the CLI. Every deck is checked twice before it plays: once for
+  whether the engine can run it, once for whether it is legal to build (influence, format pool,
+  copy limits).
 - **Cards are data, not code.** Card files under `crates/netrunner_core/data/{corp,runner}/` are
   parsed into DSL primitives and embedded at compile time by `build.rs`. Adding a card normally
   means writing JSON, not Rust. All 75 playable *System Gateway* cards are implemented, with a
@@ -48,6 +53,12 @@ Requires a Rust toolchain supporting edition 2024 (1.85+).
 ```bash
 # Play a local match in the terminal against a bot
 cargo run -p netrunner_cli
+
+# Build a deck of your own, then play it
+cargo run -p netrunner_cli -- deck new my_hb --side corp --identity haas_bioroid_precision_design
+cargo run -p netrunner_cli -- deck add my_hb "Hedge Fund" 3
+cargo run -p netrunner_cli -- deck list
+cargo run -p netrunner_cli -- --corp-deck my_hb --runner-deck stolen_goods
 
 # Run bot-vs-bot games with no UI
 cargo run -p netrunner_cli -- --headless --games 20

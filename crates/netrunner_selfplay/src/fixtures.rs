@@ -13,7 +13,7 @@
 //! over the whole implemented card set.
 
 use netrunner_core::cards::{self, CardRegistry};
-use netrunner_core::decks::{self, SampleDeck};
+use netrunner_core::decks::{self, DeckFile};
 use netrunner_core::rules::Deck;
 
 /// The card pool for every self-play game: every implemented card, with no
@@ -28,8 +28,8 @@ pub fn registry() -> CardRegistry {
 /// recorded trajectory.
 #[derive(Debug, Clone)]
 pub struct Matchup {
-    pub corp: SampleDeck,
-    pub runner: SampleDeck,
+    pub corp: DeckFile,
+    pub runner: DeckFile,
 }
 
 impl Matchup {

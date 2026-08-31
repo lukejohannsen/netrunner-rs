@@ -2,6 +2,7 @@
   "id": "hyper_velocity",
   "name": "Hyper Velocity",
   "side": "Corp",
+  "category": "Sample",
   "identity": "nbn_reality_plus",
   "cards": [
     {

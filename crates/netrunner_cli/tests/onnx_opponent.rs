@@ -21,6 +21,11 @@ use netrunner_single_player::SinglePlayerSession;
 mod bots;
 #[path = "../src/config.rs"]
 mod config;
+// Included because `decks` refers to it as `crate::deck_store`, and with no
+// `lib.rs` in this crate the test binary *is* the crate root — so every
+// module a path-included module reaches for has to be declared here too.
+#[path = "../src/deck_store.rs"]
+mod deck_store;
 #[path = "../src/decks.rs"]
 mod decks;
 
@@ -32,8 +37,17 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
     let model_path = model.path.to_str().expect("fixture path is UTF-8");
 
     let registry = decks::sample_deck_registry();
-    let (corp_deck, runner_deck) =
-        decks::sample_decks("discretion_advised", "stolen_goods").expect("sample decks resolve");
+    // A directory that does not exist, so only built-in decks resolve and
+    // the test never depends on what the developer has saved locally.
+    let no_saved_decks = std::env::temp_dir().join("netrunner_cli_onnx_no_decks");
+    let (corp_deck, runner_deck) = decks::decks_for_match(
+        &no_saved_decks,
+        "discretion_advised",
+        "stolen_goods",
+        &registry,
+        netrunner_core::format::NsgFormat::Startup,
+    )
+    .expect("built-in decks resolve");
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 11).expect("setup");
 
     // The ONNX policy takes the Corp seat; a scripted agent takes the

@@ -1,5 +1,8 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand, ValueEnum};
 
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 #[derive(Parser, Debug)]
@@ -78,16 +81,55 @@ pub struct Config {
     #[arg(long, default_value = "checkpoints/latest_policy.onnx")]
     pub model: String,
 
-    /// Which System Gateway sample deck the Corp plays, by id (e.g.
-    /// `discretion_advised`). See `netrunner_core::decks`; run with an
-    /// unknown id to be shown the full list.
+    /// Which deck the Corp plays: a built-in deck id (e.g.
+    /// `discretion_advised`), the name of a saved deck in the deck
+    /// directory, or a path to a deck file. Run with an unknown name to be
+    /// shown what is available.
     #[arg(long = "corp-deck", default_value = "discretion_advised")]
     pub corp_deck: String,
 
-    /// Which System Gateway sample deck the Runner plays, by id (e.g.
-    /// `stolen_goods`).
+    /// Which deck the Runner plays, in the same forms as `--corp-deck`
+    /// (e.g. `stolen_goods`).
     #[arg(long = "runner-deck", default_value = "stolen_goods")]
     pub runner_deck: String,
+
+    /// Where saved decks live. Defaults to the OS data directory
+    /// (`~/.local/share/netrunner/decks` on Linux); `NETRUNNER_DECKS_DIR`
+    /// sets it persistently, and this flag outranks that.
+    #[arg(long = "decks-dir", global = true)]
+    pub decks_dir: Option<PathBuf>,
+
+    /// Which format to check deck legality against.
+    ///
+    /// Startup is the default because it is the pool this engine actually
+    /// ships: System Gateway plus Elevation. The Core Set cards are not
+    /// Startup-legal — correctly so — and need `--format eternal`.
+    #[arg(long, value_enum, default_value_t = FormatArg::Startup, global = true)]
+    pub format: FormatArg,
+}
+
+/// `NsgFormat` as a command-line value.
+///
+/// A separate enum rather than `ValueEnum` on `netrunner_core::format::NsgFormat`
+/// itself: deriving it there would put a `clap` dependency in the engine,
+/// which AGENTS.md's decoupled-engine rule forbids.
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FormatArg {
+    Startup,
+    Standard,
+    Eternal,
+    Snapshot,
+}
+
+impl From<FormatArg> for NsgFormat {
+    fn from(arg: FormatArg) -> Self {
+        match arg {
+            FormatArg::Startup => NsgFormat::Startup,
+            FormatArg::Standard => NsgFormat::Standard,
+            FormatArg::Eternal => NsgFormat::Eternal,
+            FormatArg::Snapshot => NsgFormat::Snapshot,
+        }
+    }
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -120,6 +162,61 @@ pub enum Command {
     Cards {
         #[command(subcommand)]
         action: CardsAction,
+    },
+
+    /// Inspect, build and edit saved decks.
+    Deck {
+        #[command(subcommand)]
+        action: DeckAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DeckAction {
+    /// List every deck, built-in and saved.
+    List,
+
+    /// Show a deck: its description, how-to-play notes, cards and legality.
+    Show {
+        /// A built-in deck id, a saved deck name, or a path to a deck file.
+        name: String,
+    },
+
+    /// Check a deck against both validators and report what it finds.
+    Validate { name: String },
+
+    /// Start a new, empty deck.
+    New {
+        /// Id for the new deck; also its filename.
+        name: String,
+
+        #[arg(long, value_enum)]
+        side: SideArg,
+
+        /// The deck's identity card, by id (e.g.
+        /// `haas_bioroid_precision_design`) or exact title.
+        #[arg(long)]
+        identity: String,
+    },
+
+    /// Add copies of a card to a saved deck.
+    Add {
+        name: String,
+
+        /// A card id (e.g. `hedge_fund`) or its exact title.
+        card: String,
+
+        #[arg(default_value_t = 1)]
+        count: u32,
+    },
+
+    /// Remove copies of a card from a saved deck.
+    Remove {
+        name: String,
+        card: String,
+
+        #[arg(default_value_t = 1)]
+        count: u32,
     },
 }
 
