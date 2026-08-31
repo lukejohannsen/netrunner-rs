@@ -1275,9 +1275,9 @@ pub fn pay_cost(
             Ok(vec![GameEvent::CardRemovedFromGame { side, card: card_id.clone() }])
         }
 
-        Cost::PurgeTags => {
+        Cost::ClearTags => {
             state.runner.tags = 0;
-            Ok(vec![GameEvent::TagsPurged { side }])
+            Ok(vec![GameEvent::TagsCleared { side }])
         }
 
         Cost::TakeTags(amount) => {
@@ -2540,14 +2540,14 @@ mod tests {
     }
 
     #[test]
-    fn pay_purge_tags_zeroes_the_counter() {
+    fn pay_clear_tags_zeroes_the_counter() {
         let mut state = game_state();
         state.runner.tags = 3;
 
-        let events = pay_cost(&mut state, Side::Runner, &Cost::PurgeTags, None).unwrap();
+        let events = pay_cost(&mut state, Side::Runner, &Cost::ClearTags, None).unwrap();
 
         assert_eq!(state.runner.tags, 0);
-        assert_eq!(events, vec![GameEvent::TagsPurged { side: Side::Runner }]);
+        assert_eq!(events, vec![GameEvent::TagsCleared { side: Side::Runner }]);
     }
 
     #[test]

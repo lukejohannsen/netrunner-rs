@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardSubtype, CardType, Cost, Trigger};
+use crate::dsl::{CardId, CardSubtype, CardType, Cost, CounterKind, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
@@ -105,6 +105,7 @@ pub fn apply_action(
         PlayerAction::AdvanceCard { card_id } => advance_card(state, registry, card_id),
         PlayerAction::ScoreAgenda { card_id } => score_agenda(state, registry, card_id),
         PlayerAction::RemoveTag => remove_tag(state),
+        PlayerAction::PurgeVirusCounters => purge_virus_counters(state, registry),
         PlayerAction::TrashResource { card_id } => trash_resource(state, registry, card_id),
         PlayerAction::SelectCardToAccess { card_id } => {
             select_card_to_access(state, registry, card_id)
@@ -1105,6 +1106,48 @@ fn remove_tag(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesErr
 
     next.runner.tags -= 1;
     events.push(GameEvent::TagRemoved { side });
+
+    Ok((next, events))
+}
+
+/// Resolves `PlayerAction::PurgeVirusCounters`, per its doc comment.
+/// Corp-only, 3 clicks — the Corp's entire turn.
+///
+/// Scans both sides: `counter_kind` describes what a card's `counters`
+/// field holds, so "every virus counter in play" is exactly "every
+/// installed/rigged card whose registry `counter_kind` is `Virus`",
+/// regardless of who controls it. No card in the current pool is a Corp
+/// card with virus counters, but nothing here assumes that.
+///
+/// Zeroing an already-zero card is a no-op that still reports the card as
+/// purged — matching the physical action (you sweep the board, not
+/// individual tokens) and keeping the emitted event a straightforward
+/// "these are the virus cards that were on the table."
+fn purge_virus_counters(
+    state: &GameState,
+    registry: &CardRegistry,
+) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    let side = Side::Corp;
+    require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
+
+    let mut next = state.clone();
+    let mut events = ability::pay_cost(&mut next, side, &Cost::Clicks(3), None)?;
+
+    let holds_virus_counters =
+        |card_id: &CardId| registry.get(card_id).and_then(|c| c.counter_kind) == Some(CounterKind::Virus);
+
+    let mut purged = Vec::new();
+    for installed in next.corp.installed.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
+        installed.counters = 0;
+        purged.push(installed.card.clone());
+    }
+    for rigged in next.runner.rig.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
+        rigged.counters = 0;
+        purged.push(rigged.card.clone());
+    }
+
+    events.push(GameEvent::VirusCountersPurged { cards: purged });
 
     Ok((next, events))
 }
@@ -3976,6 +4019,131 @@ mod tests {
                 actual: GamePhase::Action(Side::Corp),
             })
         );
+    }
+
+    /// A card that holds `counter_kind` counters — the only field
+    /// `purge_virus_counters` reads to decide what it targets.
+    fn card_with_counter_kind(card_id: &str, side: Side, counter_kind: CounterKind) -> CardDefinition {
+        CardDefinition {
+            counter_kind: Some(counter_kind),
+            ..test_card(card_id, side, CardType::Program, 0, None)
+        }
+    }
+
+    fn rig_card_with_counters(card_id: &str, counters: u32) -> InstalledRunnerCard {
+        InstalledRunnerCard { counters, ..installed_runner_card(card_id, 0) }
+    }
+
+    /// Registry + state with two virus programs (counters loaded) and one
+    /// credit-counter card, so every purge test can assert both that
+    /// viruses are wiped and that non-viruses are untouched.
+    fn purge_fixture() -> (GameState, CardRegistry) {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_counter_kind("botulus", Side::Runner, CounterKind::Virus));
+        registry.insert(card_with_counter_kind("leech", Side::Runner, CounterKind::Virus));
+        registry.insert(card_with_counter_kind("nico_campaign", Side::Runner, CounterKind::Credit));
+
+        let mut state = corp_state(3, 5);
+        state.runner.rig = vec![
+            rig_card_with_counters("botulus", 3),
+            rig_card_with_counters("leech", 2),
+            rig_card_with_counters("nico_campaign", 4),
+        ];
+        (state, registry)
+    }
+
+    fn counters_of(state: &GameState, card_id: &str) -> u32 {
+        state.runner.rig.iter().find(|c| c.card.0 == card_id).expect("card should be in the rig").counters
+    }
+
+    #[test]
+    fn corp_purge_zeroes_every_virus_card_at_once_and_spends_three_clicks() {
+        let (state, registry) = purge_fixture();
+
+        let (next, events) =
+            apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("action should succeed");
+
+        assert_eq!(counters_of(&next, "botulus"), 0);
+        assert_eq!(counters_of(&next, "leech"), 0);
+        assert_eq!(next.corp.resources.clicks, Clicks(0), "purge costs the Corp's whole turn");
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::VirusCountersPurged {
+                    cards: vec![CardId("botulus".to_string()), CardId("leech".to_string())],
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn corp_purge_leaves_non_virus_counters_untouched() {
+        let (state, registry) = purge_fixture();
+
+        let (next, _events) =
+            apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("action should succeed");
+
+        assert_eq!(counters_of(&next, "nico_campaign"), 4, "a Credit-counter card is not a virus");
+    }
+
+    /// Purging an empty board is legal in real Netrunner — a pointless but
+    /// permitted way to spend a turn. Deliberately not an error, unlike
+    /// `RemoveTag`'s `RunnerNotTagged`; see `PlayerAction::
+    /// PurgeVirusCounters`'s doc comment.
+    #[test]
+    fn corp_purge_with_nothing_to_purge_succeeds_and_still_costs_three_clicks() {
+        let state = corp_state(3, 5);
+
+        let (next, events) =
+            apply_action(&state, &registry(), PlayerAction::PurgeVirusCounters).expect("an empty purge is still legal");
+
+        assert_eq!(next.corp.resources.clicks, Clicks(0));
+        assert_eq!(events.last(), Some(&GameEvent::VirusCountersPurged { cards: Vec::new() }));
+    }
+
+    #[test]
+    fn corp_purge_without_three_clicks_returns_not_enough_clicks() {
+        let (mut state, registry) = purge_fixture();
+        state.corp.resources.clicks = Clicks(2);
+
+        let result = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters);
+
+        assert_eq!(result, Err(RulesError::NotEnoughClicks { side: Side::Corp, available: 2, requested: 3 }));
+        assert_eq!(counters_of(&state, "botulus"), 3, "a rejected purge must not have mutated anything");
+    }
+
+    #[test]
+    fn runner_turn_purge_returns_wrong_phase() {
+        let (mut state, registry) = purge_fixture();
+        state.phase = GamePhase::Action(Side::Runner);
+
+        let result = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters);
+
+        assert_eq!(
+            result,
+            Err(RulesError::WrongPhase {
+                expected: GamePhase::Action(Side::Corp),
+                actual: GamePhase::Action(Side::Runner),
+            })
+        );
+    }
+
+    #[test]
+    fn corp_purge_during_an_open_paid_ability_window_is_rejected() {
+        let (mut state, registry) = purge_fixture();
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Corp,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Run,
+            return_phase: Box::new(state.phase),
+        });
+
+        let result = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters);
+
+        assert!(result.is_err(), "purge is a basic click action, not a paid ability");
     }
 
     #[test]

@@ -3585,4 +3585,46 @@ mod system_gateway {
         assert_eq!(run.additional_rd_access, 1, "R&D, not the authored HQ placeholder");
         assert_eq!(run.additional_hq_access, 0);
     }
+
+    /// Purge against the *real* card data, not synthetic fixtures. The
+    /// engine tests in `rules::engine` build cards with `counter_kind`
+    /// set by hand, so they would still pass if every shipped virus card
+    /// were missing the field — which would leave purge silently doing
+    /// nothing in an actual game. This pins the data end.
+    ///
+    /// Also asserts the full virus roster: if a future set adds a virus
+    /// and forgets `counter_kind`, this fails rather than quietly leaving
+    /// that card immune to purging.
+    #[test]
+    fn purge_clears_counters_on_every_real_system_gateway_virus() {
+        use crate::dsl::CounterKind;
+
+        let registry = sg_registry();
+
+        let viruses: Vec<CardId> = registry
+            .iter()
+            .filter(|card| card.counter_kind == Some(CounterKind::Virus))
+            .map(|card| card.id.clone())
+            .collect();
+        let mut sorted = viruses.iter().map(|id| id.0.as_str()).collect::<Vec<_>>();
+        sorted.sort_unstable();
+        assert_eq!(
+            sorted,
+            vec!["botulus", "conduit", "fermenter", "leech", "tranquilizer"],
+            "the System Gateway virus roster changed — confirm the new card carries counter_kind: Virus"
+        );
+
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.runner.rig = viruses
+            .iter()
+            .map(|id| crate::rules::InstalledRunnerCard { card: id.clone(), counters: 3, ..Default::default() })
+            .collect();
+
+        let (next, _events) = apply_action(&state, &registry, PlayerAction::PurgeVirusCounters).expect("corp purges");
+
+        for rigged in &next.runner.rig {
+            assert_eq!(rigged.counters, 0, "{} still holds virus counters after a purge", rigged.card.0);
+        }
+    }
 }

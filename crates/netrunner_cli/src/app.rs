@@ -192,6 +192,9 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry) -> String
         PlayerAction::AdvanceCard { card_id } => format!("Advance {}", title(card_id)),
         PlayerAction::ScoreAgenda { card_id } => format!("Score {}", title(card_id)),
         PlayerAction::RemoveTag => "Remove a tag".to_string(),
+        // Spells out the click cost: it is the Corp's whole turn, which is
+        // not obvious from the name alone at the point of choosing it.
+        PlayerAction::PurgeVirusCounters => "Purge virus counters (3 clicks)".to_string(),
         PlayerAction::TrashResource { card_id } => format!("Trash {}", title(card_id)),
         PlayerAction::SelectCardToAccess { card_id } => format!("Access {}", title(card_id)),
         PlayerAction::StealAgenda { card_id } => format!("Steal {}", title(card_id)),
