@@ -47,7 +47,9 @@ pub enum GameEvent {
     RunnerFlatlined,
     CreditsSpent { side: Side, amount: u32 },
     TagsGiven { side: Side, amount: u32 },
-    TagsPurged { side: Side },
+    /// `Cost::ClearTags` zeroed the Runner's tag count. Named for clearing,
+    /// not purging — see `Cost::ClearTags`'s doc comment.
+    TagsCleared { side: Side },
     CardTrashed { side: Side, card: CardId },
     /// A card left play permanently, bypassing the discard pile — Spin
     /// Doctor's `Cost::RemoveSelfFromGame`. Distinct from `CardTrashed`
@@ -70,6 +72,18 @@ pub enum GameEvent {
     TraceSuccessful { corp_total: u32, runner_total: u32 },
     TagRemoved { side: Side },
     TagsRemoved { side: Side, amount: u32 },
+    /// `PlayerAction::PurgeVirusCounters` zeroed the virus counters on
+    /// `cards`. Empty when the Corp purged an empty board, which is legal —
+    /// the event still fires, since the action still happened and still
+    /// cost 3 clicks.
+    ///
+    /// Carries the affected card list so a game log can narrate which
+    /// viruses were wiped. Every card that can hold virus counters today is
+    /// a public Runner rig card, so this leaks nothing — but if a future
+    /// set prints a Corp card holding virus counters, the tracked
+    /// per-viewer event-masking work (ROADMAP Phase 4) must strip an
+    /// unrezzed one's identity here.
+    VirusCountersPurged { cards: Vec<CardId> },
     BadPublicityCreditsSpent { amount: u32 },
     BonusRunCreditsSpent { amount: u32 },
     /// A `PendingDecision::ChooseCards` was confirmed — `cards` is the

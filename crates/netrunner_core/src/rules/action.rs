@@ -198,6 +198,22 @@ pub enum PlayerAction {
     /// Spend 1 click + 2 credits to remove 1 of the Runner's tags.
     /// Runner-only. `RulesError::RunnerNotTagged` if `RunnerState::tags == 0`.
     RemoveTag,
+    /// Spend 3 clicks to remove every virus counter in play. Corp-only, and
+    /// the Corp's whole turn — `CORP_CLICKS_PER_TURN` is exactly 3.
+    ///
+    /// Targets every installed/rigged card whose registry `counter_kind` is
+    /// `CounterKind::Virus`, on **both** sides: the rule is about the kind
+    /// of counter, not who owns the card. Only Runner Programs qualify in
+    /// the current card pool (*Botulus*, *Leech*, *Fermenter*, *Conduit*,
+    /// *Tranquilizer*), but a Corp card holding virus counters would be
+    /// purged too.
+    ///
+    /// Deliberately has **no** "nothing to purge" error, unlike
+    /// `RemoveTag`'s `RulesError::RunnerNotTagged`: you genuinely cannot
+    /// remove a tag you don't have, but purging an empty board is a legal
+    /// (if pointless) way for the Corp to spend a turn, so `legal_actions`
+    /// offers it whenever the clicks are there.
+    PurgeVirusCounters,
     /// Spend 1 click + 2 credits to trash `card_id`, an installed Runner
     /// Resource, off the Rig into the Heap. Corp-only, legal only while the
     /// Runner is tagged (`RulesError::RunnerNotTagged` otherwise). `card_id`'s

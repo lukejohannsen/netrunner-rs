@@ -150,13 +150,23 @@ const INSTALL_PROGRAM_ON_ICE_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE
 const BREAK_SUBROUTINE_WITH_CLICK_START: usize = INSTALL_PROGRAM_ON_ICE_START + INSTALL_PROGRAM_ON_ICE_LEN;
 const BREAK_SUBROUTINE_WITH_CLICK_LEN: usize = MAX_SUBROUTINES;
 
+/// `PurgeVirusCounters` is payload-free and would sit naturally in the
+/// `UNIT` segment with the other nine — but inserting it there would shift
+/// every subsequent index by one, silently changing what ~1,000 slots mean
+/// to an already-exported policy network. Appended here instead, so every
+/// existing index keeps its meaning and only the head *width* changes.
+/// Same principle as `observation::CARD_VOCAB`'s numeric_id ordering:
+/// append, never shift.
+const PURGE_VIRUS_COUNTERS_START: usize = BREAK_SUBROUTINE_WITH_CLICK_START + BREAK_SUBROUTINE_WITH_CLICK_LEN;
+const PURGE_VIRUS_COUNTERS_LEN: usize = 1;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = BREAK_SUBROUTINE_WITH_CLICK_START + BREAK_SUBROUTINE_WITH_CLICK_LEN;
+    pub const SIZE: usize = PURGE_VIRUS_COUNTERS_START + PURGE_VIRUS_COUNTERS_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -177,6 +187,8 @@ impl ActionSpace {
             PlayerAction::TakeMulligan => Some(UNIT_START + 6),
             PlayerAction::RemoveTag => Some(UNIT_START + 7),
             PlayerAction::DeclinePendingPaidChoice => Some(UNIT_START + 8),
+
+            PlayerAction::PurgeVirusCounters => Some(PURGE_VIRUS_COUNTERS_START),
 
             PlayerAction::GainCreditClick { side } => Some(GAIN_CREDIT_START + side_index(*side)),
             PlayerAction::PassPriority { side } => Some(PASS_PRIORITY_START + side_index(*side)),
@@ -472,6 +484,9 @@ impl ActionSpace {
             let ice_id = current_ice_id(state)?;
             return Some(PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: local });
         }
+        if in_segment(index, PURGE_VIRUS_COUNTERS_START, PURGE_VIRUS_COUNTERS_LEN).is_some() {
+            return Some(PlayerAction::PurgeVirusCounters);
+        }
         None
     }
 }
@@ -707,6 +722,25 @@ mod tests {
         assert!(legal.contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
         assert!(legal.contains(&PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }));
         assert!(!legal.contains(&PlayerAction::DrawCardClick), "DrawCardClick is Runner-only today");
+    }
+
+    /// The appended `PurgeVirusCounters` slot, checked explicitly rather
+    /// than only via `assert_roundtrips`: it is the last index in the
+    /// space, so an off-by-one in `SIZE` would put it out of range instead
+    /// of merely decoding wrong.
+    #[test]
+    fn purge_virus_counters_occupies_the_final_slot_and_roundtrips() {
+        let registry = CardRegistry::new();
+        let state = base_state();
+
+        let index = ActionSpace::index_of(&state, &PlayerAction::PurgeVirusCounters).expect("purge always encodes");
+        assert_eq!(index, ActionSpace::SIZE - 1, "purge was appended, so it is the last slot");
+        assert_eq!(ActionSpace::action_at(&state, index), Some(PlayerAction::PurgeVirusCounters));
+
+        assert!(
+            legal_actions(&state, &registry).contains(&PlayerAction::PurgeVirusCounters),
+            "the Corp has 3 clicks in their Action phase, so purge is legal even with no viruses in play"
+        );
     }
 
     #[test]
@@ -976,6 +1010,11 @@ mod tests {
         // +240 (MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE = 12 * 20) over M5's
         // 776, for the new `InstallProgramOnIce` segment (M6/hosting) — by
         // far the largest single addition in the whole plan.
-        assert_eq!(ActionSpace::SIZE, 1024);
+        // +1 over 1024 for `PurgeVirusCounters`, the Corp's basic
+        // purge action. Appended as its own trailing segment rather than
+        // added to the payload-free `UNIT` block it belongs with, so that
+        // every pre-existing index keeps its meaning for an already-trained
+        // policy — see `PURGE_VIRUS_COUNTERS_START`'s doc comment.
+        assert_eq!(ActionSpace::SIZE, 1025);
     }
 }

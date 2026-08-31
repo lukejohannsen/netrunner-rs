@@ -13,7 +13,13 @@ pub enum Cost {
     TrashSelf,
     /// Remove all of the Runner's tags. A legal no-op at 0 tags, the same
     /// as a `Credits(0)`/`Clicks(0)` cost would be.
-    PurgeTags,
+    ///
+    /// Deliberately **not** named `PurgeTags`: in Netrunner "purge" is a
+    /// term of art for the Corp's basic action that removes virus counters
+    /// (`PlayerAction::PurgeVirusCounters`), and nothing else. Reusing the
+    /// word for tags made this look like that action's cost, which it has
+    /// never had anything to do with.
+    ClearTags,
     /// The Runner accepts `u32` tags as payment — e.g. Funhouse's "end the
     /// run unless the Runner takes 1 tag." Only ever meaningful as
     /// `Effect::OfferPaidChoice`'s `cost` (there's no `AbilityDef` in this

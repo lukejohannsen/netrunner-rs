@@ -165,10 +165,17 @@ mod tests {
     /// silent consequence of adding a card mechanic. Grew 724 → 1024 across
     /// the System Gateway work, which added several new player-facing
     /// decisions (card selection, server choice, paid-choice accept/decline,
-    /// install-on-ice, click-to-break).
+    /// install-on-ice, click-to-break), then 1024 → 1025 for the Corp's
+    /// basic purge-virus-counters action.
+    ///
+    /// That last slot was *appended* rather than inserted into the
+    /// payload-free `UNIT` segment where it would naturally belong, so
+    /// every pre-existing index still decodes to the same action — an old
+    /// policy's first 1024 outputs remain meaningful and only the head
+    /// width changed. Keep that property for future additions.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 1024);
+        assert_eq!(ACTION_SPACE_SIZE, 1025);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

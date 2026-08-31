@@ -120,6 +120,7 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         | PlayerAction::AdvanceCard { .. }
         | PlayerAction::ScoreAgenda { .. }
         | PlayerAction::TrashResource { .. }
+        | PlayerAction::PurgeVirusCounters
         | PlayerAction::SubmitCorpTraceBid { .. } => Side::Corp,
 
         // Symmetric, but only ever legal when `phase` names exactly one
@@ -245,6 +246,10 @@ fn static_candidates() -> Vec<PlayerAction> {
         PlayerAction::KeepHand,
         PlayerAction::TakeMulligan,
         PlayerAction::RemoveTag,
+        // Always a candidate: purging an empty board is legal (just
+        // pointless), so the only thing that filters this out is the
+        // `apply_action` probe rejecting it on phase/clicks/window.
+        PlayerAction::PurgeVirusCounters,
     ]
 }
 
