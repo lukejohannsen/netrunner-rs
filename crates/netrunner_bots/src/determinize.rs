@@ -350,12 +350,15 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         pending_prevention: view.pending_prevention.clone(),
         pending_paid_choice: view.pending_paid_choice.clone(),
         pending_decision: view.pending_decision.clone(),
-        // Transient scratch fields with no player-facing/masked
-        // representation (see their doc comments on `GameState`) — a
-        // determinized hypothetical state has no history to reconstruct
-        // them from, so they start blank, same as a fresh `GameState::new`.
-        last_discarded_cards: Vec::new(),
-        last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
+        // No masked representation to reconstruct these from (see their doc
+        // comments on `GameState`), so a determinized hypothetical starts
+        // them blank, same as a fresh `GameState::new`. Two former siblings
+        // here — `last_discarded_cards` and `last_advancement_was_first` —
+        // are gone entirely: they were transient resolution state and now
+        // live on `ability::ResolutionContext`, which a determinized state
+        // has no business carrying at all.
+        last_completed_run: None,
+        deferred_triggers: Vec::new(),
         seed: rng.random(),
         rng_step: 0,
     };

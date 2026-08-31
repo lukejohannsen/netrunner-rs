@@ -410,7 +410,7 @@ fn step_subroutine(
 
     if resolve {
         let mut events = vec![GameEvent::SubroutineFired { card_id, index, effect: effect.clone() }];
-        events.extend(evaluate_effect(state, &effect, None, registry)?);
+        events.extend(evaluate_effect(state, &effect, &mut crate::rules::ability::ResolutionContext::default(), registry)?);
         Ok(events)
     } else {
         Ok(vec![GameEvent::SubroutineBroken { card_id, index }])

@@ -196,7 +196,7 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
                 && ability
                     .requirement
                     .as_ref()
-                    .is_none_or(|req| ability::check_requirement(state, req, side, Some(&card_id), registry).is_ok())
+                    .is_none_or(|req| ability::check_requirement(state, req, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok())
                 && ability
                     .cost
                     .as_ref()
@@ -237,7 +237,14 @@ fn close_prevention_window(state: &mut GameState, registry: &CardRegistry) -> Re
             if prevented > 0 {
                 events.push(GameEvent::DamagePrevented { amount: prevented });
             }
-            events.extend(damage::apply_damage(state, damage_type, amount.saturating_sub(prevented)));
+            // Discards are dropped here rather than recorded: a prevention
+            // window resumes on a later `PlayerAction`, so there is no
+            // `Sequence` left for `LastDamageTrashedOddCostCard` to read
+            // them from. That was already true of the old `GameState` field
+            // in practice — a parked `DealDamage` breaks its `Sequence`, so
+            // the requirement was never reached down this path.
+            let (damage_events, _discarded) = damage::apply_damage(state, damage_type, amount.saturating_sub(prevented));
+            events.extend(damage_events);
             events
         }
         PendingPreventionKind::Trash { target, prevented } => {
