@@ -166,6 +166,15 @@ pub enum RulesError {
     #[error("cannot take that action while a trace is active (awaiting {awaiting:?}'s bid)")]
     ActionBlockedByActiveTrace { awaiting: Side },
 
+    /// A run is itself an action in progress, so no *basic* action may begin
+    /// until it resolves. Distinct from `RunAlreadyInProgress` (which is
+    /// `InitiateRun`'s "you already have one") and
+    /// `CannotEndTurnWhileRunActive` (the turn-structure case): this is the
+    /// general one, raised by `engine::apply_action`'s central guard for
+    /// every `ActionKind::BasicClickAction`.
+    #[error("cannot take a basic action while a run is in progress")]
+    ActionBlockedByActiveRun,
+
     #[error("the Runner has no tags")]
     RunnerNotTagged,
 

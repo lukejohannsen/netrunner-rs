@@ -913,17 +913,17 @@ mod tests {
             ..Default::default()
         });
         let legal = legal_actions(&state, &CardRegistry::new());
-        // Basic clicks (`GainCreditClick`/`DrawCardClick`) are still legal
-        // mid-run in this engine — neither handler checks `active_run`, and
-        // no `PaidAbilityWindow` is open here (`SelectNextCard` isn't a
-        // checkpoint, per `paid_ability::open_window_if_at_checkpoint`).
+        // Nothing else, not even a basic click: an active run suspends every
+        // basic action (`engine::apply_action`'s `ActionBlockedByActiveRun`
+        // guard). No `PaidAbilityWindow` is open here either — `SelectNextCard`
+        // isn't a checkpoint, per `paid_ability::open_window_if_at_checkpoint`
+        // — so this pins the guard rather than a window incidentally covering
+        // for it.
         assert_same_actions(
             &legal,
             &[
                 PlayerAction::SelectCardToAccess { card_id: CardId("a".to_string()) },
                 PlayerAction::SelectCardToAccess { card_id: CardId("b".to_string()) },
-                PlayerAction::GainCreditClick { side: Side::Runner },
-                PlayerAction::DrawCardClick,
             ],
         );
     }
@@ -950,11 +950,7 @@ mod tests {
         // See the analogous comment in `select_next_card_offers_one_per_selectable_card`.
         assert_same_actions(
             &legal,
-            &[
-                PlayerAction::StealAgenda { card_id: CardId("agenda".to_string()) },
-                PlayerAction::GainCreditClick { side: Side::Runner },
-                PlayerAction::DrawCardClick,
-            ],
+            &[PlayerAction::StealAgenda { card_id: CardId("agenda".to_string()) }],
         );
     }
 
@@ -984,8 +980,6 @@ mod tests {
             &[
                 PlayerAction::TrashAccessedCard { card_id: CardId("asset".to_string()) },
                 PlayerAction::PassAccessedCard { card_id: CardId("asset".to_string()) },
-                PlayerAction::GainCreditClick { side: Side::Runner },
-                PlayerAction::DrawCardClick,
             ],
         );
     }

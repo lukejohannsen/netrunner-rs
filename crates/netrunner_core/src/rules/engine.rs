@@ -69,8 +69,28 @@ pub fn apply_action(
     {
         return Err(RulesError::ActionBlockedByPendingDecision { side });
     }
-    // Classified before the match consumes `action`.
+    // Classified before the match consumes `action` — read by the run guard
+    // immediately below as well as by `open_post_action_window` at the end.
     let action_kind = classify_action(&action);
+    // A run is itself an action in progress: no basic action may begin until
+    // it resolves. Neither of the per-handler guards catches this — `phase`
+    // stays `Action(Runner)` for the whole run, so `require_phase` never
+    // bites, and `require_no_window` only bites at the checkpoints a window
+    // actually opens at (`RunPhase::Initiation`, `RunPhase::Success` and
+    // `AccessPhase::SelectNextCard` deliberately aren't any). Centralized for
+    // the same reason as the `active_trace` guard above, and keyed off
+    // `classify_action` so a new `PlayerAction` must be classified before it
+    // compiles. Sits last of the four: the parked-state guards above are the
+    // more specific "nothing but this resolves" cases and own their own
+    // rejections, and a trace can be active mid-run.
+    //
+    // Only *basic actions* are suspended. Run sub-actions, `RezIce`,
+    // `ActivateAbility` and priority passes stay legal — a run is what paid
+    // ability windows exist for, and clicks may still be spent during your
+    // own action phase (`BreakSubroutineWithClick` is the precedent).
+    if state.active_run.is_some() && matches!(action_kind, ActionKind::BasicClickAction) {
+        return Err(RulesError::ActionBlockedByActiveRun);
+    }
     let resolved = match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
         PlayerAction::DrawCardClick => draw_card_click(state, registry),
@@ -175,7 +195,11 @@ pub fn apply_action(
 ///   a cascade: closing a window is a `PassPriority`, which is not an
 ///   action, so it cannot open another.
 /// - **no run, no window, nothing parked, not over** — those flows own
-///   their own checkpoints; layering one on top would strand them.
+///   their own checkpoints; layering one on top would strand them. The
+///   `active_run` half is belt-and-braces since `apply_action`'s central
+///   guard now rejects every basic click action mid-run, so no
+///   `BasicClickAction` can reach here with a run active; it stays because
+///   the three cases read as one invariant and only this half is redundant.
 /// - **the opponent has something usable** — the cost guard; see
 ///   `paid_ability::has_usable_paid_ability`.
 fn open_post_action_window(
@@ -198,13 +222,16 @@ fn open_post_action_window(
 }
 
 /// Whether a `PlayerAction` is a basic click action — the thing a
-/// post-action paid-ability window follows.
+/// post-action paid-ability window follows, and the thing an active run
+/// suspends (`apply_action`'s `ActionBlockedByActiveRun` guard).
 ///
 /// Deliberately an exhaustive `match` rather than a check for a
 /// `ClickSpent` event: exhaustive so that adding a `PlayerAction` fails to
 /// compile here and forces a decision, and explicit so that a paid ability
 /// which happens to cost a click (Regolith Mining License) doesn't get
-/// mistaken for an action.
+/// mistaken for an action. That distinction is load-bearing for the run
+/// guard too: a click-cost paid ability stays usable mid-run, because a run
+/// suspends *actions*, not click-spending.
 enum ActionKind {
     BasicClickAction,
     Other,
@@ -228,8 +255,10 @@ fn classify_action(action: &PlayerAction) -> ActionKind {
         | PlayerAction::PurgeVirusCounters => ActionKind::BasicClickAction,
 
         // `InitiateRun` is a click action, but the run it starts owns the
-        // checkpoints from here on — the `active_run` guard would reject it
-        // anyway; listed explicitly so the intent is recorded.
+        // checkpoints from here on. Classifying it `Other` also keeps the
+        // central run guard off it: starting a second run is
+        // `initiate_run`'s own `RunAlreadyInProgress`, a more specific
+        // rejection than `ActionBlockedByActiveRun`.
         PlayerAction::InitiateRun { .. }
         // Run sub-actions, not actions.
         | PlayerAction::ContinueRun
@@ -1526,7 +1555,7 @@ mod tests {
         AbilityDef, BoostDuration, CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount,
         SubroutineDef, TriggeredEffect,
     };
-    use crate::rules::run::{EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
+    use crate::rules::run::{AccessPhase, EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{AgendaPoints, Clicks, Credits, PaidAbilityWindow, PlayerResources, WindowCheckpoint};
 
     /// An empty registry, for every test that doesn't exercise
@@ -4496,11 +4525,15 @@ mod tests {
         assert_eq!(state.corp.resources.clicks, Clicks(1), "two of three clicks spent");
     }
 
+    /// A run is an action already in progress, so no *basic* action may
+    /// begin until it resolves — while everything the run itself is made of
+    /// stays available. Pins both halves of that boundary.
     #[test]
-    fn no_post_action_window_mid_run() {
+    fn basic_click_actions_are_rejected_mid_run() {
         let (mut state, registry) = corp_turn_with_runner_paid_ability(5);
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(3);
+        state.runner.stack = vec![CardId("stack_card_0".to_string())];
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![test_ice("ice_wall", 1, 1, true)],
@@ -4508,11 +4541,86 @@ mod tests {
             ..Default::default()
         });
 
-        let (next, _events) =
-            apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner })
-                .expect("gaining a credit mid-run is legal");
+        for action in [PlayerAction::GainCreditClick { side: Side::Runner }, PlayerAction::DrawCardClick] {
+            assert!(
+                matches!(
+                    apply_action(&state, &registry, action.clone()),
+                    Err(RulesError::ActionBlockedByActiveRun)
+                ),
+                "{action:?} should be blocked while a run is in progress"
+            );
+        }
 
+        // The run's own sub-actions are untouched — the guard suspends
+        // actions, not the run.
+        assert!(apply_action(&state, &registry, PlayerAction::ContinueRun).is_ok());
+        assert!(apply_action(&state, &registry, PlayerAction::JackOut).is_ok());
+
+        // And so is a paid ability, which is what a run's windows are for.
+        let (next, _events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { card_id: CardId("pennyshaver".to_string()), ability_index: 0 },
+        )
+        .expect("a paid ability stays usable mid-run");
+        assert_eq!(next.runner.resources.credits, Credits(5), "spent 1 on the ability, gained 1 back");
         assert!(next.paid_ability_window.is_none(), "the run owns its own checkpoints");
+    }
+
+    /// The states the old bug actually lived in: `paid_ability::
+    /// open_window_if_at_checkpoint` deliberately does not open a window at
+    /// `RunPhase::Initiation`, `RunPhase::Success` or
+    /// `AccessPhase::SelectNextCard`, so `require_no_window` never covered
+    /// them and basic clicks fell straight through. Walked as a real run
+    /// rather than hand-built, so the phases are ones the engine reaches.
+    #[test]
+    fn no_basic_action_is_legal_at_a_runs_non_checkpoint_phases() {
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("archived_a", Side::Corp, CardType::Asset, 0, None));
+        registry.insert(test_card("archived_b", Side::Corp, CardType::Asset, 0, None));
+
+        let mut state = runner_state(4, 2, 0);
+        state.runner.resources.credits = Credits(5);
+        state.corp.archives = vec![
+            ArchivedCard { card: CardId("archived_a".to_string()), facedown: false },
+            ArchivedCard { card: CardId("archived_b".to_string()), facedown: false },
+        ];
+
+        let basic_actions =
+            [PlayerAction::GainCreditClick { side: Side::Runner }, PlayerAction::DrawCardClick];
+        let assert_all_blocked = |state: &GameState, at: &str| {
+            for action in &basic_actions {
+                assert!(
+                    matches!(
+                        apply_action(state, &registry, action.clone()),
+                        Err(RulesError::ActionBlockedByActiveRun)
+                    ),
+                    "{action:?} should be blocked at {at}"
+                );
+            }
+        };
+
+        // An ICE-less Archives run: Initiation, then Success, then
+        // SelectNextCard with two agendas to choose between.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives })
+            .expect("initiate run");
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Initiation);
+        assert!(state.paid_ability_window.is_none(), "Initiation is not a checkpoint");
+        assert_all_blocked(&state, "RunPhase::Initiation");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success);
+        assert!(state.paid_ability_window.is_none(), "Success is not a checkpoint");
+        assert_all_blocked(&state, "RunPhase::Success");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open access");
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(matches!(
+            state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
+            AccessPhase::SelectNextCard { .. }
+        ));
+        assert!(state.paid_ability_window.is_none(), "SelectNextCard is not a checkpoint");
+        assert_all_blocked(&state, "AccessPhase::SelectNextCard");
     }
 
     #[test]

@@ -342,18 +342,14 @@ fn a_corp_that_cannot_afford_snare_is_not_offered_the_option() {
     // — the view-based one runs System Gateway sample decks only — so this
     // stands in for coverage they cannot give this path.
     //
-    // Asserted as "the Runner is not offered the decision" rather than "the
-    // Runner has nothing to do": basic click actions are legal mid-run
-    // today (`engine::draw_card_click` guards on phase and windows but not
-    // on `active_run`), which is a separate, pre-existing question about
-    // acting during a run and not this trigger's to answer.
+    // The Runner has nothing to do at all, not merely "isn't offered the
+    // decision" — an active run suspends every basic action
+    // (`engine::apply_action`'s `ActionBlockedByActiveRun` guard), so the
+    // whole seat is idle while the Corp owes this one.
     let runner_legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
     assert!(
-        !runner_legal.iter().any(|a| matches!(
-            a,
-            PlayerAction::PayAccessTrigger { .. } | PlayerAction::DeclineAccessTrigger { .. }
-        )),
-        "Snare!'s decision belongs to the Corp, not the Runner: {runner_legal:?}"
+        runner_legal.is_empty(),
+        "Snare!'s decision belongs to the Corp, and the Runner cannot act around it: {runner_legal:?}"
     );
 }
 
