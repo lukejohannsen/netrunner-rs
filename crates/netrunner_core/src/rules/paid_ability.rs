@@ -5,6 +5,7 @@
 //! model and `PlayerAction::PassPriority`'s for the player-facing contract.
 
 use crate::cards::CardRegistry;
+use crate::dsl::{CardId, Trigger};
 use crate::rules::ability;
 use crate::rules::damage;
 use crate::rules::error::RulesError;
@@ -156,7 +157,67 @@ fn close_window(
         }
         WindowCheckpoint::EndOfTurn { side } => turn::finish_end_turn(state, side, registry),
         WindowCheckpoint::Prevention => close_prevention_window(state, registry),
+        WindowCheckpoint::PostAction { side } => {
+            // Nothing to resume — the window never changed the phase, and
+            // the acting player simply carries on with their turn. Set it
+            // explicitly anyway rather than relying on that, matching the
+            // `StartOfTurn` arm.
+            state.phase = GamePhase::Action(side);
+            Ok(Vec::new())
+        }
     }
+}
+
+/// Whether `side` has any `Trigger::Paid` ability they could actually
+/// activate right now — their requirement met and their cost affordable.
+///
+/// The gate on `WindowCheckpoint::PostAction`. Without it every basic
+/// action would cost both players a `PassPriority` whether or not anyone
+/// had anything to do, roughly doubling the length of a game.
+///
+/// Deliberately **not** implemented by probing `legal_actions`: that calls
+/// `apply_action`, which is where the window is opened, so it would recur
+/// without bound. This asks the same question directly instead —
+/// `check_requirement` plus `ability::cost_is_affordable`, neither of which
+/// mutates or re-enters the engine.
+///
+/// It over-approximates in one direction on purpose: it does not evaluate
+/// the effect, so an ability that would fail at resolution still counts.
+/// That opens an occasional empty window (harmless — two passes close it),
+/// whereas under-approximating would silently deny a player a window they
+/// were entitled to. The reason this is *affordable* at all is
+/// `EffectRequirement::DuringEncounter`: before it, every icebreaker in the
+/// rig answered "yes" here on every action of every turn.
+pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry, side: Side) -> bool {
+    active_cards_of(state, side).into_iter().any(|card_id| {
+        let Some(card) = registry.get(&card_id) else { return false };
+        card.abilities.iter().any(|ability| {
+            ability.trigger == Trigger::Paid
+                && ability
+                    .requirement
+                    .as_ref()
+                    .is_none_or(|req| ability::check_requirement(state, req, side, Some(&card_id), registry).is_ok())
+                && ability
+                    .cost
+                    .as_ref()
+                    .is_none_or(|cost| ability::cost_is_affordable(state, side, cost, Some(&card_id)))
+        })
+    })
+}
+
+/// Every card `side` could activate a paid ability from: their rezzed
+/// installs (Corp) or rig (Runner), plus their identity.
+fn active_cards_of(state: &GameState, side: Side) -> Vec<CardId> {
+    let mut cards: Vec<CardId> = match side {
+        Side::Corp => state.corp.installed.iter().filter(|c| c.rezzed).map(|c| c.card.clone()).collect(),
+        Side::Runner => state.runner.rig.iter().map(|c| c.card.clone()).collect(),
+    };
+    let identity = match side {
+        Side::Corp => state.corp.identity.clone(),
+        Side::Runner => state.runner.identity.clone(),
+    };
+    cards.extend(identity);
+    cards
 }
 
 /// `close_window`'s `WindowCheckpoint::Prevention` arm: applies whatever's

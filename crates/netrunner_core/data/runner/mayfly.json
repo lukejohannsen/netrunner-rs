@@ -18,7 +18,8 @@
             "Fixed": 1
           }
         }
-      }
+      },
+      "requirement": "DuringEncounter"
     },
     {
       "trigger": "Paid",
@@ -30,7 +31,8 @@
           "amount": 1,
           "duration": "Encounter"
         }
-      }
+      },
+      "requirement": "DuringEncounter"
     }
   ],
   "triggers": [

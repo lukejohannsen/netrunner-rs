@@ -511,6 +511,19 @@ pub enum WindowCheckpoint {
     /// `DealDamage`/`TrashCard` arms). Closing applies whatever's left
     /// unprevented via `paid_ability::close_window`'s `Prevention` arm.
     Prevention,
+    /// Opened after `side` takes an ordinary basic click action, so their
+    /// **opponent** gets a chance to use a paid ability before play
+    /// continues. Closing just restores `GamePhase::Action(side)` — there
+    /// is nothing to resume, unlike every other checkpoint.
+    ///
+    /// `side` is the *acting* player, not the one this window exists for.
+    /// The active player needs no window of their own: `activate_ability`
+    /// already permits their paid abilities throughout `Action(side)`. So
+    /// this checkpoint's whole purpose is the opponent's opportunity, and
+    /// it is opened **only when they actually have a usable paid ability**
+    /// (`paid_ability::has_usable_paid_ability`) — otherwise every click
+    /// action would cost both players a `PassPriority` for nothing.
+    PostAction { side: Side },
 }
 
 /// A Paid Ability Window (PAW) — a priority-passing sub-loop that pauses the

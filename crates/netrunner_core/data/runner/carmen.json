@@ -24,7 +24,8 @@
           },
           "restrict_to": "Sentry"
         }
-      }
+      },
+      "requirement": "DuringEncounter"
     },
     {
       "trigger": "Paid",
@@ -36,7 +37,8 @@
           "amount": 3,
           "duration": "Encounter"
         }
-      }
+      },
+      "requirement": "DuringEncounter"
     }
   ],
   "numeric_id": 30015,
