@@ -1,11 +1,16 @@
 //! PUCT search over `netrunner_core::rules::ActionSpace`'s fixed
 //! `0..ActionSpace::SIZE` index space, backed by a pluggable
 //! `crate::policy::PolicyEvaluator` instead of `crate::mcts::MctsAgent`'s
-//! random-rollout leaf evaluation. Each `PuctNode` expands lazily into
-//! `Edge`s keyed by `ActionSpace` index (only the currently-legal ones, per
-//! `get_action_mask`), decoded to a concrete `PlayerAction` via
+//! random-rollout leaf evaluation. Each `PuctNode` below the root expands
+//! lazily into `Edge`s over the currently-legal `ActionSpace` indices per
+//! `get_action_mask`, decoded to a concrete `PlayerAction` via
 //! `ActionSpace::action_at` and applied via `GameState::step` exactly once
 //! a search actually needs to descend through them.
+//!
+//! The **root** is the exception, deliberately: its edges come from the
+//! caller's `view.legal_actions` rather than from the sample's own mask,
+//! because that list is what `search` reports its results over. See
+//! `PuctNode::expand_root`.
 //!
 //! Like `MctsAgent`, this is Information Set search: `PuctAgent::
 //! select_action` determinizes one concrete `GameState` sample from the
@@ -28,7 +33,14 @@ use crate::determinize::determinize;
 use crate::policy::PolicyEvaluator;
 
 struct Edge {
-    index: usize,
+    /// This edge's `ActionSpace` slot *in its own node's state*. `None`
+    /// only ever happens at the root, whose edges come from the caller's
+    /// `view.legal_actions` (real state) while the node itself holds a
+    /// determinized sample: an action naming a card the sample doesn't
+    /// have encodes to nothing here. The edge is still searched — it is a
+    /// real option for the caller — it just contributes no prior and no
+    /// `visit_counts` slot.
+    index: Option<usize>,
     action: PlayerAction,
     prior: f32,
     visits: u32,
@@ -65,7 +77,50 @@ impl PuctNode {
             .map(|(index, _)| {
                 let action = ActionSpace::action_at(&self.state, index)
                     .expect("get_action_mask's true entries always decode via action_at");
-                Edge { index, action, prior: priors[index], visits: 0, total_value: 0.0, child: None }
+                Edge { index: Some(index), action, prior: priors[index], visits: 0, total_value: 0.0, child: None }
+            })
+            .collect();
+        self.expanded = true;
+        value
+    }
+
+    /// Root expansion: `edges` come from the caller's own `actions` —
+    /// `view.legal_actions`, computed against the **real** state — rather
+    /// than from `get_action_mask` over this node's determinized sample.
+    ///
+    /// This is the one place the two must not be allowed to diverge.
+    /// `search` reports its results over `view.legal_actions`, so an
+    /// option the caller may legally submit has to be an edge here or it
+    /// is silently unreportable; deriving the root's candidates from the
+    /// sample instead made the reported set an *intersection* of two
+    /// independently-computed legal sets, which can be — and in self-play
+    /// was — empty. Every approximation `determinize` makes (a resampled
+    /// hidden card, a counter it doesn't carry) deletes candidates that
+    /// way. `MctsAgent::new_root` has always seeded from the caller's list
+    /// for the same reason; this brings PUCT in line.
+    ///
+    /// A candidate that is illegal *in the sample* is kept, not dropped:
+    /// `simulate`'s `step` failure path already turns it into a dead
+    /// branch carrying a value, exactly as `MctsAgent` does.
+    fn expand_root(
+        &mut self,
+        actions: &[PlayerAction],
+        registry: &CardRegistry,
+        evaluator: &dyn PolicyEvaluator,
+    ) -> f32 {
+        let (priors, value) = evaluator.evaluate(&self.state, registry);
+        debug_assert_eq!(priors.len(), ActionSpace::SIZE, "PolicyEvaluator must return ActionSpace::SIZE priors");
+
+        // A uniform stand-in for a candidate that doesn't encode against
+        // the sample, so it competes on roughly even terms rather than
+        // being frozen out by a zero prior it didn't earn.
+        let uniform_prior = 1.0 / actions.len().max(1) as f32;
+        self.edges = actions
+            .iter()
+            .map(|action| {
+                let index = ActionSpace::index_of(&self.state, action);
+                let prior = index.map_or(uniform_prior, |index| priors[index]);
+                Edge { index, action: action.clone(), prior, visits: 0, total_value: 0.0, child: None }
             })
             .collect();
         self.expanded = true;
@@ -88,15 +143,6 @@ impl PuctNode {
             .expect("select_edge is only called on an expanded node with at least one edge")
     }
 
-    /// The `(visits, total_value)` PUCT has accumulated for `action` at
-    /// this node, looked up via `ActionSpace::index_of` rather than by
-    /// scanning for `PlayerAction` equality — the fixed-index bridge this
-    /// module exists to demonstrate. `None` if `action` isn't one of this
-    /// node's legal edges (never expanded, or not legal here).
-    pub fn stats_for(&self, action: &PlayerAction) -> Option<(u32, f64)> {
-        let index = ActionSpace::index_of(&self.state, action)?;
-        self.edges.iter().find(|edge| edge.index == index).map(|edge| (edge.visits, edge.total_value))
-    }
 }
 
 fn puct_score(edge: &Edge, sqrt_parent_visits: f64, c_puct: f64) -> f64 {
@@ -238,39 +284,67 @@ impl PuctAgent {
         self.seed = self.seed.wrapping_add(1);
         let sample = determinize(view, registry, &mut rng);
 
+        // Expanded here rather than by the first `simulate`, because only
+        // the root may be seeded from `view.legal_actions` — see
+        // `expand_root`. Counted as one visit, the same bookkeeping
+        // `simulate`'s own expansion branch does, so `puct_score`'s
+        // `sqrt(N_parent)` starts from a visited parent.
         let mut root = PuctNode::new(sample);
+        root.expand_root(&view.legal_actions, registry, self.evaluator.as_ref());
+        root.visits = 1;
         for _ in 0..self.config.iterations {
             simulate(&mut root, registry, self.evaluator.as_ref(), self.side, self.config.c_puct, self.config.max_depth);
         }
 
-        // Read root visit/value stats back out via `stats_for` (indexed
-        // through `ActionSpace::index_of`) rather than iterating
-        // `root.edges` directly — walking the caller's own already-
-        // side-filtered `view.legal_actions` is the authoritative
-        // candidate list, matching `MctsAgent::new_root`'s same choice to
-        // trust it over recomputing legality.
+        // One `ActionStat` per `view.legal_actions` entry, always: the
+        // caller's list is the authoritative candidate set (matching
+        // `MctsAgent::new_root`), and `expand_root` made it the root's
+        // edge set, so every entry has stats to report even if the search
+        // never descended it. `index` is this action's slot *in the
+        // determinized sample* and can be absent — see `Edge::index`; such
+        // an action still gets a stat, it just claims no `visit_counts`
+        // slot. Callers recording a policy target should re-index against
+        // whatever state that target is paired with rather than reusing
+        // these; see `netrunner_selfplay`.
         let mut visit_counts = vec![0u32; ActionSpace::SIZE];
-        let actions: Vec<ActionStat> = view
-            .legal_actions
+        let actions: Vec<ActionStat> = root
+            .edges
             .iter()
-            .filter_map(|action| {
-                let index = ActionSpace::index_of(&root.state, action)?;
-                let (visits, total_value) = root.stats_for(action)?;
-                visit_counts[index] = visits;
-                Some(ActionStat { index, action: action.clone(), visits, total_value })
+            .map(|edge| {
+                if let Some(index) = edge.index {
+                    visit_counts[index] = edge.visits;
+                }
+                ActionStat {
+                    index: edge.index,
+                    action: edge.action.clone(),
+                    visits: edge.visits,
+                    total_value: edge.total_value,
+                }
             })
             .collect();
 
+        debug_assert_eq!(
+            actions.len(),
+            view.legal_actions.len(),
+            "search must report every action the caller may submit"
+        );
         PuctSearchStats { visit_counts, actions }
     }
 }
 
-/// One root edge's outcome from `PuctAgent::search`: which `ActionSpace`
-/// index/`PlayerAction` it is, and how many visits/how much total value
-/// PUCT accumulated on it.
+/// One root edge's outcome from `PuctAgent::search`: which
+/// `PlayerAction` it is, how many visits/how much total value PUCT
+/// accumulated on it, and its `ActionSpace` slot.
 #[derive(Debug, Clone)]
 pub struct ActionStat {
-    pub index: usize,
+    /// This action's slot **in the determinized sample the search ran
+    /// on** — not in the caller's real state, and the two spaces do not
+    /// generally agree (`determinize` resamples hidden zones and rebuilds
+    /// `corp.installed` in view order). `None` when the action doesn't
+    /// encode against the sample at all. A caller pairing a policy target
+    /// with a real-state observation must re-index `action` itself rather
+    /// than reuse this.
+    pub index: Option<usize>,
     pub action: PlayerAction,
     pub visits: u32,
     pub total_value: f64,
@@ -279,10 +353,13 @@ pub struct ActionStat {
 /// Full result of one `PuctAgent::search` call.
 #[derive(Debug, Clone)]
 pub struct PuctSearchStats {
-    /// Length `ActionSpace::SIZE`; zero everywhere except the indices
-    /// covered by `actions` below.
+    /// Length `ActionSpace::SIZE`, indexed in the **determinized
+    /// sample's** space — see `ActionStat::index`. Zero everywhere except
+    /// the slots `actions` below could encode.
     pub visit_counts: Vec<u32>,
-    /// One entry per `view.legal_actions` that the root actually searched.
+    /// Exactly one entry per `view.legal_actions` entry, in that order —
+    /// `search` reports every action the caller may submit, with zero
+    /// visits for one the search never descended.
     pub actions: Vec<ActionStat>,
 }
 
@@ -309,10 +386,12 @@ impl BotAgent for PuctAgent {
 mod tests {
     use super::*;
     use crate::policy::UniformPolicyEvaluator;
-    use netrunner_core::dsl::{CardDefinition, CardId, CardType};
+    use netrunner_core::dsl::{CardDefinition, CardId, CardType, Cost, Effect, IceType, SubroutineDef};
     use netrunner_core::rules::{
-        legal_actions, AgendaPoints, Clicks, CorpState, Credits, GamePhase, InstalledCard, MemoryUnits,
-        PlayerResources, RunnerState, ServerId,
+        legal_actions, AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits,
+        EncounteredSubroutine, GamePhase, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits,
+        PaidAbilityWindow, PlayerResources, PublicAccessPhase, RunIce, RunPhase, RunState, RunnerState,
+        ServerId, SubroutineStatus, WindowCheckpoint,
     };
     use netrunner_core::view::build_client_view;
 
@@ -450,8 +529,251 @@ mod tests {
         assert!(actual.is_empty(), "expand() produced edges missing from legal_actions");
     }
 
+    /// The invariant `search` rests on, tested where it lives: a caller
+    /// action that is *illegal in the sample* is still an edge.
+    ///
+    /// Root edges used to come from `get_action_mask` over the sample, so
+    /// such an action simply had no edge and vanished from the results —
+    /// with every result gone, self-play panicked. Kept as a dead branch
+    /// instead, exactly as `MctsAgent` keeps one (`mcts.rs`'s `Err(_) =>
+    /// evaluate_state` arm).
     #[test]
-    fn stats_for_reports_visits_after_search_for_the_chosen_action() {
+    fn expand_root_keeps_a_candidate_the_sample_rejects() {
+        let registry = CardRegistry::new();
+        let mut state = GameState::new(0);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(1);
+
+        // Legal here; and one that certainly is not — the Runner has no
+        // clicks, and it is not their phase.
+        let legal = PlayerAction::GainCreditClick { side: Side::Corp };
+        let illegal = PlayerAction::DrawCardClick;
+        assert!(legal_actions(&state, &registry).contains(&legal));
+        assert!(!legal_actions(&state, &registry).contains(&illegal));
+
+        let mut root = PuctNode::new(state);
+        root.expand_root(
+            &[legal.clone(), illegal.clone()],
+            &registry,
+            &UniformPolicyEvaluator::new(Side::Corp),
+        );
+
+        let edges: Vec<&PlayerAction> = root.edges.iter().map(|edge| &edge.action).collect();
+        assert_eq!(edges, vec![&legal, &illegal], "both candidates must survive, in the caller's order");
+    }
+
+    /// A run whose accessed card the *Corp* cannot see: the view masks the
+    /// identity (`mask_run_state`'s `card_visible` is false off Archives),
+    /// so `determinize` samples some other card into the parked decision.
+    /// The Corp's real legal actions still name the true card.
+    ///
+    /// This is the shape that used to empty `search`'s results: the root
+    /// was expanded from the *sample's* legal actions and the caller's
+    /// were then looked up in it, so a divergence between the two dropped
+    /// options rather than merely mis-valuing them. Nothing here asserts
+    /// the sample agrees with reality — it cannot, that is the point of
+    /// hiding the card — only that `search` still reports every action its
+    /// caller is allowed to submit.
+    #[test]
+    fn search_reports_every_legal_action_even_when_the_sample_disagrees() {
+        let mut registry = CardRegistry::new();
+        registry.insert(blank_card("snare", CardType::Asset));
+        for filler in ["other_asset_a", "other_asset_b", "other_asset_c"] {
+            registry.insert(blank_card(filler, CardType::Asset));
+        }
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.corp.resources.credits = Credits(9);
+        state.runner.resources.clicks = Clicks(3);
+        state.corp.r_and_d = vec![CardId("other_asset_a".to_string()), CardId("other_asset_b".to_string())];
+        state.active_run = Some(RunState {
+            server: ServerId::Remote(0),
+            phase: RunPhase::AccessingCard,
+            access_state: Some(AccessState {
+                server: ServerId::Remote(0),
+                phase: AccessPhase::PendingInteractiveTrigger {
+                    card_id: CardId("snare".to_string()),
+                    cost: Cost::Credits(4),
+                    decider: Side::Corp,
+                    can_pay: true,
+                },
+                ..Default::default()
+            }),
+            jack_out_permitted: true,
+            ..Default::default()
+        });
+
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(view.legal_actions.len(), 2, "the Corp may pay or decline: {:?}", view.legal_actions);
+        // The premise: the Corp's view really does hide which card this is.
+        let masked = view.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert!(
+            matches!(&masked.phase, PublicAccessPhase::PendingInteractiveTrigger { card: None, .. }),
+            "off-Archives access must stay masked from the Corp, or this test proves nothing"
+        );
+
+        let mut agent = small_agent(Side::Corp);
+        let stats = agent.search(&view, &registry);
+
+        assert_eq!(stats.actions.len(), view.legal_actions.len());
+        for action in &view.legal_actions {
+            assert!(
+                stats.actions.iter().any(|stat| stat.action == *action),
+                "search dropped {action:?} from its results: {:?}",
+                stats.actions
+            );
+        }
+    }
+
+    /// The state that actually panicked self-play, reduced: *Tāo
+    /// Salonga*'s "swap two installed Barriers" parks a
+    /// `ChooseCards { source: OpponentInstalled }`, and
+    /// `pending_choice::zone_card_ids` reads the real `corp.installed`, so
+    /// the Runner is offered `ToggleCardSelection` naming an **unrezzed**
+    /// ICE their own view masks. `determinize` resamples that ICE to
+    /// something else, so the caller's actions and the sample's have
+    /// nothing in common at all — `ToggleCardSelection` encodes against
+    /// nothing, and `ConfirmCardSelection` is rejected because `selected`
+    /// names cards the sample lacks. That disjointness is what emptied
+    /// `search`'s results.
+    ///
+    /// `reseat_selectable_cards` repairs this class for `OwnRAndD`/
+    /// `OwnStack` but not `OpponentInstalled`; the root seeding is what
+    /// makes the divergence survivable wherever it is left.
+    #[test]
+    fn search_survives_a_selection_over_masked_opponent_installs() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef};
+        use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+
+        let mut registry = CardRegistry::new();
+        for id in ["palisade", "ballista", "funhouse", "tithe", "whitespace"] {
+            let mut ice = blank_card(id, CardType::Ice(IceType::Barrier));
+            ice.strength = Some(2);
+            registry.insert(ice);
+        }
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.corp.installed = vec![
+            InstalledCard {
+                card: CardId("palisade".to_string()),
+                server: ServerId::Remote(1),
+                slot: InstallSlot::Ice,
+                rezzed: true,
+                ..Default::default()
+            },
+            // Unrezzed: masked from the Runner, and so resampled away.
+            InstalledCard {
+                card: CardId("ballista".to_string()),
+                server: ServerId::Hq,
+                slot: InstallSlot::Ice,
+                rezzed: false,
+                ..Default::default()
+            },
+        ];
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Runner,
+            source: CardZoneRef::OpponentInstalled,
+            filter: CardFilter::CardType(CardType::Ice(IceType::Barrier)),
+            min: 2,
+            max: 2,
+            reveal: false,
+            shuffle_after: false,
+            destination: None,
+            then: None,
+            selected: vec![CardId("palisade".to_string())],
+            source_card: None,
+            resume: PendingChoiceResume::None,
+        });
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(
+            view.legal_actions
+                .iter()
+                .any(|a| matches!(a, PlayerAction::ToggleCardSelection { card_id } if card_id.0 == "ballista")),
+            "the premise: the Runner is offered a card their own view masks — {:?}",
+            view.legal_actions
+        );
+
+        // Many samples: it must hold for every one, not most.
+        for seed in 0..25u64 {
+            let mut agent = PuctAgent::with_config(
+                Side::Runner,
+                seed,
+                UniformPolicyEvaluator::new(Side::Runner),
+                PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4 },
+            );
+            let stats = agent.search(&view, &registry);
+            assert_eq!(
+                stats.actions.len(),
+                view.legal_actions.len(),
+                "seed {seed}: search dropped an action the caller may submit"
+            );
+        }
+    }
+
+    /// The `MctsAgent` test of the same name, run against PUCT — it had no
+    /// mid-run coverage at all before.
+    #[test]
+    fn does_not_panic_mid_run_with_a_paid_ability_window_open() {
+        let mut registry = CardRegistry::new();
+        let mut breaker = blank_card("corroder", CardType::Program);
+        breaker.side = Side::Runner;
+        registry.insert(breaker);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![InstalledRunnerCard {
+            card: CardId("corroder".to_string()),
+            base_strength: 2,
+            ..Default::default()
+        }];
+        state.active_run = Some(RunState {
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce {
+                card_id: CardId("wall_of_static".to_string()),
+                current_strength: 3,
+                ice_type: IceType::Barrier,
+                subroutines: vec![EncounteredSubroutine {
+                    id: 0,
+                    definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun },
+                    status: SubroutineStatus::Pending,
+                }],
+                rezzed: true,
+            }],
+            ..Default::default()
+        });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Run,
+            return_phase: Box::new(state.phase),
+        });
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(!view.legal_actions.is_empty());
+
+        let mut agent = small_agent(Side::Runner);
+        let stats = agent.search(&view, &registry);
+        assert_eq!(stats.actions.len(), view.legal_actions.len());
+
+        let chosen = agent.select_action(&view, &registry);
+        assert!(view.legal_actions.contains(&chosen));
+    }
+
+    #[test]
+    fn search_accumulates_visits_on_the_actions_it_explored() {
         let registry = CardRegistry::new();
         let mut state = GameState::new(0);
         state.corp = empty_corp();
@@ -459,15 +781,23 @@ mod tests {
         state.corp.resources.clicks = Clicks(3);
         state.corp.resources.credits = Credits(5);
 
-        let mut root = PuctNode::new(state.clone());
-        let evaluator = UniformPolicyEvaluator::new(Side::Corp);
-        for _ in 0..40 {
-            simulate(&mut root, &registry, &evaluator, Side::Corp, 1.5, 8);
-        }
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let mut agent = PuctAgent::with_config(
+            Side::Corp,
+            0,
+            UniformPolicyEvaluator::new(Side::Corp),
+            PuctConfig { iterations: 40, ..PuctConfig::default() },
+        );
+        let stats = agent.search(&view, &registry);
 
-        let best = root.edges.iter().max_by_key(|edge| edge.visits).expect("root should have expanded edges");
-        let (visits, _total_value) = root.stats_for(&best.action).expect("stats_for should find the chosen edge");
-        assert!(visits > 0);
-        assert_eq!(visits, best.visits);
+        let total: u32 = stats.actions.iter().map(|stat| stat.visits).sum();
+        assert_eq!(total, 40, "every iteration descends exactly one root edge");
+        let best = stats.actions.iter().max_by_key(|stat| stat.visits).expect("search reports its actions");
+        assert!(best.visits > 0);
+        assert_eq!(
+            stats.visit_counts[best.index.expect("a plain Corp-turn action encodes against its own state")],
+            best.visits,
+            "visit_counts must agree with the per-action stats"
+        );
     }
 }

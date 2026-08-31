@@ -23,7 +23,7 @@ use rayon::prelude::*;
 use netrunner_bots::{encode_observation, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator};
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
-use netrunner_core::rules::{GamePhase, GameState, RulesError, Side};
+use netrunner_core::rules::{ActionSpace, GamePhase, GameState, RulesError, Side};
 use netrunner_session::{Seat, Session, SessionStep, SubmitError};
 
 use schema::{GameTrajectory, SelfPlayStep};
@@ -135,25 +135,62 @@ const MAX_GREEDY_REPEATS: usize = 8;
 /// away. Falling back to sampling keeps the escape probabilistic instead of
 /// forcing a specific action, so it perturbs the trajectory as little as
 /// possible.
+///
+/// `None` only if `actions` is empty, which `PuctAgent::search` no longer
+/// produces — it reports one stat per `view.legal_actions` entry. Returned
+/// as an `Option` rather than asserted anyway: this runs unattended for
+/// millions of games, and killing a whole training run over one
+/// unreachable-by-contract decision is the wrong trade. The caller plays a
+/// legal action and records nothing for that ply instead.
 fn choose_action<'a>(
     actions: &'a [ActionStat],
     ply: usize,
     temp_plies: usize,
     repeats: usize,
     rng: &mut StdRng,
-) -> &'a ActionStat {
+) -> Option<&'a ActionStat> {
+    if actions.is_empty() {
+        return None;
+    }
     if ply < temp_plies || repeats >= MAX_GREEDY_REPEATS {
         let weights: Vec<u32> = actions.iter().map(|stat| stat.visits).collect();
         if let Ok(distribution) = WeightedIndex::new(&weights) {
-            return &actions[distribution.sample(rng)];
+            return Some(&actions[distribution.sample(rng)]);
         }
         // Every action has zero visits, so visit-weighted sampling has
         // nothing to work with. Uniform choice still breaks the cycle.
         if repeats >= MAX_GREEDY_REPEATS {
-            return &actions[rng.random_range(0..actions.len())];
+            return Some(&actions[rng.random_range(0..actions.len())]);
         }
     }
-    actions.iter().max_by_key(|stat| stat.visits).expect("PuctAgent::search always returns at least one action")
+    actions.iter().max_by_key(|stat| stat.visits)
+}
+
+/// Re-keys a search's visit counts into `state`'s `ActionSpace` encoding.
+///
+/// `PuctSearchStats::visit_counts` is indexed in the *determinized
+/// sample's* space (see `ActionStat::index`), but a recorded policy target
+/// is consumed alongside an observation encoded from the real state, and
+/// `netrunner_gym` decodes indices against the real state too. Those spaces
+/// do not generally agree — `determinize` resamples hidden zones and
+/// rebuilds `corp.installed` in view order rather than install order — so
+/// reusing the search's own vector would label the target with slots that
+/// mean something else to every consumer.
+///
+/// Done here rather than inside `PuctAgent` deliberately: an agent sees
+/// only its `ClientView`, never the real `GameState`, and that boundary is
+/// what makes the bots honest. The harness legitimately holds both.
+///
+/// An action that doesn't encode against `state` contributes nothing; it
+/// cannot be named in a target whose vocabulary is `state`'s.
+fn policy_target_for(state: &GameState, actions: &[ActionStat]) -> Vec<f32> {
+    let mut visit_counts = vec![0u32; ActionSpace::SIZE];
+    for stat in actions {
+        if let Some(index) = ActionSpace::index_of(state, &stat.action) {
+            visit_counts[index] = stat.visits;
+        }
+    }
+    normalized_policy_target(&visit_counts)
 }
 
 /// The matchup this game plays: the one `--matchup` names, or the
@@ -215,12 +252,27 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
             Side::Runner => &mut runner_agent,
         };
         let stats = agent.search(&view, &registry);
-        let policy_target = normalized_policy_target(&stats.visit_counts);
-        let chosen = choose_action(&stats.actions, ply, cli.temp_plies, repeats, &mut rng);
-        repeats = if last_index == Some(chosen.index) { repeats + 1 } else { 0 };
-        last_index = Some(chosen.index);
+        // Both the target and `action_taken` are keyed in the real state's
+        // `ActionSpace`, matching `observation` above and what
+        // `netrunner_gym` decodes against — not the sample the search ran
+        // on. See `policy_target_for`.
+        let policy_target = policy_target_for(session.state(), &stats.actions);
 
-        steps.push(SelfPlayStep { observation, policy_target, action_taken: chosen.index, active_side: side as u8 });
+        let Some(chosen) = choose_action(&stats.actions, ply, cli.temp_plies, repeats, &mut rng) else {
+            // Unreachable by `search`'s contract. Play on rather than end
+            // the run; the ply simply contributes no training example.
+            session.submit(view.legal_actions[0].clone())?;
+            continue;
+        };
+        let chosen_index = ActionSpace::index_of(session.state(), &chosen.action);
+        repeats = if last_index.is_some() && last_index == chosen_index { repeats + 1 } else { 0 };
+        last_index = chosen_index;
+
+        // A step whose action has no slot in the real state's encoding
+        // can't be labelled, so it is played but not recorded.
+        if let Some(action_taken) = chosen_index {
+            steps.push(SelfPlayStep { observation, policy_target, action_taken, active_side: side as u8 });
+        }
 
         session.submit(chosen.action.clone())?;
         ply += 1;
@@ -253,4 +305,92 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     })?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use netrunner_bots::ActionStat;
+    use netrunner_core::cards::CardRegistry;
+    use netrunner_core::dsl::{CardDefinition, CardId, CardType};
+    use netrunner_core::rules::{InstallSlot, InstalledCard, PlayerAction, ServerId};
+
+    fn corp_card(id: &str) -> CardDefinition {
+        CardDefinition {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Corp,
+            card_type: CardType::Asset,
+            is_playable: true,
+            ..Default::default()
+        }
+    }
+
+    fn stat(action: PlayerAction, index: Option<usize>, visits: u32) -> ActionStat {
+        ActionStat { index, action, visits, total_value: 0.0 }
+    }
+
+    /// The policy target must be keyed in the *real* state's `ActionSpace`,
+    /// not the sample's. `ActionStat::index` is the sample's slot and the
+    /// two spaces disagree in general — `determinize` resamples hidden
+    /// zones and rebuilds `corp.installed` in view order — so reusing it
+    /// would label a training example with a slot meaning something else
+    /// to `netrunner_gym` and to the observation beside it.
+    #[test]
+    fn the_policy_target_is_keyed_in_the_real_states_action_space() {
+        let mut registry = CardRegistry::new();
+        registry.insert(corp_card("asset_a"));
+        registry.insert(corp_card("asset_b"));
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.installed = vec![
+            InstalledCard {
+                card: CardId("asset_a".to_string()),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Root,
+                ..Default::default()
+            },
+            InstalledCard {
+                card: CardId("asset_b".to_string()),
+                server: ServerId::Remote(1),
+                slot: InstallSlot::Root,
+                ..Default::default()
+            },
+        ];
+
+        let action = PlayerAction::RezIce { ice_id: CardId("asset_b".to_string()) };
+        let real_index = ActionSpace::index_of(&state, &action).expect("encodes against the real state");
+        // A deliberately wrong slot, standing in for the sample's own
+        // encoding of the same action.
+        let sample_index = real_index + 1;
+
+        let target = policy_target_for(&state, &[stat(action, Some(sample_index), 7)]);
+        assert_eq!(target[real_index], 1.0, "the real state's slot carries the target");
+        assert_eq!(target[sample_index], 0.0, "the sample's slot must not");
+    }
+
+    /// An action with no slot in the real state contributes nothing rather
+    /// than mislabelling one, and leaves a valid (if empty) distribution.
+    #[test]
+    fn an_action_that_does_not_encode_contributes_nothing() {
+        let registry = CardRegistry::new();
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        let _ = &registry;
+
+        let action = PlayerAction::RezIce { ice_id: CardId("not_installed".to_string()) };
+        assert!(ActionSpace::index_of(&state, &action).is_none());
+
+        let target = policy_target_for(&state, &[stat(action, Some(3), 9)]);
+        assert_eq!(target.len(), ActionSpace::SIZE);
+        assert!(target.iter().all(|p| *p == 0.0));
+    }
+
+    #[test]
+    fn choose_action_reports_no_choice_rather_than_panicking_on_an_empty_list() {
+        let mut rng = StdRng::seed_from_u64(0);
+        assert!(choose_action(&[], 0, 8, 0, &mut rng).is_none());
+        assert!(choose_action(&[], 99, 8, MAX_GREEDY_REPEATS, &mut rng).is_none());
+    }
 }
