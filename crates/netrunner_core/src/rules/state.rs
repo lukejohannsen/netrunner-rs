@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use serde::{Deserialize, Serialize};
 
 use crate::dsl::{CardFilter, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, Trigger};
+use crate::rules::event::GameEvent;
 use crate::rules::run::{RunState, ServerId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -816,6 +817,18 @@ pub struct DeferredTrigger {
     /// counter on *that* program. `None` is the ordinary "acts on itself"
     /// case.
     pub target: Option<CardId>,
+    /// The event that fired this trigger, carried across the defer boundary
+    /// so `dispatcher::fire_one` can rebuild the same
+    /// `ability::ResolutionContext` the trigger would have had if it had
+    /// resolved immediately.
+    ///
+    /// Without it, a deferred trigger would resolve with no triggering
+    /// event and silently mis-answer any requirement that reads one — e.g.
+    /// `WasFirstAdvancementThisCard` would report "not first" for an
+    /// advancement that was. `None` only for a trigger with no originating
+    /// event.
+    #[serde(default)]
+    pub event: Option<GameEvent>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -851,15 +864,6 @@ pub struct GameState {
     /// `PendingDecision`'s doc comment.
     #[serde(default)]
     pub pending_decision: Option<PendingDecision>,
-    /// The `CardId`s `damage::apply_damage` discarded on its most recent
-    /// call — overwritten (not appended) every call, empty if nothing was
-    /// discarded (an empty deck, or `amount == 0`). Backs
-    /// `EffectRequirement::LastDamageTrashedOddCostCard` — e.g. Diviner's
-    /// subroutine, which needs to know what its own preceding `DealDamage`
-    /// (in the same `Sequence`) just discarded, information `Sequence`'s
-    /// evaluation loop doesn't otherwise thread between effects.
-    #[serde(default)]
-    pub last_discarded_cards: Vec<CardId>,
     /// A snapshot of the most recently concluded run (its normal
     /// `RunCompleted`/`RunJackedOut`/`RunEndedByEffect` conclusions only —
     /// see `dispatcher::dispatch_event`'s `Trigger::OnRunEnded` arm doc
@@ -868,17 +872,21 @@ pub struct GameState {
     /// and `Effect::GainCreditsPerCardAccessedThisRun` — e.g. Zahya
     /// Sadeghi, AMAZE Amusements. Overwritten each time a run concludes;
     /// `None` before any run has ever finished.
+    ///
+    /// **This is real state, not scratchpad — it belongs here.** Its two
+    /// siblings (`last_discarded_cards`, `last_advancement_was_first`) were
+    /// transient and have moved to `ability::ResolutionContext`; this one
+    /// cannot follow them, for two independent reasons:
+    ///
+    /// - `Trigger::OnRunEnded` can be deferred into `deferred_triggers` and
+    ///   fire on a **later `PlayerAction`**, by which point any resolution
+    ///   context is long gone. Multiple rig cards reacting to one run is
+    ///   ordinary, and that is exactly what parks a `ChooseTriggerOrder`.
+    /// - It is the dispatcher's only handle on `persistent_after_trash`
+    ///   cards the Runner trashed *during* the run, since `active_run` is
+    ///   already cleared when `OnRunEnded` dispatches.
     #[serde(default)]
     pub last_completed_run: Option<CompletedRun>,
-    /// Whether `engine::advance_card`'s most recent call was the first
-    /// advancement the targeted card had ever received (`advancement_tokens
-    /// == 1` immediately after incrementing) — overwritten every call, same
-    /// "transient state field, not a threaded event payload" shape as
-    /// `last_discarded_cards`. Backs `EffectRequirement::
-    /// WasFirstAdvancementThisCard` — e.g. Weyland Consortium: Built to
-    /// Last. `false` before any card has ever been advanced.
-    #[serde(default)]
-    pub last_advancement_was_first: bool,
     /// Triggers owed but not yet fired, because an earlier trigger in the
     /// same dispatch parked something blocking. Drained by
     /// `dispatcher::drain_deferred_triggers` from `engine::apply_action`,
@@ -921,9 +929,7 @@ impl Default for GameState {
             pending_prevention: None,
             pending_paid_choice: None,
             pending_decision: None,
-            last_discarded_cards: Vec::new(),
             last_completed_run: None,
-            last_advancement_was_first: false,
             deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,

@@ -258,7 +258,7 @@ fn try_replace_access(
         .take()
         .expect("just confirmed access_replacement is Some above");
 
-    let mut events = ability::evaluate_effect(state, &effect, None, registry)?;
+    let mut events = ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(None), registry)?;
     state.active_run = None;
     events.push(GameEvent::AccessReplaced { server });
     Ok(Some(events))
@@ -697,7 +697,7 @@ pub fn resolve_decline_to_avoid(
 
     let mut events = Vec::new();
     for effect in &effects {
-        events.extend(ability::evaluate_effect(state, effect, Some(card_id), registry)?);
+        events.extend(ability::evaluate_effect(state, effect, &mut ability::ResolutionContext::for_card(Some(card_id)), registry)?);
     }
     if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
         events.extend(finish);

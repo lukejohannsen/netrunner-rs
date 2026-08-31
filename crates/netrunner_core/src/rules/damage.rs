@@ -1,4 +1,4 @@
-use crate::dsl::DamageType;
+use crate::dsl::{CardId, DamageType};
 use crate::rules::event::GameEvent;
 use crate::rules::state::{GamePhase, GameState, Side};
 
@@ -22,15 +22,30 @@ use crate::rules::state::{GamePhase, GameState, Side};
 ///
 /// Never fails: mirrors `run::access_server`'s "never fails" convention —
 /// there's no illegal `(state, damage_type, amount)` combination to reject.
-pub fn apply_damage(state: &mut GameState, damage_type: DamageType, amount: usize) -> Vec<GameEvent> {
+///
+/// Returns the discarded cards alongside the events rather than recording
+/// them on `GameState`. Their only consumer is
+/// `EffectRequirement::LastDamageTrashedOddCostCard` (*Diviner*), which
+/// reads them from the `ability::ResolutionContext` of the very `Sequence`
+/// that dealt the damage — a strictly narrower lifetime than the old
+/// `GameState::last_discarded_cards` field, which outlived the resolution
+/// and could be read stale.
+///
+/// Returned explicitly rather than re-derived from the events: the
+/// flatline path empties the grip without emitting a `CardDiscarded` per
+/// card, so the event stream alone would under-report it.
+pub fn apply_damage(
+    state: &mut GameState,
+    damage_type: DamageType,
+    amount: usize,
+) -> (Vec<GameEvent>, Vec<CardId>) {
     if amount > state.runner.grip.len() {
         let discarded: Vec<_> = std::mem::take(&mut state.runner.grip);
-        state.last_discarded_cards = discarded.clone();
-        for card in discarded {
-            state.runner.heap.push(card);
+        for card in &discarded {
+            state.runner.heap.push(card.clone());
         }
         state.phase = GamePhase::GameOver(Side::Corp);
-        return vec![GameEvent::RunnerFlatlined, GameEvent::GameOver { winner: Side::Corp }];
+        return (vec![GameEvent::RunnerFlatlined, GameEvent::GameOver { winner: Side::Corp }], discarded);
     }
 
     if damage_type == DamageType::Brain {
@@ -38,16 +53,16 @@ pub fn apply_damage(state: &mut GameState, damage_type: DamageType, amount: usiz
     }
 
     let mut events = vec![GameEvent::DamageTaken { damage_type, amount }];
-    state.last_discarded_cards.clear();
+    let mut discarded = Vec::new();
     for _ in 0..amount {
         let roll = state.next_u64();
         let index = (roll as usize) % state.runner.grip.len();
         let card = state.runner.grip.remove(index);
         state.runner.heap.push(card.clone());
-        state.last_discarded_cards.push(card.clone());
+        discarded.push(card.clone());
         events.push(GameEvent::CardDiscarded { side: Side::Runner, card });
     }
-    events
+    (events, discarded)
 }
 
 #[cfg(test)]
@@ -111,7 +126,7 @@ mod tests {
         let mut state = game_state(grip_of(5), 0, 42);
         let original_grip: HashSet<CardId> = state.runner.grip.iter().cloned().collect();
 
-        let events = apply_damage(&mut state, DamageType::Net, 2);
+        let (events, returned_discards) = apply_damage(&mut state, DamageType::Net, 2);
 
         assert_eq!(state.runner.grip.len(), 3);
         assert_eq!(state.runner.heap.len(), 2);
@@ -123,6 +138,11 @@ mod tests {
         let discarded: HashSet<CardId> = state.runner.heap.iter().cloned().collect();
         assert!(remaining.is_disjoint(&discarded));
         assert_eq!(&remaining | &discarded, original_grip);
+
+        // The returned list is what `ability::ResolutionContext` records for
+        // `LastDamageTrashedOddCostCard`; it must be exactly what moved.
+        assert_eq!(returned_discards.len(), 2);
+        assert_eq!(returned_discards.iter().cloned().collect::<HashSet<_>>(), discarded);
 
         assert_eq!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 });
         assert_eq!(events.len(), 3);
@@ -158,7 +178,7 @@ mod tests {
         let mut state = game_state(grip_of(2), 0, 3);
         let original_grip = state.runner.grip.clone();
 
-        let events = apply_damage(&mut state, DamageType::Meat, 5);
+        let (events, returned_discards) = apply_damage(&mut state, DamageType::Meat, 5);
 
         assert!(state.runner.grip.is_empty());
         assert_eq!(state.runner.heap, original_grip);
@@ -167,6 +187,11 @@ mod tests {
             events,
             vec![GameEvent::RunnerFlatlined, GameEvent::GameOver { winner: Side::Corp }]
         );
+        // The flatline path emits no per-card `CardDiscarded`, so the
+        // returned list is the only report of what was dumped — the reason
+        // `apply_damage` returns it rather than leaving callers to derive
+        // it from the events.
+        assert_eq!(returned_discards, original_grip);
 
         let action = crate::rules::PlayerAction::GainCreditClick { side: Side::Runner };
         assert!(matches!(

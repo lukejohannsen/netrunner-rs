@@ -71,9 +71,20 @@ The candidate set for every event is **re-derived fresh from `GameState`** on ea
 
 ### Cross-Effect Context
 
-A `Sequence`'s evaluation loop has no mechanism to thread information from one effect to the next. Three fields on `GameState` — `last_discarded_cards`, `last_completed_run`, `last_advancement_was_first` — exist solely to work around that for specific cards.
+`ability::ResolutionContext` threads information an effect or requirement needs but cannot read from `GameState` — the acting card, the triggering event, and cards a `DealDamage` discarded earlier in the same `Sequence`. It is passed through `evaluate_effect` and `check_requirement`, built at the top of a resolution and dropped when it ends. It is never serialized.
 
-**They are capped debt, not a pattern.** The next card needing cross-effect context gets a proper resolution-context struct passed through `evaluate_effect`. See AGENTS.md's State Hygiene Rule.
+```
+apply_action
+ └─ handler ──► dispatch_event ──► process_card_triggers
+                                    │  builds ResolutionContext { acting_card, triggering_event }
+                                    └─ evaluate_effect ──► Sequence
+                                         effect 1 (DealDamage) ──► records ctx.damage_discarded
+                                         effect 2 (EffectIf)   ──► check_requirement reads it
+```
+
+**The dividing line is whether a value must survive a parked decision.** Within one resolution → the context. Readable by a *deferred* trigger on a later `PlayerAction` → `GameState`, because the context is gone by then. `last_completed_run` is the second case (deferred `OnRunEnded`, plus it is the dispatcher's only handle on `persistent_after_trash` cards once `active_run` is cleared) and is legitimate state, not debt. `DeferredTrigger::event` carries the triggering event across the defer boundary so a deferred trigger rebuilds the same context it would have had.
+
+See AGENTS.md's State Hygiene Rule.
 
 ---
 

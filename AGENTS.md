@@ -70,9 +70,11 @@ Adding an `Effect` or `EffectRequirement` variant is the expensive move: it grow
 
 ### State Hygiene Rule
 
-Cross-effect context does NOT belong as new public fields on `GameState`.
+Cross-effect context does NOT belong as new public fields on `GameState`. **`ability::ResolutionContext` is where it goes** — threaded through `evaluate_effect` and `check_requirement`, built at the top of a resolution and dropped when it ends. Add a field there, never a scratchpad field on `GameState`.
 
-`last_discarded_cards`, `last_completed_run`, and `last_advancement_was_first` exist because a `Sequence`'s evaluation loop has no way to thread information from one effect to the next. They are the capped debt, not the pattern. The next card needing this gets a proper resolution-context struct passed through `evaluate_effect` — not a fourth scratchpad field.
+It currently carries the acting card, the triggering event (if the resolution is a trigger), and any cards a `DealDamage` discarded earlier in the same `Sequence`. Before reaching for a new field, check whether the answer is already in the triggering event: `WasFirstAdvancementThisCard` needed no field at all, because `GameEvent::CardAdvanced` already carries `advancement_tokens`.
+
+**The test of where something belongs is whether it must survive a parked decision.** Anything read only within one resolution goes on the context. Anything a *deferred* trigger might read on a later `PlayerAction` has to be on `GameState`, because the context is gone by then — `last_completed_run` is exactly that case and legitimately stays a field. A deferred trigger rebuilds its context from `DeferredTrigger::event`, so keep that populated when queueing one.
 
 ### Testing Rule
 

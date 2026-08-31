@@ -15,6 +15,61 @@ use crate::rules::state::{
     TraceResume, TraceState, WindowCheckpoint,
 };
 
+/// Everything about the resolution *currently in flight* that an effect or
+/// requirement may need and cannot read from `GameState`.
+///
+/// **Transient by construction:** built at the top of a resolution, dropped
+/// when it ends, never serialized, never crossing a `PlayerAction`
+/// boundary. That is the whole point — it replaces
+/// `GameState::last_discarded_cards` and `last_advancement_was_first`,
+/// which outlived their resolutions and could be read stale.
+///
+/// Anything that must *survive* a parked decision belongs on `GameState`
+/// instead. `GameState::last_completed_run` is exactly that case and
+/// deliberately stays there: `Trigger::OnRunEnded` can be deferred into
+/// `GameState::deferred_triggers` and fire on a later `PlayerAction`, by
+/// which time any context built here is long gone.
+///
+/// This is the home AGENTS.md's State Hygiene Rule asks for. A new card
+/// needing resolution context adds a field here rather than a scratchpad
+/// field on `GameState`.
+#[derive(Debug, Default, Clone)]
+pub struct ResolutionContext<'a> {
+    /// Which card is resolving this — absorbed from `evaluate_effect`'s
+    /// former `acting_card` parameter rather than added alongside it, so
+    /// arity is unchanged. See `evaluate_effect`'s doc comment for what it
+    /// means per-effect.
+    pub acting_card: Option<&'a CardId>,
+    /// The event whose triggers are being dispatched, when this resolution
+    /// is a trigger rather than a directly activated ability. `None` for an
+    /// ability the player activated, a subroutine, or a cost payment.
+    ///
+    /// Read by `EffectRequirement::WasFirstAdvancementThisCard`, which
+    /// needs `GameEvent::CardAdvanced`'s `advancement_tokens` — the fact
+    /// the deleted `last_advancement_was_first` field existed to carry.
+    /// Generalizes: the next trigger needing its own event's payload reads
+    /// it here.
+    pub triggering_event: Option<&'a GameEvent>,
+    /// Cards a `DealDamage` discarded earlier in this same `Sequence`,
+    /// as returned by `damage::apply_damage`. Backs
+    /// `EffectRequirement::LastDamageTrashedOddCostCard` (*Diviner*).
+    pub damage_discarded: Vec<CardId>,
+}
+
+impl<'a> ResolutionContext<'a> {
+    /// The common case: a resolution attributed to `acting_card`, with no
+    /// triggering event and nothing accumulated yet.
+    pub fn for_card(acting_card: Option<&'a CardId>) -> Self {
+        ResolutionContext { acting_card, ..ResolutionContext::default() }
+    }
+
+    /// A trigger's resolution: attributed to `acting_card` and carrying the
+    /// event that fired it.
+    pub fn for_trigger(acting_card: Option<&'a CardId>, triggering_event: Option<&'a GameEvent>) -> Self {
+        ResolutionContext { acting_card, triggering_event, ..ResolutionContext::default() }
+    }
+}
+
 /// Applies a single, already-resolved `Effect` to `state` in place.
 ///
 /// A deliberate new hybrid mutation convention: mutate-in-place like
@@ -35,9 +90,10 @@ use crate::rules::state::{
 pub fn evaluate_effect(
     state: &mut GameState,
     effect: &Effect,
-    acting_card: Option<&CardId>,
+    ctx: &mut ResolutionContext<'_>,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    let acting_card = ctx.acting_card;
     match effect {
         Effect::GainCredits(side, amount) => {
             // Mirrors engine::gain_credit_click's existing pattern.
@@ -55,7 +111,13 @@ pub fn evaluate_effect(
             if has_matching_paid_ability(state, registry, |e| matches!(e, Effect::PreventDamage(_))) {
                 park_damage_prevention(state, registry, *damage_type, *amount, acting_card)
             } else {
-                Ok(damage::apply_damage(state, *damage_type, *amount))
+                let (events, discarded) = damage::apply_damage(state, *damage_type, *amount);
+                // Overwrite rather than append: the requirement reading this
+                // (`LastDamageTrashedOddCostCard`) asks about the *most
+                // recent* damage, so a second `DealDamage` in the same
+                // `Sequence` must not be answered from the first's discards.
+                ctx.damage_discarded = discarded;
+                Ok(events)
             }
         }
 
@@ -466,7 +528,7 @@ pub fn evaluate_effect(
         Effect::Sequence(effects) => {
             let mut events = Vec::new();
             for inner in effects {
-                events.extend(evaluate_effect(state, inner, acting_card, registry)?);
+                events.extend(evaluate_effect(state, inner, ctx, registry)?);
                 // Stop if that effect parked something spanning future
                 // `PlayerAction`s — see `Effect::Sequence`'s doc comment.
                 //
@@ -512,8 +574,8 @@ pub fn evaluate_effect(
 
         Effect::EffectIf { condition, effect } => {
             let side = acting_side(acting_card, registry);
-            if check_requirement(state, condition, side, acting_card, registry).is_ok() {
-                evaluate_effect(state, effect, acting_card, registry)
+            if check_requirement(state, condition, side, ctx, registry).is_ok() {
+                evaluate_effect(state, effect, ctx, registry)
             } else {
                 Ok(Vec::new())
             }
@@ -640,17 +702,17 @@ pub fn evaluate_effect(
 
         Effect::DealDamageAmount(damage_type, amount) => {
             let resolved = resolve_amount(amount, acting_card, state, registry);
-            evaluate_effect(state, &Effect::DealDamage(*damage_type, resolved as usize), acting_card, registry)
+            evaluate_effect(state, &Effect::DealDamage(*damage_type, resolved as usize), ctx, registry)
         }
 
         Effect::AddAdditionalAccessAmount { server, amount } => {
             let resolved = resolve_amount(amount, acting_card, state, registry);
-            evaluate_effect(state, &Effect::AddAdditionalAccess { server: *server, count: resolved }, acting_card, registry)
+            evaluate_effect(state, &Effect::AddAdditionalAccess { server: *server, count: resolved }, ctx, registry)
         }
 
         Effect::BoostStrengthAmount { amount, duration } => {
             let resolved = resolve_amount(amount, acting_card, state, registry);
-            evaluate_effect(state, &Effect::BoostStrength { amount: resolved, duration: *duration }, acting_card, registry)
+            evaluate_effect(state, &Effect::BoostStrength { amount: resolved, duration: *duration }, ctx, registry)
         }
     }
 }
@@ -728,7 +790,7 @@ pub fn resolve_unbroken_subroutines(
         // ice," resolved via `Effect::InstallFromZoneIgnoringCost`'s
         // `PendingDecision::ChooseCards::source_card` lookup). No existing
         // subroutine effect relied on `acting_card` being absent here.
-        let fired_events = evaluate_effect(state, &effect, Some(&card_id), registry)?;
+        let fired_events = evaluate_effect(state, &effect, &mut ResolutionContext::for_card(Some(&card_id)), registry)?;
         events.push(GameEvent::SubroutineFired { card_id, index, effect });
         events.extend(fired_events);
 
@@ -768,6 +830,7 @@ pub fn process_card_triggers(
     registry: &CardRegistry,
     card_id: &CardId,
     trigger: Trigger,
+    triggering_event: Option<&GameEvent>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let Some(card) = registry.get(card_id) else {
         return Ok(Vec::new());
@@ -775,8 +838,11 @@ pub fn process_card_triggers(
     let mut events = Vec::new();
     let card_side = card.side;
     for triggered in card.triggers.iter().filter(|t| t.trigger == trigger) {
+        // One context per `TriggeredEffect`, so nothing a trigger's own
+        // effects accumulate leaks into the next trigger on the same card.
+        let mut ctx = ResolutionContext::for_trigger(Some(card_id), triggering_event);
         if let Some(requirement) = &triggered.requirement
-            && check_requirement(state, requirement, card_side, Some(card_id), registry).is_err()
+            && check_requirement(state, requirement, card_side, &ctx, registry).is_err()
         {
             // Soft gate (see `TriggeredEffect::requirement`'s doc comment):
             // unmet just means no bonus this time, not an error propagated
@@ -785,7 +851,7 @@ pub fn process_card_triggers(
             continue;
         }
         for effect in &triggered.effects {
-            events.extend(evaluate_effect(state, effect, Some(card_id), registry)?);
+            events.extend(evaluate_effect(state, effect, &mut ctx, registry)?);
         }
         if let Some(requirement) = &triggered.requirement {
             consume_requirement(state, requirement, card_side);
@@ -808,6 +874,7 @@ pub(crate) fn process_card_triggers_targeting(
     owner_id: &CardId,
     trigger: Trigger,
     target: &CardId,
+    triggering_event: Option<&GameEvent>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let Some(card) = registry.get(owner_id) else {
         return Ok(Vec::new());
@@ -815,13 +882,18 @@ pub(crate) fn process_card_triggers_targeting(
     let mut events = Vec::new();
     let card_side = card.side;
     for triggered in card.triggers.iter().filter(|t| t.trigger == trigger) {
+        // The requirement is checked as the *reacting* card, the effects
+        // resolve as the *target* — the asymmetry this function exists for
+        // — so the two get separate contexts rather than one shared one.
+        let owner_ctx = ResolutionContext::for_trigger(Some(owner_id), triggering_event);
         if let Some(requirement) = &triggered.requirement
-            && check_requirement(state, requirement, card_side, Some(owner_id), registry).is_err()
+            && check_requirement(state, requirement, card_side, &owner_ctx, registry).is_err()
         {
             continue;
         }
+        let mut target_ctx = ResolutionContext::for_trigger(Some(target), triggering_event);
         for effect in &triggered.effects {
-            events.extend(evaluate_effect(state, effect, Some(target), registry)?);
+            events.extend(evaluate_effect(state, effect, &mut target_ctx, registry)?);
         }
         if let Some(requirement) = &triggered.requirement {
             consume_requirement(state, requirement, card_side);
@@ -1382,9 +1454,10 @@ pub fn check_requirement(
     state: &GameState,
     requirement: &EffectRequirement,
     side: Side,
-    acting_card: Option<&CardId>,
+    ctx: &ResolutionContext<'_>,
     registry: &CardRegistry,
 ) -> Result<(), RulesError> {
+    let acting_card = ctx.acting_card;
     match requirement {
         EffectRequirement::IsTagged => {
             if !state.runner.is_tagged() {
@@ -1426,13 +1499,13 @@ pub fn check_requirement(
             }
             Ok(())
         }
-        EffectRequirement::Not(inner) => match check_requirement(state, inner, side, acting_card, registry) {
+        EffectRequirement::Not(inner) => match check_requirement(state, inner, side, ctx, registry) {
             Ok(()) => Err(RulesError::RequirementNotMet),
             Err(_) => Ok(()),
         },
         EffectRequirement::And(a, b) => {
-            check_requirement(state, a, side, acting_card, registry)?;
-            check_requirement(state, b, side, acting_card, registry)
+            check_requirement(state, a, side, ctx, registry)?;
+            check_requirement(state, b, side, ctx, registry)
         }
         EffectRequirement::RezzedDuringRunAgainstThisServer => {
             let card_id = acting_card.ok_or(RulesError::RequirementNotMet)?;
@@ -1455,8 +1528,14 @@ pub fn check_requirement(
             Ok(())
         }
         EffectRequirement::LastDamageTrashedOddCostCard => {
-            let trashed_odd_cost = state
-                .last_discarded_cards
+            // Read from the resolution in flight, not from `GameState`:
+            // *Diviner* asks about the `DealDamage` immediately preceding
+            // it in its own `Sequence`. A `ctx` with nothing recorded means
+            // no damage was dealt in this resolution, which is correctly
+            // "requirement not met" rather than a stale answer from some
+            // earlier action's damage.
+            let trashed_odd_cost = ctx
+                .damage_discarded
                 .iter()
                 .any(|card_id| registry.get(card_id).is_some_and(|card| card.cost % 2 == 1));
             if trashed_odd_cost { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -1516,7 +1595,15 @@ pub fn check_requirement(
             if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::WasFirstAdvancementThisCard => {
-            if state.last_advancement_was_first { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+            // Answered from the triggering event itself: `CardAdvanced`
+            // already carries the running total, and `== 1` *is* "this was
+            // the first advancement". The `GameState` field this replaced
+            // held nothing the event didn't.
+            let was_first = matches!(
+                ctx.triggering_event,
+                Some(GameEvent::CardAdvanced { advancement_tokens: 1, .. })
+            );
+            if was_first { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
     }
 }
@@ -1681,7 +1768,7 @@ mod tests {
     #[test]
     fn gain_credits_targets_the_named_side() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GainCredits(Side::Corp, 3), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GainCredits(Side::Corp, 3), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(8));
         assert_eq!(state.runner.resources.credits, Credits(5));
@@ -1693,7 +1780,7 @@ mod tests {
         let mut state = game_state();
         state.runner.grip = vec![CardId("card_0".to_string()), CardId("card_1".to_string())];
 
-        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.grip.len(), 1);
         assert_eq!(state.runner.heap.len(), 1);
@@ -1732,7 +1819,7 @@ mod tests {
             ..Default::default()
         }];
 
-        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), None, &registry).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), &mut ResolutionContext::for_card(None), &registry).unwrap();
 
         assert!(state.runner.grip.is_empty());
         assert!(state.pending_prevention.is_none());
@@ -1753,7 +1840,7 @@ mod tests {
             ..Default::default()
         }];
 
-        evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 2), None, &registry).unwrap();
+        evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 2), &mut ResolutionContext::for_card(None), &registry).unwrap();
 
         // Nothing applied yet — the grip is untouched until the window closes.
         assert_eq!(state.runner.grip.len(), 1);
@@ -1775,7 +1862,7 @@ mod tests {
             resume: PreventionResume::None,
         });
 
-        evaluate_effect(&mut state, &Effect::PreventDamage(1), None, &CardRegistry::new()).unwrap();
+        evaluate_effect(&mut state, &Effect::PreventDamage(1), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(
             state.pending_prevention.map(|p| p.kind),
@@ -1786,7 +1873,7 @@ mod tests {
     #[test]
     fn prevent_damage_with_no_pending_prevention_errors() {
         let mut state = game_state();
-        let result = evaluate_effect(&mut state, &Effect::PreventDamage(1), None, &CardRegistry::new());
+        let result = evaluate_effect(&mut state, &Effect::PreventDamage(1), &mut ResolutionContext::for_card(None), &CardRegistry::new());
         assert_eq!(result, Err(RulesError::NoPendingPrevention));
     }
 
@@ -1799,7 +1886,7 @@ mod tests {
             resume: PreventionResume::None,
         });
 
-        let result = evaluate_effect(&mut state, &Effect::PreventDamage(1), None, &CardRegistry::new());
+        let result = evaluate_effect(&mut state, &Effect::PreventDamage(1), &mut ResolutionContext::for_card(None), &CardRegistry::new());
 
         assert_eq!(
             result,
@@ -1824,7 +1911,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_paid_ability("plascrete", Side::Runner, Effect::PreventTrash)]);
 
         let target = CardTarget::RunnerRig(CardId("corroder".to_string()));
-        evaluate_effect(&mut state, &Effect::TrashCard(target.clone()), None, &registry).unwrap();
+        evaluate_effect(&mut state, &Effect::TrashCard(target.clone()), &mut ResolutionContext::for_card(None), &registry).unwrap();
 
         // Nothing trashed yet, and the card named by `target` is still rigged.
         assert!(state.runner.rig.iter().any(|c| c.card == CardId("corroder".to_string())));
@@ -1848,7 +1935,7 @@ mod tests {
             resume: PreventionResume::None,
         });
 
-        evaluate_effect(&mut state, &Effect::PreventTrash, None, &CardRegistry::new()).unwrap();
+        evaluate_effect(&mut state, &Effect::PreventTrash, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.pending_prevention.map(|p| p.kind), Some(PendingPreventionKind::Trash { target, prevented: true }));
     }
@@ -1858,7 +1945,7 @@ mod tests {
         let mut state = game_state();
         state.runner.stack = vec![CardId("only_card".to_string())];
 
-        let events = evaluate_effect(&mut state, &Effect::DrawCards(Side::Runner, 3), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::DrawCards(Side::Runner, 3), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.grip, vec![CardId("only_card".to_string())]);
         assert!(state.runner.stack.is_empty());
@@ -1874,7 +1961,7 @@ mod tests {
             ..Default::default()
         });
 
-        let events = evaluate_effect(&mut state, &Effect::EndTheRun, None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::EndTheRun, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert!(state.active_run.is_none());
         assert_eq!(events, vec![GameEvent::RunEndedByEffect { server: ServerId::Hq }]);
@@ -1883,7 +1970,7 @@ mod tests {
     #[test]
     fn end_the_run_with_no_active_run_errors() {
         let mut state = game_state();
-        assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun, None, &CardRegistry::new()), Err(RulesError::NoActiveRun));
+        assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun, &mut ResolutionContext::for_card(None), &CardRegistry::new()), Err(RulesError::NoActiveRun));
     }
 
     fn active_run_state() -> RunState {
@@ -1900,13 +1987,13 @@ mod tests {
         state.active_run = Some(active_run_state());
 
         let events =
-            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None, &CardRegistry::new())
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
                 .unwrap();
         assert_eq!(state.active_run.as_ref().unwrap().additional_hq_access, 1);
         assert_eq!(events, vec![GameEvent::AdditionalAccessGranted { server: ServerId::Hq, count: 1 }]);
 
         let events =
-            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::RnD, count: 2 }, None, &CardRegistry::new())
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::RnD, count: 2 }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
                 .unwrap();
         assert_eq!(state.active_run.as_ref().unwrap().additional_rd_access, 2);
         assert_eq!(events, vec![GameEvent::AdditionalAccessGranted { server: ServerId::RnD, count: 2 }]);
@@ -1917,8 +2004,8 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(active_run_state());
 
-        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None, &CardRegistry::new()).unwrap();
-        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None, &CardRegistry::new()).unwrap();
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.active_run.as_ref().unwrap().additional_hq_access, 2);
     }
@@ -1928,14 +2015,12 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(active_run_state());
 
-        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Archives, count: 3 }, None, &CardRegistry::new())
+        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Archives, count: 3 }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
             .unwrap();
         evaluate_effect(
             &mut state,
-            &Effect::AddAdditionalAccess { server: ServerId::Remote(0), count: 3 },
-            None,
-            &CardRegistry::new(),
-        )
+            &Effect::AddAdditionalAccess { server: ServerId::Remote(0), count: 3 }, &mut ResolutionContext::for_card(None),
+            &CardRegistry::new())
         .unwrap();
 
         let run = state.active_run.as_ref().unwrap();
@@ -1947,7 +2032,7 @@ mod tests {
     fn add_additional_access_without_an_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Hq, count: 1 }, &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -1960,10 +2045,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(replacement.clone()) },
-            None,
-            &CardRegistry::new(),
-        )
+            &Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(replacement.clone()) }, &mut ResolutionContext::for_card(None),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(
@@ -1982,10 +2065,8 @@ mod tests {
                 &Effect::SetAccessReplacement {
                     server: ServerId::Hq,
                     effect: Box::new(Effect::GainCredits(Side::Runner, 8)),
-                },
-                None,
-                &CardRegistry::new(),
-            ),
+                }, &mut ResolutionContext::for_card(None),
+                &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -1993,7 +2074,7 @@ mod tests {
     #[test]
     fn give_tags_always_targets_the_runner() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GiveTags(2), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GiveTags(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 2);
         assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 2 }]);
@@ -2003,7 +2084,7 @@ mod tests {
     fn remove_tags_saturates_at_zero() {
         let mut state = game_state();
         state.runner.tags = 1;
-        let events = evaluate_effect(&mut state, &Effect::RemoveTags(5), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::RemoveTags(5), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 0);
         assert_eq!(events, vec![GameEvent::TagsRemoved { side: Side::Runner, amount: 5 }]);
@@ -2012,7 +2093,7 @@ mod tests {
     #[test]
     fn give_bad_publicity_increases_the_counter() {
         let mut state = game_state();
-        let events = evaluate_effect(&mut state, &Effect::GiveBadPublicity(2), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::GiveBadPublicity(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.bad_publicity, 2);
         assert_eq!(events, vec![GameEvent::BadPublicityGiven { amount: 2 }]);
@@ -2022,7 +2103,7 @@ mod tests {
     fn remove_bad_publicity_saturates_at_zero() {
         let mut state = game_state();
         state.corp.bad_publicity = 1;
-        let events = evaluate_effect(&mut state, &Effect::RemoveBadPublicity(5), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::RemoveBadPublicity(5), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.bad_publicity, 0);
         assert_eq!(events, vec![GameEvent::BadPublicityRemoved { amount: 5 }]);
@@ -2032,12 +2113,12 @@ mod tests {
     fn is_tagged_requirement_fails_with_zero_tags_and_succeeds_with_a_tag() {
         let mut state = game_state();
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::IsTagged, Side::Runner, None, &CardRegistry::new()),
+            check_requirement(&state, &EffectRequirement::IsTagged, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RunnerNotTagged)
         );
 
         state.runner.tags = 1;
-        assert_eq!(check_requirement(&state, &EffectRequirement::IsTagged, Side::Runner, None, &CardRegistry::new()), Ok(()));
+        assert_eq!(check_requirement(&state, &EffectRequirement::IsTagged, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
     }
 
     #[test]
@@ -2045,15 +2126,15 @@ mod tests {
         let mut state = game_state();
         let requirement = EffectRequirement::OncePerTurn("test_tag".to_string());
 
-        assert_eq!(check_requirement(&state, &requirement, Side::Runner, None, &CardRegistry::new()), Ok(()));
+        assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
         consume_requirement(&mut state, &requirement, Side::Runner);
 
         assert_eq!(
-            check_requirement(&state, &requirement, Side::Runner, None, &CardRegistry::new()),
+            check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
         // The Corp's own set is untouched — OncePerTurn is per-side.
-        assert_eq!(check_requirement(&state, &requirement, Side::Corp, None, &CardRegistry::new()), Ok(()));
+        assert_eq!(check_requirement(&state, &requirement, Side::Corp, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
     }
 
     #[test]
@@ -2062,11 +2143,11 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         let requirement = EffectRequirement::OncePerTurn("docklands_pass".to_string());
         state.runner.once_per_turn_used.insert("docklands_pass".to_string());
-        assert_eq!(check_requirement(&state, &requirement, Side::Runner, None, &CardRegistry::new()), Err(RulesError::RequirementNotMet));
+        assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Err(RulesError::RequirementNotMet));
 
         crate::rules::turn::enter_start_of_turn(&mut state, &mut Vec::new(), Side::Runner, &CardRegistry::new()).unwrap();
 
-        assert_eq!(check_requirement(&state, &requirement, Side::Runner, None, &CardRegistry::new()), Ok(()));
+        assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
     }
 
     #[test]
@@ -2074,26 +2155,26 @@ mod tests {
         let mut state = game_state();
         state.runner.resources.credits = Credits(7);
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::RunnerCreditsAtMost(6), Side::Runner, None, &CardRegistry::new()),
+            check_requirement(&state, &EffectRequirement::RunnerCreditsAtMost(6), Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
         state.runner.resources.credits = Credits(6);
-        assert_eq!(check_requirement(&state, &EffectRequirement::RunnerCreditsAtMost(6), Side::Runner, None, &CardRegistry::new()), Ok(()));
+        assert_eq!(check_requirement(&state, &EffectRequirement::RunnerCreditsAtMost(6), Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
     }
 
     #[test]
     fn not_requirement_inverts_the_inner_result() {
         let state = game_state();
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::Not(Box::new(EffectRequirement::IsTagged)), Side::Runner, None, &CardRegistry::new()),
+            check_requirement(&state, &EffectRequirement::Not(Box::new(EffectRequirement::IsTagged)), Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())
         );
 
         let mut tagged = game_state();
         tagged.runner.tags = 1;
         assert_eq!(
-            check_requirement(&tagged, &EffectRequirement::Not(Box::new(EffectRequirement::IsTagged)), Side::Runner, None, &CardRegistry::new()),
+            check_requirement(&tagged, &EffectRequirement::Not(Box::new(EffectRequirement::IsTagged)), Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
     }
@@ -2137,7 +2218,7 @@ mod tests {
             ..Default::default()
         });
 
-        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(0), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(
             events,
@@ -2159,7 +2240,7 @@ mod tests {
         });
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(1), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(1), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::InvalidSubroutineIndex(1))
         );
     }
@@ -2178,7 +2259,7 @@ mod tests {
             });
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::SubroutineAlreadyHandled)
         );
     }
@@ -2187,7 +2268,7 @@ mod tests {
     fn break_subroutine_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -2203,7 +2284,7 @@ mod tests {
             });
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -2310,7 +2391,7 @@ mod tests {
             ..Default::default()
         });
 
-        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.active_run.unwrap().ice[0].current_strength, 5);
         assert_eq!(
@@ -2334,7 +2415,7 @@ mod tests {
             });
 
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength(2), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -2343,7 +2424,7 @@ mod tests {
     fn modify_strength_with_no_active_run_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::ModifyStrength(2), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
     }
@@ -2352,7 +2433,7 @@ mod tests {
     fn trash_card_this_card_without_acting_card_is_rejected_not_panicked() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::MissingActingCardContext)
         );
     }
@@ -2364,7 +2445,7 @@ mod tests {
         let acting = CardId("gordian_blade".to_string());
 
         let events =
-            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), Some(&acting), &CardRegistry::new()).unwrap();
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::ThisCard), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
 
         assert!(state.runner.rig.is_empty());
         assert_eq!(state.runner.heap, vec![acting.clone()]);
@@ -2386,10 +2467,8 @@ mod tests {
             &Effect::TrashCard(CardTarget::CorpInstalled {
                 card: CardId("pad_campaign".to_string()),
                 server: ServerId::Remote(0),
-            }),
-            None,
-            &CardRegistry::new(),
-        )
+            }), &mut ResolutionContext::for_card(None),
+            &CardRegistry::new())
         .unwrap();
 
         assert!(state.corp.installed.is_empty());
@@ -2405,7 +2484,7 @@ mod tests {
     fn trash_card_runner_rig_not_found_errors() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::CardNotInRig { side: Side::Runner, card: CardId("gordian_blade".to_string()) })
         );
     }
@@ -2417,10 +2496,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))),
-            None,
-            &CardRegistry::new(),
-        )
+            &Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))), &mut ResolutionContext::for_card(None),
+            &CardRegistry::new())
         .unwrap();
 
         assert!(state.runner.rig.is_empty());
@@ -2438,10 +2515,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }),
-            None,
-            &CardRegistry::new(),
-        )
+            &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }), &mut ResolutionContext::for_card(None),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(state.corp.r_and_d, vec![CardId("ice_wall".to_string())]);
@@ -2461,10 +2536,8 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::Stack }),
-                None,
-                &CardRegistry::new(),
-            ),
+                &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::Stack }), &mut ResolutionContext::for_card(None),
+                &CardRegistry::new()),
             Err(RulesError::EmptyZone { side: Side::Corp, zone: StackZone::Stack })
         );
     }
@@ -2476,10 +2549,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Runner, zone: StackZone::Stack }),
-            None,
-            &CardRegistry::new(),
-        )
+            &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Runner, zone: StackZone::Stack }), &mut ResolutionContext::for_card(None),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(state.runner.stack, vec![CardId("clone_chip".to_string())]);
@@ -2498,10 +2569,8 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }),
-                None,
-                &CardRegistry::new(),
-            ),
+                &Effect::TrashCard(CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }), &mut ResolutionContext::for_card(None),
+                &CardRegistry::new()),
             Err(RulesError::EmptyZone { side: Side::Corp, zone: StackZone::RAndD })
         );
     }
@@ -2670,6 +2739,7 @@ mod tests {
             &registry,
             &CardId("snare".to_string()),
             Trigger::OnAccessed,
+            None,
         )
         .unwrap();
 
@@ -2701,6 +2771,7 @@ mod tests {
             &registry,
             &CardId("hedge_fund".to_string()),
             Trigger::OnAccessed,
+            None,
         )
         .unwrap();
 
@@ -2718,6 +2789,7 @@ mod tests {
             &registry,
             &CardId("unregistered".to_string()),
             Trigger::OnAccessed,
+            None,
         )
         .unwrap();
 
@@ -2730,7 +2802,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("gorman_drip", 0)];
         let acting = CardId("gorman_drip".to_string());
 
-        let events = evaluate_effect(&mut state, &Effect::AddCounters(2), Some(&acting), &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::AddCounters(2), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.rig[0].counters, 2);
         assert_eq!(events, vec![GameEvent::CountersAdded { card: acting, amount: 2 }]);
@@ -2743,7 +2815,7 @@ mod tests {
         state.runner.rig[0].counters = 1;
         let acting = CardId("gorman_drip".to_string());
 
-        let events = evaluate_effect(&mut state, &Effect::RemoveCounters(3), Some(&acting), &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::RemoveCounters(3), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.rig[0].counters, 0);
         assert_eq!(events, vec![GameEvent::CountersRemoved { card: acting, amount: 3 }]);
@@ -2760,7 +2832,7 @@ mod tests {
         }];
         let acting = CardId("some_asset".to_string());
 
-        evaluate_effect(&mut state, &Effect::AddCounters(3), Some(&acting), &CardRegistry::new()).unwrap();
+        evaluate_effect(&mut state, &Effect::AddCounters(3), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.installed[0].counters, 3);
     }
@@ -2769,7 +2841,7 @@ mod tests {
     fn add_counters_without_acting_card_errors_unresolved_card_target() {
         let mut state = game_state();
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::AddCounters(1), None, &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::AddCounters(1), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::UnresolvedCardTarget)
         );
     }
@@ -2779,7 +2851,7 @@ mod tests {
         let mut state = game_state();
         let acting = CardId("nowhere".to_string());
         assert_eq!(
-            evaluate_effect(&mut state, &Effect::AddCounters(1), Some(&acting), &CardRegistry::new()),
+            evaluate_effect(&mut state, &Effect::AddCounters(1), &mut ResolutionContext::for_card(Some(&acting)), &CardRegistry::new()),
             Err(RulesError::CardNotEligibleForCounters(acting))
         );
     }
@@ -2793,10 +2865,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(state.runner.rig[0].encounter_strength_buff, 1);
@@ -2821,10 +2891,8 @@ mod tests {
 
         evaluate_effect(
             &mut state,
-            &Effect::BoostStrength { amount: 2, duration: BoostDuration::Turn },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            &Effect::BoostStrength { amount: 2, duration: BoostDuration::Turn }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(state.runner.rig[0].turn_strength_buff, 2);
@@ -2838,10 +2906,8 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
-                None,
-                &CardRegistry::new(),
-            ),
+                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(None),
+                &CardRegistry::new()),
             Err(RulesError::UnresolvedCardTarget)
         );
     }
@@ -2855,10 +2921,8 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
-                Some(&acting),
-                &CardRegistry::new(),
-            ),
+                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
+                &CardRegistry::new()),
             Err(RulesError::CardNotInRig { side: Side::Runner, card: acting })
         );
     }
@@ -2877,10 +2941,8 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
-                Some(&acting),
-                &CardRegistry::new(),
-            ),
+                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
+                &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
         assert_eq!(state.runner.rig[0].encounter_strength_buff, 0, "and nothing was mutated");
@@ -2905,10 +2967,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2), restrict_to: None },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         let ice = &state.active_run.unwrap().ice[0];
@@ -2931,10 +2991,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2), restrict_to: None },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(2), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(events.len(), 1);
@@ -2949,10 +3007,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(events.len(), 3);
@@ -2972,10 +3028,8 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
-                Some(&CardId("corroder".to_string())),
-                &CardRegistry::new(),
-            ),
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None }, &mut ResolutionContext::for_card(Some(&CardId("corroder".to_string()))),
+                &CardRegistry::new()),
             Err(RulesError::NotInEncounter)
         );
     }
@@ -2988,10 +3042,8 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
-                Some(&acting),
-                &CardRegistry::new(),
-            ),
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
+                &CardRegistry::new()),
             Err(RulesError::BreakerStrengthTooLow {
                 breaker: acting,
                 breaker_strength: 1,
@@ -3012,10 +3064,8 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
-                Some(&acting),
-                &CardRegistry::new(),
-            ),
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
+                &CardRegistry::new()),
             Err(RulesError::BreakerStrengthTooLow {
                 breaker: acting.clone(),
                 breaker_strength: 1,
@@ -3026,18 +3076,14 @@ mod tests {
 
         evaluate_effect(
             &mut state,
-            &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(
@@ -3056,10 +3102,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            &Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(events, vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 1 }]);
@@ -3093,10 +3137,8 @@ mod tests {
             &Effect::BreakSubroutines {
                 count: SubroutineBreakCount::Fixed(1),
                 restrict_to: Some(IceType::Barrier),
-            },
-            Some(&acting),
-            &CardRegistry::new(),
-        )
+            }, &mut ResolutionContext::for_card(Some(&acting)),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(
@@ -3117,10 +3159,8 @@ mod tests {
                 &Effect::BreakSubroutines {
                     count: SubroutineBreakCount::Fixed(1),
                     restrict_to: Some(IceType::Barrier),
-                },
-                Some(&acting),
-                &CardRegistry::new(),
-            ),
+                }, &mut ResolutionContext::for_card(Some(&acting)),
+                &CardRegistry::new()),
             Err(RulesError::InvalidBreakerSubtype {
                 breaker: acting,
                 ice: CardId("ice_wall".to_string()),
@@ -3140,10 +3180,8 @@ mod tests {
 
             let events = evaluate_effect(
                 &mut state,
-                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None },
-                Some(&acting),
-                &CardRegistry::new(),
-            )
+                &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
+                &CardRegistry::new())
             .unwrap();
 
             assert_eq!(
@@ -3158,7 +3196,7 @@ mod tests {
         let mut state = game_state();
         let effect = Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) };
 
-        let events = evaluate_effect(&mut state, &effect, None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(events, vec![GameEvent::TraceInitiated { base: 3, initiating_card: None }]);
         assert_eq!(state.runner.tags, 0, "on_success must not fire yet");
@@ -3172,11 +3210,11 @@ mod tests {
     #[test]
     fn trace_effect_while_already_active_errors() {
         let mut state = game_state();
-        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) }, None, &CardRegistry::new())
+        evaluate_effect(&mut state, &Effect::Trace { base: 3, on_success: Box::new(Effect::GiveTags(1)) }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
             .unwrap();
 
         let result =
-            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(2)) }, None, &CardRegistry::new());
+            evaluate_effect(&mut state, &Effect::Trace { base: 5, on_success: Box::new(Effect::GiveTags(2)) }, &mut ResolutionContext::for_card(None), &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::TraceAlreadyActive));
         assert_eq!(state.active_trace.unwrap().base_strength, 3, "original trace must be untouched");
@@ -3231,7 +3269,7 @@ mod tests {
             effect: Box::new(Effect::GainCredits(Side::Runner, 3)),
         };
 
-        let events = evaluate_effect(&mut state, &effect, None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(8));
         assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Runner, amount: 3 }]);
@@ -3245,7 +3283,7 @@ mod tests {
             effect: Box::new(Effect::GainCredits(Side::Runner, 3)),
         };
 
-        let events = evaluate_effect(&mut state, &effect, None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(5), "no credits gained — condition wasn't met");
         assert!(events.is_empty());
@@ -3261,7 +3299,7 @@ mod tests {
             if_declined: Box::new(Effect::GiveTags(1)),
         };
 
-        let events = evaluate_effect(&mut state, &effect, None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 0, "not resolved yet");
         assert_eq!(state.runner.resources.credits, Credits(5), "not paid yet");
@@ -3279,7 +3317,7 @@ mod tests {
             options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
         };
 
-        let events = evaluate_effect(&mut state, &effect, None, &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(5), "not resolved yet");
         let PendingDecision::ChooseEffect { chooser, options, .. } = state.pending_decision.expect("should be parked")
@@ -3298,10 +3336,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::GainCreditsPerCardAccessedThisRun(Side::Runner),
-            None,
-            &CardRegistry::new(),
-        )
+            &Effect::GainCreditsPerCardAccessedThisRun(Side::Runner), &mut ResolutionContext::for_card(None),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(8));
@@ -3314,10 +3350,8 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::GainCreditsPerCardAccessedThisRun(Side::Runner),
-            None,
-            &CardRegistry::new(),
-        )
+            &Effect::GainCreditsPerCardAccessedThisRun(Side::Runner), &mut ResolutionContext::for_card(None),
+            &CardRegistry::new())
         .unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(5));
@@ -3358,8 +3392,7 @@ mod tests {
             check_requirement(
                 &state,
                 &EffectRequirement::RezzedDuringRunAgainstThisServer,
-                Side::Corp,
-                Some(&ping),
+                Side::Corp, &ResolutionContext::for_card(Some(&ping)),
                 &CardRegistry::new()
             ),
             Err(RulesError::RequirementNotMet),
@@ -3372,8 +3405,7 @@ mod tests {
             check_requirement(
                 &state,
                 &EffectRequirement::RezzedDuringRunAgainstThisServer,
-                Side::Corp,
-                Some(&ping),
+                Side::Corp, &ResolutionContext::for_card(Some(&ping)),
                 &CardRegistry::new()
             ),
             Err(RulesError::RequirementNotMet),
@@ -3385,17 +3417,51 @@ mod tests {
             check_requirement(
                 &state,
                 &EffectRequirement::RezzedDuringRunAgainstThisServer,
-                Side::Corp,
-                Some(&ping),
+                Side::Corp, &ResolutionContext::for_card(Some(&ping)),
                 &CardRegistry::new()
             ),
             Ok(())
         );
     }
 
+    /// A second `DealDamage` in the same `Sequence` overwrites the first's
+    /// discards rather than accumulating them, so
+    /// `LastDamageTrashedOddCostCard` always answers about the most recent
+    /// damage — the "last" its name promises.
+    #[test]
+    fn a_second_deal_damage_replaces_the_first_ones_discards_in_the_context() {
+        let mut registry = CardRegistry::new();
+        for (id, cost) in [("odd_cost", 3u32), ("even_a", 2), ("even_b", 4)] {
+            registry.insert(crate::cards::common::base_card(id, id, Side::Runner, crate::dsl::CardType::Event, cost));
+        }
+
+        let mut state = game_state();
+        // Grip is drawn from randomly, so stack it with one card per hit to
+        // make which card each `DealDamage` discards deterministic.
+        state.runner.grip = vec![CardId("odd_cost".to_string())];
+        let mut ctx = ResolutionContext::default();
+
+        evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), &mut ctx, &registry).unwrap();
+        assert_eq!(ctx.damage_discarded, vec![CardId("odd_cost".to_string())]);
+        assert_eq!(
+            check_requirement(&state, &EffectRequirement::LastDamageTrashedOddCostCard, Side::Corp, &ctx, &registry),
+            Ok(()),
+            "the odd-cost card was just discarded"
+        );
+
+        state.runner.grip = vec![CardId("even_a".to_string())];
+        evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), &mut ctx, &registry).unwrap();
+        assert_eq!(ctx.damage_discarded, vec![CardId("even_a".to_string())], "replaced, not appended");
+        assert_eq!(
+            check_requirement(&state, &EffectRequirement::LastDamageTrashedOddCostCard, Side::Corp, &ctx, &registry),
+            Err(RulesError::RequirementNotMet),
+            "the *last* damage trashed an even-cost card, so the earlier odd one must not carry over"
+        );
+    }
+
     #[test]
     fn last_damage_trashed_odd_cost_card_requirement_checks_registry_cost() {
-        let mut state = game_state();
+        let state = game_state();
         let mut registry = CardRegistry::new();
         registry.insert(crate::cards::common::base_card(
             "odd_cost",
@@ -3412,16 +3478,35 @@ mod tests {
             2,
         ));
 
-        state.last_discarded_cards = vec![CardId("even_cost".to_string())];
+        // The discards now live on the resolution in flight, not on
+        // `GameState` — same assertions, read from the new home.
+        let mut ctx = ResolutionContext {
+            damage_discarded: vec![CardId("even_cost".to_string())],
+            ..ResolutionContext::default()
+        };
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::LastDamageTrashedOddCostCard, Side::Corp, None, &registry),
+            check_requirement(&state, &EffectRequirement::LastDamageTrashedOddCostCard, Side::Corp, &ctx, &registry),
             Err(RulesError::RequirementNotMet)
         );
 
-        state.last_discarded_cards = vec![CardId("even_cost".to_string()), CardId("odd_cost".to_string())];
+        ctx.damage_discarded = vec![CardId("even_cost".to_string()), CardId("odd_cost".to_string())];
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::LastDamageTrashedOddCostCard, Side::Corp, None, &registry),
+            check_requirement(&state, &EffectRequirement::LastDamageTrashedOddCostCard, Side::Corp, &ctx, &registry),
             Ok(())
+        );
+
+        // A resolution that dealt no damage answers "not met" rather than
+        // inheriting some earlier action's discards — the stale read the
+        // old `GameState` field allowed.
+        assert_eq!(
+            check_requirement(
+                &state,
+                &EffectRequirement::LastDamageTrashedOddCostCard,
+                Side::Corp,
+                &ResolutionContext::default(),
+                &registry
+            ),
+            Err(RulesError::RequirementNotMet)
         );
     }
 
@@ -3430,13 +3515,13 @@ mod tests {
         let mut state = game_state();
         state.last_completed_run = Some(CompletedRun { server: ServerId::Archives, cards_accessed: 0, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new() });
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, None, &CardRegistry::new()),
+            check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
 
         state.last_completed_run = Some(CompletedRun { server: ServerId::Hq, cards_accessed: 2, agendas_stolen: 0, persistent_trashed_upgrades: Vec::new() });
         assert_eq!(
-            check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, None, &CardRegistry::new()),
+            check_requirement(&state, &EffectRequirement::LastRunWasOnHqOrRnD, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Ok(())
         );
     }
@@ -3449,11 +3534,11 @@ mod tests {
             Box::new(EffectRequirement::IsTagged),
             Box::new(EffectRequirement::RunnerCreditsAtMost(10)),
         );
-        assert_eq!(check_requirement(&state, &req, Side::Runner, None, &CardRegistry::new()), Ok(()));
+        assert_eq!(check_requirement(&state, &req, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
 
         state.runner.resources.credits = Credits(11);
         assert_eq!(
-            check_requirement(&state, &req, Side::Runner, None, &CardRegistry::new()),
+            check_requirement(&state, &req, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)
         );
     }

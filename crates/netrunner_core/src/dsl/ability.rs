@@ -87,11 +87,15 @@ pub enum EffectRequirement {
     /// turn (`RunnerState::made_successful_run_last_turn`) — e.g. Public
     /// Trail's play requirement.
     RunnerMadeSuccessfulRunLastTurn,
-    /// The most recent `Effect::DealDamage` discarded at least one card
-    /// whose registry `cost` is odd (`GameState::last_discarded_cards`,
-    /// overwritten by every `damage::apply_damage` call) — e.g. Diviner's
-    /// subroutine ("if you trash a card this way with a printed play or
-    /// install cost that is an odd number, end the run").
+    /// The most recent `Effect::DealDamage` **in this same resolution**
+    /// discarded at least one card whose registry `cost` is odd — e.g.
+    /// Diviner's subroutine ("if you trash a card this way with a printed
+    /// play or install cost that is an odd number, end the run").
+    ///
+    /// Read from `ability::ResolutionContext::damage_discarded`, which
+    /// `damage::apply_damage` fills for the `Sequence` that called it. A
+    /// resolution that dealt no damage answers "not met" rather than
+    /// inheriting an earlier action's discards.
     LastDamageTrashedOddCostCard,
     /// The most recently concluded run (`GameState::last_completed_run`)
     /// targeted HQ or R&D — e.g. Zahya Sadeghi's "when a run on HQ or R&D
@@ -164,12 +168,13 @@ pub enum EffectRequirement {
     DuringEncounter,
     /// The advancement just placed by the `Trigger::OnAdvance` event
     /// currently being dispatched was the first one this card has ever
-    /// received (`GameState::last_advancement_was_first`, a transient
-    /// snapshot `engine::advance_card` overwrites on every advance,
-    /// mirroring `last_discarded_cards`'s "state field, not a threaded
-    /// event payload" shape) — e.g. Weyland Consortium: Built to Last's
-    /// "whenever you advance a card, gain 2 credits if it had no
-    /// advancement counters."
+    /// received — e.g. Weyland Consortium: Built to Last's "whenever you
+    /// advance a card, gain 2 credits if it had no advancement counters."
+    ///
+    /// Answered straight from the triggering event
+    /// (`ability::ResolutionContext::triggering_event`): `GameEvent::
+    /// CardAdvanced`'s `advancement_tokens == 1` *is* "this was the first".
+    /// No `GameState` field backs it — the event already carried the fact.
     WasFirstAdvancementThisCard,
 }
 

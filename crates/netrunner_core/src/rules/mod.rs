@@ -18,7 +18,7 @@ mod trace;
 mod turn;
 mod win;
 
-pub use ability::{evaluate_effect, pay_cost, process_card_triggers, resolve_unbroken_subroutines};
+pub use ability::{evaluate_effect, pay_cost, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
 // Only reached from `cards::tests` today (`ability.rs`'s own internal use
 // doesn't need this re-export) — gated to avoid an unused-import warning on
 // a non-test build.

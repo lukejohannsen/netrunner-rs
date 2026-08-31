@@ -55,13 +55,13 @@ impl GameState {
         events.extend(ability::evaluate_effect(
             &mut state,
             &Effect::DrawCards(Side::Corp, OPENING_HAND_SIZE),
-            None,
+            &mut ability::ResolutionContext::default(),
             registry,
         )?);
         events.extend(ability::evaluate_effect(
             &mut state,
             &Effect::DrawCards(Side::Runner, OPENING_HAND_SIZE),
-            None,
+            &mut ability::ResolutionContext::default(),
             registry,
         )?);
 
@@ -173,7 +173,7 @@ pub(crate) fn take_mulligan(
     events.extend(ability::evaluate_effect(
         &mut next,
         &Effect::DrawCards(side, OPENING_HAND_SIZE),
-        None,
+        &mut ability::ResolutionContext::default(),
         registry,
     )?);
 

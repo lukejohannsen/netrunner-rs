@@ -2758,7 +2758,7 @@ mod system_gateway {
         let result = crate::rules::evaluate_effect(
             &mut state.clone(),
             &crate::dsl::Effect::SwapInstalledIce(CardId("wall_of_static".to_string()), CardId("ice_wall".to_string())),
-            None,
+            &mut crate::rules::ResolutionContext::default(),
             &registry,
         );
         assert!(matches!(result, Err(RulesError::CannotSwapIceDuringActiveRun(_))));

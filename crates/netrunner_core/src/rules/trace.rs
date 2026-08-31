@@ -68,7 +68,7 @@ pub(crate) fn submit_runner_bid(
         events.extend(ability::evaluate_effect(
             state,
             &trace.effect_on_success,
-            trace.initiating_card.as_ref(),
+            &mut ability::ResolutionContext::for_card(trace.initiating_card.as_ref()),
             registry,
         )?);
     }

@@ -248,7 +248,7 @@ pub(crate) fn resolve_accept(
 
     let mut events = ability::pay_cost(state, pending.side, &cost_to_pay, pending.source_card.as_ref())?;
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
-    events.extend(ability::evaluate_effect(state, &pending.if_paid, pending.source_card.as_ref(), registry)?);
+    events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ability::ResolutionContext::for_card(pending.source_card.as_ref()), registry)?);
 
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_paid`
@@ -268,7 +268,7 @@ pub(crate) fn resolve_decline(state: &mut GameState, registry: &CardRegistry) ->
     let pending = state.pending_paid_choice.take().ok_or(RulesError::NoPendingPaidChoice)?;
 
     let mut events = vec![GameEvent::PendingPaidChoiceDeclined { side: pending.side }];
-    events.extend(ability::evaluate_effect(state, &pending.if_declined, pending.source_card.as_ref(), registry)?);
+    events.extend(ability::evaluate_effect(state, &pending.if_declined, &mut ability::ResolutionContext::for_card(pending.source_card.as_ref()), registry)?);
 
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_declined`
@@ -296,7 +296,7 @@ pub(crate) fn resolve_choice(
 
     let effect = options.get(option_index).ok_or(RulesError::InvalidChoiceIndex(option_index))?.clone();
     let mut events = vec![GameEvent::PendingChoiceResolved { chooser, option_index }];
-    events.extend(ability::evaluate_effect(state, &effect, source_card.as_ref(), registry)?);
+    events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(source_card.as_ref()), registry)?);
 
     if resume == PendingChoiceResume::ResumeSubroutines {
         // The chosen `effect` may itself have parked a *further* pending
@@ -531,7 +531,7 @@ pub(crate) fn resolve_confirm_card_selection(
             }
             (other, _) => other,
         };
-        events.extend(ability::evaluate_effect(state, &effect, acting, registry)?);
+        events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(acting), registry)?);
     }
 
     if resume == PendingChoiceResume::ResumeSubroutines {

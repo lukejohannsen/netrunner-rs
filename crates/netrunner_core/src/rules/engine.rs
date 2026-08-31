@@ -590,7 +590,7 @@ fn play_event(
     // tagged") — checked before its credit cost is paid, mirroring
     // `activate_ability`'s identical placement for `AbilityDef::requirement`.
     if let Some(requirement) = &card_def.play_requirement {
-        ability::check_requirement(&next, requirement, side, Some(&card_id), registry)?;
+        ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
     }
 
     let mut events = vec![GameEvent::ClickSpent { side }];
@@ -629,7 +629,7 @@ fn play_operation(
         return Err(RulesError::CardNotOperation { card: card_id });
     }
     if let Some(requirement) = &card_def.play_requirement {
-        ability::check_requirement(&next, requirement, side, Some(&card_id), registry)?;
+        ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
     }
 
     let mut events = vec![GameEvent::ClickSpent { side }];
@@ -821,7 +821,7 @@ fn install_program(
     // once-per-turn identity/rig-card discount above — no shared
     // consumption flag, since it's re-evaluated fresh every time.
     if let Some((requirement, amount)) = &card_def.install_cost_discount_if
-        && ability::check_requirement(&next, requirement, side, Some(&card_id), registry).is_ok()
+        && ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok()
     {
         cost = cost.saturating_sub(*amount);
     }
@@ -1078,7 +1078,7 @@ fn activate_ability(
         return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
     }
     if let Some(requirement) = &ability.requirement {
-        ability::check_requirement(state, requirement, side, Some(&card_id), registry)?;
+        ability::check_requirement(state, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
     }
 
     let mut next = state.clone();
@@ -1090,7 +1090,7 @@ fn activate_ability(
         // once-per-turn consumption, unlike `first_install_discount`.
         let discounted = match (cost, &ability.cost_discount_if) {
             (Cost::Credits(amount), Some((requirement, discount)))
-                if ability::check_requirement(&next, requirement, side, Some(&card_id), registry).is_ok() =>
+                if ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok() =>
             {
                 Cost::Credits(amount.saturating_sub(*discount))
             }
@@ -1099,7 +1099,7 @@ fn activate_ability(
         events.extend(ability::pay_cost(&mut next, side, &discounted, Some(&card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
-    events.extend(ability::evaluate_effect(&mut next, &ability.effect, Some(&card_id), registry)?);
+    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability::ResolutionContext::for_card(Some(&card_id)), registry)?);
     // `check_requirement` above only reads — without this, a `Paid`
     // ability's `EffectRequirement::OncePerTurn` (e.g. Telework Contract's
     // click ability) would never actually get marked used and could be
@@ -1146,7 +1146,10 @@ fn advance_card(
 
     installed.advancement_tokens += 1;
     let advancement_tokens = installed.advancement_tokens;
-    next.last_advancement_was_first = advancement_tokens == 1;
+    // No "was this the first advancement?" flag is recorded: the event
+    // below already carries `advancement_tokens`, and
+    // `EffectRequirement::WasFirstAdvancementThisCard` reads it from the
+    // `ability::ResolutionContext` the dispatch builds.
     let advanced_event = GameEvent::CardAdvanced { card: card_id, advancement_tokens };
     events.push(advanced_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &advanced_event)?);
@@ -4314,7 +4317,7 @@ mod tests {
         state.deferred_triggers = vec![crate::rules::state::DeferredTrigger {
             card: CardId("pad_campaign".to_string()),
             trigger: Trigger::OnTurnStart,
-            target: None,
+            target: None, event: None,
         }];
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
             chooser: Side::Corp,
@@ -4369,12 +4372,12 @@ mod tests {
                 crate::rules::state::DeferredTrigger {
                     card: CardId("pad_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
-                    target: None,
+                    target: None, event: None,
                 },
                 crate::rules::state::DeferredTrigger {
                     card: CardId("nico_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
-                    target: None,
+                    target: None, event: None,
                 },
             ],
             resume: crate::rules::state::PendingChoiceResume::None,
