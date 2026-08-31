@@ -24,7 +24,8 @@
           },
           "restrict_to": "Barrier"
         }
-      }
+      },
+      "requirement": "DuringEncounter"
     },
     {
       "trigger": "Paid",
@@ -36,7 +37,8 @@
           "amount": 1,
           "duration": "Encounter"
         }
-      }
+      },
+      "requirement": "DuringEncounter"
     }
   ],
   "numeric_id": 30016,

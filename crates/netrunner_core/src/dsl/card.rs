@@ -545,14 +545,18 @@ mod tests {
                 AbilityDef {
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
-                    requirement: None,
+                    // Every icebreaker ability carries this — real
+                    // Netrunner only permits them while encountering ICE.
+                    requirement: Some(EffectRequirement::DuringEncounter),
                     effect: Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
                     cost_discount_if: None,
                 },
                 AbilityDef {
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
-                    requirement: None,
+                    // Every icebreaker ability carries this — real
+                    // Netrunner only permits them while encountering ICE.
+                    requirement: Some(EffectRequirement::DuringEncounter),
                     effect: Effect::BreakSubroutines {
                         count: SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),

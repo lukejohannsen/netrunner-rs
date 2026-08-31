@@ -150,6 +150,18 @@ pub enum EffectRequirement {
     /// encountered. Hard-gates via `AbilityDef::requirement`, same
     /// treatment as `CurrentlyAccessingACard`.
     EncounteringHostIce,
+    /// The active run is encountering a piece of ICE right now
+    /// (`RunPhase::EncounterIce`) — any ICE, unlike
+    /// `EncounteringHostIce`'s "the one my host is."
+    ///
+    /// Carried by every icebreaker's `Paid` abilities. Real Netrunner only
+    /// lets you use an icebreaker's abilities while encountering ICE;
+    /// without this, Cleaver's "2[c]: +1 strength" was a legal action on
+    /// the Corp's turn — affordable, permitted, and doing nothing. That
+    /// mattered beyond tidiness: it made "does the opponent have a usable
+    /// paid ability" answer yes on essentially every action, which is the
+    /// gate `WindowCheckpoint::PostAction` depends on.
+    DuringEncounter,
     /// The advancement just placed by the `Trigger::OnAdvance` event
     /// currently being dispatched was the first one this card has ever
     /// received (`GameState::last_advancement_was_first`, a transient

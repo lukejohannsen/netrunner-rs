@@ -14,7 +14,10 @@ mod common;
 use common::{sg_decks, sg_registry, SG_CORP_CARDS, SG_RUNNER_CARDS};
 use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, RandomAgent};
 use netrunner_core::dsl::CardId;
-use netrunner_core::rules::{validate_deck, GamePhase, GameState, Side};
+use netrunner_core::rules::{
+    apply_action, current_actor, get_action_mask, validate_deck, ActionSpace, GamePhase, GameState, Side,
+    WindowCheckpoint,
+};
 use netrunner_single_player::{PlayerDriver, SinglePlayerSession, MAX_STEPS};
 
 /// The registry a consumer builds must contain System Gateway cards, and
@@ -184,4 +187,65 @@ fn every_sample_deck_matchup_finishes() {
             );
         }
     }
+}
+
+/// The post-action paid-ability window must be neither inert nor
+/// constant, and both failure modes are invisible to a unit test.
+///
+/// **Inert** would mean the gate (`paid_ability::has_usable_paid_ability`)
+/// is too strict and nobody ever gets their window. **Constant** would mean
+/// it is too loose, costing both players a `PassPriority` after every
+/// single action — which is what happened before icebreaker abilities were
+/// gated to encounters, since a rig full of breakers always answered "yes".
+///
+/// Bounds rather than an exact count, so ordinary agent or card changes
+/// don't make this brittle: the failure modes are orders of magnitude
+/// apart, not a few percent.
+#[test]
+fn post_action_windows_occur_but_stay_rare() {
+    let mut opened = 0usize;
+    let mut steps = 0usize;
+
+    for seed in 0..16u64 {
+        let registry = sg_registry();
+        let (corp_deck, runner_deck) = sg_decks();
+        let (mut state, _events) =
+            GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
+        let mut corp = IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Corp, seed), Side::Corp);
+        let mut runner = IndexedRandomAgent::new(RandomAgent::new(seed), Side::Runner);
+        let mut was_open = false;
+
+        for _ in 0..MAX_STEPS {
+            if matches!(state.phase, GamePhase::GameOver(_)) {
+                break;
+            }
+            let Some(side) = current_actor(&state) else { break };
+
+            let now_open = matches!(
+                state.paid_ability_window.as_ref().map(|window| window.checkpoint),
+                Some(WindowCheckpoint::PostAction { .. })
+            );
+            // Count openings, not the steps spent inside one.
+            if now_open && !was_open {
+                opened += 1;
+            }
+            was_open = now_open;
+
+            let mask = get_action_mask(&state, &registry);
+            let index = match side {
+                Side::Corp => corp.select_action(&state, &registry, &mask),
+                Side::Runner => runner.select_action(&state, &registry, &mask),
+            };
+            let action = ActionSpace::action_at(&state, index).expect("a masked-legal index always decodes");
+            state = apply_action(&state, &registry, action).expect("a legal action applies").0;
+            steps += 1;
+        }
+    }
+
+    assert!(opened > 0, "post-action windows never opened across 16 games — the feature is inert");
+    assert!(
+        opened * 10 < steps,
+        "post-action windows opened {opened} times in {steps} steps — the gate is too loose, \
+         and every action is costing both players a PassPriority"
+    );
 }

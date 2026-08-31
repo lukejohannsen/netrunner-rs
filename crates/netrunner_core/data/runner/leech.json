@@ -26,7 +26,8 @@
       },
       "effect": {
         "ModifyStrength": -1
-      }
+      },
+      "requirement": "DuringEncounter"
     }
   ],
   "counter_kind": "Virus",

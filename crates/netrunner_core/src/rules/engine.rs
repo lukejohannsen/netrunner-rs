@@ -9,7 +9,7 @@ use crate::rules::paid_ability;
 use crate::rules::pending_choice;
 use crate::rules::run::{self, RunAction, RunPhase};
 use crate::rules::setup;
-use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, Side};
+use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, Side, WindowCheckpoint};
 use crate::rules::trace;
 use crate::rules::turn;
 use crate::rules::win;
@@ -69,6 +69,8 @@ pub fn apply_action(
     {
         return Err(RulesError::ActionBlockedByPendingDecision { side });
     }
+    // Classified before the match consumes `action`.
+    let action_kind = classify_action(&action);
     let resolved = match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
         PlayerAction::DrawCardClick => draw_card_click(state, registry),
@@ -154,7 +156,114 @@ pub fn apply_action(
     // a trigger actually parked something.
     let (mut next, mut events) = resolved;
     events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
+    events.extend(open_post_action_window(&mut next, registry, &action_kind));
     Ok((next, events))
+}
+
+/// Opens a `WindowCheckpoint::PostAction` if the action just resolved was a
+/// basic click action and the opponent actually has a paid ability to use.
+///
+/// Real Netrunner gives both players a paid-ability window after each
+/// action. Only the **opponent's** half is missing here: the acting player
+/// can already fire their own paid abilities throughout `Action(side)`
+/// (see `activate_ability`), so a window that nobody but the acting player
+/// could use would be pure overhead.
+///
+/// Every guard below is load-bearing:
+/// - **basic click action** — run sub-actions, priority passes and decision
+///   resolutions are not actions and open nothing. This is also what stops
+///   a cascade: closing a window is a `PassPriority`, which is not an
+///   action, so it cannot open another.
+/// - **no run, no window, nothing parked, not over** — those flows own
+///   their own checkpoints; layering one on top would strand them.
+/// - **the opponent has something usable** — the cost guard; see
+///   `paid_ability::has_usable_paid_ability`.
+fn open_post_action_window(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    kind: &ActionKind,
+) -> Vec<GameEvent> {
+    if !matches!(kind, ActionKind::BasicClickAction) {
+        return Vec::new();
+    }
+    let GamePhase::Action(side) = state.phase else { return Vec::new() };
+    if state.active_run.is_some() || state.paid_ability_window.is_some() || state.is_resolution_blocked() {
+        return Vec::new();
+    }
+    if !paid_ability::has_usable_paid_ability(state, registry, side.other()) {
+        return Vec::new();
+    }
+    // Active player first, matching `open_window`'s convention.
+    vec![paid_ability::open_window_for(state, side, WindowCheckpoint::PostAction { side })]
+}
+
+/// Whether a `PlayerAction` is a basic click action — the thing a
+/// post-action paid-ability window follows.
+///
+/// Deliberately an exhaustive `match` rather than a check for a
+/// `ClickSpent` event: exhaustive so that adding a `PlayerAction` fails to
+/// compile here and forces a decision, and explicit so that a paid ability
+/// which happens to cost a click (Regolith Mining License) doesn't get
+/// mistaken for an action.
+enum ActionKind {
+    BasicClickAction,
+    Other,
+}
+
+fn classify_action(action: &PlayerAction) -> ActionKind {
+    match action {
+        PlayerAction::GainCreditClick { .. }
+        | PlayerAction::DrawCardClick
+        | PlayerAction::InstallCard { .. }
+        | PlayerAction::InstallHardware { .. }
+        | PlayerAction::InstallProgram { .. }
+        | PlayerAction::InstallResource { .. }
+        | PlayerAction::InstallProgramOnIce { .. }
+        | PlayerAction::PlayEvent { .. }
+        | PlayerAction::PlayOperation { .. }
+        | PlayerAction::AdvanceCard { .. }
+        | PlayerAction::ScoreAgenda { .. }
+        | PlayerAction::RemoveTag
+        | PlayerAction::TrashResource { .. }
+        | PlayerAction::PurgeVirusCounters => ActionKind::BasicClickAction,
+
+        // `InitiateRun` is a click action, but the run it starts owns the
+        // checkpoints from here on — the `active_run` guard would reject it
+        // anyway; listed explicitly so the intent is recorded.
+        PlayerAction::InitiateRun { .. }
+        // Run sub-actions, not actions.
+        | PlayerAction::ContinueRun
+        | PlayerAction::JackOut
+        | PlayerAction::CompleteRun
+        | PlayerAction::BreakSubroutine { .. }
+        | PlayerAction::BreakSubroutineWithClick { .. }
+        | PlayerAction::SelectCardToAccess { .. }
+        | PlayerAction::StealAgenda { .. }
+        | PlayerAction::TrashAccessedCard { .. }
+        | PlayerAction::PassAccessedCard { .. }
+        | PlayerAction::PayToAvoidAccessTrigger { .. }
+        | PlayerAction::DeclineAccessTrigger { .. }
+        // Rez is not an action; paid abilities are used *in* windows, not
+        // followed by new ones.
+        | PlayerAction::RezIce { .. }
+        | PlayerAction::ActivateAbility { .. }
+        // Turn structure and priority — each owns its own checkpoint.
+        | PlayerAction::EndTurn
+        | PlayerAction::DiscardCard { .. }
+        | PlayerAction::KeepHand
+        | PlayerAction::TakeMulligan
+        | PlayerAction::PassPriority { .. }
+        // Resolutions of something already parked.
+        | PlayerAction::SubmitCorpTraceBid { .. }
+        | PlayerAction::SubmitRunnerTraceBid { .. }
+        | PlayerAction::AcceptPendingPaidChoice { .. }
+        | PlayerAction::DeclinePendingPaidChoice
+        | PlayerAction::ResolvePendingChoice { .. }
+        | PlayerAction::ToggleCardSelection { .. }
+        | PlayerAction::ConfirmCardSelection
+        | PlayerAction::ChooseServerForPendingDecision { .. }
+        | PlayerAction::ChooseTriggerToResolve { .. } => ActionKind::Other,
+    }
 }
 
 fn require_phase(state: &GameState, expected: GamePhase) -> Result<(), RulesError> {
@@ -4309,6 +4418,108 @@ mod tests {
             ],
             "the chosen card resolved first, ahead of its install order"
         );
+    }
+
+    /// Corp state whose Runner opponent holds one usable paid ability
+    /// (1 credit for 1 credit, no requirement — deliberately not an
+    /// icebreaker ability, which `DuringEncounter` would gate out).
+    fn corp_turn_with_runner_paid_ability(runner_credits: u32) -> (GameState, CardRegistry) {
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            abilities: vec![AbilityDef {
+                trigger: Trigger::Paid,
+                cost: Some(Cost::Credits(1)),
+                requirement: None,
+                effect: Effect::GainCredits(Side::Runner, 1),
+                cost_discount_if: None,
+            }],
+            ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
+        });
+
+        let mut state = corp_state(3, 5);
+        state.runner.resources.credits = Credits(runner_credits);
+        state.runner.rig = vec![installed_runner_card("pennyshaver", 0)];
+        (state, registry)
+    }
+
+    #[test]
+    fn a_click_action_opens_a_post_action_window_when_the_opponent_can_respond() {
+        let (state, registry) = corp_turn_with_runner_paid_ability(5);
+
+        let (next, _events) =
+            apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Corp })
+                .expect("gain credit should succeed");
+
+        let window = next.paid_ability_window.as_ref().expect("a post-action window should be open");
+        assert_eq!(window.checkpoint, WindowCheckpoint::PostAction { side: Side::Corp });
+        assert_eq!(window.active_priority, Side::Corp, "active player holds priority first");
+        assert_eq!(next.phase, GamePhase::Action(Side::Corp), "the window does not change the phase");
+    }
+
+    /// The cost guard, and the most important test here: with nothing for
+    /// the opponent to do, no window opens and the action costs no extra
+    /// `PassPriority`s. Without this, every basic action in every game
+    /// would cost two.
+    #[test]
+    fn no_post_action_window_when_the_opponent_has_nothing_usable() {
+        // Same board, but the Runner cannot afford the ability.
+        let (state, registry) = corp_turn_with_runner_paid_ability(0);
+
+        let (next, _events) =
+            apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Corp })
+                .expect("gain credit should succeed");
+
+        assert!(next.paid_ability_window.is_none(), "an unaffordable ability is not a reason to stop play");
+    }
+
+    #[test]
+    fn no_post_action_window_when_the_opponent_has_no_paid_abilities_at_all() {
+        let state = corp_state(3, 5);
+
+        let (next, _events) =
+            apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp })
+                .expect("gain credit should succeed");
+
+        assert!(next.paid_ability_window.is_none());
+    }
+
+    /// Closing is a `PassPriority`, which is not an action — so it cannot
+    /// open another window. Were that wrong, the two sides would pass at
+    /// each other forever.
+    #[test]
+    fn passing_out_of_a_post_action_window_returns_to_the_action_phase_without_reopening() {
+        let (state, registry) = corp_turn_with_runner_paid_ability(5);
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Corp }).unwrap();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).unwrap();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).unwrap();
+
+        assert!(state.paid_ability_window.is_none(), "both passed, so the window closed and stayed closed");
+        assert_eq!(state.phase, GamePhase::Action(Side::Corp));
+
+        // And the Corp simply carries on with their turn.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Corp })
+            .expect("the acting player continues after the window");
+        assert_eq!(state.corp.resources.clicks, Clicks(1), "two of three clicks spent");
+    }
+
+    #[test]
+    fn no_post_action_window_mid_run() {
+        let (mut state, registry) = corp_turn_with_runner_paid_ability(5);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(3);
+        state.active_run = Some(RunState {
+            phase: RunPhase::ApproachIce,
+            ice: vec![test_ice("ice_wall", 1, 1, true)],
+            jack_out_permitted: true,
+            ..Default::default()
+        });
+
+        let (next, _events) =
+            apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner })
+                .expect("gaining a credit mid-run is legal");
+
+        assert!(next.paid_ability_window.is_none(), "the run owns its own checkpoints");
     }
 
     #[test]

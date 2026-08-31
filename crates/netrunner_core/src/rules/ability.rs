@@ -332,6 +332,7 @@ pub fn evaluate_effect(
 
         Effect::BoostStrength { amount, duration } => {
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+            require_encounter(state)?;
             let card = state
                 .runner
                 .rig
@@ -652,6 +653,25 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::BoostStrength { amount: resolved, duration: *duration }, acting_card, registry)
         }
     }
+}
+
+/// The engine-level "you are encountering ICE right now" guard, shared by
+/// the effects that only make sense mid-encounter.
+///
+/// The backstop half of a deliberate two-level split: `EffectRequirement::
+/// DuringEncounter` on an icebreaker's `AbilityDef` gates whether the
+/// ability is *offered* (soft, silent, and readable without evaluating
+/// anything — which is what `paid_ability::has_usable_paid_ability` needs),
+/// while this gates whether the effect can actually *resolve*, however it
+/// was reached. `Effect::BreakSubroutines` and `ModifyStrength` already
+/// enforced this inline; `BoostStrength` did not, which is why Cleaver's
+/// "+1 strength" was a legal action on the Corp's turn.
+fn require_encounter(state: &GameState) -> Result<(), RulesError> {
+    let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+    if run.phase != RunPhase::EncounterIce {
+        return Err(RulesError::NotInEncounter);
+    }
+    Ok(())
 }
 
 /// Which side's context an `EffectRequirement` check runs under, when the
@@ -1161,6 +1181,52 @@ fn trash_this_card(state: &mut GameState, card_id: &CardId) -> Result<Vec<GameEv
 /// `Cost::TrashSelf`, resolved via `trash_this_card`
 /// (`RulesError::MissingActingCardContext` if `None`); every other `Cost`
 /// variant ignores it.
+/// Whether `side` could pay `cost` right now, without paying it.
+///
+/// A non-mutating mirror of [`pay_cost`]'s preconditions. **The two must
+/// agree** — same pairing discipline as `run::check_run_may_begin` and
+/// `Effect::PromptChooseServer`'s park-time check. Disagreement here is
+/// only wasteful rather than fatal (a `WindowCheckpoint::PostAction`
+/// opening with nothing to do still closes on two passes), but it is the
+/// kind of drift that gets expensive later, so add new `Cost` variants to
+/// both or neither.
+///
+/// Costs with no resource precondition (`TrashSelf`, `RemoveSelfFromGame`,
+/// `TakeTags`, `ClearTags`) are always payable and answer `true`.
+pub(crate) fn cost_is_affordable(
+    state: &GameState,
+    side: Side,
+    cost: &Cost,
+    acting_card: Option<&CardId>,
+) -> bool {
+    match cost {
+        Cost::Credits(amount) => {
+            let bp = state.active_run.as_ref().map_or(0, |run| run.bad_publicity_credits);
+            state.resources(side).credits.0 + bp >= *amount
+        }
+        Cost::Clicks(amount) => state.resources(side).clicks.0 >= *amount,
+        Cost::RemoveCounters(amount) => acting_card
+            .map(|id| counters_on(state, id) >= *amount)
+            .unwrap_or(false),
+        // Any one alternative being payable is enough — the payer picks.
+        Cost::AnyOf(options) => options.iter().any(|option| cost_is_affordable(state, side, option, acting_card)),
+        Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
+    }
+}
+
+/// Generic counters currently on `card_id`, in either zone. `0` if it is
+/// neither installed nor rigged.
+fn counters_on(state: &GameState, card_id: &CardId) -> u32 {
+    state
+        .corp
+        .installed
+        .iter()
+        .find(|c| &c.card == card_id)
+        .map(|c| c.counters)
+        .or_else(|| state.runner.rig.iter().find(|c| &c.card == card_id).map(|c| c.counters))
+        .unwrap_or(0)
+}
+
 pub fn pay_cost(
     state: &mut GameState,
     side: Side,
@@ -1444,6 +1510,11 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::DuringEncounter => {
+            let encountering =
+                state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce);
+            if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::WasFirstAdvancementThisCard => {
             if state.last_advancement_was_first { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -1560,6 +1631,7 @@ pub(crate) fn consume_requirement(state: &mut GameState, requirement: &EffectReq
         | EffectRequirement::CurrentlyAccessingACard
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
+        | EffectRequirement::DuringEncounter
         | EffectRequirement::WasFirstAdvancementThisCard => {}
     }
 }
@@ -2719,8 +2791,9 @@ mod tests {
 
     #[test]
     fn boost_strength_encounter_increments_buff_and_effective_strength() {
-        let mut state = game_state();
-        state.runner.rig = vec![installed_runner_card("corroder", 2)];
+        // Boosting requires an encounter (`require_encounter`) — an
+        // icebreaker's abilities are only usable while encountering ICE.
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
         let acting = CardId("corroder".to_string());
 
         let events = evaluate_effect(
@@ -2746,8 +2819,9 @@ mod tests {
 
     #[test]
     fn boost_strength_turn_increments_turn_buff() {
-        let mut state = game_state();
-        state.runner.rig = vec![installed_runner_card("corroder", 2)];
+        // Boosting requires an encounter (`require_encounter`) — an
+        // icebreaker's abilities are only usable while encountering ICE.
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
         let acting = CardId("corroder".to_string());
 
         evaluate_effect(
@@ -2779,7 +2853,9 @@ mod tests {
 
     #[test]
     fn boost_strength_acting_card_not_in_rig_errors_card_not_in_rig() {
-        let mut state = game_state();
+        // In an encounter, so the rig lookup is the operative check rather
+        // than `require_encounter` short-circuiting first.
+        let mut state = ice_encounter_state(Vec::new(), 2, 1);
         let acting = CardId("corroder".to_string());
         assert_eq!(
             evaluate_effect(
@@ -2790,6 +2866,29 @@ mod tests {
             ),
             Err(RulesError::CardNotInRig { side: Side::Runner, card: acting })
         );
+    }
+
+    /// The engine-level half of gating icebreaker abilities to encounters.
+    /// `EffectRequirement::DuringEncounter` on the ability stops it being
+    /// *offered*; this stops the effect *resolving* however it was reached.
+    /// Before both, Cleaver's "+1 strength" was a legal action on the
+    /// Corp's turn — affordable, permitted, and pointless.
+    #[test]
+    fn boost_strength_outside_an_encounter_errors_not_in_encounter() {
+        let mut state = game_state();
+        state.runner.rig = vec![installed_runner_card("corroder", 2)];
+        let acting = CardId("corroder".to_string());
+
+        assert_eq!(
+            evaluate_effect(
+                &mut state,
+                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+                Some(&acting),
+                &CardRegistry::new(),
+            ),
+            Err(RulesError::NoActiveRun)
+        );
+        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0, "and nothing was mutated");
     }
 
     fn ice_encounter_state(rig: Vec<InstalledRunnerCard>, ice_strength: i32, subroutine_count: usize) -> GameState {

@@ -1085,11 +1085,16 @@ mod tests {
     fn legal_actions_for_activate_ability_resolves_ownership_by_card_location() {
         let mut registry = CardRegistry::new();
         let mut breaker = blank_card("corroder", CardType::Program);
+        // A plain credit gain rather than a strength boost: this test is
+        // about `action_owner` resolving ownership from card *location*,
+        // and an icebreaker's real abilities are gated to encounters
+        // (`EffectRequirement::DuringEncounter`), which would make the
+        // action illegal here for reasons unrelated to what is asserted.
         breaker.abilities = vec![AbilityDef {
             trigger: Trigger::Paid,
             cost: Some(Cost::Credits(1)),
             requirement: None,
-            effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::BoostDuration::Encounter },
+            effect: Effect::GainCredits(Side::Runner, 1),
             cost_discount_if: None,
         }];
         registry.insert(breaker);
