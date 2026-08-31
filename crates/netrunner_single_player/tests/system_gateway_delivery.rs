@@ -189,20 +189,29 @@ fn every_sample_deck_matchup_finishes() {
     }
 }
 
-/// The post-action paid-ability window must be neither inert nor
-/// constant, and both failure modes are invisible to a unit test.
+/// The post-action paid-ability window must not become *constant* —
+/// costing both players a `PassPriority` after every single action, which
+/// is what a too-loose `paid_ability::has_usable_paid_ability` would do.
+/// That is what happened before icebreaker abilities were gated to
+/// encounters, when a rig full of breakers always answered "yes".
 ///
-/// **Inert** would mean the gate (`paid_ability::has_usable_paid_ability`)
-/// is too strict and nobody ever gets their window. **Constant** would mean
-/// it is too loose, costing both players a `PassPriority` after every
-/// single action — which is what happened before icebreaker abilities were
-/// gated to encounters, since a rig full of breakers always answered "yes".
+/// An upper bound only, deliberately. This test originally asserted a
+/// lower bound too, and it passed — 63 openings across ~9,000 steps. That
+/// turned out to be an artifact: `end_turn` was leaving unspent clicks in
+/// place, so the Corp kept spending them off-turn on *Regolith Mining
+/// License*'s `[click]` ability. With clicks correctly cleared, the only
+/// System Gateway card either side can use on the opponent's turn is
+/// *Spin Doctor* (cost `RemoveSelfFromGame`, no requirement) — one copy,
+/// which must be drawn, installed **and** rezzed before it qualifies. So
+/// whether a window opens at all in any given sample of games is luck,
+/// and asserting on it would be flaky.
 ///
-/// Bounds rather than an exact count, so ordinary agent or card changes
-/// don't make this brittle: the failure modes are orders of magnitude
-/// apart, not a few percent.
+/// "Does it fire when someone qualifies" is covered deterministically by
+/// `rules::engine::tests::
+/// a_click_action_opens_a_post_action_window_when_the_opponent_can_respond`.
+/// What only a real game can check is that it does *not* fire constantly.
 #[test]
-fn post_action_windows_occur_but_stay_rare() {
+fn post_action_windows_stay_rare() {
     let mut opened = 0usize;
     let mut steps = 0usize;
 
@@ -242,7 +251,6 @@ fn post_action_windows_occur_but_stay_rare() {
         }
     }
 
-    assert!(opened > 0, "post-action windows never opened across 16 games — the feature is inert");
     assert!(
         opened * 10 < steps,
         "post-action windows opened {opened} times in {steps} steps — the gate is too loose, \

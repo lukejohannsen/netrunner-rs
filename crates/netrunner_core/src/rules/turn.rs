@@ -124,10 +124,24 @@ fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
 /// reactions to the end-of-turn window itself (only the window/priority
 /// machinery is generic — no card currently has an end-of-turn trigger).
 ///
-/// Credits are untouched — they carry over turn to turn. The ending side's
-/// own stale clicks are also left untouched rather than zeroed: every
+/// Credits are untouched — they carry over turn to turn. **Clicks are
+/// not**: unspent clicks are lost the moment a turn ends, so this zeroes
+/// them for `side`.
+///
+/// This used to leave them in place, on the reasoning that "every
 /// click-spending action is already gated by `engine::require_phase`, so
-/// leftover clicks are inert until that side's own next `end_turn`.
+/// leftover clicks are inert." That holds for *actions* and fails for
+/// *paid abilities*: `engine::activate_ability` resolves the acting side
+/// from card ownership whenever a `PaidAbilityWindow` is open, explicitly
+/// bypassing phase. A `Cost::Clicks` ability (Regolith Mining License's
+/// `[click]: take 3[c]`) could therefore be paid for off-turn, out of
+/// clicks that should no longer exist — at any run checkpoint, either turn
+/// boundary, or a `WindowCheckpoint::PostAction`.
+///
+/// Zeroed here rather than in [`enter_start_of_turn`] because clicks are
+/// lost when *this* turn ends, which is strictly earlier than when the
+/// opponent's begins — and the gap between the two is exactly the
+/// `EndOfTurn` window where they were spendable.
 pub fn end_turn(state: &GameState, _registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = require_action_phase(state)?;
     if state.active_run.is_some() {
@@ -142,6 +156,11 @@ pub fn end_turn(state: &GameState, _registry: &CardRegistry) -> Result<(GameStat
 
     let mut next = state.clone();
     let mut events = vec![GameEvent::TurnEnded { side }];
+
+    // Before the window opens, so the window itself can't spend them —
+    // it is part of the turn ending, not more action phase. See this
+    // function's doc comment for why leaving them was unsafe.
+    next.resources_mut(side).clicks = Clicks(0);
 
     if side == Side::Runner {
         // `BoostDuration::Turn` strength buffs last until end of turn, not
@@ -420,6 +439,85 @@ mod tests {
 
         assert_eq!(next.corp.resources.credits, Credits(5));
         assert_eq!(next.runner.resources.credits, Credits(2));
+    }
+
+    #[test]
+    fn ending_a_turn_with_clicks_left_loses_them() {
+        // Ends the turn early, holding 2 of 3 clicks.
+        let state = game_state(Side::Corp, 2, 5, 0, 2);
+
+        let (next, _events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+
+        assert_eq!(next.corp.resources.clicks, Clicks(0), "unspent clicks are lost at end of turn");
+        assert_eq!(next.corp.resources.credits, Credits(5), "credits, unlike clicks, carry over");
+    }
+
+    /// The regression this exists for. `activate_ability` resolves the
+    /// acting side from card ownership whenever a window is open,
+    /// deliberately bypassing phase — so leftover clicks were spendable on
+    /// the *opponent's* turn. Reachable with Regolith Mining License's
+    /// `[click]: take 3[c]` at any window, including the post-action one.
+    #[test]
+    fn clicks_left_over_from_a_turn_cannot_pay_for_an_off_turn_paid_ability() {
+        use crate::dsl::{AbilityDef, CardDefinition, CardType, Cost, Effect, Trigger};
+        use crate::rules::engine::apply_action;
+        use crate::rules::state::InstalledCard;
+
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            id: CardId("regolith_mining_license".to_string()),
+            title: "Regolith Mining License".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Asset,
+            abilities: vec![AbilityDef {
+                trigger: Trigger::Paid,
+                cost: Some(Cost::Clicks(1)),
+                requirement: None,
+                effect: Effect::GainCredits(Side::Corp, 3),
+                cost_discount_if: None,
+            }],
+            is_playable: true,
+            ..Default::default()
+        });
+
+        // Corp ends its turn holding 2 clicks, with the asset rezzed.
+        let mut state = game_state(Side::Corp, 2, 5, 0, 2);
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("regolith_mining_license".to_string()),
+            rezzed: true,
+            ..Default::default()
+        }];
+
+        let (state, _) = end_turn(&state, &registry).expect("ending the turn should succeed");
+        let activate = PlayerAction::ActivateAbility {
+            card_id: CardId("regolith_mining_license".to_string()),
+            ability_index: 0,
+        };
+
+        // Still inside the Corp's own EndOfTurn window: already too late.
+        assert_eq!(
+            apply_action(&state, &registry, activate.clone()),
+            Err(RulesError::NotEnoughClicks { side: Side::Corp, available: 0, requested: 1 })
+        );
+
+        // And still refused mid-Runner-turn, in an open window — the
+        // scenario that made this reachable at all, since `activate_ability`
+        // lets the non-active side act whenever a window is open. Any
+        // window will do; a post-action one is the newest way to get here.
+        let (mut state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.phase, GamePhase::Action(Side::Runner), "control passed to the Runner");
+        state.paid_ability_window = Some(crate::rules::state::PaidAbilityWindow {
+            active_priority: Side::Corp,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::PostAction { side: Side::Runner },
+            return_phase: Box::new(state.phase),
+        });
+
+        assert_eq!(
+            apply_action(&state, &registry, activate),
+            Err(RulesError::NotEnoughClicks { side: Side::Corp, available: 0, requested: 1 }),
+            "clicks from a finished turn must never fund an off-turn ability"
+        );
     }
 
     #[test]

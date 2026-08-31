@@ -167,16 +167,19 @@ mod tests {
     /// decisions (card selection, server choice, paid-choice accept/decline,
     /// install-on-ice, click-to-break), then 1024 → 1025 for the Corp's
     /// basic purge-virus-counters action, then 1025 → 1045 for
-    /// `ChooseTriggerToResolve` (ordering your own simultaneous triggers).
+    /// `ChooseTriggerToResolve` (ordering your own simultaneous triggers),
+    /// then 1045 → 1357 when `MAX_INSTALLED_PER_SIDE` went 20 → 32 after
+    /// real games overflowed it.
     ///
-    /// That last slot was *appended* rather than inserted into the
-    /// payload-free `UNIT` segment where it would naturally belong, so
-    /// every pre-existing index still decodes to the same action — an old
-    /// policy's first 1024 outputs remain meaningful and only the head
-    /// width changed. Keep that property for future additions.
+    /// The first three growths were *appended*, so every pre-existing
+    /// index kept its meaning and only the head width changed. The
+    /// `MAX_INSTALLED_PER_SIDE` one could not be: that constant sizes 26
+    /// segments spread through the space, so indices **shift** and an
+    /// exported policy needs retraining rather than a resize. Keep
+    /// appending where there is a choice.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 1045);
+        assert_eq!(ACTION_SPACE_SIZE, 1357);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's
