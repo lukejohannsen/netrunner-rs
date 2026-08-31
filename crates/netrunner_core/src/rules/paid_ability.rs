@@ -48,7 +48,28 @@ pub(crate) fn open_window(state: &mut GameState) -> GameEvent {
 /// which each gate a costed decision (steal/trash/avoidance cost) worth
 /// reacting to, picking resolution order among already-accessed cards risks
 /// nothing.
+///
+/// **The `Action(_)` guard is load-bearing, not defensive.** A run can
+/// outlive the turn it belongs to: `resolve_unbroken_subroutines` can
+/// flatline the Runner (and `run::access_server` can hand over the winning
+/// agenda) *mid-run*, which sets `GamePhase::GameOver` while `active_run`
+/// is still `Some` at a checkpoint. Every caller here then auto-advances to
+/// the next ICE or the next accessed card and asks for a window, and
+/// `open_window` — which reads the active side straight off `phase` —
+/// reached its `unreachable!()`. That was a genuine crash in ordinary play:
+/// a subroutine flatlining the Runner with more ICE behind it panicked the
+/// engine. It surfaced inside `build_client_view`, because `legal_actions`
+/// probes candidates through `apply_action`, so merely *rendering* such a
+/// position brought the process down.
+///
+/// Guarding here rather than at the three call sites is deliberate: it is
+/// the one place all of them funnel through, and "the game is over, so
+/// there is no checkpoint left to react at" is a property of the
+/// checkpoint question itself, not of any one caller.
 pub(crate) fn open_window_if_at_checkpoint(state: &mut GameState) -> Option<GameEvent> {
+    if !matches!(state.phase, GamePhase::Action(_)) {
+        return None;
+    }
     let is_checkpoint = match state.active_run.as_ref().map(|r| &r.phase) {
         Some(RunPhase::ApproachIce) | Some(RunPhase::EncounterIce) => true,
         Some(RunPhase::AccessingCard) => matches!(
@@ -395,6 +416,30 @@ mod tests {
         let window = state.paid_ability_window.expect("window should be open");
         assert_eq!(window.active_priority, Side::Runner);
         assert_eq!(window.consecutive_passes, 0);
+    }
+
+    /// Regression: a run outliving the game it belongs to.
+    ///
+    /// `resolve_unbroken_subroutines` can flatline the Runner mid-encounter,
+    /// setting `GameOver` while `active_run` is still parked at a
+    /// checkpoint with more ICE behind it. `resolve_encounter_ice` then
+    /// auto-advanced and asked for a window, and `open_window` — which
+    /// reads the priority side straight off `phase` — hit its
+    /// `unreachable!()`. Found by driving view-based agents across sample
+    /// decks; it panicked inside `build_client_view`, since `legal_actions`
+    /// probes candidates through `apply_action`.
+    #[test]
+    fn no_window_opens_at_a_checkpoint_once_the_game_is_already_over() {
+        let mut state = base_state();
+        state.phase = GamePhase::GameOver(Side::Corp);
+        state.active_run = Some(RunState {
+            phase: RunPhase::EncounterIce,
+            ice: vec![run_ice(true, vec![pending_subroutine()])],
+            ..Default::default()
+        });
+
+        assert_eq!(open_window_if_at_checkpoint(&mut state), None);
+        assert!(state.paid_ability_window.is_none(), "a finished game has no checkpoint left to react at");
     }
 
     #[test]
