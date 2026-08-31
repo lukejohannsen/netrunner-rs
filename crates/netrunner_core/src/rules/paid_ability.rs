@@ -349,7 +349,25 @@ pub(crate) fn resolve_encounter_ice(
     // whatever they just resolved is fully settled, but it may not be.
     // Must not advance the run out from under a decision that's still
     // awaiting a `PlayerAction`.
-    if state.active_run.is_some()
+    //
+    // The `GameOver` check is the same "a run can outlive the game it
+    // belongs to" invariant `open_window_if_at_checkpoint` documents, and it
+    // has to be tested *here* rather than only there. A subroutine can
+    // flatline the Runner (`damage::apply_damage` sets `GameOver` and leaves
+    // `active_run` set), at which point `resolve_unbroken_subroutines`
+    // breaks its loop — leaving the *rest* of a multi-subroutine ICE
+    // `Pending`. Advancing then hands `run::advance_run` the one thing
+    // `continue_run` refuses, `SubroutinesStillPending`, and that `Err`
+    // propagates out through `close_window` into `pass_priority`.
+    //
+    // The consequence was a deadlock, not just a failed action: it made the
+    // priority holder's own `PassPriority` illegal — `legal_actions` keeps
+    // only candidates `apply_action` accepts — while `current_actor` still
+    // named them, so the side had no legal action at all and the match
+    // could never advance. Reachable on ordinary sample decks (seed 2 of
+    // `decks::matchups()[0]`), and deterministic, therefore permanent.
+    if !matches!(state.phase, GamePhase::GameOver(_))
+        && state.active_run.is_some()
         && state.active_trace.is_none()
         && state.pending_prevention.is_none()
         && state.pending_paid_choice.is_none()
@@ -440,6 +458,59 @@ mod tests {
 
         assert_eq!(open_window_if_at_checkpoint(&mut state), None);
         assert!(state.paid_ability_window.is_none(), "a finished game has no checkpoint left to react at");
+    }
+
+    /// Regression: the deadlock half of "a run outliving the game".
+    ///
+    /// A subroutine that flatlines the Runner stops
+    /// `resolve_unbroken_subroutines`' loop, leaving the rest of a
+    /// multi-subroutine ICE `Pending`. `resolve_encounter_ice` then tried to
+    /// advance past the ICE anyway; `continue_run` refused with
+    /// `SubroutinesStillPending`, and that `Err` propagated out through
+    /// `close_window` into `pass_priority` — making the priority holder's
+    /// *own* `PassPriority` illegal, since `legal_actions` keeps only
+    /// candidates `apply_action` accepts. `current_actor` still named them,
+    /// so that side had no legal action at all and the match was stuck for
+    /// good.
+    ///
+    /// Sibling of `no_window_opens_at_a_checkpoint_once_the_game_is_already_over`,
+    /// which covers the panic half one statement later.
+    #[test]
+    fn closing_a_window_succeeds_when_a_subroutine_flatlines_with_more_subroutines_behind_it() {
+        let mut state = base_state();
+        // Empty grip, so 1 net damage is lethal.
+        state.runner.grip = Vec::new();
+
+        let lethal = EncounteredSubroutine {
+            id: 0,
+            definition: SubroutineDef { text: "do 1 net damage".to_string(), effect: Effect::DealDamage(DamageType::Net, 1) },
+            status: SubroutineStatus::Pending,
+        };
+        let behind_it = EncounteredSubroutine { id: 1, ..pending_subroutine() };
+        state.active_run = Some(RunState {
+            phase: RunPhase::EncounterIce,
+            ice: vec![run_ice(true, vec![lethal, behind_it])],
+            ..Default::default()
+        });
+        // The Runner already passed, so the Corp's pass is the one that
+        // closes the window — exactly how a `Run` window reaches Corp
+        // priority, since `open_window` reads the active side off `phase`.
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Corp,
+            consecutive_passes: 1,
+            checkpoint: WindowCheckpoint::Run,
+            return_phase: Box::new(state.phase),
+        });
+
+        let events = pass_priority(&mut state, &registry(), Side::Corp)
+            .expect("the priority holder's own pass must never be rejected");
+
+        assert!(events.iter().any(|e| matches!(e, GameEvent::RunnerFlatlined)));
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
+        // The trailing subroutine is left unresolved rather than forced
+        // through — the game is already over, so there is nothing to advance.
+        let run = state.active_run.as_ref().expect("the run outlives the game, and that is the invariant");
+        assert_eq!(run.ice[0].subroutines[1].status, SubroutineStatus::Pending);
     }
 
     #[test]

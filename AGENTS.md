@@ -90,15 +90,25 @@ It currently carries the acting card, the triggering event (if the resolution is
 
 Per-card tests verify a card. They do not find interaction bugs.
 
-New mechanics MUST also be exercised through `no_panics_or_deadlocks_across_many_seeds_system_gateway` (`crates/netrunner_single_player/tests/system_gateway_delivery.rs`), which drives real agents across many seeds and both seatings. It is the only test hitting the whole mechanic surface through real agents rather than scripted `apply_action` calls, and it has already caught four deadlocks that were reachable in ordinary play and invisible to every per-card test — each one a state where a player had no legal action at all.
+New mechanics MUST also be exercised through the two agent-driven sweeps. They hit the whole mechanic surface through real agents rather than scripted `apply_action` calls, and between them have caught five deadlocks and one crash that were reachable in ordinary play and invisible to every per-card test — each deadlock a state where a player had no legal action at all.
 
-**Run it deep before merging engine-level work.** Each deadlock it has found was one specific RNG path, so coverage scales with seed count. The default (32 seeds) is sized for the inner loop; raise it with `NETRUNNER_SWEEP_SEEDS`:
+**They are not interchangeable, and both must run.** The split is the action shape each seat sees:
+
+| Sweep | Seat shape | Covers |
+|---|---|---|
+| `no_panics_or_deadlocks_across_many_seeds_system_gateway` (`crates/netrunner_single_player/tests/system_gateway_delivery.rs`) | index-based `netrunner_bots::Agent` | the `ActionSpace` round trip and the side-agnostic `get_action_mask` — the RL path |
+| `view_based_agents_never_reach_a_state_with_no_legal_action` (`crates/netrunner_session/tests/no_deadlock_sweep.rs`) | `netrunner_session::Seat::Agent` | `legal_actions_for` — the per-seat `ClientView` slice every real client gets |
+
+**That the index path alone was not enough is settled, not theoretical.** Both bugs behind the "a run can outlive the game" entry in `ROADMAP.md` were reachable on ordinary sample decks at seeds 2, 3 and 6, and neither sweep-by-index could see them: the `ActionSpace` round trip does not reach the path. Do not delete the view-based sweep as redundant.
+
+**Run both deep before merging engine-level work.** Each deadlock found was one specific RNG path, so coverage scales with seed count. The default (32 seeds) is sized for the inner loop; raise it with `NETRUNNER_SWEEP_SEEDS`:
 
 ```bash
 NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_single_player --release
+NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_session --release
 ```
 
-This matters because the range was once 8, and two of the deadlocks sat outside it — one of them live on `main` while the committed sweep stayed green. A failure names its `seed` and `runner_is_random`, so re-running just that case is a one-line override.
+This matters because the range was once 8, and two of the deadlocks sat outside it — one of them live on `main` while the committed sweep stayed green. A failure names its `seed` and seating, so re-running just that case is a one-line override.
 
 Related mechanical gates, all of which must stay green:
 

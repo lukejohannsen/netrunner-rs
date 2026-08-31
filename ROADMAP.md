@@ -151,11 +151,18 @@ Five places independently re-implemented the same match loop — `current_actor`
 - `netrunner_gym`'s budget was `1_000` *per fast-forward call*, reset on every call — so a pathological episode was effectively unbounded. It is now one `MAX_STEPS` for the whole episode. `max_episode_steps` truncation stays in the env; it is an RL concern.
 - `StallReason` splits `NoCurrentActor` / `NoLegalActions { side }` / `BudgetExhausted`, which the old `else { break }` conflated. `NoLegalActions` also stops a deadlocked position from *panicking*: every `BotAgent` asserts a non-empty `legal_actions`.
 
-### Known open bug: a Run-checkpoint window can hand priority to a side with no legal action
+### Deadlock and crash: "a run can outlive the game it belongs to" — BOTH FIXED
 
-`current_actor` can name the Corp during a `WindowCheckpoint::Run` window while the Corp's `legal_actions` is empty — a genuine deadlock, reported as `StallReason::NoLegalActions`. Reproduce with `decks::matchups()[0]`, seed 2, view-based `RandomAgent` on both sides (`phase=Action(Runner)`, run at `EncounterIce`, window `active_priority=Corp`).
+Two bugs, one invariant. `damage::apply_damage` flatlines the Runner by setting `phase = GameOver` **without clearing `active_run`**, so a run can sit parked at `EncounterIce` after the game has ended. Two places then acted as though it were still live:
 
-Invisible to the existing sweeps because they drive *index-based* agents, whose `ActionSpace` round trip does not reach it. Same discovery path as the `open_window` crash fixed in this phase (a subroutine flatlining the Runner mid-encounter with more ICE behind it, which panicked `build_client_view`). **Worth a dedicated view-based sweep** — the index-based sweeps have a blind spot this pair of bugs demonstrates.
+- [x] **Crash.** `open_window_if_at_checkpoint` asked `open_window` for a window, which reads the priority side straight off `phase` and hit its `unreachable!()`. It surfaced inside `build_client_view` — `legal_actions` probes candidates through `apply_action` — so merely *rendering* such a position brought the process down, putting `MatchSession::broadcast_state_updates` on the same hook. Guarded on `phase` being `Action(_)`.
+- [x] **Deadlock.** One statement earlier, `resolve_encounter_ice`'s advance guard checked `active_run` and the four parked-state fields but never `phase`. Since `resolve_unbroken_subroutines` breaks its loop at `GameOver`, the rest of a multi-subroutine ICE stays `Pending`; advancing then handed `continue_run` the one thing it refuses (`SubroutinesStillPending`), and that `Err` propagated through `close_window` into `pass_priority`. Because `legal_actions` keeps only candidates `apply_action` accepts, that made the priority holder's **own `PassPriority`** illegal while `current_actor` still named them — no legal action at all, deterministically, forever. Reproduced at `decks::matchups()[0]` seed 2.
+
+**The real lesson is the detection gap, now closed.** Both were trivially reachable on ordinary sample decks at low seeds, and both were invisible to every existing sweep, because those drive *index-based* agents whose `ActionSpace` round trip does not reach the path. `crates/netrunner_session/tests/no_deadlock_sweep.rs` now drives view-based `Seat::Agent`s, so each side chooses only from `legal_actions_for` — the per-seat `ClientView` slice a real client gets. See AGENTS.md's Testing Rule for the division of labour between the two sweeps.
+
+### Known adjacent hazard: `Effect::Sequence` keeps resolving after the game ends
+
+`Sequence` (`ability.rs`) breaks only on `is_resolution_blocked()`, not on `GameOver` — the same "kept going after the world ended" class as the two above. The one reachable case in the current pool (Karunā's `Sequence[DealDamage(Net,2), PermitJackOut]`) is harmless: the flatline leaves `active_run` set, so `PermitJackOut` succeeds. **Deliberately not "fixed"** — no current card turns it into an error, so a guard would be speculative. Revisit if a card ever puts a run- or encounter-dependent effect after a potentially lethal one in a `Sequence`.
 
 ---
 

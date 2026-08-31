@@ -82,6 +82,12 @@ pub enum StallReason {
 /// session: a caller holding an `Awaiting` has to be able to call `submit`,
 /// which a borrow of `self` would forbid. Detail about an `Applied` step
 /// comes from `Session::last_entry` instead.
+///
+/// `Debug` so a pump can name an unexpected step in its own error message —
+/// every consumer has some "this should have been `Ended`" path. It is only
+/// derivable because the variant payloads stop at `ClientView`; `Seat`
+/// cannot derive it, since it holds a `Box<dyn BotAgent>`.
+#[derive(Debug)]
 pub enum SessionStep {
     /// A `Seat::Agent` chose and its action was applied.
     Applied { side: Side },
