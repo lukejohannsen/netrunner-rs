@@ -286,6 +286,13 @@ pub(crate) fn enter_start_of_turn(
         return Ok(());
     }
 
+    // Below the deck-out return above, so a Corp that cannot make its
+    // mandatory draw never counts the turn it failed to start — matching
+    // this function's own "the turn never actually starts" rule, and
+    // keeping `turn` in lockstep with `TurnStarted`, which is emitted
+    // nowhere else.
+    next.turn += 1;
+
     let clicks = clicks_for(next_side);
     next.resources_mut(next_side).clicks = Clicks(clicks);
     let turn_started_event = GameEvent::TurnStarted { side: next_side, clicks };
@@ -391,12 +398,7 @@ mod tests {
                 ..Default::default()
             },
             phase: GamePhase::Action(active_turn),
-            active_run: None,
-            paid_ability_window: None,
-            active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
-            seed: 0,
-            rng_step: 0,
+            ..Default::default()
         }
     }
 
@@ -430,6 +432,44 @@ mod tests {
         assert!(events.contains(&GameEvent::TurnEnded { side: Side::Runner }));
         assert!(events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
         assert!(events.contains(&GameEvent::CardDrawn { side: Side::Corp }));
+    }
+
+    /// `turn` advances once per side's turn, not once per round — so a
+    /// Corp→Runner handoff increments it just like a Runner→Corp one.
+    #[test]
+    fn each_sides_turn_advances_the_turn_counter_by_one() {
+        let state = game_state(Side::Corp, 0, 5, 0, 2);
+        let registry = CardRegistry::new();
+        assert_eq!(state.turn, 0);
+
+        let (next, _) = end_turn(&state, &registry).expect("should succeed");
+        let (next, _) = close_all_windows(next, &registry);
+        assert_eq!(next.turn, 1, "Runner's turn began");
+
+        let mut next = next;
+        next.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
+        let (next, _) = end_turn(&next, &registry).expect("should succeed");
+        let (next, _) = close_all_windows(next, &registry);
+        assert_eq!(next.turn, 2, "Corp's turn began");
+    }
+
+    /// A Corp that cannot make its mandatory draw loses before the turn
+    /// starts — no clicks, no `TurnStarted`, and so no increment either.
+    /// `turn` and `TurnStarted` must never disagree.
+    #[test]
+    fn a_corp_deck_out_does_not_advance_the_turn_counter() {
+        let state = game_state(Side::Runner, 0, 5, 0, 2);
+        let registry = CardRegistry::new();
+        let turn_before = state.turn;
+        assert!(state.corp.r_and_d.is_empty(), "fixture must deck the Corp out");
+
+        let (next, mut events) = end_turn(&state, &registry).expect("should succeed");
+        let (next, close_events) = close_all_windows(next, &registry);
+        events.extend(close_events);
+
+        assert_eq!(next.phase, GamePhase::GameOver(Side::Runner));
+        assert_eq!(next.turn, turn_before, "the turn never started, so it is not counted");
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::TurnStarted { .. })));
     }
 
     #[test]

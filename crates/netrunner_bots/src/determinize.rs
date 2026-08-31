@@ -339,6 +339,11 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         corp,
         runner,
         phase: view.phase,
+        // Public information, so it comes straight off the view rather than
+        // being resampled — a determinized state that disagreed with the
+        // real one about the turn number would mis-evaluate any "on turn N"
+        // effect the search looks ahead through.
+        turn: view.turn,
         active_run,
         paid_ability_window: view.paid_ability_window.clone(),
         active_trace: view.active_trace.clone(),
@@ -496,12 +501,8 @@ mod tests {
                 first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0,
             },
             phase: GamePhase::Action(Side::Runner),
-            active_run: None,
-            paid_ability_window: None,
-            active_trace: None,
-            pending_prevention: None, pending_paid_choice: None, pending_decision: None, last_discarded_cards: Vec::new(), last_completed_run: None, last_advancement_was_first: false, deferred_triggers: Vec::new(),
             seed: 1,
-            rng_step: 0,
+            ..Default::default()
         }
     }
 

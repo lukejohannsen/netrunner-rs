@@ -81,6 +81,9 @@ pub struct ClientView {
     /// ICE — `legal_actions` below already accounts for that).
     pub active_player: Side,
     pub phase: GamePhase,
+    /// `GameState::turn` verbatim — public information, and counted per
+    /// side's turn rather than per round (see that field's doc comment).
+    pub turn: u32,
     pub corp: CorpClientView,
     pub runner: RunnerClientView,
     pub active_run: Option<PublicRunState>,
@@ -179,6 +182,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
     ClientView {
         side,
         active_player: active_player(state.phase),
+        turn: state.turn,
         phase: public.phase,
         corp,
         runner,

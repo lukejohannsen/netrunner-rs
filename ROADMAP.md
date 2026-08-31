@@ -4,7 +4,11 @@ Canonical single source of truth for engine mechanics, client-server infrastruct
 
 **Current goal:** a solid single-player Netrunner, then expansion into network play.
 
-**Health as of the last full review:** 739 tests passing, 0 failing, 1 ignored (network-gated live sync). `cargo clippy --workspace --all-targets` completely silent. The engine's purity boundary, determinism model, and masking layer all hold. Remaining work is about *seams* — the places single-player and network play currently diverge — not about engine rot.
+**Working order:** Phase 1 §2 (UI legibility — **done**) → Phase 1.5 (Session Unification) → Phase 1.75 (Learn to Play). Phase 1 §1 (Deck Import) depends on none of them and can slot in wherever a user-facing win is wanted.
+
+> Two items used to each claim primacy — §1 was labelled "top priority" while Phase 1.5 was "the highest-value architectural work in the repo right now." Both were accurate about their own axis and useless as an ordering. They are now scoped explicitly: §1 is the top **user-facing** gap, Phase 1.5 the highest-value **architectural** one, and the line above is the actual sequence.
+
+**Health as of the last full review:** 774 tests passing, 0 failing, 1 ignored (network-gated live sync). `cargo clippy --workspace --all-targets` completely silent. The engine's purity boundary, determinism model, and masking layer all hold. Remaining work is about *seams* — the places single-player and network play currently diverge — not about engine rot.
 
 ---
 
@@ -33,7 +37,7 @@ Canonical single source of truth for engine mechanics, client-server infrastruct
 
 Ordered by what stands between the engine and a person playing a full, satisfying game of their own deck.
 
-### 1. Deck Import End-to-End — **top priority**
+### 1. Deck Import End-to-End — **top user-facing gap**
 - [ ] **Convert a validated `Decklist` into a playable `rules::Deck`.** Nothing anywhere does this today, so a user still cannot paste a decklist and start a match. All the hard parts already exist:
   - `deck::Decklist` already deserializes the NetrunnerDB/community JSON export shape.
   - `deck::validator::validate_deck` already enforces influence, side, format legality, per-card `deck_limit`, and agenda-point ratios.
@@ -42,10 +46,17 @@ Ordered by what stands between the engine and a person playing a full, satisfyin
 - [ ] **Reconcile the three deck types and two validators.** `deck::Decklist` (import), `rules::Deck` (setup input), and `decks::SampleDeck` (embedded samples) coexist with two independent validators that duplicate `MAX_COPIES_PER_CARD` on purpose. Decide the intended pipeline — import shape → validation → runtime shape — and document which validator owns which rule, so a caller knows which to invoke.
 - [ ] **Wire it to the CLI:** a `--deck <path>` flow that loads, validates with readable errors, and starts a local match.
 
-### 2. Make Game State Legible to a UI
-- [ ] **Expose card counters through `masking`/`ClientView`.** `InstalledCard`/`InstalledRunnerCard` both carry `counters: u32`, but `PublicInstalledCard` has no counters field at all — so a Runner cannot see virus counters on their own *Botulus*, and neither side sees credits on a *Nico Campaign*. Blocks any real UI. The masking rule is straightforward: always visible to the owner, and visible to the opponent once the card is rezzed/faceup; hidden on an unrezzed Corp card (the original reason for the omission).
-  - **Hard prerequisite for Phase 1.75's booster stage**, which introduces *Leech* and *Conduit* specifically. A tutorial that teaches virus counters and then cannot render them is worse than no tutorial. Pull this forward if Learn to Play starts first.
-- [ ] **Add a turn counter to `GameState`.** There is none — `netrunner_single_player::history` reconstructs turn numbers externally. Needed for UI display, replay scrubbing, and any "on turn N" effect.
+### 2. Make Game State Legible to a UI — DONE
+- [x] **Card counters reach `ClientView` — DONE.** `PublicInstalledCard::counters` is `Option<u32>`, masked on **exactly the same condition as the card's identity** (`identity_visible = owner_view || rezzed`) — `mask_installed_card` reuses that existing local rather than restating the rule, so the two cannot drift apart. `PublicInstalledRunnerCard::counters` is a bare `u32`: the rig is never masked, so there is no unrezzed state to leak from and no rule to express.
+  - **`Option` rather than a `u32` defaulting to `0`,** so the view never collapses "concealed" into "rezzed and genuinely empty". The current TUI renders both as no badge, but the masking layer knows the difference and shouldn't lie about it; `zero_counters_on_a_rezzed_card_is_some_zero_not_none` pins that.
+  - **The kind of counter is deliberately not in the view.** `counter_kind` is static `CardDefinition` data and every client already holds a `CardRegistry`; duplicating it would be two sources of truth. `netrunner_cli`'s `counter_label` resolves it registry-side and renders `", 3 virus"`.
+  - **The doc comments were the real bug.** Both `counters` fields claimed *"no card uses this yet, so there's no visibility question to answer until one does."* **Twelve cards use counters** — verified end-to-end: a real System Gateway match reaches a rig holding `smartware_distributor` with 44 credit counters that its own owner previously could not see.
+  - `PublicRunIce` still carries no counters field — no ICE uses them. Add it when one does.
+- [x] **`GameState::turn` — DONE.** Counts **each side's turn separately** (`0` through both mulligans, `1` = Corp's opening turn), incremented at the single point a turn begins — `turn::enter_start_of_turn`, the only site emitting `GameEvent::TurnStarted`. Placed *after* that function's Corp deck-out return, so a Corp that cannot make its mandatory draw never counts the turn it failed to start; `turn` and `TurnStarted` can therefore never disagree.
+  - **`netrunner_single_player` no longer reconstructs it.** `MatchHistory` records `self.state.turn` read from the **pre-action** state, which is what preserves the existing convention that a turn-ending action is logged under the turn it ended rather than the one it started. Recorded numbers are unchanged; the session-local counter and its `TurnStarted` watch are deleted.
+  - `determinize` copies `view.turn` straight through rather than resampling — it is public information, and a search tree that disagreed with reality about the turn number would mis-evaluate any future "on turn N" effect.
+
+> **Test-fixture cleanup landed alongside this.** `GameState`'s `Default` impl exists precisely so adding a field "fails to compile in exactly one place instead of across ~43 test literals" — but the literals had never been converted, so a new field broke 18 of them. They now use `..Default::default()`, per AGENTS.md's Testing Rule. The `Default` impl itself stays exhaustive, which is the whole point of it.
 
 ### 3. Rules Gaps Worth Closing
 - [x] **Purge virus counters as a basic Corp action — DONE.** `PlayerAction::PurgeVirusCounters`: 3 clicks (the Corp's whole turn, since `CORP_CLICKS_PER_TURN` is exactly 3), zeroing `counters` on every installed/rigged card whose registry `counter_kind` is `CounterKind::Virus`. Scans **both** sides — the rule is about the counter kind, not who controls the card — though only Runner Programs qualify in the current pool. Closes the hole where the Corp had no counterplay to *Botulus*/*Leech*/*Fermenter*/*Conduit*/*Tranquilizer*.
@@ -155,7 +166,7 @@ Two stages, in order:
 
 **The card pool is already done.** All 32 starter-deck cards and all 11 booster cards are implemented, playable System Gateway cards. Nothing needs authoring — verified card by card against `data/{corp,runner}/`.
 
-**Placement, and why it is here rather than in Phase 1:** it does not need Phase 1's deck import, but it *does* need Phase 1.2's counter visibility (the booster stage teaches viruses). More importantly, the lesson driver is a `PlayerDriver` — the exact trait Phase 1.5 replaces. Landing this before Session Unification means porting it twice. That is the ordering rationale; it is written down so it is not re-litigated.
+**Placement, and why it is here rather than in Phase 1:** it does not need Phase 1's deck import, and its one hard prerequisite — Phase 1 §2's counter visibility, needed because the booster stage teaches viruses — **is now satisfied**. More importantly, the lesson driver is a `PlayerDriver` — the exact trait Phase 1.5 replaces. Landing this before Session Unification means porting it twice. That is the ordering rationale; it is written down so it is not re-litigated.
 
 ### 1. Configurable match rules (`netrunner_core`)
 

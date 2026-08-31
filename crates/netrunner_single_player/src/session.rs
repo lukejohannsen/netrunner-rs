@@ -11,7 +11,7 @@
 //! `netrunner_core` and `netrunner_bots`.
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{apply_action, current_actor, get_action_mask, ActionSpace, GameEvent, GamePhase, GameState, Side};
+use netrunner_core::rules::{apply_action, current_actor, get_action_mask, ActionSpace, GamePhase, GameState, Side};
 
 use crate::history::{HistoryEntry, MatchHistory};
 
@@ -79,13 +79,12 @@ pub struct SinglePlayerSession {
     corp: Box<dyn PlayerDriver>,
     runner: Box<dyn PlayerDriver>,
     history: MatchHistory,
-    turn_number: u32,
     on_action: Option<ActionObserver>,
 }
 
 impl SinglePlayerSession {
     pub fn new(state: GameState, registry: CardRegistry, corp: Box<dyn PlayerDriver>, runner: Box<dyn PlayerDriver>) -> Self {
-        Self { state, registry, corp, runner, history: MatchHistory::new(), turn_number: 0, on_action: None }
+        Self { state, registry, corp, runner, history: MatchHistory::new(), on_action: None }
     }
 
     /// Registers a callback invoked once per resolved action (either side),
@@ -108,15 +107,19 @@ impl SinglePlayerSession {
     /// `matches!(final_state.phase, GamePhase::GameOver(_))` to tell a real
     /// conclusion from budget exhaustion.
     ///
-    /// **Turn-numbering convention** (`GameState` itself has no turn
-    /// counter): `turn_number` starts at `0` and covers every Mulligan-phase
-    /// action; it increments by 1 immediately *after* an action whose
-    /// returned events include `GameEvent::TurnStarted` (emitted by
-    /// `rules::turn::enter_start_of_turn`, which fires both on the Runner's
-    /// mulligan resolution entering Corp's first turn and on every
-    /// subsequent `end_turn` handoff) — so the action that causes a turn
-    /// transition is itself still logged under the turn that was ending,
-    /// and turn `1` is Corp's opening turn.
+    /// **Turn-numbering convention:** each entry is recorded under
+    /// `GameState::turn` as read from the state the action was chosen
+    /// *against*, before `apply_action` produces the next one. So `0` covers
+    /// every Mulligan-phase action, turn `1` is Corp's opening turn, and the
+    /// action that causes a turn transition is itself still logged under the
+    /// turn that was ending — reading the pre-action state is precisely what
+    /// preserves that last property.
+    ///
+    /// This used to be reconstructed here by watching for
+    /// `GameEvent::TurnStarted` and incrementing a session-local counter
+    /// afterwards. Same numbers, but it was a second definition of a fact
+    /// the engine is now the authority on; `GameState::turn` increments at
+    /// the one place a turn begins.
     pub fn run(mut self) -> (GameState, MatchHistory) {
         for _ in 0..MAX_STEPS {
             if matches!(self.state.phase, GamePhase::GameOver(_)) {
@@ -143,13 +146,12 @@ impl SinglePlayerSession {
                 panic!("PlayerDriver for {side:?} chose a mask-legal index {index} that apply_action rejected: {error:?}")
             });
 
-            let entered_new_turn = events.iter().any(|event| matches!(event, GameEvent::TurnStarted { .. }));
-            self.history.record(self.turn_number, side, action, events);
+            // `self.state` is still the pre-action state here — that is what
+            // logs a turn-ending action under the turn it ended, rather than
+            // the one it started.
+            self.history.record(self.state.turn, side, action, events);
             if let Some(observer) = self.on_action.as_mut() {
                 observer(self.history.entries().last().expect("just recorded"));
-            }
-            if entered_new_turn {
-                self.turn_number += 1;
             }
 
             self.state = next;
