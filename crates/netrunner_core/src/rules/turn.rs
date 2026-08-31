@@ -40,6 +40,25 @@ fn hand_size(state: &GameState, side: Side) -> usize {
     }
 }
 
+/// How many cards `side` must still discard to be within its hand limit,
+/// derived fresh from live state every time.
+///
+/// The **single** authority on that count: both `finish_end_turn` (deciding
+/// whether a discard phase is owed at all) and `discard_card` (deciding
+/// whether one is finished) call this rather than tracking a countdown, so
+/// the two can never disagree.
+///
+/// Re-deriving rather than decrementing is what makes the count survive a
+/// mid-discard change to either side of the comparison — a trigger that
+/// draws a card, one that raises max hand size, or brain damage lowering
+/// it. No card in the current pool can do any of that during a discard
+/// phase (`GameEvent::CardDiscarded` has no `dispatcher::dispatch_event`
+/// arm, so nothing fires between discards at all), so this is insurance
+/// for the first card that can, not a fix for a reachable bug.
+fn cards_over_hand_limit(state: &GameState, side: Side) -> usize {
+    hand_size(state, side).saturating_sub(max_hand_size(state, side))
+}
+
 /// Extracts `side` from `state.phase` if it's currently `Action(side)`, for
 /// either side. `EndTurn` is symmetric — valid during whichever side's
 /// Action phase happens to be active — unlike the fixed-side actions in
@@ -52,11 +71,17 @@ fn require_action_phase(state: &GameState) -> Result<Side, RulesError> {
     }
 }
 
-/// Extracts `(side, required)` from `state.phase` if it's currently
-/// `Discard { .. }`, for whichever side owes the discard.
-fn require_discard_phase(state: &GameState) -> Result<(Side, usize), RulesError> {
+/// Extracts the owing `side` from `state.phase` if it's currently
+/// `Discard { .. }`.
+///
+/// Deliberately does **not** return the phase's `required` count: that
+/// field is a *report* of how many cards were owed when it was last
+/// written, not the authority on how many still are. Every consumer
+/// re-derives from live state via [`cards_over_hand_limit`] instead — see
+/// its doc comment.
+fn require_discard_phase(state: &GameState) -> Result<Side, RulesError> {
     match state.phase {
-        GamePhase::Discard { side, required } => Ok((side, required)),
+        GamePhase::Discard { side, .. } => Ok(side),
         actual => Err(RulesError::NotInDiscardPhase { actual }),
     }
 }
@@ -167,7 +192,7 @@ pub(crate) fn finish_end_turn(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
-    let over_by = hand_size(state, side).saturating_sub(max_hand_size(state, side));
+    let over_by = cards_over_hand_limit(state, side);
     if over_by > 0 {
         state.phase = GamePhase::Discard { side, required: over_by };
         events.push(GameEvent::DiscardPending { side, required: over_by });
@@ -192,13 +217,15 @@ pub fn discard_card(
     card_id: CardId,
     registry: &CardRegistry,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    let (side, required) = require_discard_phase(state)?;
+    let side = require_discard_phase(state)?;
     let mut next = state.clone();
     take_from_hand(&mut next, side, &card_id)?;
     discard_to_pile(&mut next, side, card_id.clone());
     let mut events = vec![GameEvent::CardDiscarded { side, card: card_id }];
 
-    let remaining = required - 1; // `required > 0` is an invariant of the Discard phase.
+    // Re-derived from the post-discard state, not decremented from the
+    // phase's stored count — see `cards_over_hand_limit`'s doc comment.
+    let remaining = cards_over_hand_limit(&next, side);
     if remaining == 0 {
         events.extend(dispatch_discard_phase_end(&mut next, side, registry)?);
         enter_start_of_turn(&mut next, &mut events, side.other(), registry)?;
@@ -606,24 +633,60 @@ mod tests {
         assert_eq!(next.phase, GamePhase::Action(Side::Corp));
     }
 
+    /// `CORP_MAX_HAND_SIZE` is 5, so a 7-card HQ owes 2 discards; after one,
+    /// 6 cards still owes 1 and the phase persists.
+    ///
+    /// The hand is deliberately *genuinely* over the limit rather than
+    /// carrying a fabricated `required`: since `cards_over_hand_limit`
+    /// re-derives the count from live state, a stored count that live state
+    /// doesn't support is no longer meaningful (and could never be produced
+    /// by `finish_end_turn` in the first place).
     #[test]
-    fn discard_card_with_required_greater_than_one_stays_in_discard_phase() {
+    fn discard_card_with_more_than_one_owed_stays_in_discard_phase() {
         let mut state = game_state(Side::Corp, 0, 5, 0, 2);
         state.phase = GamePhase::Discard { side: Side::Corp, required: 2 };
-        state.corp.hq =
-            vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string())];
+        state.corp.hq = (0..7).map(|i| CardId(format!("hq_card_{i}"))).collect();
 
         let (next, events) =
-            discard_card(&state, CardId("hedge_fund".to_string()), &CardRegistry::new()).expect("should succeed");
+            discard_card(&state, CardId("hq_card_0".to_string()), &CardRegistry::new()).expect("should succeed");
 
-        assert_eq!(next.corp.hq, vec![CardId("ice_wall".to_string())]);
+        assert_eq!(next.corp.hq.len(), 6);
         assert_eq!(next.phase, GamePhase::Discard { side: Side::Corp, required: 1 });
         assert_eq!(
             events,
             vec![GameEvent::CardDiscarded {
                 side: Side::Corp,
-                card: CardId("hedge_fund".to_string())
+                card: CardId("hq_card_0".to_string())
             }]
+        );
+    }
+
+    /// The stored `required` is a report, not the authority: a phase
+    /// claiming more discards than live state actually owes resolves on the
+    /// live figure. Unreachable via `finish_end_turn` today — this pins the
+    /// re-derivation itself, which exists so a future mid-discard trigger
+    /// (drawing a card, raising max hand size, dealing brain damage) can't
+    /// desynchronize the count. See `cards_over_hand_limit`.
+    #[test]
+    fn discard_count_is_rederived_from_live_state_not_counted_down() {
+        let mut state = game_state(Side::Corp, 0, 5, 0, 2);
+        // Claims 3 owed, but a 6-card HQ against CORP_MAX_HAND_SIZE 5 owes
+        // exactly 1 — so a single discard must finish the phase.
+        state.phase = GamePhase::Discard { side: Side::Corp, required: 3 };
+        state.corp.hq = (0..6).map(|i| CardId(format!("hq_card_{i}"))).collect();
+
+        let (next, _events) =
+            discard_card(&state, CardId("hq_card_0".to_string()), &CardRegistry::new()).expect("should succeed");
+
+        assert_ne!(
+            next.phase,
+            GamePhase::Discard { side: Side::Corp, required: 2 },
+            "must not blindly decrement the stored count"
+        );
+        assert!(
+            !matches!(next.phase, GamePhase::Discard { .. }),
+            "the Corp is within hand size after one discard, so the phase is over (got {:?})",
+            next.phase
         );
     }
 
