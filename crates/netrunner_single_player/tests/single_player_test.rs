@@ -6,15 +6,16 @@ mod common;
 
 use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, RandomAgent};
 use netrunner_core::rules::{apply_action, GamePhase, GameState, Side};
-use netrunner_single_player::{PlayerDriver, SinglePlayerSession, MAX_STEPS};
+use netrunner_bots::Agent;
+use netrunner_single_player::{SinglePlayerSession, MAX_STEPS};
 
 fn random_vs_heuristic_session(seed: u64) -> SinglePlayerSession {
     let registry = common::kate_vs_hb_registry();
     let (corp_deck, runner_deck) = common::kate_vs_hb_decks();
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
 
-    let corp: Box<dyn PlayerDriver> = Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Corp));
-    let runner: Box<dyn PlayerDriver> = Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Runner, seed), Side::Runner));
+    let corp: Box<dyn Agent> = Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Corp));
+    let runner: Box<dyn Agent> = Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Runner, seed), Side::Runner));
 
     SinglePlayerSession::new(state, registry, corp, runner)
 }
@@ -40,8 +41,8 @@ fn random_vs_onnx_reaches_game_over_within_step_budget() {
     let evaluator = OnnxPolicyEvaluator::new(model_file.path.to_str().unwrap(), Side::Runner)
         .expect("hand-built fixture model should load successfully");
 
-    let corp: Box<dyn PlayerDriver> = Box::new(IndexedRandomAgent::new(RandomAgent::new(2), Side::Corp));
-    let runner: Box<dyn PlayerDriver> = Box::new(IndexedOnnxAgent::new(evaluator));
+    let corp: Box<dyn Agent> = Box::new(IndexedRandomAgent::new(RandomAgent::new(2), Side::Corp));
+    let runner: Box<dyn Agent> = Box::new(IndexedOnnxAgent::new(evaluator));
 
     let session = SinglePlayerSession::new(state, registry, corp, runner);
     let (final_state, _history) = session.run();

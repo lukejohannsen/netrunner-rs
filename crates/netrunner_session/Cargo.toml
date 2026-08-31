@@ -1,18 +1,16 @@
 [package]
-name = "netrunner_selfplay"
+name = "netrunner_session"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
 netrunner_bots = { path = "../netrunner_bots" }
-netrunner_session = { path = "../netrunner_session" }
 serde = { workspace = true }
-serde_json = { workspace = true }
 thiserror = { workspace = true }
-clap = { version = "4", features = ["derive"] }
-rayon = "1"
-rand = "0.9"
 
 [features]
+# Forwards to netrunner_bots' onnx feature so a consumer enabling `onnx`
+# on this crate gets the same agents downstream, without adding a direct
+# `ort` dependency here.
 onnx = ["netrunner_bots/onnx"]

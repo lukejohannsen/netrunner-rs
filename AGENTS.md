@@ -41,14 +41,24 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 |---|---|
 | `netrunner_core` | Pure deterministic rules engine, card DSL, embedded card/deck data, masking. Everything else depends on this; it depends on nothing. |
 | `netrunner_bots` | Automated players over a masked `ClientView`: `BotAgent`, random/heuristic/MCTS/PUCT agents, `determinize`, RL observation encoding, optional ONNX policy. |
-| `netrunner_single_player` | Synchronous local match driver (`SinglePlayerSession`) plus `MatchHistory` action/event recording. |
+| `netrunner_session` | **The one match decision loop.** `Session` (pull-shaped: `step` → `SessionStep`), `Seat`, the single `MAX_STEPS`, `MatchHistory`, and `GameEndReason`/`classify_end_reason`. Every driver in the workspace pumps this. |
+| `netrunner_single_player` | Thin index-based adapter over `netrunner_session` (`SinglePlayerSession`) for the RL/`ActionSpace` path. |
 | `netrunner_server` | Authoritative async host: `MatchSession`, `ClientMessage`/`ServerMessage` protocol, WebSocket transport. |
 | `netrunner_cli` | Reference client: ratatui TUI, headless runner, local and remote modes, card/deck subcommands. |
 | `netrunner_gym` | PyO3 RL environment over the fixed `ActionSpace`. |
 | `netrunner_selfplay` | High-volume self-play data generation for training. |
 | `netrunner_card_sync` | Async NetrunnerDB API sync and cross-platform disk caching — the only crate doing network I/O for card data. |
 
-Bot *logic* belongs in `netrunner_bots`, not in `netrunner_gym` or `netrunner_selfplay`; those are harnesses.
+Bot *logic* belongs in `netrunner_bots`, not in `netrunner_gym` or `netrunner_selfplay`; those are harnesses. `netrunner_session` is a **driver**, not a harness and not a rules authority — it owns the loop, never a rule.
+
+### Session Rule
+
+There is exactly one match loop, in `netrunner_session::Session`, and exactly one `MAX_STEPS`. **Do not hand-roll `current_actor` → `apply_action` → `GameOver` anywhere, including in tests** — five copies of it is what Phase 1.5 removed.
+
+A seat is either `Seat::Agent` (resolved in-process from a masked `ClientView`) or `Seat::External` (the pump supplies the action). Sync vs. async is a property of *who pumps*, never a reason to fork rules flow. Two things follow, both load-bearing:
+
+- **`Session::submit` does not re-derive legality.** `get_action_mask` is side-agnostic on purpose (`RezIce` is legal for the Corp during a Runner-priority window), and the RL env submits straight off that mask without consulting `current_actor`. Filtering `submit` by the awaiting side's `legal_actions` would reject actions the engine accepts and silently shift the training distribution. `apply_action`'s own guards are the only authority.
+- **Only an applied action consumes budget.** A TUI polls `step` on its render tick and a server re-enters after a stray message; neither may exhaust `MAX_STEPS` by waiting.
 
 ---
 
@@ -80,15 +90,25 @@ It currently carries the acting card, the triggering event (if the resolution is
 
 Per-card tests verify a card. They do not find interaction bugs.
 
-New mechanics MUST also be exercised through `no_panics_or_deadlocks_across_many_seeds_system_gateway` (`crates/netrunner_single_player/tests/system_gateway_delivery.rs`), which drives real agents across many seeds and both seatings. It is the only test hitting the whole mechanic surface through real agents rather than scripted `apply_action` calls, and it has already caught four deadlocks that were reachable in ordinary play and invisible to every per-card test — each one a state where a player had no legal action at all.
+New mechanics MUST also be exercised through the two agent-driven sweeps. They hit the whole mechanic surface through real agents rather than scripted `apply_action` calls, and between them have caught five deadlocks and one crash that were reachable in ordinary play and invisible to every per-card test — each deadlock a state where a player had no legal action at all.
 
-**Run it deep before merging engine-level work.** Each deadlock it has found was one specific RNG path, so coverage scales with seed count. The default (32 seeds) is sized for the inner loop; raise it with `NETRUNNER_SWEEP_SEEDS`:
+**They are not interchangeable, and both must run.** The split is the action shape each seat sees:
+
+| Sweep | Seat shape | Covers |
+|---|---|---|
+| `no_panics_or_deadlocks_across_many_seeds_system_gateway` (`crates/netrunner_single_player/tests/system_gateway_delivery.rs`) | index-based `netrunner_bots::Agent` | the `ActionSpace` round trip and the side-agnostic `get_action_mask` — the RL path |
+| `view_based_agents_never_reach_a_state_with_no_legal_action` (`crates/netrunner_session/tests/no_deadlock_sweep.rs`) | `netrunner_session::Seat::Agent` | `legal_actions_for` — the per-seat `ClientView` slice every real client gets |
+
+**That the index path alone was not enough is settled, not theoretical.** Both bugs behind the "a run can outlive the game" entry in `ROADMAP.md` were reachable on ordinary sample decks at seeds 2, 3 and 6, and neither sweep-by-index could see them: the `ActionSpace` round trip does not reach the path. Do not delete the view-based sweep as redundant.
+
+**Run both deep before merging engine-level work.** Each deadlock found was one specific RNG path, so coverage scales with seed count. The default (32 seeds) is sized for the inner loop; raise it with `NETRUNNER_SWEEP_SEEDS`:
 
 ```bash
 NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_single_player --release
+NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_session --release
 ```
 
-This matters because the range was once 8, and two of the deadlocks sat outside it — one of them live on `main` while the committed sweep stayed green. A failure names its `seed` and `runner_is_random`, so re-running just that case is a one-line override.
+This matters because the range was once 8, and two of the deadlocks sat outside it — one of them live on `main` while the committed sweep stayed green. A failure names its `seed` and seating, so re-running just that case is a one-line override.
 
 Related mechanical gates, all of which must stay green:
 

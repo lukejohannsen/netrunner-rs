@@ -10,6 +10,15 @@ use uuid::Uuid;
 use netrunner_core::rules::{PlayerAction, Side};
 use netrunner_core::view::ClientView;
 
+/// Re-exported, not defined here: both live in `netrunner_session` beside
+/// the driver that produces them. `GameEndReason` was never a transport
+/// concern — `netrunner_cli` used to depend on this whole crate purely to
+/// call `classify_end_reason` on its *offline* local path. Re-exporting
+/// keeps every existing `netrunner_server::{protocol::,}GameEndReason` path
+/// resolving, and the wire format is unaffected: moving a type does not
+/// change its serde representation.
+pub use netrunner_session::{GameEndReason, HistoryEntry};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
     Connect { player_name: String, preferred_side: Option<Side> },
@@ -24,19 +33,15 @@ pub enum ServerMessage {
     /// enum is passed around/cloned as a whole regardless of which variant
     /// is active.
     StateUpdate(Box<ClientView>),
+    /// One resolved action, sent immediately after the `StateUpdate` it
+    /// produced, so a client can render a running game log.
+    ///
+    /// One message per action rather than the whole log each time: a
+    /// `StateUpdate` is already per-action and the client already drains
+    /// messages in a loop, so resending a growing log would cost O(n²)
+    /// bytes over a match. Boxed for the same reason `StateUpdate` is — a
+    /// `HistoryEntry` carries the action's full `Vec<GameEvent>`.
+    ActionLog(Box<HistoryEntry>),
     ActionRejected { reason: String },
     GameEnded { winner: Side, reason: GameEndReason },
-}
-
-/// Why a match ended. Not tracked as a distinct concept anywhere in
-/// `netrunner_core` (`GameEvent::GameOver { winner }` doesn't say why), so
-/// `MatchSession` derives this heuristically from the trailing `GameEvent`s
-/// of whichever `apply_action` call produced `GameOver` — presentation
-/// logic, not a core engine capability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum GameEndReason {
-    AgendaThreshold,
-    Flatline,
-    Deckout,
-    Surrender,
 }

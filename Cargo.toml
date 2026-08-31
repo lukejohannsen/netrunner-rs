@@ -7,6 +7,7 @@ members = [
     "crates/netrunner_bots",
     "crates/netrunner_card_sync",
     "crates/netrunner_selfplay",
+    "crates/netrunner_session",
     "crates/netrunner_single_player",
 ]
 resolver = "3"

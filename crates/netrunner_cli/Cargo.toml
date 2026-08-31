@@ -7,6 +7,7 @@ edition = "2024"
 netrunner_core = { path = "../netrunner_core" }
 netrunner_bots = { path = "../netrunner_bots" }
 netrunner_server = { path = "../netrunner_server" }
+netrunner_session = { path = "../netrunner_session" }
 netrunner_single_player = { path = "../netrunner_single_player" }
 netrunner_card_sync = { path = "../netrunner_card_sync" }
 ratatui = "0.29"
@@ -22,4 +23,4 @@ serde_json = { workspace = true }
 # Enables `--corp onnx` / `--runner onnx`: playing against a policy network
 # trained by `scripts/run_iteration_loop.py`. Off by default because it
 # pulls in the ONNX runtime, which not every build of the TUI wants.
-onnx = ["netrunner_bots/onnx"]
+onnx = ["netrunner_bots/onnx", "netrunner_single_player/onnx", "netrunner_session/onnx"]

@@ -1,44 +1,28 @@
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 
-/// The 3 top-level screen regions: header bar, central board, and the
-/// action selector menu. No event-log panel — `ClientView` carries no
-/// event stream (only the current masked state), so there's nothing to
-/// populate one from; see `app::App`'s doc comment. Used by the remote
-/// (`MatchSession`/channel-backed) TUI path — see `build_layout_with_log`
-/// for the local (`SinglePlayerSession`-backed) path, which does have an
-/// event source (`SinglePlayerSession::with_observer`) to populate a log
-/// panel from.
+/// The TUI's 4 top-level screen regions: header bar, central board, the
+/// action selector menu, and a match log panel — one line per resolved
+/// action, either side.
+///
+/// There used to be a second, log-less 3-region layout for the remote path,
+/// because a channel-backed client had no event source to populate a log
+/// from: `ClientView` carries only the current masked state, and the local
+/// path's log came from a `SinglePlayerSession` observer the server had no
+/// equivalent of. Now that the shared `netrunner_session::Session` records
+/// a `MatchHistory` on every path and the server forwards it as
+/// `ServerMessage::ActionLog`, both paths have a log and both render this.
 pub struct LayoutRegions {
-    pub header: Rect,
-    pub board: Rect,
-    pub actions: Rect,
-}
-
-pub fn build_layout(area: Rect) -> LayoutRegions {
-    let [header, board, actions] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([Constraint::Length(1), Constraint::Min(10), Constraint::Length(8)])
-        .areas(area);
-
-    LayoutRegions { header, board, actions }
-}
-
-/// The local-play TUI's 4 top-level screen regions: `build_layout`'s 3
-/// regions plus a `log` panel — populated live from
-/// `SinglePlayerSession::with_observer`, one line per resolved action
-/// (human or bot).
-pub struct LocalLayoutRegions {
     pub header: Rect,
     pub board: Rect,
     pub actions: Rect,
     pub log: Rect,
 }
 
-pub fn build_layout_with_log(area: Rect) -> LocalLayoutRegions {
+pub fn build_layout_with_log(area: Rect) -> LayoutRegions {
     let [header, board, actions, log] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(1), Constraint::Min(10), Constraint::Length(8), Constraint::Length(8)])
         .areas(area);
 
-    LocalLayoutRegions { header, board, actions, log }
+    LayoutRegions { header, board, actions, log }
 }

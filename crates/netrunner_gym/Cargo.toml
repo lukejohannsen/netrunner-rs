@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
 netrunner_bots = { path = "../netrunner_bots" }
+netrunner_session = { path = "../netrunner_session" }
 pyo3 = "0.29"
 serde = { workspace = true }
 serde_json = { workspace = true }

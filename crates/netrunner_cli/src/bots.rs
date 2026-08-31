@@ -5,11 +5,12 @@
 //! belongs only here.
 //!
 //! Two factories, because the two agent families have different shapes.
-//! [`make_agent`] returns a view-based `BotAgent` for the `MatchSession`
-//! path, where a bot must see only the masked `ClientView` its side is
-//! entitled to. [`make_driver`] returns an index-based `PlayerDriver` for
-//! the local `SinglePlayerSession` path, which is also the only place
-//! `BotKind::Onnx` works — a shape restriction, not a privacy one.
+//! [`make_agent`] returns a view-based `BotAgent` — what a
+//! `netrunner_session::Seat::Agent` takes, and therefore what both the
+//! server path and the local TUI's bot seat use. [`make_driver`] returns an
+//! index-based `netrunner_bots::Agent` for the `SinglePlayerSession`
+//! adapter, which is also the only place `BotKind::Onnx` works — a shape
+//! restriction, not a privacy one.
 //! `OnnxPolicyEvaluator` takes a whole `GameState` but encodes through
 //! `encode_observation`, which builds a `ClientView` for its own side, so
 //! its features are masked exactly like the view-based agents'. It simply
@@ -17,7 +18,7 @@
 
 use netrunner_bots::{BotAgent, BotAgentIndexAdapter, HeuristicAgent, MctsAgent, RandomAgent};
 use netrunner_core::rules::Side;
-use netrunner_single_player::PlayerDriver;
+use netrunner_bots::Agent;
 
 use crate::config::BotKind;
 
@@ -36,7 +37,8 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64) -> Option<Box<dyn BotAge
     }
 }
 
-/// A `PlayerDriver` for the local single-player path.
+/// An index-based `netrunner_bots::Agent` for the `SinglePlayerSession`
+/// path.
 ///
 /// `Err` carries a message meant to be shown to the user: an unsupported
 /// `BotKind` for this path, or an ONNX model that could not be loaded
@@ -47,7 +49,7 @@ pub fn make_driver(
     side: Side,
     seed: u64,
     model_path: &str,
-) -> Result<Box<dyn PlayerDriver>, String> {
+) -> Result<Box<dyn Agent>, String> {
     match kind {
         BotKind::Human => Err("make_driver was asked for a bot driver for the human seat".to_string()),
         BotKind::Onnx => make_onnx_driver(side, model_path),
@@ -59,7 +61,7 @@ pub fn make_driver(
 }
 
 #[cfg(feature = "onnx")]
-fn make_onnx_driver(side: Side, model_path: &str) -> Result<Box<dyn PlayerDriver>, String> {
+fn make_onnx_driver(side: Side, model_path: &str) -> Result<Box<dyn Agent>, String> {
     use netrunner_bots::{IndexedOnnxAgent, OnnxPolicyEvaluator};
 
     let evaluator = OnnxPolicyEvaluator::new(model_path, side).map_err(|e| {
@@ -73,7 +75,7 @@ fn make_onnx_driver(side: Side, model_path: &str) -> Result<Box<dyn PlayerDriver
 }
 
 #[cfg(not(feature = "onnx"))]
-fn make_onnx_driver(_side: Side, _model_path: &str) -> Result<Box<dyn PlayerDriver>, String> {
+fn make_onnx_driver(_side: Side, _model_path: &str) -> Result<Box<dyn Agent>, String> {
     Err("this binary was built without the `onnx` feature; rebuild with \
          `cargo run -p netrunner_cli --features onnx -- ...` to play against a trained policy"
         .to_string())

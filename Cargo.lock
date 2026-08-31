@@ -967,6 +967,7 @@ dependencies = [
  "netrunner_card_sync",
  "netrunner_core",
  "netrunner_server",
+ "netrunner_session",
  "netrunner_single_player",
  "rand 0.9.5",
  "ratatui",
@@ -990,6 +991,7 @@ version = "0.1.0"
 dependencies = [
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_session",
  "pyo3",
  "rand 0.9.5",
  "serde",
@@ -1003,6 +1005,7 @@ dependencies = [
  "clap",
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_session",
  "rand 0.9.5",
  "rayon",
  "serde",
@@ -1018,6 +1021,7 @@ dependencies = [
  "futures-util",
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_session",
  "rand 0.9.5",
  "serde",
  "serde_json",
@@ -1029,11 +1033,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "netrunner_session"
+version = "0.1.0"
+dependencies = [
+ "netrunner_bots",
+ "netrunner_core",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "netrunner_single_player"
 version = "0.1.0"
 dependencies = [
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_session",
 ]
 
 [[package]]
