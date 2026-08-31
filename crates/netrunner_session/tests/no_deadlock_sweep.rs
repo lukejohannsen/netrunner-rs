@@ -18,10 +18,10 @@
 //! `StallReason::NoLegalActions { side }` rather than conflating it with
 //! budget exhaustion the way each hand-rolled `else { break }` used to.
 
-use netrunner_bots::{HeuristicAgent, RandomAgent};
+use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks;
-use netrunner_core::rules::{GameState, Side};
+use netrunner_core::rules::{GameState, MaskedZone, PublicAccessPhase, Side};
 use netrunner_session::{Seat, Session, SessionStep};
 
 /// How many seeds the sweep walks, default 32 — sized for the inner loop,
@@ -112,5 +112,177 @@ fn the_flatline_during_an_encounter_window_position_plays_out() {
             corp_deck.id,
             runner_deck.id,
         ),
+    }
+}
+
+/// **No `ClientView` may name a card it also conceals.**
+///
+/// Fog of war is meant to be structural at the `ClientView` boundary
+/// (AGENTS.md §2: never by asking the client to be polite), but nothing
+/// asserted that the *actions* a view offers respect it. Two did not:
+///
+/// - `pending_choice::zone_card_ids` read the real `corp.installed`, so
+///   *Tāo Salonga*'s selection over `OpponentInstalled` offered the Runner
+///   `ToggleCardSelection` naming an unrezzed ICE their own view masked;
+/// - `install_program_on_ice_candidates` paired every Trojan with every
+///   installed ICE, "rezzed or not", carrying the host's real `CardId`.
+///
+/// Both actions are *legal* — real Netrunner lets the Runner host on and
+/// swap ICE they cannot identify — so the fix was to name the install
+/// rather than the card (`state::InstallId`), not to withdraw the action.
+/// This is the gate on that: for every view either seat receives, no card
+/// the view hides may appear in `legal_actions` or `pending_decision`.
+///
+/// Driven through `Seat::External` on both sides, so every action is chosen
+/// from a real per-seat `ClientView` — the same slice a networked client
+/// gets, and the only shape in which this property is even observable.
+#[test]
+fn no_client_view_ever_names_a_card_it_conceals() {
+    let matchups = decks::matchups();
+
+    for seed in 0..sweep_seed_count() {
+        let (corp_deck, runner_deck) = &matchups[seed as usize % matchups.len()];
+        let matchup = format!("{} vs {}", corp_deck.id, runner_deck.id);
+
+        let mut registry = CardRegistry::new();
+        register_playable_cards(&mut registry);
+        let (state, _events) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed)
+            .expect("sample decks are legal by construction");
+
+        // Both seats are `External` so every action is chosen from a real
+        // `ClientView` this test can inspect — but they are *driven* by the
+        // same agents the sweep above seats directly, so play is as strong
+        // here as there. A uniform random picker would confound a genuine
+        // stall with "random play is just slow", which it did: it hit the
+        // step budget on ordinary positions.
+        let mut corp = HeuristicAgent::new(Side::Corp, seed);
+        let mut runner = RandomAgent::new(seed);
+        let mut session = Session::new(state, registry, Seat::External, Seat::External);
+
+        loop {
+            match session.step() {
+                SessionStep::Awaiting { side, view } => {
+                    assert_no_concealed_card_is_named(&view, session.state(), seed, &matchup, side);
+
+                    assert!(
+                        !view.legal_actions.is_empty(),
+                        "seed {seed} ({matchup}): {side:?} was asked to act with no legal action"
+                    );
+                    let action = match side {
+                        Side::Corp => corp.select_action(&view, session.registry()),
+                        Side::Runner => runner.select_action(&view, session.registry()),
+                    };
+                    session.submit(action).unwrap_or_else(|e| {
+                        panic!("seed {seed} ({matchup}): {side:?} submitted a legal action, rejected: {e:?}")
+                    });
+                }
+                // An action resolved with nothing further owed — keep pumping.
+                SessionStep::Applied { .. } => {}
+                SessionStep::Ended { .. } => break,
+                SessionStep::Stalled(reason) => {
+                    panic!("seed {seed} ({matchup}) stalled: {reason:?} after {} actions", session.steps())
+                }
+            }
+        }
+    }
+}
+
+/// Asserts the invariant for one view.
+///
+/// A card counts as concealed when the view renders an install with
+/// `card: None` **and** that card's identity is not legitimately visible
+/// somewhere else in the same view — two copies of one ICE, one rezzed and
+/// one not, leave the title public, so naming it leaks nothing. Access is
+/// the other such route: an unrezzed asset the Runner is accessing is
+/// theirs to see, which is what accessing *is*.
+///
+/// The check is over the `Debug` rendering rather than a match on all 40-odd
+/// `PlayerAction` variants: a new variant carrying a `CardId` is then
+/// covered the day it is added, with no chance of anyone forgetting to
+/// extend a list here.
+fn assert_no_concealed_card_is_named(
+    view: &netrunner_core::view::ClientView,
+    state: &GameState,
+    seed: u64,
+    matchup: &str,
+    side: Side,
+) {
+    use std::collections::HashSet;
+
+    let mut visible: HashSet<&str> = HashSet::new();
+    for server in &view.corp.servers {
+        for card in server.ice.iter().chain(server.root.iter()) {
+            if let Some(id) = &card.card {
+                visible.insert(id.0.as_str());
+            }
+        }
+    }
+    visible.extend(view.corp.archives.iter().filter_map(|a| a.card.as_ref()).map(|c| c.0.as_str()));
+    visible.extend(view.corp.scored_agendas.iter().map(|c| c.0.as_str()));
+    visible.extend(view.runner.scored_agendas.iter().map(|c| c.0.as_str()));
+    visible.extend(view.runner.heap.iter().map(|c| c.0.as_str()));
+    visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));
+    if let Some(cards) = &view.corp.hq_cards {
+        visible.extend(cards.iter().map(|c| c.0.as_str()));
+    }
+    if let Some(cards) = &view.runner.grip_cards {
+        visible.extend(cards.iter().map(|c| c.0.as_str()));
+    }
+    if let Some(run) = &view.active_run {
+        for ice in &run.ice {
+            if let Some(identity) = &ice.identity {
+                visible.insert(identity.card.0.as_str());
+            }
+        }
+        // Access reveals. The masking layer already draws this line — see
+        // `PublicAccessState`'s doc comment — and the invariant is about
+        // actions naming what the view hides, not about the table alone.
+        if let Some(access) = &run.access_state {
+            for zone in [&access.unaccessed_cards, &access.resolved_cards] {
+                if let MaskedZone::Visible(cards) = zone {
+                    visible.extend(cards.iter().map(|c| c.0.as_str()));
+                }
+            }
+            match &access.phase {
+                PublicAccessPhase::SelectNextCard { selectable_cards: MaskedZone::Visible(cards) } => {
+                    visible.extend(cards.iter().map(|c| c.0.as_str()));
+                }
+                PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. }
+                | PublicAccessPhase::PendingChoice { card: Some(id), .. } => {
+                    visible.insert(id.0.as_str());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Every install this view masks, resolved through the real state to the
+    // card it is actually hiding.
+    let masked: Vec<&str> = view
+        .corp
+        .servers
+        .iter()
+        .flat_map(|server| server.ice.iter().chain(server.root.iter()))
+        .filter(|card| card.card.is_none())
+        .filter_map(|card| state.find_corp_install(card.install_id))
+        .map(|installed| installed.card.0.as_str())
+        .filter(|id| !visible.contains(id))
+        .collect();
+    if masked.is_empty() {
+        return;
+    }
+
+    let actions = format!("{:?}", view.legal_actions);
+    let decision = format!("{:?}", view.pending_decision);
+    for id in masked {
+        let quoted = format!("\"{id}\"");
+        assert!(
+            !actions.contains(&quoted),
+            "seed {seed} ({matchup}): {side:?}'s legal_actions name {id}, which their own view masks — {actions}"
+        );
+        assert!(
+            !decision.contains(&quoted),
+            "seed {seed} ({matchup}): {side:?}'s pending_decision names {id}, which their own view masks — {decision}"
+        );
     }
 }

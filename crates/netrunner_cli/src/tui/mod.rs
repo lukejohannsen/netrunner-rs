@@ -147,7 +147,7 @@ fn drive_local(
         let mark = session.history().len();
         let step = session.run();
         for entry in &session.history().entries()[mark..] {
-            push_log_line(&mut ui.action_log, entry, &ui.registry);
+            push_log_line(&mut ui.action_log, entry, &ui.registry, ui.view.as_ref());
         }
 
         match step {
@@ -310,7 +310,7 @@ impl RenderableView for LocalUiState {
     }
 
     fn legal_action_labels(&self) -> Vec<String> {
-        self.legal_actions().iter().map(|action| describe_action(action, &self.registry)).collect()
+        self.legal_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect()
     }
 
     fn action_log(&self) -> &[String] {

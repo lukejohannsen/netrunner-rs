@@ -389,7 +389,7 @@ mod tests {
     use netrunner_core::dsl::{CardDefinition, CardId, CardType, Cost, Effect, IceType, SubroutineDef};
     use netrunner_core::rules::{
         legal_actions, AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits,
-        EncounteredSubroutine, GamePhase, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits,
+        EncounteredSubroutine, GamePhase, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits,
         PaidAbilityWindow, PlayerResources, PublicAccessPhase, RunIce, RunPhase, RunState, RunnerState,
         ServerId, SubroutineStatus, WindowCheckpoint,
     };
@@ -477,13 +477,14 @@ mod tests {
         state.corp.resources.credits = Credits(5);
         state.corp.installed = vec![InstalledCard {
             card: CardId("winning_agenda".to_string()),
+            install_id: InstallId(1),
             server: ServerId::Remote(0),
             advancement_tokens: 3,
             ..Default::default()
         }];
 
         let view = build_client_view(&state, &registry, Side::Corp);
-        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) }));
+        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { target: InstallId(1) }));
 
         let mut agent = PuctAgent::with_config(
             Side::Corp,
@@ -492,7 +493,7 @@ mod tests {
             PuctConfig { c_puct: 1.5, iterations: 200, max_depth: 10 },
         );
         let chosen = agent.select_action(&view, &registry);
-        assert_eq!(chosen, PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) });
+        assert_eq!(chosen, PlayerAction::ScoreAgenda { target: InstallId(1) });
     }
 
     #[test]
@@ -630,23 +631,25 @@ mod tests {
         }
     }
 
-    /// The state that actually panicked self-play, reduced: *Tāo
-    /// Salonga*'s "swap two installed Barriers" parks a
-    /// `ChooseCards { source: OpponentInstalled }`, and
-    /// `pending_choice::zone_card_ids` reads the real `corp.installed`, so
-    /// the Runner is offered `ToggleCardSelection` naming an **unrezzed**
-    /// ICE their own view masks. `determinize` resamples that ICE to
-    /// something else, so the caller's actions and the sample's have
-    /// nothing in common at all — `ToggleCardSelection` encodes against
-    /// nothing, and `ConfirmCardSelection` is rejected because `selected`
-    /// names cards the sample lacks. That disjointness is what emptied
-    /// `search`'s results.
+    /// The state that actually panicked self-play, reduced — and now the
+    /// test that the cause is gone rather than merely survivable.
     ///
-    /// `reseat_selectable_cards` repairs this class for `OwnRAndD`/
-    /// `OwnStack` but not `OpponentInstalled`; the root seeding is what
-    /// makes the divergence survivable wherever it is left.
+    /// *Tāo Salonga*'s "swap two installed Barriers" parks a
+    /// `ChooseCards { source: OpponentInstalled }` over Corp installs, one
+    /// of them **unrezzed**. This used to offer the Runner a
+    /// `ToggleCardSelection` naming that ICE by `CardId` — a card their own
+    /// `ClientView` masks to `None` — and `determinize` then resampled it,
+    /// so the caller's actions and the sample's had nothing in common:
+    /// `ToggleCardSelection` encoded against nothing and
+    /// `ConfirmCardSelection` was rejected because `selected` named cards
+    /// the sample lacked. That disjointness emptied `search`'s results.
+    ///
+    /// The action now carries a *position*, which reveals nothing and
+    /// survives resampling, so the assertions below are the inverse of what
+    /// they were: no masked `CardId` reaches the Runner at all, and the
+    /// search still reports every action the caller may submit.
     #[test]
-    fn search_survives_a_selection_over_masked_opponent_installs() {
+    fn a_selection_over_masked_opponent_installs_leaks_nothing_and_survives_search() {
         use netrunner_core::dsl::{CardFilter, CardZoneRef};
         use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
 
@@ -664,6 +667,7 @@ mod tests {
         state.corp.installed = vec![
             InstalledCard {
                 card: CardId("palisade".to_string()),
+                install_id: InstallId(1),
                 server: ServerId::Remote(1),
                 slot: InstallSlot::Ice,
                 rezzed: true,
@@ -672,6 +676,7 @@ mod tests {
             // Unrezzed: masked from the Runner, and so resampled away.
             InstalledCard {
                 card: CardId("ballista".to_string()),
+                install_id: InstallId(2),
                 server: ServerId::Hq,
                 slot: InstallSlot::Ice,
                 rezzed: false,
@@ -688,18 +693,36 @@ mod tests {
             shuffle_after: false,
             destination: None,
             then: None,
-            selected: vec![CardId("palisade".to_string())],
+            // Position 0 — the rezzed Palisade.
+            selected: vec![0],
             source_card: None,
             resume: PendingChoiceResume::None,
         });
 
         let view = build_client_view(&state, &registry, Side::Runner);
+
+        // The unrezzed ICE is selectable — real Netrunner lets the Runner
+        // swap ICE they cannot identify, so removing the action would be a
+        // rules change, not a fix.
         assert!(
+            view.legal_actions.contains(&PlayerAction::ToggleCardSelection { position: 1 }),
+            "the unrezzed ICE at position 1 is still selectable — {:?}",
             view.legal_actions
-                .iter()
-                .any(|a| matches!(a, PlayerAction::ToggleCardSelection { card_id } if card_id.0 == "ballista")),
-            "the premise: the Runner is offered a card their own view masks — {:?}",
+        );
+        // ...and naming it costs the Runner nothing they did not already
+        // know. This is the leak the whole change exists to close: the
+        // masked card's title appears nowhere in what the Runner is handed.
+        let masked = view.corp.servers.iter().flat_map(|s| s.ice.iter()).find(|i| !i.rezzed).expect("an unrezzed ICE");
+        assert_eq!(masked.card, None, "the view really does mask it");
+        assert!(
+            !format!("{:?}", view.legal_actions).contains("ballista"),
+            "no legal action may name a card this view masks — {:?}",
             view.legal_actions
+        );
+        assert!(
+            !format!("{:?}", view.pending_decision).contains("ballista"),
+            "nor may the parked decision — {:?}",
+            view.pending_decision
         );
 
         // Many samples: it must hold for every one, not most.

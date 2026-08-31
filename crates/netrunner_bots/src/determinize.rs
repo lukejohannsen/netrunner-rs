@@ -17,11 +17,11 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardId, CardType, CardZoneRef};
+use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{
     ArchivedCard,
     AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard,
-    InstalledRunnerCard, MaskedZone, MemoryUnits, PendingDecision, PlayerAction, PlayerResources, PublicAccessPhase,
+    InstalledRunnerCard, MaskedZone, MemoryUnits, PlayerResources, PublicAccessPhase,
     RunIce, RunState, RunnerState, Side,
 };
 use netrunner_core::view::ClientView;
@@ -147,9 +147,23 @@ fn build_pools(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) -
     }
 }
 
-fn determinize_installed(server_view: &netrunner_core::view::ServerView, pools: &mut Pools) -> Vec<InstalledCard> {
-    let ice = server_view.ice.iter().map(|card| InstalledCard {
+/// Samples one server's installs, each paired with the position it holds
+/// in the **real** `corp.installed` — see `determinize`'s reassembly, which
+/// is what that position is for.
+fn determinize_installed(
+    server_view: &netrunner_core::view::ServerView,
+    pools: &mut Pools,
+) -> Vec<(usize, InstalledCard)> {
+    let ice = server_view.ice.iter().map(|card| (card.position, InstalledCard {
         card: card.card.clone().unwrap_or_else(|| pools.corp_ice.draw()),
+        // Carried straight off the view, never reallocated. This is what
+        // keeps the sample's actions the *same* actions as the caller's:
+        // an `InstallId` is public, so the real state and every
+        // determinized hypothetical must agree on it even where they
+        // disagree completely about which card it names. Reallocating here
+        // would recreate exactly the disjoint-action-set bug this handle
+        // was introduced to remove.
+        install_id: card.install_id,
         server: card.server,
         slot: InstallSlot::Ice,
         rezzed: card.rezzed,
@@ -163,9 +177,11 @@ fn determinize_installed(server_view: &netrunner_core::view::ServerView, pools: 
         // `ClientView` doesn't carry install timing; a rollout re-derives it
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
-    });
-    let root = server_view.root.iter().map(|card| InstalledCard {
+    }));
+    let root = server_view.root.iter().map(|card| (card.position, InstalledCard {
         card: card.card.clone().unwrap_or_else(|| pools.corp_root.draw()),
+        // Carried, never reallocated — see the `ice` arm above.
+        install_id: card.install_id,
         server: card.server,
         slot: InstallSlot::Root,
         rezzed: card.rezzed,
@@ -179,7 +195,7 @@ fn determinize_installed(server_view: &netrunner_core::view::ServerView, pools: 
         // `ClientView` doesn't carry install timing; a rollout re-derives it
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
-    });
+    }));
     ice.chain(root).collect()
 }
 
@@ -285,10 +301,23 @@ fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardR
 pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) -> GameState {
     let mut pools = build_pools(view, registry, rng);
 
-    let mut installed = Vec::new();
+    // Reassembled in the **real** install order, not the view's
+    // server-grouped one. `ServerView` groups installs by server, so
+    // chaining the groups produces a different `corp.installed` ordering
+    // than the state the view was built from — and both
+    // `pending_choice::zone_card_ids` and `ActionSpace`'s installed-card
+    // segments index by exactly that ordering. A sample that disagreed
+    // about it made the caller's own `ToggleCardSelection { position }`
+    // decode to a different card, which `HeuristicAgent` then found
+    // illegal, scored nothing, and fell back out of — livelocking on
+    // `legal_actions[0]` until the step budget ran out (sweep seed 40,
+    // `discretion_advised vs planning_ahead`, on Tāo Salonga's swap).
+    let mut placed: Vec<(usize, InstalledCard)> = Vec::new();
     for server in &view.corp.servers {
-        installed.extend(determinize_installed(server, &mut pools));
+        placed.extend(determinize_installed(server, &mut pools));
     }
+    placed.sort_by_key(|(position, _)| *position);
+    let installed: Vec<InstalledCard> = placed.into_iter().map(|(_, card)| card).collect();
 
     let corp = CorpState {
         identity: None,
@@ -330,6 +359,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         .iter()
         .map(|card| InstalledRunnerCard {
             card: card.card.clone(),
+            // Carried, never reallocated — see `determinize_installed`.
+            install_id: card.install_id,
             base_strength: card.current_strength,
             encounter_strength_buff: 0,
             turn_strength_buff: 0,
@@ -367,7 +398,19 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
 
     let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools));
 
-    let mut state = GameState {
+    // A rollout installs cards of its own, and those ids must not collide
+    // with one the view already carries. The real counter isn't in the
+    // view — nothing needs it — so start just past the highest id sampled,
+    // which is the honest lower bound for it.
+    let next_install_id = corp
+        .installed
+        .iter()
+        .map(|c| c.install_id.0)
+        .chain(runner.rig.iter().map(|c| c.install_id.0))
+        .max()
+        .map_or(1, |highest| highest + 1);
+
+    GameState {
         corp,
         runner,
         phase: view.phase,
@@ -393,72 +436,29 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         deferred_triggers: Vec::new(),
         seed: rng.random(),
         rng_step: 0,
-    };
-
-    reseat_selectable_cards(&mut state, view);
-    state
-}
-
-/// Puts the cards a parked card-selection can act on back into the sampled
-/// state.
-///
-/// `r_and_d` and `stack` are always resampled from a pool, since their
-/// contents are hidden. But a parked `PendingDecision::ChooseCards` that
-/// searches one of them — *Mutual Favor* searching the stack for an
-/// icebreaker, say — has **already revealed** its eligible cards to the
-/// chooser: they arrive as `ToggleCardSelection` entries in
-/// `legal_actions`. Resampling the zone throws that revealed information
-/// away, so those cards can vanish from the sampled world.
-///
-/// The consequence was not a subtly worse search but a hard failure: with
-/// none of the caller's legal actions decoding against the sampled root,
-/// `PuctAgent::search` returned an empty action list, violating its own
-/// "at least one legal action" contract and panicking self-play. Zone
-/// *counts* stay fixed here — those are public — so re-seating overwrites
-/// sampled filler rather than growing the zone.
-fn reseat_selectable_cards(state: &mut GameState, view: &ClientView) {
-    let Some(PendingDecision::ChooseCards { side, source, selected, .. }) = &view.pending_decision else {
-        return;
-    };
-
-    let mut required: Vec<CardId> = view
-        .legal_actions
-        .iter()
-        .filter_map(|action| match action {
-            PlayerAction::ToggleCardSelection { card_id } => Some(card_id.clone()),
-            _ => None,
-        })
-        .collect();
-    // Already-selected cards must survive too, or confirming the selection
-    // would fail against the sampled zone.
-    required.extend(selected.iter().cloned());
-    required.dedup();
-    if required.is_empty() {
-        return;
-    }
-
-    // Only the resampled hidden zones need repair. Hands are already taken
-    // verbatim from the view when the viewer owns them, and archives, heap
-    // and installed cards are public.
-    let zone = match (side, source) {
-        (Side::Corp, CardZoneRef::OwnRAndD) => &mut state.corp.r_and_d,
-        (Side::Runner, CardZoneRef::OwnStack) => &mut state.runner.stack,
-        _ => return,
-    };
-
-    let required_set: HashSet<&CardId> = required.iter().collect();
-    for card in &required {
-        if zone.contains(card) {
-            continue;
-        }
-        // Overwrite a card that isn't itself required; if every slot is
-        // spoken for there is nothing safe to displace, so stop.
-        match zone.iter().position(|existing| !required_set.contains(existing)) {
-            Some(index) => zone[index] = card.clone(),
-            None => break,
-        }
+        next_install_id,
     }
 }
+
+// `reseat_selectable_cards` used to sit here, and is deliberately gone.
+//
+// It repaired a parked `PendingDecision::ChooseCards` over a resampled
+// hidden zone: `ToggleCardSelection` named its target by `CardId`, so
+// resampling R&D or the stack could delete the very card the caller's
+// legal action pointed at, leaving `PuctAgent::search` with no action that
+// decoded against the sampled root at all.
+//
+// `ToggleCardSelection` now carries a *position*, and determinization
+// preserves every zone's length (counts are public — see
+// `determinize_zone`), so a position the caller may submit always
+// addresses some card in the sample. There is nothing left to re-seat.
+//
+// What remains is narrower, and needs a `CardRegistry` this function never
+// took: the card sampled *at* that position may not match the decision's
+// `CardFilter`, so the sample can still judge the action illegal. That is a
+// search-quality gap rather than a crash — `PuctAgent::search` seeds its
+// root from `view.legal_actions` and values such a branch as a dead end.
+// Measure it before building anything to close it.
 
 #[cfg(test)]
 mod tests {
@@ -597,18 +597,30 @@ mod tests {
         assert!(matches!(registry.get(&ice.card).unwrap().card_type, CardType::Ice(_)));
     }
 
-    /// A parked card-selection's targets must survive determinization.
+    /// A parked card-selection's targets must stay *addressable* after
+    /// determinization.
     ///
-    /// The stack is resampled from a pool because its contents are hidden,
-    /// but a `ChooseCards` searching it has already revealed its eligible
-    /// cards to the chooser — they arrive as `ToggleCardSelection` entries
-    /// in `legal_actions`. Resampling them away left a root state where
-    /// none of those actions decoded, so `PuctAgent::search` returned an
-    /// empty action list and self-play panicked.
+    /// The stack is resampled from a pool because its contents are hidden.
+    /// When `ToggleCardSelection` named its target by `CardId`, resampling
+    /// deleted the very card the caller's legal action pointed at, leaving
+    /// a root state where none of those actions decoded — `PuctAgent::
+    /// search` returned an empty action list and self-play panicked. That
+    /// is what `reseat_selectable_cards` existed to patch up.
+    ///
+    /// The action now carries a position, and zone *counts* are public and
+    /// preserved, so every offered position still addresses some card in
+    /// the sample. This asserts that directly, which is why the repair
+    /// function is gone rather than merely unused.
+    ///
+    /// Note what is deliberately *not* asserted: that the sampled card at
+    /// that position matches the decision's `CardFilter`. It generally will
+    /// not — the stack is resampled — so the sample may still judge the
+    /// action illegal. That is a search-quality gap, not a crash, and it is
+    /// the residual documented where `reseat_selectable_cards` used to be.
     #[test]
-    fn a_parked_selections_targets_survive_determinization() {
+    fn a_parked_selections_targets_stay_addressable_after_determinization() {
         use netrunner_core::dsl::{CardFilter, CardZoneRef};
-        use netrunner_core::rules::PendingChoiceResume;
+        use netrunner_core::rules::{PendingChoiceResume, PendingDecision, PlayerAction};
 
         let mut registry = netrunner_core::cards::CardRegistry::new();
         // A pool of decoys the sampler would otherwise fill the stack with.
@@ -638,24 +650,35 @@ mod tests {
         });
 
         let view = build_client_view(&state, &registry, Side::Runner);
-        assert!(
-            view.legal_actions.contains(&PlayerAction::ToggleCardSelection { card_id: target.clone() }),
-            "the engine should be offering the breaker as a selectable target"
-        );
+        let offered: Vec<usize> = view
+            .legal_actions
+            .iter()
+            .filter_map(|a| match a {
+                PlayerAction::ToggleCardSelection { position } => Some(*position),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(offered, vec![0], "the breaker sits at position 0 and is the only eligible target");
+        // The breaker's identity is the Runner's own to see, but the
+        // action still does not carry it.
+        let _ = &target;
 
-        // Many samples: the target must survive every one, not most.
+        // Many samples: every offered position must address a card in all
+        // of them, not most.
         for seed in 0..25u64 {
             let mut rng = StdRng::seed_from_u64(seed);
             let sampled = determinize(&view, &registry, &mut rng);
-            assert!(
-                sampled.runner.stack.contains(&target),
-                "seed {seed}: a selectable card was sampled out of the stack"
-            );
             assert_eq!(
                 sampled.runner.stack.len(),
                 state.runner.stack.len(),
                 "seed {seed}: zone size is public and must not change"
             );
+            for position in &offered {
+                assert!(
+                    sampled.runner.stack.get(*position).is_some(),
+                    "seed {seed}: offered position {position} addresses nothing in the sample"
+                );
+            }
         }
     }
 

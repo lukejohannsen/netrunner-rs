@@ -258,7 +258,7 @@ mod tests {
     use super::*;
     use netrunner_core::dsl::{CardDefinition, CardId, CardType, IceType};
     use netrunner_core::rules::{
-        AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, InstalledCard, InstalledRunnerCard,
+        AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, InstallId, InstalledCard, InstalledRunnerCard,
         MemoryUnits, PaidAbilityWindow, PlayerResources, RunIce, RunPhase, RunState, RunnerState, ServerId, SubroutineStatus,
         WindowCheckpoint,
     };
@@ -380,17 +380,18 @@ mod tests {
         state.corp.resources.credits = Credits(5);
         state.corp.installed = vec![InstalledCard {
             card: CardId("winning_agenda".to_string()),
+            install_id: InstallId(1),
             server: ServerId::Remote(0),
             advancement_tokens: 3,
             ..Default::default()
         }];
 
         let view = build_client_view(&state, &registry, Side::Corp);
-        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) }));
+        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { target: InstallId(1) }));
 
         let mut agent = MctsAgent::with_config(Side::Corp, 123, 200, 10, DEFAULT_EXPLORATION, 2);
         let chosen = agent.select_action(&view, &registry);
-        assert_eq!(chosen, PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) });
+        assert_eq!(chosen, PlayerAction::ScoreAgenda { target: InstallId(1) });
     }
 
     #[test]

@@ -342,9 +342,11 @@ pub(crate) fn enter_start_of_turn(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::state::InstallId;
     use crate::dsl::CardId;
     use crate::rules::action::PlayerAction;
     use crate::rules::run::{RunPhase, RunState};
+    use crate::rules::test_support::install_of;
     use crate::rules::state::{
         AgendaPoints, CorpState, Credits, MemoryUnits, PlayerResources, RunnerState,
     };
@@ -523,6 +525,7 @@ mod tests {
         // Corp ends its turn holding 2 clicks, with the asset rezzed.
         let mut state = game_state(Side::Corp, 2, 5, 0, 2);
         state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(1068),
             card: CardId("regolith_mining_license".to_string()),
             rezzed: true,
             ..Default::default()
@@ -530,7 +533,7 @@ mod tests {
 
         let (state, _) = end_turn(&state, &registry).expect("ending the turn should succeed");
         let activate = PlayerAction::ActivateAbility {
-            card_id: CardId("regolith_mining_license".to_string()),
+            target: install_of(&state, "regolith_mining_license"),
             ability_index: 0,
         };
 

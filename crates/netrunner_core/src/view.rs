@@ -206,6 +206,8 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::InstallId;
+    use crate::rules::test_support::install_of;
     use crate::dsl::{CardDefinition, CardType, IceType};
     use crate::rules::{
         AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, InstalledCard, MemoryUnits, PlayerResources,
@@ -230,11 +232,13 @@ mod tests {
             r_and_d: vec![CardId("ice_wall".to_string()), CardId("enigma".to_string())],
             installed: vec![
                 InstalledCard {
+                    install_id: InstallId(1071),
                     card: CardId("ice_wall".to_string()),
                     slot: InstallSlot::Ice,
                     ..Default::default()
                 },
                 InstalledCard {
+                    install_id: InstallId(1072),
                     card: CardId("pad_campaign".to_string()),
                     server: ServerId::Remote(0),
                     rezzed: true,
@@ -326,7 +330,7 @@ mod tests {
             Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase), checkpoint: WindowCheckpoint::Run });
 
         let registry = CardRegistry::from_cards(vec![blank_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier))]);
-        let rez = PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) };
+        let rez = PlayerAction::RezIce { ice: install_of(&state, "ice_wall") };
 
         let corp_view = build_client_view(&state, &registry, Side::Corp);
         assert!(corp_view.legal_actions.contains(&rez));

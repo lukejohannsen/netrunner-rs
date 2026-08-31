@@ -4,7 +4,7 @@ use crate::dsl::ability::EffectRequirement;
 use crate::dsl::card::{CardId, IceType};
 use crate::dsl::cost::Cost;
 use crate::dsl::zone::{CardFilter, CardZoneRef};
-use crate::rules::{ServerId, Side};
+use crate::rules::{InstallId, ServerId, Side};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum DamageType {
@@ -343,7 +343,11 @@ pub enum Effect {
     /// two live in different modules (`ability`/`engine`) and the paid path
     /// additionally needs `paid_ability::note_window_action`, which this
     /// free variant has no priority-window context to call.
-    RezInstalledIgnoringCost(CardId),
+    ///
+    /// An `InstallId` for the same reason as `SwapInstalledIce`: *Send a
+    /// Message* rezzes the installed ICE the Corp chose, which with two
+    /// unrezzed copies of one card a `CardId` could not name.
+    RezInstalledIgnoringCost(InstallId),
     /// Removes *every* counter currently on `acting_card` and grants `side`
     /// that many credits — e.g. Pennyshaver's "place 1 credit on this
     /// hardware, then take all credits from it." A narrowly-scoped one-off
@@ -403,7 +407,13 @@ pub enum Effect {
     /// current `active_run`'s already-built `RunState::ice` (swapping
     /// positions mid-run would desync that snapshot from `CorpState::
     /// installed`).
-    SwapInstalledIce(CardId, CardId),
+    ///
+    /// Takes `InstallId`s rather than `CardId`s so a swap of two copies of
+    /// the *same* ICE resolves. Under `CardId` both placeholders were
+    /// substituted with the same value, both position lookups found the
+    /// first copy, and the swap silently no-opped — reachable with two
+    /// Barriers of one title against *Tāo Salonga*.
+    SwapInstalledIce(InstallId, InstallId),
     /// Installs `card_id` (a placeholder substituted at `PendingDecision::
     /// ChooseCards` resolution time, same convention as `SwapInstalledIce`)
     /// from `origin_zone` (fixed at authoring — `OwnHq` or `OwnArchives`)

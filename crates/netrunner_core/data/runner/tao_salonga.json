@@ -28,8 +28,8 @@
                   "shuffle_after": false,
                   "then": {
                     "SwapInstalledIce": [
-                      "",
-                      ""
+                      0,
+                      0
                     ]
                   }
                 }
@@ -64,8 +64,8 @@
                   "shuffle_after": false,
                   "then": {
                     "SwapInstalledIce": [
-                      "",
-                      ""
+                      0,
+                      0
                     ]
                   }
                 }

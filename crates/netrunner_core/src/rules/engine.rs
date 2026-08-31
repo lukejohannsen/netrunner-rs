@@ -9,7 +9,7 @@ use crate::rules::paid_ability;
 use crate::rules::pending_choice;
 use crate::rules::run::{self, RunAction, RunPhase};
 use crate::rules::setup;
-use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, Side, WindowCheckpoint};
+use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, Side, WindowCheckpoint};
 use crate::rules::trace;
 use crate::rules::turn;
 use crate::rules::win;
@@ -97,7 +97,7 @@ pub fn apply_action(
         PlayerAction::InstallCard { card_id, zone, slot } => {
             install_card(state, registry, card_id, zone, slot)
         }
-        PlayerAction::RezIce { ice_id } => rez_ice(state, registry, ice_id),
+        PlayerAction::RezIce { ice } => rez_ice(state, registry, ice),
         PlayerAction::InitiateRun { server } => initiate_run(state, registry, server),
         PlayerAction::ContinueRun => continue_run(state, registry),
         PlayerAction::JackOut => jack_out(state, registry),
@@ -109,8 +109,8 @@ pub fn apply_action(
             install_program(state, registry, card_id, memory_cost)
         }
         PlayerAction::InstallResource { card_id } => install_resource(state, registry, card_id),
-        PlayerAction::InstallProgramOnIce { card_id, host_ice_id, memory_cost } => {
-            install_program_on_ice(state, registry, card_id, host_ice_id, memory_cost)
+        PlayerAction::InstallProgramOnIce { card_id, host, memory_cost } => {
+            install_program_on_ice(state, registry, card_id, host, memory_cost)
         }
         PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
             break_subroutine(state, ice_id, subroutine_index, registry)
@@ -122,14 +122,14 @@ pub fn apply_action(
         PlayerAction::DiscardCard { card_id } => turn::discard_card(state, card_id, registry),
         PlayerAction::KeepHand => setup::keep_hand(state, registry),
         PlayerAction::TakeMulligan => setup::take_mulligan(state, registry),
-        PlayerAction::ActivateAbility { card_id, ability_index } => {
-            activate_ability(state, registry, card_id, ability_index)
+        PlayerAction::ActivateAbility { target, ability_index } => {
+            activate_ability(state, registry, target, ability_index)
         }
-        PlayerAction::AdvanceCard { card_id } => advance_card(state, registry, card_id),
-        PlayerAction::ScoreAgenda { card_id } => score_agenda(state, registry, card_id),
+        PlayerAction::AdvanceCard { target } => advance_card(state, registry, target),
+        PlayerAction::ScoreAgenda { target } => score_agenda(state, registry, target),
         PlayerAction::RemoveTag => remove_tag(state),
         PlayerAction::PurgeVirusCounters => purge_virus_counters(state, registry),
-        PlayerAction::TrashResource { card_id } => trash_resource(state, registry, card_id),
+        PlayerAction::TrashResource { target } => trash_resource(state, registry, target),
         PlayerAction::SelectCardToAccess { card_id } => {
             select_card_to_access(state, registry, card_id)
         }
@@ -154,7 +154,7 @@ pub fn apply_action(
         }
         PlayerAction::DeclinePendingPaidChoice => decline_pending_paid_choice(state, registry),
         PlayerAction::ResolvePendingChoice { option_index } => resolve_pending_choice(state, registry, option_index),
-        PlayerAction::ToggleCardSelection { card_id } => toggle_card_selection(state, registry, card_id),
+        PlayerAction::ToggleCardSelection { position } => toggle_card_selection(state, registry, position),
         PlayerAction::ConfirmCardSelection => confirm_card_selection(state, registry),
         PlayerAction::ChooseServerForPendingDecision { server } => {
             choose_server_for_pending_decision(state, registry, server)
@@ -385,8 +385,10 @@ fn install_card(
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
 
+    let install_id = next.allocate_install_id();
     next.corp.installed.push(InstalledCard {
         card: card_id.clone(),
+        install_id,
         server: zone,
         slot,
         rezzed: false,
@@ -412,7 +414,7 @@ fn install_card(
 fn rez_ice(
     state: &GameState,
     registry: &CardRegistry,
-    ice_id: CardId,
+    ice: InstallId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     // Priority-independent: legal during the Corp's own Action phase, or —
@@ -427,20 +429,21 @@ fn rez_ice(
     }
     let mut next = state.clone();
 
-    let server = {
+    // The install is resolved first, and the card's identity comes *from*
+    // it — the caller names a position on the table, not a card, so
+    // everything below works from what is actually installed there.
+    let (ice_id, server) = {
         let installed = next
             .corp
             .installed
             .iter_mut()
-            .find(|c| c.card == ice_id)
-            .ok_or_else(|| RulesError::CardNotInstalled {
-                card: ice_id.clone(),
-            })?;
+            .find(|c| c.install_id == ice)
+            .ok_or(RulesError::InstallNotFound(ice))?;
         if installed.rezzed {
-            return Err(RulesError::AlreadyRezzed { card: ice_id });
+            return Err(RulesError::AlreadyRezzed { card: installed.card.clone() });
         }
         installed.rezzed = true;
-        installed.server
+        (installed.card.clone(), installed.server)
     };
 
     let card_def = registry
@@ -680,12 +683,22 @@ fn play_operation(
 /// printed `strength` — mirrors `build_run_ice`'s identical seed-once
 /// pattern for `RunIce::current_strength`. `0` for Hardware/non-strength
 /// Programs (`CardDefinition::strength` is `None`).
-fn seed_rig_card(registry: &CardRegistry, card_id: CardId) -> Result<InstalledRunnerCard, RulesError> {
+/// Takes `&mut GameState` solely to mint the card's `install_id` — every
+/// rig install funnels through here, so allocating inside makes it
+/// structurally impossible for one of the four call sites to forget and
+/// leave a `PLACEHOLDER` on a live install.
+fn seed_rig_card(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<InstalledRunnerCard, RulesError> {
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    let base_strength = card_def.strength.unwrap_or(0);
     Ok(InstalledRunnerCard {
-        base_strength: card_def.strength.unwrap_or(0),
+        install_id: state.allocate_install_id(),
+        base_strength,
         card: card_id,
         encounter_strength_buff: 0,
         turn_strength_buff: 0,
@@ -789,7 +802,7 @@ fn install_hardware(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
-    let rig_card = seed_rig_card(registry, card_id.clone())?;
+    let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
     // MU/max-hand-size bonuses (e.g. a console's "+1[mu]", T400 Memory
     // Diamond's "+1 maximum hand size") take effect immediately on install.
@@ -857,7 +870,7 @@ fn install_program(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
-    let rig_card = seed_rig_card(registry, card_id.clone())?;
+    let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
     // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
     // Programs only, unconditional otherwise — no per-turn gate) resolved by
@@ -879,7 +892,7 @@ fn install_program_on_ice(
     state: &GameState,
     registry: &CardRegistry,
     card_id: CardId,
-    host_ice_id: CardId,
+    host: InstallId,
     memory_cost: u8,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
@@ -892,14 +905,17 @@ fn install_program_on_ice(
     if !card_def.installs_on_ice {
         return Err(RulesError::NotATrojanProgram(card_id));
     }
-    if !state
-        .corp
-        .installed
-        .iter()
-        .any(|c| c.card == host_ice_id && c.slot == InstallSlot::Ice)
-    {
-        return Err(RulesError::HostIsNotIce(host_ice_id));
+    // Resolved by install, never by card: an unrezzed piece of ICE is a
+    // legal host, and the Runner is not entitled to know which card it is.
+    // Its `CardId` is read out here only so the rig entry and the events
+    // below can record the host — nothing derived from it is shown to the
+    // Runner that their `ClientView` did not already carry.
+    let host_install =
+        state.corp.installed.iter().find(|c| c.install_id == host).ok_or(RulesError::InstallNotFound(host))?;
+    if host_install.slot != InstallSlot::Ice {
+        return Err(RulesError::HostIsNotIce(host_install.card.clone()));
     }
+    let host_ice_id = host_install.card.clone();
 
     let mut next = state.clone();
     spend_click(&mut next, side)?;
@@ -925,7 +941,7 @@ fn install_program_on_ice(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
-    let mut rig_card = seed_rig_card(registry, card_id.clone())?;
+    let mut rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     rig_card.hosted_on_ice = Some(host_ice_id);
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost };
@@ -961,7 +977,7 @@ fn install_resource(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
-    let rig_card = seed_rig_card(registry, card_id.clone())?;
+    let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ResourceInstalled { side, card: card_id };
     events.push(installed_event.clone());
@@ -1057,11 +1073,18 @@ fn break_subroutine_with_click(
 fn activate_ability(
     state: &GameState,
     registry: &CardRegistry,
-    card_id: CardId,
+    target: InstallId,
     ability_index: usize,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    let corp_active = state.corp.installed.iter().any(|c| c.card == card_id && c.rezzed);
-    let runner_active = state.runner.rig.iter().any(|c| c.card == card_id);
+    // An `InstallId` answers "whose card is this?" directly. This used to
+    // scan both zones for a `CardId` and lean on their being "disjoint by
+    // construction"; the id makes the owning zone a property of the target
+    // rather than an inference from it.
+    let corp_install = state.find_corp_install(target);
+    let corp_card = corp_install.map(|c| c.card.clone());
+    let corp_active = corp_install.is_some_and(|c| c.rezzed);
+    let runner_card = state.find_rig_install(target).map(|c| c.card.clone());
+    let runner_active = runner_card.is_some();
 
     let side = match &state.paid_ability_window {
         Some(window) => {
@@ -1082,13 +1105,21 @@ fn activate_ability(
         },
     };
 
-    let active = match side {
-        Side::Corp => corp_active,
-        Side::Runner => runner_active,
+    let (active, card) = match side {
+        Side::Corp => (corp_active, corp_card),
+        Side::Runner => (runner_active, runner_card),
     };
     if !active {
-        return Err(RulesError::CardNotActive { side, card: card_id });
+        // Two different failures, kept distinct: an install the acting side
+        // owns but cannot use right now (an unrezzed Corp card) is named,
+        // because that side can see it; an id matching nothing on the table
+        // has no card to name at all.
+        return match card {
+            Some(card) => Err(RulesError::CardNotActive { side, card }),
+            None => Err(RulesError::InstallNotFound(target)),
+        };
     }
+    let card_id = card.expect("an active install always resolves to a card");
 
     if let Some(window) = &state.paid_ability_window
         && window.active_priority != side
@@ -1148,11 +1179,14 @@ fn activate_ability(
 fn advance_card(
     state: &GameState,
     registry: &CardRegistry,
-    card_id: CardId,
+    target: InstallId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
+    // Resolved before any cost is paid: `pay_cost` wants the acting card,
+    // and a stale `InstallId` must not cost the Corp a click and a credit.
+    let card_id = state.find_corp_install(target).ok_or(RulesError::InstallNotFound(target))?.card.clone();
     let mut next = state.clone();
     spend_click(&mut next, side)?;
 
@@ -1163,8 +1197,8 @@ fn advance_card(
         .corp
         .installed
         .iter_mut()
-        .find(|c| c.card == card_id)
-        .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+        .find(|c| c.install_id == target)
+        .ok_or(RulesError::InstallNotFound(target))?;
 
     let card_def = registry
         .get(&card_id)
@@ -1191,7 +1225,7 @@ fn advance_card(
 fn score_agenda(
     state: &GameState,
     registry: &CardRegistry,
-    card_id: CardId,
+    target: InstallId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
@@ -1206,8 +1240,12 @@ fn score_agenda(
         .corp
         .installed
         .iter()
-        .position(|installed| installed.card == card_id)
-        .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
+        .position(|installed| installed.install_id == target)
+        .ok_or(RulesError::InstallNotFound(target))?;
+    // Advancement lives on the *install*, so with two copies of one agenda
+    // installed this reads the tokens on the copy the Corp actually chose —
+    // the first-match-by-card lookup this replaced could score the wrong one.
+    let card_id = state.corp.installed[position].card.clone();
     let advancement_tokens = state.corp.installed[position].advancement_tokens;
     let server = state.corp.installed[position].server;
 
@@ -1315,7 +1353,7 @@ fn purge_virus_counters(
 fn trash_resource(
     state: &GameState,
     registry: &CardRegistry,
-    card_id: CardId,
+    target: InstallId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
@@ -1324,6 +1362,9 @@ fn trash_resource(
         return Err(RulesError::RunnerNotTagged);
     }
 
+    // Resolved before the click and 2 credits are spent, so a stale
+    // `InstallId` costs the Corp nothing.
+    let card_id = state.find_rig_install(target).ok_or(RulesError::InstallNotFound(target))?.card.clone();
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
@@ -1341,8 +1382,8 @@ fn trash_resource(
         .runner
         .rig
         .iter()
-        .position(|c| c.card == card_id)
-        .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: card_id.clone() })?;
+        .position(|c| c.install_id == target)
+        .ok_or(RulesError::InstallNotFound(target))?;
     let removed = next.runner.rig.remove(position);
     next.runner.heap.push(removed.card);
     events.push(GameEvent::CardTrashed { side: Side::Runner, card: card_id });
@@ -1520,10 +1561,10 @@ fn choose_trigger_to_resolve(
 fn toggle_card_selection(
     state: &GameState,
     registry: &CardRegistry,
-    card_id: CardId,
+    position: usize,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let mut next = state.clone();
-    let events = pending_choice::resolve_toggle_card_selection(&mut next, registry, card_id)?;
+    let events = pending_choice::resolve_toggle_card_selection(&mut next, registry, position)?;
     Ok((next, events))
 }
 
@@ -1551,6 +1592,11 @@ fn choose_server_for_pending_decision(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::test_support::{fixture_install_id, install_of};
+
+    /// An `InstallId` nothing on the table carries — `allocate_install_id`
+    /// counts from 1, so this is safely past any fixture's installs.
+    const ABSENT_INSTALL: InstallId = InstallId(9_999);
     use crate::dsl::{
         AbilityDef, BoostDuration, CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount,
         SubroutineDef, TriggeredEffect,
@@ -1800,6 +1846,9 @@ mod tests {
             next.corp.installed,
             vec![InstalledCard {
                 card: card_id.clone(),
+                // The first install of a fresh state — `allocate_install_id`
+                // counts from 1, leaving 0 as the fixture placeholder.
+                install_id: InstallId(1),
                 slot: InstallSlot::Ice,
                 // Seamless Launch's eligibility marker — set by every
                 // install, cleared at the Corp's next turn start.
@@ -1917,13 +1966,14 @@ mod tests {
     fn corp_rez_ice_flips_installed_card_and_pays_registry_cost() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1045),
             card: card_id.clone(),
             slot: InstallSlot::Ice,
             ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 1, None)]);
-        let (next, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: card_id.clone() })
+        let (next, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &card_id.0) })
             .expect("action should succeed");
 
         assert!(next.corp.installed[0].rezzed);
@@ -1942,13 +1992,14 @@ mod tests {
     fn corp_rez_ice_with_insufficient_credits_returns_not_enough_credits() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1046),
             card: card_id.clone(),
             slot: InstallSlot::Ice,
             ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 0, Vec::new(), installed);
         let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 1, None)]);
-        let result = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: card_id });
+        let result = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &card_id.0) });
 
         assert_eq!(result, Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 0, requested: 1 }));
     }
@@ -1957,21 +2008,21 @@ mod tests {
     fn corp_rez_ice_for_card_missing_from_registry_returns_card_not_found_in_registry() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1047),
             card: card_id.clone(),
             slot: InstallSlot::Ice,
             ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
-        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() });
+        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice: install_of(&state, &card_id.0) });
 
         assert_eq!(result, Err(RulesError::CardNotFoundInRegistry(card_id)));
     }
 
     #[test]
     fn runner_turn_rez_ice_returns_not_your_turn() {
-        let card_id = CardId("ice_wall".to_string());
         let state = runner_state(3, 5, 3);
-        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id });
+        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice: ABSENT_INSTALL });
 
         assert_eq!(
             result,
@@ -1983,25 +2034,27 @@ mod tests {
     }
 
     #[test]
-    fn corp_rez_ice_with_card_not_installed_returns_card_not_installed() {
-        let card_id = CardId("ice_wall".to_string());
+    fn corp_rez_ice_with_an_id_nothing_is_installed_under_returns_install_not_found() {
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), Vec::new());
-        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() });
+        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice: ABSENT_INSTALL });
 
-        assert_eq!(result, Err(RulesError::CardNotInstalled { card: card_id }));
+        // No `CardId` in the error: the whole point of an `InstallId` is
+        // that the actor may not know what card it named.
+        assert_eq!(result, Err(RulesError::InstallNotFound(ABSENT_INSTALL)));
     }
 
     #[test]
     fn corp_rez_ice_already_rezzed_returns_already_rezzed() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1048),
             card: card_id.clone(),
             slot: InstallSlot::Ice,
             rezzed: true,
             ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
-        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice_id: card_id.clone() });
+        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice: install_of(&state, &card_id.0) });
 
         assert_eq!(result, Err(RulesError::AlreadyRezzed { card: card_id }));
     }
@@ -2010,6 +2063,7 @@ mod tests {
     fn corp_can_rez_ice_during_run_approach_ice_even_though_phase_is_runner_action() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1049),
             card: card_id.clone(),
             slot: InstallSlot::Ice,
             ..Default::default()
@@ -2024,7 +2078,7 @@ mod tests {
         });
 
         let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 0, None)]);
-        let (next, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: card_id.clone() })
+        let (next, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &card_id.0) })
             .expect("Corp should be able to rez ICE during the Runner's run");
 
         assert!(next.corp.installed[0].rezzed);
@@ -2044,14 +2098,19 @@ mod tests {
     fn corp_rez_ice_for_ice_not_at_current_position_does_not_affect_run_ice() {
         let outer = CardId("outer_ice".to_string());
         let inner = CardId("inner_ice".to_string());
+        // Explicit ids: two installs sharing the `Default` placeholder
+        // would both answer to the same `InstallId`, and this test's whole
+        // point is that the *inner* one is what gets rezzed.
         let installed = vec![
             InstalledCard {
                 card: outer.clone(),
+                install_id: InstallId(1),
                 slot: InstallSlot::Ice,
                 ..Default::default()
             },
             InstalledCard {
                 card: inner.clone(),
+                install_id: InstallId(2),
                 slot: InstallSlot::Ice,
                 ..Default::default()
             },
@@ -2069,7 +2128,7 @@ mod tests {
             test_card("outer_ice", Side::Corp, CardType::Ice(IceType::Barrier), 0, None),
             test_card("inner_ice", Side::Corp, CardType::Ice(IceType::Barrier), 0, None),
         ]);
-        let (next, _events) = apply_action(&state, &registry, PlayerAction::RezIce { ice_id: inner.clone() })
+        let (next, _events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &inner.0) })
             .expect("Corp should be able to pre-emptively rez ICE the run hasn't reached yet");
 
         assert!(next.corp.installed.iter().find(|c| c.card == inner).unwrap().rezzed);
@@ -2106,11 +2165,13 @@ mod tests {
     #[test]
     fn runner_initiate_run_populates_ice_from_installed_ice_outermost_first() {
         let outer = InstalledCard {
+            install_id: InstallId(1050),
             card: CardId("outer_ice".to_string()),
             slot: InstallSlot::Ice,
             ..Default::default()
         };
         let inner = InstalledCard {
+            install_id: InstallId(1051),
             card: CardId("inner_ice".to_string()),
             slot: InstallSlot::Ice,
             rezzed: true,
@@ -2148,10 +2209,12 @@ mod tests {
     fn runner_initiate_run_ignores_root_installs_and_other_servers_ice() {
         let installed = vec![
             InstalledCard {
+                install_id: InstallId(1052),
                 card: CardId("some_upgrade".to_string()),
                 ..Default::default()
             },
             InstalledCard {
+                install_id: InstallId(1053),
                 card: CardId("remote_ice".to_string()),
                 server: ServerId::Remote(0),
                 slot: InstallSlot::Ice,
@@ -2172,6 +2235,7 @@ mod tests {
     #[test]
     fn runner_initiate_run_with_unregistered_ice_returns_card_not_found_in_registry() {
         let installed = vec![InstalledCard {
+            install_id: InstallId(1054),
             card: CardId("mystery_ice".to_string()),
             slot: InstallSlot::Ice,
             ..Default::default()
@@ -2188,6 +2252,7 @@ mod tests {
     #[test]
     fn runner_initiate_run_with_registered_ice_missing_strength_and_subroutines_still_builds_blank_defaults() {
         let installed = vec![InstalledCard {
+            install_id: InstallId(1055),
             card: CardId("vanilla_ice".to_string()),
             slot: InstallSlot::Ice,
             ..Default::default()
@@ -2294,6 +2359,7 @@ mod tests {
     #[test]
     fn runner_jack_out_during_initial_approach_returns_illegal_jack_out_window() {
         let installed = vec![InstalledCard {
+            install_id: InstallId(1056),
             card: CardId("ice_wall".to_string()),
             slot: InstallSlot::Ice,
             ..Default::default()
@@ -3021,7 +3087,12 @@ mod tests {
 
         assert_eq!(next.runner.resources.clicks, Clicks(2));
         assert!(next.runner.grip.is_empty());
-        assert_eq!(next.runner.rig, vec![installed_runner_card("clone_chip", 0)]);
+        assert_eq!(
+            next.runner.rig,
+            // The engine allocates the id; the fixture helper derives its
+            // own from the card name, so the expectation names it directly.
+            vec![InstalledRunnerCard { install_id: InstallId(1), ..installed_runner_card("clone_chip", 0) }]
+        );
         assert_eq!(
             events,
             vec![
@@ -3074,7 +3145,12 @@ mod tests {
 
         assert_eq!(next.runner.resources.clicks, Clicks(2));
         assert!(next.runner.grip.is_empty());
-        assert_eq!(next.runner.rig, vec![installed_runner_card("gordian_blade", 0)]);
+        assert_eq!(
+            next.runner.rig,
+            // The engine allocates the id; the fixture helper derives its
+            // own from the card name, so the expectation names it directly.
+            vec![InstalledRunnerCard { install_id: InstallId(1), ..installed_runner_card("gordian_blade", 0) }]
+        );
         assert_eq!(next.runner.memory_units, crate::rules::state::MemoryUnits(1));
         assert_eq!(
             events,
@@ -3160,7 +3236,12 @@ mod tests {
         )
         .expect("action should succeed");
 
-        assert_eq!(next.runner.rig, vec![installed_runner_card("corroder", 2)]);
+        assert_eq!(
+            next.runner.rig,
+            // The engine allocates the id; the fixture helper derives its
+            // own from the card name, so the expectation names it directly.
+            vec![InstalledRunnerCard { install_id: InstallId(1), ..installed_runner_card("corroder", 2) }]
+        );
     }
 
     #[test]
@@ -3214,7 +3295,12 @@ mod tests {
         )
         .expect("action should succeed");
 
-        assert_eq!(next.runner.rig, vec![installed_runner_card("clone_chip", 0)]);
+        assert_eq!(
+            next.runner.rig,
+            // The engine allocates the id; the fixture helper derives its
+            // own from the card name, so the expectation names it directly.
+            vec![InstalledRunnerCard { install_id: InstallId(1), ..installed_runner_card("clone_chip", 0) }]
+        );
     }
 
     #[test]
@@ -3371,9 +3457,16 @@ mod tests {
     /// A rig entry seeded with `base_strength` and no active buffs — used
     /// by `activate_ability`/install tests that need a card already in the
     /// Runner's rig.
+    /// Carries `InstallId(1)` rather than the `Default` placeholder, for two
+    /// reasons: it is what `seed_rig_card` allocates for the first install
+    /// of a fresh state, so an assertion against a real install matches; and
+    /// a fixture built with it is *addressable*, which every action naming
+    /// a rig card now requires. Every current caller builds a one-card rig;
+    /// a fixture with two would need distinct ids.
     fn installed_runner_card(card_id: &str, base_strength: i32) -> InstalledRunnerCard {
         InstalledRunnerCard {
             card: CardId(card_id.to_string()),
+            install_id: fixture_install_id(card_id),
             base_strength,
             ..Default::default()
         }
@@ -3449,7 +3542,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("action should succeed");
 
@@ -3494,7 +3587,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("action should succeed");
 
@@ -3534,7 +3627,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("action should succeed");
 
@@ -3579,7 +3672,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("action should succeed");
 
@@ -3623,7 +3716,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         );
 
         assert_eq!(
@@ -3670,7 +3763,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("Corroder should break a subroutine on Barrier ICE");
 
@@ -3706,7 +3799,7 @@ mod tests {
             let result = apply_action(
                 &state,
                 &registry,
-                PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+                PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
             );
 
             assert_eq!(
@@ -3748,7 +3841,7 @@ mod tests {
             let (next, _events) = apply_action(
                 &state,
                 &registry,
-                PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+                PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
             )
             .expect("a universal breaker should break subroutines regardless of ICE subtype");
 
@@ -3788,7 +3881,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("action should succeed");
 
@@ -3828,7 +3921,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id, ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         );
 
         assert_eq!(
@@ -3858,6 +3951,7 @@ mod tests {
     #[test]
     fn rez_ice_by_non_priority_side_during_window_still_succeeds_and_resets_passes() {
         let installed = vec![InstalledCard {
+            install_id: InstallId(1057),
             card: CardId("ice_wall".to_string()),
             slot: InstallSlot::Ice,
             ..Default::default()
@@ -3881,7 +3975,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 0, None)]);
 
         let (next, _events) =
-            apply_action(&state, &registry, PlayerAction::RezIce { ice_id: CardId("ice_wall".to_string()) })
+            apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "ice_wall") })
                 .expect("action should succeed");
 
         let window = next.paid_ability_window.expect("window should stay open");
@@ -3922,6 +4016,7 @@ mod tests {
     fn corp_activate_ability_on_unrezzed_asset_returns_card_not_active() {
         let card_id = CardId("pad_campaign".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1058),
             card: card_id.clone(),
             server: ServerId::Remote(0),
             ..Default::default()
@@ -3940,7 +4035,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         );
 
         assert_eq!(result, Err(RulesError::CardNotActive { side: Side::Corp, card: card_id }));
@@ -3971,7 +4066,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id, ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         );
 
         assert_eq!(
@@ -3998,7 +4093,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id, ability_index: 1 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 1 },
         );
 
         assert_eq!(result, Err(RulesError::InvalidAbilityIndex(1)));
@@ -4022,7 +4117,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id, ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         );
 
         assert_eq!(result, Err(RulesError::AbilityNotManuallyActivatable(0)));
@@ -4032,6 +4127,7 @@ mod tests {
     fn corp_advance_card_adds_advancement_token_and_charges_click_and_credit() {
         let card_id = CardId("priority_requisition".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1059),
             card: card_id.clone(),
             server: ServerId::Remote(0),
             advancement_tokens: 1,
@@ -4044,7 +4140,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::AdvanceCard { card_id: card_id.clone() },
+            PlayerAction::AdvanceCard { target: install_of(&state, &card_id.0) },
         )
         .expect("action should succeed");
 
@@ -4065,6 +4161,7 @@ mod tests {
     fn corp_advance_card_on_non_agenda_returns_card_not_advanceable() {
         let card_id = CardId("pad_campaign".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1060),
             card: card_id.clone(),
             server: ServerId::Remote(0),
             ..Default::default()
@@ -4076,34 +4173,33 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::AdvanceCard { card_id: card_id.clone() },
+            PlayerAction::AdvanceCard { target: install_of(&state, &card_id.0) },
         );
 
         assert_eq!(result, Err(RulesError::CardNotAdvanceable { card: card_id }));
     }
 
     #[test]
-    fn corp_advance_card_on_uninstalled_card_returns_card_not_installed() {
-        let card_id = CardId("priority_requisition".to_string());
+    fn corp_advance_card_on_an_absent_install_returns_install_not_found() {
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), Vec::new());
         let mut registry = CardRegistry::new();
         registry.insert(test_card("priority_requisition", Side::Corp, CardType::Agenda, 0, Some(5)));
 
-        let result = apply_action(
-            &state,
-            &registry,
-            PlayerAction::AdvanceCard { card_id: card_id.clone() },
-        );
+        let result =
+            apply_action(&state, &registry, PlayerAction::AdvanceCard { target: ABSENT_INSTALL });
 
-        assert_eq!(result, Err(RulesError::CardNotInstalled { card: card_id }));
+        assert_eq!(result, Err(RulesError::InstallNotFound(ABSENT_INSTALL)));
+        // Rejected before anything is spent — a stale target the Corp was
+        // offered a moment ago must not cost it a click and a credit.
+        assert_eq!(state.corp.resources.clicks, Clicks(3));
+        assert_eq!(state.corp.resources.credits, Credits(5));
     }
 
     #[test]
     fn runner_turn_advance_card_returns_not_your_turn() {
-        let card_id = CardId("priority_requisition".to_string());
         let state = runner_state(3, 0, 0);
 
-        let result = apply_action(&state, &registry(), PlayerAction::AdvanceCard { card_id });
+        let result = apply_action(&state, &registry(), PlayerAction::AdvanceCard { target: ABSENT_INSTALL });
 
         assert_eq!(
             result,
@@ -4118,6 +4214,7 @@ mod tests {
     fn corp_advance_card_with_insufficient_credits_returns_not_enough_credits() {
         let card_id = CardId("priority_requisition".to_string());
         let installed = vec![InstalledCard {
+            install_id: InstallId(1061),
             card: card_id.clone(),
             server: ServerId::Remote(0),
             ..Default::default()
@@ -4126,7 +4223,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(test_card("priority_requisition", Side::Corp, CardType::Agenda, 0, Some(5)));
 
-        let result = apply_action(&state, &registry, PlayerAction::AdvanceCard { card_id });
+        let result = apply_action(&state, &registry, PlayerAction::AdvanceCard { target: install_of(&state, &card_id.0) });
 
         assert_eq!(
             result,
@@ -4190,6 +4287,7 @@ mod tests {
     }
 
     fn rig_card_with_counters(card_id: &str, counters: u32) -> InstalledRunnerCard {
+        // Inherits its id from `installed_runner_card`.
         InstalledRunnerCard { counters, ..installed_runner_card(card_id, 0) }
     }
 
@@ -4338,6 +4436,7 @@ mod tests {
 
         let mut state = corp_state(3, 0);
         let rezzed = |id: &str| InstalledCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             rezzed: true,
             ..Default::default()
@@ -4390,6 +4489,7 @@ mod tests {
 
         let mut state = corp_state(3, 0);
         let rezzed = |id: &str| InstalledCard {
+            install_id: InstallId(1063),
             card: CardId(id.to_string()),
             rezzed: true,
             ..Default::default()
@@ -4560,7 +4660,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: CardId("pennyshaver".to_string()), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, "pennyshaver"), ability_index: 0 },
         )
         .expect("a paid ability stays usable mid-run");
         assert_eq!(next.runner.resources.credits, Credits(5), "spent 1 on the ability, gained 1 back");
@@ -4635,7 +4735,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::TrashResource { card_id: card_id.clone() },
+            PlayerAction::TrashResource { target: install_of(&state, &card_id.0) },
         )
         .expect("action should succeed");
 
@@ -4661,7 +4761,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(test_card("daily_casts", Side::Runner, CardType::Resource, 3, None));
 
-        let result = apply_action(&state, &registry, PlayerAction::TrashResource { card_id });
+        let result = apply_action(&state, &registry, PlayerAction::TrashResource { target: install_of(&state, &card_id.0) });
 
         assert_eq!(result, Err(RulesError::RunnerNotTagged));
     }
@@ -4675,31 +4775,32 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(test_card("gordian_blade", Side::Runner, CardType::Program, 3, None));
 
-        let result = apply_action(&state, &registry, PlayerAction::TrashResource { card_id: card_id.clone() });
+        let result = apply_action(&state, &registry, PlayerAction::TrashResource { target: install_of(&state, &card_id.0) });
 
         assert_eq!(result, Err(RulesError::CardNotResource { card: card_id }));
     }
 
     #[test]
-    fn corp_trash_resource_on_card_not_in_rig_returns_card_not_in_rig() {
-        let card_id = CardId("daily_casts".to_string());
+    fn corp_trash_resource_on_an_absent_install_returns_install_not_found() {
         let mut state = corp_state(3, 5);
         state.runner.tags = 1;
         let mut registry = CardRegistry::new();
         registry.insert(test_card("daily_casts", Side::Runner, CardType::Resource, 3, None));
 
-        let result = apply_action(&state, &registry, PlayerAction::TrashResource { card_id: card_id.clone() });
+        let result = apply_action(&state, &registry, PlayerAction::TrashResource { target: ABSENT_INSTALL });
 
-        assert_eq!(result, Err(RulesError::CardNotInRig { side: Side::Runner, card: card_id }));
+        assert_eq!(result, Err(RulesError::InstallNotFound(ABSENT_INSTALL)));
+        // Same "costs nothing" guarantee as `AdvanceCard` above.
+        assert_eq!(state.corp.resources.clicks, Clicks(3));
+        assert_eq!(state.corp.resources.credits, Credits(5));
     }
 
     #[test]
     fn runner_turn_trash_resource_returns_wrong_phase() {
-        let card_id = CardId("daily_casts".to_string());
         let mut state = runner_state(3, 0, 0);
         state.runner.tags = 1;
 
-        let result = apply_action(&state, &registry(), PlayerAction::TrashResource { card_id });
+        let result = apply_action(&state, &registry(), PlayerAction::TrashResource { target: ABSENT_INSTALL });
 
         assert_eq!(
             result,
@@ -4760,7 +4861,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         );
         assert_eq!(result, Err(RulesError::RunnerNotTagged));
 
@@ -4769,7 +4870,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("action should succeed while tagged");
 
@@ -4846,7 +4947,7 @@ mod tests {
             &state,
             &registry,
             PlayerAction::ActivateAbility {
-                card_id: CardId("investment".to_string()),
+                target: install_of(&state, "investment"),
                 ability_index: 0,
             },
         )
@@ -4884,7 +4985,7 @@ mod tests {
             &state,
             &registry,
             PlayerAction::ActivateAbility {
-                card_id: CardId("investment".to_string()),
+                target: install_of(&state, "investment"),
                 ability_index: 0,
             },
         )
@@ -4900,6 +5001,7 @@ mod tests {
         let card_id = CardId("hedge_fund".to_string());
         let mut state = runner_state(3, 0, 0);
         state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(1064),
             card: CardId("pad_campaign".to_string()),
             server: ServerId::Remote(0),
             rezzed: true,
@@ -4926,7 +5028,7 @@ mod tests {
             &state,
             &registry,
             PlayerAction::ActivateAbility {
-                card_id: CardId("pad_campaign".to_string()),
+                target: install_of(&state, "pad_campaign"),
                 ability_index: 0,
             },
         )
@@ -5176,7 +5278,7 @@ mod tests {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id: card_id.clone(), ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("boost should succeed");
         assert_eq!(state.runner.rig[0].effective_strength(), 2);
@@ -5198,7 +5300,7 @@ mod tests {
         let (next, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id, ability_index: 1 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 1 },
         )
         .expect("break should succeed now that effective strength meets the ICE's");
 
@@ -5253,7 +5355,7 @@ mod tests {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::ActivateAbility { card_id, ability_index: 0 },
+            PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("break should succeed");
         assert_eq!(

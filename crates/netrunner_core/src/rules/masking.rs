@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dsl::{CardId, Cost, IceType};
 use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
-use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
+use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
     PendingPrevention, PlayerResources, RunnerState, Side, TraceState,
 };
 
@@ -20,6 +20,27 @@ pub enum MaskedZone {
 /// unless the viewer is its owner.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicInstalledCard {
+    /// Never masked, and the field that makes this struct *addressable*: a
+    /// viewer who cannot see `card` can still name this install to the
+    /// engine. Real Netrunner needs that — the Runner may host a Trojan on
+    /// unrezzed ICE and may swap ICE they cannot identify — and before this
+    /// existed those actions had to carry the real `CardId`, handing the
+    /// Runner the identity the mask had just removed. See
+    /// `state::InstallId`.
+    pub install_id: InstallId,
+    /// Where this install sits in its controller's install list — never
+    /// masked, for the same reason as `install_id`: the physical order of
+    /// cards on the table is something both players can see.
+    ///
+    /// Carried because it is the ordering `PlayerAction::ToggleCardSelection`
+    /// and `ActionSpace`'s installed-card segments both index by, and a
+    /// consumer that rebuilds a `GameState` from a view — `netrunner_bots::
+    /// determinize` — must reproduce it exactly or the caller's actions and
+    /// the reconstruction's mean different cards. It is not derivable from
+    /// `ServerView`, which groups by server rather than by install order,
+    /// and install order is not the `install_id` order either: `Effect::
+    /// InstallFromZoneIgnoringCost` (Brân 1.0) *inserts* rather than appends.
+    pub position: usize,
     pub server: ServerId,
     /// Never masked — whether a card occupies a server's ICE-protection
     /// slot or its root (content) slot is visible to both sides regardless
@@ -78,6 +99,10 @@ pub struct PublicCorpState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicInstalledRunnerCard {
     pub card: CardId,
+    /// Never masked — nothing in the rig is. Present so an action can name
+    /// one specific copy of a card the Runner installed twice, which
+    /// `card` alone cannot do. See `state::InstallId`.
+    pub install_id: InstallId,
     pub current_strength: i32,
     /// Which piece of ICE this card is hosted on, for a Trojan Program
     /// (Botulus, Tranquilizer). Never masked, for the same reason as the
@@ -304,9 +329,13 @@ fn mask_zone(cards: &[CardId], owner_view: bool) -> MaskedZone {
     }
 }
 
-fn mask_installed_card(installed: &InstalledCard, owner_view: bool) -> PublicInstalledCard {
+fn mask_installed_card(installed: &InstalledCard, position: usize, owner_view: bool) -> PublicInstalledCard {
     let identity_visible = owner_view || installed.rezzed;
     PublicInstalledCard {
+        // Outside the `identity_visible` gate on purpose: these are the
+        // handles that let a viewer act on a card they cannot identify.
+        install_id: installed.install_id,
+        position,
         server: installed.server,
         slot: installed.slot,
         rezzed: installed.rezzed,
@@ -347,7 +376,8 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
         installed: corp
             .installed
             .iter()
-            .map(|card| mask_installed_card(card, owner_view))
+            .enumerate()
+            .map(|(position, card)| mask_installed_card(card, position, owner_view))
             .collect(),
         scored_agendas: corp.scored_agendas.clone(),
         bad_publicity: corp.bad_publicity,
@@ -370,6 +400,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
 fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
     PublicInstalledRunnerCard {
         card: card.card.clone(),
+        install_id: card.install_id,
         current_strength: card.effective_strength(),
         hosted_on_ice: card.hosted_on_ice.clone(),
         counters: card.counters,
@@ -425,11 +456,13 @@ mod tests {
             archives: vec![ArchivedCard::facedown(CardId("cyberdex_trial".to_string()))],
             installed: vec![
                 InstalledCard {
+                    install_id: InstallId(1069),
                     card: CardId("ice_wall".to_string()),
                     slot: InstallSlot::Ice,
                     ..Default::default()
                 },
                 InstalledCard {
+                    install_id: InstallId(1070),
                     card: CardId("enigma".to_string()),
                     server: ServerId::RnD,
                     slot: InstallSlot::Ice,
@@ -701,6 +734,36 @@ mod tests {
         }
     }
 
+    /// The one field on an unrezzed Corp install that stays visible.
+    ///
+    /// `install_id` sits deliberately *outside* `mask_installed_card`'s
+    /// `identity_visible` gate. It has to: real Netrunner lets the Runner
+    /// host a Trojan on unrezzed ICE and swap ICE they cannot identify, so
+    /// they must be able to *name* a card whose identity is hidden. Masking
+    /// it too would leave those actions with no handle but the `CardId`,
+    /// which is exactly the leak it was introduced to close.
+    #[test]
+    fn install_id_is_never_masked_even_on_an_unrezzed_card() {
+        let state = game_state(corp_state_with_cards());
+        let for_runner = mask_state_for_player(&state, Side::Runner);
+        let for_corp = mask_state_for_player(&state, Side::Corp);
+
+        let unrezzed = &for_runner.corp.installed[0];
+        assert_eq!(unrezzed.card, None, "the premise: this card's identity is hidden");
+        assert_eq!(unrezzed.counters, None, "and so are its counters");
+        assert_eq!(
+            unrezzed.install_id,
+            state.corp.installed[0].install_id,
+            "but its handle is not — the Runner can still name it"
+        );
+
+        // Both viewers agree on every id, which is what lets an action one
+        // side submits mean the same install to the engine.
+        let runner_ids: Vec<_> = for_runner.corp.installed.iter().map(|c| c.install_id).collect();
+        let corp_ids: Vec<_> = for_corp.corp.installed.iter().map(|c| c.install_id).collect();
+        assert_eq!(runner_ids, corp_ids);
+    }
+
     #[test]
     fn runner_rig_is_never_masked() {
         let state = game_state_with_runner(runner_state_with_cards());
@@ -709,6 +772,7 @@ mod tests {
 
         let expected = vec![PublicInstalledRunnerCard {
             card: CardId("gordian_blade".to_string()),
+            install_id: InstallId::PLACEHOLDER,
             current_strength: 3,
             hosted_on_ice: None,
             counters: 0,

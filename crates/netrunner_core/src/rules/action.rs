@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dsl::CardId;
 use crate::rules::run::ServerId;
-use crate::rules::state::{InstallSlot, Side};
+use crate::rules::state::{InstallId, InstallSlot, Side};
 
 /// Which Corp zone/server an installed card is placed into. Alias of
 /// `ServerId` — see its doc comment.
@@ -26,13 +26,18 @@ pub enum PlayerAction {
     /// accesses on a remote server.
     InstallCard { card_id: CardId, zone: TargetZone, slot: InstallSlot },
     /// Flip an already-installed card face-up. Corp-only. No click cost (rez is
-    /// not a click action). Pays `ice_id`'s registry `cost` in credits via
-    /// `ability::pay_cost` — `RulesError::CardNotFoundInRegistry` if `ice_id`
+    /// not a click action). Pays the card's registry `cost` in credits via
+    /// `ability::pay_cost` — `RulesError::CardNotFoundInRegistry` if it
     /// isn't in the registry, `RulesError::NotEnoughCredits` if the Corp can't
     /// afford it. Permitted either during the Corp's own `GamePhase::Action`,
     /// or — regardless of whose turn it is — while any `PaidAbilityWindow` is
     /// open, since `phase` never changes mid-run/mid-window.
-    RezIce { ice_id: CardId },
+    ///
+    /// `ice` names the install, not the card: with two copies of the same
+    /// ICE installed, this rezzes the one actually chosen. See
+    /// `state::InstallId`. `RulesError::InstallNotFound` if it names
+    /// nothing installed.
+    RezIce { ice: InstallId },
     /// Spend 1 click, start a run on `server`. Runner-only. The resulting
     /// `RunState::ice` is left empty — populating real ICE requires a
     /// `CardRegistry` lookup from `corp.installed` that doesn't exist yet.
@@ -95,15 +100,20 @@ pub enum PlayerAction {
     /// only ever leave the Rig via `TrashResource`, never enter it).
     InstallResource { card_id: CardId },
     /// Spend 1 click and `card_id`'s registry cost in credits, move
-    /// `card_id` from the Grip onto the Corp ICE named by `host_ice_id`
+    /// `card_id` from the Grip onto the Corp ICE named by `host`
     /// (`state::InstalledRunnerCard::hosted_on_ice`) rather than into the
     /// ordinary Rig-install flow. Runner-only. `card_id` must be a Trojan
     /// Program (`dsl::CardDefinition::installs_on_ice == true`) and
-    /// `host_ice_id` must be a real Corp `InstalledCard` with `slot ==
+    /// `host` must name a real Corp `InstalledCard` with `slot ==
     /// InstallSlot::Ice` — rezzed or not, real rules allow hosting on
     /// unrezzed ICE. Mirrors `InstallProgram` otherwise (same memory-unit
     /// reservation/cost computation) — e.g. Botulus, Tranquilizer.
-    InstallProgramOnIce { card_id: CardId, host_ice_id: CardId, memory_cost: u8 },
+    ///
+    /// **`host` is an `InstallId` precisely because unrezzed ICE is a legal
+    /// host.** Naming it by `CardId` handed the Runner the identity their
+    /// own `ClientView` masks to `None` — a fog-of-war leak straight
+    /// through `legal_actions_for`. See `state::InstallId`.
+    InstallProgramOnIce { card_id: CardId, host: InstallId, memory_cost: u8 },
     /// Break the next pending subroutine on the ICE currently being
     /// encountered. Runner-only; delegates to `run::advance_run`'s
     /// `RunAction::BreakSubroutine`. `ice_id` is cross-checked against
@@ -160,32 +170,36 @@ pub enum PlayerAction {
     /// `KeepHand`. See `rules::setup::take_mulligan`.
     TakeMulligan,
     /// Pay and resolve the `ability_index`-th ability (a `dsl::AbilityDef`,
-    /// looked up in the `CardRegistry`) on `card_id`. Symmetric — no `side`
-    /// field; the acting side is whichever side `GameState::phase` is
-    /// currently `Action(side)` for, same as `EndTurn`/`DiscardCard`. No
-    /// implicit click cost — a paid ability's `AbilityDef::cost` is whatever
-    /// the card prints, which may itself include `Cost::Clicks`. `card_id`
-    /// must be in an active zone for the acting side (Corp: installed *and*
-    /// rezzed; Runner: in the Rig) or this errors with
+    /// looked up in the `CardRegistry`) on the install named by `target`.
+    /// Symmetric — no `side` field; the acting side is whichever side owns
+    /// `target`, which an `InstallId` answers directly (it was previously
+    /// derived by scanning both zones for a `CardId`). No implicit click
+    /// cost — a paid ability's `AbilityDef::cost` is whatever the card
+    /// prints, which may itself include `Cost::Clicks`. `target` must be in
+    /// an active zone for the acting side (Corp: installed *and* rezzed;
+    /// Runner: in the Rig) or this errors with
     /// `RulesError::CardNotActive`. `ability_index` must address a
     /// `Trigger::Paid` ability on that card's definition, or this errors with
     /// `RulesError::InvalidAbilityIndex`/`RulesError::AbilityNotManuallyActivatable`
     /// respectively.
-    ActivateAbility { card_id: CardId, ability_index: usize },
-    /// Place one advancement token on `card_id`, a Corp-installed card.
+    ActivateAbility { target: InstallId, ability_index: usize },
+    /// Place one advancement token on `target`, a Corp-installed card.
     /// Corp-only. Costs 1 click + 1 credit (`pay_cost(state, side,
-    /// &Cost::Credits(1))`, in addition to the click). `card_id` must be
-    /// installed (`RulesError::CardNotInstalled` otherwise) — no rez
+    /// &Cost::Credits(1))`, in addition to the click). `target` must name a
+    /// live install (`RulesError::InstallNotFound` otherwise) — no rez
     /// requirement, matching the real game (advancement doesn't require
     /// rez). Its `CardRegistry` definition must have `advancement_requirement:
     /// Some(_)` (`RulesError::CardNotAdvanceable` otherwise); this doesn't
     /// score the card even if the requirement is met — scoring is a
     /// separate, not-yet-modeled action.
-    AdvanceCard { card_id: CardId },
-    /// Score `card_id`, an installed Corp Agenda whose `advancement_tokens`
+    ///
+    /// An `InstallId` because advancing "a *Tithe*" is ambiguous with two
+    /// installed and the Corp advances one of them, not both.
+    AdvanceCard { target: InstallId },
+    /// Score `target`, an installed Corp Agenda whose `advancement_tokens`
     /// already meet its registry `advancement_requirement`. Corp-only,
     /// costs 1 click (no credit cost — matches `AdvanceCard`'s "just a
-    /// click" shape). `RulesError::CardNotInstalled` if `card_id` isn't in
+    /// click" shape). `RulesError::InstallNotFound` if `target` isn't in
     /// `CorpState::installed`; `RulesError::CardNotAgenda` if its registry
     /// `card_type` isn't `Agenda`; `RulesError::AdvancementRequirementNotMet`
     /// if it hasn't been advanced enough yet. No rez requirement — scoring
@@ -194,7 +208,10 @@ pub enum PlayerAction {
     /// scored_agendas`, fires its own `Trigger::OnAgendaScored` triggers
     /// (e.g. Hostile Takeover), then the Corp identity's (e.g. Jinteki:
     /// Personal Evolution), then checks win conditions.
-    ScoreAgenda { card_id: CardId },
+    ///
+    /// An `InstallId` for the same reason as `AdvanceCard`: the Corp scores
+    /// the copy it advanced, which a `CardId` cannot distinguish.
+    ScoreAgenda { target: InstallId },
     /// Spend 1 click + 2 credits to remove 1 of the Runner's tags.
     /// Runner-only. `RulesError::RunnerNotTagged` if `RunnerState::tags == 0`.
     RemoveTag,
@@ -227,13 +244,16 @@ pub enum PlayerAction {
     /// `RulesError::CardNotActive` if `card_id` isn't one of the pending
     /// triggers.
     ChooseTriggerToResolve { card_id: CardId },
-    /// Spend 1 click + 2 credits to trash `card_id`, an installed Runner
+    /// Spend 1 click + 2 credits to trash `target`, an installed Runner
     /// Resource, off the Rig into the Heap. Corp-only, legal only while the
-    /// Runner is tagged (`RulesError::RunnerNotTagged` otherwise). `card_id`'s
+    /// Runner is tagged (`RulesError::RunnerNotTagged` otherwise). Its
     /// `CardRegistry` definition must be `CardType::Resource`
-    /// (`RulesError::CardNotResource` otherwise) and must be installed in the
-    /// Runner's rig (`RulesError::CardNotInRig` otherwise).
-    TrashResource { card_id: CardId },
+    /// (`RulesError::CardNotResource` otherwise) and it must be installed in
+    /// the Runner's rig (`RulesError::InstallNotFound` otherwise).
+    ///
+    /// An `InstallId` so the Corp trashes one specific copy of a Resource
+    /// the Runner installed twice, rather than always the first.
+    TrashResource { target: InstallId },
     /// Choose which of the currently offered cards to resolve next, when
     /// more than one card was accessed from a single server. Runner-only.
     /// Legal only while a run is in `RunPhase::AccessingCard` and its
@@ -375,13 +395,31 @@ pub enum PlayerAction {
     /// with `RulesError::ActionBlockedByPendingDecision` — see
     /// `engine::apply_action`.
     ResolvePendingChoice { option_index: usize },
-    /// Adds `card_id` to (or removes it from, if already present) the
+    /// Adds `position` to (or removes it from, if already present) the
     /// in-progress selection of a pending `PendingDecision::ChooseCards`.
     /// `RulesError::NoPendingDecision` if none is parked (or a different
-    /// variant is); `RulesError::CardNotEligibleForSelection` if `card_id`
-    /// isn't currently a legal candidate (not present in the pending
-    /// decision's `source` zone, or doesn't match its `filter`).
-    ToggleCardSelection { card_id: CardId },
+    /// variant is); `RulesError::CardNotEligibleForSelection` if `position`
+    /// isn't currently a legal candidate (past the end of the pending
+    /// decision's `source` zone, or the card there doesn't match its
+    /// `filter`).
+    ///
+    /// **A position into `pending_choice::zone_card_ids`, not a `CardId`.**
+    /// Two reasons, and the first is the load-bearing one:
+    ///
+    /// - The `source` zone may hold cards the chooser cannot see. *Tāo
+    ///   Salonga* selects two installed Barriers over `OpponentInstalled`,
+    ///   and real Netrunner lets the Runner swap ICE they cannot identify —
+    ///   so naming the candidate by `CardId` leaked the identity their own
+    ///   `ClientView` had just masked to `None`.
+    /// - A `CardId` cannot name the second of two identical cards in a
+    ///   zone. That previously needed a copy-count cycling scheme inside
+    ///   `pending_choice::resolve_toggle_card_selection` to work at all;
+    ///   distinct positions are distinct with no such machinery.
+    ///
+    /// This is also what `ActionSpace` has always encoded (see
+    /// `action_mask`'s `TOGGLE_CARD_SELECTION_START`), so the wire format
+    /// is unchanged — the payload merely caught up with it.
+    ToggleCardSelection { position: usize },
     /// Commits the in-progress selection of a pending `PendingDecision::
     /// ChooseCards`. `RulesError::NoPendingDecision` if none is parked (or a
     /// different variant is); `RulesError::CardSelectionOutOfRange` if the

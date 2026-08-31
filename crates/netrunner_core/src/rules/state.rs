@@ -79,13 +79,53 @@ pub enum InstallSlot {
     Root,
 }
 
+/// A handle on one installed *instance*, unique for the life of a game and
+/// allocated by `GameState::allocate_install_id`.
+///
+/// **Public information, never masked.** It names the physical card sitting
+/// on the table, not what that card is: install order is something both
+/// players watch happen, exactly like the already-public
+/// `InstalledCard::advancement_tokens` and `installed_this_turn`. That is
+/// what lets a `PlayerAction` refer to an unrezzed Corp card — which real
+/// Netrunner requires, since the Runner may host a Trojan on unrezzed ICE
+/// and may swap ICE they cannot identify — without naming its `CardId` and
+/// leaking the identity the masking layer is there to hide.
+///
+/// It names the instance, not the position: an `InstallId` travels with its
+/// card through a `SwapInstalledIce`, and two copies of the same card are
+/// two different ids. That is what distinguishes it from the
+/// first-match-by-`CardId` lookup it replaced, which aliased every copy of a
+/// card onto the first one's `ActionSpace` slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct InstallId(pub u32);
+
+impl InstallId {
+    /// The id no real install ever gets. `allocate_install_id` counts from
+    /// `1`, so `0` is free to act as the "not a real install" placeholder —
+    /// the same role the empty `CardId` plays in `InstalledCard::default`,
+    /// and what a test fixture built with `..Default::default()` receives.
+    /// Two fixtures that both take the placeholder are therefore
+    /// indistinguishable by id; any test that cares must set it.
+    pub const PLACEHOLDER: InstallId = InstallId(0);
+}
+
+impl Default for InstallId {
+    fn default() -> Self {
+        InstallId::PLACEHOLDER
+    }
+}
+
 /// A Corp card installed on a server (ICE or a non-ICE install like an
 /// Asset/Agenda). `rezzed` gates card-identity visibility in the masked view:
 /// an unrezzed card's identity is hidden from the Runner, but its presence
-/// (server + rezzed flag) is public.
+/// (server + rezzed flag + `install_id`) is public.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstalledCard {
     pub card: CardId,
+    /// This install's public handle — see [`InstallId`]. Every
+    /// `PlayerAction` naming this card names it by this, not by `card`.
+    #[serde(default)]
+    pub install_id: InstallId,
     pub server: ServerId,
     pub slot: InstallSlot,
     pub rezzed: bool,
@@ -127,6 +167,7 @@ impl Default for InstalledCard {
     fn default() -> Self {
         Self {
             card: CardId(String::new()),
+            install_id: InstallId::PLACEHOLDER,
             server: ServerId::Hq,
             slot: InstallSlot::Root,
             rezzed: false,
@@ -281,6 +322,12 @@ impl CorpState {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct InstalledRunnerCard {
     pub card: CardId,
+    /// This install's public handle — see [`InstallId`]. The rig is never
+    /// masked, so unlike the Corp's side there is no identity here to
+    /// protect; it exists so `TrashResource`/`ActivateAbility` can name one
+    /// specific copy of a card the Runner has installed twice.
+    #[serde(default)]
+    pub install_id: InstallId,
     /// Printed strength, seeded once at install time from
     /// `registry.get(card).strength.unwrap_or(0)` — mirrors
     /// `RunIce::current_strength`'s seeding at `build_run_ice` exactly. `0`
@@ -332,6 +379,7 @@ impl Default for InstalledRunnerCard {
     fn default() -> Self {
         Self {
             card: CardId(String::new()),
+            install_id: InstallId::PLACEHOLDER,
             base_strength: 0,
             encounter_strength_buff: 0,
             turn_strength_buff: 0,
@@ -709,7 +757,16 @@ pub enum PendingDecision {
         shuffle_after: bool,
         destination: Option<CardZoneRef>,
         then: Option<Box<Effect>>,
-        selected: Vec<CardId>,
+        /// Positions into `pending_choice::zone_card_ids(source)`, in the
+        /// order the chooser picked them — **not** `CardId`s.
+        ///
+        /// This is what makes `PublicGameState::pending_decision`'s
+        /// pass-through masking honest. Holding `CardId`s here published
+        /// the identity of every card the chooser had selected, which for
+        /// *Tāo Salonga*'s selection over `OpponentInstalled` meant
+        /// publishing unrezzed Corp ICE to the Runner. A position carries
+        /// nothing the chooser was not already shown.
+        selected: Vec<usize>,
         source_card: Option<CardId>,
         resume: PendingChoiceResume,
     },
@@ -905,6 +962,24 @@ pub struct GameState {
     /// being threaded through `PlayerAction`) so `apply_action` stays a pure
     /// function of its two explicit inputs even when it needs "randomness".
     pub rng_step: u64,
+    /// The next [`InstallId`] `allocate_install_id` will hand out. Lives on
+    /// `GameState` for the same reason `rng_step` does: installs happen in
+    /// action order, so a counter here keeps `apply_action` a pure function
+    /// of its inputs and keeps a replayed history bit-identical. Counts from
+    /// `1`, leaving `InstallId::PLACEHOLDER` free.
+    ///
+    /// Not a scratchpad field under AGENTS.md's State Hygiene Rule: it is
+    /// not cross-effect context but permanent identity, and it must survive
+    /// arbitrarily many parked decisions.
+    #[serde(default = "first_install_id")]
+    pub next_install_id: u32,
+}
+
+/// `next_install_id`'s serde default. A state recorded before install ids
+/// existed has installs carrying `InstallId::PLACEHOLDER`, so resuming it
+/// must not hand a real card id `0` as well.
+fn first_install_id() -> u32 {
+    1
 }
 
 /// The empty starting state, every zone clear and every counter zero. This
@@ -933,6 +1008,7 @@ impl Default for GameState {
             deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,
+            next_install_id: first_install_id(),
         }
     }
 }
@@ -945,6 +1021,30 @@ impl GameState {
     /// `GamePhase::Action(Side::Corp)`, matching the real game's turn order.
     pub fn new(seed: u64) -> Self {
         GameState { seed, ..GameState::default() }
+    }
+
+    /// Hands out the next [`InstallId`] and advances the counter. The
+    /// **single** place a real install id is minted — every install site
+    /// calls this rather than computing one from a length or a position,
+    /// which is what makes an id stable across a trash, a swap, or any
+    /// other reordering of `corp.installed`/`runner.rig`.
+    pub fn allocate_install_id(&mut self) -> InstallId {
+        let id = InstallId(self.next_install_id);
+        self.next_install_id += 1;
+        id
+    }
+
+    /// Where `id` is installed, if it still is — the lookup every handler
+    /// uses to resolve a `PlayerAction`'s target. `None` once the card has
+    /// left the table, which is the "already gone" case handlers must reject
+    /// rather than act on a stale position.
+    pub fn find_corp_install(&self, id: InstallId) -> Option<&InstalledCard> {
+        self.corp.installed.iter().find(|c| c.install_id == id)
+    }
+
+    /// The rig-side mirror of `find_corp_install`.
+    pub fn find_rig_install(&self, id: InstallId) -> Option<&InstalledRunnerCard> {
+        self.runner.rig.iter().find(|c| c.install_id == id)
     }
 
     /// Whether the game has concluded. A pure query over `phase` — every
@@ -1013,9 +1113,11 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::test_support::fixture_install_id;
 
     fn card(id: &str, base: i32, encounter_buff: i32, turn_buff: i32) -> InstalledRunnerCard {
         InstalledRunnerCard {
+            install_id: fixture_install_id(id),
             card: CardId(id.to_string()),
             base_strength: base,
             encounter_strength_buff: encounter_buff,

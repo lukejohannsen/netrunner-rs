@@ -61,7 +61,7 @@ mod tests {
     use super::*;
     use netrunner_core::dsl::{CardDefinition, CardId, CardType};
     use netrunner_core::rules::{
-        AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstalledCard, MemoryUnits,
+        AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstalledCard, MemoryUnits,
         PlayerResources, RunnerState, ServerId,
     };
     use netrunner_core::view::build_client_view;
@@ -103,6 +103,7 @@ mod tests {
             resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
             installed: vec![InstalledCard {
                 card: CardId("winning_agenda".to_string()),
+                install_id: InstallId(1),
                 server: ServerId::Remote(0),
                 advancement_tokens: 3,
                 ..Default::default()
@@ -117,12 +118,12 @@ mod tests {
         let mut registry = CardRegistry::new();
         let state = corp_state_with_scorable_agenda(&mut registry);
         let view = build_client_view(&state, &registry, Side::Corp);
-        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) }));
+        assert!(view.legal_actions.contains(&PlayerAction::ScoreAgenda { target: InstallId(1) }));
 
         let mut agent = HeuristicAgent::new(Side::Corp, 1);
         let chosen = agent.select_action(&view, &registry);
 
-        assert_eq!(chosen, PlayerAction::ScoreAgenda { card_id: CardId("winning_agenda".to_string()) });
+        assert_eq!(chosen, PlayerAction::ScoreAgenda { target: InstallId(1) });
     }
 
     #[test]

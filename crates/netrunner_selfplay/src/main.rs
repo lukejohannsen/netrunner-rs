@@ -313,7 +313,7 @@ mod tests {
     use netrunner_bots::ActionStat;
     use netrunner_core::cards::CardRegistry;
     use netrunner_core::dsl::{CardDefinition, CardId, CardType};
-    use netrunner_core::rules::{InstallSlot, InstalledCard, PlayerAction, ServerId};
+    use netrunner_core::rules::{InstallId, InstallSlot, InstalledCard, PlayerAction, ServerId};
 
     fn corp_card(id: &str) -> CardDefinition {
         CardDefinition {
@@ -347,19 +347,21 @@ mod tests {
         state.corp.installed = vec![
             InstalledCard {
                 card: CardId("asset_a".to_string()),
+                install_id: InstallId(1),
                 server: ServerId::Remote(0),
                 slot: InstallSlot::Root,
                 ..Default::default()
             },
             InstalledCard {
                 card: CardId("asset_b".to_string()),
+                install_id: InstallId(2),
                 server: ServerId::Remote(1),
                 slot: InstallSlot::Root,
                 ..Default::default()
             },
         ];
 
-        let action = PlayerAction::RezIce { ice_id: CardId("asset_b".to_string()) };
+        let action = PlayerAction::RezIce { ice: InstallId(2) };
         let real_index = ActionSpace::index_of(&state, &action).expect("encodes against the real state");
         // A deliberately wrong slot, standing in for the sample's own
         // encoding of the same action.
@@ -379,7 +381,8 @@ mod tests {
         state.phase = GamePhase::Action(Side::Corp);
         let _ = &registry;
 
-        let action = PlayerAction::RezIce { ice_id: CardId("not_installed".to_string()) };
+        // An id nothing on the table carries.
+        let action = PlayerAction::RezIce { ice: InstallId(99) };
         assert!(ActionSpace::index_of(&state, &action).is_none());
 
         let target = policy_target_for(&state, &[stat(action, Some(3), 9)]);
