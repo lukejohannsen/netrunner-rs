@@ -317,6 +317,19 @@ Three read-only passes over the whole engine for the shapes above — "kept reso
 
 ---
 
+## 🔍 Core Set (implemented subset) Fidelity Audit — September 2026
+
+The SG audit's rubric repeated over the **19 implemented Core Set cards** — the hand-authored baseline set. **Per-card record: `docs/core-set-card-audit.md`.** Tally: **15 faithful (3 through documented approximations), 4 findings — all fixed** (branch `fix/core-set-card-fidelity-audit`, one commit). Both 256-seed sweeps green; the 96-game random-vs-random report is **bit-identical** to the SG-audit baseline (0 changed counters, same step count) — no sample deck fields a Core card, so nothing else could move.
+
+- [x] **Weyland: Building a Better World never fired on Hedge Fund, Hansei Review or Predictive Planogram** — all printed Transactions, none carrying the `subtypes` field `Trigger::OnTransactionPlayed` dispatches on (a cross-set data gap the SG audit missed: subtypes are type-line, not rules text). Three JSON fixes; pinned by `building_a_better_world_gains_a_credit_when_hedge_fund_is_played`.
+- [x] **Ice Wall modelled neither of its clauses** — not advanceable (no `advancement_requirement: 0` marker) and no per-counter strength. New `StrengthModifier::PerHostedAdvancement` (a rate; Pharos' variant is a threshold), baked in `build_run_ice` like its siblings.
+- [x] **Gordian Blade's pump expired with the encounter** against printed "for the remainder of this run." New `BoostDuration::Run` backed by `InstalledRunnerCard::run_strength_buff`, cleared only in `run::engine::end_run` — one pump now carries across every encounter of a run and no further.
+- [x] **Account Siphon forced its replacement and paid a flat 10** against "you **may** force the Corp to lose **up to 5**[c], then you gain 2[c] **for each credit lost**." `SetAccessReplacement` gains `optional` (serde-default `false`, wire format unchanged): `try_replace_access` parks the Runner's siphon-or-breach choice, and declining consumes the replacement so the next `CompleteRun` breaches normally. The gain is two `GainCreditsAmount(Amount::CreditsLostThisResolution)`s — the new `Amount` reads `ResolutionContext::credits_lost`, recorded by `Effect::LoseCredits`, whose `CreditsLost` event now reports what was actually removed (a Whitespace against 2[c] logs 2, not 3).
+
+**Follow-up, recorded once here:** no sample deck fields a Core card, so the two agent sweeps and the coverage harness never touch these 19 — their play evidence is per-card tests only. A Core-flavored sample deck pair (behind the existing deck-legality gates) would put them under the same sweep pressure as System Gateway; sized as its own task, not started.
+
+---
+
 ## 🔗 Phase 1.5: Session Unification (the single-player → network bridge) — DONE
 
 Five places independently re-implemented the same match loop — `current_actor` → get action → `apply_action` → check `GameOver` — each with its own step budget. There is now **one `MAX_STEPS`, in `netrunner_session`**, and every caller pumps the same driver.
