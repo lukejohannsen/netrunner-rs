@@ -281,6 +281,9 @@ pub enum RulesError {
     #[error("selected {selected} cards, but this pending choice requires between {min} and {max}")]
     CardSelectionOutOfRange { selected: usize, min: u32, max: u32 },
 
+    #[error("trigger choice {index} is out of range: {pending} triggers are pending")]
+    TriggerChoiceOutOfRange { index: usize, pending: usize },
+
     #[error("cannot swap ice {0:?} while it is part of the currently active run")]
     CannotSwapIceDuringActiveRun(CardId),
 

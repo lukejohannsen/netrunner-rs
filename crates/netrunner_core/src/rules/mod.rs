@@ -48,7 +48,7 @@ pub use run::{
     ServerId, SubroutineStatus,
 };
 pub use state::{
-    ArchivedCard,
+    ArchivedCard, DeferredTrigger,
     AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard,
     MemoryUnits, PaidAbilityWindow, PendingChoiceResume, PendingDecision, PendingPaidChoice, PendingPaidChoiceResume,
     PendingPrevention, PendingPreventionKind, PlayerResources, PreventionKind, PreventionResume, RunnerState, Side,

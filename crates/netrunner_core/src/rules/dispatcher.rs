@@ -505,6 +505,18 @@ fn offer_trigger_order(
         return Ok(None);
     }
     let Some(chooser) = single_side_of(state, &reacting) else { return Ok(None) };
+    // `ChooseTriggerToResolve` is indexed by position in `reacting`, and
+    // `ActionSpace` reserves `CHOOSE_TRIGGER_LEN` slots for it. Each card
+    // can contribute several entries (one per success-trigger variant it
+    // declares), so the bound is not "installed cards" — this is where an
+    // overrun would first become visible, ahead of the index sweep's
+    // "no index for a legal action" panic.
+    debug_assert!(
+        reacting.len() <= crate::rules::action_mask::CHOOSE_TRIGGER_LEN,
+        "{} simultaneous triggers exceed the ActionSpace segment ({})",
+        reacting.len(),
+        crate::rules::action_mask::CHOOSE_TRIGGER_LEN
+    );
 
     // Anything in `plan` that doesn't actually react still needs to not be
     // lost — it no-ops, but queueing it keeps the plan's shape honest and

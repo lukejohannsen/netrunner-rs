@@ -259,7 +259,7 @@ fn pending_decision_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         // Every still-unresolved trigger is a legal next pick — the choice
         // is purely which order they resolve in, so none can be illegal.
         Some(crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. }) => {
-            pending.iter().map(|due| PlayerAction::ChooseTriggerToResolve { card_id: due.card.clone() }).collect()
+            (0..pending.len()).map(|index| PlayerAction::ChooseTriggerToResolve { index }).collect()
         }
     }
 }
