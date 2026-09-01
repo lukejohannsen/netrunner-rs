@@ -53,6 +53,7 @@ pub fn step_index(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use netrunner_core::rules::PlayerAction;
     use netrunner_core::dsl::{CardDefinition, CardId, CardType};
     use netrunner_core::rules::{
         apply_action, legal_actions, AgendaPoints, Clicks, CorpState, Credits, GamePhase, MemoryUnits,
@@ -156,14 +157,16 @@ mod tests {
 
     #[test]
     fn step_index_propagates_rules_errors_for_a_currently_illegal_action() {
-        // Index 0 is `DrawCardClick`, which is Runner-only — illegal here
-        // during the Corp's own Action phase, so this should surface
-        // `GameState::step`'s own rejection rather than a bogus success.
+        // The Runner's draw is illegal during the Corp's own Action phase,
+        // so stepping its index should surface the engine's own rejection
+        // rather than a bogus success.
         let (registry, state) = sample_corp_turn_state();
+        let index = ActionSpace::index_of(&state, &PlayerAction::DrawCardClick { side: Side::Runner })
+            .expect("the Runner's draw always has an index");
         let mask = get_action_mask(&state, &registry);
-        assert!(!mask[0], "DrawCardClick should be illegal for the Corp");
+        assert!(!mask[index], "the Runner's draw should be illegal for the Corp");
 
-        let result = step_index(&state, &registry, 0);
+        let result = step_index(&state, &registry, index);
         assert!(matches!(result, Err(IndexedActionError::Rules(_))));
     }
 }

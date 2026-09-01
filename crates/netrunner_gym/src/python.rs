@@ -169,17 +169,18 @@ mod tests {
     /// basic purge-virus-counters action, then 1025 → 1045 for
     /// `ChooseTriggerToResolve` (ordering your own simultaneous triggers),
     /// then 1045 → 1357 when `MAX_INSTALLED_PER_SIDE` went 20 → 32 after
-    /// real games overflowed it.
+    /// real games overflowed it, then 1357 → 1646 for layout v2 (the Corp's
+    /// click-draw, wider caps, the free break's hole reclaimed — ROADMAP
+    /// Rules Audit B.10).
     ///
     /// The first three growths were *appended*, so every pre-existing
     /// index kept its meaning and only the head width changed. The
-    /// `MAX_INSTALLED_PER_SIDE` one could not be: that constant sizes 26
-    /// segments spread through the space, so indices **shift** and an
-    /// exported policy needs retraining rather than a resize. Keep
-    /// appending where there is a choice.
+    /// `MAX_INSTALLED_PER_SIDE` one and layout v2 could not be: indices
+    /// **shift** and an exported policy needs retraining rather than a
+    /// resize. Keep appending where there is a choice.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 1357);
+        assert_eq!(ACTION_SPACE_SIZE, 1646);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

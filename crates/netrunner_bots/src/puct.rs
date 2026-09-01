@@ -550,7 +550,7 @@ mod tests {
         // Legal here; and one that certainly is not — the Runner has no
         // clicks, and it is not their phase.
         let legal = PlayerAction::GainCreditClick { side: Side::Corp };
-        let illegal = PlayerAction::DrawCardClick;
+        let illegal = PlayerAction::DrawCardClick { side: Side::Runner };
         assert!(legal_actions(&state, &registry).contains(&legal));
         assert!(!legal_actions(&state, &registry).contains(&illegal));
 

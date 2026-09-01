@@ -15,8 +15,16 @@ pub type ServerTarget = ServerId;
 pub enum PlayerAction {
     /// Spend 1 click, gain 1 credit. Symmetric: either side can do this.
     GainCreditClick { side: Side },
-    /// Spend 1 click, draw 1 card from the Stack into the Grip. Runner-only for now.
-    DrawCardClick,
+    /// Spend 1 click, draw 1 card — the Runner from the Stack into the
+    /// Grip, the Corp from R&D into HQ. Both sides' basic action; this was
+    /// Runner-only for a long time ("for now", said the comment), which
+    /// left the Corp with no way to dig for an agenda or ICE beyond the
+    /// mandatory draw (ROADMAP Rules Audit T4). The Corp cannot take it
+    /// with an empty R&D (`RulesError::EmptyZone`): a click that would
+    /// have to draw from nothing is not offered rather than resolved as a
+    /// self-inflicted deck-out. The Runner's empty-Stack draw stays a
+    /// harmless no-op, as before.
+    DrawCardClick { side: Side },
     /// Spend 1 click, move `card_id` from HQ onto `zone` as a newly installed,
     /// unrezzed card occupying `slot`. Corp-only; the Runner's installs are
     /// `InstallHardware`/`InstallProgram`/`InstallResource`. Costs no
@@ -519,7 +527,7 @@ mod tests {
         let install = InstallId::PLACEHOLDER;
         let all = vec![
             PlayerAction::GainCreditClick { side: Side::Corp },
-            PlayerAction::DrawCardClick,
+            PlayerAction::DrawCardClick { side: Side::Corp },
             PlayerAction::InstallCard { card_id: card(), zone: ServerId::Hq, slot: InstallSlot::Ice },
             PlayerAction::RezIce { ice: install },
             PlayerAction::InitiateRun { server: ServerId::Hq },
@@ -564,7 +572,7 @@ mod tests {
         for action in &all {
             match action {
                 PlayerAction::GainCreditClick { .. }
-                | PlayerAction::DrawCardClick
+                | PlayerAction::DrawCardClick { .. }
                 | PlayerAction::InstallCard { .. }
                 | PlayerAction::RezIce { .. }
                 | PlayerAction::InitiateRun { .. }
