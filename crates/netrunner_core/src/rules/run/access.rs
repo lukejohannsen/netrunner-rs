@@ -580,13 +580,23 @@ fn remove_from_corp_zone(state: &mut GameState, card_id: &CardId, server: Server
     let installed_at = |installed: &crate::rules::state::InstalledCard| {
         &installed.card == card_id && installed.slot == InstallSlot::Root
     };
-    if let Some(pos) = state
-        .corp
-        .installed
-        .iter()
-        .position(|c| installed_at(c) && c.server == server)
-        .or_else(|| state.corp.installed.iter().position(installed_at))
-    {
+    // A card accessed on a remote is one of that remote's root installs;
+    // prefer the copy on the run's server and fall back to any root copy
+    // only there (`AccessState` is `CardId`-keyed, so two copies in two
+    // remotes cannot be told apart yet). A card accessed in HQ, R&D or
+    // Archives is a card *in that zone*: only an upgrade installed in that
+    // central's root may be matched among the installs. The fallback used
+    // to apply to every server, so stealing Offworld Office off the top of
+    // R&D removed the Corp's installed, advanced copy from its remote and
+    // left the R&D copy in the deck (ROADMAP Rules Audit §4).
+    let on_server = |c: &crate::rules::state::InstalledCard| installed_at(c) && c.server == server;
+    let position = match server {
+        ServerId::Remote(_) => {
+            state.corp.installed.iter().position(on_server).or_else(|| state.corp.installed.iter().position(installed_at))
+        }
+        ServerId::Hq | ServerId::RnD | ServerId::Archives => state.corp.installed.iter().position(on_server),
+    };
+    if let Some(pos) = position {
         let slot = state.corp.installed[pos].slot;
         state.corp.installed.remove(pos);
         return RemovedFrom::Installed { slot };
@@ -1486,6 +1496,59 @@ mod tests {
         assert_eq!(state.corp.installed.len(), 1);
         assert_eq!(state.corp.installed[0].server, ServerId::Remote(0), "the copy in the run's remote is the one taken");
         assert_eq!(state.corp.installed[0].advancement_tokens, 1);
+    }
+
+    /// The server-preference above fell back to "any root copy" for *every*
+    /// server, so an agenda accessed in R&D or HQ was removed from the
+    /// remote it was installed in — the R&D copy stayed in the deck and the
+    /// Corp's advanced copy went to the Runner's score area. Offworld
+    /// Office ships ×3 in two sample decks, so this happened in ordinary
+    /// play, and card conservation held, so the sweep could not see it.
+    #[test]
+    fn a_card_accessed_in_a_central_never_removes_an_installed_copy() {
+        let registry = CardRegistry::from_cards(vec![agenda_card("offworld_office", 2), trashable_card("nico_campaign", 3)]);
+        let agenda = CardId("offworld_office".to_string());
+        let asset = CardId("nico_campaign".to_string());
+        let installed = || {
+            vec![
+                InstalledCard {
+                    card: agenda.clone(),
+                    server: ServerId::Remote(0),
+                    advancement_tokens: 3,
+                    install_id: crate::rules::InstallId(1),
+                    ..Default::default()
+                },
+                InstalledCard {
+                    card: asset.clone(),
+                    server: ServerId::Remote(1),
+                    rezzed: true,
+                    counters: 9,
+                    install_id: crate::rules::InstallId(2),
+                    ..Default::default()
+                },
+            ]
+        };
+
+        // Steal off the top of R&D: the deck copy goes, the remote copy stays.
+        let mut state = game_state(Vec::new(), vec![agenda.clone()], Vec::new(), installed(), 0);
+        state.active_run = Some(run_in_success(ServerId::RnD));
+        access_server(&mut state, ServerId::RnD, &registry).unwrap();
+        resolve_steal(&mut state, &agenda, &registry).unwrap();
+        assert!(state.corp.r_and_d.is_empty(), "the R&D copy was stolen");
+        assert_eq!(state.corp.installed.len(), 2, "both installs untouched: {:?}", state.corp.installed);
+        assert_eq!(state.corp.installed[0].advancement_tokens, 3);
+
+        // Trash out of HQ: the hand copy goes to Archives, the rezzed remote
+        // copy keeps its counters.
+        let mut state = game_state(vec![asset.clone()], Vec::new(), Vec::new(), installed(), 0);
+        state.runner.resources.credits = Credits(5);
+        state.active_run = Some(run_in_success(ServerId::Hq));
+        access_server(&mut state, ServerId::Hq, &registry).unwrap();
+        resolve_trash(&mut state, &asset, &registry).unwrap();
+        assert!(state.corp.hq.is_empty(), "the HQ copy was trashed");
+        assert_eq!(state.corp.archives.len(), 1);
+        assert_eq!(state.corp.installed.len(), 2, "{:?}", state.corp.installed);
+        assert_eq!(state.corp.installed[1].counters, 9);
     }
 
     /// ROADMAP Rules Audit T12: Archives was the one server whose root
