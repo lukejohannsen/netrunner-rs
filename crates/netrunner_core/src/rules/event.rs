@@ -113,6 +113,13 @@ pub enum GameEvent {
     CardsSelected { side: Side, cards: Vec<CardId>, revealed: bool },
     /// `Effect::PromptChooseCards` parked a `PendingDecision::ChooseCards`.
     PendingCardSelectionOffered { side: Side, min: u32, max: u32 },
+    /// The Runner has `over_by` more memory units in use than available
+    /// (a console left play under a full rig), so `rules::memory::
+    /// enforce_limit` has parked a `ChooseCards` over their own programs:
+    /// they must trash one, and the check repeats on the next action until
+    /// the rig fits. Always followed by the `PendingCardSelectionOffered`
+    /// that parked it.
+    MemoryLimitExceeded { over_by: u32 },
     /// `Effect::PromptChooseServer` parked a `PendingDecision::ChooseServer`.
     PendingServerChoiceOffered { chooser: Side },
     BadPublicityGiven { amount: u32 },

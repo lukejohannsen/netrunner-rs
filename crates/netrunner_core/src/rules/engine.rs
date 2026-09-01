@@ -180,6 +180,13 @@ pub fn apply_action(
     // a rig card leaves play by could. It runs after the drain because a
     // deferred trigger can itself trash or install a rig card.
     memory::refresh(&mut next, registry);
+    // The memory-limit checkpoint, right after the report it reads: a
+    // console trashed by the handler or by a deferred trigger can leave
+    // more memory in use than exists, and the Runner must then trash a
+    // program (`rules::memory::enforce_limit`). Ahead of the post-action
+    // window so that window's "is anything blocked" check sees the parked
+    // decision rather than opening over it.
+    events.extend(memory::enforce_limit(&mut next, registry)?);
     events.extend(open_post_action_window(&mut next, registry, &action_kind));
     Ok((next, events))
 }
