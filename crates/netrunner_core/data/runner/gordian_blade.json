@@ -15,7 +15,7 @@
       "effect": {
         "BoostStrength": {
           "amount": 1,
-          "duration": "Encounter"
+          "duration": "Run"
         }
       },
       "requirement": "DuringEncounter"

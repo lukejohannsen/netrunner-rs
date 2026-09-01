@@ -143,7 +143,18 @@ pub enum Effect {
     /// Requires an active run (`RulesError::NoActiveRun` otherwise).
     /// `Box`ed for the same reason as `Trace::on_success` — the first two
     /// other variants that nest another `Effect`.
-    SetAccessReplacement { server: ServerId, effect: Box<Effect> },
+    SetAccessReplacement {
+        server: ServerId,
+        effect: Box<Effect>,
+        /// Printed "you **may** … instead" (Account Siphon): the breach's
+        /// owner is offered the replacement rather than bound by it — see
+        /// `run::access::try_replace_access`, which parks the choice.
+        /// Declining consumes the replacement and the next `CompleteRun`
+        /// breaches normally. `false` (the default, and the old wire
+        /// format) replaces unconditionally.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        optional: bool,
+    },
     /// Resolves every `Effect` in order, collecting all of their events —
     /// e.g. Account Siphon's "Corp loses 5, Runner gains 10, Runner gains 2
     /// tags" bundled into the single `Effect` `SetAccessReplacement`
@@ -534,6 +545,14 @@ pub enum Amount {
     InstalledIcebreakerCount,
     /// Facedown cards currently in Archives — *Jinteki: Restoring Humanity*.
     FacedownCardsInArchives,
+    /// Credits actually removed by the most recent `Effect::LoseCredits`
+    /// **in this same resolution** (`ResolutionContext::credits_lost` —
+    /// the printed amount capped by what the side had), the same
+    /// within-one-resolution contract `damage_discarded` follows. Account
+    /// Siphon's "gain 2[c] for each credit lost" is authored as two
+    /// `GainCreditsAmount`s of this — composition instead of a multiplier
+    /// field no second card needs.
+    CreditsLostThisResolution,
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -541,6 +560,10 @@ pub enum Amount {
 pub enum BoostDuration {
     /// Cleared when the current ICE encounter ends.
     Encounter,
+    /// Cleared when the run ends — Gordian Blade's "+1 strength for the
+    /// remainder of this run": one pump carries across every encounter of
+    /// the run it was bought in, and no further.
+    Run,
     /// Cleared at the end of the Runner's turn.
     Turn,
 }
@@ -716,6 +739,7 @@ mod tests {
         let effect = Effect::SetAccessReplacement {
             server: ServerId::Hq,
             effect: Box::new(Effect::GainCredits(Side::Runner, 8)),
+            optional: false,
         };
         let json = serde_json::to_string(&effect).unwrap();
         assert_eq!(
@@ -741,7 +765,7 @@ mod tests {
                 chooser: Side::Corp,
                 options: vec![
                     Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) },
-                    Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(Effect::DrawCards(Side::Runner, 1)) },
+                    Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(Effect::DrawCards(Side::Runner, 1)), optional: false },
                 ],
             },
         ]);

@@ -240,7 +240,10 @@ pub struct RunState {
     /// being consumed, the second call overwrites the first (last write
     /// wins) — no error, since only ever one replacement can matter per
     /// access and this can only occur from malformed card authoring.
-    pub access_replacement: Option<(ServerId, Effect)>,
+    /// The `bool` is `Effect::SetAccessReplacement::optional` — a "may"
+    /// replacement parks the breach-owner's choice at access time instead
+    /// of firing unconditionally.
+    pub access_replacement: Option<(ServerId, Effect, bool)>,
     /// How many cards this run's access presented in total, set once by
     /// `run::access::access_server` when it computes the accessed set (`0`
     /// if the run hasn't reached access yet, or accessed an empty zone).

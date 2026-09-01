@@ -157,56 +157,100 @@ fn the_makers_eye_accesses_three_total_cards_from_rd() {
     assert_eq!(access.unaccessed_cards.len(), 3, "1 base access + 2 additional from The Maker's Eye");
 }
 
-#[test]
-fn account_siphon_replaces_hq_access_and_accesses_zero_cards() {
+/// Passes priority while a window is open and nothing else is parked —
+/// the "drive to whatever wants resolving next" loop the optional-siphon
+/// tests need, where a fixed pass count would either under- or overshoot.
+fn pass_until_settled(mut state: GameState, registry: &CardRegistry) -> (GameState, Vec<crate::rules::GameEvent>) {
+    let mut events = Vec::new();
+    while state.pending_decision.is_none()
+        && state.pending_paid_choice.is_none()
+        && state.active_trace.is_none()
+        && state.paid_ability_window.is_some()
+    {
+        let side = state.paid_ability_window.as_ref().unwrap().active_priority;
+        let (next, e) = apply_action(&state, registry, PlayerAction::PassPriority { side }).expect("pass priority");
+        state = next;
+        events.extend(e);
+    }
+    (state, events)
+}
+
+/// Runs Account Siphon up to the moment its "you may … instead of
+/// breaching" choice parks.
+fn siphon_to_choice(corp_credits: u32) -> (crate::rules::GameState, CardRegistry) {
     let registry = registry();
     let mut state = base_state();
     state.phase = GamePhase::Action(Side::Runner);
-    state.corp.resources.credits = Credits(10);
+    state.corp.resources.credits = Credits(corp_credits);
     state.runner.resources.clicks = Clicks(4);
     state.runner.resources.credits = Credits(5);
     state.runner.grip = vec![CardId("account_siphon".to_string())];
     state.corp.hq = vec![CardId("hq_card_0".to_string()), CardId("hq_card_1".to_string())];
 
-    let (state, events) = run_to_completion_after_playing(state, &registry, "account_siphon");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: CardId("account_siphon".to_string()) })
+        .expect("play account siphon, initiating the HQ run");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("reach the server, no ice");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit to the access step");
+    let (state, _) = pass_until_settled(state, &registry);
+    assert!(
+        matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, ref options, .. }) if options.len() == 2),
+        "the printed 'you may' is a real choice: siphon, or breach normally — got {:?}",
+        state.pending_decision
+    );
+    (state, registry)
+}
+
+/// "…you may force the Corp to lose up to 5 credits, then you gain 2
+/// credits **for each credit lost** and take 2 tags." Against a 3-credit
+/// Corp the Runner gains 6, not a flat 10 — the gain scales with what was
+/// actually lost (`Amount::CreditsLostThisResolution`).
+#[test]
+fn account_siphon_gains_two_per_credit_the_corp_actually_lost() {
+    let (state, registry) = siphon_to_choice(3);
+    let (state, events) =
+        apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take the siphon");
+
+    assert_eq!(state.corp.resources.credits, Credits(0), "the Corp had 3 to lose");
+    assert_eq!(state.runner.resources.credits, Credits(11), "5 + 2 per credit lost (6), not a flat 10");
+    assert_eq!(state.runner.tags, 2);
+    assert!(state.active_run.is_none(), "the run is over without a breach");
+    assert_eq!(state.corp.hq.len(), 2, "HQ untouched");
+    assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAccessed { .. })));
+}
+
+#[test]
+fn account_siphon_replaces_hq_access_and_accesses_zero_cards() {
+    let (state, registry) = siphon_to_choice(10);
+    let (state, events) =
+        apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take the siphon");
 
     assert_eq!(state.corp.resources.credits, Credits(5), "Corp should lose 5 credits");
-    // Runner: started at 5, paid 0 to play Account Siphon (it is printed at
-    // cost 0), gained 10 from the siphon.
-    assert_eq!(state.runner.resources.credits, Credits(15));
+    assert_eq!(state.runner.resources.credits, Credits(15), "5 + 2 per credit lost (10)");
     assert_eq!(state.runner.tags, 2);
     assert_eq!(state.corp.hq.len(), 2, "HQ itself is untouched — access was replaced, not resolved");
-    assert!(
-        !events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAccessed { .. })),
-        "no card should have been accessed from HQ"
-    );
+    assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAccessed { .. })));
 }
 
-/// Plays `card_id` (an Event already in the Runner's grip whose `OnPlay`
-/// effects initiate a run on `server`), then drives that run to completion —
-/// shared by `account_siphon`-shaped tests, where the run itself is started
-/// by playing the card rather than a bare `InitiateRun` action.
-fn run_to_completion_after_playing(
-    state: GameState,
-    registry: &CardRegistry,
-    card_id: &str,
-) -> (GameState, Vec<crate::rules::GameEvent>) {
-    let mut events = Vec::new();
-    let (state, e) =
-        apply_action(&state, registry, PlayerAction::PlayEvent { card_id: CardId(card_id.to_string()) }).expect("play event");
-    events.extend(e);
-    let (state, e) = apply_action(&state, registry, PlayerAction::ContinueRun).expect("continue run");
-    events.extend(e);
-    let (state, e) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("complete run");
-    events.extend(e);
-    let (state, e) =
-        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
-    events.extend(e);
-    let (state, e) =
-        apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
-    events.extend(e);
-    (state, events)
+/// The other half of the printed "may": declining the siphon consumes the
+/// replacement and the Runner breaches HQ normally — right when the Corp
+/// is too poor for the siphon to beat an access.
+#[test]
+fn account_siphon_may_be_declined_in_favor_of_a_normal_breach() {
+    let (state, registry) = siphon_to_choice(0);
+    let (state, _) =
+        apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline the siphon");
+    assert!(state.active_run.is_some(), "the run stands; the breach is still owed");
+    let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("breach normally");
+    let mut all = events;
+    let (state, more) = pass_until_settled(state, &registry);
+    all.extend(more);
+    assert!(
+        all.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAccessed { .. })),
+        "declining leads to a real HQ access: {all:?}"
+    );
+    assert_eq!(state.runner.tags, 0, "no siphon, no tags");
 }
+
 
 #[test]
 fn pad_campaign_gains_one_credit_at_the_start_of_the_corps_next_turn() {
@@ -467,6 +511,129 @@ fn scorched_earth_requires_a_tagged_runner_and_deals_four_meat_damage() {
 /// pool as every other playable card, so — unlike when these cards were
 /// only reachable through the `fs-loader` filesystem path — they run in the
 /// default build.
+/// The engine dispatches `Trigger::OnTransactionPlayed` off `subtypes`,
+/// not catalog keywords — and three printed Transactions (Hedge Fund,
+/// Hansei Review, Predictive Planogram) lacked the field, so Weyland
+/// Consortium: Building a Better World never paid on them.
+#[test]
+fn building_a_better_world_gains_a_credit_when_hedge_fund_is_played() {
+    let registry = registry();
+    let mut state = base_state();
+    state.corp.identity = Some(CardId("weyland_consortium_building_a_better_world".to_string()));
+    state.corp.resources.credits = Credits(5);
+    state.corp.hq = vec![CardId("hedge_fund".to_string())];
+
+    let (state, events) =
+        apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) })
+            .expect("play hedge fund");
+
+    assert_eq!(state.corp.resources.credits, Credits(10), "5 - 5 (cost) + 9 (effect) + 1 (identity)");
+    assert!(events.iter().any(|e| matches!(e,
+        crate::rules::GameEvent::TriggerFired { card, .. } if card.0 == "weyland_consortium_building_a_better_world")));
+}
+
+/// "You can advance this ice. It gets +1 strength for each hosted
+/// advancement counter." Neither half was modelled: no
+/// `advancement_requirement` marker (so `AdvanceCard` refused it) and no
+/// per-counter strength (`StrengthModifier::PerHostedAdvancement` is a
+/// rate, which the threshold-shaped Pharos variant could not express).
+#[test]
+fn ice_wall_is_advanceable_and_gains_one_strength_per_advancement() {
+    let registry = registry();
+    let mut state = base_state();
+    state.corp.resources.clicks = Clicks(3);
+    state.corp.resources.credits = Credits(5);
+    state.corp.installed = vec![crate::rules::InstalledCard {
+        install_id: crate::rules::test_support::fixture_install_id("ice_wall"),
+        card: CardId("ice_wall".to_string()),
+        server: ServerId::Hq,
+        slot: InstallSlot::Ice,
+        rezzed: true,
+        ..Default::default()
+    }];
+
+    let (mut state, _) = apply_action(
+        &state,
+        &registry,
+        PlayerAction::AdvanceCard { target: crate::rules::test_support::install_of(&state, "ice_wall") },
+    )
+    .expect("ice wall is advanceable");
+    assert_eq!(state.corp.installed[0].advancement_tokens, 1);
+
+    state.corp.installed[0].advancement_tokens = 3;
+    state.phase = GamePhase::Action(Side::Runner);
+    state.runner.resources.clicks = Clicks(4);
+    let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ice wall");
+    assert_eq!(state.active_run.as_ref().unwrap().ice[0].current_strength, 4, "1 printed + 3 advancement counters");
+}
+
+/// Gordian Blade's pump is "+1 strength **for the remainder of this
+/// run**" — it must hold from one encounter to the next within a run
+/// (unlike every Encounter-duration pump) and be gone once the run ends.
+#[test]
+fn gordian_blades_pump_lasts_the_whole_run_and_no_longer() {
+    let registry = registry();
+    let mut state = base_state();
+    state.phase = GamePhase::Action(Side::Runner);
+    state.runner.resources.clicks = Clicks(4);
+    state.runner.resources.credits = Credits(10);
+    state.runner.rig = vec![crate::rules::InstalledRunnerCard {
+        install_id: crate::rules::test_support::fixture_install_id("gordian_blade"),
+        card: CardId("gordian_blade".to_string()),
+        base_strength: 2,
+        ..Default::default()
+    }];
+    let enigma = |id: u32| crate::rules::InstalledCard {
+        install_id: crate::rules::InstallId(id),
+        card: CardId("enigma".to_string()),
+        server: ServerId::Hq,
+        slot: InstallSlot::Ice,
+        rezzed: true,
+        ..Default::default()
+    };
+    state.corp.installed = vec![enigma(7001), enigma(7002)];
+
+    let gordian = crate::rules::test_support::install_of(&state, "gordian_blade");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the first enigma");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, encounter 1");
+
+    // Pump once during the first encounter…
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: gordian, ability_index: 0 })
+        .expect("pump gordian for the run");
+    assert_eq!(state.runner.rig[0].effective_strength(), 3);
+    // …break both subroutines and move on.
+    let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: gordian, ability_index: 1 })
+        .expect("break enigma's first subroutine");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: gordian, ability_index: 1 })
+        .expect("break enigma's second subroutine");
+    // Close only this encounter's window (two consecutive passes), so the
+    // run stands on the second enigma when we look.
+    let side = state.paid_ability_window.as_ref().expect("encounter window open").active_priority;
+    let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("first pass");
+    let side = state.paid_ability_window.as_ref().expect("still open").active_priority;
+    let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("second pass, encounter 1 resolves");
+
+    let run = state.active_run.as_ref().expect("the run survived the first enigma");
+    assert_eq!(run.position, 1, "standing on the second enigma");
+    assert_eq!(
+        state.runner.rig[0].effective_strength(),
+        3,
+        "the run-duration pump holds into the second encounter"
+    );
+    assert_eq!(state.runner.rig[0].run_strength_buff, 1);
+
+    // Let the second enigma bounce the run: the buff dies with the run.
+    let (state, _) = pass_until_settled(state, &registry);
+    assert!(state.active_run.is_none(), "enigma's end-the-run fired");
+    assert_eq!(state.runner.rig[0].run_strength_buff, 0, "the pump ended with the run");
+    assert_eq!(state.runner.rig[0].effective_strength(), 2);
+}
+
 mod system_gateway {
     use super::*;
 

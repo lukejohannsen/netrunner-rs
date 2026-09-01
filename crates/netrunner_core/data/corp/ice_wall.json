@@ -15,5 +15,9 @@
   ],
   "triggers": [],
   "numeric_id": 1103,
-  "is_playable": true
+  "is_playable": true,
+  "advancement_requirement": 0,
+  "strength_modifier": {
+    "PerHostedAdvancement": 1
+  }
 }

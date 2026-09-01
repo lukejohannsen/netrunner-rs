@@ -47,6 +47,8 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<O
         {
             bonus
         }
+        // Ice Wall: a rate, not a threshold.
+        Some(StrengthModifier::PerHostedAdvancement(per)) => per * installed.advancement_tokens as i32,
         _ => 0,
     };
     let current_strength = card_def.strength.unwrap_or(0) + modifier_bonus;
@@ -606,6 +608,7 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
         state.last_completed_run = Some(CompletedRun::snapshot(run));
     }
     state.runner.reset_encounter_strength_buffs();
+    state.runner.reset_run_strength_buffs();
     run
 }
 

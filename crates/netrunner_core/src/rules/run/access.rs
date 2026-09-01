@@ -273,18 +273,40 @@ fn try_replace_access(
         .active_run
         .as_ref()
         .and_then(|run| run.access_replacement.as_ref())
-        .is_some_and(|(replaced_server, _)| *replaced_server == server);
+        .is_some_and(|(replaced_server, _, _)| *replaced_server == server);
     if !matches {
         return Ok(None);
     }
 
-    let (_, effect) = state
+    let (_, effect, optional) = state
         .active_run
         .as_mut()
         .expect("just confirmed active_run is Some above")
         .access_replacement
         .take()
         .expect("just confirmed access_replacement is Some above");
+
+    if optional {
+        // "You **may** … instead of breaching" (Account Siphon): the
+        // choice belongs to the run's owner. Option 0 resolves the
+        // replacement and ends the run — `EndTheRun` is the same "run
+        // over, no breach" conclusion the mandatory path performs, just
+        // recorded as `RunEndedByEffect`. Option 1 does nothing: the
+        // replacement is already consumed (taken above), the run still
+        // stands at `RunPhase::Success`, and the owner's next
+        // `CompleteRun` breaches normally.
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
+            chooser: Side::Runner,
+            options: vec![
+                crate::dsl::Effect::Sequence(vec![effect, crate::dsl::Effect::EndTheRun]),
+                crate::dsl::Effect::Sequence(Vec::new()),
+            ],
+            source_card: None,
+            source_install: None,
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        return Ok(Some(vec![GameEvent::PendingChoicePresented { chooser: Side::Runner, option_count: 2 }]));
+    }
 
     let mut events = ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(None), registry)?;
     super::engine::end_run(state);
@@ -1177,7 +1199,7 @@ mod tests {
             0,
         );
         state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(),
-            access_replacement: Some((ServerId::Hq, Effect::GainCredits(Side::Runner, 8))),
+            access_replacement: Some((ServerId::Hq, Effect::GainCredits(Side::Runner, 8), false)),
             ..run_in_success(ServerId::Hq)
         });
 
@@ -1204,7 +1226,7 @@ mod tests {
             0,
         );
         state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(),
-            access_replacement: Some((ServerId::RnD, Effect::GainCredits(Side::Runner, 8))),
+            access_replacement: Some((ServerId::RnD, Effect::GainCredits(Side::Runner, 8), false)),
             ..run_in_success(ServerId::Hq)
         });
 
@@ -1343,7 +1365,7 @@ mod tests {
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
         state.corp.archives = vec![crate::rules::ArchivedCard::facedown(CardId("hedge_fund".to_string()))];
         let mut run = run_in_success(ServerId::Archives);
-        run.access_replacement = Some((ServerId::Archives, Effect::GainCredits(Side::Runner, 1)));
+        run.access_replacement = Some((ServerId::Archives, Effect::GainCredits(Side::Runner, 1), false));
         state.active_run = Some(run);
 
         access_server(&mut state, ServerId::Archives, &registry()).unwrap();

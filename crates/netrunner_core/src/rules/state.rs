@@ -349,6 +349,13 @@ pub struct InstalledRunnerCard {
     /// amounts. Reset to `0` whenever the current ICE encounter ends (see
     /// `reset_encounter_strength_buffs`).
     pub encounter_strength_buff: i32,
+    /// Sum of active `Effect::BoostStrength { duration: Run, .. }` amounts —
+    /// Gordian Blade's "+1 strength for the remainder of this run". Reset
+    /// to `0` when the run ends (`run::engine::end_run`), and only there:
+    /// unlike an encounter buff it survives from one encounter to the next
+    /// within a single run.
+    #[serde(default)]
+    pub run_strength_buff: i32,
     /// Sum of active `Effect::BoostStrength { duration: Turn, .. }` amounts.
     /// Reset to `0` at the end of the Runner's turn (see
     /// `reset_turn_strength_buffs`). Tracked separately from
@@ -384,7 +391,7 @@ pub struct InstalledRunnerCard {
 impl InstalledRunnerCard {
     /// Base strength plus every currently-active buff.
     pub fn effective_strength(&self) -> i32 {
-        self.base_strength + self.encounter_strength_buff + self.turn_strength_buff
+        self.base_strength + self.encounter_strength_buff + self.run_strength_buff + self.turn_strength_buff
     }
 }
 
@@ -399,6 +406,7 @@ impl Default for InstalledRunnerCard {
             install_id: InstallId::PLACEHOLDER,
             base_strength: 0,
             encounter_strength_buff: 0,
+            run_strength_buff: 0,
             turn_strength_buff: 0,
             counters: 0,
             hosted_on_ice: None,
@@ -512,6 +520,16 @@ impl RunnerState {
     pub fn reset_encounter_strength_buffs(&mut self) {
         for card in &mut self.rig {
             card.encounter_strength_buff = 0;
+        }
+    }
+
+    /// Clears every rig card's `Run`-duration strength buff. Called only
+    /// from `run::engine::end_run` — the one choke point every run
+    /// conclusion goes through — so a Gordian Blade pump holds across every
+    /// encounter of one run and no further.
+    pub fn reset_run_strength_buffs(&mut self) {
+        for card in &mut self.rig {
+            card.run_strength_buff = 0;
         }
     }
 
