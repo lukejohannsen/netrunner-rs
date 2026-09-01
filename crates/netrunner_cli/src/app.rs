@@ -330,7 +330,7 @@ mod tests {
         use netrunner_core::view::build_client_view;
 
         let (mut state, registry) = setup();
-        let due = |trigger: Trigger| DeferredTrigger {
+        let due = |trigger: Trigger| DeferredTrigger { install: None, target_install: None,
             card: CardId("docklands_pass".to_string()),
             trigger,
             target: None,

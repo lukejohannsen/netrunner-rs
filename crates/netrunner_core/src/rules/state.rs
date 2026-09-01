@@ -206,6 +206,18 @@ impl ArchivedCard {
     }
 }
 
+/// One use of an `EffectRequirement::OncePerTurn(tag)` gate this turn.
+///
+/// Keyed by the *install* as well as the tag: "once per turn" is a property
+/// of a card, and three installed *Telework Contracts* are three cards with
+/// three uses — a bare `HashSet<String>` gave them one between them. A gate
+/// on something with no install (an identity, an event) keys on the tag
+/// alone, exactly as before.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct OncePerTurnKey {
+    pub tag: String,
+    pub install: Option<InstallId>,
+}
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CorpState {
     /// Corp's identity card, set once by `GameState::setup`. `None` before
@@ -267,7 +279,7 @@ pub struct CorpState {
     /// another bespoke per-effect bool alongside `first_install_used_this_turn`.
     /// Cleared at the start of every Corp turn (`turn::enter_start_of_turn`).
     #[serde(default)]
-    pub once_per_turn_used: HashSet<String>,
+    pub once_per_turn_used: HashSet<OncePerTurnKey>,
     /// Permanent additive bonus to the Corp's max hand size (`turn::
     /// max_hand_size`), set once at `GameState::setup` from the Corp
     /// identity's registry `CardDefinition::max_hand_size_bonus` — e.g.
@@ -361,7 +373,12 @@ pub struct InstalledRunnerCard {
     /// that need to reference their own host (e.g. `EffectRequirement::
     /// EncounteringHostIce`, `CardTarget::HostIce`).
     #[serde(default)]
-    pub hosted_on_ice: Option<CardId>,
+    ///
+    /// An `InstallId`, not a `CardId`: with two copies of the host ICE
+    /// installed, a card id could not say which one this trojan sits on —
+    /// so trashing either took the trojans of both, and *Botulus* could
+    /// break on the wrong copy (ROADMAP Rules Audit §4).
+    pub hosted_on_ice: Option<InstallId>,
 }
 
 impl InstalledRunnerCard {
@@ -458,7 +475,7 @@ pub struct RunnerState {
     /// once_per_turn_used`'s doc comment for the full rationale. Cleared at
     /// the start of every Runner turn.
     #[serde(default)]
-    pub once_per_turn_used: HashSet<String>,
+    pub once_per_turn_used: HashSet<OncePerTurnKey>,
     /// Whether the Runner has made at least one successful run this turn
     /// (any server) — set by `dispatcher::dispatch_event`'s `RunSucceeded`
     /// arm, reset to `false` at the start of every Runner turn. Backs
@@ -648,6 +665,10 @@ pub struct TraceState {
     /// `resolve_unbroken_subroutines`'s existing `None` passed to
     /// `evaluate_effect` for every subroutine.
     pub initiating_card: Option<CardId>,
+    /// The install `initiating_card` was resolving as — see
+    /// `PendingPaidChoice::source_install`.
+    #[serde(default)]
+    pub initiating_install: Option<InstallId>,
     pub base_strength: u32,
     /// `None` until `PlayerAction::SubmitCorpTraceBid` sets it — gates
     /// whether the pending action is the Corp's bid or the Runner's.
@@ -701,6 +722,11 @@ pub struct PendingPrevention {
     /// CardDefinition whose effect triggered this — same role as `TraceState::
     /// initiating_card`/`evaluate_effect`'s `acting_card` parameter.
     pub source_card: Option<CardId>,
+    /// The install `source_card` was resolving as, when it was one — so a
+    /// resolution resumed later acts on *that* copy, not the first copy of
+    /// the same card (ROADMAP Rules Audit §4).
+    #[serde(default)]
+    pub source_install: Option<InstallId>,
     pub resume: PreventionResume,
 }
 
@@ -732,6 +758,11 @@ pub struct PendingPaidChoice {
     /// CardDefinition whose effect offered this choice — same role as
     /// `TraceState::initiating_card`.
     pub source_card: Option<CardId>,
+    /// The install `source_card` was resolving as, when it was one — so a
+    /// resolution resumed later acts on *that* copy, not the first copy of
+    /// the same card (ROADMAP Rules Audit §4).
+    #[serde(default)]
+    pub source_install: Option<InstallId>,
     pub resume: PendingPaidChoiceResume,
 }
 
@@ -755,6 +786,9 @@ pub enum PendingDecision {
         chooser: Side,
         options: Vec<Effect>,
         source_card: Option<CardId>,
+        /// See `PendingPaidChoice::source_install`.
+        #[serde(default)]
+        source_install: Option<InstallId>,
         resume: PendingChoiceResume,
     },
     /// `Effect::PromptChooseCards` parked this. `selected` is the
@@ -783,6 +817,9 @@ pub enum PendingDecision {
         /// nothing the chooser was not already shown.
         selected: Vec<usize>,
         source_card: Option<CardId>,
+        /// See `PendingPaidChoice::source_install`.
+        #[serde(default)]
+        source_install: Option<InstallId>,
         resume: PendingChoiceResume,
     },
     /// `Effect::PromptChooseServer` parked this — `chooser` picks any
@@ -825,6 +862,9 @@ pub enum PendingDecision {
         /// see `Effect::PromptChooseServer::on_success`.
         on_success: Option<Box<Effect>>,
         source_card: Option<CardId>,
+        /// See `PendingPaidChoice::source_install`.
+        #[serde(default)]
+        source_install: Option<InstallId>,
         resume: PendingChoiceResume,
     },
 }
@@ -889,6 +929,17 @@ pub struct DeferredTrigger {
     /// counter on *that* program. `None` is the ordinary "acts on itself"
     /// case.
     pub target: Option<CardId>,
+    /// The install `card` is — `None` for an identity, or for a card that
+    /// has already left play. Without it a deferred trigger resolved
+    /// against the *first* installed copy of `card`: two Fermenters queued
+    /// two `OnTurnStart` entries and both loaded copy #1 (ROADMAP Rules
+    /// Audit §4). Every plan builder in `dispatcher` fills it from the
+    /// install it iterated.
+    #[serde(default)]
+    pub install: Option<InstallId>,
+    /// The install `target` is, on the same terms.
+    #[serde(default)]
+    pub target_install: Option<InstallId>,
     /// The event that fired this trigger, carried across the defer boundary
     /// so `dispatcher::fire_one` can rebuild the same
     /// `ability::ResolutionContext` the trigger would have had if it had

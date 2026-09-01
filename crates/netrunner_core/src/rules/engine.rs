@@ -608,7 +608,7 @@ fn rez_ice(
     // Games priority rule 4.
     paid_ability::note_window_action(&mut next, side);
 
-    let rezzed_event = GameEvent::IceRezzed { card: ice_id, server };
+    let rezzed_event = GameEvent::IceRezzed { card: ice_id, server, install: ice };
     events.push(rezzed_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &rezzed_event)?);
     Ok((next, events))
@@ -1098,7 +1098,6 @@ fn install_program_on_ice(
     if host_install.slot != InstallSlot::Ice {
         return Err(RulesError::HostIsNotIce(host_install.card.clone()));
     }
-    let host_ice_id = host_install.card.clone();
 
     let memory_cost = card_def.memory_cost.unwrap_or(0);
 
@@ -1114,7 +1113,7 @@ fn install_program_on_ice(
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let mut rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
-    rig_card.hosted_on_ice = Some(host_ice_id);
+    rig_card.hosted_on_ice = Some(host);
     events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };
@@ -1287,7 +1286,7 @@ fn activate_ability(
         return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
     }
     if let Some(requirement) = &ability.requirement {
-        ability::check_requirement(state, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
+        ability::check_requirement(state, requirement, side, &ability::ResolutionContext::for_install(target, &card_id), registry)?;
     }
 
     let mut next = state.clone();
@@ -1299,23 +1298,23 @@ fn activate_ability(
         // once-per-turn consumption, unlike `first_install_discount`.
         let discounted = match (cost, &ability.cost_discount_if) {
             (Cost::Credits(amount), Some((requirement, discount)))
-                if ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok() =>
+                if ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_install(target, &card_id), registry).is_ok() =>
             {
                 Cost::Credits(amount.saturating_sub(*discount))
             }
             _ => cost.clone(),
         };
-        events.extend(ability::pay_cost(&mut next, side, &discounted, Some(&card_id))?);
+        events.extend(ability::pay_cost_ctx(&mut next, side, &discounted, &ability::ResolutionContext::for_install(target, &card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
-    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability::ResolutionContext::for_card(Some(&card_id)), registry)?);
+    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability::ResolutionContext::for_install(target, &card_id), registry)?);
     // `check_requirement` above only reads — without this, a `Paid`
     // ability's `EffectRequirement::OncePerTurn` (e.g. Telework Contract's
     // click ability) would never actually get marked used and could be
     // activated any number of times per turn. Mirrors
     // `process_card_triggers`'s own check-then-consume ordering.
     if let Some(requirement) = &ability.requirement {
-        ability::consume_requirement(&mut next, requirement, side);
+        ability::consume_requirement(&mut next, requirement, side, &ability::ResolutionContext::for_install(target, &card_id));
     }
     paid_ability::note_window_action(&mut next, side);
 
@@ -2361,7 +2360,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 1 },
-                GameEvent::IceRezzed { card: card_id, server: ServerId::Remote(0) },
+                GameEvent::IceRezzed { card: card_id, server: ServerId::Remote(0), install: next.corp.installed[0].install_id },
             ]
         );
     }
@@ -2499,7 +2498,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
-                GameEvent::IceRezzed { card: card_id, server: ServerId::Hq },
+                GameEvent::IceRezzed { card: card_id, server: ServerId::Hq, install: next.corp.installed[0].install_id },
             ]
         );
     }
@@ -3516,6 +3515,7 @@ mod tests {
         let mut state = corp_state(3, 5);
         state.active_trace = Some(crate::rules::state::TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength: 2,
             corp_bid: None,
             effect_on_success: Effect::GiveTags(1),
@@ -4971,7 +4971,7 @@ mod tests {
             ..Default::default()
         };
         state.corp.installed = vec![rezzed("parks_a_choice"), rezzed("pad_campaign")];
-        state.deferred_triggers = vec![crate::rules::state::DeferredTrigger {
+        state.deferred_triggers = vec![crate::rules::state::DeferredTrigger { install: None, target_install: None,
             card: CardId("pad_campaign".to_string()),
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
@@ -4980,6 +4980,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
             source_card: Some(CardId("parks_a_choice".to_string())),
+            source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
 
@@ -5027,12 +5028,12 @@ mod tests {
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
             pending: vec![
-                crate::rules::state::DeferredTrigger {
+                crate::rules::state::DeferredTrigger { install: None, target_install: None,
                     card: CardId("pad_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
                 },
-                crate::rules::state::DeferredTrigger {
+                crate::rules::state::DeferredTrigger { install: None, target_install: None,
                     card: CardId("nico_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
@@ -5104,7 +5105,7 @@ mod tests {
         // The two copies are told apart only by the event they carry — the
         // same shape a real dispatch produces, since `DeferredTrigger` has
         // no install handle.
-        let due = |id: &str, clicks: u32| crate::rules::state::DeferredTrigger {
+        let due = |id: &str, clicks: u32| crate::rules::state::DeferredTrigger { install: None, target_install: None,
             card: CardId(id.to_string()),
             trigger: Trigger::OnTurnStart,
             target: None,
@@ -5176,7 +5177,7 @@ mod tests {
             install_id: InstallId(7),
             ..Default::default()
         }];
-        let due = |trigger: Trigger| crate::rules::state::DeferredTrigger {
+        let due = |trigger: Trigger| crate::rules::state::DeferredTrigger { install: None, target_install: None,
             card: CardId("docklands_style_pass".to_string()),
             trigger,
             target: None,

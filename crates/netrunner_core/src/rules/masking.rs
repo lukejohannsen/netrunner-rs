@@ -108,8 +108,10 @@ pub struct PublicInstalledRunnerCard {
     /// (Botulus, Tranquilizer). Never masked, for the same reason as the
     /// rest of this struct: a rig card is face-up, and *where* it sits is
     /// as visible as the card itself — a physical Trojan is literally
-    /// placed on the ICE it hosts on.
-    pub hosted_on_ice: Option<CardId>,
+    /// placed on the ICE it hosts on. An install handle, like every
+    /// other reference to a Corp install in the view; the client resolves
+    /// it against the server's `ice` list.
+    pub hosted_on_ice: Option<InstallId>,
     /// Generic counters (see `dsl::card::CounterKind`) — a bare `u32`, not
     /// the `Option` its Corp counterpart carries. The asymmetry is not an
     /// oversight: a rig card is always face-up (see `PublicRunnerState::
@@ -406,7 +408,7 @@ fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunn
         card: card.card.clone(),
         install_id: card.install_id,
         current_strength: card.effective_strength(),
-        hosted_on_ice: card.hosted_on_ice.clone(),
+        hosted_on_ice: card.hosted_on_ice,
         counters: card.counters,
     }
 }
@@ -694,14 +696,14 @@ mod tests {
     #[test]
     fn a_trojans_host_ice_is_visible_to_both_sides() {
         let mut runner = runner_state_with_cards();
-        runner.rig[0].hosted_on_ice = Some(CardId("ice_wall".to_string()));
+        runner.rig[0].hosted_on_ice = Some(InstallId(77));
         let state = game_state_with_runner(runner);
 
         for side in [Side::Corp, Side::Runner] {
             let masked = mask_state_for_player(&state, side);
             assert_eq!(
                 masked.runner.rig[0].hosted_on_ice,
-                Some(CardId("ice_wall".to_string())),
+                Some(InstallId(77)),
                 "{side:?} should see where a Trojan is hosted"
             );
         }

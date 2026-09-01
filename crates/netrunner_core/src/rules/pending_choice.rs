@@ -227,7 +227,7 @@ fn remove_installed_card(
             let pos = state.corp.installed.iter().position(|c| c.install_id == install_id)?;
             let removed = state.corp.installed.remove(pos);
             let cascade = if removed.slot == InstallSlot::Ice {
-                ability::cascade_trash_hosted_programs(state, &removed.card)
+                ability::cascade_trash_hosted_programs(state, removed.install_id)
             } else {
                 Vec::new()
             };
@@ -290,9 +290,9 @@ pub(crate) fn resolve_accept(
         other => other.clone(),
     };
 
-    let mut events = ability::pay_cost(state, pending.side, &cost_to_pay, pending.source_card.as_ref())?;
+    let mut events = ability::pay_cost_ctx(state, pending.side, &cost_to_pay, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?;
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
-    events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ability::ResolutionContext::for_card(pending.source_card.as_ref()), registry)?);
+    events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()), registry)?);
 
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_paid`
@@ -312,7 +312,7 @@ pub(crate) fn resolve_decline(state: &mut GameState, registry: &CardRegistry) ->
     let pending = state.pending_paid_choice.take().ok_or(RulesError::NoPendingPaidChoice)?;
 
     let mut events = vec![GameEvent::PendingPaidChoiceDeclined { side: pending.side }];
-    events.extend(ability::evaluate_effect(state, &pending.if_declined, &mut ability::ResolutionContext::for_card(pending.source_card.as_ref()), registry)?);
+    events.extend(ability::evaluate_effect(state, &pending.if_declined, &mut ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()), registry)?);
 
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_declined`
@@ -332,7 +332,7 @@ pub(crate) fn resolve_choice(
     registry: &CardRegistry,
     option_index: usize,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseEffect { chooser, options, source_card, resume } =
+    let PendingDecision::ChooseEffect { chooser, options, source_card, source_install, resume } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -340,7 +340,7 @@ pub(crate) fn resolve_choice(
 
     let effect = options.get(option_index).ok_or(RulesError::InvalidChoiceIndex(option_index))?.clone();
     let mut events = vec![GameEvent::PendingChoiceResolved { chooser, option_index }];
-    events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(source_card.as_ref()), registry)?);
+    events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_parked(source_install, source_card.as_ref()), registry)?);
 
     if resume == PendingChoiceResume::ResumeSubroutines {
         // The chosen `effect` may itself have parked a *further* pending
@@ -478,6 +478,7 @@ pub(crate) fn resolve_confirm_card_selection(
         then,
         selected,
         source_card,
+        source_install,
         resume,
         ..
     } = state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
@@ -581,6 +582,12 @@ pub(crate) fn resolve_confirm_card_selection(
 
     if let Some(effect) = then {
         let acting = selected.first().or(source_card.as_ref());
+        // …and the *install* the `then` acts as: the selected install when
+        // the selection was over installs (Seamless Launch advances the
+        // Offworld Office the Corp picked, not the first one), else the
+        // parking card's own. Without it every `then` fell back to the
+        // first copy of the card.
+        let acting_install = selected_installs.first().copied().or(source_install);
         // `RezInstalledIgnoringCost`'s own embedded `CardId` is authored as
         // an unused placeholder in JSON (the real target isn't known until
         // resolution) — substitute the actual selected card here, the same
@@ -630,7 +637,7 @@ pub(crate) fn resolve_confirm_card_selection(
             (other, _, _) => Some(other),
         };
         if let Some(effect) = effect {
-            events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(acting), registry)?);
+            events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_parked(acting_install, acting), registry)?);
         }
     }
 
@@ -740,6 +747,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::GiveTags(1),
             source_card: None,
+            source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
 
@@ -760,6 +768,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::GiveTags(1),
             source_card: None,
+            source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
 
@@ -780,6 +789,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::EndTheRun,
             source_card: None,
+            source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
 
@@ -798,6 +808,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::EndTheRun,
             source_card: None,
+            source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
 
@@ -813,6 +824,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
             source_card: None,
+            source_install: None,
             resume: PendingChoiceResume::None,
         });
 
@@ -830,6 +842,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2)],
             source_card: None,
+            source_install: None,
             resume: PendingChoiceResume::None,
         });
 
@@ -847,6 +860,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::GiveTags(1),
             source_card: None,
+            source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
         let registry = CardRegistry::new();
@@ -904,6 +918,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            source_install: None,
             resume: PendingChoiceResume::None,
         });
 
@@ -974,6 +989,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            source_install: None,
             resume: PendingChoiceResume::None,
         });
 
@@ -1036,6 +1052,7 @@ mod tests {
             then: None,
             selected: vec![1],
             source_card: None,
+            source_install: None,
             resume: PendingChoiceResume::None,
         });
 

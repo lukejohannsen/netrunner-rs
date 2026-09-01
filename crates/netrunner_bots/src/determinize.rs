@@ -393,7 +393,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             // unconditionally and so put every Trojan ability out of the
             // search's reach entirely.
             counters: card.counters,
-            hosted_on_ice: card.hosted_on_ice.clone(),
+            hosted_on_ice: card.hosted_on_ice,
         })
         .collect();
 
@@ -667,6 +667,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            source_install: None,
             resume: PendingChoiceResume::None,
         });
 
@@ -733,7 +734,7 @@ mod tests {
             card: CardId("botulus".to_string()),
             base_strength: 2,
             counters: 3,
-            hosted_on_ice: Some(CardId("corp_ice_0".to_string())),
+            hosted_on_ice: Some(netrunner_core::rules::InstallId::PLACEHOLDER),
             ..Default::default()
         }];
         state.active_run = Some(netrunner_core::rules::RunState {
@@ -758,7 +759,7 @@ mod tests {
             assert_eq!(sampled.runner.rig[0].counters, 3, "{side:?}");
             assert_eq!(
                 sampled.runner.rig[0].hosted_on_ice,
-                Some(CardId("corp_ice_0".to_string())),
+                Some(netrunner_core::rules::InstallId::PLACEHOLDER),
                 "{side:?}: a Trojan's host is public"
             );
 

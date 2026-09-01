@@ -849,6 +849,7 @@ mod tests {
         let mut awaiting_corp = corp_state(3, 5);
         awaiting_corp.active_trace = Some(TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength: 0,
             corp_bid: None,
             effect_on_success: Effect::GiveTags(1),
@@ -864,6 +865,7 @@ mod tests {
         awaiting_runner.runner.resources.credits = Credits(4);
         awaiting_runner.active_trace = Some(TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength: 0,
             corp_bid: Some(2),
             effect_on_success: Effect::GiveTags(1),
@@ -1129,6 +1131,7 @@ mod tests {
             Some(PaidAbilityWindow { active_priority: Side::Runner, consecutive_passes: 0, return_phase: Box::new(state.phase), checkpoint: WindowCheckpoint::Run });
         state.active_trace = Some(TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength: 0,
             corp_bid: None,
             effect_on_success: Effect::GiveTags(1),

@@ -985,6 +985,7 @@ mod tests {
         let mut state = base_state();
         state.active_trace = Some(TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength: 2,
             corp_bid: None,
             effect_on_success: DslEffect::GiveTags(1),
@@ -1030,6 +1031,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::GiveTags(1),
             source_card: None,
+            source_install: None,
             resume: crate::rules::state::PendingPaidChoiceResume::None,
         });
         let registry = CardRegistry::new();
@@ -1051,6 +1053,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
             source_card: None,
+            source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         let registry = CardRegistry::new();
@@ -1079,6 +1082,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         let mut registry = CardRegistry::new();
@@ -1098,7 +1102,7 @@ mod tests {
     #[test]
     fn choose_trigger_order_decision_roundtrips_and_matches_mask() {
         let mut state = base_state();
-        let due = |trigger: crate::dsl::Trigger| crate::rules::state::DeferredTrigger {
+        let due = |trigger: crate::dsl::Trigger| crate::rules::state::DeferredTrigger { install: None, target_install: None,
             card: CardId("hedge_fund".to_string()),
             trigger,
             target: None,
@@ -1140,6 +1144,7 @@ mod tests {
             allowed_servers: None,
             on_success: None,
             source_card: None,
+            source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         let registry = CardRegistry::new();
@@ -1269,6 +1274,7 @@ mod tests {
                 crate::dsl::Effect::Sequence(Vec::new()),
             ],
             source_card: None,
+            source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         let decline = PlayerAction::ResolvePendingChoice { option_index: 2 };
