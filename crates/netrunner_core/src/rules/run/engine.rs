@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, Effect, IceType, StrengthModifier};
+use crate::dsl::{CardId, CardType, Effect, StrengthModifier};
 use crate::rules::ability::evaluate_effect;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
@@ -18,10 +18,20 @@ use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side
 /// `strength`/`subroutines` set) still leniently defaults to a blank
 /// 0-strength/no-subroutines ICE, which is legitimate for a vanilla ICE —
 /// mirrors `run::access::compute_pending_choice`'s existing leniency there.
-fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<RunIce, RulesError> {
+///
+/// `Ok(None)` for a card that is not ICE at all. `install_card` and
+/// `Effect::InstallFromZoneIgnoringCost` both refuse to put a non-ICE into
+/// an ICE slot, so this is unreachable through `apply_action`; it exists so
+/// a hand-built state cannot make the run encounter an agenda as a
+/// 0-strength barrier — which is what the `_ => IceType::Barrier` arm that
+/// stood here did.
+fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<Option<RunIce>, RulesError> {
     let card_def = registry
         .get(&installed.card)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(installed.card.clone()))?;
+    let CardType::Ice(ice_type) = card_def.card_type else {
+        return Ok(None);
+    };
     // Bakes any `StrengthModifier` into the seeded value once, at the moment
     // this ICE is first encountered during a run — its condition (server
     // type, hosted advancement count) is fixed for the run's duration in
@@ -40,10 +50,6 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<R
         _ => 0,
     };
     let current_strength = card_def.strength.unwrap_or(0) + modifier_bonus;
-    let ice_type = match &card_def.card_type {
-        CardType::Ice(ice_type) => *ice_type,
-        _ => IceType::Barrier,
-    };
     let subroutines = card_def
         .subroutines
         .iter()
@@ -51,8 +57,14 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<R
         .map(|(id, def)| EncounteredSubroutine { id, definition: def.clone(), status: SubroutineStatus::Pending })
         .collect();
 
-    Ok(RunIce {
-        install_id: installed.install_id, card_id: installed.card.clone(), current_strength, ice_type, subroutines, rezzed: installed.rezzed })
+    Ok(Some(RunIce {
+        install_id: installed.install_id,
+        card_id: installed.card.clone(),
+        current_strength,
+        ice_type,
+        subroutines,
+        rezzed: installed.rezzed,
+    }))
 }
 
 /// Sets `state.active_run` to a freshly-initiated run on `server` — shared
@@ -170,7 +182,10 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .iter()
         .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
         .map(|installed| build_run_ice(installed, registry))
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Result<Vec<_>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
 
     state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(),
         on_success_effect: None,
@@ -288,7 +303,7 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
     for installed in state.corp.installed.iter().filter(|c| c.server == run.server && c.slot == InstallSlot::Ice) {
         match run.ice.iter().find(|ice| ice.install_id == installed.install_id) {
             Some(existing) => rebuilt.push(RunIce { rezzed: installed.rezzed, ..existing.clone() }),
-            None => rebuilt.push(build_run_ice(installed, registry)?),
+            None => rebuilt.extend(build_run_ice(installed, registry)?),
         }
     }
     if rebuilt == run.ice {

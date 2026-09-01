@@ -549,31 +549,46 @@ pub(crate) fn resolve_confirm_card_selection(
         // `SwapInstalledIce`'s two placeholders become the two (in this
         // case, order-independent) selected cards (e.g. Tāo Salonga); a
         // `InstallFromZoneIgnoringCost` placeholder's `card_id` becomes the
-        // one selected card, and its `into`/`insert_after` placeholders are
-        // resolved from `source_card` (the resolving ability's own card,
-        // e.g. Brân 1.0) rather than from the selection — looked up here
-        // since only `source_card`'s currently-installed `server` is
-        // needed, not any zone-move machinery.
-        let host_server = source_card.as_ref().and_then(|id| state.corp.installed.iter().find(|c| &c.card == id)).map(|c| c.server);
+        // one selected card, and its `into`/`insert_after` placeholders mean
+        // "this ice" — resolved to the ICE **being encountered** when that is
+        // the resolving ability's own card (Brân 1.0/Ansel 1.0 park this
+        // from their own subroutine). By install, not by first matching
+        // `CardId`: with two Brâns on two servers the first-match lookup
+        // installed inward of the wrong one. And when the host is gone —
+        // the run ended, or Brân left play, while the choice was parked —
+        // there is nothing to install "directly inward from", so the
+        // install does not happen and the chosen card stays where it was.
+        // This used to fall back to `ServerId::Archives`, which happened to
+        // equal the JSON placeholder and so was never noticed.
+        let host = state
+            .active_run
+            .as_ref()
+            .filter(|run| run.phase == run::RunPhase::EncounterIce)
+            .and_then(|run| run.ice.get(run.position))
+            .filter(|ice| Some(&ice.card_id) == source_card.as_ref())
+            .and_then(|ice| state.find_corp_install(ice.install_id))
+            .map(|install| (install.install_id, install.server));
         // The two install-addressing effects substitute from
         // `selected_installs`, not `selected`: with two copies of one ICE
         // selected, two identical `CardId`s named the same install twice —
         // `SwapInstalledIce` swapped a card with itself and no-opped.
         let effect = match (*effect, selected.as_slice(), selected_installs.as_slice()) {
-            (Effect::RezInstalledIgnoringCost(_), _, [chosen, ..]) => Effect::RezInstalledIgnoringCost(*chosen),
-            (Effect::SwapInstalledIce(_, _), _, [a, b, ..]) => Effect::SwapInstalledIce(*a, *b),
+            (Effect::RezInstalledIgnoringCost(_), _, [chosen, ..]) => Some(Effect::RezInstalledIgnoringCost(*chosen)),
+            (Effect::SwapInstalledIce(_, _), _, [a, b, ..]) => Some(Effect::SwapInstalledIce(*a, *b)),
             (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
-                Effect::InstallFromZoneIgnoringCost {
+                host.map(|(host_install, into)| Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),
                     origin_zone,
-                    into: host_server.unwrap_or(crate::rules::ServerId::Archives),
+                    into,
                     slot,
-                    insert_after: insert_after.and(source_card.clone()),
-                }
+                    insert_after: insert_after.map(|_| host_install),
+                })
             }
-            (other, _, _) => other,
+            (other, _, _) => Some(other),
         };
-        events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(acting), registry)?);
+        if let Some(effect) = effect {
+            events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(acting), registry)?);
+        }
     }
 
     if resume == PendingChoiceResume::ResumeSubroutines {

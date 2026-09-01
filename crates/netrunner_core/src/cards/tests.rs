@@ -3363,6 +3363,74 @@ mod system_gateway {
         assert_eq!(ice_wall.server, ServerId::Hq, "ice_wall took wall_of_static's old position");
     }
 
+    /// Drives a run into Brân 1.0's encounter on `server`, fires its first
+    /// subroutine, and picks "install from HQ" — parked at the card
+    /// selection, one `ConfirmCardSelection` away from the install.
+    fn bran_install_choice_parked(mut state: GameState, registry: &CardRegistry, server: ServerId) -> GameState {
+        state = enter_encounter_with(state, registry, server);
+        let (state, _) = close_all_windows(state, registry);
+        let (state, _) = apply_action(&state, registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+            .expect("choose to install from HQ");
+        let (state, _) =
+            apply_action(&state, registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") })
+                .expect("toggle ice_wall");
+        state
+    }
+
+    /// "Directly inward from *this* ice" names the Brân being encountered —
+    /// not the first Brân in install order. With the encountered copy
+    /// listed second, a first-match-by-`CardId` lookup installed inward of
+    /// the other copy, on the other server.
+    #[test]
+    fn bran_1_0_installs_inward_of_the_encountered_copy_not_the_first_copy() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let other_bran = crate::rules::InstalledCard { install_id: InstallId(777), ..corp_ice("bran_1_0", ServerId::Remote(0)) };
+        state.corp.installed = vec![other_bran, corp_ice("bran_1_0", ServerId::Hq)];
+        state.corp.hq = vec![CardId("ice_wall".to_string())];
+
+        let state = bran_install_choice_parked(state, &registry, ServerId::Hq);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+
+        let placed: Vec<(&str, ServerId)> = state.corp.installed.iter().map(|c| (c.card.0.as_str(), c.server)).collect();
+        assert_eq!(
+            placed,
+            vec![("bran_1_0", ServerId::Remote(0)), ("bran_1_0", ServerId::Hq), ("ice_wall", ServerId::Hq)],
+            "inward of the HQ brân — the one being encountered"
+        );
+    }
+
+    /// If the Brân whose subroutine parked the install has left play by the
+    /// time the Corp confirms, there is nothing to install "directly inward
+    /// from", and nothing is installed — the chosen card stays in HQ. It
+    /// used to be installed into Archives, the JSON placeholder server.
+    #[test]
+    fn bran_1_0s_install_does_not_happen_if_bran_is_gone_when_the_choice_resolves() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![corp_ice("bran_1_0", ServerId::Hq)];
+        state.corp.hq = vec![CardId("ice_wall".to_string())];
+
+        let mut state = bran_install_choice_parked(state, &registry, ServerId::Hq);
+        // Brân leaves play while the Corp is choosing.
+        state.corp.installed.retain(|c| c.card.0 != "bran_1_0");
+
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+
+        assert!(state.corp.installed.is_empty(), "nothing was installed anywhere: {:?}", state.corp.installed);
+        assert_eq!(state.corp.hq, vec![CardId("ice_wall".to_string())], "the chosen card is still in HQ");
+        assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardInstalled { .. })));
+        // And with the encountered ICE gone the encounter is over: its
+        // remaining "end the run" subroutines do not fire, and the run
+        // stands at the server.
+        assert!(!events.contains(&crate::rules::GameEvent::RunEndedByEffect { server: ServerId::Hq }));
+        assert_eq!(state.active_run.as_ref().map(|r| r.phase), Some(crate::rules::RunPhase::Success), "{events:?}");
+    }
+
     /// A swap that touches the attacked server used to be refused during a
     /// run (`CannotSwapIceDuringActiveRun`) because `run.ice` was a
     /// snapshot. It now follows `corp.installed`: the Runner approaches

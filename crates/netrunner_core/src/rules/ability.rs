@@ -350,6 +350,12 @@ pub fn evaluate_effect(
                 crate::dsl::CardType::Ice(_) => crate::rules::InstallSlot::Ice,
                 _ => crate::rules::InstallSlot::Root,
             });
+            // An authored `slot: Ice` with a filter that admits a non-ICE
+            // would otherwise put an agenda in the ICE column; same guard
+            // `engine::install_card` applies to the player's own installs.
+            if resolved_slot == crate::rules::InstallSlot::Ice && !matches!(card_def.card_type, crate::dsl::CardType::Ice(_)) {
+                return Err(RulesError::CardTypeMismatch { card: card_id.clone(), expected: "ice" });
+            }
             let new_card = crate::rules::InstalledCard {
                 card: card_id.clone(),
                 install_id: state.allocate_install_id(),
@@ -362,7 +368,7 @@ pub fn evaluate_effect(
             };
             match insert_after {
                 Some(host) => {
-                    let host_pos = state.corp.installed.iter().position(|c| &c.card == host);
+                    let host_pos = state.corp.installed.iter().position(|c| c.install_id == *host);
                     match host_pos {
                         Some(i) => state.corp.installed.insert(i + 1, new_card),
                         None => state.corp.installed.push(new_card),

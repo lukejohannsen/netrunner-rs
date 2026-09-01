@@ -430,7 +430,14 @@ pub enum Effect {
         origin_zone: CardZoneRef,
         into: ServerId,
         slot: Option<crate::rules::InstallSlot>,
-        insert_after: Option<CardId>,
+        /// The install the new card goes directly after in
+        /// `corp.installed` (directly inward of it), or `None` to append.
+        /// Authored as the placeholder `0` (`InstallId::PLACEHOLDER`) meaning
+        /// "this ice"; `pending_choice` substitutes the encountered ICE's
+        /// real install at resolution. An install, not a `CardId`: two
+        /// copies of Brân 1.0 on two servers must each insert inward of
+        /// themselves, and a first-match-by-title lookup picked the first.
+        insert_after: Option<crate::rules::InstallId>,
     },
     /// Sets `RunState::runner_cannot_steal_or_trash`, blocking `PlayerAction::
     /// StealAgenda`/`TrashAccessedCard` for the remainder of the current

@@ -284,6 +284,21 @@ pub enum RulesError {
     #[error("trigger choice {index} is out of range: {pending} triggers are pending")]
     TriggerChoiceOutOfRange { index: usize, pending: usize },
 
+    /// The card is not the type the action installs or plays — an agenda
+    /// named by `InstallCard` with `InstallSlot::Ice`, a resource named by
+    /// `PlayEvent`. `legal_actions` never offers such an action, but it is
+    /// not the authority: a remote client submits straight into
+    /// `apply_action`, and before this guard an agenda in an ICE slot was
+    /// encountered as a 0-strength barrier.
+    #[error("{card:?} is not {expected}")]
+    CardTypeMismatch { card: CardId, expected: &'static str },
+
+    /// An agenda or asset named for a central server's root. Only upgrades
+    /// may be installed in a central's root; `install_card_candidates`
+    /// offers agendas and assets to remotes only, and the handler agrees.
+    #[error("{card:?} can only be installed in a remote server")]
+    NotInstallableInCentralServer { card: CardId },
+
     #[error("the runner cannot steal or trash cards for the remainder of this run")]
     StealAndTrashPreventedThisRun,
 
