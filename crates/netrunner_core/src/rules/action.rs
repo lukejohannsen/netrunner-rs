@@ -32,9 +32,13 @@ pub enum PlayerAction {
     /// not a click action). Pays the card's registry `cost` in credits via
     /// `ability::pay_cost` — `RulesError::CardNotFoundInRegistry` if it
     /// isn't in the registry, `RulesError::NotEnoughCredits` if the Corp can't
-    /// afford it. Permitted either during the Corp's own `GamePhase::Action`,
-    /// or — regardless of whose turn it is — while any `PaidAbilityWindow` is
-    /// open, since `phase` never changes mid-run/mid-window.
+    /// afford it. **When** depends on the card: ICE only while the Runner is
+    /// approaching that very install (`RulesError::IceNotBeingApproached`
+    /// otherwise — not on the Corp's own turn, not at another window);
+    /// assets and upgrades during the Corp's own `GamePhase::Action` or,
+    /// regardless of whose turn it is, while any `PaidAbilityWindow` is
+    /// open. The name predates the split and is kept: it is the action
+    /// every client and policy already knows.
     ///
     /// `ice` names the install, not the card: with two copies of the same
     /// ICE installed, this rezzes the one actually chosen. See

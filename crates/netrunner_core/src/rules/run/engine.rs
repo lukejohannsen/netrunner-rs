@@ -51,7 +51,8 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<R
         .map(|(id, def)| EncounteredSubroutine { id, definition: def.clone(), status: SubroutineStatus::Pending })
         .collect();
 
-    Ok(RunIce { card_id: installed.card.clone(), current_strength, ice_type, subroutines, rezzed: installed.rezzed })
+    Ok(RunIce {
+        install_id: installed.install_id, card_id: installed.card.clone(), current_strength, ice_type, subroutines, rezzed: installed.rezzed })
 }
 
 /// Sets `state.active_run` to a freshly-initiated run on `server` — shared
@@ -503,6 +504,7 @@ mod tests {
     /// this, only status transitions and counts do.
     fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
         RunIce {
+            install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId(card_id.to_string()),
             current_strength: strength,
             ice_type: IceType::Barrier,

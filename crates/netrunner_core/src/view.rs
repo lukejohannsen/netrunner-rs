@@ -318,6 +318,7 @@ mod tests {
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![RunIce {
+                install_id: install_of(&state, "ice_wall"),
                 card_id: CardId("ice_wall".to_string()),
                 current_strength: 1,
                 ice_type: IceType::Barrier,

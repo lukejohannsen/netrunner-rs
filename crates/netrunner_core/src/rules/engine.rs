@@ -445,38 +445,38 @@ fn rez_ice(
     ice: InstallId,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
-    // Priority-independent: legal during the Corp's own Action phase, or —
-    // regardless of whose turn it is — while any PaidAbilityWindow is open,
-    // or (kept for states that reached ApproachIce without a window
-    // literally attached, e.g. hand-built test fixtures) while a run is at
-    // RunPhase::ApproachIce specifically.
-    let rez_window_open = state.paid_ability_window.is_some()
-        || matches!(&state.active_run, Some(run) if run.phase == RunPhase::ApproachIce);
-    if !rez_window_open {
-        require_phase(state, GamePhase::Action(side))?;
-    }
-    let mut next = state.clone();
-
     // The install is resolved first, and the card's identity comes *from*
     // it — the caller names a position on the table, not a card, so
     // everything below works from what is actually installed there.
-    let (ice_id, server) = {
-        let installed = next
-            .corp
-            .installed
-            .iter_mut()
-            .find(|c| c.install_id == ice)
-            .ok_or(RulesError::InstallNotFound(ice))?;
-        if installed.rezzed {
-            return Err(RulesError::AlreadyRezzed { card: installed.card.clone() });
-        }
-        installed.rezzed = true;
-        (installed.card.clone(), installed.server)
-    };
-
+    let installed = state.corp.installed.iter().find(|c| c.install_id == ice).ok_or(RulesError::InstallNotFound(ice))?;
+    if installed.rezzed {
+        return Err(RulesError::AlreadyRezzed { card: installed.card.clone() });
+    }
+    let (ice_id, server) = (installed.card.clone(), installed.server);
     let card_def = registry
         .get(&ice_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+
+    // When a card may be rezzed depends on what it is. ICE is rezzed only
+    // while the Runner is approaching *that* ICE — never on the Corp's own
+    // turn, never at some other window. Assets and upgrades are rezzed
+    // whenever the Corp has priority: their own action phase, or any open
+    // paid-ability window on either turn. This used to let ICE be rezzed
+    // at any of those moments too (ROADMAP Rules Audit T10), which is how
+    // a heuristic Corp rezzed its whole board pre-emptively at home.
+    if matches!(card_def.card_type, CardType::Ice(_)) {
+        let approached = state.active_run.as_ref().is_some_and(|run| {
+            run.phase == RunPhase::ApproachIce && run.ice.get(run.position).is_some_and(|at| at.install_id == ice)
+        });
+        if !approached {
+            return Err(RulesError::IceNotBeingApproached { card: ice_id });
+        }
+    } else if state.paid_ability_window.is_none() {
+        require_phase(state, GamePhase::Action(side))?;
+    }
+
+    let mut next = state.clone();
+    next.corp.installed.iter_mut().find(|c| c.install_id == ice).expect("resolved above").rezzed = true;
     // Tread Lightly-style "+3 credits to rez cost during this run" modifier,
     // if this ICE's server is the one being run — applied to the printed
     // cost before paying, never allowed to go negative.
@@ -488,18 +488,11 @@ fn rez_ice(
     let rez_cost = (card_def.cost as i32 + rez_cost_modifier).max(0) as u32;
     let mut events = ability::pay_cost(&mut next, side, &Cost::Credits(rez_cost), Some(&ice_id))?;
 
-    // If this rez happens during this ICE's own `ApproachIce` window (the
-    // normal "rez window"), also flip the matching `RunIce.rezzed` so
-    // `continue_run`'s upcoming `ApproachIce` transition sees it as rezzed.
-    // Scoped to the ICE currently at `position` — rezzing a *different*
-    // installed ICE on the same server (legal, e.g. pre-emptively, before
-    // the run reaches it) must not affect a `RunIce` the run hasn't reached
-    // yet; `initiate_run` already seeded that one correctly from
-    // `InstalledCard::rezzed` at run start.
+    // A rezzed ICE was, by the gate above, the one being approached: flip
+    // the matching `RunIce.rezzed` so `continue_run`'s upcoming
+    // `ApproachIce` transition encounters it.
     if let Some(run) = next.active_run.as_mut()
-        && run.phase == RunPhase::ApproachIce
-        && let Some(current_ice) = run.ice.get_mut(run.position)
-        && current_ice.card_id == ice_id
+        && let Some(current_ice) = run.ice.iter_mut().find(|at| at.install_id == ice)
     {
         current_ice.rezzed = true;
     }
@@ -1641,6 +1634,7 @@ mod tests {
         ice_type: IceType,
     ) -> RunIce {
         RunIce {
+            install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId(card_id.to_string()),
             current_strength: strength,
             ice_type,
@@ -2041,17 +2035,20 @@ mod tests {
         );
     }
 
+    /// An asset rezzes on the Corp's own turn for its printed cost. (ICE
+    /// does not — see the test after this one.)
     #[test]
-    fn corp_rez_ice_flips_installed_card_and_pays_registry_cost() {
-        let card_id = CardId("ice_wall".to_string());
+    fn corp_rez_asset_flips_installed_card_and_pays_registry_cost() {
+        let card_id = CardId("pad_campaign".to_string());
         let installed = vec![InstalledCard {
             install_id: InstallId(1045),
             card: card_id.clone(),
-            slot: InstallSlot::Ice,
+            slot: InstallSlot::Root,
+            server: ServerId::Remote(0),
             ..Default::default()
         }];
         let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
-        let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 1, None)]);
+        let registry = CardRegistry::from_cards(vec![test_card("pad_campaign", Side::Corp, CardType::Asset, 1, None)]);
         let (next, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &card_id.0) })
             .expect("action should succeed");
 
@@ -2062,22 +2059,46 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 1 },
-                GameEvent::IceRezzed { card: card_id, server: ServerId::Hq },
+                GameEvent::IceRezzed { card: card_id, server: ServerId::Remote(0) },
             ]
         );
     }
 
+    /// Rules Audit T10: ICE is rezzed only while the Runner is approaching
+    /// it. On the Corp's own turn, with no run, the same install is refused
+    /// — pre-emptive rezzing at home is not a thing.
     #[test]
-    fn corp_rez_ice_with_insufficient_credits_returns_not_enough_credits() {
+    fn ice_cannot_be_rezzed_on_the_corps_own_turn() {
         let card_id = CardId("ice_wall".to_string());
         let installed = vec![InstalledCard {
-            install_id: InstallId(1046),
+            install_id: InstallId(1145),
             card: card_id.clone(),
             slot: InstallSlot::Ice,
             ..Default::default()
         }];
-        let state = corp_state_with_hq_and_installed(3, 0, Vec::new(), installed);
+        let state = corp_state_with_hq_and_installed(3, 5, Vec::new(), installed);
         let registry = CardRegistry::from_cards(vec![test_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier), 1, None)]);
+
+        let result = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &card_id.0) });
+        assert_eq!(result, Err(RulesError::IceNotBeingApproached { card: card_id }));
+        assert!(
+            !crate::rules::legal_actions(&state, &registry).iter().any(|a| matches!(a, PlayerAction::RezIce { .. })),
+            "and it is not offered"
+        );
+    }
+
+    #[test]
+    fn corp_rez_with_insufficient_credits_returns_not_enough_credits() {
+        let card_id = CardId("pad_campaign".to_string());
+        let installed = vec![InstalledCard {
+            install_id: InstallId(1046),
+            card: card_id.clone(),
+            slot: InstallSlot::Root,
+            server: ServerId::Remote(0),
+            ..Default::default()
+        }];
+        let state = corp_state_with_hq_and_installed(3, 0, Vec::new(), installed);
+        let registry = CardRegistry::from_cards(vec![test_card("pad_campaign", Side::Corp, CardType::Asset, 1, None)]);
         let result = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &card_id.0) });
 
         assert_eq!(result, Err(RulesError::NotEnoughCredits { side: Side::Corp, available: 0, requested: 1 }));
@@ -2099,9 +2120,17 @@ mod tests {
     }
 
     #[test]
-    fn runner_turn_rez_ice_returns_not_your_turn() {
-        let state = runner_state(3, 5, 3);
-        let result = apply_action(&state, &registry(), PlayerAction::RezIce { ice: ABSENT_INSTALL });
+    fn runner_turn_rez_of_an_asset_outside_a_window_returns_not_your_turn() {
+        let mut state = runner_state(3, 5, 3);
+        state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(1146),
+            card: CardId("pad_campaign".to_string()),
+            slot: InstallSlot::Root,
+            server: ServerId::Remote(0),
+            ..Default::default()
+        }];
+        let registry = CardRegistry::from_cards(vec![test_card("pad_campaign", Side::Corp, CardType::Asset, 1, None)]);
+        let result = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "pad_campaign") });
 
         assert_eq!(
             result,
@@ -2151,7 +2180,7 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1, false)],
+            ice: vec![RunIce { install_id: InstallId(1049), ..test_ice("ice_wall", 0, 1, false) }],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -2173,8 +2202,11 @@ mod tests {
         );
     }
 
+    /// Rules Audit T10: only the ICE at the run's current position is
+    /// rezzable — an inner ICE the run has not reached is not, even
+    /// mid-run. (This used to pass as "pre-emptive" rezzing.)
     #[test]
-    fn corp_rez_ice_for_ice_not_at_current_position_does_not_affect_run_ice() {
+    fn corp_cannot_rez_ice_the_run_has_not_reached() {
         let outer = CardId("outer_ice".to_string());
         let inner = CardId("inner_ice".to_string());
         // Explicit ids: two installs sharing the `Default` placeholder
@@ -2198,7 +2230,10 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("outer_ice", 0, 1, false), test_ice("inner_ice", 0, 1, false)],
+            ice: vec![
+                RunIce { install_id: InstallId(1), ..test_ice("outer_ice", 0, 1, false) },
+                RunIce { install_id: InstallId(2), ..test_ice("inner_ice", 0, 1, false) },
+            ],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -2207,13 +2242,14 @@ mod tests {
             test_card("outer_ice", Side::Corp, CardType::Ice(IceType::Barrier), 0, None),
             test_card("inner_ice", Side::Corp, CardType::Ice(IceType::Barrier), 0, None),
         ]);
-        let (next, _events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &inner.0) })
-            .expect("Corp should be able to pre-emptively rez ICE the run hasn't reached yet");
+        let result = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &inner.0) });
+        assert_eq!(result, Err(RulesError::IceNotBeingApproached { card: inner }));
 
-        assert!(next.corp.installed.iter().find(|c| c.card == inner).unwrap().rezzed);
+        let (next, _events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, &outer.0) })
+            .expect("the approached ICE rezzes");
         let run = next.active_run.unwrap();
-        assert!(!run.ice[0].rezzed, "the currently-approached ICE must be untouched");
-        assert!(!run.ice[1].rezzed, "only InstalledCard::rezzed flips for ICE not at `position`");
+        assert!(run.ice[0].rezzed);
+        assert!(!run.ice[1].rezzed);
     }
 
     #[test]
@@ -2348,6 +2384,7 @@ mod tests {
         assert_eq!(
             ice,
             vec![RunIce {
+                install_id: InstallId(1055),
                 card_id: CardId("vanilla_ice".to_string()),
                 current_strength: 0,
                 ice_type: IceType::Barrier,
@@ -4045,7 +4082,7 @@ mod tests {
         state.corp.installed = installed;
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 0, false)],
+            ice: vec![RunIce { install_id: InstallId(1057), ..test_ice("ice_wall", 0, 0, false) }],
             ..Default::default()
         });
         // It's the Runner's priority, but Rez is priority-independent —
@@ -5401,6 +5438,7 @@ mod tests {
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {
+                install_id: crate::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("ice_wall".to_string()),
                 current_strength: 2,
                 ice_type: IceType::Barrier,

@@ -244,6 +244,7 @@ fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardR
         .iter()
         .map(|ice| match &ice.identity {
             Some(identity) => RunIce {
+                install_id: ice.install_id,
                 card_id: identity.card.clone(),
                 current_strength: identity.current_strength,
                 ice_type: identity.ice_type,
@@ -253,7 +254,14 @@ fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardR
             None => {
                 let card_id = pools.corp_ice.draw();
                 let strength = registry.get(&card_id).and_then(|c| c.strength).unwrap_or(0);
-                RunIce { card_id, current_strength: strength, ice_type: netrunner_core::dsl::IceType::Barrier, subroutines: Vec::new(), rezzed: ice.rezzed }
+                RunIce {
+                    install_id: ice.install_id,
+                    card_id,
+                    current_strength: strength,
+                    ice_type: netrunner_core::dsl::IceType::Barrier,
+                    subroutines: Vec::new(),
+                    rezzed: ice.rezzed,
+                }
             }
         })
         .collect();

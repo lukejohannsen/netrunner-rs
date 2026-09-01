@@ -341,6 +341,7 @@ mod tests {
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {
+                install_id: netrunner_core::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("wall_of_static".to_string()),
                 current_strength: 3,
                 ice_type: IceType::Barrier,
