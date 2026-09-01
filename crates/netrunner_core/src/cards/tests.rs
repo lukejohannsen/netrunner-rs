@@ -570,6 +570,168 @@ mod system_gateway {
         assert_eq!(trashed.runner.memory_units.0, base, "and gives it back on leaving play");
     }
 
+    /// A hand-built rig of `ids`, each with its own fixture `InstallId` so
+    /// the selection machinery can address them individually.
+    fn rig_of(ids: &[&str]) -> Vec<crate::rules::InstalledRunnerCard> {
+        ids.iter()
+            .map(|id| crate::rules::InstalledRunnerCard {
+                install_id: fixture_install_id(id),
+                card: CardId(id.to_string()),
+                ..Default::default()
+            })
+            .collect()
+    }
+
+    fn memory_limit_exceeded(events: &[crate::rules::GameEvent]) -> Option<u32> {
+        events.iter().find_map(|e| match e {
+            crate::rules::GameEvent::MemoryLimitExceeded { over_by } => Some(*over_by),
+            _ => None,
+        })
+    }
+
+    /// The memory limit is a checkpoint, not just an install gate. Before
+    /// `memory::enforce_limit`, *Retribution* trashing a console under a
+    /// full rig left every program installed with the report clamped at
+    /// `0` — the Runner kept 5 MU of programs on 4 MU indefinitely.
+    #[test]
+    fn trashing_a_console_with_a_full_rig_forces_the_runner_to_trash_one_program() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("retribution".to_string())];
+        state.runner.tags = 1;
+        state.runner.rig = rig_of(&["pennyshaver", "corroder", "cleaver", "buzzsaw", "carmen", "unity"]);
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 0, "5 MU in use on 4 + 1");
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("retribution".to_string()) })
+                .expect("play retribution against a tagged runner");
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "pennyshaver") },
+        )
+        .expect("the corp picks the console");
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("and trashes it");
+
+        assert_eq!(memory_limit_exceeded(&events), Some(1), "{events:?}");
+        assert_eq!(state.runner.memory_units, MemoryUnits(0), "the report still never reads negative");
+        assert!(
+            matches!(
+                state.pending_decision,
+                Some(crate::rules::PendingDecision::ChooseCards { side: Side::Runner, min: 1, max: 1, .. })
+            ),
+            "a 1-of-N program trash is parked for the Runner: {:?}",
+            state.pending_decision
+        );
+        assert_eq!(state.phase, GamePhase::Action(Side::Corp), "still the Corp's turn");
+        assert_eq!(crate::rules::current_actor(&state), Some(Side::Runner), "but the Runner is the one to act");
+
+        // The Runner chooses which program goes — the rules give them that,
+        // and the engine does not pick for them.
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "unity") })
+                .expect("pick unity");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash unity");
+
+        assert_eq!(memory_limit_exceeded(&events), None, "within the limit again");
+        assert!(state.pending_decision.is_none());
+        let rig: Vec<&str> = state.runner.rig.iter().map(|c| c.card.0.as_str()).collect();
+        assert_eq!(rig, vec!["corroder", "cleaver", "buzzsaw", "carmen"]);
+        assert!(state.runner.heap.contains(&CardId("unity".to_string())), "trashed, not removed from the game");
+        assert_eq!(state.runner.memory_units, MemoryUnits(0));
+        assert_eq!(crate::rules::current_actor(&state), Some(Side::Corp), "and the Corp's turn resumes");
+    }
+
+    /// Programs cost different amounts, so the checkpoint never computes
+    /// "how many": it takes one, re-checks on the next action, and repeats.
+    /// Trashing *Mayfly* (2 MU) first would have cleared a 2-MU deficit in
+    /// one step; trashing a 1-MU program first leaves one more to go.
+    #[test]
+    fn an_over_budget_rig_forces_one_program_trash_per_action_until_within_limit() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        // 6 MU in use on 4. No single card produces this today; two consoles
+        // leaving play in one resolution would.
+        state.runner.rig = rig_of(&["mayfly", "corroder", "cleaver", "buzzsaw", "carmen"]);
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), -2);
+
+        let (state, events) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner })
+            .expect("any action reaches the checkpoint");
+        assert_eq!(memory_limit_exceeded(&events), Some(2));
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
+                .expect("pick corroder");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert_eq!(memory_limit_exceeded(&events), Some(1), "one 1-MU program was not enough; parked again at once");
+        assert!(matches!(
+            state.pending_decision,
+            Some(crate::rules::PendingDecision::ChooseCards { side: Side::Runner, .. })
+        ));
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "mayfly") })
+                .expect("pick mayfly");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert_eq!(memory_limit_exceeded(&events), None);
+        assert!(state.pending_decision.is_none());
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 1);
+        let rig: Vec<&str> = state.runner.rig.iter().map(|c| c.card.0.as_str()).collect();
+        assert_eq!(rig, vec!["cleaver", "buzzsaw", "carmen"]);
+    }
+
+    /// Exactly full is not over: a rig at 4 of 4 MU parks nothing.
+    #[test]
+    fn a_rig_exactly_at_the_memory_limit_is_not_forced_to_trash() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = rig_of(&["corroder", "cleaver", "buzzsaw", "carmen"]);
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 0);
+
+        let (state, events) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner })
+            .expect("gain a credit");
+        assert_eq!(memory_limit_exceeded(&events), None);
+        assert!(state.pending_decision.is_none());
+        assert_eq!(state.runner.rig.len(), 4);
+    }
+
+    /// A trojan hosted on ICE is still an installed program in the rig and
+    /// still counts against memory, so it is a legal pick for the forced
+    /// trash — and leaves the rig by the same `InstallId`-keyed removal.
+    #[test]
+    fn a_hosted_trojan_can_be_the_program_trashed_to_the_memory_limit() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
+        let mut rig = rig_of(&["botulus", "corroder", "cleaver", "buzzsaw", "carmen"]);
+        rig[0].hosted_on_ice = Some(CardId("palisade".to_string()));
+        state.runner.rig = rig;
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), -1);
+
+        let (state, events) = apply_action(&state, &registry, PlayerAction::GainCreditClick { side: Side::Runner })
+            .expect("gain a credit");
+        assert_eq!(memory_limit_exceeded(&events), Some(1));
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "botulus") })
+                .expect("the hosted trojan is eligible");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert!(state.pending_decision.is_none());
+        assert!(!state.runner.rig.iter().any(|c| c.card.0 == "botulus"));
+        assert!(state.runner.heap.contains(&CardId("botulus".to_string())));
+        assert_eq!(crate::rules::memory::memory_balance(&state, &registry), 0);
+    }
+
     /// The `memory_bonus` half of the same property.
     ///
     /// `install_hardware` used to add a console's "+1[mu]" straight onto
