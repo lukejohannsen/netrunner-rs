@@ -295,16 +295,14 @@ pub fn evaluate_effect(
         }
 
         Effect::SwapInstalledIce(a, b) => {
+            // Legal mid-run: `run::reconcile_ice` rebuilds the run's ICE
+            // list from `corp.installed` at the next step and keeps
+            // `position` on the same install. This used to be refused
+            // outright (`CannotSwapIceDuringActiveRun`) because the list
+            // was a snapshot that could not follow a swap.
             for id in [a, b] {
-                let Some(installed) = state.find_corp_install(*id) else {
+                if state.find_corp_install(*id).is_none() {
                     return Err(RulesError::InstallNotFound(*id));
-                };
-                // The run's `RunState::ice` is a snapshot keyed by `CardId`;
-                // moving an install it names would desync it from
-                // `CorpState::installed`.
-                let card = installed.card.clone();
-                if state.active_run.as_ref().is_some_and(|run| run.ice.iter().any(|i| i.card_id == card)) {
-                    return Err(RulesError::CannotSwapIceDuringActiveRun(card));
                 }
             }
             let pos_a =
@@ -785,6 +783,16 @@ pub fn resolve_unbroken_subroutines(
         // Immutable read only — ends before any mutation below, so it
         // never overlaps with the `&mut state` passed to transition_subroutine/evaluate_effect.
         let Some(index) = state.active_run.as_ref().and_then(|run| {
+            // A subroutine fired above may have removed this ICE from play
+            // (or `run::reconcile_ice` moved the run for another reason):
+            // the run then stands on the *next* ICE, in `ApproachIce`, with
+            // all of its subroutines `Pending`. Firing those here would be
+            // wrong twice over — and `transition_subroutine` would refuse
+            // with `NotInEncounter`, failing the `PassPriority` that got
+            // here and leaving the priority holder no legal action.
+            if run.phase != RunPhase::EncounterIce {
+                return None;
+            }
             let ice = run.ice.get(run.position)?;
             ice.subroutines.iter().position(|s| s.status == SubroutineStatus::Pending)
         }) else {

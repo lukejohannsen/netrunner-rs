@@ -248,6 +248,7 @@ mod tests {
     fn nested_subroutine_trace_resumes_remaining_subroutines_after_avoidance() {
         let mut state = game_state();
         state.active_run = Some(ice_with_trace_pending_resume(Effect::GiveTags(3), Effect::EndTheRun));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         state.active_trace = Some(TraceState {
             initiating_card: None,
             base_strength: 2,

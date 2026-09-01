@@ -354,6 +354,16 @@ pub(crate) fn resolve_encounter_ice(
     state: &mut GameState,
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    // Whatever just resolved may have removed or derezzed the ICE being
+    // encountered (`run::reconcile_ice`). If so, the encounter is over: its
+    // remaining subroutines do not fire, and the run already stands at its
+    // next checkpoint — open that window rather than `Continue` past it.
+    let moved = run::reconcile_ice(state, registry)?;
+    if !moved.is_empty() {
+        let mut events = moved;
+        events.extend(open_window_if_at_checkpoint(state));
+        return Ok(events);
+    }
     let mut events = ability::resolve_unbroken_subroutines(state, registry)?;
     // A subroutine's effect can itself park a *further* pending decision
     // (e.g. Ballista's subroutine offers a choice whose "trash a program"
@@ -506,6 +516,7 @@ mod tests {
             ice: vec![run_ice(true, vec![lethal, behind_it])],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         // The Runner already passed, so the Corp's pass is the one that
         // closes the window — exactly how a `Run` window reaches Corp
         // priority, since `open_window` reads the active side off `phase`.
@@ -553,6 +564,7 @@ mod tests {
             ice: vec![run_ice(true, Vec::new())],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         open_window(&mut state);
 
         pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
@@ -634,6 +646,7 @@ mod tests {
             ice: vec![run_ice(false, Vec::new())],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         open_window(&mut state);
 
         pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
@@ -663,6 +676,7 @@ mod tests {
             ice: vec![run_ice(true, vec![pending_subroutine()])],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         open_window(&mut state);
 
         pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
@@ -796,6 +810,7 @@ mod tests {
             ice: vec![run_ice(true, vec![end_the_run_subroutine])],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         open_window(&mut state);
 
         pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
@@ -873,6 +888,7 @@ mod tests {
             }],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         state.pending_prevention = Some(PendingPrevention {
             kind: PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 1, prevented: 0 },
             source_card: None,

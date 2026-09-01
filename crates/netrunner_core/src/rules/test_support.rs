@@ -6,9 +6,45 @@
 //! "rez *Palisade*" than "rez install 4". These bridge the two, so fixtures
 //! keep naming cards.
 
+use std::collections::HashSet;
+
 use crate::dsl::CardId;
 use crate::rules::pending_choice;
-use crate::rules::state::{GameState, InstallId, PendingDecision};
+use crate::rules::state::{GameState, InstallId, InstallSlot, InstalledCard, PendingDecision};
+
+/// Puts on the board the ICE a hand-built `active_run` names.
+///
+/// `run::reconcile_ice` treats `corp.installed` as the truth about which
+/// ICE protects the attacked server, so a fixture that sets `active_run`
+/// with a `RunIce` list and no matching installs describes a run on ICE
+/// that has since been trashed — and the run moves off it at its next
+/// step, which is correct and not what such a test meant. Call this after
+/// building the run: every `RunIce` without an install gets one (same
+/// server, `rezzed` copied), and entries that share an `InstallId` — the
+/// placeholder, typically — are given distinct fixture ids first so the
+/// two lists can be matched entry for entry.
+pub(crate) fn install_the_runs_ice(state: &mut GameState) {
+    let GameState { active_run, corp, .. } = state;
+    let Some(run) = active_run.as_mut() else { return };
+    let mut seen = HashSet::new();
+    for (index, ice) in run.ice.iter_mut().enumerate() {
+        if !seen.insert(ice.install_id) {
+            ice.install_id = InstallId(900_000 + index as u32);
+            seen.insert(ice.install_id);
+        }
+        if corp.installed.iter().any(|c| c.install_id == ice.install_id) {
+            continue;
+        }
+        corp.installed.push(InstalledCard {
+            install_id: ice.install_id,
+            card: ice.card_id.clone(),
+            server: run.server,
+            slot: InstallSlot::Ice,
+            rezzed: ice.rezzed,
+            ..Default::default()
+        });
+    }
+}
 
 /// A stable, distinct `InstallId` derived from a card's id — for the
 /// fixture *constructors* (`corp_ice`, `installed_with_counters`, …) that

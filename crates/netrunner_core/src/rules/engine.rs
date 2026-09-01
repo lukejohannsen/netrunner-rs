@@ -173,6 +173,18 @@ pub fn apply_action(
     let (mut next, mut events) = resolved;
     events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
 
+    // The run's ICE list follows the board (`run::reconcile_ice`): a
+    // handler or a deferred trigger may have installed, trashed, rezzed,
+    // derezzed or swapped ICE on the attacked server. After the drain for
+    // the same reason `memory::refresh` is. If that moved the run — the ICE
+    // being encountered left play — it landed on a fresh checkpoint that
+    // needs its window, exactly as a `ContinueRun` would give it.
+    let moved = run::reconcile_ice(&mut next, registry)?;
+    if !moved.is_empty() {
+        events.extend(moved);
+        events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
+    }
+
     // Refresh the Runner's memory report from what is now installed. Placed
     // here for the same reason as the drain above: memory is derived from
     // the board (`rules::memory`), and one call after every handler cannot
@@ -3102,6 +3114,7 @@ mod tests {
             jack_out_permitted: true,
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
 
         // Initiation -> ApproachIce, opening a Paid Ability Window there.
         let (state, events) =
@@ -3174,6 +3187,7 @@ mod tests {
             jack_out_permitted: true,
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
 
         let result = apply_action(&state, &registry(), PlayerAction::ContinueRun);
 
@@ -3758,6 +3772,7 @@ mod tests {
             jack_out_permitted: true,
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let (next, events) = apply_action(
             &state,
             &click_breakable_registry(),
@@ -3976,6 +3991,7 @@ mod tests {
             jack_out_permitted: true,
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -4021,6 +4037,7 @@ mod tests {
             jack_out_permitted: true,
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -4103,6 +4120,7 @@ mod tests {
             jack_out_permitted: true,
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -4194,6 +4212,7 @@ mod tests {
             jack_out_permitted: true,
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
 
         let mut registry = CardRegistry::new();
         registry.insert(test_card_with_ability(
@@ -4275,6 +4294,7 @@ mod tests {
                 jack_out_permitted: true,
                 ..Default::default()
             });
+            crate::rules::test_support::install_the_runs_ice(&mut state);
 
             let mut registry = CardRegistry::new();
             registry.insert(test_card_with_ability(
@@ -4307,6 +4327,7 @@ mod tests {
             ice: vec![test_ice("ice_wall", 0, 0, true)],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         // A window is open with one pass already in (Corp holds priority
         // after the Runner's first pass); the Runner activates instead.
         state.paid_ability_window = Some(PaidAbilityWindow {
@@ -5841,6 +5862,7 @@ mod tests {
             ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Runner,
             consecutive_passes: 0,
@@ -5930,6 +5952,7 @@ mod tests {
             }],
             ..Default::default()
         });
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         state.paid_ability_window = Some(PaidAbilityWindow {
             active_priority: Side::Runner,
             consecutive_passes: 0,

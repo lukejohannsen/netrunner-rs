@@ -226,6 +226,134 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
     events
 }
 
+/// Brings `run.ice` back into step with the attacked server's ICE in
+/// `corp.installed`, and moves the run if the ICE it was standing on is
+/// gone. Returns the step events (`IceApproached`/`ServerApproached`, or
+/// `pass_current_ice`'s) when the run moved, and nothing otherwise.
+///
+/// `run.ice` was a snapshot taken by `start_run` and never revisited, which
+/// was fine for as long as nothing changed a server's ICE mid-run. Things
+/// do: *Brân 1.0*'s subroutine installs a piece of ICE "directly inward
+/// from this ice" — into `corp.installed`, where the run never looked, so
+/// the new ICE was never approached and the run reached the server one ICE
+/// early (ROADMAP Rules Audit, Tier 2). `Effect::DerezCard` left the
+/// snapshot's `rezzed` stale, and `Effect::SwapInstalledIce` had to refuse
+/// outright during a run because the snapshot could not follow it.
+///
+/// Rebuilt from `corp.installed` in its order (install order = outermost
+/// first, the convention `start_run` documents), keyed by `InstallId`: an
+/// entry that survives keeps its per-run state — subroutine statuses and
+/// `current_strength`, which carries this run's `ModifyStrength` deltas
+/// and must not be recomputed — with only `rezzed` re-read from the
+/// install. A new install gets a fresh `RunIce`. Then the run is
+/// re-anchored on the `InstallId` it was standing on:
+///
+/// - still there → `position` follows it (ICE trashed outward of the
+///   Runner shifts it down, ICE installed outward shifts it up — neither is
+///   approached again; ICE installed inward will be, in turn). Derezzed
+///   while being *encountered* → the encounter ends and the ICE counts as
+///   passed, the same transition `continue_run` makes for an unrezzed
+///   approach.
+/// - gone → the run stands on the first ICE it has not passed, or reaches
+///   the server if there is none. Netrunner: the encounter ends, nothing
+///   more of that ICE resolves (`resolve_unbroken_subroutines` stops when
+///   the phase is no longer `EncounterIce`), the Runner is not said to have
+///   *passed* it (no `IcePassed`), and the jack-out window that a passed
+///   ICE would open opens here too.
+///
+/// Called from the `engine::apply_action` choke point after the deferred
+/// drain (so a trigger's trash or derez is seen), from `advance_run` before
+/// a `Continue` step (Brân's install lands inside the same handler that
+/// then passes Brân, and `pass_current_ice` must see the new length), and
+/// from `paid_ability::resolve_encounter_ice` before firing subroutines.
+/// When the run moved, a `WindowCheckpoint::Run` window left open belonged
+/// to a step that no longer exists and is cleared — closing it normally
+/// would have resumed into a phase it was never opened for — and
+/// `ServerApproached` is dispatched so `Trigger::OnApproachServer` fires,
+/// as `advance_run` does for the ordinary path. It opens no window itself;
+/// every caller already opens one at the checkpoint it lands on.
+///
+/// Phases `AccessingCard`/`Ended` are left alone: the list is never read
+/// again. `Initiation` re-anchors at 0 (nothing has been approached; a
+/// newly-outermost ICE is approached first); `Success` re-anchors at the
+/// end (ICE installed after the approach is not approached — the rules
+/// agree).
+pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    if matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) {
+        return Ok(Vec::new());
+    }
+
+    let mut rebuilt = Vec::new();
+    for installed in state.corp.installed.iter().filter(|c| c.server == run.server && c.slot == InstallSlot::Ice) {
+        match run.ice.iter().find(|ice| ice.install_id == installed.install_id) {
+            Some(existing) => rebuilt.push(RunIce { rezzed: installed.rezzed, ..existing.clone() }),
+            None => rebuilt.push(build_run_ice(installed, registry)?),
+        }
+    }
+    if rebuilt == run.ice {
+        return Ok(Vec::new());
+    }
+
+    let mut run = state.active_run.take().expect("checked Some above");
+    let server = run.server;
+    let old_phase = run.phase;
+    let anchor = run.ice.get(run.position).map(|ice| ice.install_id);
+    let passed: Vec<_> = run.ice.iter().take(run.position).map(|ice| ice.install_id).collect();
+    run.ice = rebuilt;
+
+    let mut events = Vec::new();
+    match old_phase {
+        RunPhase::Initiation => run.position = 0,
+        RunPhase::Success => run.position = run.ice.len(),
+        RunPhase::ApproachIce | RunPhase::EncounterIce => {
+            match anchor.and_then(|id| run.ice.iter().position(|ice| ice.install_id == id)) {
+                Some(index) => {
+                    run.position = index;
+                    if old_phase == RunPhase::EncounterIce && !run.ice[index].rezzed {
+                        state.runner.reset_encounter_strength_buffs();
+                        events.extend(pass_current_ice(&mut run, index));
+                    }
+                }
+                None => {
+                    let position =
+                        run.ice.iter().position(|ice| !passed.contains(&ice.install_id)).unwrap_or(run.ice.len());
+                    run.position = position;
+                    run.phase = phase_for_position(&run.ice, position);
+                    if old_phase == RunPhase::EncounterIce {
+                        state.runner.reset_encounter_strength_buffs();
+                        run.jack_out_permitted = true;
+                    }
+                    match run.phase {
+                        RunPhase::Success => {
+                            run.jack_out_permitted = true;
+                            events.push(GameEvent::ServerApproached { server });
+                        }
+                        _ => events.push(GameEvent::IceApproached { server, position: position as u32 }),
+                    }
+                }
+            }
+        }
+        RunPhase::AccessingCard | RunPhase::Ended => unreachable!("returned above"),
+    }
+    state.active_run = Some(run);
+
+    if !events.is_empty() {
+        // Same staleness rule as `paid_ability::note_window_action`: a run
+        // window is scoped to the step it was opened at, and that step is
+        // gone. Cleared silently, as there; the caller opens the next one.
+        if matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run)) {
+            state.paid_ability_window = None;
+        }
+        let approached: Vec<GameEvent> =
+            events.iter().filter(|e| matches!(e, GameEvent::ServerApproached { .. })).cloned().collect();
+        for event in approached {
+            events.extend(dispatcher::dispatch_event(state, registry, &event)?);
+        }
+    }
+    Ok(events)
+}
+
 pub fn advance_run(
     state: &mut GameState,
     action: RunAction,
@@ -243,6 +371,19 @@ pub fn advance_run(
     };
     if already_concluded {
         return Err(RulesError::RunAlreadyConcluded { phase });
+    }
+
+    // A `Continue` steps off whatever the run is standing on, so the list
+    // must be current first: Brân 1.0's install lands in the same handler
+    // that then passes Brân, and `pass_current_ice` computes the next phase
+    // from the list's length. If reconciling itself moved the run (the
+    // encountered ICE is gone), that *was* this step — taking `continue_run`
+    // as well would enter the next encounter with no rez window.
+    if matches!(action, RunAction::Continue) {
+        let moved = reconcile_ice(state, registry)?;
+        if !moved.is_empty() {
+            return Ok(moved);
+        }
     }
 
     let mut events = match action {
@@ -522,10 +663,210 @@ mod tests {
         }
     }
 
+    /// One piece of ICE on HQ as both its `InstalledCard` and its `RunIce`,
+    /// sharing an `InstallId` so `reconcile_ice` can match them.
+    fn ice_pair(card_id: &str, install: u32, rezzed: bool) -> (InstalledCard, RunIce) {
+        let installed = InstalledCard {
+            install_id: crate::rules::InstallId(install),
+            card: CardId(card_id.to_string()),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed,
+            ..Default::default()
+        };
+        let run_ice = RunIce { install_id: crate::rules::InstallId(install), ..test_ice(card_id, 0, 2, rezzed) };
+        (installed, run_ice)
+    }
+
+    fn reconciling_state(installed: Vec<InstalledCard>, run: RunState) -> GameState {
+        let mut state = game_state();
+        state.corp.installed = installed;
+        state.active_run = Some(run);
+        state
+    }
+
+    fn hq(state: &GameState) -> &RunState {
+        state.active_run.as_ref().expect("run")
+    }
+
+    #[test]
+    fn reconcile_is_a_no_op_when_the_board_matches_the_run() {
+        let (ia, ra) = ice_pair("a", 1, true);
+        let (ib, rb) = ice_pair("b", 2, true);
+        let mut state = reconciling_state(vec![ia, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 1));
+        let before = state.clone();
+        let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
+        assert!(events.is_empty());
+        assert_eq!(state, before);
+    }
+
+    #[test]
+    fn reconcile_drops_ice_trashed_outward_without_moving_the_current_ice() {
+        let (_ia, ra) = ice_pair("a", 1, true);
+        let (ib, rb) = ice_pair("b", 2, true);
+        let (ic, rc) = ice_pair("c", 3, true);
+        // `a` (outermost, already passed) has left play.
+        let mut state = reconciling_state(vec![ib, ic], run_state(RunPhase::EncounterIce, vec![ra, rb, rc], 2));
+        let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
+        assert!(events.is_empty(), "the Runner is still on c: {events:?}");
+        let run = hq(&state);
+        assert_eq!(run.ice.iter().map(|i| i.card_id.0.as_str()).collect::<Vec<_>>(), vec!["b", "c"]);
+        assert_eq!(run.position, 1);
+        assert_eq!(run.phase, RunPhase::EncounterIce);
+    }
+
+    #[test]
+    fn reconcile_ends_the_encounter_when_the_encountered_ice_leaves_play_and_approaches_the_next() {
+        let (_ia, ra) = ice_pair("a", 1, true);
+        let (ib, rb) = ice_pair("b", 2, true);
+        let mut state =
+            reconciling_state(vec![ib], run_state_with_jack_out(RunPhase::EncounterIce, vec![ra, rb], 0, false));
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { encounter_strength_buff: 2, ..Default::default() });
+
+        let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
+        assert_eq!(events, vec![GameEvent::IceApproached { server: ServerId::Hq, position: 0 }], "not `IcePassed`");
+        let run = hq(&state);
+        assert_eq!(run.ice.len(), 1);
+        assert_eq!(run.ice[0].card_id.0, "b");
+        assert_eq!(run.position, 0);
+        assert_eq!(run.phase, RunPhase::ApproachIce);
+        assert!(run.jack_out_permitted, "an ended encounter opens the jack-out window like a passed ICE");
+        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0, "encounter-duration buffs end with the encounter");
+    }
+
+    #[test]
+    fn reconcile_approaches_the_server_when_the_encountered_ice_was_the_last() {
+        let (_ia, ra) = ice_pair("a", 1, true);
+        let mut state = reconciling_state(vec![], run_state_with_jack_out(RunPhase::EncounterIce, vec![ra], 0, false));
+        let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
+        assert_eq!(events, vec![GameEvent::ServerApproached { server: ServerId::Hq }]);
+        let run = hq(&state);
+        assert!(run.ice.is_empty());
+        assert_eq!(run.position, 0);
+        assert_eq!(run.phase, RunPhase::Success);
+        assert!(run.jack_out_permitted);
+    }
+
+    #[test]
+    fn reconcile_inserts_ice_installed_inward_to_be_approached_later() {
+        let (ia, ra) = ice_pair("a", 1, true);
+        let (ib, rb) = ice_pair("b", 2, true);
+        let (inew, _) = ice_pair("new_ice", 9, false);
+        let mut registry = CardRegistry::new();
+        registry.insert(crate::dsl::CardDefinition {
+            id: CardId("new_ice".to_string()),
+            card_type: CardType::Ice(IceType::Barrier),
+            ..Default::default()
+        });
+        // Brân's shape: installed directly inward of the encountered `a`.
+        let mut state = reconciling_state(vec![ia, inew, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 0));
+        let events = reconcile_ice(&mut state, &registry).unwrap();
+        assert!(events.is_empty(), "the Runner is still encountering a");
+        let run = hq(&state);
+        assert_eq!(run.ice.iter().map(|i| i.card_id.0.as_str()).collect::<Vec<_>>(), vec!["a", "new_ice", "b"]);
+        assert_eq!(run.position, 0);
+        assert_eq!(run.phase, RunPhase::EncounterIce);
+        assert_eq!(run.ice[1].install_id, crate::rules::InstallId(9));
+        assert!(!run.ice[1].rezzed);
+    }
+
+    #[test]
+    fn reconcile_inserts_ice_installed_outward_without_re_approaching_it() {
+        let (ia, ra) = ice_pair("a", 1, true);
+        let (ib, rb) = ice_pair("b", 2, true);
+        let (inew, _) = ice_pair("new_ice", 9, true);
+        let mut registry = CardRegistry::new();
+        registry.insert(crate::dsl::CardDefinition {
+            id: CardId("new_ice".to_string()),
+            card_type: CardType::Ice(IceType::Barrier),
+            ..Default::default()
+        });
+        let mut state = reconciling_state(vec![inew, ia, ib], run_state(RunPhase::ApproachIce, vec![ra, rb], 1));
+        let events = reconcile_ice(&mut state, &registry).unwrap();
+        assert!(events.is_empty());
+        let run = hq(&state);
+        assert_eq!(run.ice.len(), 3);
+        assert_eq!(run.position, 2, "still approaching b");
+        assert_eq!(run.ice[2].card_id.0, "b");
+    }
+
+    #[test]
+    fn reconcile_treats_a_derez_of_the_encountered_ice_as_passing_it() {
+        let (mut ia, ra) = ice_pair("a", 1, true);
+        ia.rezzed = false;
+        let (ib, rb) = ice_pair("b", 2, true);
+        let mut state = reconciling_state(vec![ia, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 0));
+        let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
+                GameEvent::IceApproached { server: ServerId::Hq, position: 1 },
+            ]
+        );
+        let run = hq(&state);
+        assert_eq!(run.position, 1);
+        assert_eq!(run.phase, RunPhase::ApproachIce);
+        assert!(!run.ice[0].rezzed, "the flag follows the install");
+    }
+
+    #[test]
+    fn reconcile_only_syncs_the_flag_for_a_derez_during_approach() {
+        let (mut ia, ra) = ice_pair("a", 1, true);
+        ia.rezzed = false;
+        let mut state = reconciling_state(vec![ia], run_state(RunPhase::ApproachIce, vec![ra], 0));
+        let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
+        assert!(events.is_empty(), "`continue_run` will pass it as unrezzed");
+        assert!(!hq(&state).ice[0].rezzed);
+        assert_eq!(hq(&state).phase, RunPhase::ApproachIce);
+    }
+
+    #[test]
+    fn advance_run_continue_takes_no_second_step_after_the_encountered_ice_vanished() {
+        let (_ia, ra) = ice_pair("a", 1, true);
+        let (ib, rb) = ice_pair("b", 2, true);
+        let mut state =
+            reconciling_state(vec![ib], run_state_with_jack_out(RunPhase::EncounterIce, vec![ra, rb], 0, false));
+        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).unwrap();
+        assert_eq!(
+            events,
+            vec![GameEvent::IceApproached { server: ServerId::Hq, position: 0 }],
+            "approaching b *is* the step; b must not be encountered without its rez window"
+        );
+        assert_eq!(hq(&state).phase, RunPhase::ApproachIce);
+    }
+
+    #[test]
+    fn reconcile_clears_a_stale_run_window_when_the_run_moves() {
+        let (_ia, ra) = ice_pair("a", 1, true);
+        let mut state = reconciling_state(vec![], run_state_with_jack_out(RunPhase::EncounterIce, vec![ra], 0, false));
+        state.paid_ability_window = Some(crate::rules::PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Run,
+            return_phase: Box::new(state.phase),
+        });
+        reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
+        assert!(state.paid_ability_window.is_none(), "the encounter window's step no longer exists");
+        assert_eq!(hq(&state).phase, RunPhase::Success);
+    }
+
+    #[test]
+    fn reconcile_leaves_an_access_in_progress_alone() {
+        let (_ia, ra) = ice_pair("a", 1, true);
+        let mut run = run_state(RunPhase::AccessingCard, vec![ra], 1);
+        run.access_state = Some(Default::default());
+        let mut state = reconciling_state(vec![], run);
+        let before = state.clone();
+        assert!(reconcile_ice(&mut state, &CardRegistry::new()).unwrap().is_empty());
+        assert_eq!(state, before);
+    }
+
     #[test]
     fn initiation_continue_with_ice_enters_approach_ice() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 2, true)], 0));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
@@ -551,6 +892,7 @@ mod tests {
     fn approach_ice_continue_enters_encounter_ice() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 3, 2, true)], 0));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::EncounterIce);
@@ -568,6 +910,7 @@ mod tests {
     fn approach_ice_continue_with_unrezzed_ice_auto_passes_without_encounter() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 3, 2, false)], 0));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
@@ -591,6 +934,7 @@ mod tests {
             vec![test_ice("ice_wall_0", 0, 1, false), test_ice("ice_wall_1", 0, 1, true)],
             0,
         ));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
@@ -609,6 +953,7 @@ mod tests {
     fn initiation_continue_with_unrezzed_ice_still_enters_approach_ice() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 2, false)], 0));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
@@ -693,6 +1038,7 @@ mod tests {
     fn encounter_ice_continue_with_pending_subroutines_errors() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 1, true)], 0));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let result = advance_run(&mut state, RunAction::Continue, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::SubroutinesStillPending { pending: 1 }));
@@ -706,6 +1052,7 @@ mod tests {
             vec![test_ice("ice_wall_0", 0, 0, true), test_ice("ice_wall_1", 0, 3, true)],
             0,
         ));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
@@ -748,6 +1095,7 @@ mod tests {
     fn encounter_ice_continue_after_last_ice_reaches_success() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 0, true)], 0));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::Success);
@@ -825,6 +1173,7 @@ mod tests {
             0,
             false,
         ));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
         advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should auto-pass the unrezzed ICE");
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::ApproachIce);
         assert_eq!(state.active_run.as_ref().unwrap().position, 1);

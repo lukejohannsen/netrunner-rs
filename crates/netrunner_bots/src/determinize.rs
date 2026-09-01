@@ -238,7 +238,17 @@ fn determinize_access_phase(phase: &PublicAccessPhase, pool: &mut Pool) -> Acces
     }
 }
 
-fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardRegistry, pools: &mut Pools) -> RunState {
+/// `installed` is the already-sampled `corp.installed`: a masked `RunIce`
+/// takes whatever card was drawn for the same `InstallId` there rather than
+/// drawing again. The engine now keeps `run.ice` in step with
+/// `corp.installed` (`run::reconcile_ice`), so a sample in which the two
+/// disagree about one install is a state the real game cannot be in.
+fn determinize_run(
+    run: &netrunner_core::rules::PublicRunState,
+    registry: &CardRegistry,
+    pools: &mut Pools,
+    installed: &[InstalledCard],
+) -> RunState {
     let ice = run
         .ice
         .iter()
@@ -252,7 +262,11 @@ fn determinize_run(run: &netrunner_core::rules::PublicRunState, registry: &CardR
                 rezzed: ice.rezzed,
             },
             None => {
-                let card_id = pools.corp_ice.draw();
+                let card_id = installed
+                    .iter()
+                    .find(|c| c.install_id == ice.install_id)
+                    .map(|c| c.card.clone())
+                    .unwrap_or_else(|| pools.corp_ice.draw());
                 let strength = registry.get(&card_id).and_then(|c| c.strength).unwrap_or(0);
                 RunIce {
                     install_id: ice.install_id,
@@ -404,7 +418,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0,
     };
 
-    let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools));
+    let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
 
     // A rollout installs cards of its own, and those ids must not collide
     // with one the view already carries. The real counter isn't in the

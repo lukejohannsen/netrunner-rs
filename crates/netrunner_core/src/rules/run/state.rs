@@ -58,10 +58,12 @@ pub struct EncounteredSubroutine {
 }
 
 /// A single piece of ICE within a run's ice stack, as seen by the run state
-/// machine. Built by `engine::initiate_run` from the Corp's `InstalledCard`s
-/// on the targeted server (`CardRegistry`-looked-up for
-/// `strength`/`subroutines`, defaulting to a blank 0-strength/no-subroutines
-/// ICE if unregistered), ordered outermost-to-innermost matching install
+/// machine. Built by `run::start_run` from the Corp's `InstalledCard`s on
+/// the targeted server (`CardRegistry`-looked-up for
+/// `strength`/`subroutines`) and **kept in step with `corp.installed` by
+/// `run::reconcile_ice`** — ICE installed, trashed, rezzed, derezzed or
+/// swapped on the server mid-run shows up here at the run's next step; it
+/// is not a snapshot. Ordered outermost-to-innermost matching install
 /// order (index 0 is the first ICE approached; `position` indexes into this
 /// for whichever ICE is currently being approached/encountered). Not `Copy`
 /// — owns a `Vec` and a `String`-backed `CardId`, unlike the bare counter
@@ -85,9 +87,9 @@ pub struct RunIce {
     /// subroutines to break anyway.
     pub ice_type: IceType,
     pub subroutines: Vec<EncounteredSubroutine>,
-    /// Mirrors `InstalledCard::rezzed` at the moment this `RunIce` was
-    /// built (`initiate_run`) or later flipped (`rez_ice`, when rezzing
-    /// during this ICE's `ApproachIce` window). Gates
+    /// Mirrors `InstalledCard::rezzed` — flipped by `rez_ice` when rezzing
+    /// during this ICE's `ApproachIce` window, and re-read from the install
+    /// by `run::reconcile_ice` at every step, so a derez is seen too. Gates
     /// `run::engine::continue_run`'s `ApproachIce` transition: unrezzed
     /// ICE presents no subroutines and has no effect on the run, per
     /// Netrunner/Null Signal Games rules, so it auto-passes straight
@@ -187,7 +189,8 @@ impl Default for AccessState {
 
 /// A run in progress (or just concluded) — the sub-state-machine embedded in
 /// `GameState::active_run`. `ice` is ordered outermost-to-innermost (index 0
-/// is the first ICE approached); `position` indexes into `ice` for whichever
+/// is the first ICE approached) and follows the attacked server's installs
+/// through `run::reconcile_ice`; `position` indexes into `ice` for whichever
 /// ICE is currently being approached/encountered.
 ///
 /// Invariant (caller's responsibility when hand-building a `RunState`, same
