@@ -2049,8 +2049,12 @@ mod tests {
             events[0],
             GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives }
         );
-        assert_eq!(events[1], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 });
-        assert_eq!(events.len(), 4);
+        assert_eq!(
+            events[1],
+            GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed }
+        );
+        assert_eq!(events[2], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 });
+        assert_eq!(events.len(), 5);
     }
 
     #[test]
@@ -2081,10 +2085,14 @@ mod tests {
             events[1],
             GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 2 }
         );
-        assert_eq!(events[2], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 });
-        assert!(matches!(events[3], GameEvent::CardDiscarded { side: Side::Runner, .. }));
-        assert_eq!(events[4], GameEvent::RunCompleted { server: ServerId::Remote(0) });
-        assert_eq!(events.len(), 5);
+        assert_eq!(
+            events[2],
+            GameEvent::TriggerFired { card: card_id.clone(), trigger: crate::dsl::Trigger::OnTrashedFromAccess }
+        );
+        assert_eq!(events[3], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 });
+        assert!(matches!(events[4], GameEvent::CardDiscarded { side: Side::Runner, .. }));
+        assert_eq!(events[5], GameEvent::RunCompleted { server: ServerId::Remote(0) });
+        assert_eq!(events.len(), 6);
     }
 
     #[test]
@@ -2144,6 +2152,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::RunnerFlatlined,
                 GameEvent::GameOver { winner: Side::Corp },
                 GameEvent::RunCompleted { server: ServerId::Archives },
@@ -2193,6 +2202,7 @@ mod tests {
             vec![
                 GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::RunnerFlatlined,
                 GameEvent::GameOver { winner: Side::Corp },
                 GameEvent::RunCompleted { server: ServerId::Archives },
@@ -2463,6 +2473,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
             ]
         );
@@ -2516,6 +2527,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 4 },
+                GameEvent::TriggerFired { card: CardId("fetal_ai".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
             ]
         );
@@ -2664,6 +2676,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CardAccessed { card: CardId("shock_ish".to_string()), server: ServerId::Hq },
+                GameEvent::TriggerFired { card: CardId("shock_ish".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
                 GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()) },
                 GameEvent::RunCompleted { server: ServerId::Hq },

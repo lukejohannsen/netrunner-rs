@@ -107,18 +107,20 @@ pub struct Coverage {
     pub runs: BTreeMap<String, RunOutcomes>,
     /// `Effect` variant → count of resolutions this report could see.
     /// Exact for subroutines (`GameEvent::SubroutineFired` carries the
-    /// effect); for activated abilities it is inferred by walking the
-    /// registry's declared effect tree, so a branch of an `EffectIf` that
-    /// did not fire is still counted. An exact `GameEvent::TriggerFired`
-    /// is the honest v2 — see ROADMAP.
+    /// effect); for activated abilities and fired triggers it is inferred
+    /// by walking the registry's declared effect tree of the ability or
+    /// trigger that fired, so a branch of an `EffectIf` that did not fire
+    /// is still counted.
     pub effects_seen: BTreeMap<String, u64>,
-    /// `"card_id/OnPlay"` → count of times that card's *declared* trigger
-    /// had its event happen to that card. Named *eligible*, not *fired*:
-    /// it proves the trigger's moment arrived, not that its requirement
-    /// passed. Self-referential triggers only (the event names the card);
-    /// board-wide triggers like `OnTurnStart` need state this report does
-    /// not have.
-    pub triggers_eligible: BTreeMap<String, u64>,
+    /// `"card_id/OnPlay"` → count of times one of that card's
+    /// `TriggeredEffect`s for that trigger actually fired — its
+    /// requirement passed and its effects resolved — read straight off
+    /// `GameEvent::TriggerFired`. This replaced `triggers_eligible`, which
+    /// inferred "had its moment" from the event that would have offered
+    /// the trigger and so could see neither a failed requirement nor a run
+    /// that had ended before a deferred trigger drained; it also covers
+    /// board-wide triggers (`OnTurnStart`) the inference could not name.
+    pub triggers_fired: BTreeMap<String, u64>,
 }
 
 fn bump(map: &mut BTreeMap<String, u64>, key: impl Into<String>) {
@@ -180,31 +182,37 @@ impl Coverage {
         }
     }
 
-    /// Counts the card's declared `trigger` as having had its moment, if
-    /// the card declares it at all.
-    fn note_trigger_eligible(&mut self, card: &CardId, trigger: Trigger, registry: &CardRegistry) {
-        let declares = registry.get(card).is_some_and(|def| def.triggers.iter().any(|t| t.trigger == trigger));
-        if declares {
-            bump(&mut self.triggers_eligible, format!("{}/{trigger:?}", card.0));
+    /// One of `card`'s `TriggeredEffect`s for `trigger` fired. The effects
+    /// counted are every declaration of that trigger on the card — a card
+    /// declaring the same trigger twice cannot be told apart here, the
+    /// same over-approximation `AbilityActivated` accepts.
+    fn note_trigger_fired(&mut self, card: &CardId, trigger: Trigger, registry: &CardRegistry) {
+        bump(&mut self.triggers_fired, format!("{}/{trigger:?}", card.0));
+        let effects: Vec<Effect> = registry
+            .get(card)
+            .map(|def| {
+                def.triggers.iter().filter(|t| t.trigger == trigger).flat_map(|t| t.effects.iter().cloned()).collect()
+            })
+            .unwrap_or_default();
+        for effect in &effects {
+            self.note_effect_tree(effect);
         }
     }
 
     fn absorb_event(&mut self, event: &GameEvent, registry: &CardRegistry, click_break: bool) {
         match event {
+            GameEvent::TriggerFired { card, trigger } => self.note_trigger_fired(card, *trigger, registry),
             GameEvent::CardInstalled { card, .. }
             | GameEvent::HardwareInstalled { card, .. }
             | GameEvent::ProgramInstalled { card, .. }
             | GameEvent::ResourceInstalled { card, .. } => {
                 self.card(card).installed += 1;
-                self.note_trigger_eligible(card, Trigger::OnInstall, registry);
             }
             GameEvent::IceRezzed { card, .. } => {
                 self.card(card).rezzed += 1;
-                self.note_trigger_eligible(card, Trigger::OnRez, registry);
             }
             GameEvent::EventPlayed { card, .. } | GameEvent::OperationPlayed { card, .. } => {
                 self.card(card).played += 1;
-                self.note_trigger_eligible(card, Trigger::OnPlay, registry);
             }
             GameEvent::AbilityActivated { card_id, ability_index, .. } => {
                 self.card(card_id).activated += 1;
@@ -216,25 +224,17 @@ impl Coverage {
             }
             GameEvent::CardAccessed { card, .. } => {
                 self.card(card).accessed += 1;
-                self.note_trigger_eligible(card, Trigger::OnAccessed, registry);
-            }
-            GameEvent::IceEncountered { card_id, .. } => {
-                self.note_trigger_eligible(card_id, Trigger::OnEncounter, registry);
             }
             GameEvent::AgendaStolen { card, .. } => {
                 self.card(card).stolen += 1;
-                self.note_trigger_eligible(card, Trigger::OnAgendaStolen, registry);
             }
             GameEvent::AgendaScored { card, .. } => {
                 self.card(card).scored += 1;
-                self.note_trigger_eligible(card, Trigger::OnAgendaScored, registry);
             }
-            GameEvent::CardTrashed { card, .. } | GameEvent::CardRemovedFromGame { card, .. } => {
+            GameEvent::CardTrashed { card, .. }
+            | GameEvent::CardRemovedFromGame { card, .. }
+            | GameEvent::CardTrashedFromAccess { card, .. } => {
                 self.card(card).trashed += 1;
-            }
-            GameEvent::CardTrashedFromAccess { card, .. } => {
-                self.card(card).trashed += 1;
-                self.note_trigger_eligible(card, Trigger::OnTrashedFromAccess, registry);
             }
             GameEvent::SubroutineFired { card_id, effect, .. } => {
                 self.card(card_id).subroutines_fired += 1;
@@ -272,7 +272,7 @@ impl Coverage {
         merge_counts(&mut self.actions_by_side, &other.actions_by_side);
         merge_counts(&mut self.events, &other.events);
         merge_counts(&mut self.effects_seen, &other.effects_seen);
-        merge_counts(&mut self.triggers_eligible, &other.triggers_eligible);
+        merge_counts(&mut self.triggers_fired, &other.triggers_fired);
         for (card, from) in &other.cards {
             let into = self.cards.entry(card.clone()).or_default();
             into.installed += from.installed;
@@ -598,8 +598,12 @@ mod tests {
         assert_eq!(coverage.effects_seen["BreakSubroutines"], 1);
     }
 
+    /// A trigger counts when the engine says it fired — not when the event
+    /// that would have offered it happened. The old inference counted
+    /// `reactive/OnPlay` off `OperationPlayed` alone; a requirement that
+    /// failed, or a run that had ended, was invisible to it.
     #[test]
-    fn a_trigger_is_eligible_only_when_the_card_declares_it() {
+    fn a_trigger_is_counted_from_the_engines_own_fired_event() {
         let mut registry = CardRegistry::new();
         registry.insert(CardDefinition {
             id: CardId("reactive".to_string()),
@@ -613,28 +617,34 @@ mod tests {
             }],
             ..CardDefinition::default()
         });
-        registry.insert(CardDefinition {
-            id: CardId("inert".to_string()),
-            title: "Inert".to_string(),
-            side: Side::Corp,
-            card_type: CardType::Operation,
-            ..CardDefinition::default()
-        });
 
         let mut coverage = Coverage::default();
-        for id in ["reactive", "inert"] {
-            coverage.absorb_entry(
-                &entry(
-                    Side::Corp,
-                    PlayerAction::PlayOperation { card_id: CardId(id.to_string()) },
-                    vec![GameEvent::OperationPlayed { side: Side::Corp, card: CardId(id.to_string()) }],
-                ),
-                &registry,
-            );
-        }
-        assert_eq!(coverage.triggers_eligible.get("reactive/OnPlay"), Some(&1));
-        assert!(!coverage.triggers_eligible.contains_key("inert/OnPlay"));
-        assert_eq!(coverage.cards["inert"].played, 1, "the card is still seen");
+        // Played, but the trigger's requirement failed: no `TriggerFired`.
+        coverage.absorb_entry(
+            &entry(
+                Side::Corp,
+                PlayerAction::PlayOperation { card_id: CardId("reactive".to_string()) },
+                vec![GameEvent::OperationPlayed { side: Side::Corp, card: CardId("reactive".to_string()) }],
+            ),
+            &registry,
+        );
+        assert!(!coverage.triggers_fired.contains_key("reactive/OnPlay"));
+        assert_eq!(coverage.cards["reactive"].played, 1, "the card is still seen");
+
+        coverage.absorb_entry(
+            &entry(
+                Side::Corp,
+                PlayerAction::PlayOperation { card_id: CardId("reactive".to_string()) },
+                vec![
+                    GameEvent::OperationPlayed { side: Side::Corp, card: CardId("reactive".to_string()) },
+                    GameEvent::TriggerFired { card: CardId("reactive".to_string()), trigger: Trigger::OnPlay },
+                    GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+                ],
+            ),
+            &registry,
+        );
+        assert_eq!(coverage.triggers_fired.get("reactive/OnPlay"), Some(&1));
+        assert_eq!(coverage.effects_seen.get("GainCredits"), Some(&1), "the fired trigger's effects are counted");
     }
 
     #[test]

@@ -858,17 +858,48 @@ pub fn process_card_triggers(
     trigger: Trigger,
     triggering_event: Option<&GameEvent>,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    fire_card_triggers(state, registry, card_id, trigger, None, triggering_event, false)
+}
+
+/// The one loop behind `process_card_triggers` and every firing in
+/// `dispatcher`. `target` is `Some` when the reacting card's effects act
+/// on another card — the one case where "who reacts" and "what the effect
+/// acts on" differ: Cookbook's "whenever you install a virus program, you
+/// may place 1 virus counter on it" reacts as Cookbook but acts on the
+/// just-installed program. The requirement is checked and consumed as
+/// `card_id`; only the effects' context changes. With `announce`, a
+/// `GameEvent::TriggerFired { card, trigger }` precedes each
+/// `TriggeredEffect` that actually fires — after its requirement passed,
+/// before its effects — which is the exact record the coverage harness
+/// counts (`netrunner_session::Coverage::triggers_fired`). It used to
+/// *infer* firings from the event that would have offered the trigger,
+/// which could not see a failed requirement or a `still_applies` bail-out.
+/// The two plain entry points do not announce: they are what a unit test
+/// drives directly, and dozens of them assert exact event vectors that
+/// gain nothing from the marker.
+pub(crate) fn fire_card_triggers(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+    trigger: Trigger,
+    target: Option<&CardId>,
+    triggering_event: Option<&GameEvent>,
+    announce: bool,
+) -> Result<Vec<GameEvent>, RulesError> {
     let Some(card) = registry.get(card_id) else {
         return Ok(Vec::new());
     };
     let mut events = Vec::new();
     let card_side = card.side;
     for triggered in card.triggers.iter().filter(|t| t.trigger == trigger) {
-        // One context per `TriggeredEffect`, so nothing a trigger's own
-        // effects accumulate leaks into the next trigger on the same card.
-        let mut ctx = ResolutionContext::for_trigger(Some(card_id), triggering_event);
+        // The requirement is checked as the *reacting* card, the effects
+        // resolve as the target (the card itself, unless `target` says
+        // otherwise) — separate contexts, and one pair per
+        // `TriggeredEffect`, so nothing a trigger's own effects accumulate
+        // leaks into the next trigger on the same card.
+        let owner_ctx = ResolutionContext::for_trigger(Some(card_id), triggering_event);
         if let Some(requirement) = &triggered.requirement
-            && check_requirement(state, requirement, card_side, &ctx, registry).is_err()
+            && check_requirement(state, requirement, card_side, &owner_ctx, registry).is_err()
         {
             // Soft gate (see `TriggeredEffect::requirement`'s doc comment):
             // unmet just means no bonus this time, not an error propagated
@@ -876,50 +907,12 @@ pub fn process_card_triggers(
             // never available to begin with.
             continue;
         }
+        if announce {
+            events.push(GameEvent::TriggerFired { card: card_id.clone(), trigger });
+        }
+        let mut effect_ctx = ResolutionContext::for_trigger(Some(target.unwrap_or(card_id)), triggering_event);
         for effect in &triggered.effects {
-            events.extend(evaluate_effect(state, effect, &mut ctx, registry)?);
-        }
-        if let Some(requirement) = &triggered.requirement {
-            consume_requirement(state, requirement, card_side);
-        }
-    }
-    Ok(events)
-}
-
-/// Like `process_card_triggers`, but the reacting card's own effects act
-/// on `target` instead of `owner_id` itself — the one case where "who
-/// reacts" and "what the effect acts on" differ. e.g. Cookbook's
-/// "whenever you install a virus program, you may place 1 virus counter
-/// on it" — Cookbook (`owner_id`) is what reacts, but "it" (`target`) is
-/// the just-installed virus program, not Cookbook. `requirement`
-/// checks/consumption still use `owner_id`'s own side/context; only the
-/// `evaluate_effect` target changes.
-pub(crate) fn process_card_triggers_targeting(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    owner_id: &CardId,
-    trigger: Trigger,
-    target: &CardId,
-    triggering_event: Option<&GameEvent>,
-) -> Result<Vec<GameEvent>, RulesError> {
-    let Some(card) = registry.get(owner_id) else {
-        return Ok(Vec::new());
-    };
-    let mut events = Vec::new();
-    let card_side = card.side;
-    for triggered in card.triggers.iter().filter(|t| t.trigger == trigger) {
-        // The requirement is checked as the *reacting* card, the effects
-        // resolve as the *target* — the asymmetry this function exists for
-        // — so the two get separate contexts rather than one shared one.
-        let owner_ctx = ResolutionContext::for_trigger(Some(owner_id), triggering_event);
-        if let Some(requirement) = &triggered.requirement
-            && check_requirement(state, requirement, card_side, &owner_ctx, registry).is_err()
-        {
-            continue;
-        }
-        let mut target_ctx = ResolutionContext::for_trigger(Some(target), triggering_event);
-        for effect in &triggered.effects {
-            events.extend(evaluate_effect(state, effect, &mut target_ctx, registry)?);
+            events.extend(evaluate_effect(state, effect, &mut effect_ctx, registry)?);
         }
         if let Some(requirement) = &triggered.requirement {
             consume_requirement(state, requirement, card_side);
