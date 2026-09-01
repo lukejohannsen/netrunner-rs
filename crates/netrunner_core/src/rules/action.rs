@@ -209,9 +209,10 @@ pub enum PlayerAction {
     /// installed and the Corp advances one of them, not both.
     AdvanceCard { target: InstallId },
     /// Score `target`, an installed Corp Agenda whose `advancement_tokens`
-    /// already meet its registry `advancement_requirement`. Corp-only,
-    /// costs 1 click (no credit cost — matches `AdvanceCard`'s "just a
-    /// click" shape). `RulesError::InstallNotFound` if `target` isn't in
+    /// already meet its registry `advancement_requirement`. Corp-only, and
+    /// **free**: scoring is not an action, costs no click and no credit,
+    /// and is legal on zero clicks before the turn ends (it used to spend a
+    /// click — ROADMAP Rules Audit T6). `RulesError::InstallNotFound` if `target` isn't in
     /// `CorpState::installed`; `RulesError::CardNotAgenda` if its registry
     /// `card_type` isn't `Agenda`; `RulesError::AdvancementRequirementNotMet`
     /// if it hasn't been advanced enough yet. No rez requirement — scoring
