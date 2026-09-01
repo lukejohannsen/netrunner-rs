@@ -17,8 +17,13 @@
 //! the rules allow** — an action whose dynamic field exceeds its cap (a
 //! 13th card in hand, a trace bid over 30 credits) is legal per
 //! `legal_actions` as always, but has no index here and is silently absent
-//! from `get_action_mask`. Real games essentially never reach these caps;
-//! widen the relevant constant if one ever does.
+//! from `get_action_mask`. Real games *do* reach caps that were set by
+//! guesswork — `MAX_INSTALLED_PER_SIDE` at 20, `MAX_PENDING_CHOICE_OPTIONS`
+//! at 2, `MAX_ACCESS_SELECTION` at hand size were each overrun in ordinary
+//! play (ROADMAP Rules Audit) — so each constant below states what bounds
+//! it, `every_card_fits_the_action_space_caps` checks the per-card ones
+//! against every card in the pool, and the index-path sweep's coverage
+//! gate catches an action that has stopped being reachable.
 
 use crate::cards::CardRegistry;
 use crate::dsl::CardId;
