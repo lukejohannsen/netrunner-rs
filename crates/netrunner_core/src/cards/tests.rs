@@ -3211,7 +3211,7 @@ mod system_gateway {
     }
 
     #[test]
-    fn bran_1_0_installs_ice_directly_inward_ignoring_cost() {
+    fn bran_1_0_installs_ice_directly_inward_ignoring_cost_and_the_run_encounters_it() {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
@@ -3229,17 +3229,34 @@ mod system_gateway {
 
         state = enter_encounter_with(state, &registry, ServerId::Hq);
 
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes bran encounter window");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
-            .expect("corp passes, firing bran's first subroutine and parking the install choice");
+        // Break Brân's two "end the run" subroutines with clicks so the run
+        // survives its own encounter — the point is what happens *after*
+        // Brân, on the ICE it just installed.
+        let bran = CardId("bran_1_0".to_string());
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::BreakSubroutineWithClick { ice_id: bran.clone(), subroutine_index: 1 },
+        )
+        .expect("click-break bran's first end the run");
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::BreakSubroutineWithClick { ice_id: bran.clone(), subroutine_index: 2 },
+        )
+        .expect("click-break bran's second end the run");
+
+        // Both sides pass (each break handed priority across, so the order
+        // is whoever holds it), firing bran's remaining first subroutine
+        // and parking the install choice.
+        let (state, _) = close_all_windows(state, &registry);
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to install from HQ");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") })
                 .expect("toggle ice_wall");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
             .expect("confirm install, ignoring cost");
 
         assert_eq!(state.corp.resources.credits, Credits(0), "installed ignoring ice_wall's printed cost");
@@ -3249,6 +3266,42 @@ mod system_gateway {
             vec!["bran_1_0", "ice_wall", "diviner"],
             "ice_wall must land directly inward from bran_1_0 (immediately after it), not appended past diviner"
         );
+
+        // The run's own ICE list was a snapshot from initiation, so the
+        // freshly installed ice_wall was never in it: the run passed Brân
+        // straight to the server, one ICE early. It is now approached.
+        let run = state.active_run.as_ref().expect("the run continues past bran");
+        assert_eq!(run.phase, crate::rules::RunPhase::ApproachIce, "{events:?}");
+        assert_eq!(run.position, 1);
+        assert_eq!(run.ice.len(), 2);
+        assert_eq!(run.ice[1].install_id, install_of(&state, "ice_wall"));
+        assert!(!run.ice[1].rezzed);
+        assert!(events.contains(&crate::rules::GameEvent::IceApproached { server: ServerId::Hq, position: 1 }));
+
+        // The Corp gets its rez window on the new ICE, exactly as on any
+        // approach — `rez_ice`'s "is this the ICE being approached" gate
+        // sees it.
+        let mut state = state;
+        state.corp.resources.credits = Credits(5);
+        let ice_wall = install_of(&state, "ice_wall");
+        assert!(
+            crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&PlayerAction::RezIce { ice: ice_wall }),
+            "rezzing the approached ice_wall is legal for the Corp"
+        );
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: ice_wall }).expect("rez ice_wall");
+        let (state, events) = close_all_windows(state, &registry);
+        assert!(
+            events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { card_id, .. } if card_id.0 == "ice_wall")),
+            "the run encounters the ICE brân installed: {events:?}"
+        );
+        // …and, both sides having passed through that encounter too,
+        // ice_wall's own "end the run" is what ends it — the ICE Brân
+        // installed did its job, where before the run walked straight past.
+        assert!(
+            events.contains(&crate::rules::GameEvent::RunEndedByEffect { server: ServerId::Hq }),
+            "{events:?}"
+        );
+        assert!(state.active_run.is_none());
     }
 
     #[test]
@@ -3310,23 +3363,65 @@ mod system_gateway {
         assert_eq!(ice_wall.server, ServerId::Hq, "ice_wall took wall_of_static's old position");
     }
 
+    /// A swap that touches the attacked server used to be refused during a
+    /// run (`CannotSwapIceDuringActiveRun`) because `run.ice` was a
+    /// snapshot. It now follows `corp.installed`: the Runner approaches
+    /// whatever ICE is actually protecting the server when they step.
     #[test]
-    fn swap_installed_ice_is_rejected_while_either_piece_is_part_of_the_active_run() {
+    fn swap_installed_ice_during_a_run_is_reflected_in_the_runs_ice_list() {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(4);
         state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq), corp_ice("ice_wall", ServerId::Remote(0))];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (mut state, _) =
+            apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        assert_eq!(state.active_run.as_ref().unwrap().ice[0].card_id.0, "wall_of_static");
 
-        let result = crate::rules::evaluate_effect(
-            &mut state.clone(),
-            &crate::dsl::Effect::SwapInstalledIce(install_of(&state, "wall_of_static"), install_of(&state, "ice_wall")),
+        let swap = crate::dsl::Effect::SwapInstalledIce(install_of(&state, "wall_of_static"), install_of(&state, "ice_wall"));
+        crate::rules::evaluate_effect(&mut state, &swap, &mut crate::rules::ResolutionContext::default(), &registry)
+            .expect("swapping mid-run is legal");
+
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!(run.ice.len(), 1);
+        assert_eq!(run.ice[0].install_id, install_of(&state, "ice_wall"), "ice_wall now protects HQ, so it is approached");
+        assert_eq!(run.position, 0);
+        assert!(events.contains(&crate::rules::GameEvent::IceApproached { server: ServerId::Hq, position: 0 }));
+    }
+
+    /// ICE derezzed after the run began (Tranquilizer's shape) is passed
+    /// like any unrezzed ICE — the run reads the install, not a snapshot.
+    #[test]
+    fn a_derezzed_ice_is_passed_without_an_encounter_even_if_rezzed_when_the_run_began() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach palisade");
+        assert!(state.active_run.as_ref().unwrap().ice[0].rezzed, "rezzed when the run began");
+        assert!(state.paid_ability_window.is_some(), "the approach window is open");
+
+        crate::rules::evaluate_effect(
+            &mut state,
+            &crate::dsl::Effect::DerezCard(crate::dsl::CardTarget::CorpInstalled {
+                card: CardId("palisade".to_string()),
+                server: ServerId::Hq,
+            }),
             &mut crate::rules::ResolutionContext::default(),
             &registry,
-        );
-        assert!(matches!(result, Err(RulesError::CannotSwapIceDuringActiveRun(_))));
+        )
+        .expect("derez");
+
+        let (state, events) = close_all_windows(state, &registry);
+        assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { .. })), "{events:?}");
+        assert!(events.contains(&crate::rules::GameEvent::IcePassed { server: ServerId::Hq, position: 0 }));
+        assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::Success);
     }
 
     #[test]

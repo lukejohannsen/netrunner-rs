@@ -396,11 +396,12 @@ pub enum Effect {
     /// "acting-context substitution" convention `Effect::
     /// RezInstalledIgnoringCost` already established for a single target —
     /// extended here to two. `RulesError::CardNotInstalled` if either
-    /// doesn't resolve to a currently-installed ICE;
-    /// `RulesError::CannotSwapIceDuringActiveRun` if either is part of the
-    /// current `active_run`'s already-built `RunState::ice` (swapping
-    /// positions mid-run would desync that snapshot from `CorpState::
-    /// installed`).
+    /// doesn't resolve to a currently-installed ICE. Legal mid-run: the
+    /// run's `RunState::ice` follows `CorpState::installed` through
+    /// `run::reconcile_ice`, so a swap involving the attacked server is
+    /// reflected at the run's next step (it used to be refused with a
+    /// `CannotSwapIceDuringActiveRun` error, because that list was a
+    /// snapshot).
     ///
     /// Takes `InstallId`s rather than `CardId`s so a swap of two copies of
     /// the *same* ICE resolves. Under `CardId` both placeholders were

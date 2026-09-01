@@ -284,9 +284,6 @@ pub enum RulesError {
     #[error("trigger choice {index} is out of range: {pending} triggers are pending")]
     TriggerChoiceOutOfRange { index: usize, pending: usize },
 
-    #[error("cannot swap ice {0:?} while it is part of the currently active run")]
-    CannotSwapIceDuringActiveRun(CardId),
-
     #[error("the runner cannot steal or trash cards for the remainder of this run")]
     StealAndTrashPreventedThisRun,
 
