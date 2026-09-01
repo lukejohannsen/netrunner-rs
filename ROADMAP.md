@@ -143,7 +143,8 @@ Ordered by what stands between the engine and a person playing a full, satisfyin
     - **A console's `+1[mu]` is now removed when the console is trashed**, which `install_hardware` had recorded as a deliberate shortcut ("threading a `CardRegistry` through every trash path would be a much larger refactor"). Deriving made it free. `max_hand_size_bonus` deliberately stays one-way: Agendas and identities contribute to it as well as Hardware, so summing the rig would not reproduce it.
   - **The gap that hid all of this:** nothing exercised a memory-cost-bearing program through candidate generation → mask → decode. `a_program_with_a_memory_cost_is_offered_and_round_trips` does, and was confirmed to fail before the fix. `trashing_a_program_frees_its_memory`, `a_trashed_console_takes_its_memory_bonus_with_it` and `a_full_rig_stops_offering_further_program_installs` cover the derived budget — the last asserting the limit is visible through `legal_actions`, since a bot never submits an action it was not offered. All three were checked against a probe on the pre-fix commit that pinned the old behaviour and passed there.
   - **`hosting_a_trojan_on_unrezzed_ice_resolves_without_naming_the_ice` stopped being vacuous.** `InstallProgramOnIce` now reaches a `ClientView` for the first time, so the fog-of-war assertion it carries does real work.
-  - **No `ActionSpace` or observation change, but a distribution shift.** MU already had an observation slot (`observation.rs`, normalised by `MAX_MEMORY_UNITS`); it was simply constant. An exported policy stays structurally valid and now sees a feature that varies. `eval.rs` needed no retuning: free MU scores 0.5 against 1.0 per rig card, so an install stays net positive.
+  - **No `ActionSpace` or observation change, but a distribution shift.** MU already had an observation slot (`observation.rs`, normalised by `MAX_MEMORY_UNITS`); it was simply constant. An exported policy stays structurally valid and now sees a feature that varies.
+  - **Two consequences are tracked as open work in Phase 2 §5:** `HeuristicAgent` still almost never installs a program (its evaluator cannot value an icebreaker), and every self-play game recorded before this predates working icebreakers entirely.
 
 > **Note — the prevention subsystem is currently dead code.** `Effect::PreventDamage`/`PreventTrash`, `state::PendingPrevention`, and `WindowCheckpoint::Prevention` are fully implemented, wired into `evaluate_effect`, and tested, but **zero cards use them**, so no real game reaches any of it. Worth knowing before extending it — and worth a card to exercise it before trusting it.
 
@@ -336,6 +337,20 @@ cargo run -p netrunner_cli --features onnx -- --runner human --corp onnx \
 - [ ] **Headless Self-Play Benchmark Suite:** multi-threaded high-volume bot-vs-bot runs for Elo calibration and policy evaluation.
 
 *Elevation* remains embedded as catalog-only metadata with no DSL implementations, so the fourteen SG+Elevation sample decklists on the same NSG page are not yet buildable.
+
+### 5. Bot and Training-Data Quality
+
+Both items below were surfaced by Phase 1 §3's memory-cost fix, which let a bot
+Runner install a program for the first time. Neither is a bug in the engine —
+they are consequences of one having existed.
+
+- [ ] **`HeuristicAgent` almost never installs a program, and the arithmetic says why.** Measured immediately after the fix: **3 installs across 24 heuristic-vs-heuristic games**, up from a structural 0. `eval::evaluate_state` scores `+1.0` per rig card (`BOARD_PRESENCE_WEIGHT`), `+0.5` per free memory unit (`MEMORY_WEIGHT`) and `+0.4` per credit (`OWN_CREDIT_WEIGHT`), so installing a 1-MU program of printed cost *C* moves the score by **`0.5 − 0.4C`** — against a flat **`+0.4`** for `GainCreditClick`, which is legal on essentially every click. Installing therefore wins only when `C = 0`: *Marjanah* is the single program in the pool that clears the bar, plus a cost-1 program behind a first-install discount (DZMZ Optimizer, Kate-style identities).
+  - **The weights are defensible individually and wrong together.** A rig card is worth 2.5 credits and a free MU is worth 1.25, which is not obviously mispriced; the problem is that a breaker's *value* is entirely in the runs it enables, and a one-ply greedy evaluator cannot see a run it has not taken. Re-tuning `BOARD_PRESENCE_WEIGHT` upward would paper over that — the honest fixes are a deeper search (`MctsAgent`/`PuctAgent` already look further) or an evaluation term that credits *being able to break ICE* rather than *owning a card*.
+  - **Distinct from Phase 3 §1's "Biased Evaluation Function"**, which is about giving bots deliberate personalities. This is about the default evaluator being unable to value an icebreaker at all.
+  - Worth re-measuring against `MctsAgent` and `PuctAgent` before changing any weight: the 3-in-24 figure is `HeuristicAgent`'s, and the search agents may already clear the bar without help.
+- [ ] **Every self-play game recorded so far predates working icebreakers — retrain before trusting a policy.** Until the memory-cost fix, no Runner in any recorded game could install a program, so the value head learned Runner play with no rig and the policy head never saw an `InstallProgram` slot chosen. The memory feature in `observation.rs` was constant across the whole corpus. Nothing structural changed — `OBS_SIZE`, the card vocabulary and `ActionSpace::SIZE` are all unmoved, so an exported model still loads — but its inputs now vary where they never did.
+  - **This is the second time recorded data has gone stale under the engine**, after the blank-filler fixture in §3 above whose 5,000 games all ended in a Corp loss. Same lesson: a training corpus is only as good as the engine that generated it, and neither failure announced itself.
+
 
 ---
 
