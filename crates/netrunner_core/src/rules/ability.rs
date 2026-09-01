@@ -328,12 +328,6 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::PermitJackOut => {
-            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
-            run.jack_out_permitted = true;
-            Ok(vec![GameEvent::JackOutPermitted { server: run.server }])
-        }
-
         Effect::GainMaxHandSize(side, amount) => {
             match side {
                 Side::Corp => state.corp.max_hand_size_bonus = state.corp.max_hand_size_bonus.saturating_add(*amount),
@@ -1088,8 +1082,8 @@ fn owning_side_of_target(target: &CardTarget, acting_card: Option<&CardId>, regi
         CardTarget::ThisCard => {
             acting_card.and_then(|id| registry.get(id)).map(|c| c.side).unwrap_or(Side::Runner)
         }
-        // A Trojan's host is always a Corp installed card; HQ is the Corp's.
-        CardTarget::HostIce | CardTarget::RandomFromHq => Side::Corp,
+        // A Trojan's host is always a Corp installed card.
+        CardTarget::HostIce => Side::Corp,
     }
 }
 
@@ -1121,7 +1115,7 @@ fn resolve_corp_installed_target(
             let installed = state.find_corp_install(host).ok_or(RulesError::InstallNotFound(host))?;
             Ok((host, installed.card.clone(), installed.server))
         }
-        CardTarget::ThisCard | CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::RandomFromHq => {
+        CardTarget::ThisCard | CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -1204,20 +1198,6 @@ pub(crate) fn trash_card(
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card);
             Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone() }])
-        }
-
-        CardTarget::RandomFromHq => {
-            // The roll comes from the state's own PRNG, so a replay of the
-            // same action history trashes the same card. An empty HQ is the
-            // same "already gone" no-op as the other arms.
-            if state.corp.hq.is_empty() {
-                return Ok(Vec::new());
-            }
-            let index = (state.next_u64() as usize) % state.corp.hq.len();
-            let card = state.corp.hq.remove(index);
-            // Out of the Corp's hand, unseen: facedown.
-            state.corp.archives.push(ArchivedCard::facedown(card.clone()));
-            Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card }])
         }
 
         CardTarget::TopOfStack { side, zone } => {

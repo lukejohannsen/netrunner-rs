@@ -18,7 +18,17 @@
               2
             ]
           },
-          "PermitJackOut"
+          {
+            "PresentChoice": {
+              "chooser": "Runner",
+              "options": [
+                "EndTheRun",
+                {
+                  "Sequence": []
+                }
+              ]
+            }
+          }
         ]
       }
     },

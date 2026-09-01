@@ -157,7 +157,6 @@ pub enum GameEvent {
     TrashPrevented { target: CardTarget },
     CountersAdded { card: CardId, amount: u32 },
     CountersRemoved { card: CardId, amount: u32 },
-    JackOutPermitted { server: ServerId },
     MaxHandSizeGained { side: Side, amount: u32 },
     /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw
     /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble

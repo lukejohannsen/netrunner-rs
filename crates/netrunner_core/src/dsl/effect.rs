@@ -48,11 +48,6 @@ pub enum CardTarget {
     /// `RulesError::UnresolvedCardTarget` if `acting_card` isn't a hosted
     /// card. e.g. Tranquilizer's "derez host ice" once counters reach 3.
     HostIce,
-    /// One card from HQ chosen at random by the engine (`GameState::
-    /// next_u64`, so deterministic under the seed) — *Hansei Review*'s
-    /// "trash 1 random card from HQ". Not a `PromptChooseCards`: that lets
-    /// the Corp pick, which removes the card's entire drawback.
-    RandomFromHq,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,12 +208,6 @@ pub enum Effect {
     /// Saturating-removes `amount` generic counters from `acting_card`. Same
     /// target/error rules as `AddCounters`.
     RemoveCounters(u32),
-    /// Unconditionally sets the active run's `jack_out_permitted` flag —
-    /// e.g. Karunā's first subroutine ("do 2 net damage. The Runner may jack
-    /// out."), where jacking out is normally only permitted before
-    /// `RunPhase::Success`. `RulesError::NoActiveRun` if there's no run to
-    /// grant it on.
-    PermitJackOut,
     /// Evaluates `effect` only if `condition` holds; otherwise silently
     /// no-ops (`Ok(Vec::new())`) — the same soft-gate convention
     /// `dsl::card::TriggeredEffect::requirement` already uses, but usable
@@ -598,7 +587,6 @@ impl Effect {
             | Effect::PreventTrash
             | Effect::AddCounters(..)
             | Effect::RemoveCounters(..)
-            | Effect::PermitJackOut
             | Effect::GainCreditsPerCardAccessedThisRun(..)
             | Effect::RezInstalledIgnoringCost(..)
             | Effect::TakeAllCountersAsCredits(..)
@@ -675,14 +663,6 @@ mod tests {
             serde_json::from_str::<Effect>(no_restrict_json).unwrap(),
             Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }
         );
-    }
-
-    #[test]
-    fn permit_jack_out_round_trips_through_json() {
-        let effect = Effect::PermitJackOut;
-        let json = serde_json::to_string(&effect).unwrap();
-        assert_eq!(json, r#""PermitJackOut""#);
-        assert_eq!(serde_json::from_str::<Effect>(&json).unwrap(), effect);
     }
 
     #[test]
