@@ -15,6 +15,16 @@ pub enum GameEvent {
     SubroutineFired { card_id: CardId, index: usize, effect: Effect },
     IceStrengthModified { card_id: CardId, new_strength: i32, delta: i32 },
     IcePassed { server: ServerId, position: u32 },
+    /// The Runner has passed the last piece of ICE (or there was none) and
+    /// is approaching the server itself — NSG's approach-server step, where
+    /// jacking out is legal and "when the Runner approaches this server"
+    /// abilities (Manegarm Skunkworks, Anoetic Void) fire. The run is
+    /// **not yet successful**: that is `RunSucceeded`, which follows only
+    /// if the Runner commits with `PlayerAction::CompleteRun` and nothing
+    /// here ended the run. The two used to be one event, so a run Anoetic
+    /// Void ended at approach had already paid out every "when your run is
+    /// successful" trigger (ROADMAP Rules Audit T9).
+    ServerApproached { server: ServerId },
     RunSucceeded { server: ServerId },
     RunJackedOut { server: ServerId },
     RunCompleted { server: ServerId },

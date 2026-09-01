@@ -254,12 +254,16 @@ pub fn dispatch_event(
                 }
             }
             events.extend(fire_plan(state, registry, &plan)?);
+            Ok(events)
+        }
 
-            // `Trigger::OnApproachServer` deliberately reuses this same
-            // event (see the trigger's own doc comment) — audience is every
-            // rezzed Corp Root-slot install in `server` (an Upgrade/Asset
-            // sitting in its root), not the ICE and not the identity, e.g.
-            // Manegarm Skunkworks/Anoetic Void.
+        // The approach-server step, before the run is successful. Audience
+        // for `Trigger::OnApproachServer` is every rezzed Corp Root-slot
+        // install in `server` (an Upgrade/Asset sitting in its root), not
+        // the ICE and not the identity — Manegarm Skunkworks, Anoetic Void.
+        // Used to be fired from `RunSucceeded`; see that event's doc for why
+        // the order matters.
+        GameEvent::ServerApproached { server } => {
             let root_installs: Vec<CardId> = state
                 .corp
                 .installed
@@ -269,9 +273,7 @@ pub fn dispatch_event(
                 })
                 .map(|installed| installed.card.clone())
                 .collect();
-            events.extend(fire_each(state, registry, &root_installs, Trigger::OnApproachServer, event)?);
-
-            Ok(events)
+            fire_each(state, registry, &root_installs, Trigger::OnApproachServer, event)
         }
 
         GameEvent::IceRezzed { card, .. } => {
@@ -589,7 +591,12 @@ fn fire_one(
 fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
     let run_scoped = matches!(
         due.event,
-        Some(GameEvent::RunSucceeded { .. } | GameEvent::IceEncountered { .. } | GameEvent::RunInitiated { .. })
+        Some(
+            GameEvent::ServerApproached { .. }
+                | GameEvent::RunSucceeded { .. }
+                | GameEvent::IceEncountered { .. }
+                | GameEvent::RunInitiated { .. }
+        )
     );
     !run_scoped || state.active_run.is_some()
 }
@@ -1076,7 +1083,7 @@ mod tests {
             card: CardId("manegarm_skunkworks".to_string()),
             trigger: Trigger::OnApproachServer,
             target: None,
-            event: Some(GameEvent::RunSucceeded { server: ServerId::Remote(0) }),
+            event: Some(GameEvent::ServerApproached { server: ServerId::Remote(0) }),
         };
 
         let mut ended = empty_state();
@@ -1234,7 +1241,7 @@ mod tests {
     }
 
     #[test]
-    fn run_succeeded_dispatches_on_approach_server_against_rezzed_root_installs_only() {
+    fn server_approached_dispatches_on_approach_server_against_rezzed_root_installs_only() {
         let mut registry = CardRegistry::new();
         registry.insert(card_with_trigger("manegarm", Side::Corp, Trigger::OnApproachServer, Effect::GainCredits(Side::Corp, 3)));
         registry.insert(card_with_trigger("unrezzed_upgrade", Side::Corp, Trigger::OnApproachServer, Effect::GainCredits(Side::Corp, 99)));
@@ -1257,12 +1264,12 @@ mod tests {
             },
         ];
 
-        let events = dispatch_event(&mut state, &registry, &GameEvent::RunSucceeded { server: ServerId::Hq }).unwrap();
+        let events = dispatch_event(&mut state, &registry, &GameEvent::ServerApproached { server: ServerId::Hq }).unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(8), "only the rezzed root install fired");
         assert!(events.contains(&GameEvent::CreditsGained { side: Side::Corp, amount: 3 }));
         assert!(!events.iter().any(|e| matches!(e, GameEvent::CreditsGained { amount: 99, .. })));
-        assert!(state.runner.made_successful_run_this_turn);
+        assert!(!state.runner.made_successful_run_this_turn, "approaching is not succeeding");
     }
 
     #[test]

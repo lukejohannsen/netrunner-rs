@@ -79,6 +79,9 @@ impl CardCoverage {
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunOutcomes {
     pub initiated: u64,
+    /// `GameEvent::ServerApproached` — reached the server; may still be
+    /// ended there by an approach ability, or jacked out of.
+    pub approached_server: u64,
     pub succeeded: u64,
     pub jacked_out: u64,
     pub ended_by_effect: u64,
@@ -245,6 +248,7 @@ impl Coverage {
                 }
             }
             GameEvent::RunInitiated { server } => self.run(server).initiated += 1,
+            GameEvent::ServerApproached { server } => self.run(server).approached_server += 1,
             GameEvent::RunSucceeded { server } => self.run(server).succeeded += 1,
             GameEvent::RunJackedOut { server } => self.run(server).jacked_out += 1,
             GameEvent::RunEndedByEffect { server } => self.run(server).ended_by_effect += 1,
@@ -286,6 +290,7 @@ impl Coverage {
         for (server, from) in &other.runs {
             let into = self.runs.entry(server.clone()).or_default();
             into.initiated += from.initiated;
+            into.approached_server += from.approached_server;
             into.succeeded += from.succeeded;
             into.jacked_out += from.jacked_out;
             into.ended_by_effect += from.ended_by_effect;
@@ -324,8 +329,8 @@ impl Coverage {
         for (server, runs) in &self.runs {
             let _ = writeln!(
                 out,
-                "  {server:<8} initiated {:>6}  succeeded {:>6}  jacked out {:>6}  ended by effect {:>6}  completed {:>6}",
-                runs.initiated, runs.succeeded, runs.jacked_out, runs.ended_by_effect, runs.completed
+                "  {server:<8} initiated {:>6}  approached {:>6}  succeeded {:>6}  jacked out {:>6}  ended by effect {:>6}  completed {:>6}",
+                runs.initiated, runs.approached_server, runs.succeeded, runs.jacked_out, runs.ended_by_effect, runs.completed
             );
         }
 
@@ -421,6 +426,7 @@ pub const LOAD_BEARING_EVENTS: &[&str] = &[
     "SubroutineBroken",
     "IceRezzed",
     "IceEncountered",
+    "ServerApproached",
     "RunSucceeded",
     "RunEndedByEffect",
     "RunJackedOut",

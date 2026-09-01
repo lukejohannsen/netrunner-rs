@@ -581,26 +581,49 @@ fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Ve
 
 fn complete_run(
     state: &GameState,
-    _registry: &CardRegistry,
+    registry: &CardRegistry,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
+    paid_ability::require_no_window(state)?;
     let active_run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
     if active_run.phase != RunPhase::Success {
         return Err(RulesError::RunNotConcluded { phase: active_run.phase });
     }
+    let server = active_run.server;
 
     let mut next = state.clone();
+    // This is the Runner committing past the approach-server step, and it
+    // is the moment the run becomes *successful*: `RunSucceeded` fires
+    // here — Jailbreak's rider, Docklands Pass, every "when your run is
+    // successful" trigger, `made_successful_run_this_turn` — and not at
+    // `ServerApproached`, where it used to, so a run Anoetic Void or
+    // Manegarm Skunkworks ends at approach never counts (ROADMAP Rules
+    // Audit T9). A trigger here may park a decision; `current_actor` puts
+    // a parked decision ahead of the window opened below, so it resolves
+    // first and the window is entered afterwards.
+    // Committing also closes the jack-out window: the approach step was
+    // the Runner's last chance to leave, and a successful run proceeds to
+    // the breach. With approach and success merged, a random Runner
+    // jacked out of half its successful runs from the pre-access window.
+    next.active_run.as_mut().expect("checked Some above").jack_out_permitted = false;
+    let succeeded = GameEvent::RunSucceeded { server };
+    let mut events = vec![succeeded.clone()];
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &succeeded)?);
+    if next.active_run.is_none() {
+        // A "when successful" reaction ended the run outright.
+        return Ok((next, events));
+    }
     // Opens the pre-access Paid Ability Window rather than accessing
-    // immediately — access (`run::access_server`, `RunCompleted`) now
-    // happens once both sides pass, inside `paid_ability::close_window`'s
-    // `Success` arm. `access_server` clears `active_run` itself when
-    // nothing was accessed; otherwise it parks the run in
-    // `RunPhase::AccessingCard` and `StealAgenda`/`TrashAccessedCard`/
-    // `PassAccessedCard` are what eventually finish it off.
-    let event = paid_ability::open_window(&mut next);
+    // immediately — access (`run::access_server`, `RunCompleted`) happens
+    // once both sides pass, inside `paid_ability::close_window`'s `Success`
+    // arm. `access_server` clears `active_run` itself when nothing was
+    // accessed; otherwise it parks the run in `RunPhase::AccessingCard`
+    // and `StealAgenda`/`TrashAccessedCard`/`PassAccessedCard` are what
+    // eventually finish it off.
+    events.push(paid_ability::open_window(&mut next));
 
-    Ok((next, vec![event]))
+    Ok((next, events))
 }
 
 fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result<(), RulesError> {
@@ -2252,6 +2275,79 @@ mod tests {
         assert!(!run.ice[1].rezzed);
     }
 
+    /// Rules Audit T9: a run ended at the approach-server step by an
+    /// "when the Runner approaches this server" ability was never
+    /// successful — no `RunSucceeded`, no "when your run is successful"
+    /// payout, no `made_successful_run_this_turn`. And when nothing ends
+    /// it there, success arrives on `CompleteRun`, not before.
+    #[test]
+    fn a_run_ended_at_approach_is_not_successful_and_success_arrives_on_commit() {
+        use crate::dsl::{Trigger, TriggeredEffect};
+        let void = CardDefinition {
+            id: CardId("anoetic_void".to_string()),
+            title: "Anoetic Void".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Upgrade,
+            triggers: vec![TriggeredEffect { trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
+            is_playable: true,
+            ..Default::default()
+        };
+        let payout = CardDefinition {
+            id: CardId("payout".to_string()),
+            title: "Payout".to_string(),
+            side: Side::Runner,
+            card_type: CardType::Resource,
+            triggers: vec![TriggeredEffect {
+                trigger: Trigger::OnSuccessfulRun,
+                effects: vec![Effect::GainCredits(Side::Runner, 1)],
+                requirement: None,
+            }],
+            is_playable: true,
+            ..Default::default()
+        };
+        let registry = CardRegistry::from_cards(vec![void, payout]);
+
+        let mut state = runner_state(3, 5, 3);
+        state.runner.resources.credits = Credits(5);
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("payout".to_string()), ..Default::default() }];
+        state.corp.installed = vec![InstalledCard {
+            install_id: InstallId(1),
+            card: CardId("anoetic_void".to_string()),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).unwrap();
+        let (ended, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).unwrap();
+        assert!(events.contains(&GameEvent::ServerApproached { server: ServerId::Remote(0) }));
+        assert!(events.contains(&GameEvent::RunEndedByEffect { server: ServerId::Remote(0) }));
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. })), "{events:?}");
+        assert!(ended.active_run.is_none());
+        assert_eq!(ended.runner.resources.credits, Credits(5), "no successful-run payout");
+        assert!(!ended.runner.made_successful_run_this_turn);
+
+        // Without the Void, approaching is still not succeeding; committing is.
+        let mut state = state;
+        state.corp.installed.clear();
+        let (approached, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).unwrap();
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. })));
+        assert_eq!(approached.runner.resources.credits, Credits(5));
+        assert!(
+            crate::rules::legal_actions(&approached, &registry).contains(&PlayerAction::JackOut),
+            "the approach step is the last chance to jack out"
+        );
+        let (committed, events) = apply_action(&approached, &registry, PlayerAction::CompleteRun).unwrap();
+        assert!(events.contains(&GameEvent::RunSucceeded { server: ServerId::Remote(0) }));
+        assert_eq!(committed.runner.resources.credits, Credits(6), "the payout fires on commit");
+        assert!(committed.runner.made_successful_run_this_turn);
+        assert!(
+            !crate::rules::legal_actions(&committed, &registry).contains(&PlayerAction::JackOut),
+            "a successful run cannot be jacked out of"
+        );
+    }
+
     #[test]
     fn runner_initiate_run_starts_run_and_spends_click() {
         let state = runner_state(3, 5, 3);
@@ -2573,7 +2669,13 @@ mod tests {
         });
         let (state, complete_events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
-        assert_eq!(complete_events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
+        assert!(
+            matches!(
+                complete_events.as_slice(),
+                [GameEvent::RunSucceeded { .. }, GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]
+            ),
+            "committing makes the run successful, then opens the pre-access window: {complete_events:?}"
+        );
 
         let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
             .expect("pass should succeed");
@@ -2679,7 +2781,13 @@ mod tests {
         });
         let (state, complete_events) =
             apply_action(&state, &registry(), PlayerAction::CompleteRun).expect("action should succeed");
-        assert_eq!(complete_events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
+        assert!(
+            matches!(
+                complete_events.as_slice(),
+                [GameEvent::RunSucceeded { .. }, GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]
+            ),
+            "committing makes the run successful, then opens the pre-access window: {complete_events:?}"
+        );
 
         let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
             .expect("pass should succeed");
@@ -2723,7 +2831,8 @@ mod tests {
                     },
                 }),
                 phase: RunPhase::AccessingCard,
-                jack_out_permitted: true,
+                // Closed on commit: a successful run cannot be jacked out of.
+                jack_out_permitted: false,
                 ..Default::default()
             })
         );
@@ -2835,7 +2944,7 @@ mod tests {
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::RunSucceeded { server: ServerId::Hq },
+                GameEvent::ServerApproached { server: ServerId::Hq },
             ]
         );
     }
@@ -5291,7 +5400,13 @@ mod tests {
 
         let (state, complete_events) =
             apply_action(&state, &registry, PlayerAction::CompleteRun).expect("action should succeed");
-        assert_eq!(complete_events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
+        assert!(
+            matches!(
+                complete_events.as_slice(),
+                [GameEvent::RunSucceeded { .. }, GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]
+            ),
+            "committing makes the run successful, then opens the pre-access window: {complete_events:?}"
+        );
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner })
             .expect("pass should succeed");

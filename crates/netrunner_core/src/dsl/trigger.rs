@@ -110,17 +110,13 @@ pub enum Trigger {
     /// `EffectRequirement::RezzedDuringRunAgainstThisServer` to scope it to
     /// a rez that happens mid-run against the card's own server.
     OnRez,
-    /// Fires against every rezzed Corp `InstallSlot::Root` card sitting in
-    /// a server the Runner just approached (`GameEvent::RunSucceeded` —
-    /// the moment every piece of ICE has been passed and the run is about
-    /// to move to access; despite its name this is also the "approached
-    /// the server" moment, before any access happens) — e.g. Manegarm
-    /// Skunkworks/Anoetic Void's "whenever the Runner approaches this
-    /// server." Deliberately reuses `RunSucceeded` rather than a dedicated
-    /// event: that event already fires at exactly this moment and already
-    /// carries the approached `server`, so introducing a second event with
-    /// the same payload/timing would just be a parallel path to the same
-    /// information.
+    /// Fires against every rezzed Corp Root-slot install in a server the
+    /// Runner has just approached (`GameEvent::ServerApproached`) — the
+    /// approach-server step, before the run is successful, so an ability
+    /// here that ends the run (Anoetic Void, Manegarm Skunkworks) denies
+    /// every "when your run is successful" trigger. Used to share
+    /// `RunSucceeded`, which fired at the same moment and made every run
+    /// successful before these could stop it (ROADMAP Rules Audit T9).
     OnApproachServer,
     /// Fires against the Runner's identity and every Runner rig card when
     /// a run concludes — `GameEvent::RunCompleted`'s "normal" ending only

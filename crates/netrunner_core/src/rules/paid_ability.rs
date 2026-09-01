@@ -650,7 +650,7 @@ mod tests {
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::RunSucceeded { server: ServerId::Hq },
+                GameEvent::ServerApproached { server: ServerId::Hq },
             ]
         );
     }
@@ -681,7 +681,7 @@ mod tests {
                 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::RunSucceeded { server: ServerId::Hq },
+                GameEvent::ServerApproached { server: ServerId::Hq },
             ]
         );
     }
