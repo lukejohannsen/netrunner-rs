@@ -249,6 +249,51 @@ mod tests {
         assert_eq!(chosen, PlayerAction::DrawCardClick { side: Side::Corp });
     }
 
+    /// With an ICE-protected remote and a naked one both open, an agenda
+    /// goes behind the ICE (ROADMAP Phase 2 §5's placement item).
+    #[test]
+    fn installs_an_agenda_behind_ice_rather_than_into_a_naked_remote() {
+        use netrunner_core::dsl::IceType;
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+        registry.insert(blank_card("wall", CardType::Ice(IceType::Barrier)));
+        registry.insert(blank_card("filler", CardType::Operation));
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("filler".to_string()); 10];
+        state.corp.hq = vec![CardId("agenda".to_string()), CardId("filler".to_string()), CardId("filler".to_string())];
+        // Remote 0 has ICE and an empty root; remote 1 is a naked empty root
+        // (an ICE-less remote is represented by nothing at all, so the
+        // "naked" option is the fresh remote the engine always offers).
+        state.corp.installed.push(InstalledCard {
+            card: CardId("wall".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        });
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let agenda_installs: Vec<_> = view
+            .legal_actions
+            .iter()
+            .filter(|a| matches!(a, PlayerAction::InstallCard { card_id, slot: InstallSlot::Root, .. } if card_id.0 == "agenda"))
+            .collect();
+        assert!(agenda_installs.len() >= 2, "expected both a protected and a naked remote on offer: {agenda_installs:?}");
+
+        let chosen = HeuristicAgent::new(Side::Corp, 3).select_action(&view, &registry);
+        assert!(
+            matches!(&chosen, PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root } if card_id.0 == "agenda"),
+            "should install the agenda behind the ICE: {chosen:?}"
+        );
+    }
+
     #[test]
     fn always_returns_a_member_of_legal_actions() {
         let mut registry = CardRegistry::new();

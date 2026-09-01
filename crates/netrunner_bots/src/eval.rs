@@ -54,14 +54,32 @@ const UNREZZED_INSTALL_WEIGHT: f64 = 1.0;
 /// requirement are worth nothing, so the Corp scores rather than piling
 /// on.
 const ADVANCEMENT_WEIGHT: f64 = 1.5;
+/// Each piece of ICE, up to two, protecting the server an installed
+/// agenda sits in. Every install was worth the same flat
+/// `UNREZZED_INSTALL_WEIGHT` wherever it went, so the one-ply Corp put an
+/// agenda in a fresh naked remote as readily as behind ICE, and never
+/// preferred to ICE the remote it was scoring out of. Read on the agenda,
+/// not the ICE, so it does both jobs: installing an agenda into a
+/// one-ICE remote is +0.5 over a naked one, and installing ICE in front of
+/// an installed agenda is +0.5 on top of the install — enough for a
+/// second ICE there (1[c]) to beat one elsewhere. Capped at two so the
+/// Corp does not stack a fourth ICE on one remote instead of scoring.
+const AGENDA_PROTECTION_WEIGHT: f64 = 0.5;
+/// ICE beyond this many on an agenda's server earns nothing more.
+const AGENDA_PROTECTION_CAP: usize = 2;
 /// Each ICE subtype (Barrier, Code Gate, Sentry) the Runner has an
 /// installed breaker for, counted once per subtype. A breaker's value is
 /// entirely in the runs it enables, which a one-ply evaluator cannot see;
 /// this is the static proxy. Cleaver (3[c], 1 MU) installs at
-/// −1.2 − 0.5 + 1.0 + 2.0 = +1.3 against a click's +0.4; a second Barrier
+/// −1.2 − 0.5 + 1.0 + 3.0 = +2.3 against a click's +0.4; a second Barrier
 /// breaker adds no coverage and is not installed. Before this term only a
-/// 0-cost program ever cleared the bar (ROADMAP Phase 2 §5).
-const BREAKER_COVERAGE_WEIGHT: f64 = 2.0;
+/// 0-cost program ever cleared the bar (ROADMAP Phase 2 §5). Raised 2.0 →
+/// 3.0 for Carmen (5[c]): at 2.0 her install was +0.5, under an open
+/// run's +0.6, and from an at-floor grip (−`GRIP_SHORTFALL_WEIGHT`) it was
+/// −0.2 — she was never installed in any heuristic seating. At 3.0 she is
+/// +1.5, or +0.8 from the floor, and every breaker in the pool clears a
+/// run from anywhere.
+const BREAKER_COVERAGE_WEIGHT: f64 = 3.0;
 /// The Runner is mid-run *and can afford to break every rezzed ICE still
 /// ahead of it* (`run_is_breakable`). `InitiateRun` costs a click and
 /// changes nothing a static evaluator can see, so with no run term at all
@@ -195,6 +213,7 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
             for installed in &state.corp.installed {
                 score += corp_install_value(installed, registry);
             }
+            score += protected_agenda_ice(state, registry) as f64 * AGENDA_PROTECTION_WEIGHT;
             if state.corp.r_and_d.len() >= RD_DRAW_RESERVE {
                 score -= HQ_FLOOR.saturating_sub(state.corp.hq.len()) as f64 * HQ_SHORTFALL_WEIGHT;
             }
@@ -347,6 +366,28 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry) -> f64
         value += installed.advancement_tokens.min(required) as f64 * ADVANCEMENT_WEIGHT;
     }
     value
+}
+
+/// ICE in front of each installed, unscored agenda, each server's count
+/// capped at `AGENDA_PROTECTION_CAP`, summed over agendas.
+fn protected_agenda_ice(state: &GameState, registry: &CardRegistry) -> usize {
+    use netrunner_core::rules::InstallSlot;
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Root)
+        .filter(|card| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda))
+        .map(|agenda| {
+            state
+                .corp
+                .installed
+                .iter()
+                .filter(|ice| ice.slot == InstallSlot::Ice && ice.server == agenda.server)
+                .count()
+                .min(AGENDA_PROTECTION_CAP)
+        })
+        .sum()
 }
 
 /// How many of the three ICE subtypes the rig can break: a rig card whose
@@ -1058,5 +1099,62 @@ mod tests {
         runner_resolved.runner.grip.pop();
         runner_parked.pending_decision = Some(parked(Side::Runner, CardZoneRef::OwnGrip));
         assert!(evaluate_state(&runner_resolved, Side::Runner, &registry) > evaluate_state(&runner_parked, Side::Runner, &registry));
+    }
+
+    /// The Carmen case behind `BREAKER_COVERAGE_WEIGHT`'s size: a 5-cost
+    /// breaker is worth installing over an open run, even from an at-floor
+    /// grip where the install also costs a grip card.
+    #[test]
+    fn a_five_cost_breaker_beats_an_open_run_even_from_an_at_floor_grip() {
+        use netrunner_core::rules::{MemoryUnits, ServerId};
+        let registry = CardRegistry::from_cards(vec![costed_breaker("carmen", Some(IceType::Sentry), 5)]);
+        let mut ran = GameState::new(0);
+        ran.runner.resources.credits = Credits(5);
+        ran.runner.memory_units = MemoryUnits(4);
+        ran.runner.grip = corp_cards("grip", GRIP_FLOOR - 1);
+        ran.runner.grip.push(CardId("carmen".to_string()));
+        let mut installed = ran.clone();
+        installed.runner.grip.pop();
+        installed.runner.resources.credits = Credits(0);
+        installed.runner.memory_units = MemoryUnits(3);
+        installed.runner.rig = vec![rig_card("carmen")];
+        ran.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
+        assert!(evaluate_state(&installed, Side::Runner, &registry) > evaluate_state(&ran, Side::Runner, &registry));
+    }
+
+    /// An installed agenda is worth more for each ICE in front of it, up
+    /// to the cap; an asset behind the same ICE gets nothing.
+    #[test]
+    fn an_installed_agenda_is_worth_more_behind_ice_up_to_the_cap() {
+        use netrunner_core::rules::{InstallSlot, ServerId};
+        let mut agenda = ice("offworld_office", 0);
+        agenda.card_type = CardType::Agenda;
+        let registry = CardRegistry::from_cards(vec![agenda, asset("nico_campaign", 2), ice("palisade", 3)]);
+        let board = |root: &str, ice_count: usize| {
+            let mut state = GameState::new(0);
+            state.corp.r_and_d = corp_cards("rd", RD_DRAW_RESERVE + 10);
+            state.corp.hq = corp_cards("hq", HQ_FLOOR);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId(root.to_string()),
+                install_id: InstallId(0),
+                server: ServerId::Remote(0),
+                ..Default::default()
+            }];
+            for i in 0..ice_count {
+                state.corp.installed.push(InstalledCard {
+                    card: CardId("palisade".to_string()),
+                    install_id: InstallId(i as u32 + 1),
+                    server: ServerId::Remote(0),
+                    slot: InstallSlot::Ice,
+                    ..Default::default()
+                });
+            }
+            evaluate_state(&state, Side::Corp, &registry)
+        };
+        let per_ice = |root: &str, n| board(root, n) - board(root, n - 1) - UNREZZED_INSTALL_WEIGHT;
+        assert!((per_ice("offworld_office", 1) - AGENDA_PROTECTION_WEIGHT).abs() < 1e-9);
+        assert!((per_ice("offworld_office", AGENDA_PROTECTION_CAP) - AGENDA_PROTECTION_WEIGHT).abs() < 1e-9);
+        assert!(per_ice("offworld_office", AGENDA_PROTECTION_CAP + 1).abs() < 1e-9, "past the cap an ICE is just an ICE");
+        assert!(per_ice("nico_campaign", 1).abs() < 1e-9, "an asset is not protected by this term");
     }
 }
