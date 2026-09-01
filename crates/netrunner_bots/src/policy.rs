@@ -63,7 +63,7 @@ impl PolicyEvaluator for UniformPolicyEvaluator {
         let prior = if legal_count == 0 { 0.0 } else { 1.0 / legal_count as f32 };
         let priors = mask.iter().map(|&legal| if legal { prior } else { 0.0 }).collect();
 
-        let value = (evaluate_state(state, self.side) / VALUE_SQUASH_SCALE).tanh() as f32;
+        let value = (evaluate_state(state, self.side, registry) / VALUE_SQUASH_SCALE).tanh() as f32;
         (priors, value)
     }
 }

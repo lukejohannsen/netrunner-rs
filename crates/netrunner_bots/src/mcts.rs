@@ -147,7 +147,7 @@ impl Node {
 /// it into its own running total.
 fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: usize, exploration: f64, rng: &mut StdRng) -> f64 {
     if node.is_terminal() || depth_budget == 0 {
-        let value = evaluate_state(&node.state, side);
+        let value = evaluate_state(&node.state, side, registry);
         node.visits += 1;
         node.total_value += value;
         return value;
@@ -168,7 +168,7 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
             // `view.legal_actions`), so this should never actually fail;
             // treat it as a dead branch rather than corrupting the tree
             // with an unresolved candidate.
-            Err(_) => evaluate_state(&node.state, side),
+            Err(_) => evaluate_state(&node.state, side, registry),
         };
         node.visits += 1;
         node.total_value += value;
@@ -176,7 +176,7 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
     }
 
     if node.children.is_empty() {
-        let value = evaluate_state(&node.state, side);
+        let value = evaluate_state(&node.state, side, registry);
         node.visits += 1;
         node.total_value += value;
         return value;
@@ -229,7 +229,7 @@ fn rollout(start: &GameState, registry: &CardRegistry, side: Side, mut depth_bud
         }
         depth_budget -= 1;
     }
-    evaluate_state(&state, side)
+    evaluate_state(&state, side, registry)
 }
 
 /// Rough priority weights biasing the rollout policy toward
