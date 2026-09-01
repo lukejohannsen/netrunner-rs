@@ -67,6 +67,15 @@ pub enum RulesError {
     #[error("card {0:?} does not declare installs_on_ice and cannot be installed via InstallProgramOnIce")]
     NotATrojanProgram(CardId),
 
+    /// The converse of `NotATrojanProgram`: a program that declares
+    /// `installs_on_ice` named by the ordinary `InstallProgram`. Only
+    /// `legal_actions` used to enforce this, and a trojan that reached the
+    /// rig with no host was not merely inert — *Tranquilizer*'s third
+    /// turn-start evaluates `DerezCard(HostIce)`, which has no host to
+    /// resolve and fails the whole turn-start dispatch.
+    #[error("card {0:?} declares installs_on_ice and must be installed via InstallProgramOnIce")]
+    TrojanMustBeHostedOnIce(CardId),
+
     #[error("card {0:?} is not an installed piece of ICE and cannot host a Trojan Program")]
     HostIsNotIce(CardId),
 

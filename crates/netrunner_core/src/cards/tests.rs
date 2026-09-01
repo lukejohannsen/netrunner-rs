@@ -584,6 +584,117 @@ mod system_gateway {
         assert_eq!(link("corroder"), None, "not an identity: no printed link at all");
     }
 
+    /// A trojan installs *on* ICE. `legal_actions` never offered it as an
+    /// ordinary `InstallProgram`, but the handler accepted one, and a
+    /// hostless Tranquilizer failed its own third turn-start
+    /// (`DerezCard(HostIce)` with no host). The handler refuses it now.
+    #[test]
+    fn a_trojan_cannot_be_installed_from_the_grip_as_an_ordinary_program() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("botulus".to_string()), CardId("tranquilizer".to_string())];
+        state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
+
+        for trojan in ["botulus", "tranquilizer"] {
+            assert_eq!(
+                apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId(trojan.to_string()) }).err(),
+                Some(RulesError::TrojanMustBeHostedOnIce(CardId(trojan.to_string())))
+            );
+        }
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallProgramOnIce { card_id: CardId("botulus".to_string()), host: install_of(&state, "palisade") },
+        )
+        .expect("hosting on ICE is the one way in");
+        assert_eq!(state.runner.rig[0].hosted_on_ice, Some(CardId("palisade".to_string())));
+    }
+
+    /// A selection-trash of a piece of ICE takes the trojans hosted on it,
+    /// as `Effect::TrashCard` always has — this was the one removal path
+    /// that left them in the rig pointing at ICE that no longer existed.
+    #[test]
+    fn a_selection_trash_of_ice_cascades_to_the_trojans_hosted_on_it() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![corp_ice("palisade", ServerId::Hq), corp_ice("whitespace", ServerId::RnD)];
+        let mut rig = rig_of(&["botulus", "corroder"]);
+        rig[0].hosted_on_ice = Some(CardId("palisade".to_string()));
+        state.runner.rig = rig;
+        // A Runner-side "trash 1 installed Corp card" selection, hand-built:
+        // no pool card offers exactly this, but Ansel 1.0/Retribution park
+        // the mirror image against the Runner through the same code.
+        state.pending_decision = Some(crate::rules::PendingDecision::ChooseCards {
+            side: Side::Runner,
+            source: crate::dsl::CardZoneRef::OpponentInstalled,
+            filter: crate::dsl::CardFilter::Any,
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(crate::dsl::CardZoneRef::OpponentDiscard),
+            then: None,
+            selected: Vec::new(),
+            source_card: None,
+            resume: crate::rules::PendingChoiceResume::None,
+        });
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "palisade") })
+                .expect("pick palisade");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+
+        assert!(events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("palisade".to_string()) }));
+        assert!(events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Runner, card: CardId("botulus".to_string()) }), "{events:?}");
+        assert_eq!(state.corp.installed.len(), 1, "whitespace remains");
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "palisade" && !a.facedown), "a rezzed ICE lands faceup");
+        let rig: Vec<&str> = state.runner.rig.iter().map(|c| c.card.0.as_str()).collect();
+        assert_eq!(rig, vec!["corroder"], "botulus went with its host");
+        assert!(state.runner.heap.contains(&CardId("botulus".to_string())));
+    }
+
+    /// Only a move into a discard pile is a trash. The same selection
+    /// machinery moves cards into R&D (Spin Doctor, Sprint) and the grip
+    /// (Mutual Favor); those say nothing.
+    #[test]
+    fn a_selection_records_a_trash_only_when_the_destination_is_a_discard_pile() {
+        let registry = sg_registry();
+        let decision = |destination: crate::dsl::CardZoneRef| crate::rules::PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: crate::dsl::CardZoneRef::OwnHq,
+            filter: crate::dsl::CardFilter::Any,
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(destination),
+            then: None,
+            selected: Vec::new(),
+            source_card: None,
+            resume: crate::rules::PendingChoiceResume::None,
+        };
+        let run = |destination: crate::dsl::CardZoneRef| {
+            let mut state = base_state();
+            state.corp.hq = vec![CardId("hedge_fund".to_string())];
+            state.pending_decision = Some(decision(destination));
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("toggle");
+            apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm")
+        };
+        let trashed = crate::rules::GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()) };
+
+        let (state, events) = run(crate::dsl::CardZoneRef::OwnArchives);
+        assert!(events.contains(&trashed), "{events:?}");
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "hedge_fund" && a.facedown), "unseen, so facedown");
+
+        let (state, events) = run(crate::dsl::CardZoneRef::OwnRAndD);
+        assert!(!events.contains(&trashed), "{events:?}");
+        assert_eq!(state.corp.r_and_d.last(), Some(&CardId("hedge_fund".to_string())));
+    }
+
     /// A hand-built rig of `ids`, each with its own fixture `InstallId` so
     /// the selection machinery can address them individually.
     fn rig_of(ids: &[&str]) -> Vec<crate::rules::InstalledRunnerCard> {
@@ -631,6 +742,10 @@ mod system_gateway {
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("and trashes it");
 
+        assert!(
+            events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Runner, card: CardId("pennyshaver".to_string()) }),
+            "a selection-trash says so, naming the card's owner: {events:?}"
+        );
         assert_eq!(memory_limit_exceeded(&events), Some(1), "{events:?}");
         assert_eq!(state.runner.memory_units, MemoryUnits(0), "the report still never reads negative");
         assert!(
@@ -652,6 +767,7 @@ mod system_gateway {
         let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash unity");
 
         assert_eq!(memory_limit_exceeded(&events), None, "within the limit again");
+        assert!(events.contains(&crate::rules::GameEvent::CardTrashed { side: Side::Runner, card: CardId("unity".to_string()) }));
         assert!(state.pending_decision.is_none());
         let rig: Vec<&str> = state.runner.rig.iter().map(|c| c.card.0.as_str()).collect();
         assert_eq!(rig, vec!["corroder", "cleaver", "buzzsaw", "carmen"]);
