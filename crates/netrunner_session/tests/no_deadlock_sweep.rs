@@ -41,13 +41,16 @@ fn sweep_seed_count() -> u64 {
 /// - the two heuristic-vs-random pairings are the ones that have found
 ///   every deadlock so far — a heuristic side plays purposefully enough to
 ///   reach late-game board states;
-/// - random-vs-random is the only seating that reaches the run and
-///   encounter machinery at all. `HeuristicAgent`'s evaluator has no run
-///   term and scores an unrezzed install at zero, so a heuristic Runner
-///   never runs and a heuristic Corp never installs ICE (ROADMAP Phase 2
-///   §5) — for as long as this sweep had only the first two seatings, no
-///   game in it ever produced a single `GameEvent::IceEncountered`. The
-///   rules-coverage gate below is what made that visible.
+/// - random-vs-random is the only unbiased seating. `HeuristicAgent`'s
+///   evaluator shapes what its side reaches: for as long as it had no run
+///   term and scored an unrezzed install at zero, a heuristic Runner never
+///   ran and a heuristic Corp never installed ICE, so with only the first
+///   two seatings no game here ever produced a single
+///   `GameEvent::IceEncountered` — the rules-coverage gate below is what
+///   made that visible. Its run term is now conditional on affording the
+///   breaks (ROADMAP Phase 2 §5), so a heuristic Runner no longer walks
+///   into rezzed ICE it cannot break — which is exactly the state only a
+///   random Runner still reaches.
 #[derive(Clone, Copy, Debug)]
 enum Seating {
     HeuristicCorpRandomRunner,

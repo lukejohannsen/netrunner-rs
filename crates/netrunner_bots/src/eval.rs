@@ -1,6 +1,9 @@
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardType, Effect, IceType};
-use netrunner_core::rules::{current_actor, GamePhase, GameState, InstalledCard, RunPhase, RunState, Side, SubroutineStatus};
+use netrunner_core::dsl::{CardType, Cost, Effect, IceType, SubroutineBreakCount, Trigger};
+use netrunner_core::rules::{
+    current_actor, GamePhase, GameState, InstalledCard, InstalledRunnerCard, RunIce, RunPhase, RunState, Side,
+    SubroutineStatus,
+};
 
 const WIN_SCORE: f64 = 1000.0;
 const AGENDA_POINT_WEIGHT: f64 = 20.0;
@@ -41,13 +44,21 @@ const ADVANCEMENT_WEIGHT: f64 = 1.5;
 /// breaker adds no coverage and is not installed. Before this term only a
 /// 0-cost program ever cleared the bar (ROADMAP Phase 2 §5).
 const BREAKER_COVERAGE_WEIGHT: f64 = 2.0;
-/// The Runner is mid-run. `InitiateRun` costs a click and changes nothing
-/// a static evaluator can see, so against `GainCreditClick`'s +0.4 a
-/// one-ply Runner never ran at all — in 96 heuristic-Runner games,
-/// `RunInitiated` was 0 and 86 ended by the Corp decking itself. This is
-/// the smallest term that makes a run worth starting and worth continuing
-/// (jacking out forfeits it) without pretending to know what the access
-/// will find.
+/// The Runner is mid-run *and can afford to break every rezzed ICE still
+/// ahead of it* (`run_is_breakable`). `InitiateRun` costs a click and
+/// changes nothing a static evaluator can see, so with no run term at all
+/// a one-ply Runner never ran — in 96 heuristic-Runner games,
+/// `RunInitiated` was 0 and 86 ended by the Corp decking itself. The term
+/// was first unconditional, and +0.6 against `GainCreditClick`'s +0.4 on
+/// every click meant the Runner ran into rezzed ICE it could not break
+/// rather than saving for a breaker: 0.7 programs installed per game and
+/// 75 subroutines broken against 1,025 fired across 96
+/// heuristic-vs-heuristic games (ROADMAP Phase 2 §5). Gating on
+/// *affordability* rather than on owning a matching breaker is deliberate
+/// — Cleaver at 0 credits breaks nothing — and only rezzed ICE counts,
+/// because an unrezzed card's identity in a determinized sample is a
+/// guess the real Runner cannot see and the Corp may never rez. Jacking
+/// out still forfeits the term, so a breakable run is worth finishing.
 const ACTIVE_RUN_WEIGHT: f64 = 0.6;
 /// Each still-pending subroutine on the ICE the Runner is encountering.
 /// Breaking a subroutine has no visible effect on the board, so without
@@ -114,13 +125,87 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
             score += state.runner.memory_units.0 as f64 * MEMORY_WEIGHT;
             score += breaker_coverage(state, registry) as f64 * BREAKER_COVERAGE_WEIGHT;
             if let Some(run) = &state.active_run {
-                score += ACTIVE_RUN_WEIGHT;
+                if run_is_breakable(state, run, registry) {
+                    score += ACTIVE_RUN_WEIGHT;
+                }
                 score -= pending_subroutines(run) as f64 * PENDING_SUBROUTINE_WEIGHT;
                 score -= strength_shortfall(state, run, registry) as f64 * STRENGTH_SHORTFALL_WEIGHT;
             }
         }
     }
     score
+}
+
+/// Whether the Runner can pay to break every pending subroutine on each
+/// rezzed ICE it has not yet passed, out of its own credits plus the run's
+/// bad-publicity pool. ICE before `run.position` is already behind the
+/// Runner; unrezzed ICE is treated as passable (see `ACTIVE_RUN_WEIGHT`).
+/// One rezzed ICE no rig card can break makes the whole run unbreakable —
+/// a run that stops at the third ICE is worth no more than one that stops
+/// at the first.
+fn run_is_breakable(state: &GameState, run: &RunState, registry: &CardRegistry) -> bool {
+    let mut total = 0;
+    for ice in run.ice.iter().skip(run.position).filter(|ice| ice.rezzed) {
+        let Some(cost) = cheapest_break_cost(state, ice, registry) else { return false };
+        total += cost;
+    }
+    total <= state.runner.resources.credits.0 + run.bad_publicity_credits
+}
+
+/// The fewest credits any rig card needs to pump up to `ice`'s strength
+/// and break all of its pending subroutines; `None` when no rig card can.
+/// An ICE with nothing pending costs nothing whatever the rig holds.
+fn cheapest_break_cost(state: &GameState, ice: &RunIce, registry: &CardRegistry) -> Option<u32> {
+    if pending_on(ice) == 0 {
+        return Some(0);
+    }
+    state.runner.rig.iter().filter_map(|card| break_cost(card, ice, registry)).min()
+}
+
+/// What `card` would spend to break `ice` outright: pump credits to close
+/// any strength shortfall, then break credits for every pending
+/// subroutine, both read off its `Paid` abilities. Only credit-costed
+/// abilities are priced — Botulus's counter-costed
+/// `BreakSubroutinesUnconditionally` is not a spend this term is about.
+/// `None` if the card has no break matching `ice`'s subtype, or a
+/// shortfall and no pump. `BoostStrengthAmount` (Unity's +X) is priced as
+/// +1 per activation: X counts Unity itself so it is at least 1, and
+/// over-estimating a cost only makes the Runner save one click longer.
+fn break_cost(card: &InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> Option<u32> {
+    let def = registry.get(&card.card)?;
+    let pending = pending_on(ice);
+    let shortfall = (ice.current_strength - card.effective_strength()).max(0) as u32;
+    let mut cheapest_break: Option<u32> = None;
+    let mut cheapest_pump: Option<u32> = None;
+    let keep_min = |slot: &mut Option<u32>, cost: u32| *slot = Some(slot.map_or(cost, |c| c.min(cost)));
+    for ability in def.abilities.iter().filter(|a| a.trigger == Trigger::Paid) {
+        let credits = match ability.cost {
+            None => 0,
+            Some(Cost::Credits(c)) => c,
+            Some(_) => continue,
+        };
+        ability.effect.for_each_effect(&mut |effect| match effect {
+            Effect::BreakSubroutines { count, restrict_to } if restrict_to.is_none_or(|r| r == ice.ice_type) => {
+                let activations = match count {
+                    SubroutineBreakCount::Fixed(n) => pending.div_ceil((*n).max(1)),
+                    SubroutineBreakCount::All => 1,
+                };
+                keep_min(&mut cheapest_break, credits * activations);
+            }
+            Effect::BoostStrength { amount, .. } => {
+                keep_min(&mut cheapest_pump, credits * shortfall.div_ceil((*amount).max(1)));
+            }
+            Effect::BoostStrengthAmount { .. } => keep_min(&mut cheapest_pump, credits * shortfall),
+            _ => {}
+        });
+    }
+    let pump = if shortfall == 0 { 0 } else { cheapest_pump? };
+    Some(cheapest_break? + pump)
+}
+
+/// Subroutines on `ice` still waiting to be broken or resolved.
+fn pending_on(ice: &RunIce) -> u32 {
+    ice.subroutines.iter().filter(|s| s.status == SubroutineStatus::Pending).count() as u32
 }
 
 /// How far the strongest rig breaker able to break the encountered ICE's
@@ -165,9 +250,7 @@ fn pending_subroutines(run: &RunState) -> usize {
     if run.phase != RunPhase::EncounterIce {
         return 0;
     }
-    run.ice
-        .get(run.position)
-        .map_or(0, |ice| ice.subroutines.iter().filter(|s| s.status == SubroutineStatus::Pending).count())
+    run.ice.get(run.position).map_or(0, |ice| pending_on(ice) as usize)
 }
 
 fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry) -> f64 {
@@ -503,5 +586,128 @@ mod tests {
             evaluate_state(&pumped, Side::Runner, &registry),
             "strength past the ICE's is worth nothing more"
         );
+    }
+
+    /// A breaker priced like a real one: `break_cost` per activation
+    /// breaking `break_count` subroutines, `pump_cost` per `pump_amount`
+    /// strength — Cleaver is `(1, 2), (2, 1)`.
+    fn priced_breaker(
+        id: &str,
+        restrict_to: Option<IceType>,
+        (break_cost, break_count): (u32, u32),
+        (pump_cost, pump_amount): (u32, u32),
+    ) -> CardDefinition {
+        use netrunner_core::dsl::BoostDuration;
+        let mut def = breaker(id, restrict_to);
+        def.abilities[0].cost = Some(Cost::Credits(break_cost));
+        def.abilities[0].effect = Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(break_count), restrict_to };
+        def.abilities.push(AbilityDef {
+            trigger: Trigger::Paid,
+            cost: Some(Cost::Credits(pump_cost)),
+            requirement: None,
+            effect: Effect::BoostStrength { amount: pump_amount, duration: BoostDuration::Encounter },
+            cost_discount_if: None,
+        });
+        def
+    }
+
+    /// One piece of ICE on a run, all subroutines pending.
+    fn run_ice(strength: i32, ice_type: IceType, subroutines: usize, rezzed: bool) -> RunIce {
+        use netrunner_core::rules::{EncounteredSubroutine, InstallId};
+        RunIce {
+            install_id: InstallId::PLACEHOLDER,
+            card_id: CardId("ice".to_string()),
+            current_strength: strength,
+            ice_type,
+            subroutines: (0..subroutines)
+                .map(|id| EncounteredSubroutine {
+                    id,
+                    definition: netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun },
+                    status: SubroutineStatus::Pending,
+                })
+                .collect(),
+            rezzed,
+        }
+    }
+
+    /// `evaluate_state` for the Runner, `credits` in hand, approaching the
+    /// outermost ICE of a run over `ice` — minus the same board with no run,
+    /// so the result is exactly what the run term contributed.
+    fn run_term(rig: Vec<InstalledRunnerCard>, credits: u32, ice: Vec<RunIce>, position: usize, registry: &CardRegistry) -> f64 {
+        use netrunner_core::rules::ServerId;
+        let mut idle = GameState::new(0);
+        idle.runner.resources.credits = Credits(credits);
+        idle.runner.rig = rig;
+        let mut running = idle.clone();
+        running.active_run = Some(RunState { server: ServerId::Hq, ice, position, ..Default::default() });
+        let term = evaluate_state(&running, Side::Runner, registry) - evaluate_state(&idle, Side::Runner, registry);
+        (term * 1000.0).round() / 1000.0 // the other terms cancel, up to float noise
+    }
+
+    /// The whole point of the conditional run term: with no breaker for a
+    /// rezzed ICE, a run is worth nothing (so a credit click wins); with a
+    /// breaker and the credits to use it, the run is worth taking.
+    #[test]
+    fn a_run_into_rezzed_ice_with_no_matching_breaker_is_not_worth_a_click() {
+        let registry = CardRegistry::from_cards(vec![priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1))]);
+        let ice = || vec![run_ice(1, IceType::Barrier, 1, true)];
+        assert_eq!(run_term(vec![], 5, ice(), 0, &registry), 0.0, "nothing in the rig breaks a Barrier");
+        let wrong_subtype = priced_breaker("carmen", Some(IceType::Sentry), (1, 1), (2, 3));
+        let registry = CardRegistry::from_cards(vec![wrong_subtype, priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1))]);
+        assert_eq!(run_term(vec![rig_card("carmen")], 5, ice(), 0, &registry), 0.0, "a Sentry breaker does not break a Barrier");
+        let cleaver = InstalledRunnerCard { base_strength: 3, ..rig_card("cleaver") };
+        assert_eq!(run_term(vec![cleaver], 5, ice(), 0, &registry), ACTIVE_RUN_WEIGHT);
+    }
+
+    /// Owning the breaker is not enough: the run is credited only when the
+    /// pump and break credits are actually in hand (bad-publicity credits
+    /// count — they are spendable on exactly this).
+    #[test]
+    fn a_run_is_credited_only_when_the_breaks_are_affordable() {
+        use netrunner_core::rules::ServerId;
+        let registry = CardRegistry::from_cards(vec![priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1))]);
+        let cleaver = || vec![InstalledRunnerCard { base_strength: 3, ..rig_card("cleaver") }];
+        // Strength 4 against Cleaver's 3: one 2[c] pump, then one 1[c] break covers both subroutines.
+        let ice = || vec![run_ice(4, IceType::Barrier, 2, true)];
+        assert_eq!(run_term(cleaver(), 2, ice(), 0, &registry), 0.0, "3 credits needed, 2 held");
+        assert_eq!(run_term(cleaver(), 3, ice(), 0, &registry), ACTIVE_RUN_WEIGHT);
+        // Two rezzed ICE are paid for together.
+        let two = || vec![run_ice(4, IceType::Barrier, 2, true), run_ice(1, IceType::Barrier, 3, true)];
+        assert_eq!(run_term(cleaver(), 4, two(), 0, &registry), 0.0, "3 + 2 credits needed, 4 held");
+        assert_eq!(run_term(cleaver(), 5, two(), 0, &registry), ACTIVE_RUN_WEIGHT);
+
+        let mut idle = GameState::new(0);
+        idle.runner.resources.credits = Credits(2);
+        idle.runner.rig = cleaver();
+        let mut running = idle.clone();
+        running.active_run =
+            Some(RunState { server: ServerId::Hq, ice: ice(), bad_publicity_credits: 1, ..Default::default() });
+        let term = evaluate_state(&running, Side::Runner, &registry) - evaluate_state(&idle, Side::Runner, &registry);
+        assert_eq!((term * 1000.0).round() / 1000.0, ACTIVE_RUN_WEIGHT, "a bad-publicity credit closes the gap");
+    }
+
+    /// An unrezzed ICE's identity in a determinized sample is a guess the
+    /// real Runner cannot see, so it never blocks the run term; nor does
+    /// ICE the run has already passed.
+    #[test]
+    fn unrezzed_and_already_passed_ice_never_block_the_run_term() {
+        let registry = CardRegistry::new();
+        let unrezzed = vec![run_ice(9, IceType::Barrier, 3, false)];
+        assert_eq!(run_term(vec![], 0, unrezzed, 0, &registry), ACTIVE_RUN_WEIGHT);
+        let passed = vec![run_ice(9, IceType::Barrier, 3, true)];
+        assert_eq!(run_term(vec![], 0, passed, 1, &registry), ACTIVE_RUN_WEIGHT);
+        let no_subroutines = vec![run_ice(9, IceType::Barrier, 0, true)];
+        assert_eq!(run_term(vec![], 0, no_subroutines, 0, &registry), ACTIVE_RUN_WEIGHT, "nothing to break costs nothing");
+    }
+
+    /// An unrestricted (AI) breaker prices a run over any subtype; a
+    /// breaker short on strength with no pump cannot break at any price.
+    #[test]
+    fn an_ai_breaker_covers_any_subtype_and_a_pumpless_shortfall_is_unbreakable() {
+        let registry = CardRegistry::from_cards(vec![breaker("mayfly", None)]);
+        let sentry = || vec![run_ice(1, IceType::Sentry, 2, true)];
+        let mayfly = |strength| vec![InstalledRunnerCard { base_strength: strength, ..rig_card("mayfly") }];
+        assert_eq!(run_term(mayfly(1), 0, sentry(), 0, &registry), ACTIVE_RUN_WEIGHT, "a free AI break costs nothing");
+        assert_eq!(run_term(mayfly(0), 9, sentry(), 0, &registry), 0.0, "one point short and no pump ability");
     }
 }
