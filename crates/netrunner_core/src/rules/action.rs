@@ -61,7 +61,7 @@ pub enum PlayerAction {
     InitiateRun { server: ServerTarget },
     /// Advance the active run to its next phase (Initiation -> ApproachIce,
     /// ApproachIce -> EncounterIce, EncounterIce -> next ICE's ApproachIce or
-    /// Success). Runner-only. No click cost — like `JackOut`/`BreakSubroutine`,
+    /// Success). Runner-only. No click cost — like `JackOut`/`CompleteRun`,
     /// this is a run-flow sub-action, not a basic click action. Delegates to
     /// `run::advance_run`'s `RunAction::Continue`; requires `active_run` to be
     /// `Some` (`RulesError::NoActiveRun` otherwise), and propagates
@@ -78,20 +78,18 @@ pub enum PlayerAction {
     /// step is reached (`RunPhase::Success`) with no ICE remaining.
     /// `RulesError::IllegalJackOutWindow` otherwise.
     JackOut,
-    /// Close out a run that has already reached `RunPhase::Success`, clearing
-    /// `active_run` so a new run can be initiated. Runner-only, no click cost —
-    /// like `JackOut`/`ContinueRun`, this is a run-flow sub-action, not a basic
-    /// click action. Deliberately does NOT delegate to `run::advance_run` (whose
-    /// top-of-function guard exists specifically to reject action on an
-    /// already-concluded run — the opposite of what's needed here); the engine
-    /// manipulates `GameState.active_run` directly instead. Requires `active_run`
-    /// to be `Some` (`RulesError::NoActiveRun` otherwise) with
-    /// `phase == RunPhase::Success` (`RulesError::RunNotConcluded` otherwise).
-    /// `JackOut` is legal at `Success` too (the "approach server" jack-out
-    /// window) — the Runner can still bail right up until `CompleteRun` is
-    /// actually called; once it is, the run has moved on to
-    /// `RunPhase::AccessingCard`, where `JackOut` is rejected via
-    /// `RulesError::RunAlreadyConcluded`.
+    /// Commit past the approach-server step: the run becomes **successful**
+    /// here (`GameEvent::RunSucceeded` and every "when your run is
+    /// successful" trigger fire), the jack-out window closes, and the
+    /// pre-access paid-ability window opens; access follows once both sides
+    /// pass. Runner-only, no click cost — like `JackOut`/`ContinueRun`, this
+    /// is a run-flow sub-action, not a basic click action. Requires
+    /// `active_run` to be `Some` (`RulesError::NoActiveRun` otherwise) with
+    /// `phase == RunPhase::Success` (`RulesError::RunNotConcluded` otherwise)
+    /// and no window open. `JackOut` is legal at `Success` *before* this —
+    /// the approach step is the Runner's last chance to leave — and not
+    /// after: a successful run proceeds to its breach (ROADMAP Rules Audit
+    /// T9).
     CompleteRun,
     /// Spend 1 click and `card_id`'s registry `cost` in credits, move
     /// `card_id` out of the Grip, resolve its `OnPlay` triggers, and trash it
