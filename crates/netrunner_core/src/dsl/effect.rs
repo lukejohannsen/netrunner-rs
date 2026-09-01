@@ -48,6 +48,11 @@ pub enum CardTarget {
     /// `RulesError::UnresolvedCardTarget` if `acting_card` isn't a hosted
     /// card. e.g. Tranquilizer's "derez host ice" once counters reach 3.
     HostIce,
+    /// One card from HQ chosen at random by the engine (`GameState::
+    /// next_u64`, so deterministic under the seed) — *Hansei Review*'s
+    /// "trash 1 random card from HQ". Not a `PromptChooseCards`: that lets
+    /// the Corp pick, which removes the card's entire drawback.
+    RandomFromHq,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -56,6 +61,11 @@ pub enum Effect {
     /// credits to their own controller (and `CardDefinition::side` already implies
     /// that), an explicit target lets a card affect the opponent instead.
     GainCredits(Side, u32),
+    /// `GainCredits` with a computed amount — *Jinteki: Restoring Humanity*'s
+    /// "gain 1[c] for each facedown card in Archives". A variant rather than
+    /// composition because no existing primitive counts anything: `EffectIf`
+    /// branches, it does not multiply. Same shape as `DealDamageAmount`.
+    GainCreditsAmount(Side, Amount),
     /// Renamed from `InflictDamage`. `usize` (not `u32`) matches
     /// `damage::apply_damage`'s existing signature exactly. No `Side`
     /// param: damage in this engine's model always targets the Runner,
@@ -505,6 +515,8 @@ pub enum Amount {
     /// Icebreaker`'s heuristic), including `acting_card` itself if it
     /// qualifies — e.g. Unity's pump ability.
     InstalledIcebreakerCount,
+    /// Facedown cards currently in Archives — *Jinteki: Restoring Humanity*.
+    FacedownCardsInArchives,
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -601,7 +613,8 @@ impl Effect {
             | Effect::AddAdvancementTokens(..)
             | Effect::DealDamageAmount(..)
             | Effect::AddAdditionalAccessAmount { .. }
-            | Effect::BoostStrengthAmount { .. } => {}
+            | Effect::BoostStrengthAmount { .. }
+            | Effect::GainCreditsAmount(..) => {}
         }
     }
 

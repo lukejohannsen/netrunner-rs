@@ -680,7 +680,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, resume, .. } =
+    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, source_card, source_install, resume, .. } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -699,6 +699,10 @@ pub(crate) fn resolve_choose_server(
         run.ice_rez_cost_modifier = rez_cost_delta;
         run.bonus_run_credits = bonus_run_credits;
         run.on_success_effect = on_success.map(|effect| Box::new(substitute_chosen_server(*effect, server)));
+        // The rider resolves as the card that offered the choice (Red Team
+        // takes credits from *itself*), so carry its identity onto the run.
+        run.on_success_card = source_card;
+        run.on_success_install = source_install;
     }
 
     let run_initiated_event = GameEvent::RunInitiated { server };

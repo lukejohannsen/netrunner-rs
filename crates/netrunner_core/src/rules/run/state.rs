@@ -271,6 +271,15 @@ pub struct RunState {
     /// dropped/replaced, same lifecycle as `bad_publicity_credits`.
     #[serde(default)]
     pub on_success_effect: Option<Box<Effect>>,
+    /// The card and install `on_success_effect` resolves *as* — the card
+    /// whose `PromptChooseServer` started this run. Without them the rider
+    /// resolved with no acting card, so a "this card" effect in it
+    /// (*Red Team*'s "take 3[c] from this resource") had nothing to act on;
+    /// Red Team was modelled as paying on *every* successful run instead.
+    #[serde(default)]
+    pub on_success_card: Option<CardId>,
+    #[serde(default)]
+    pub on_success_install: Option<InstallId>,
     /// A temporary Runner credit pool for this run only, set once at run
     /// start by whatever initiated it (e.g. Overclock's "place 5 credits on
     /// this event, then run any server — you can spend hosted credits
@@ -338,6 +347,8 @@ impl Default for RunState {
             agendas_stolen_this_run: 0,
             persistent_trashed_upgrades: Vec::new(),
             on_success_effect: None,
+            on_success_card: None,
+            on_success_install: None,
         }
     }
 }
