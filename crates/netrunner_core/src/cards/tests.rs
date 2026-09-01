@@ -3824,6 +3824,44 @@ mod system_gateway {
         }
     }
 
+    /// Carnivore's "trash 2 cards from your grip" is offered only when there
+    /// are 2 to trash. Before its `ZoneHasAtLeast` gate, the ability was
+    /// legal with one card in the grip: `PromptChooseCards` silently parked
+    /// nothing, the accessed card stayed, and Carnivore's once-per-turn was
+    /// spent on it.
+    #[test]
+    fn carnivore_is_not_offered_and_spends_nothing_with_fewer_than_two_grip_cards() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = rig_of(&["carnivore"]);
+        state.runner.grip = vec![CardId("sure_gamble".to_string())];
+        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        state.active_run = Some(crate::rules::RunState {
+            server: ServerId::Hq,
+            phase: crate::rules::RunPhase::AccessingCard,
+            access_state: Some(crate::rules::AccessState {
+                server: ServerId::Hq,
+                phase: crate::rules::AccessPhase::PendingChoice {
+                    card_id: CardId("hedge_fund".to_string()),
+                    trash_cost: None,
+                    mandatory_steal: false,
+                    steal_cost: None,
+                },
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        let activate = PlayerAction::ActivateAbility { target: fixture_install_id("carnivore"), ability_index: 0 };
+
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&activate), "one card in grip");
+        assert_eq!(apply_action(&state, &registry, activate.clone()).err(), Some(RulesError::RequirementNotMet));
+        assert!(state.runner.once_per_turn_used.is_empty(), "a refused activation consumes nothing");
+
+        state.runner.grip.push(CardId("overclock".to_string()));
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&activate), "two cards in grip");
+    }
+
     /// `hosted_on_ice` is an install: with two Palisades on one server, the
     /// Botulus on the first breaks only while the first is encountered, and
     /// the Botulus on the second only then. As a `CardId` the host matched

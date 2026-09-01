@@ -1588,6 +1588,12 @@ pub fn check_requirement(
             }
             Ok(())
         }
+        EffectRequirement::ZoneHasAtLeast { zone, count } => {
+            if crate::rules::pending_choice::zone_card_ids(state, side, zone).len() < *count as usize {
+                return Err(RulesError::RequirementNotMet);
+            }
+            Ok(())
+        }
         EffectRequirement::Not(inner) => match check_requirement(state, inner, side, ctx, registry) {
             Ok(()) => Err(RulesError::RequirementNotMet),
             Err(_) => Ok(()),
@@ -1796,6 +1802,7 @@ pub(crate) fn consume_requirement(
         }
         EffectRequirement::RunnerCreditsAtMost(_)
         | EffectRequirement::RunnerClicksAtLeast(_)
+        | EffectRequirement::ZoneHasAtLeast { .. }
         | EffectRequirement::Not(_)
         | EffectRequirement::RezzedDuringRunAgainstThisServer
         | EffectRequirement::RunnerMadeSuccessfulRunLastTurn
@@ -2250,6 +2257,19 @@ mod tests {
         crate::rules::turn::enter_start_of_turn(&mut state, &mut Vec::new(), Side::Runner, &CardRegistry::new()).unwrap();
 
         assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
+    }
+
+    #[test]
+    fn zone_has_at_least_requirement_counts_the_acting_sides_zone() {
+        let mut state = game_state();
+        state.corp.hq = vec![CardId("a".to_string())];
+        let requirement = EffectRequirement::ZoneHasAtLeast { zone: crate::dsl::CardZoneRef::OwnHq, count: 2 };
+        assert_eq!(
+            check_requirement(&state, &requirement, Side::Corp, &ResolutionContext::default(), &CardRegistry::new()),
+            Err(RulesError::RequirementNotMet)
+        );
+        state.corp.hq.push(CardId("b".to_string()));
+        assert_eq!(check_requirement(&state, &requirement, Side::Corp, &ResolutionContext::default(), &CardRegistry::new()), Ok(()));
     }
 
     #[test]

@@ -13,7 +13,17 @@
           {
             "OncePerTurn": "carnivore"
           },
-          "CurrentlyAccessingACard"
+          {
+            "And": [
+              "CurrentlyAccessingACard",
+              {
+                "ZoneHasAtLeast": {
+                  "zone": "OwnGrip",
+                  "count": 2
+                }
+              }
+            ]
+          }
         ]
       },
       "effect": {

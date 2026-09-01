@@ -121,9 +121,12 @@ fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
 /// next — the hand-size/`Discard`/[`enter_start_of_turn`] logic this
 /// function used to run inline).
 ///
-/// Deliberately NOT modeled: individual `Trigger::OnTurnStart`-style card
-/// reactions to the end-of-turn window itself (only the window/priority
-/// machinery is generic — no card currently has an end-of-turn trigger).
+/// Deliberately NOT modeled: card reactions to the end-of-turn *window*
+/// itself — only the window/priority machinery is generic. (Reactions to
+/// the discard phase ending are a different, modelled thing:
+/// `Trigger::OnDiscardPhaseEnd`, dispatched from `finish_end_turn`/
+/// `discard_card` — *Jinteki: Restoring Humanity*. An earlier version of
+/// this comment said no card had an end-of-turn trigger at all.)
 ///
 /// Credits are untouched — they carry over turn to turn. **Clicks are
 /// not**: unspent clicks are lost the moment a turn ends, so this zeroes

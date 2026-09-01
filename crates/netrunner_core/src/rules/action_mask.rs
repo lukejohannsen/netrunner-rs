@@ -375,7 +375,16 @@ impl ActionSpace {
                 5 => PlayerAction::KeepHand,
                 6 => PlayerAction::TakeMulligan,
                 7 => PlayerAction::RemoveTag,
-                _ => PlayerAction::DeclinePendingPaidChoice,
+                8 => PlayerAction::DeclinePendingPaidChoice,
+                // Spelled out, not `_`: the ROADMAP's append-never-shift
+                // rule means the next unit action is added by bumping
+                // `UNIT_LEN` and adding an arm here. With a catch-all, a
+                // bumped length without the arm decoded the new slot as
+                // `DeclinePendingPaidChoice` — two mask slots for one action,
+                // the new one unreachable, and `get_action_mask` reporting it
+                // legal. Same shape as the `_ => IceType::Barrier` the Rules
+                // Audit removed.
+                _ => return None,
             });
         }
         if let Some(local) = in_segment(index, DRAW_CARD_START, DRAW_CARD_LEN) {
@@ -391,7 +400,7 @@ impl ActionSpace {
             let hand_slot = local / (ZONE_COUNT * 2);
             let rem = local % (ZONE_COUNT * 2);
             let zone = decode_zone(rem / 2)?;
-            let slot = decode_install_slot(rem % 2);
+            let slot = decode_install_slot(rem % 2)?;
             let card_id = state.corp.hq.get(hand_slot)?.clone();
             return Some(PlayerAction::InstallCard { card_id, zone, slot });
         }
@@ -593,8 +602,15 @@ fn encode_install_slot(slot: InstallSlot) -> usize {
     }
 }
 
-fn decode_install_slot(index: usize) -> InstallSlot {
-    if index == 0 { InstallSlot::Ice } else { InstallSlot::Root }
+/// `None` for an index no slot owns — exhaustive over `InstallSlot`, so a
+/// third slot variant is a compile error here rather than silently `Root`
+/// (`encode_install_slot` was already exhaustive; this side was not).
+fn decode_install_slot(index: usize) -> Option<InstallSlot> {
+    match index {
+        0 => Some(InstallSlot::Ice),
+        1 => Some(InstallSlot::Root),
+        _ => None,
+    }
 }
 
 fn bounded_position(zone: &[CardId], card_id: &CardId, cap: usize) -> Option<usize> {
@@ -1262,6 +1278,25 @@ mod tests {
 
     /// The concrete case behind T11: a three-option `PresentChoice` — the
     /// third being "decline" — must give its decline an index.
+    /// The unit block decodes each slot to exactly one action and nothing
+    /// past its last slot. A `_ =>` catch-all used to decode any surplus
+    /// index as `DeclinePendingPaidChoice`, so the next appended unit action
+    /// would have shared a slot with it.
+    #[test]
+    fn the_unit_block_has_no_catch_all_slot() {
+        let state = base_state();
+        assert_eq!(
+            ActionSpace::action_at(&state, UNIT_START + 8),
+            Some(PlayerAction::DeclinePendingPaidChoice),
+            "slot 8 is the decline"
+        );
+        let decoded: Vec<PlayerAction> = (0..UNIT_LEN).filter_map(|i| ActionSpace::action_at(&state, UNIT_START + i)).collect();
+        assert_eq!(decoded.len(), UNIT_LEN, "every unit slot decodes to an action");
+        let distinct: std::collections::HashSet<String> = decoded.iter().map(|a| format!("{a:?}")).collect();
+        assert_eq!(distinct.len(), UNIT_LEN, "and no two slots decode to the same action: {decoded:?}");
+        assert_eq!(decode_install_slot(2), None, "an install slot index no variant owns decodes to nothing");
+    }
+
     #[test]
     fn a_three_option_pending_choice_can_be_declined_on_the_index_path() {
         let mut state = GameState::new(0);

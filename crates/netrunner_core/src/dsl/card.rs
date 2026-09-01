@@ -124,8 +124,9 @@ pub struct CardDefinition {
     pub advancement_requirement: Option<u32>,
 
     /// Agenda point value when scored/stolen. `Some` only for
-    /// `CardType::Agenda` — the eventual data-driven replacement input for
-    /// `win::agenda_value`'s current hardcoded lookup.
+    /// `CardType::Agenda`; `win::agenda_value` reads it from the registry
+    /// (an earlier comment here promised a "data-driven replacement" for a
+    /// hardcoded lookup that had already been replaced).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agenda_points: Option<u32>,
 

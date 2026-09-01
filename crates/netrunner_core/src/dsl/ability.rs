@@ -3,6 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::cost::Cost;
 use crate::dsl::effect::Effect;
 use crate::dsl::trigger::Trigger;
+use crate::dsl::zone::CardZoneRef;
 use crate::rules::Side;
 
 /// A single costed/manually-activated ability: when/how it fires
@@ -72,6 +73,15 @@ pub enum EffectRequirement {
     /// correctly finds zero remaining and skips the loss rather than
     /// underflowing.
     RunnerClicksAtLeast(u32),
+    /// `zone` (relative to the acting side, as `CardZoneRef` always is)
+    /// holds at least `count` cards — e.g. Carnivore's "trash 2 cards from
+    /// your grip", which is only *offerable* with 2 cards to trash. A gate
+    /// on the ability, not a branch in its effect: `EffectIf` could skip the
+    /// trash, but the ability would still be activated, its click paid and
+    /// its `OncePerTurn` consumed, while `PromptChooseCards` silently
+    /// declined to park with fewer than `min` eligible. The requirement is
+    /// what keeps `legal_actions` from offering it at all.
+    ZoneHasAtLeast { zone: CardZoneRef, count: u32 },
     /// Generic negation of another requirement.
     Not(Box<EffectRequirement>),
     /// Generic conjunction of two requirements — e.g. Zahya Sadeghi's
