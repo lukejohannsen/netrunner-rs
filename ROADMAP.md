@@ -293,6 +293,30 @@ Three read-only passes over the whole engine for the shapes above — "kept reso
 
 ---
 
+## 🔍 System Gateway Card Fidelity Audit — September 2026
+
+`fix/card-fidelity` found five cards drifted from print by *sampling*; this pass read **all 75 playable System Gateway cards** against NetrunnerDB's `stripped_text`, the engine code behind each primitive they use, and their play evidence (per-card tests + the 96-game coverage report). **The per-card record — verdict, evidence and the documented-approximations list — is `docs/system-gateway-card-audit.md`; this section is status.**
+
+**Tally: 64 faithful (11 of them through documented approximations), 11 deviations — all fixed** (branch `fix/sg-card-fidelity-audit`, four commits), **plus one engine-wide finding.** Both 256-seed sweeps green with all coverage gates; measured random-vs-random, 96 games (`h5-…` → `sg-audit-random-random.json`). Two of the eleven were introduced *by the previous fidelity pass itself* (Hansei Review made random, Above the Law made mandatory) — the lesson recorded there stands reversed here: verify against the printed card and the rules document, never against what "removes a drawback".
+
+- [x] **Hansei Review** — the HQ trash is the Corp's choice (no "at random" is printed; a player trashing from their own hand picks). Reverted to a Corp `PromptChooseCards`; `CardTarget::RandomFromHq` deleted with it.
+- [x] **Above the Law** — printed "you **may** trash 1 installed resource"; the opt-out is restored.
+- [x] **Predictive Planogram** — tagged, "you **may** resolve both instead" is a three-option choice, not a forced both. `predictive_planogram/OnPlay` 112 → 105 with `PresentChoice` 420 → 582 across the pool.
+- [x] **Mayfly** — was trashed at the end of *every* run; the rider belongs to its break ability. The break leaves a hosted counter as the used-this-run marker (no `counter_kind`, so purges ignore it); `OnRunEnded` requires it. `mayfly/trashed` 11 → 3 and `activated` 0 → 15 — it survives long enough to be used at all.
+- [x] **Karunā** — "The Runner may jack out" was `Effect::PermitJackOut`, a flag no loop paused for: both subroutines always fired in one batch. Subroutine 1 now parks a Runner choice between the two; `PermitJackOut` and `GameEvent::JackOutPermitted` deleted (`effects_seen/PermitJackOut` 8 → 0).
+- [x] **Zahya Sadeghi** — her once-per-turn is consumed at trigger fire, and `OnRunEnded` fires for bounced runs: a 0-access central run burned it for 0[c]. New `EffectRequirement::AccessedAnyCardDuringLastRun` gates her: `zahya_sadeghi/OnRunEnded` 191 → 75 — the other 116 firings were paying nothing and eating the turn's use.
+- [x] **Urtica Cipher** — `OnAccessed` fired from R&D/HQ too (flat 2 net from a deck access; a first-match token read could size the hit by an installed copy). New `EffectRequirement::ThisCardIsInstalled`, answered strictly off the dispatched install: `urtica_cipher/OnAccessed` 38 → 29 while its accesses *rose* 38 → 53.
+- [x] **NBN: Reality Plus** — a tag taken as a **cost** (`Cost::TakeTags`, Funhouse) emitted `TagsGiven` undispatched, so the printed NBN+Funhouse pairing never fired. The cost's tag events now dispatch after the choice's own effect, deferring via `fire_each` if something parked.
+- [x] **Mutual Favor / Pantograph** — both install clauses were unmodelled. New `Effect::InstallRunnerCardFromGrip` (pays cost, memory, console limit, unique rule) + `CardFilter::InstallableRunnerCard` (offer ≡ resolution via `engine::can_install_runner_card_from_grip`); Trojans stay click-installs. `effects_seen/InstallRunnerCardFromGrip` 0 → 31.
+- [x] **Ansel 1.0** — its install used Brân's cost-ignoring fixed-destination effect: free, always into Ansel's own server, agendas into central roots, Operations selectable. New `Effect::PromptInstallCorpCard` reuses `PendingDecision::ChooseServer` (same action, `ActionSpace` slot, bots, masking) with a `PendingInstallFromZone` naming the card by *position* (an id would leak the HQ pick through the unmasked decision); `engine::corp_install_destinations` offers agendas/assets remotes only and ICE only where the 1[c]-per-protecting-ICE tax is affordable. `effects_seen/PromptInstallCorpCard` 0 → 26. **No `ActionSpace` change.**
+- [x] **Engine-wide: new ICE landed *innermost*.** Every ICE install appended to `corp.installed`, whose per-server vec order is the run's approach order — reversing the approach order of every stacked server against Null Signal Games' outermost-install rule. Fixed in `engine::place_corp_card` (extracted from `install_card`, shared with Ansel's path); Brân's "directly inward" keeps its own `insert_after`. Visible pool-wide: `IcePassed` 949 → 1045 with `IceEncountered` 561 → 516 — a new, unrezzed piece now sits outside and is passed instead of the inner rezzed one being met first.
+
+**DSL growth:** two `Effect` variants deleted (`PermitJackOut`, `RandomFromHq`), two added (`PromptInstallCorpCard`, `InstallRunnerCardFromGrip`), two `EffectRequirement`s (`AccessedAnyCardDuringLastRun`, `ThisCardIsInstalled`) and one `CardFilter` (`InstallableRunnerCard`) added, each with its one-line "why composition didn't work". Ratio re-measured in AGENTS.md.
+
+**Still open, deliberately** (recorded in the audit doc's approximations list): Red Team's "a central you have not run this turn" (needs a per-turn record of servers run), Docklands Pass's "breach" ≈ successful run, Zahya's residual "may", Trojan effect-installs, and the pre-existing capacity items (§4 above).
+
+---
+
 ## 🔗 Phase 1.5: Session Unification (the single-player → network bridge) — DONE
 
 Five places independently re-implemented the same match loop — `current_actor` → get action → `apply_action` → check `GameOver` — each with its own step budget. There is now **one `MAX_STEPS`, in `netrunner_session`**, and every caller pumps the same driver.
