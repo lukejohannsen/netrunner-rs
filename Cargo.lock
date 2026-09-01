@@ -1040,6 +1040,7 @@ dependencies = [
  "netrunner_bots",
  "netrunner_core",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 

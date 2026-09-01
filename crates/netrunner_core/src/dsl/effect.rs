@@ -525,6 +525,95 @@ pub enum SubroutineBreakCount {
     All,
 }
 
+impl Effect {
+    /// Calls `f` on this effect and then on every effect nested inside it,
+    /// depth-first in authoring order.
+    ///
+    /// The nesting positions are the whole list of places one `Effect` can
+    /// contain another — `Sequence`, `EffectIf`, `OfferPaidChoice` (both
+    /// branches), `PresentChoice`, `PromptChooseCards::then`,
+    /// `PromptChooseServer::on_success`, `Trace::on_success` and
+    /// `SetAccessReplacement`. Kept as an exhaustive `match` with an
+    /// explicit leaf arm rather than a `_ =>` so a new nesting variant is a
+    /// compile error here, not a silently unwalked subtree.
+    ///
+    /// Exists because two consumers need the same walk and neither belongs
+    /// in the other: the rules-coverage report infers which `Effect`
+    /// variants a card's activated ability reached, and the `ActionSpace`
+    /// cap gate checks every `PresentChoice`'s option count against
+    /// `MAX_PENDING_CHOICE_OPTIONS` — the cap that was wrong for Ansel 1.0
+    /// and Brân 1.0 because nothing walked the card JSON to check it.
+    pub fn for_each_effect(&self, f: &mut impl FnMut(&Effect)) {
+        f(self);
+        match self {
+            Effect::Sequence(effects) | Effect::PresentChoice { options: effects, .. } => {
+                for effect in effects {
+                    effect.for_each_effect(f);
+                }
+            }
+            Effect::EffectIf { effect, .. }
+            | Effect::Trace { on_success: effect, .. }
+            | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
+            Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
+                if_paid.for_each_effect(f);
+                if_declined.for_each_effect(f);
+            }
+            Effect::PromptChooseCards { then: Some(effect), .. }
+            | Effect::PromptChooseServer { on_success: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::PromptChooseCards { then: None, .. } | Effect::PromptChooseServer { on_success: None, .. } => {}
+            // Leaves: everything that holds no `Effect`.
+            Effect::GainCredits(..)
+            | Effect::DealDamage(..)
+            | Effect::BreakSubroutine(..)
+            | Effect::ModifyStrength(..)
+            | Effect::DrawCards(..)
+            | Effect::EndTheRun
+            | Effect::GiveTags(..)
+            | Effect::RemoveTags(..)
+            | Effect::GiveBadPublicity(..)
+            | Effect::RemoveBadPublicity(..)
+            | Effect::TrashCard(..)
+            | Effect::BoostStrength { .. }
+            | Effect::BreakSubroutines { .. }
+            | Effect::BreakSubroutinesUnconditionally { .. }
+            | Effect::AddAdditionalAccess { .. }
+            | Effect::LoseCredits(..)
+            | Effect::LoseClicks(..)
+            | Effect::GainClicks(..)
+            | Effect::InitiateRun(..)
+            | Effect::PreventDamage(..)
+            | Effect::PreventTrash
+            | Effect::AddCounters(..)
+            | Effect::RemoveCounters(..)
+            | Effect::PermitJackOut
+            | Effect::GainCreditsPerCardAccessedThisRun(..)
+            | Effect::RezInstalledIgnoringCost(..)
+            | Effect::TakeAllCountersAsCredits(..)
+            | Effect::GainMaxHandSize(..)
+            | Effect::TrashCurrentlyAccessedCard
+            | Effect::DerezCard(..)
+            | Effect::GainCreditsPerCounter { .. }
+            | Effect::SwapInstalledIce(..)
+            | Effect::InstallFromZoneIgnoringCost { .. }
+            | Effect::PreventStealAndTrashForRemainderOfRun
+            | Effect::PreventScoringForRemainderOfTurn
+            | Effect::AddAdvancementTokens(..)
+            | Effect::DealDamageAmount(..)
+            | Effect::AddAdditionalAccessAmount { .. }
+            | Effect::BoostStrengthAmount { .. } => {}
+        }
+    }
+
+    /// The variant name of this effect — `"Sequence"`, `"GainCredits"` —
+    /// taken from the `Debug` rendering up to its first payload delimiter.
+    /// Used wherever variants are counted by name; adding a variant needs no
+    /// change here.
+    pub fn variant_name(&self) -> String {
+        let rendered = format!("{self:?}");
+        rendered.split(['(', '{', ' ']).next().unwrap_or(&rendered).to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -610,5 +699,45 @@ mod tests {
             r#"{"SetAccessReplacement":{"server":"Hq","effect":{"GainCredits":["Runner",8]}}}"#
         );
         assert_eq!(serde_json::from_str::<Effect>(&json).unwrap(), effect);
+    }
+
+    #[test]
+    fn for_each_effect_reaches_every_nesting_position() {
+        let effect = Effect::Sequence(vec![
+            Effect::EffectIf {
+                condition: crate::dsl::EffectRequirement::DuringEncounter,
+                effect: Box::new(Effect::OfferPaidChoice {
+                    side: Side::Runner,
+                    cost: crate::dsl::Cost::Credits(1),
+                    if_paid: Box::new(Effect::GainCredits(Side::Runner, 1)),
+                    if_declined: Box::new(Effect::EndTheRun),
+                }),
+            },
+            Effect::PresentChoice {
+                chooser: Side::Corp,
+                options: vec![
+                    Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) },
+                    Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(Effect::DrawCards(Side::Runner, 1)) },
+                ],
+            },
+        ]);
+
+        let mut names = Vec::new();
+        effect.for_each_effect(&mut |e| names.push(e.variant_name()));
+        assert_eq!(
+            names,
+            [
+                "Sequence",
+                "EffectIf",
+                "OfferPaidChoice",
+                "GainCredits",
+                "EndTheRun",
+                "PresentChoice",
+                "Trace",
+                "GiveTags",
+                "SetAccessReplacement",
+                "DrawCards",
+            ]
+        );
     }
 }

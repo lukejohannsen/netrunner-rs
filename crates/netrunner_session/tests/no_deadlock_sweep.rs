@@ -22,7 +22,8 @@ use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks;
 use netrunner_core::rules::{GameState, MaskedZone, PublicAccessPhase, Side};
-use netrunner_session::{Seat, Session, SessionStep};
+use netrunner_session::coverage::sample_pool_card_ids;
+use netrunner_session::{Coverage, Seat, Session, SessionStep, StallReason};
 
 /// How many seeds the sweep walks, default 32 — sized for the inner loop,
 /// matching `system_gateway_delivery::sweep_seed_count`. Raise it for a deep
@@ -35,10 +36,61 @@ fn sweep_seed_count() -> u64 {
     std::env::var("NETRUNNER_SWEEP_SEEDS").ok().and_then(|value| value.parse().ok()).unwrap_or(32)
 }
 
+/// Which agents sit where. Three seatings, each for a reason:
+///
+/// - the two heuristic-vs-random pairings are the ones that have found
+///   every deadlock so far — a heuristic side plays purposefully enough to
+///   reach late-game board states;
+/// - random-vs-random is the only seating that reaches the run and
+///   encounter machinery at all. `HeuristicAgent`'s evaluator has no run
+///   term and scores an unrezzed install at zero, so a heuristic Runner
+///   never runs and a heuristic Corp never installs ICE (ROADMAP Phase 2
+///   §5) — for as long as this sweep had only the first two seatings, no
+///   game in it ever produced a single `GameEvent::IceEncountered`. The
+///   rules-coverage gate below is what made that visible.
+#[derive(Clone, Copy, Debug)]
+enum Seating {
+    HeuristicCorpRandomRunner,
+    RandomCorpHeuristicRunner,
+    RandomBoth,
+}
+
+impl Seating {
+    const ALL: [Seating; 3] = [Seating::HeuristicCorpRandomRunner, Seating::RandomCorpHeuristicRunner, Seating::RandomBoth];
+
+    fn agents(self, seed: u64) -> (Box<dyn BotAgent>, Box<dyn BotAgent>) {
+        match self {
+            Seating::HeuristicCorpRandomRunner => {
+                (Box::new(HeuristicAgent::new(Side::Corp, seed)), Box::new(RandomAgent::new(seed)))
+            }
+            Seating::RandomCorpHeuristicRunner => {
+                (Box::new(RandomAgent::new(seed)), Box::new(HeuristicAgent::new(Side::Runner, seed)))
+            }
+            Seating::RandomBoth => (Box::new(RandomAgent::new(seed)), Box::new(RandomAgent::new(seed.wrapping_add(1)))),
+        }
+    }
+
+    /// Two uniformly random players can legitimately take more than
+    /// `MAX_STEPS` to finish (measured: 1 game in 192), so for that seating
+    /// budget exhaustion is slow play, not a stall. The invariant this
+    /// sweep pins — a named actor always has a legal action — is
+    /// `StallReason::NoLegalActions`, which no seating may ever produce.
+    fn tolerates_budget_exhaustion(self) -> bool {
+        matches!(self, Seating::RandomBoth)
+    }
+}
+
+/// Also the view-path **rules-coverage gate**: every `PlayerAction`
+/// variant, every sample-deck card and every load-bearing `GameEvent` must
+/// be reached at least once across the sweep (`Coverage::gate_failures`).
+/// Reachability alone — "the game ended" — is what let `InstallProgram`
+/// stay silently unreachable for months; this asks the stronger question
+/// on the same games, for free.
 #[test]
 fn view_based_agents_never_reach_a_state_with_no_legal_action() {
     let matchups = decks::matchups();
     assert!(!matchups.is_empty(), "the embedded sample decks should yield at least one matchup");
+    let mut coverage = Coverage::default();
 
     for seed in 0..sweep_seed_count() {
         // Rotating by seed rather than nesting a second loop keeps the
@@ -47,38 +99,42 @@ fn view_based_agents_never_reach_a_state_with_no_legal_action() {
         let (corp_deck, runner_deck) = &matchups[seed as usize % matchups.len()];
         let matchup = format!("{} vs {}", corp_deck.id, runner_deck.id);
 
-        for runner_is_random in [false, true] {
+        for seating in Seating::ALL {
             let mut registry = CardRegistry::new();
             register_playable_cards(&mut registry);
             let (state, _events) =
                 GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed)
                     .expect("sample decks are legal by construction");
 
-            // Both seatings, since which side holds the random agent
-            // changes which decisions get explored.
-            let (corp, runner): (Box<dyn netrunner_bots::BotAgent>, Box<dyn netrunner_bots::BotAgent>) =
-                if runner_is_random {
-                    (Box::new(HeuristicAgent::new(Side::Corp, seed)), Box::new(RandomAgent::new(seed)))
-                } else {
-                    (Box::new(RandomAgent::new(seed)), Box::new(HeuristicAgent::new(Side::Runner, seed)))
-                };
-
+            let (corp, runner) = seating.agents(seed);
             let mut session = Session::new(state, registry, Seat::Agent(corp), Seat::Agent(runner));
-            match session.run() {
+            let outcome = session.run();
+            match &outcome {
                 SessionStep::Ended { .. } => {}
+                SessionStep::Stalled(StallReason::BudgetExhausted) if seating.tolerates_budget_exhaustion() => {}
                 SessionStep::Stalled(reason) => panic!(
-                    "seed {seed} ({matchup}, runner_is_random={runner_is_random}) stalled: {reason:?} \
-                     after {} actions",
+                    "seed {seed} ({matchup}, {seating:?}) stalled: {reason:?} after {} actions",
                     session.steps()
                 ),
-                other => panic!(
-                    "seed {seed} ({matchup}, runner_is_random={runner_is_random}): \
-                     an all-Agent session should never yield {other:?}"
-                ),
+                other => {
+                    panic!("seed {seed} ({matchup}, {seating:?}): an all-Agent session should never yield {other:?}")
+                }
             }
             assert!(!session.history().is_empty(), "seed {seed} ({matchup}): recorded no actions");
+            coverage.absorb_match(session.history(), session.registry(), &outcome);
         }
     }
+
+    let mut registry = CardRegistry::new();
+    register_playable_cards(&mut registry);
+    let failures = coverage.gate_failures(&sample_pool_card_ids(&registry));
+    assert!(
+        failures.is_empty(),
+        "rules never reached across {} view-path games (rerun with NETRUNNER_SWEEP_SEEDS=256 before \
+         allowlisting anything):\n  {}",
+        coverage.games,
+        failures.join("\n  ")
+    );
 }
 
 /// The specific position that motivated this sweep, pinned by seed so a

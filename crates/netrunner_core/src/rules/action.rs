@@ -442,3 +442,181 @@ pub enum PlayerAction {
     /// is parked (or a different variant is).
     ChooseServerForPendingDecision { server: ServerId },
 }
+
+impl PlayerAction {
+    /// Every variant's name, in declaration order.
+    ///
+    /// Exists for the rules-coverage gate in `netrunner_session`, which asks
+    /// "was every kind of action applied at least once across the sweep?" —
+    /// the question that would have caught `InstallProgram` being silently
+    /// unreachable for months (ROADMAP Phase 1 §3). A `const` rather than a
+    /// derive so the engine keeps its three dependencies; kept honest by
+    /// `variant_names_match_the_enum` below, which fails the moment a
+    /// variant is added here or in the enum but not both.
+    pub const VARIANT_NAMES: &'static [&'static str] = &[
+        "GainCreditClick",
+        "DrawCardClick",
+        "InstallCard",
+        "RezIce",
+        "InitiateRun",
+        "ContinueRun",
+        "JackOut",
+        "CompleteRun",
+        "PlayEvent",
+        "PlayOperation",
+        "InstallHardware",
+        "InstallProgram",
+        "InstallResource",
+        "InstallProgramOnIce",
+        "BreakSubroutine",
+        "BreakSubroutineWithClick",
+        "EndTurn",
+        "DiscardCard",
+        "KeepHand",
+        "TakeMulligan",
+        "ActivateAbility",
+        "AdvanceCard",
+        "ScoreAgenda",
+        "RemoveTag",
+        "PurgeVirusCounters",
+        "ChooseTriggerToResolve",
+        "TrashResource",
+        "SelectCardToAccess",
+        "StealAgenda",
+        "TrashAccessedCard",
+        "PassAccessedCard",
+        "PayAccessTrigger",
+        "DeclineAccessTrigger",
+        "PassPriority",
+        "SubmitCorpTraceBid",
+        "SubmitRunnerTraceBid",
+        "AcceptPendingPaidChoice",
+        "DeclinePendingPaidChoice",
+        "ResolvePendingChoice",
+        "ToggleCardSelection",
+        "ConfirmCardSelection",
+        "ChooseServerForPendingDecision",
+    ];
+
+    /// This action's variant name — `"InstallProgram"`, never the payload.
+    /// Read off the `Debug` rendering so a new variant needs no arm here;
+    /// the same trick `netrunner_session`'s fog-of-war sweep uses to cover
+    /// every variant without a 40-arm match.
+    pub fn variant_name(&self) -> String {
+        let rendered = format!("{self:?}");
+        rendered.split(['(', '{', ' ']).next().unwrap_or(&rendered).to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rules::state::InstallId;
+
+    /// One instance per variant. Adding a variant to the enum without
+    /// adding it here is a non-exhaustive-match compile error via the
+    /// `match` below; adding it here without adding it to `VARIANT_NAMES`
+    /// fails the assertion. Either way the const cannot silently drift.
+    fn one_of_each() -> Vec<PlayerAction> {
+        let card = || CardId("card".to_string());
+        let install = InstallId::PLACEHOLDER;
+        let all = vec![
+            PlayerAction::GainCreditClick { side: Side::Corp },
+            PlayerAction::DrawCardClick,
+            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Hq, slot: InstallSlot::Ice },
+            PlayerAction::RezIce { ice: install },
+            PlayerAction::InitiateRun { server: ServerId::Hq },
+            PlayerAction::ContinueRun,
+            PlayerAction::JackOut,
+            PlayerAction::CompleteRun,
+            PlayerAction::PlayEvent { card_id: card() },
+            PlayerAction::PlayOperation { card_id: card() },
+            PlayerAction::InstallHardware { card_id: card() },
+            PlayerAction::InstallProgram { card_id: card() },
+            PlayerAction::InstallResource { card_id: card() },
+            PlayerAction::InstallProgramOnIce { card_id: card(), host: install },
+            PlayerAction::BreakSubroutine { ice_id: card(), subroutine_index: 0 },
+            PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },
+            PlayerAction::EndTurn,
+            PlayerAction::DiscardCard { card_id: card() },
+            PlayerAction::KeepHand,
+            PlayerAction::TakeMulligan,
+            PlayerAction::ActivateAbility { target: install, ability_index: 0 },
+            PlayerAction::AdvanceCard { target: install },
+            PlayerAction::ScoreAgenda { target: install },
+            PlayerAction::RemoveTag,
+            PlayerAction::PurgeVirusCounters,
+            PlayerAction::ChooseTriggerToResolve { card_id: card() },
+            PlayerAction::TrashResource { target: install },
+            PlayerAction::SelectCardToAccess { card_id: card() },
+            PlayerAction::StealAgenda { card_id: card() },
+            PlayerAction::TrashAccessedCard { card_id: card() },
+            PlayerAction::PassAccessedCard { card_id: card() },
+            PlayerAction::PayAccessTrigger { card_id: card() },
+            PlayerAction::DeclineAccessTrigger { card_id: card() },
+            PlayerAction::PassPriority { side: Side::Corp },
+            PlayerAction::SubmitCorpTraceBid { amount: 0 },
+            PlayerAction::SubmitRunnerTraceBid { amount: 0 },
+            PlayerAction::AcceptPendingPaidChoice { cost_option_index: None },
+            PlayerAction::DeclinePendingPaidChoice,
+            PlayerAction::ResolvePendingChoice { option_index: 0 },
+            PlayerAction::ToggleCardSelection { position: 0 },
+            PlayerAction::ConfirmCardSelection,
+            PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq },
+        ];
+        // The exhaustiveness pressure: a new variant fails to compile here.
+        for action in &all {
+            match action {
+                PlayerAction::GainCreditClick { .. }
+                | PlayerAction::DrawCardClick
+                | PlayerAction::InstallCard { .. }
+                | PlayerAction::RezIce { .. }
+                | PlayerAction::InitiateRun { .. }
+                | PlayerAction::ContinueRun
+                | PlayerAction::JackOut
+                | PlayerAction::CompleteRun
+                | PlayerAction::PlayEvent { .. }
+                | PlayerAction::PlayOperation { .. }
+                | PlayerAction::InstallHardware { .. }
+                | PlayerAction::InstallProgram { .. }
+                | PlayerAction::InstallResource { .. }
+                | PlayerAction::InstallProgramOnIce { .. }
+                | PlayerAction::BreakSubroutine { .. }
+                | PlayerAction::BreakSubroutineWithClick { .. }
+                | PlayerAction::EndTurn
+                | PlayerAction::DiscardCard { .. }
+                | PlayerAction::KeepHand
+                | PlayerAction::TakeMulligan
+                | PlayerAction::ActivateAbility { .. }
+                | PlayerAction::AdvanceCard { .. }
+                | PlayerAction::ScoreAgenda { .. }
+                | PlayerAction::RemoveTag
+                | PlayerAction::PurgeVirusCounters
+                | PlayerAction::ChooseTriggerToResolve { .. }
+                | PlayerAction::TrashResource { .. }
+                | PlayerAction::SelectCardToAccess { .. }
+                | PlayerAction::StealAgenda { .. }
+                | PlayerAction::TrashAccessedCard { .. }
+                | PlayerAction::PassAccessedCard { .. }
+                | PlayerAction::PayAccessTrigger { .. }
+                | PlayerAction::DeclineAccessTrigger { .. }
+                | PlayerAction::PassPriority { .. }
+                | PlayerAction::SubmitCorpTraceBid { .. }
+                | PlayerAction::SubmitRunnerTraceBid { .. }
+                | PlayerAction::AcceptPendingPaidChoice { .. }
+                | PlayerAction::DeclinePendingPaidChoice
+                | PlayerAction::ResolvePendingChoice { .. }
+                | PlayerAction::ToggleCardSelection { .. }
+                | PlayerAction::ConfirmCardSelection
+                | PlayerAction::ChooseServerForPendingDecision { .. } => {}
+            }
+        }
+        all
+    }
+
+    #[test]
+    fn variant_names_match_the_enum() {
+        let derived: Vec<String> = one_of_each().iter().map(PlayerAction::variant_name).collect();
+        assert_eq!(derived, PlayerAction::VARIANT_NAMES, "VARIANT_NAMES must list every variant, in declaration order");
+    }
+}

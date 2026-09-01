@@ -10,10 +10,12 @@
 //! single definition of what a match *is*. See `session` for why the loop
 //! is shaped as a step function rather than a blocking `run`.
 
+pub mod coverage;
 pub mod history;
 pub mod outcome;
 pub mod session;
 
+pub use coverage::Coverage;
 pub use history::{HistoryEntry, MatchHistory};
 pub use outcome::{classify_end_reason, GameEndReason};
 pub use session::{Seat, Session, SessionStep, StallReason, SubmitError, MAX_STEPS};

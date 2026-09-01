@@ -301,8 +301,9 @@ mod tests {
     use crate::decks;
 
     fn setup() -> (GameState, CardRegistry) {
-        let registry = decks::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = decks::kate_vs_hb_decks();
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck").to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck").to_deck();
         let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 1).expect("legal decks set up cleanly");
         (state, registry)
     }

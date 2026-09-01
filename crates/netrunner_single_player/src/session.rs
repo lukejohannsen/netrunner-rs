@@ -49,9 +49,21 @@ impl SinglePlayerSession {
     ///
     /// See `netrunner_session::Session::step` for the turn-numbering
     /// convention the history follows.
-    pub fn run(mut self) -> (GameState, MatchHistory) {
-        // Ends on `Ended`, or on a stall the session already characterized.
-        while let SessionStep::Awaiting { side, .. } = self.session.step() {
+    pub fn run(self) -> (GameState, MatchHistory) {
+        let (state, history, _outcome) = self.run_with_outcome();
+        (state, history)
+    }
+
+    /// [`run`], plus the `SessionStep` the match ended on — `Ended` with
+    /// its winner and reason, or the `Stalled` reason the session
+    /// characterized. `run` discards it because its callers read the phase
+    /// off the final state; the rules-coverage report needs the reason
+    /// itself, and re-deriving "why did this stall" from a final state is
+    /// exactly the conflation `StallReason` was introduced to end.
+    pub fn run_with_outcome(mut self) -> (GameState, MatchHistory, SessionStep) {
+        let outcome = loop {
+            let step = self.session.step();
+            let SessionStep::Awaiting { side, .. } = step else { break step };
             let state = self.session.state();
             let registry = self.session.registry();
             let mask = get_action_mask(state, registry);
@@ -69,7 +81,8 @@ impl SinglePlayerSession {
             self.session.submit(action).unwrap_or_else(|error| {
                 panic!("Agent for {side:?} chose a mask-legal index {index} that the engine rejected: {error:?}")
             });
-        }
-        self.session.into_parts()
+        };
+        let (state, history) = self.session.into_parts();
+        (state, history, outcome)
     }
 }
