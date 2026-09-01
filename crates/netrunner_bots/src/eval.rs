@@ -1,5 +1,5 @@
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardType, Cost, Effect, IceType, SubroutineBreakCount, Trigger};
+use netrunner_core::dsl::{CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount, Trigger};
 use netrunner_core::rules::{
     current_actor, GamePhase, GameState, InstalledCard, InstalledRunnerCard, RunIce, RunPhase, RunState, Side,
     SubroutineStatus,
@@ -86,6 +86,22 @@ const UNRESOLVED_DECISION_WEIGHT: f64 = 0.5;
 /// of shortfall and comes out ahead; a pump past the ICE's strength is
 /// worth nothing.
 const STRENGTH_SHORTFALL_WEIGHT: f64 = 0.9;
+/// Each credit the Runner is short of the cheapest breaker in grip that
+/// would cover an ICE subtype the rig does not (`breaker_savings_shortfall`).
+/// A one-ply evaluator cannot see the install it is saving for, and once
+/// the run term stopped paying for runs into unbreakable ICE the Runner
+/// simply ran open servers instead (+0.6 beats a credit's +0.4 every
+/// click): `ProgramInstalled` stayed at 66 across 96 heuristic-vs-heuristic
+/// games. This is a penalty on the *shortfall*, not a bonus on credits
+/// held, and the difference is the whole design: a bonus would vanish the
+/// moment the breaker is installed and fight the install it exists to
+/// enable (Cleaver's +1.3 would lose 3 × the weight). The shortfall is zero
+/// once the card is affordable, so installing keeps its full margin, while
+/// every click that closes the gap is worth 0.4 + 0.3 = +0.7 — ahead of an
+/// open-server run — and every credit spent elsewhere while short costs
+/// 0.3 more. (Carmen's install is +0.5, already below a run at +0.6; a
+/// pre-existing weight interaction this term does not touch.)
+const SAVINGS_SHORTFALL_WEIGHT: f64 = 0.3;
 
 /// A rough static evaluation of `state` from `side`'s perspective: positive
 /// favors `side`, negative favors the opponent. Shared by `HeuristicAgent`'s
@@ -124,6 +140,7 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
             score += state.runner.rig.len() as f64 * BOARD_PRESENCE_WEIGHT;
             score += state.runner.memory_units.0 as f64 * MEMORY_WEIGHT;
             score += breaker_coverage(state, registry) as f64 * BREAKER_COVERAGE_WEIGHT;
+            score -= breaker_savings_shortfall(state, registry) as f64 * SAVINGS_SHORTFALL_WEIGHT;
             if let Some(run) = &state.active_run {
                 if run_is_breakable(state, run, registry) {
                     score += ACTIVE_RUN_WEIGHT;
@@ -271,28 +288,62 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry) -> f64
 /// abilities contain `Effect::BreakSubroutines` covers its `restrict_to`
 /// subtype, or all three when unrestricted (an AI breaker).
 fn breaker_coverage(state: &GameState, registry: &CardRegistry) -> usize {
-    // Indexed Barrier, Code Gate, Sentry — `IceType` is not `Hash`, and
-    // three flags say it more plainly than a set would anyway.
+    rig_coverage(state, registry).iter().filter(|c| **c).count()
+}
+
+/// The subtypes the rig can break, as `covers` flags OR-ed over every rig
+/// card.
+fn rig_coverage(state: &GameState, registry: &CardRegistry) -> [bool; 3] {
+    let mut covered = [false; 3];
+    for card in &state.runner.rig {
+        let Some(def) = registry.get(&card.card) else { continue };
+        for (slot, flag) in covers(def).into_iter().enumerate() {
+            covered[slot] |= flag;
+        }
+    }
+    covered
+}
+
+/// Which ICE subtypes `def` can break — indexed Barrier, Code Gate,
+/// Sentry. `IceType` is not `Hash`, and three flags say it more plainly
+/// than a set would anyway.
+fn covers(def: &CardDefinition) -> [bool; 3] {
     let mut covered = [false; 3];
     let slot = |subtype: IceType| match subtype {
         IceType::Barrier => 0,
         IceType::CodeGate => 1,
         IceType::Sentry => 2,
     };
-    for card in &state.runner.rig {
-        let Some(def) = registry.get(&card.card) else { continue };
-        for ability in &def.abilities {
-            ability.effect.for_each_effect(&mut |effect| {
-                if let Effect::BreakSubroutines { restrict_to, .. } = effect {
-                    match restrict_to {
-                        Some(subtype) => covered[slot(*subtype)] = true,
-                        None => covered = [true; 3],
-                    }
+    for ability in &def.abilities {
+        ability.effect.for_each_effect(&mut |effect| {
+            if let Effect::BreakSubroutines { restrict_to, .. } = effect {
+                match restrict_to {
+                    Some(subtype) => covered[slot(*subtype)] = true,
+                    None => covered = [true; 3],
                 }
-            });
-        }
+            }
+        });
     }
-    covered.iter().filter(|c| **c).count()
+    covered
+}
+
+/// Credits the Runner is short of the cheapest grip breaker worth
+/// installing: one that covers a subtype the rig cannot break and fits in
+/// free memory. Zero with no such card, or once it is affordable. Printed
+/// cost, ignoring install discounts — over-estimating the target only
+/// makes the Runner save one click longer.
+fn breaker_savings_shortfall(state: &GameState, registry: &CardRegistry) -> u32 {
+    let rig = rig_coverage(state, registry);
+    let target = state
+        .runner
+        .grip
+        .iter()
+        .filter_map(|card| registry.get(card))
+        .filter(|def| def.memory_cost.unwrap_or(0) <= state.runner.memory_units.0)
+        .filter(|def| covers(def).iter().zip(rig).any(|(grip, rig)| *grip && !rig))
+        .map(|def| def.cost)
+        .min();
+    target.map_or(0, |cost| cost.saturating_sub(state.runner.resources.credits.0))
 }
 
 #[cfg(test)]
@@ -709,5 +760,80 @@ mod tests {
         let mayfly = |strength| vec![InstalledRunnerCard { base_strength: strength, ..rig_card("mayfly") }];
         assert_eq!(run_term(mayfly(1), 0, sentry(), 0, &registry), ACTIVE_RUN_WEIGHT, "a free AI break costs nothing");
         assert_eq!(run_term(mayfly(0), 9, sentry(), 0, &registry), 0.0, "one point short and no pump ability");
+    }
+
+    /// A breaker with a printed install cost and memory cost, for the
+    /// savings term.
+    fn costed_breaker(id: &str, restrict_to: Option<IceType>, cost: u32) -> CardDefinition {
+        CardDefinition { cost, memory_cost: Some(1), ..breaker(id, restrict_to) }
+    }
+
+    /// The whole point of the savings term: with an unaffordable breaker
+    /// in grip, a credit click beats a run on an open server; once the
+    /// breaker is affordable the penalty is gone and credits are worth
+    /// only their usual weight.
+    #[test]
+    fn a_credit_click_beats_an_open_run_while_a_grip_breaker_is_unaffordable() {
+        use netrunner_core::rules::{MemoryUnits, ServerId};
+        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3)]);
+        let saving = |credits: u32| {
+            let mut state = GameState::new(0);
+            state.runner.resources.credits = Credits(credits);
+            state.runner.memory_units = MemoryUnits(4);
+            state.runner.grip = vec![CardId("cleaver".to_string())];
+            state
+        };
+        let clicked = saving(2);
+        let mut ran = saving(1);
+        ran.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
+        assert!(evaluate_state(&clicked, Side::Runner, &registry) > evaluate_state(&ran, Side::Runner, &registry));
+
+        let affordable = evaluate_state(&saving(3), Side::Runner, &registry);
+        let one_more = evaluate_state(&saving(4), Side::Runner, &registry);
+        assert!(((one_more - affordable) - OWN_CREDIT_WEIGHT).abs() < 1e-9, "no penalty left to close");
+        let short_by_one = evaluate_state(&saving(2), Side::Runner, &registry);
+        assert!(
+            ((affordable - short_by_one) - (OWN_CREDIT_WEIGHT + SAVINGS_SHORTFALL_WEIGHT)).abs() < 1e-9,
+            "the last credit of the gap is worth its weight plus the shortfall"
+        );
+    }
+
+    /// Nothing to save for: a grip breaker for a subtype the rig already
+    /// covers, or one that does not fit in free memory.
+    #[test]
+    fn a_covered_subtype_or_a_breaker_that_does_not_fit_in_memory_is_not_saved_for() {
+        use netrunner_core::rules::MemoryUnits;
+        let registry = CardRegistry::from_cards(vec![
+            costed_breaker("cleaver", Some(IceType::Barrier), 3),
+            costed_breaker("corroder", Some(IceType::Barrier), 2),
+        ]);
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = Credits(0);
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("corroder".to_string())];
+        assert_eq!(breaker_savings_shortfall(&state, &registry), 2);
+        state.runner.rig = vec![rig_card("cleaver")];
+        assert_eq!(breaker_savings_shortfall(&state, &registry), 0, "Barrier is already covered");
+        state.runner.rig.clear();
+        state.runner.memory_units = MemoryUnits(0);
+        assert_eq!(breaker_savings_shortfall(&state, &registry), 0, "no memory to install it into");
+    }
+
+    /// The reason this is a penalty on the shortfall and not a bonus on
+    /// credits held: installing the breaker saved for must still beat
+    /// clicking once the credits are there.
+    #[test]
+    fn installing_the_breaker_saved_for_still_beats_clicking() {
+        use netrunner_core::rules::MemoryUnits;
+        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3)]);
+        let mut clicked = GameState::new(0);
+        clicked.runner.resources.credits = Credits(4);
+        clicked.runner.memory_units = MemoryUnits(4);
+        clicked.runner.grip = vec![CardId("cleaver".to_string())];
+        let mut installed = GameState::new(0);
+        installed.runner.resources.credits = Credits(0);
+        installed.runner.memory_units = MemoryUnits(3);
+        installed.runner.rig = vec![rig_card("cleaver")];
+        assert!(evaluate_state(&installed, Side::Runner, &registry) > evaluate_state(&clicked, Side::Runner, &registry));
     }
 }

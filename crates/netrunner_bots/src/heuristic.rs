@@ -170,6 +170,41 @@ mod tests {
         assert!(matches!(chosen, PlayerAction::InitiateRun { .. }), "unrezzed ICE is no reason not to run: {chosen:?}");
     }
 
+    /// With a breaker in grip it cannot yet afford and nothing but open
+    /// servers to run, the Runner clicks for the credit rather than
+    /// running (ROADMAP Phase 2 §5's savings item).
+    #[test]
+    fn saves_for_a_breaker_in_grip_instead_of_running_an_open_server() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineBreakCount, Trigger};
+        use netrunner_core::dsl::AbilityDef;
+        let mut registry = CardRegistry::new();
+        let mut cleaver = blank_card("cleaver", CardType::Program);
+        cleaver.side = Side::Runner;
+        cleaver.cost = 3;
+        cleaver.memory_cost = Some(1);
+        cleaver.abilities = vec![AbilityDef {
+            trigger: Trigger::Paid,
+            cost: None,
+            requirement: None,
+            effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(IceType::Barrier) },
+            cost_discount_if: None,
+        }];
+        registry.insert(cleaver);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(1), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.memory_units = MemoryUnits(4);
+        state.runner.grip = vec![CardId("cleaver".to_string())];
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(view.legal_actions.iter().any(|a| matches!(a, PlayerAction::InitiateRun { .. })));
+        assert!(view.legal_actions.contains(&PlayerAction::GainCreditClick { side: Side::Runner }));
+
+        let chosen = HeuristicAgent::new(Side::Runner, 3).select_action(&view, &registry);
+        assert_eq!(chosen, PlayerAction::GainCreditClick { side: Side::Runner }, "should save for Cleaver");
+    }
+
     #[test]
     fn always_returns_a_member_of_legal_actions() {
         let mut registry = CardRegistry::new();
