@@ -93,6 +93,14 @@ pub enum GameEvent {
     /// a log line reading "Docklands Pass, then Docklands Pass" says
     /// nothing.
     TriggerOrderChosen { chooser: Side, card: CardId, trigger: crate::dsl::Trigger },
+    /// One of `card`'s `TriggeredEffect`s for `trigger` is firing: its
+    /// requirement passed, and its effects' events follow this one.
+    /// Emitted by `dispatcher::fire_one` for every trigger the game
+    /// dispatches — the exact record the coverage harness counts as
+    /// `triggers_fired`, replacing an inference from the event that
+    /// would have offered the trigger, which could not see a failed
+    /// requirement or a run that had ended (ROADMAP Rules Audit §0).
+    TriggerFired { card: CardId, trigger: crate::dsl::Trigger },
     /// `PlayerAction::PurgeVirusCounters` zeroed the virus counters on
     /// `cards`. Empty when the Corp purged an empty board, which is legal —
     /// the event still fires, since the action still happened and still

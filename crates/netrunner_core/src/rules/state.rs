@@ -883,7 +883,7 @@ pub struct DeferredTrigger {
     /// The card whose trigger is owed.
     pub card: CardId,
     pub trigger: Trigger,
-    /// Set only for the `ability::process_card_triggers_targeting` case,
+    /// `ability::fire_card_triggers`'s `target` — set only in the case
     /// where the reacting card and the card its effect acts on differ —
     /// e.g. Cookbook reacting to a just-installed virus by placing a
     /// counter on *that* program. `None` is the ordinary "acts on itself"

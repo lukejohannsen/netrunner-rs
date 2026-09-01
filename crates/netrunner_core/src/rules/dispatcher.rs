@@ -40,15 +40,15 @@ pub fn dispatch_event(
 ) -> Result<Vec<GameEvent>, RulesError> {
     match event {
         GameEvent::EventPlayed { card, .. } => {
-            ability::process_card_triggers(state, registry, card, Trigger::OnPlay, Some(event))
+            ability::fire_card_triggers(state, registry, card, Trigger::OnPlay, None, Some(event), true)
         }
 
         GameEvent::OperationPlayed { card, .. } => {
-            let mut events = ability::process_card_triggers(state, registry, card, Trigger::OnPlay, Some(event))?;
+            let mut events = ability::fire_card_triggers(state, registry, card, Trigger::OnPlay, None, Some(event), true)?;
             let is_transaction =
                 registry.get(card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Transaction));
             if is_transaction && let Some(identity) = state.corp.identity.clone() {
-                events.extend(ability::process_card_triggers(state, registry, &identity, Trigger::OnTransactionPlayed, Some(event))?);
+                events.extend(ability::fire_card_triggers(state, registry, &identity, Trigger::OnTransactionPlayed, None, Some(event), true)?);
             }
             Ok(events)
         }
@@ -60,11 +60,11 @@ pub fn dispatch_event(
             // reacted to a Program install, via `OnVirusInstalled`) — e.g.
             // Botulus/Tranquilizer/Fermenter's "when you install this
             // program... place 1 virus counter on this program."
-            let mut events = ability::process_card_triggers(state, registry, card, Trigger::OnInstall, Some(event))?;
+            let mut events = ability::fire_card_triggers(state, registry, card, Trigger::OnInstall, None, Some(event), true)?;
             let is_virus = registry.get(card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Virus));
             if is_virus {
                 if let Some(identity) = state.runner.identity.clone() {
-                    events.extend(ability::process_card_triggers(state, registry, &identity, Trigger::OnVirusInstalled, Some(event))?);
+                    events.extend(ability::fire_card_triggers(state, registry, &identity, Trigger::OnVirusInstalled, None, Some(event), true)?);
                 }
                 // Every OTHER rig card also gets a chance to react to a
                 // virus install, but — unlike the identity reaction above
@@ -94,7 +94,7 @@ pub fn dispatch_event(
                 Side::Runner => state.runner.identity.clone(),
             };
             match identity {
-                Some(identity) => ability::process_card_triggers(state, registry, &identity, Trigger::OnInstall, Some(event)),
+                Some(identity) => ability::fire_card_triggers(state, registry, &identity, Trigger::OnInstall, None, Some(event), true),
                 None => Ok(Vec::new()),
             }
         }
@@ -107,15 +107,15 @@ pub fn dispatch_event(
         // mirroring the "fire on card + identity" convention already used
         // by `AgendaScored`/`CardTrashedFromAccess`.
         GameEvent::ResourceInstalled { card, .. } => {
-            let mut events = ability::process_card_triggers(state, registry, card, Trigger::OnInstall, Some(event))?;
+            let mut events = ability::fire_card_triggers(state, registry, card, Trigger::OnInstall, None, Some(event), true)?;
             if let Some(identity) = state.runner.identity.clone() {
-                events.extend(ability::process_card_triggers(state, registry, &identity, Trigger::OnInstall, Some(event))?);
+                events.extend(ability::fire_card_triggers(state, registry, &identity, Trigger::OnInstall, None, Some(event), true)?);
             }
             Ok(events)
         }
 
         GameEvent::CardAccessed { card, .. } => {
-            ability::process_card_triggers(state, registry, card, Trigger::OnAccessed, Some(event))
+            ability::fire_card_triggers(state, registry, card, Trigger::OnAccessed, None, Some(event), true)
         }
 
         GameEvent::CardTrashedFromAccess { card, .. } => {
@@ -125,17 +125,17 @@ pub fn dispatch_event(
             // below, e.g. René "Loup" Arcemont's "the first time each turn
             // you trash a card you are accessing, gain 1 credit and draw 1
             // card."
-            let mut events = ability::process_card_triggers(state, registry, card, Trigger::OnTrashedFromAccess, Some(event))?;
+            let mut events = ability::fire_card_triggers(state, registry, card, Trigger::OnTrashedFromAccess, None, Some(event), true)?;
             if let Some(identity) = state.runner.identity.clone() {
-                events.extend(ability::process_card_triggers(state, registry, &identity, Trigger::OnTrashedFromAccess, Some(event))?);
+                events.extend(ability::fire_card_triggers(state, registry, &identity, Trigger::OnTrashedFromAccess, None, Some(event), true)?);
             }
             Ok(events)
         }
 
         GameEvent::AgendaScored { card, server, .. } => {
-            let mut events = ability::process_card_triggers(state, registry, card, Trigger::OnAgendaScored, Some(event))?;
+            let mut events = ability::fire_card_triggers(state, registry, card, Trigger::OnAgendaScored, None, Some(event), true)?;
             if let Some(identity) = state.corp.identity.clone() {
-                events.extend(ability::process_card_triggers(state, registry, &identity, Trigger::OnAgendaScored, Some(event))?);
+                events.extend(ability::fire_card_triggers(state, registry, &identity, Trigger::OnAgendaScored, None, Some(event), true)?);
             }
             // Every other rezzed Root-slot install on the scored agenda's
             // own server also gets a chance to react — e.g. Malapert Data
@@ -168,9 +168,9 @@ pub fn dispatch_event(
             // addition to the Corp identity's — mirrors `AgendaScored`'s
             // own "also fire the card itself" shape, which `AgendaStolen`
             // was previously missing.
-            let mut events = ability::process_card_triggers(state, registry, card, Trigger::OnAgendaStolen, Some(event))?;
+            let mut events = ability::fire_card_triggers(state, registry, card, Trigger::OnAgendaStolen, None, Some(event), true)?;
             if let Some(identity) = state.corp.identity.clone() {
-                events.extend(ability::process_card_triggers(state, registry, &identity, Trigger::OnAgendaStolen, Some(event))?);
+                events.extend(ability::fire_card_triggers(state, registry, &identity, Trigger::OnAgendaStolen, None, Some(event), true)?);
             }
             // Runner-side widening (M5): the Runner's own identity and rig
             // react to their own steal — e.g. Tāo Salonga: Telepresence
@@ -195,12 +195,12 @@ pub fn dispatch_event(
         }
 
         GameEvent::RunInitiated { .. } => match state.runner.identity.clone() {
-            Some(identity) => ability::process_card_triggers(state, registry, &identity, Trigger::OnRunStart, Some(event)),
+            Some(identity) => ability::fire_card_triggers(state, registry, &identity, Trigger::OnRunStart, None, Some(event), true),
             None => Ok(Vec::new()),
         },
 
         GameEvent::IceEncountered { card_id, .. } => {
-            ability::process_card_triggers(state, registry, card_id, Trigger::OnEncounter, Some(event))
+            ability::fire_card_triggers(state, registry, card_id, Trigger::OnEncounter, None, Some(event), true)
         }
 
         GameEvent::RunSucceeded { server } => {
@@ -277,11 +277,11 @@ pub fn dispatch_event(
         }
 
         GameEvent::IceRezzed { card, .. } => {
-            ability::process_card_triggers(state, registry, card, Trigger::OnRez, Some(event))
+            ability::fire_card_triggers(state, registry, card, Trigger::OnRez, None, Some(event), true)
         }
 
         GameEvent::CardAdvanced { .. } => match state.corp.identity.clone() {
-            Some(identity) => ability::process_card_triggers(state, registry, &identity, Trigger::OnAdvance, Some(event)),
+            Some(identity) => ability::fire_card_triggers(state, registry, &identity, Trigger::OnAdvance, None, Some(event), true),
             None => Ok(Vec::new()),
         },
 
@@ -335,13 +335,13 @@ pub fn dispatch_event(
                 Side::Runner => state.runner.identity.clone(),
             };
             match identity {
-                Some(identity) => ability::process_card_triggers(state, registry, &identity, Trigger::OnDiscardPhaseEnd, Some(event)),
+                Some(identity) => ability::fire_card_triggers(state, registry, &identity, Trigger::OnDiscardPhaseEnd, None, Some(event), true),
                 None => Ok(Vec::new()),
             }
         }
 
         GameEvent::TagsGiven { side: Side::Runner, .. } => match state.corp.identity.clone() {
-            Some(identity) => ability::process_card_triggers(state, registry, &identity, Trigger::OnTagsGiven, Some(event)),
+            Some(identity) => ability::fire_card_triggers(state, registry, &identity, Trigger::OnTagsGiven, None, Some(event), true),
             None => Ok(Vec::new()),
         },
 
@@ -571,10 +571,9 @@ fn fire_one(
     // one that fired immediately: it rebuilds the same
     // `ability::ResolutionContext`, so a requirement reading the triggering
     // event gets the same answer either way.
-    match &due.target {
-        Some(target) => ability::process_card_triggers_targeting(state, registry, &due.card, due.trigger, target, due.event.as_ref()),
-        None => ability::process_card_triggers(state, registry, &due.card, due.trigger, due.event.as_ref()),
-    }
+    // Announced: every trigger the *game* fires passes through here, so
+    // this is where `GameEvent::TriggerFired` becomes an exact record.
+    ability::fire_card_triggers(state, registry, &due.card, due.trigger, due.target.as_ref(), due.event.as_ref(), true)
 }
 
 /// Whether a trigger planned against a run's own events still has a run to
@@ -729,7 +728,7 @@ mod tests {
         let events = dispatch_event(&mut state, &registry, &GameEvent::TurnStarted { side: Side::Runner, clicks: 4 }).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(6));
-        assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("reacts".to_string()), trigger: Trigger::OnTurnStart }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
     }
 
     #[test]
@@ -745,7 +744,7 @@ mod tests {
         let events = dispatch_event(&mut state, &registry, &GameEvent::RunInitiated { server: ServerId::Hq }).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(7));
-        assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Runner, amount: 2 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("runner_id".to_string()), trigger: Trigger::OnRunStart }, GameEvent::CreditsGained { side: Side::Runner, amount: 2 }]);
     }
 
     #[test]
@@ -762,7 +761,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(8));
-        assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Corp, amount: 3 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("ice_wall".to_string()), trigger: Trigger::OnEncounter }, GameEvent::CreditsGained { side: Side::Corp, amount: 3 }]);
     }
 
     #[test]
@@ -777,7 +776,7 @@ mod tests {
         let events = dispatch_event(&mut state, &registry, &GameEvent::RunSucceeded { server: ServerId::RnD }).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(6));
-        assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("desperado".to_string()), trigger: Trigger::OnSuccessfulRun }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
     }
 
     #[test]
@@ -841,7 +840,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(6));
-        assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("interface".to_string()), trigger: Trigger::OnDamageAboutToResolve }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
     }
 
     /// `DamageAboutToResolve`/`TrashAboutToResolve` are the only dispatches
@@ -886,7 +885,9 @@ mod tests {
         assert_eq!(
             events,
             vec![
+                GameEvent::TriggerFired { card: CardId("runner_reactor".to_string()), trigger: crate::dsl::Trigger::OnDamageAboutToResolve },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 1 },
+                GameEvent::TriggerFired { card: CardId("corp_reactor".to_string()), trigger: crate::dsl::Trigger::OnDamageAboutToResolve },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
             ],
             "on the Runner's turn the Runner's reaction resolves first"
@@ -899,7 +900,9 @@ mod tests {
         assert_eq!(
             events,
             vec![
+                GameEvent::TriggerFired { card: CardId("corp_reactor".to_string()), trigger: Trigger::OnDamageAboutToResolve },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+                GameEvent::TriggerFired { card: CardId("runner_reactor".to_string()), trigger: Trigger::OnDamageAboutToResolve },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 1 },
             ],
             "on the Corp's turn the Corp's reaction resolves first"
@@ -1075,7 +1078,7 @@ mod tests {
         let events = drain_deferred_triggers(&mut state, &registry).unwrap();
 
         assert_eq!(state.corp.resources.credits, credits_before.gain(1));
-        assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Corp, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("pad_campaign".to_string()), trigger: Trigger::OnTurnStart }, GameEvent::CreditsGained { side: Side::Corp, amount: 1 }]);
         assert!(state.deferred_triggers.is_empty(), "a fully drained queue is left empty");
     }
 
@@ -1249,7 +1252,7 @@ mod tests {
                 .unwrap();
 
         assert_eq!(state.runner.tags, 1);
-        assert_eq!(events, vec![GameEvent::TagsGiven { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("ping".to_string()), trigger: Trigger::OnRez }, GameEvent::TagsGiven { side: Side::Runner, amount: 1 }]);
     }
 
     #[test]

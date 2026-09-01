@@ -3300,6 +3300,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 5 },
                 GameEvent::EventPlayed { side: Side::Runner, card: card_id },
+                GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
             ]
         );
@@ -3398,6 +3399,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 5 },
                 GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone() },
+                GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
             ]
         );
@@ -3532,6 +3534,7 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
                 GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone() },
+                GameEvent::TriggerFired { card: CardId("sea_source".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::TraceInitiated { base: 2, initiating_card: Some(card_id) },
             ]
         );
