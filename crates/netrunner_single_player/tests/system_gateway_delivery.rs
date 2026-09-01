@@ -115,8 +115,9 @@ fn sweep_seed_count() -> u64 {
 /// Which index-based agents sit where. The same three seatings as
 /// `netrunner_session`'s view-path sweep, for the same reasons — see the
 /// `Seating` there: the heuristic pairings find deadlocks, and
-/// random-vs-random is the only one that reaches runs and encounters at
-/// all, because `HeuristicAgent` never runs and never installs ICE.
+/// random-vs-random is the only unbiased one — a heuristic Runner runs
+/// only where it can afford the breaks, so an encounter it cannot pay for
+/// is a state only a random Runner reaches.
 #[derive(Clone, Copy, Debug)]
 enum Seating {
     HeuristicCorpRandomRunner,

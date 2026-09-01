@@ -126,6 +126,50 @@ mod tests {
         assert_eq!(chosen, PlayerAction::ScoreAgenda { target: InstallId(1) });
     }
 
+    /// The Runner-side counterpart: a rezzed ICE the rig cannot break
+    /// makes a run worth less than a credit, and an unrezzed one does not
+    /// (ROADMAP Phase 2 §5's eagerness item).
+    #[test]
+    fn prefers_a_credit_to_running_into_rezzed_ice_it_cannot_break() {
+        use netrunner_core::dsl::{Effect, IceType, SubroutineDef};
+        use netrunner_core::rules::InstallSlot;
+        let mut registry = CardRegistry::new();
+        let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
+        wall.strength = Some(1);
+        wall.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun }];
+        registry.insert(wall);
+
+        let state_with_ice = |rezzed| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner = empty_runner();
+            state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+            state.corp.resources.credits = Credits(5);
+            for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
+                state.corp.installed.push(InstalledCard {
+                    card: CardId("wall".to_string()),
+                    install_id: InstallId(index as u32 + 1),
+                    server,
+                    slot: InstallSlot::Ice,
+                    rezzed,
+                    ..Default::default()
+                });
+            }
+            state
+        };
+
+        let rezzed = state_with_ice(true);
+        let view = build_client_view(&rezzed, &registry, Side::Runner);
+        assert!(view.legal_actions.iter().any(|a| matches!(a, PlayerAction::InitiateRun { .. })));
+        let chosen = HeuristicAgent::new(Side::Runner, 3).select_action(&view, &registry);
+        assert!(!matches!(chosen, PlayerAction::InitiateRun { .. }), "ran into rezzed ICE with no breaker: {chosen:?}");
+
+        let unrezzed = state_with_ice(false);
+        let view = build_client_view(&unrezzed, &registry, Side::Runner);
+        let chosen = HeuristicAgent::new(Side::Runner, 3).select_action(&view, &registry);
+        assert!(matches!(chosen, PlayerAction::InitiateRun { .. }), "unrezzed ICE is no reason not to run: {chosen:?}");
+    }
+
     #[test]
     fn always_returns_a_member_of_legal_actions() {
         let mut registry = CardRegistry::new();
