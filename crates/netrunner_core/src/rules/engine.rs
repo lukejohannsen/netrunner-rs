@@ -155,8 +155,8 @@ pub fn apply_action(
         PlayerAction::ChooseServerForPendingDecision { server } => {
             choose_server_for_pending_decision(state, registry, server)
         }
-        PlayerAction::ChooseTriggerToResolve { card_id } => {
-            choose_trigger_to_resolve(state, registry, card_id)
+        PlayerAction::ChooseTriggerToResolve { index } => {
+            choose_trigger_to_resolve(state, registry, index)
         }
     }?;
 
@@ -1635,10 +1635,10 @@ fn resolve_pending_choice(
 fn choose_trigger_to_resolve(
     state: &GameState,
     registry: &CardRegistry,
-    card_id: CardId,
+    index: usize,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let mut next = state.clone();
-    let events = pending_choice::resolve_choose_trigger_to_resolve(&mut next, registry, card_id)?;
+    let events = pending_choice::resolve_choose_trigger_to_resolve(&mut next, registry, index)?;
     Ok((next, events))
 }
 
@@ -4959,12 +4959,16 @@ mod tests {
         );
 
         // Pick the *second* card first — the point of the feature.
-        let (next, events) = apply_action(
-            &state,
-            &registry,
-            PlayerAction::ChooseTriggerToResolve { card_id: CardId("nico_campaign".to_string()) },
-        )
-        .expect("choosing a pending trigger should succeed");
+        let (next, events) = apply_action(&state, &registry, PlayerAction::ChooseTriggerToResolve { index: 1 })
+            .expect("choosing a pending trigger should succeed");
+        assert!(
+            events.contains(&GameEvent::TriggerOrderChosen {
+                chooser: Side::Corp,
+                card: CardId("nico_campaign".to_string()),
+                trigger: Trigger::OnTurnStart,
+            }),
+            "the event names the card and trigger the index resolved to"
+        );
 
         assert!(next.pending_decision.is_none(), "one trigger left is no choice, so no second decision");
         assert!(next.deferred_triggers.is_empty(), "and it drained in the same action");
@@ -4980,6 +4984,143 @@ mod tests {
             ],
             "the chosen card resolved first, ahead of its install order"
         );
+    }
+
+    /// Two copies of one card are two separate pending triggers. Under the
+    /// old `card_id` payload both collapsed onto the first entry, so the
+    /// second copy could never be ordered ahead of the first; by position
+    /// each is its own pick and the remainder re-parks in its own order.
+    #[test]
+    fn choosing_by_index_resolves_the_second_copy_of_a_card() {
+        let mut registry = CardRegistry::new();
+        let reactor = |id: &str, amount: u32| CardDefinition {
+            triggers: vec![TriggeredEffect {
+                trigger: Trigger::OnTurnStart,
+                effects: vec![Effect::GainCredits(Side::Corp, amount)],
+                requirement: None,
+            }],
+            ..test_card(id, Side::Corp, CardType::Asset, 0, None)
+        };
+        registry.insert(reactor("pad_campaign", 1));
+        registry.insert(reactor("nico_campaign", 3));
+
+        let mut state = corp_state(3, 0);
+        let rezzed = |id: &str, install: u32| InstalledCard {
+            install_id: InstallId(install),
+            card: CardId(id.to_string()),
+            rezzed: true,
+            ..Default::default()
+        };
+        state.corp.installed = vec![rezzed("pad_campaign", 1), rezzed("pad_campaign", 2), rezzed("nico_campaign", 3)];
+        // The two copies are told apart only by the event they carry — the
+        // same shape a real dispatch produces, since `DeferredTrigger` has
+        // no install handle.
+        let due = |id: &str, clicks: u32| crate::rules::state::DeferredTrigger {
+            card: CardId(id.to_string()),
+            trigger: Trigger::OnTurnStart,
+            target: None,
+            event: Some(GameEvent::TurnStarted { side: Side::Corp, clicks }),
+        };
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Corp,
+            pending: vec![due("pad_campaign", 1), due("pad_campaign", 2), due("nico_campaign", 3)],
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+
+        let legal = crate::rules::legal_actions(&state, &registry);
+        assert_eq!(
+            legal,
+            vec![
+                PlayerAction::ChooseTriggerToResolve { index: 0 },
+                PlayerAction::ChooseTriggerToResolve { index: 1 },
+                PlayerAction::ChooseTriggerToResolve { index: 2 },
+            ],
+            "every pending entry is its own pick, duplicates included"
+        );
+
+        let (next, _events) = apply_action(&state, &registry, PlayerAction::ChooseTriggerToResolve { index: 1 })
+            .expect("the second copy is a legal pick");
+
+        assert_eq!(next.corp.resources.credits, Credits(1), "exactly one pad_campaign fired");
+        match next.pending_decision.as_ref() {
+            Some(crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. }) => {
+                assert_eq!(pending, &vec![due("pad_campaign", 1), due("nico_campaign", 3)], "the *second* copy was removed");
+            }
+            other => panic!("two remain, so the order is still to be chosen; got {other:?}"),
+        }
+
+        assert!(
+            matches!(
+                apply_action(&state, &registry, PlayerAction::ChooseTriggerToResolve { index: 3 }),
+                Err(RulesError::TriggerChoiceOutOfRange { index: 3, pending: 3 })
+            ),
+            "an index past the end is refused, and the decision stays parked"
+        );
+    }
+
+    /// One card can owe several triggers to one event: a successful run on
+    /// HQ queues both `OnSuccessfulRun` and `OnSuccessfulRunOnHq`. By
+    /// `CardId` both named the first entry, so the second trigger could
+    /// never go first; by position the player orders them individually.
+    #[test]
+    fn one_card_with_two_success_triggers_is_orderable_per_trigger() {
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            triggers: vec![
+                TriggeredEffect {
+                    trigger: Trigger::OnSuccessfulRun,
+                    effects: vec![Effect::GainCredits(Side::Runner, 1)],
+                    requirement: None,
+                },
+                TriggeredEffect {
+                    trigger: Trigger::OnSuccessfulRunOnHq,
+                    effects: vec![Effect::GainCredits(Side::Runner, 3)],
+                    requirement: None,
+                },
+            ],
+            ..test_card("docklands_style_pass", Side::Runner, CardType::Resource, 0, None)
+        });
+
+        let mut state = corp_state(3, 0);
+        state.runner.rig = vec![InstalledRunnerCard {
+            card: CardId("docklands_style_pass".to_string()),
+            install_id: InstallId(7),
+            ..Default::default()
+        }];
+        let due = |trigger: Trigger| crate::rules::state::DeferredTrigger {
+            card: CardId("docklands_style_pass".to_string()),
+            trigger,
+            target: None,
+            event: None,
+        };
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Runner,
+            pending: vec![due(Trigger::OnSuccessfulRun), due(Trigger::OnSuccessfulRunOnHq)],
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        assert_eq!(crate::rules::current_actor(&state), Some(Side::Runner));
+
+        let (next, events) = apply_action(&state, &registry, PlayerAction::ChooseTriggerToResolve { index: 1 })
+            .expect("the card's second trigger is a legal first pick");
+
+        let gains: Vec<&GameEvent> = events.iter().filter(|e| matches!(e, GameEvent::CreditsGained { .. })).collect();
+        assert_eq!(
+            gains,
+            vec![
+                &GameEvent::CreditsGained { side: Side::Runner, amount: 3 },
+                &GameEvent::CreditsGained { side: Side::Runner, amount: 1 },
+            ],
+            "the HQ trigger resolved first, then the remaining one drained"
+        );
+        assert!(
+            events.contains(&GameEvent::TriggerOrderChosen {
+                chooser: Side::Runner,
+                card: CardId("docklands_style_pass".to_string()),
+                trigger: Trigger::OnSuccessfulRunOnHq,
+            }),
+            "the event says which of the card's triggers was picked"
+        );
+        assert!(next.pending_decision.is_none());
     }
 
     /// Corp state whose Runner opponent holds one usable paid ability

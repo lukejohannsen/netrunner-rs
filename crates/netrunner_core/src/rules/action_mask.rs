@@ -20,7 +20,7 @@
 //! from `get_action_mask`. Real games *do* reach caps that were set by
 //! guesswork — `MAX_INSTALLED_PER_SIDE` at 20, `MAX_PENDING_CHOICE_OPTIONS`
 //! at 2, `MAX_ACCESS_SELECTION` at hand size were each overrun in ordinary
-//! play (ROADMAP Rules Audit) — so each constant below states what bounds
+//! play (ROADMAP Rules Audit; `MAX_INSTALLED_PER_SIDE` is 32 now) — so each constant below states what bounds
 //! it, `every_card_fits_the_action_space_caps` checks the per-card ones
 //! against every card in the pool, and the index-path sweep's coverage
 //! gate catches an action that has stopped being reachable.
@@ -185,19 +185,23 @@ const BREAK_SUBROUTINE_WITH_CLICK_START: usize = INSTALL_PROGRAM_ON_ICE_START + 
 const BREAK_SUBROUTINE_WITH_CLICK_LEN: usize = MAX_SUBROUTINES;
 
 
-/// `ChooseTriggerToResolve` is encoded by position within the parked
-/// `PendingDecision::ChooseTriggerOrder`'s own `pending` list, which is
-/// bounded by how many of one side's cards can react at once — at most
-/// every installed card plus their identity. `MAX_INSTALLED_PER_SIDE`
-/// covers it with room to spare, matching how `ToggleCardSelection` bounds
-/// its own zone-position encoding.
+/// `ChooseTriggerToResolve` carries a position within the parked
+/// `PendingDecision::ChooseTriggerOrder`'s own `pending` list, so — like
+/// `ToggleCardSelection` — it encodes with no state lookup at all. The
+/// list is bounded by how many of one side's triggers can react at once:
+/// each installed card plus the identity, times the success-trigger
+/// variants one card may declare (a run on HQ queues `OnSuccessfulRun`,
+/// `…OnHq` and `…OnCentralServer` separately). `MAX_INSTALLED_PER_SIDE`
+/// covers every pool card comfortably; `dispatcher::offer_trigger_order`
+/// debug-asserts the bound so an overrun names itself before the index
+/// sweep's roundtrip does.
 ///
 /// The last segment. Layout v2 folded `PurgeVirusCounters` into the unit
 /// block and reclaimed the deleted free break's hole, shifting indices —
 /// the one break the append-never-shift rule permits, taken once, for
 /// every layout change at the same time (ROADMAP Rules Audit B.10).
 const CHOOSE_TRIGGER_START: usize = BREAK_SUBROUTINE_WITH_CLICK_START + BREAK_SUBROUTINE_WITH_CLICK_LEN;
-const CHOOSE_TRIGGER_LEN: usize = MAX_INSTALLED_PER_SIDE;
+pub(crate) const CHOOSE_TRIGGER_LEN: usize = MAX_INSTALLED_PER_SIDE;
 
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
@@ -229,14 +233,8 @@ impl ActionSpace {
 
             PlayerAction::PurgeVirusCounters => Some(UNIT_START),
 
-            PlayerAction::ChooseTriggerToResolve { card_id } => {
-                let Some(crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. }) =
-                    state.pending_decision.as_ref()
-                else {
-                    return None;
-                };
-                let slot = pending.iter().position(|due| &due.card == card_id)?;
-                (slot < CHOOSE_TRIGGER_LEN).then_some(CHOOSE_TRIGGER_START + slot)
+            PlayerAction::ChooseTriggerToResolve { index } => {
+                (*index < CHOOSE_TRIGGER_LEN).then_some(CHOOSE_TRIGGER_START + index)
             }
 
             PlayerAction::GainCreditClick { side } => Some(GAIN_CREDIT_START + side_index(*side)),
@@ -510,13 +508,10 @@ impl ActionSpace {
             return Some(PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: local });
         }
         if let Some(local) = in_segment(index, CHOOSE_TRIGGER_START, CHOOSE_TRIGGER_LEN) {
-            let crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. } =
-                state.pending_decision.as_ref()?
-            else {
-                return None;
-            };
-            let card_id = pending.get(local)?.card.clone();
-            return Some(PlayerAction::ChooseTriggerToResolve { card_id });
+            // Decoded by bare position like `ToggleCardSelection`: the
+            // action means "the `local`-th pending trigger", and
+            // `apply_action` is the one to say whether that exists.
+            return Some(PlayerAction::ChooseTriggerToResolve { index: local });
         }
         None
     }
@@ -1093,6 +1088,39 @@ mod tests {
         let legal = legal_actions(&state, &registry);
         assert!(legal.contains(&PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") }));
         assert!(legal.contains(&PlayerAction::ConfirmCardSelection));
+
+        assert_roundtrips(&state, &registry);
+        assert_mask_matches_legal_actions(&state, &registry);
+    }
+
+    /// A parked trigger order with two entries for the *same* card fills two
+    /// distinct slots. Encoded by `CardId`, both entries landed on the
+    /// first slot and the second was unreachable from the index path.
+    #[test]
+    fn choose_trigger_order_decision_roundtrips_and_matches_mask() {
+        let mut state = base_state();
+        let due = |trigger: crate::dsl::Trigger| crate::rules::state::DeferredTrigger {
+            card: CardId("hedge_fund".to_string()),
+            trigger,
+            target: None,
+            event: None,
+        };
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Corp,
+            pending: vec![due(crate::dsl::Trigger::OnSuccessfulRun), due(crate::dsl::Trigger::OnSuccessfulRunOnHq)],
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let mut registry = CardRegistry::new();
+        registry.insert(hedge_fund());
+
+        let legal = legal_actions(&state, &registry);
+        assert_eq!(
+            legal,
+            vec![PlayerAction::ChooseTriggerToResolve { index: 0 }, PlayerAction::ChooseTriggerToResolve { index: 1 }]
+        );
+        let mask = get_action_mask(&state, &registry);
+        assert!(mask[CHOOSE_TRIGGER_START] && mask[CHOOSE_TRIGGER_START + 1], "one slot per pending entry");
+        assert!(!mask[CHOOSE_TRIGGER_START + 2], "and nothing past the list's end");
 
         assert_roundtrips(&state, &registry);
         assert_mask_matches_legal_actions(&state, &registry);

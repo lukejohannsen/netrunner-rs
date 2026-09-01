@@ -86,9 +86,13 @@ pub enum GameEvent {
     /// they get to pick the resolution order — a
     /// `PendingDecision::ChooseTriggerOrder` is now parked.
     TriggerOrderPending { chooser: Side },
-    /// `chooser` picked `card` as the next of their simultaneous triggers
-    /// to resolve.
-    TriggerOrderChosen { chooser: Side, card: CardId },
+    /// `chooser` picked `card`'s `trigger` as the next of their
+    /// simultaneous triggers to resolve. `trigger` is named because one
+    /// card can have several pending at once (a successful run on HQ
+    /// offers `OnSuccessfulRun` and `OnSuccessfulRunOnHq` separately), and
+    /// a log line reading "Docklands Pass, then Docklands Pass" says
+    /// nothing.
+    TriggerOrderChosen { chooser: Side, card: CardId, trigger: crate::dsl::Trigger },
     /// `PlayerAction::PurgeVirusCounters` zeroed the virus counters on
     /// `cards`. Empty when the Corp purged an empty board, which is legal —
     /// the event still fires, since the action still happened and still

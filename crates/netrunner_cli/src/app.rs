@@ -13,7 +13,7 @@ use crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{InstallId, InstallSlot, PlayerAction, Side};
+use netrunner_core::rules::{InstallId, InstallSlot, PendingDecision, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
 use netrunner_server::{ClientMessage, HistoryEntry, ServerMessage};
@@ -284,7 +284,22 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::ToggleCardSelection { position } => format!("Toggle selection of card {position}"),
         PlayerAction::ConfirmCardSelection => "Confirm selection".to_string(),
         PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?}"),
-        PlayerAction::ChooseTriggerToResolve { card_id } => format!("Resolve {} first", title(card_id)),
+        // The action is a position into the parked trigger list, so the
+        // card and trigger it names come from the view's `pending_decision`
+        // — which is pass-through for this variant and holds only the
+        // chooser's own cards, so nothing is shown here that the viewer was
+        // not already shown. The trigger is named because one card can
+        // have several pending at once.
+        PlayerAction::ChooseTriggerToResolve { index } => {
+            let due = view.and_then(|v| match &v.pending_decision {
+                Some(PendingDecision::ChooseTriggerOrder { pending, .. }) => pending.get(*index),
+                _ => None,
+            });
+            match due {
+                Some(due) => format!("Resolve {} ({:?}) first", title(&due.card), due.trigger),
+                None => format!("Resolve trigger #{index} first"),
+            }
+        }
     }
 }
 
@@ -303,6 +318,40 @@ mod tests {
         let runner_deck = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck").to_deck();
         let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 1).expect("legal decks set up cleanly");
         (state, registry)
+    }
+
+    /// The action is a position; the label has to say which card and which
+    /// of its triggers that position means, or two entries for one card
+    /// render as identical rows.
+    #[test]
+    fn a_trigger_order_pick_is_labelled_with_its_card_and_trigger() {
+        use netrunner_core::dsl::{CardId, Trigger};
+        use netrunner_core::rules::DeferredTrigger;
+        use netrunner_core::view::build_client_view;
+
+        let (mut state, registry) = setup();
+        let due = |trigger: Trigger| DeferredTrigger {
+            card: CardId("docklands_pass".to_string()),
+            trigger,
+            target: None,
+            event: None,
+        };
+        state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
+            chooser: Side::Runner,
+            pending: vec![due(Trigger::OnSuccessfulRun), due(Trigger::OnSuccessfulRunOnHq)],
+            resume: netrunner_core::rules::PendingChoiceResume::None,
+        });
+        let view = build_client_view(&state, &registry, Side::Runner);
+
+        assert_eq!(
+            describe_action(&PlayerAction::ChooseTriggerToResolve { index: 1 }, &registry, Some(&view)),
+            "Resolve Docklands Pass (OnSuccessfulRunOnHq) first"
+        );
+        assert_eq!(
+            describe_action(&PlayerAction::ChooseTriggerToResolve { index: 1 }, &registry, None),
+            "Resolve trigger #1 first",
+            "with no view (the action log) the position is all there is to show"
+        );
     }
 
     fn spawn_session(state: GameState, registry: CardRegistry, corp_slot: PlayerSlot, runner_slot: PlayerSlot) {

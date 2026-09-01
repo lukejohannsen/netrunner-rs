@@ -256,14 +256,24 @@ pub enum PlayerAction {
     /// side, whichever the decision names.
     ///
     /// Only ever legal while such a decision is parked, which only happens
-    /// when 2 or more of one player's own cards react to the same event —
-    /// the rules give that ordering to their controller. Cross-side order
+    /// when 2 or more of one player's own triggers react to the same event
+    /// — the rules give that ordering to their controller. Cross-side order
     /// is fixed by rule (`dispatcher::order_active_first`) and is never
     /// offered here.
     ///
-    /// `RulesError::CardNotActive` if `card_id` isn't one of the pending
-    /// triggers.
-    ChooseTriggerToResolve { card_id: CardId },
+    /// `index` is a position into that decision's `pending` list — **not**
+    /// a `CardId`, for the same reason `ToggleCardSelection` carries a
+    /// position. A `CardId` could name neither the second copy of one card
+    /// nor the second of one card's *own* triggers: a successful run on HQ
+    /// queues up to four `DeferredTrigger`s per card (`OnSuccessfulRun`,
+    /// `…OnHq`, `…OnCentralServer`, …), so a card declaring two of them
+    /// appeared twice under one id and only the first was ever pickable.
+    /// `ActionSpace` had always encoded this action by position; the
+    /// payload now carries what the index meant all along.
+    ///
+    /// `RulesError::TriggerChoiceOutOfRange` if `index` is past the end of
+    /// the pending list.
+    ChooseTriggerToResolve { index: usize },
     /// Spend 1 click + 2 credits to trash `target`, an installed Runner
     /// Resource, off the Rig into the Heap. Corp-only, legal only while the
     /// Runner is tagged (`RulesError::RunnerNotTagged` otherwise). Its
@@ -554,7 +564,7 @@ mod tests {
             PlayerAction::ScoreAgenda { target: install },
             PlayerAction::RemoveTag,
             PlayerAction::PurgeVirusCounters,
-            PlayerAction::ChooseTriggerToResolve { card_id: card() },
+            PlayerAction::ChooseTriggerToResolve { index: 0 },
             PlayerAction::TrashResource { target: install },
             PlayerAction::SelectCardToAccess { card_id: card() },
             PlayerAction::StealAgenda { card_id: card() },

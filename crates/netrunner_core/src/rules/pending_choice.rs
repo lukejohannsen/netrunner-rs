@@ -351,18 +351,21 @@ pub(crate) fn resolve_choice(
 pub(crate) fn resolve_choose_trigger_to_resolve(
     state: &mut GameState,
     registry: &CardRegistry,
-    card: CardId,
+    index: usize,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let Some(PendingDecision::ChooseTriggerOrder { chooser, pending, resume }) = state.pending_decision.take() else {
         return Err(RulesError::NoPendingDecision);
     };
 
-    let position = pending
-        .iter()
-        .position(|due| due.card == card)
-        .ok_or_else(|| RulesError::CardNotActive { side: chooser, card: card.clone() })?;
+    // Range-check before `take()`'s consequences become permanent: an `Err`
+    // discards the cloned `next` in `apply_action`, so the decision is
+    // still parked on the caller's state. Keyed by position, not
+    // `CardId` — see `PlayerAction::ChooseTriggerToResolve`.
+    if index >= pending.len() {
+        return Err(RulesError::TriggerChoiceOutOfRange { index, pending: pending.len() });
+    }
     let mut remaining = pending;
-    let chosen = remaining.remove(position);
+    let chosen = remaining.remove(index);
 
     // Queue the remainder before firing, so a parking `chosen` can't strand
     // it: either it re-parks as a decision (2+ left) or the drain takes it.
@@ -372,7 +375,7 @@ pub(crate) fn resolve_choose_trigger_to_resolve(
         state.deferred_triggers.splice(0..0, remaining);
     }
 
-    let mut events = vec![GameEvent::TriggerOrderChosen { chooser, card }];
+    let mut events = vec![GameEvent::TriggerOrderChosen { chooser, card: chosen.card.clone(), trigger: chosen.trigger }];
     events.extend(crate::rules::dispatcher::fire_deferred(state, registry, &chosen)?);
 
     if resume == PendingChoiceResume::ResumeSubroutines && !state.is_resolution_blocked() {
