@@ -431,6 +431,7 @@ fn install_card(
         events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(install_cost), Some(&card_id))?);
     }
 
+    events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     let install_id = next.allocate_install_id();
     next.corp.installed.push(InstalledCard {
         card: card_id.clone(),
@@ -455,6 +456,38 @@ fn install_card(
     events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
     Ok((next, events))
+}
+
+/// The ◆ rule: if `card_id` is unique and `side` already has a copy in
+/// play, that earlier copy is trashed as the new one is installed — the
+/// Corp's to Archives (faceup if it was rezzed), the Runner's to the Heap.
+/// Called by every install handler just before the new copy lands, so a
+/// second Spin Doctor, Cookbook or Pennyshaver replaces rather than joins
+/// the first (ROADMAP Rules Audit T7). Distinct from the console limit,
+/// which is a rule about a subtype rather than a card and rejects the
+/// install outright.
+fn trash_earlier_unique_copy(next: &mut GameState, registry: &CardRegistry, side: Side, card_id: &CardId) -> Vec<GameEvent> {
+    if !registry.get(card_id).is_some_and(|def| def.unique) {
+        return Vec::new();
+    }
+    match side {
+        Side::Corp => {
+            let Some(pos) = next.corp.installed.iter().position(|c| &c.card == card_id) else { return Vec::new() };
+            let earlier = next.corp.installed.remove(pos);
+            next.corp.archives.push(if earlier.rezzed {
+                ArchivedCard::faceup(earlier.card.clone())
+            } else {
+                ArchivedCard::facedown(earlier.card.clone())
+            });
+            vec![GameEvent::CardTrashed { side, card: earlier.card }]
+        }
+        Side::Runner => {
+            let Some(pos) = next.runner.rig.iter().position(|c| &c.card == card_id) else { return Vec::new() };
+            let earlier = next.runner.rig.remove(pos);
+            next.runner.heap.push(earlier.card.clone());
+            vec![GameEvent::CardTrashed { side, card: earlier.card }]
+        }
+    }
 }
 
 /// How many pieces of ICE already protect `server` — the install cost of
@@ -871,6 +904,7 @@ fn install_hardware(
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
+    events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
     // `memory_bonus` is deliberately *not* applied here: memory is derived
     // from what is installed (`memory::available_memory`), so a console's
@@ -943,6 +977,7 @@ fn install_program(
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
+    events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
     // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
     // Programs only, unconditional otherwise — no per-turn gate) resolved by
@@ -1006,6 +1041,7 @@ fn install_program_on_ice(
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let mut rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     rig_card.hosted_on_ice = Some(host_ice_id);
+    events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };
     events.push(installed_event.clone());
@@ -1041,6 +1077,7 @@ fn install_resource(
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
+    events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ResourceInstalled { side, card: card_id };
     events.push(installed_event.clone());
@@ -1964,6 +2001,49 @@ mod tests {
         .expect("third ICE on HQ costs 2");
         assert_eq!(next.corp.resources.credits, Credits(3), "two ICE already on HQ; the one on R&D does not count");
         assert!(events.contains(&GameEvent::CreditsSpent { side: Side::Corp, amount: 2 }));
+    }
+
+    /// Rules Audit T7: ◆. A second copy of a unique card replaces the first
+    /// — the Runner's to the Heap, the Corp's to Archives — and a
+    /// non-unique card is untouched by the rule.
+    #[test]
+    fn installing_a_second_copy_of_a_unique_card_trashes_the_first() {
+        let mut pennyshaver = test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None);
+        pennyshaver.unique = true;
+        let mut spin_doctor = test_card("spin_doctor", Side::Corp, CardType::Asset, 0, None);
+        spin_doctor.unique = true;
+        let registry = CardRegistry::from_cards(vec![pennyshaver, spin_doctor, test_card("sure_gamble", Side::Runner, CardType::Hardware, 0, None)]);
+
+        let penny = CardId("pennyshaver".to_string());
+        let mut state = runner_state_with_grip(4, 5, vec![penny.clone(), penny.clone()]);
+        state.runner.rig = Vec::new();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: penny.clone() }).unwrap();
+        assert_eq!(state.runner.rig.len(), 1);
+        let (state, events) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: penny.clone() }).unwrap();
+        assert_eq!(state.runner.rig.len(), 1, "the second copy replaced the first");
+        assert_eq!(state.runner.heap, vec![penny.clone()]);
+        assert!(events.contains(&GameEvent::CardTrashed { side: Side::Runner, card: penny }));
+
+        let doctor = CardId("spin_doctor".to_string());
+        let installed = vec![InstalledCard {
+            card: doctor.clone(),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let state = corp_state_with_hq_and_installed(3, 5, vec![doctor.clone()], installed);
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallCard { card_id: doctor.clone(), zone: ServerId::Remote(1), slot: InstallSlot::Root },
+        )
+        .unwrap();
+        assert_eq!(next.corp.installed.len(), 1);
+        assert_eq!(next.corp.installed[0].server, ServerId::Remote(1));
+        assert_eq!(next.corp.archives, vec![ArchivedCard::faceup(doctor.clone())], "a rezzed copy lands faceup");
+        assert!(events.contains(&GameEvent::CardTrashed { side: Side::Corp, card: doctor }));
     }
 
     /// Rules Audit T5: a remote holds one agenda or asset, so installing a

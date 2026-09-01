@@ -54,6 +54,7 @@ fn fill_catalog_metadata(cards: &mut [CardDefinition]) {
         card.deck_limit = entry.deck_limit;
         card.artist.clone_from(&entry.artist);
         card.image_url.clone_from(&entry.image_url);
+        card.unique = entry.unique;
     }
 }
 
@@ -201,6 +202,32 @@ mod catalog_join_tests {
     ///
     /// Seven milestones of card work tracked coverage by reading the catalog
     /// by eye, which quietly missed seven cards. This does it mechanically.
+    /// Uniqueness is joined from the catalog, never authored: the eleven ◆
+    /// System Gateway cards must come out flagged and nothing else may.
+    #[test]
+    fn system_gateway_unique_cards_are_flagged_from_the_catalog() {
+        let expected = [
+            "carnivore",
+            "cookbook",
+            "docklands_pass",
+            "pennyshaver",
+            "pantograph",
+            "verbal_plasticity",
+            "manegarm_skunkworks",
+            "anoetic_void",
+            "spin_doctor",
+            "amaze_amusements",
+            "malapert_data_vault",
+        ];
+        let cards = embedded_playable_cards();
+        let mut flagged: Vec<&str> =
+            cards.iter().filter(|c| c.unique && c.set_code.as_deref() == Some("sg")).map(|c| c.id.0.as_str()).collect();
+        flagged.sort_unstable();
+        let mut expected: Vec<&str> = expected.to_vec();
+        expected.sort_unstable();
+        assert_eq!(flagged, expected);
+    }
+
     #[test]
     fn every_system_gateway_card_is_implemented_or_explicitly_excluded() {
         let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
