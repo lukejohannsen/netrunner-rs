@@ -294,6 +294,13 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
 /// end (ICE installed after the approach is not approached — the rules
 /// agree).
 pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    // A finished game has no run to move (`win::end_game` clears it), but
+    // say so explicitly: moving a run and dispatching `ServerApproached`
+    // into a finished game could return an `Err` that rejected the very
+    // action that ended it.
+    if state.is_over() {
+        return Ok(Vec::new());
+    }
     let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
     if matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) {
         return Ok(Vec::new());

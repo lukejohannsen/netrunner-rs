@@ -170,6 +170,14 @@ fn close_window(
     registry: &CardRegistry,
     checkpoint: WindowCheckpoint,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    // Nothing to resume in a finished game. The `StartOfTurn`/`PostAction`
+    // arms below write `phase = Action(side)`; reached after a flatline
+    // they reverted the win (ROADMAP Rules Audit §4). `win::end_game` now
+    // clears the window so this is normally unreachable; the guard is what
+    // makes that a property of this function rather than of its callers.
+    if state.is_over() {
+        return Ok(Vec::new());
+    }
     match checkpoint {
         WindowCheckpoint::Run => close_run_window(state, registry),
         WindowCheckpoint::StartOfTurn { side } => {
@@ -391,13 +399,7 @@ pub(crate) fn resolve_encounter_ice(
     // named them, so the side had no legal action at all and the match
     // could never advance. Reachable on ordinary sample decks (seed 2 of
     // `decks::matchups()[0]`), and deterministic, therefore permanent.
-    if !matches!(state.phase, GamePhase::GameOver(_))
-        && state.active_run.is_some()
-        && state.active_trace.is_none()
-        && state.pending_prevention.is_none()
-        && state.pending_paid_choice.is_none()
-        && state.pending_decision.is_none()
-    {
+    if !state.resolution_halted() && state.active_run.is_some() {
         events.extend(run::advance_run(state, RunAction::Continue, registry)?);
         events.extend(open_window_if_at_checkpoint(state));
     }
@@ -561,8 +563,12 @@ mod tests {
         assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
         // The trailing subroutine is left unresolved rather than forced
         // through — the game is already over, so there is nothing to advance.
-        let run = state.active_run.as_ref().expect("the run outlives the game, and that is the invariant");
-        assert_eq!(run.ice[0].subroutines[1].status, SubroutineStatus::Pending);
+        // `win::end_game` ends the run with the game now (it used to outlive
+        // it, which is what the two guards above defend against); the
+        // encounter's remaining subroutine never fires.
+        assert!(state.active_run.is_none(), "the game ending ends the run");
+        assert!(state.last_completed_run.is_some());
+        assert_eq!(events.iter().filter(|e| matches!(e, GameEvent::GameOver { .. })).count(), 1);
     }
 
     #[test]

@@ -157,8 +157,15 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         // `phase` is guaranteed to match one of these arms.
         PlayerAction::EndTurn | PlayerAction::DiscardCard { .. } | PlayerAction::KeepHand | PlayerAction::TakeMulligan => {
             match state.phase {
-                GamePhase::Action(side) | GamePhase::Discard { side, .. } | GamePhase::Mulligan(side) => side,
-                GamePhase::StartOfTurn(side) | GamePhase::GameOver(side) => side,
+                GamePhase::Action(side)
+                | GamePhase::Discard { side, .. }
+                | GamePhase::Mulligan(side)
+                | GamePhase::StartOfTurn(side) => side,
+                // `GameOver`'s payload is the *winner*, not a side to act;
+                // it used to share the arm above and be read as one. Moot,
+                // since `apply_action` rejects every action once the game
+                // is over and this is only called on actions it accepted.
+                GamePhase::GameOver(_) => unreachable!("no action passes the legal_actions probe once the game is over"),
             }
         }
 

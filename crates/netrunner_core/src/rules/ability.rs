@@ -10,7 +10,7 @@ use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run::{self, AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{
-    ArchivedCard, Clicks, Credits, GamePhase, GameState, InstalledRunnerCard, PendingChoiceResume, PendingDecision, PendingPaidChoice,
+    ArchivedCard, Clicks, Credits, GameState, InstalledRunnerCard, PendingChoiceResume, PendingDecision, PendingPaidChoice,
     PendingPaidChoiceResume, PendingPrevention, PendingPreventionKind, PreventionKind, PreventionResume, Side,
     TraceResume, TraceState, WindowCheckpoint,
 };
@@ -551,8 +551,10 @@ pub fn evaluate_effect(
                 // continuation: the remaining effects are simply never
                 // reached. That limitation is documented on `Effect::
                 // Sequence` itself and is unchanged by the deferred-trigger
-                // queue, which is trigger-level only.
-                if state.is_resolution_blocked() {
+                // queue, which is trigger-level only. Also stops at
+                // `GameOver`: Clearinghouse's `[DealDamage, TrashCard(ThisCard)]`
+                // used to run its trash against a finished game.
+                if state.resolution_halted() {
                     break;
                 }
             }
@@ -772,17 +774,13 @@ pub fn resolve_unbroken_subroutines(
     let mut events = Vec::new();
 
     loop {
-        if matches!(state.phase, GamePhase::GameOver(_)) {
-            break;
-        }
-
-        // A subroutine we just fired parked a Trace or a PendingPrevention,
-        // either of which spans future PlayerActions — stop here rather
-        // than firing the next pending subroutine underneath it.
-        // `rules::trace::submit_runner_bid`/`paid_ability::close_window`'s
-        // `Prevention` arm call this function again once resolved, resuming
-        // the loop.
-        if state.is_resolution_blocked() {
+        // Stop on a finished game, or when a subroutine we just fired parked
+        // a Trace or a PendingPrevention — either spans future
+        // PlayerActions, so the next pending subroutine must not fire
+        // underneath it. `rules::trace::submit_runner_bid`/`paid_ability::
+        // close_window`'s `Prevention` arm call this function again once
+        // resolved, resuming the loop.
+        if state.resolution_halted() {
             break;
         }
 
@@ -909,6 +907,13 @@ pub(crate) fn fire_card_triggers(
         let mut effect_ctx = ResolutionContext::for_trigger(Some(target.unwrap_or(card_id)), triggering_event);
         for effect in &triggered.effects {
             events.extend(evaluate_effect(state, effect, &mut effect_ctx, registry)?);
+            // A trigger's effect list is a `Sequence` in all but name and
+            // stops for the same reasons: a parked decision (the next effect
+            // would resolve underneath it) or a finished game. It had no
+            // stop condition at all before.
+            if state.resolution_halted() {
+                break;
+            }
         }
         if let Some(requirement) = &triggered.requirement {
             consume_requirement(state, requirement, card_side);

@@ -38,6 +38,13 @@ pub fn apply_action(
     registry: &CardRegistry,
     action: PlayerAction,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    // Nothing is legal once the game is over — checked before every other
+    // guard, so it holds regardless of what `win::end_game` may have left
+    // and makes `legal_actions` empty for free (`current_actor`'s answer no
+    // longer matters). See `RulesError::GameIsOver`.
+    if let GamePhase::GameOver(winner) = state.phase {
+        return Err(RulesError::GameIsOver { winner });
+    }
     // A trace admits no "stays legal during this" exceptions (unlike a
     // PaidAbilityWindow, which lets RezIce/BreakSubroutine/ActivateAbility
     // through) — nothing else should happen until both bids are in. A
@@ -708,8 +715,13 @@ fn complete_run(
     let succeeded = GameEvent::RunSucceeded { server };
     let mut events = vec![succeeded.clone()];
     events.extend(dispatcher::dispatch_event(&mut next, registry, &succeeded)?);
-    if next.active_run.is_none() {
-        // A "when successful" reaction ended the run outright.
+    if next.is_over() || next.active_run.is_none() {
+        // A "when successful" reaction ended the run outright — or the game
+        // (`win::end_game` clears the run too, so the second test covers
+        // it; the first says why). `open_window` below reads the acting
+        // side off `phase` and panics on `GameOver`: this was the last call
+        // site not routed through `open_window_if_at_checkpoint`'s guard,
+        // and cannot be, since `Success` is deliberately not a checkpoint.
         return Ok((next, events));
     }
     // Opens the pre-access Paid Ability Window rather than accessing
@@ -1424,7 +1436,7 @@ fn score_agenda(
     // per-turn gate.
     events.extend(dispatcher::dispatch_event(&mut next, registry, &scored_event)?);
 
-    win::check_win_conditions(&mut next, registry);
+    events.extend(win::check_win_conditions(&mut next, registry));
 
     Ok((next, events))
 }
@@ -3929,32 +3941,40 @@ mod tests {
     }
 
     #[test]
-    fn actions_issued_during_game_over_fail_with_wrong_phase() {
+    fn actions_issued_during_game_over_fail_with_game_is_over() {
         let mut state = corp_state(3, 5);
         state.phase = GamePhase::GameOver(Side::Runner);
 
         let result = apply_action(&state, &registry(), PlayerAction::GainCreditClick { side: Side::Corp });
 
-        assert_eq!(
-            result,
-            Err(RulesError::WrongPhase {
-                expected: GamePhase::Action(Side::Corp),
-                actual: GamePhase::GameOver(Side::Runner),
-            })
-        );
+        assert_eq!(result, Err(RulesError::GameIsOver { winner: Side::Runner }));
     }
 
+    /// The GameOver guard is the *first* check in `apply_action`, so it
+    /// holds for actions with no phase check of their own (`PassPriority`,
+    /// the pending-choice resolvers) — the ones `legal_actions` used to keep
+    /// offering after a win, and one of which could revert it.
     #[test]
-    fn end_turn_issued_during_game_over_fails_with_not_in_action_phase() {
+    fn every_action_issued_during_game_over_fails_with_game_is_over() {
         let mut state = corp_state(3, 5);
         state.phase = GamePhase::GameOver(Side::Runner);
+        // A leftover window: exactly the state a flatline under a
+        // start-of-turn window used to leave behind.
+        paid_ability::open_window_for(&mut state, Side::Corp, WindowCheckpoint::StartOfTurn { side: Side::Corp });
 
-        let result = apply_action(&state, &registry(), PlayerAction::EndTurn);
-
-        assert_eq!(
-            result,
-            Err(RulesError::NotInActionPhase { actual: GamePhase::GameOver(Side::Runner) })
-        );
+        for action in [
+            PlayerAction::EndTurn,
+            PlayerAction::PassPriority { side: Side::Corp },
+            PlayerAction::ResolvePendingChoice { option_index: 0 },
+            PlayerAction::ConfirmCardSelection,
+        ] {
+            assert_eq!(
+                apply_action(&state, &registry(), action.clone()),
+                Err(RulesError::GameIsOver { winner: Side::Runner }),
+                "{action:?}"
+            );
+        }
+        assert!(crate::rules::legal_actions(&state, &registry()).is_empty());
     }
 
     /// A rig entry seeded with `base_strength` and no active buffs — used
