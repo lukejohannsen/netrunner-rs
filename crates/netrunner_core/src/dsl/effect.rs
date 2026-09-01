@@ -123,13 +123,13 @@ pub enum Effect {
     /// Grants `count` additional cards accessed from `server` on top of the
     /// normal single-card access, for the remainder of the current run —
     /// e.g. a Runner program's "access 1 additional card from HQ" ability.
-    /// Requires an active run (`RulesError::NoActiveRun` otherwise);
-    /// silently no-ops for `ServerId::Archives`/`ServerId::Remote(_)`,
-    /// which already access every card/every root install respectively and
-    /// have no "additional count" field to increment — see
-    /// `RunState::additional_hq_access`/`additional_rd_access`, which only
-    /// exist for the two central servers whose access is naturally capped
-    /// at one card.
+    /// Requires an active run (`RulesError::NoActiveRun` otherwise). A
+    /// no-op, emitting nothing, for `ServerId::Archives`/`ServerId::
+    /// Remote(_)`: a breach of either already accesses every card there,
+    /// so an additional access is meaningless by the rules, not merely
+    /// unmodelled — which is why only `RunState::additional_hq_access`/
+    /// `additional_rd_access` exist, for the two servers whose access is
+    /// naturally capped at one card.
     AddAdditionalAccess { server: ServerId, count: u32 },
     /// Replaces this run's normal access of `server` with `effect` instead
     /// — e.g. Account Siphon's "gain 8 credits instead of accessing HQ".

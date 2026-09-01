@@ -523,9 +523,13 @@ pub fn evaluate_effect(
             match server {
                 ServerId::Hq => run.additional_hq_access = run.additional_hq_access.saturating_add(*count),
                 ServerId::RnD => run.additional_rd_access = run.additional_rd_access.saturating_add(*count),
-                // No per-count field exists for these — see the variant's
-                // doc comment. Deliberate no-op.
-                ServerId::Archives | ServerId::Remote(_) => {}
+                // A rules no-op, not a modelling gap: a breach of Archives
+                // accesses every card there and a breach of a remote every
+                // card in its root, so "one additional card" changes
+                // nothing. No event either — this used to emit
+                // `AdditionalAccessGranted` here, recording a grant that
+                // had no effect.
+                ServerId::Archives | ServerId::Remote(_) => return Ok(Vec::new()),
             }
             Ok(vec![GameEvent::AdditionalAccessGranted { server: *server, count: *count }])
         }
@@ -2050,9 +2054,9 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(active_run_state());
 
-        evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Archives, count: 3 }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
+        let archives = evaluate_effect(&mut state, &Effect::AddAdditionalAccess { server: ServerId::Archives, count: 3 }, &mut ResolutionContext::for_card(None), &CardRegistry::new())
             .unwrap();
-        evaluate_effect(
+        let remote = evaluate_effect(
             &mut state,
             &Effect::AddAdditionalAccess { server: ServerId::Remote(0), count: 3 }, &mut ResolutionContext::for_card(None),
             &CardRegistry::new())
@@ -2061,6 +2065,10 @@ mod tests {
         let run = state.active_run.as_ref().unwrap();
         assert_eq!(run.additional_hq_access, 0);
         assert_eq!(run.additional_rd_access, 0);
+        // A breach of either server accesses everything there already, so
+        // the grant changes nothing — and records nothing. It used to emit
+        // `AdditionalAccessGranted` for a no-op.
+        assert!(archives.is_empty() && remote.is_empty(), "{archives:?} {remote:?}");
     }
 
     #[test]

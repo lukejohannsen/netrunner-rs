@@ -360,7 +360,6 @@ mod tests {
             access_state: Some(AccessState {
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("hedge_fund".to_string()),
-                    can_trash: false,
                     trash_cost: None,
                     mandatory_steal: false,
                     steal_cost: None,

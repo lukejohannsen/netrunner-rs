@@ -179,7 +179,7 @@ pub enum PublicAccessPhase {
     /// asked to pay for an unrevealed R&D trap tells the Runner only that
     /// some interactive trigger fired, which they can already see.
     PendingInteractiveTrigger { card: Option<CardId>, cost: Cost, decider: Side, can_pay: bool },
-    PendingChoice { card: Option<CardId>, can_trash: bool, trash_cost: Option<u32>, mandatory_steal: bool, steal_cost: Option<Cost> },
+    PendingChoice { card: Option<CardId>, trash_cost: Option<u32>, mandatory_steal: bool, steal_cost: Option<Cost> },
 }
 
 /// `run::AccessState` as seen by a particular viewer. In the real game the
@@ -287,9 +287,8 @@ fn mask_access_phase(phase: &AccessPhase, card_visible: bool) -> PublicAccessPha
             decider: *decider,
             can_pay: *can_pay,
         },
-        AccessPhase::PendingChoice { card_id, can_trash, trash_cost, mandatory_steal, steal_cost } => PublicAccessPhase::PendingChoice {
+        AccessPhase::PendingChoice { card_id, trash_cost, mandatory_steal, steal_cost } => PublicAccessPhase::PendingChoice {
             card: card_visible.then(|| card_id.clone()),
-            can_trash: *can_trash,
             trash_cost: *trash_cost,
             mandatory_steal: *mandatory_steal,
             steal_cost: steal_cost.clone(),
@@ -923,7 +922,6 @@ mod tests {
             unaccessed_cards: vec![CardId("agenda".to_string())],
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("hedge_fund".to_string()),
-                can_trash: false,
                 trash_cost: None,
                 mandatory_steal: false,
                 steal_cost: None,
@@ -953,7 +951,6 @@ mod tests {
             server: ServerId::Archives,
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("cyberdex_trial".to_string()),
-                can_trash: false,
                 trash_cost: None,
                 mandatory_steal: false,
                 steal_cost: None,

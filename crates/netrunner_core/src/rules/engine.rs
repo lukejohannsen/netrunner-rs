@@ -3087,7 +3087,6 @@ mod tests {
                     resolved_cards: Vec::new(),
                     phase: run::AccessPhase::PendingChoice {
                         card_id: CardId("hedge_fund".to_string()),
-                        can_trash: false,
                         trash_cost: None,
                         mandatory_steal: false,
                         steal_cost: None,
@@ -5611,7 +5610,6 @@ mod tests {
     fn pending_choice(card_id: &CardId) -> run::AccessPhase {
         run::AccessPhase::PendingChoice {
             card_id: card_id.clone(),
-            can_trash: false,
             trash_cost: None,
             mandatory_steal: false,
             steal_cost: None,
