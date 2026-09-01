@@ -53,9 +53,11 @@ pub enum PlayerAction {
     /// `state::InstallId`. `RulesError::InstallNotFound` if it names
     /// nothing installed.
     RezIce { ice: InstallId },
-    /// Spend 1 click, start a run on `server`. Runner-only. The resulting
-    /// `RunState::ice` is left empty — populating real ICE requires a
-    /// `CardRegistry` lookup from `corp.installed` that doesn't exist yet.
+    /// Spend 1 click, start a run on `server`. Runner-only. `run::start_run`
+    /// builds the run's ICE list from `corp.installed` through the registry
+    /// (`build_run_ice`), outermost first. (An earlier comment here said the
+    /// list was left empty for want of a registry — true when written,
+    /// false for a long time after; the shape the Rules Audit warns about.)
     InitiateRun { server: ServerTarget },
     /// Advance the active run to its next phase (Initiation -> ApproachIce,
     /// ApproachIce -> EncounterIce, EncounterIce -> next ICE's ApproachIce or
@@ -91,20 +93,25 @@ pub enum PlayerAction {
     /// `RunPhase::AccessingCard`, where `JackOut` is rejected via
     /// `RulesError::RunAlreadyConcluded`.
     CompleteRun,
-    /// Spend 1 click, move `card_id` out of the Grip and resolve it. Runner-only.
-    /// No credit cost yet — like `RezIce`, cost is data-driven per-card and no
-    /// `CardRegistry` is wired into the engine yet.
+    /// Spend 1 click and `card_id`'s registry `cost` in credits, move
+    /// `card_id` out of the Grip, resolve its `OnPlay` triggers, and trash it
+    /// to the Heap. Runner-only.
     PlayEvent { card_id: CardId },
     /// Spend 1 click and `card_id`'s registry `cost` in credits, move
     /// `card_id` out of HQ into Archives, then resolve its `OnPlay`
     /// triggers. Corp-only mirror of `PlayEvent`. `card_id`'s `CardType`
     /// must be `Operation` (`RulesError::CardNotOperation` otherwise).
     PlayOperation { card_id: CardId },
-    /// Spend 1 click, move `card_id` from the Grip into the Rig. Runner-only.
-    /// No credit cost yet, for the same reason as `PlayEvent`.
+    /// Spend 1 click and `card_id`'s registry `cost` in credits (less any
+    /// install discount), move `card_id` from the Grip into the Rig.
+    /// Runner-only. One console at a time (`RulesError::ConsoleLimitExceeded`);
+    /// a second copy of a ◆ card trashes the first.
     InstallHardware { card_id: CardId },
-    /// Spend 1 click, move `card_id` from the Grip into the Rig. Runner-only.
-    /// No credit cost yet, for the same reason as `PlayEvent`.
+    /// Spend 1 click and `card_id`'s registry `cost` in credits (less any
+    /// install discount), move `card_id` from the Grip into the Rig.
+    /// Runner-only. Its memory cost is read from the registry and must fit
+    /// `rules::memory::available_memory`; a second copy of a ◆ card trashes
+    /// the first.
     ///
     /// **Carries no memory cost, deliberately.** It used to, and the caller
     /// had to name a value matching the card's registry `memory_cost`
@@ -204,9 +211,8 @@ pub enum PlayerAction {
     /// live install (`RulesError::InstallNotFound` otherwise) — no rez
     /// requirement, matching the real game (advancement doesn't require
     /// rez). Its `CardRegistry` definition must have `advancement_requirement:
-    /// Some(_)` (`RulesError::CardNotAdvanceable` otherwise); this doesn't
-    /// score the card even if the requirement is met — scoring is a
-    /// separate, not-yet-modeled action.
+    /// Some(_)` (`RulesError::CardNotAdvanceable` otherwise). Advancing never
+    /// scores: that is `ScoreAgenda`, a separate — and free — action.
     ///
     /// An `InstallId` because advancing "a *Tithe*" is ambiguous with two
     /// installed and the Corp advances one of them, not both.

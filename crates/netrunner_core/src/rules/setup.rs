@@ -184,11 +184,11 @@ pub(crate) fn take_mulligan(
 /// decision hands off into Corp's first turn (3 clicks + mandatory R&D
 /// draw) via `turn::enter_start_of_turn`.
 ///
-/// This reuse means the Corp's actual first turn performs a mandatory
-/// R&D draw, which diverges from real-world Netrunner rules (the Corp's
-/// true first turn skips that draw) — implemented literally per the
-/// brief's explicit "Corp's first turn: 3 clicks + mandatory draw"
-/// wording, not silently "fixed" to match the real game.
+/// This reuse means the Corp's first turn performs the mandatory R&D draw
+/// like every other, which is the real rule: under Null Signal Games'
+/// rules the Corp draws on turn one. (An earlier comment here claimed the
+/// opposite and called the draw a deliberate divergence — an invitation to
+/// "fix" a correct implementation, caught by the Rules Audit.)
 fn advance_past_mulligan(
     next: &mut GameState,
     events: &mut Vec<GameEvent>,
