@@ -700,16 +700,12 @@ pub fn evaluate_effect(
                 (installed.card.clone(), installed.server)
             };
             let card_id = &card_id;
-            // Mirrors `engine::rez_ice`'s "sync the matching RunIce if
-            // mid-ApproachIce" step — see this variant's doc comment for why
-            // this duplicates rather than shares `rez_ice`'s lines.
-            if let Some(run) = state.active_run.as_mut()
-                && run.phase == RunPhase::ApproachIce
-                && let Some(current_ice) = run.ice.get_mut(run.position)
-                && current_ice.card_id == *card_id
-            {
-                current_ice.rezzed = true;
-            }
+            // No `run.ice` bookkeeping here: `run::reconcile_ice` re-reads
+            // `rezzed` from the install before the run next steps. The flip
+            // that used to sit here matched `run.ice[run.position]` by
+            // `CardId` — wrong with two copies of one ICE — and was
+            // unreachable besides: Send a Message, the only user, fires with
+            // no run (scored) or mid-access (stolen).
             let rezzed_event = GameEvent::IceRezzed { card: card_id.clone(), server };
             let mut events = vec![rezzed_event.clone()];
             events.extend(dispatcher::dispatch_event(state, registry, &rezzed_event)?);
@@ -1166,10 +1162,18 @@ pub(crate) fn trash_card(
 /// Trojan Program hosted on it (`InstalledRunnerCard::hosted_on_ice ==
 /// Some(host_card_id)`) is trashed too — e.g. trashing the ICE Botulus is
 /// hosted on takes Botulus with it. Called from every site that removes a
-/// card from `CorpState::installed`. A no-op (returns no events) if
-/// nothing is hosted on `host_card_id`, so this is zero-overhead for the
-/// overwhelming majority of Corp cards that never host anything.
-fn cascade_trash_hosted_programs(state: &mut GameState, host_card_id: &CardId) -> Vec<GameEvent> {
+/// piece of ICE from `CorpState::installed` — `trash_card`, `trash_this_card`
+/// and `pending_choice::remove_installed_card` (a selection-trash used to
+/// skip it, stranding the trojan with a dangling `hosted_on_ice` that
+/// Tranquilizer's `DerezCard(HostIce)` then failed on). A no-op (returns no
+/// events) if nothing is hosted on `host_card_id`, so this is zero-overhead
+/// for the overwhelming majority of Corp cards that never host anything.
+///
+/// Keyed by `CardId` because `InstalledRunnerCard::hosted_on_ice` is one:
+/// with two copies of one ICE installed, trashing either takes the
+/// trojans hosted on both. Converting the host reference to an `InstallId`
+/// is the fix, and a wider change than this call site (ROADMAP).
+pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host_card_id: &CardId) -> Vec<GameEvent> {
     let hosted: Vec<CardId> = state
         .runner
         .rig

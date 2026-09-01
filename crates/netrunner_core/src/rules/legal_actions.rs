@@ -407,7 +407,9 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
             CardType::Hardware => candidates.push(PlayerAction::InstallHardware { card_id: card_id.clone() }),
             // A Trojan (`installs_on_ice: true`, e.g. Botulus) can't be
             // installed via the ordinary Rig-install flow at all — see
-            // `install_program_on_ice_candidates` instead.
+            // `install_program_on_ice_candidates` instead. This guard only
+            // picks which action to propose; `engine::install_program`
+            // refuses a trojan itself (`TrojanMustBeHostedOnIce`).
             //
             // How much memory this reserves is not named here, and that is
             // the whole point: this used to offer `memory_cost: 0` against a

@@ -589,14 +589,11 @@ fn rez_ice(
     let rez_cost = (card_def.cost as i32 + rez_cost_modifier).max(0) as u32;
     let mut events = ability::pay_cost(&mut next, side, &Cost::Credits(rez_cost), Some(&ice_id))?;
 
-    // A rezzed ICE was, by the gate above, the one being approached: flip
-    // the matching `RunIce.rezzed` so `continue_run`'s upcoming
-    // `ApproachIce` transition encounters it.
-    if let Some(run) = next.active_run.as_mut()
-        && let Some(current_ice) = run.ice.iter_mut().find(|at| at.install_id == ice)
-    {
-        current_ice.rezzed = true;
-    }
+    // The run's own view of this ICE (`RunIce::rezzed`) is not touched
+    // here: `run::reconcile_ice` re-reads it from the install at the
+    // `apply_action` choke point and again before the `Continue` that
+    // would encounter it. A hand-rolled flip used to sit here; nothing
+    // reads `run.ice` between this point and that reconcile.
 
     // Rez stays priority-independent (either side can act regardless of
     // whose priority it currently is), but still gives the other side a
@@ -1008,6 +1005,13 @@ fn install_program(
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
     if card_def.card_type != CardType::Program {
         return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program" });
+    }
+    // A trojan installs *on* a piece of ICE (`InstallProgramOnIce`), never
+    // into the rig on its own. `legal_actions` never offers this pairing,
+    // but the handler is the authority — see `RulesError::
+    // TrojanMustBeHostedOnIce` for what a hostless trojan did.
+    if card_def.installs_on_ice {
+        return Err(RulesError::TrojanMustBeHostedOnIce(card_id));
     }
     // The registry is the only authority on the cost — the action no longer
     // carries one that could disagree with it. Checked against the derived

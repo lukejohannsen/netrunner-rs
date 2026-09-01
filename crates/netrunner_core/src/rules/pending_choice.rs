@@ -12,7 +12,7 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run;
-use crate::rules::state::{ArchivedCard, GameState, InstallId, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side};
+use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side};
 
 /// Who `state.pending_decision` is currently awaiting a choice from, if
 /// anything is parked — used by `engine::apply_action`'s blocking guard and
@@ -210,18 +210,41 @@ fn is_corp_archives(chooser: Side, zone: &CardZoneRef) -> bool {
 /// Ansel to trash. Keyed by `InstallId`, not first-matching `CardId`, so
 /// with two copies installed the one the chooser pointed at is the one
 /// that goes.
-fn remove_installed_card(state: &mut GameState, chooser: Side, zone: &CardZoneRef, install_id: InstallId) -> Option<(CardId, bool)> {
+///
+/// Returns `(card, was_public, cascade)`: a piece of ICE leaving the table
+/// takes the trojans hosted on it along (`ability::
+/// cascade_trash_hosted_programs`), exactly as `trash_card` does — this was
+/// the one removal site that did not, leaving a hosted Botulus/Tranquilizer
+/// in the rig pointing at ICE that no longer existed.
+fn remove_installed_card(
+    state: &mut GameState,
+    chooser: Side,
+    zone: &CardZoneRef,
+    install_id: InstallId,
+) -> Option<(CardId, bool, Vec<GameEvent>)> {
     match owning_side(chooser, zone) {
         Side::Corp => {
             let pos = state.corp.installed.iter().position(|c| c.install_id == install_id)?;
             let removed = state.corp.installed.remove(pos);
-            Some((removed.card, removed.rezzed))
+            let cascade = if removed.slot == InstallSlot::Ice {
+                ability::cascade_trash_hosted_programs(state, &removed.card)
+            } else {
+                Vec::new()
+            };
+            Some((removed.card, removed.rezzed, cascade))
         }
         Side::Runner => {
             let pos = state.runner.rig.iter().position(|c| c.install_id == install_id)?;
-            Some((state.runner.rig.remove(pos).card, true))
+            Some((state.runner.rig.remove(pos).card, true, Vec::new()))
         }
     }
+}
+
+/// Whether moving a card into `zone` trashes it — the three discard piles
+/// a selection can name. Decides whether `resolve_confirm_card_selection`
+/// records a `GameEvent::CardTrashed`.
+fn is_discard_pile(zone: &CardZoneRef) -> bool {
+    matches!(zone, CardZoneRef::OwnHeap | CardZoneRef::OwnArchives | CardZoneRef::OpponentDiscard)
 }
 
 /// Fisher-Yates shuffle of `zone` (relative to `chooser`) using `GameState`'s
@@ -495,11 +518,15 @@ pub(crate) fn resolve_confirm_card_selection(
             // the Runner had seen it decides its orientation if `dest` is
             // Archives. A card from a hidden zone (HQ, R&D) was not seen; a
             // rezzed install or any Runner card was.
+            let mut cascade = Vec::new();
             let moved: Option<bool> = match &source {
                 CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => selected_installs
                     .get(index)
                     .and_then(|install_id| remove_installed_card(state, side, &source, *install_id))
-                    .map(|(_, was_public)| was_public),
+                    .map(|(_, was_public, hosted)| {
+                        cascade = hosted;
+                        was_public
+                    }),
                 _ if is_corp_archives(side, &source) => {
                     let pos = state.corp.archives.iter().position(|a| &a.card == card_id);
                     pos.map(|pos| !state.corp.archives.remove(pos).facedown)
@@ -529,6 +556,22 @@ pub(crate) fn resolve_confirm_card_selection(
                 } else if let Some(zone) = plain_zone_mut(state, side, dest) {
                     zone.push(card_id.clone());
                 }
+                // A card moved into a discard pile was trashed, and says so
+                // — `side` is the card's owner, as in `ability::trash_card`
+                // (Retribution's victim is the Runner's). This path used to
+                // emit only `CardsSelected`, so every selection-trash in the
+                // pool (Ansel 1.0, Ballista, Retribution, Above the Law,
+                // Carnivore, Longevity Serum, Hansei Review, Anoetic Void,
+                // the memory-limit trash) was invisible to the coverage
+                // harness's per-card `trashed` count. Nothing dispatches on
+                // `CardTrashed`, so this changes no rules. Unlike
+                // `Effect::TrashCard` it does not open a prevention window;
+                // no card in the pool declares `OnTrashAboutToResolve`, so
+                // parity is a follow-up if one ever does.
+                if is_discard_pile(dest) {
+                    events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone() });
+                }
+                events.extend(cascade);
             }
         }
         if shuffle_after {
