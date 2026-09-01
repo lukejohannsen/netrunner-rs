@@ -550,6 +550,9 @@ fn fire_one(
     registry: &CardRegistry,
     due: &DeferredTrigger,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    if !still_applies(state, due) {
+        return Ok(Vec::new());
+    }
     // `due.event` is what makes a deferred trigger indistinguishable from
     // one that fired immediately: it rebuilds the same
     // `ability::ResolutionContext`, so a requirement reading the triggering
@@ -558,6 +561,37 @@ fn fire_one(
         Some(target) => ability::process_card_triggers_targeting(state, registry, &due.card, due.trigger, target, due.event.as_ref()),
         None => ability::process_card_triggers(state, registry, &due.card, due.trigger, due.event.as_ref()),
     }
+}
+
+/// Whether a trigger planned against a run's own events still has a run to
+/// apply to.
+///
+/// A plan fires one card at a time, and a card can end the run partway
+/// through it — Anoetic Void's "trash 2 cards from HQ and pay 2[c]: end the
+/// run" is an `OnApproachServer` reaction, and so is Manegarm Skunkworks'
+/// "pay 2[click] or 5[c] or end the run". With both protecting one remote,
+/// Anoetic resolved first (parking a card selection), ended the run, and
+/// the queued Skunkworks trigger then fired against *no run*, parking a
+/// paid choice whose decline resolved `EndTheRun` into `NoActiveRun` and
+/// whose acceptance the Runner could not afford. No legal action for the
+/// Runner, deterministically — found by the index-path sweep's
+/// random-vs-random seating at seed 85 on the mechanic-coverage decks.
+///
+/// Real Netrunner agrees: once the run has ended, remaining "when the
+/// Runner approaches" abilities have nothing to react to. The check lives
+/// here, in the one function every planned or deferred trigger fires
+/// through, rather than in `drain_deferred_triggers` alone — `fire_plan`'s
+/// own loop has the same exposure when the run-ending card does not park.
+///
+/// Only the run-scoped events are guarded. `Trigger::OnRunEnded` is fired
+/// from `RunCompleted`/`RunJackedOut`/`RunEndedByEffect`, which by
+/// definition arrive with no active run, so those must keep firing.
+fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
+    let run_scoped = matches!(
+        due.event,
+        Some(GameEvent::RunSucceeded { .. } | GameEvent::IceEncountered { .. } | GameEvent::RunInitiated { .. })
+    );
+    !run_scoped || state.active_run.is_some()
 }
 
 /// Fires whatever `fire_each` had to queue, once whatever blocked it has
@@ -718,6 +752,7 @@ mod tests {
         registry.insert(card_with_trigger("desperado", Side::Runner, Trigger::OnSuccessfulRun, Effect::GainCredits(Side::Runner, 1)));
 
         let mut state = empty_state();
+        state.active_run = Some(crate::rules::RunState { server: ServerId::RnD, ..Default::default() });
         state.runner.rig = vec![rig_card("desperado")];
 
         let events = dispatch_event(&mut state, &registry, &GameEvent::RunSucceeded { server: ServerId::RnD }).unwrap();
@@ -1025,6 +1060,61 @@ mod tests {
         assert!(state.deferred_triggers.is_empty(), "a fully drained queue is left empty");
     }
 
+    /// The seed-85 deadlock, at unit scale: a trigger queued against
+    /// `RunSucceeded` must not fire once a sibling has ended the run. With
+    /// a run still active the same trigger fires normally.
+    #[test]
+    fn a_deferred_approach_trigger_does_not_fire_once_the_run_has_ended() {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger(
+            "manegarm_skunkworks",
+            Side::Corp,
+            Trigger::OnApproachServer,
+            Effect::GainCredits(Side::Corp, 1),
+        ));
+        let due = DeferredTrigger {
+            card: CardId("manegarm_skunkworks".to_string()),
+            trigger: Trigger::OnApproachServer,
+            target: None,
+            event: Some(GameEvent::RunSucceeded { server: ServerId::Remote(0) }),
+        };
+
+        let mut ended = empty_state();
+        ended.active_run = None;
+        ended.deferred_triggers = vec![due.clone()];
+        let before = ended.corp.resources.credits;
+        let events = drain_deferred_triggers(&mut ended, &registry).unwrap();
+        assert!(events.is_empty(), "nothing to react to once the run is over: {events:?}");
+        assert_eq!(ended.corp.resources.credits, before);
+        assert!(ended.deferred_triggers.is_empty(), "the stale trigger is dropped, not left queued");
+
+        let mut live = empty_state();
+        live.active_run = Some(crate::rules::RunState { server: ServerId::Remote(0), ..Default::default() });
+        live.deferred_triggers = vec![due];
+        drain_deferred_triggers(&mut live, &registry).unwrap();
+        assert_eq!(live.corp.resources.credits, before.gain(1), "with the run still live it fires as before");
+    }
+
+    /// `OnRunEnded` reacts to the run *having* ended, so the staleness
+    /// guard above must leave it alone.
+    #[test]
+    fn a_deferred_run_ended_trigger_still_fires_with_no_active_run() {
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger("mayfly", Side::Runner, Trigger::OnRunEnded, Effect::GainCredits(Side::Runner, 1)));
+        let mut state = empty_state();
+        state.active_run = None;
+        state.runner.rig = vec![rig_card("mayfly")];
+        state.deferred_triggers = vec![DeferredTrigger {
+            card: CardId("mayfly".to_string()),
+            trigger: Trigger::OnRunEnded,
+            target: None,
+            event: Some(GameEvent::RunEndedByEffect { server: ServerId::Hq }),
+        }];
+        let before = state.runner.resources.credits;
+        drain_deferred_triggers(&mut state, &registry).unwrap();
+        assert_eq!(state.runner.resources.credits, before.gain(1));
+    }
+
     /// A deferred trigger must be indistinguishable from one that fired
     /// immediately, including for a requirement that reads the *event* that
     /// fired it.
@@ -1150,6 +1240,7 @@ mod tests {
         registry.insert(card_with_trigger("unrezzed_upgrade", Side::Corp, Trigger::OnApproachServer, Effect::GainCredits(Side::Corp, 99)));
 
         let mut state = empty_state();
+        state.active_run = Some(crate::rules::RunState { server: ServerId::Hq, ..Default::default() });
         state.corp.installed = vec![
             crate::rules::state::InstalledCard {
                 install_id: InstallId(1079),

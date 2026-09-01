@@ -76,7 +76,7 @@ Adding an `Effect` or `EffectRequirement` variant is the expensive move: it grow
 
 1. First try to compose existing primitives. `Sequence`, `EffectIf`, `PresentChoice`, `PromptChooseCards`, and `OfferPaidChoice` cover most "new" card text.
 2. If a new variant is genuinely needed, its doc comment must say in one line why composition didn't work.
-3. **Watch the ratio, not the count.** Baseline at System Gateway completion: **14 of 66 `Effect` variants are used by exactly one card** — acceptable for a 75-card set. The widely-reused core is healthy (`PromptChooseCards` 17 cards, `PresentChoice` 16, `EffectIf` 12). If the next set adds single-use variants at a rate approaching its own card count, the DSL has started tracking cards rather than mechanics — stop and build a composition primitive instead of continuing.
+3. **Watch the ratio, not the count.** Measured August 2026 over the 94 card files: **19 of 47 `Effect` variants are used by exactly one card, and 6 by none** (`BreakSubroutine`, `RemoveTags`, `RemoveBadPublicity`, `Trace`, `PreventDamage`, `PreventTrash`). The widely-reused core is healthy (`Sequence` 26 cards, `GainCredits` 25, `PromptChooseCards` 17, `PresentChoice` 16, `EffectIf` 12). The earlier figure here, "14 of 66", never matched the enum — it was written and not re-measured. If the next set adds single-use variants at a rate approaching its own card count, the DSL has started tracking cards rather than mechanics — stop and build a composition primitive instead of continuing.
 
 ### State Hygiene Rule
 
@@ -109,6 +109,17 @@ NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_session --release
 ```
 
 This matters because the range was once 8, and two of the deadlocks sat outside it — one of them live on `main` while the committed sweep stayed green. A failure names its `seed` and seating, so re-running just that case is a one-line override.
+
+**Both sweeps also carry the rules-coverage gate** (`netrunner_session::Coverage::gate_failures`): across the sweep, every `PlayerAction` variant must be applied, every sample-deck card seen in play, and every load-bearing `GameEvent` emitted. Reachability — "the game ended" — is what let `InstallProgram` be silently unreachable for months, and let the whole encounter machinery go untested: heuristic-vs-random play never produces an `IceEncountered`, because the heuristic never runs and never installs ICE. That is why each sweep has a **random-vs-random seating** — the only unbiased one — alongside the two heuristic pairings that find deadlocks. A gate failure names the variant, card or event that was never reached; the fix is an engine bug, a bot blindness, or a *reasoned* allowlist entry (`ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS`, `ACTIONS_RARE_WITH_SAMPLE_DECKS` with its game-count threshold) — never a deleted assertion. Rare actions are demanded only at the deep seed count, which is one more reason the 256-seed run is not optional.
+
+**Measure a rules change before and after it**, the way the memory-cost fix was measured ("0 program installs → 3"):
+
+```bash
+cargo run --release -p netrunner_cli -- --headless --all-matchups --games 96 \
+  --corp random --runner random --seed 1 --report target/coverage/<branch>-random-random.json
+```
+
+and `diff` the JSON against the previous report. Random-vs-random is the seating that reaches the most rules; a heuristic seating measures the bot as much as the engine. Quote the load-bearing deltas in the ROADMAP entry.
 
 Related mechanical gates, all of which must stay green:
 

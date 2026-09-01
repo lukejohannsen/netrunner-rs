@@ -24,7 +24,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Command::Deck { action }) => deck::run(action, &config),
         None => {
             if config.headless {
-                headless::run(&config).await
+                headless::run(&config)
             } else {
                 tui::run(&config).await
             }

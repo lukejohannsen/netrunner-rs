@@ -16,7 +16,8 @@ use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, 
 use netrunner_core::dsl::CardId;
 use netrunner_bots::Agent;
 use netrunner_core::rules::{validate_deck, GamePhase, GameState, Side, WindowCheckpoint};
-use netrunner_session::{Seat, Session, SessionStep};
+use netrunner_session::coverage::sample_pool_card_ids;
+use netrunner_session::{Coverage, Seat, Session, SessionStep, StallReason};
 use netrunner_single_player::{SinglePlayerSession, MAX_STEPS};
 
 /// The registry a consumer builds must contain System Gateway cards, and
@@ -112,38 +113,105 @@ fn sweep_seed_count() -> u64 {
     std::env::var("NETRUNNER_SWEEP_SEEDS").ok().and_then(|value| value.parse().ok()).unwrap_or(32)
 }
 
+/// Which index-based agents sit where. The same three seatings as
+/// `netrunner_session`'s view-path sweep, for the same reasons — see the
+/// `Seating` there: the heuristic pairings find deadlocks, and
+/// random-vs-random is the only one that reaches runs and encounters at
+/// all, because `HeuristicAgent` never runs and never installs ICE.
+#[derive(Clone, Copy, Debug)]
+enum Seating {
+    HeuristicCorpRandomRunner,
+    RandomCorpHeuristicRunner,
+    RandomBoth,
+}
+
+impl Seating {
+    const ALL: [Seating; 3] = [Seating::HeuristicCorpRandomRunner, Seating::RandomCorpHeuristicRunner, Seating::RandomBoth];
+
+    fn drivers(self, seed: u64) -> (Box<dyn Agent>, Box<dyn Agent>) {
+        let random = |side, seed| -> Box<dyn Agent> { Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), side)) };
+        let heuristic =
+            |side, seed| -> Box<dyn Agent> { Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(side, seed), side)) };
+        match self {
+            Seating::HeuristicCorpRandomRunner => (heuristic(Side::Corp, seed), random(Side::Runner, seed)),
+            Seating::RandomCorpHeuristicRunner => (random(Side::Corp, seed), heuristic(Side::Runner, seed)),
+            Seating::RandomBoth => (random(Side::Corp, seed), random(Side::Runner, seed.wrapping_add(1))),
+        }
+    }
+
+    /// Random-vs-random can legitimately outlast `MAX_STEPS` (measured: 1
+    /// game in 192); that is slow play, not a deadlock. A deadlock is
+    /// `StallReason::NoLegalActions`, which no seating may produce.
+    fn tolerates_budget_exhaustion(self) -> bool {
+        matches!(self, Seating::RandomBoth)
+    }
+}
+
+/// Also the index-path **rules-coverage gate**: every `PlayerAction`
+/// variant and every load-bearing `GameEvent` must be applied at least
+/// once across the sweep, through the `ActionSpace` round trip. This is
+/// the test that would have failed while `InstallProgram` was silently
+/// unreachable, and the one that catches an `ActionSpace` cap too small
+/// for a real game — a legal action with no index never reaches this path.
+/// The card universe is this fixture's own two decks, not the sample pool.
 #[test]
 fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
+    let mut coverage = Coverage::default();
     for seed in 0..sweep_seed_count() {
-        for runner_is_random in [false, true] {
+        for seating in Seating::ALL {
             let registry = sg_registry();
             let (corp_deck, runner_deck) = sg_decks();
             let (state, _events) =
                 GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
 
-            let (corp, runner): (Box<dyn Agent>, Box<dyn Agent>) = if runner_is_random {
-                (
-                    Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Corp, seed), Side::Corp)),
-                    Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Runner)),
-                )
-            } else {
-                (
-                    Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Corp)),
-                    Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Runner, seed), Side::Runner)),
-                )
-            };
-
-            let (final_state, history) = SinglePlayerSession::new(state, registry, corp, runner).run();
+            let (corp, runner) = seating.drivers(seed);
+            let (final_state, history, outcome) =
+                SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
             assert!(
-                matches!(final_state.phase, GamePhase::GameOver(_)),
-                "seed {seed} (runner_is_random={runner_is_random}): expected GameOver within {MAX_STEPS} steps"
+                matches!(final_state.phase, GamePhase::GameOver(_))
+                    || (seating.tolerates_budget_exhaustion()
+                        && matches!(outcome, SessionStep::Stalled(StallReason::BudgetExhausted))),
+                "seed {seed} ({seating:?}): expected GameOver within {MAX_STEPS} steps, got {outcome:?}"
             );
-            assert!(
-                !history.is_empty(),
-                "seed {seed} (runner_is_random={runner_is_random}): history should be non-empty"
-            );
+            assert!(!history.is_empty(), "seed {seed} ({seating:?}): history should be non-empty");
+            coverage.absorb_match(&history, &registry, &outcome);
         }
     }
+
+    let (corp_deck, runner_deck) = sg_decks();
+    let mut universe: Vec<CardId> = corp_deck.cards.iter().chain(&runner_deck.cards).map(|(id, _)| id.clone()).collect();
+    universe.sort_by(|a, b| a.0.cmp(&b.0));
+    let failures = coverage.gate_failures(&universe);
+    assert!(
+        failures.is_empty(),
+        "rules never reached across {} index-path games (rerun with NETRUNNER_SWEEP_SEEDS=256 before \
+         allowlisting anything):\n  {}",
+        coverage.games,
+        failures.join("\n  ")
+    );
+}
+
+/// The position that random-vs-random seating found the day it was added
+/// to the sweep, pinned by seed so a regression names itself.
+///
+/// Anoetic Void and Manegarm Skunkworks protecting one remote: Anoetic's
+/// `OnApproachServer` parked a card selection and, once confirmed, ended
+/// the run; the queued Skunkworks trigger then fired against no run and
+/// parked a paid choice the Runner could neither afford nor decline
+/// (declining resolves `EndTheRun` → `NoActiveRun`). See
+/// `dispatcher::still_applies`.
+#[test]
+fn the_anoetic_void_then_skunkworks_position_plays_out() {
+    let seed = 85;
+    let registry = sg_registry();
+    let (corp_deck, runner_deck) = sg_decks();
+    let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
+    let (corp, runner) = Seating::RandomBoth.drivers(seed);
+    let (final_state, _history, outcome) = SinglePlayerSession::new(state, registry, corp, runner).run_with_outcome();
+    assert!(
+        matches!(final_state.phase, GamePhase::GameOver(_)),
+        "seed {seed} must play to a conclusion, got {outcome:?}"
+    );
 }
 
 /// The same sweep, over Null Signal Games' published System Gateway sample
@@ -156,8 +224,9 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
 /// these are twelve real pairings whose card interactions differ.
 #[test]
 fn every_sample_deck_matchup_finishes() {
+    let mut coverage = Coverage::default();
     for (index, (corp_deck, runner_deck)) in netrunner_core::decks::matchups().into_iter().enumerate() {
-        for seed in 0..3u64 {
+        for seed in 0..4u64 {
             let registry = sg_registry();
             let label = format!("{}_vs_{} seed {seed}", corp_deck.id, runner_deck.id);
             let (state, _events) =
@@ -165,27 +234,42 @@ fn every_sample_deck_matchup_finishes() {
                     .unwrap_or_else(|e| panic!("{label}: sample decks should set up cleanly: {e:?}"));
 
             // Alternate which side is random so both sides' decisions get
-            // explored across the sweep.
-            let corp_is_random = index % 2 == 0;
-            let (corp, runner): (Box<dyn Agent>, Box<dyn Agent>) = if corp_is_random {
-                (
-                    Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Corp)),
-                    Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Runner, seed), Side::Runner)),
-                )
-            } else {
-                (
-                    Box::new(IndexedHeuristicAgent::new(HeuristicAgent::new(Side::Corp, seed), Side::Corp)),
-                    Box::new(IndexedRandomAgent::new(RandomAgent::new(seed), Side::Runner)),
-                )
+            // explored across the sweep; the last two seeds of every
+            // matchup are random-vs-random, the one seating that reaches
+            // runs — and two of them because a 2-of in a 40-card deck
+            // (Docklands Pass) went unseen with one.
+            let seating = match (seed, index % 2 == 0) {
+                (2 | 3, _) => Seating::RandomBoth,
+                (_, true) => Seating::RandomCorpHeuristicRunner,
+                (_, false) => Seating::HeuristicCorpRandomRunner,
             };
-
-            let (final_state, _history) = SinglePlayerSession::new(state, registry, corp, runner).run();
+            let (corp, runner) = seating.drivers(seed);
+            let (final_state, history, outcome) =
+                SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
             assert!(
-                matches!(final_state.phase, GamePhase::GameOver(_)),
-                "{label}: expected GameOver within {MAX_STEPS} steps"
+                matches!(final_state.phase, GamePhase::GameOver(_))
+                    || (seating.tolerates_budget_exhaustion()
+                        && matches!(outcome, SessionStep::Stalled(StallReason::BudgetExhausted))),
+                "{label} ({seating:?}): expected GameOver within {MAX_STEPS} steps, got {outcome:?}"
             );
+            coverage.absorb_match(&history, &registry, &outcome);
         }
     }
+
+    // Four seeds per matchup is too few to demand every action; the gate
+    // here is the sample pool's cards only, since these are the only
+    // index-path games played on the decks self-play trains on.
+    let failures: Vec<String> = coverage
+        .gate_failures(&sample_pool_card_ids(&sg_registry()))
+        .into_iter()
+        .filter(|failure| failure.starts_with("card "))
+        .collect();
+    assert!(
+        failures.is_empty(),
+        "sample-deck cards never reached across {} index-path games:\n  {}",
+        coverage.games,
+        failures.join("\n  ")
+    );
 }
 
 /// The post-action paid-ability window must not become *constant* —

@@ -29,6 +29,37 @@ pub struct Config {
     #[arg(long, default_value_t = 100)]
     pub games: u32,
 
+    /// (headless) Rotate through every sample-deck matchup
+    /// (`netrunner_core::decks::matchups()`) by game index instead of
+    /// playing `--corp-deck` vs `--runner-deck` every game — the same
+    /// rotation the agent-driven sweeps and self-play use.
+    #[arg(long)]
+    pub all_matchups: bool,
+
+    /// (headless) Write the rules-coverage report as JSON to this path,
+    /// in addition to printing the table. Keys are sorted, so two reports
+    /// can be `diff`ed to measure a rules fix before and after.
+    #[arg(long)]
+    pub report: Option<PathBuf>,
+
+    /// (headless) Print one line per game: seed, matchup, steps, outcome.
+    #[arg(long)]
+    pub verbose: bool,
+
+    /// (headless) Search iterations per decision for `--corp puct` /
+    /// `--runner puct` and `mcts`. Low by default because a coverage run
+    /// wants many games, not strong ones.
+    #[arg(long, default_value_t = 32)]
+    pub simulations: usize,
+
+    /// (headless) Seat the bots through the index-based `ActionSpace`
+    /// round trip (`netrunner_single_player`, the RL path) instead of as
+    /// view-based `Seat::Agent`s. The two reach different code — see
+    /// AGENTS.md's Testing Rule — so a coverage report is worth taking in
+    /// both shapes.
+    #[arg(long)]
+    pub index_path: bool,
+
     /// Deterministic RNG seed. Interactive mode seeds its one game with
     /// this value directly; headless mode derives each game's seed from it.
     /// Omitted: a fresh OS-random seed is picked (so re-runs aren't
@@ -43,11 +74,10 @@ pub struct Config {
     /// requires exactly one of `--corp`/`--runner` to be `Human` — the CLI
     /// only ever hosts one human seat; the other side must be a bot.
     ///
-    /// Local interactive play runs synchronously on a
-    /// `netrunner_single_player::SinglePlayerSession` — no `MatchSession`,
-    /// no channel, no background task (see `tui::run_local`). `--mode
-    /// remote` is the path that submits actions over a channel to a real
-    /// `netrunner_server` match.
+    /// Local interactive play pumps a `netrunner_session::Session`
+    /// synchronously — no `MatchSession`, no channel, no background task
+    /// (see `tui::run_local`). `--mode remote` is the path that submits
+    /// actions over a channel to a real `netrunner_server` match.
     #[arg(long, value_enum, default_value_t = BotKind::Human)]
     pub corp: BotKind,
 
@@ -57,9 +87,9 @@ pub struct Config {
     pub runner: BotKind,
 
     /// `Local` runs the match in this process: interactive play on a
-    /// synchronous `SinglePlayerSession` (`tui::run_local`), `--headless`
-    /// on an in-process `MatchSession` driving two bots (`headless::run`).
-    /// `Remote` instead
+    /// `netrunner_session::Session` (`tui::run_local`), `--headless` on
+    /// the same `Session` driving two bots and counting what the rules
+    /// actually did (`headless::run`). `Remote` instead
     /// connects to a `netrunner_server --serve` daemon over WebSocket at
     /// `--server`; `--corp`/`--runner`/`--headless`/`--games` are ignored
     /// in this mode — use `--side` to request a seat instead.
@@ -138,15 +168,20 @@ pub enum BotKind {
     Random,
     Heuristic,
     Mcts,
+    /// `netrunner_bots::PuctAgent` over the uniform policy — the search
+    /// shape self-play trains with, minus the network. The seating a
+    /// coverage report should include, since it is the one that generates
+    /// training data.
+    Puct,
     /// A policy network trained by `scripts/run_iteration_loop.py`, loaded
     /// from `--model`. Requires building with `--features onnx`, and is
     /// supported only in local interactive play — not because it sees too
     /// much (`OnnxPolicyEvaluator` encodes through `encode_observation`,
     /// which builds a `ClientView` for its own side, so its features are
     /// masked like every other agent's) but because it has no `BotAgent`
-    /// form: it implements the index-based `Agent`/`PlayerDriver` shape and
-    /// so cannot fill a `netrunner_server::PlayerSlot::Bot`. See
-    /// `bots::make_agent`, which returns `None` for this kind.
+    /// form: it implements the index-based `Agent` shape and so cannot
+    /// fill a `netrunner_session::Seat::Agent`. See `bots::make_agent`,
+    /// which returns `None` for this kind.
     Onnx,
 }
 

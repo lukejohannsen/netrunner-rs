@@ -50,8 +50,15 @@ pub struct MctsAgent {
 
 impl MctsAgent {
     pub fn new(side: Side, seed: u64) -> Self {
+        Self::with_iterations(side, seed, DEFAULT_ITERATIONS)
+    }
+
+    /// `new`, with only the per-decision iteration budget changed — for a
+    /// harness that wants many cheap games rather than a strong opponent,
+    /// without restating (and then drifting from) the other defaults.
+    pub fn with_iterations(side: Side, seed: u64, iterations: usize) -> Self {
         let trees = rayon::current_num_threads().clamp(1, MAX_TREES);
-        Self::with_config(side, seed, DEFAULT_ITERATIONS, DEFAULT_MAX_DEPTH, DEFAULT_EXPLORATION, trees)
+        Self::with_config(side, seed, iterations, DEFAULT_MAX_DEPTH, DEFAULT_EXPLORATION, trees)
     }
 
     pub fn with_config(side: Side, seed: u64, iterations: usize, max_depth: usize, exploration: f64, trees: usize) -> Self {

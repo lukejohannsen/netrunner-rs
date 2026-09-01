@@ -25,6 +25,11 @@ use crate::remote;
 const CORP_MAX_CLICKS: u32 = 3;
 const RUNNER_MAX_CLICKS: u32 = 4;
 
+/// Search budget for a `mcts`/`puct` opponent in interactive play — the
+/// agents' own defaults. `--simulations` is a headless flag; a human
+/// opponent gets the full-strength bot.
+const DEFAULT_SIMULATIONS: usize = 64;
+
 pub async fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     match config.mode {
         Mode::Local => run_local(config),
@@ -122,9 +127,9 @@ fn build_bot_seat(
     model: &str,
 ) -> Result<(Seat, Option<Box<dyn netrunner_bots::Agent>>), String> {
     match kind {
-        crate::config::BotKind::Onnx => Ok((Seat::External, Some(bots::make_driver(kind, side, seed, model)?))),
+        crate::config::BotKind::Onnx => Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model)?))),
         _ => {
-            let agent = bots::make_agent(kind, side, seed)
+            let agent = bots::make_agent(kind, side, seed, DEFAULT_SIMULATIONS)
                 .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
             Ok((Seat::Agent(agent), None))
         }
