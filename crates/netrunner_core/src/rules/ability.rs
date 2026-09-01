@@ -328,12 +328,6 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::PermitJackOut => {
-            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
-            run.jack_out_permitted = true;
-            Ok(vec![GameEvent::JackOutPermitted { server: run.server }])
-        }
-
         Effect::GainMaxHandSize(side, amount) => {
             match side {
                 Side::Corp => state.corp.max_hand_size_bonus = state.corp.max_hand_size_bonus.saturating_add(*amount),
@@ -449,6 +443,22 @@ pub fn evaluate_effect(
                 None => state.corp.installed.push(new_card),
             }
             Ok(vec![GameEvent::CardInstalled { side: Side::Corp, card: card_id.clone(), server: *into }])
+        }
+
+        Effect::InstallRunnerCardFromGrip => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // Eligibility may have shifted since the selection was offered
+            // (`CardFilter::InstallableRunnerCard` checked it then — but
+            // Mutual Favor's fetched icebreaker was never filtered on
+            // affordability at all). If the pick is not installable, the
+            // card simply stays in the grip: the same "nothing to do"
+            // leniency `PromptChooseCards`'s fewer-than-`min` case
+            // establishes, never an error that would fail the decision
+            // resolving it.
+            if !crate::rules::engine::can_install_runner_card_from_grip(state, registry, &card_id) {
+                return Ok(Vec::new());
+            }
+            crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
         }
 
         Effect::PreventStealAndTrashForRemainderOfRun => {
@@ -751,11 +761,57 @@ pub fn evaluate_effect(
                 bonus_run_credits: *bonus_run_credits,
                 allowed_servers: allowed_servers.clone(),
                 on_success: on_success.clone(),
+                install: None,
                 source_card: acting_card.cloned(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: *chooser }])
+        }
+
+        Effect::PromptInstallCorpCard { origin_zone } => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // First match by position: two copies of one card in HQ are
+            // indistinguishable and interchangeable, so "the copy the Corp
+            // just selected" and "the first copy" are the same card.
+            let position = match origin_zone {
+                crate::dsl::CardZoneRef::OwnHq => state.corp.hq.iter().position(|c| c == &card_id),
+                crate::dsl::CardZoneRef::OwnArchives => {
+                    state.corp.archives.iter().position(|a| a.card == card_id)
+                }
+                _ => return Err(RulesError::UnresolvedCardTarget),
+            };
+            // Card gone from the zone, an uninstallable type, or (for ICE)
+            // no affordable destination: nothing to offer — the same
+            // "nothing to do" leniency `PromptChooseCards` establishes. A
+            // fresh remote is always free, so this only bites for a type
+            // that cannot be installed at all.
+            let Some(position) = position else { return Ok(Vec::new()) };
+            let Some(card_def) = registry.get(&card_id) else { return Ok(Vec::new()) };
+            let allowed = crate::rules::engine::corp_install_destinations(state, card_def);
+            if allowed.is_empty() {
+                return Ok(Vec::new());
+            }
+            state.pending_decision = Some(PendingDecision::ChooseServer {
+                chooser: Side::Corp,
+                rez_cost_delta: 0,
+                bonus_run_credits: 0,
+                allowed_servers: Some(allowed),
+                on_success: None,
+                install: Some(crate::rules::state::PendingInstallFromZone {
+                    origin: origin_zone.clone(),
+                    position,
+                    pay_cost: true,
+                }),
+                // Deliberately NOT the chosen card: `source_card` passes
+                // through the masked view, and the pick out of HQ is
+                // hidden information until it lands. The install payload
+                // above names it by position instead.
+                source_card: None,
+                source_install: ctx.acting_install,
+                resume: PendingChoiceResume::None,
+            });
+            Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
         Effect::RezInstalledIgnoringCost(install) => {
@@ -1088,8 +1144,8 @@ fn owning_side_of_target(target: &CardTarget, acting_card: Option<&CardId>, regi
         CardTarget::ThisCard => {
             acting_card.and_then(|id| registry.get(id)).map(|c| c.side).unwrap_or(Side::Runner)
         }
-        // A Trojan's host is always a Corp installed card; HQ is the Corp's.
-        CardTarget::HostIce | CardTarget::RandomFromHq => Side::Corp,
+        // A Trojan's host is always a Corp installed card.
+        CardTarget::HostIce => Side::Corp,
     }
 }
 
@@ -1121,7 +1177,7 @@ fn resolve_corp_installed_target(
             let installed = state.find_corp_install(host).ok_or(RulesError::InstallNotFound(host))?;
             Ok((host, installed.card.clone(), installed.server))
         }
-        CardTarget::ThisCard | CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::RandomFromHq => {
+        CardTarget::ThisCard | CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -1204,20 +1260,6 @@ pub(crate) fn trash_card(
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card);
             Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone() }])
-        }
-
-        CardTarget::RandomFromHq => {
-            // The roll comes from the state's own PRNG, so a replay of the
-            // same action history trashes the same card. An empty HQ is the
-            // same "already gone" no-op as the other arms.
-            if state.corp.hq.is_empty() {
-                return Ok(Vec::new());
-            }
-            let index = (state.next_u64() as usize) % state.corp.hq.len();
-            let card = state.corp.hq.remove(index);
-            // Out of the Corp's hand, unseen: facedown.
-            state.corp.archives.push(ArchivedCard::facedown(card.clone()));
-            Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card }])
         }
 
         CardTarget::TopOfStack { side, zone } => {
@@ -1709,6 +1751,18 @@ pub fn check_requirement(
                 state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce);
             if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::AccessedAnyCardDuringLastRun => {
+            let accessed = state.last_completed_run.as_ref().is_some_and(|run| run.cards_accessed > 0);
+            if accessed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::ThisCardIsInstalled => {
+            // Deliberately off the *install* the dispatch named, never a
+            // first-match CardId fallback — see the variant's doc comment.
+            let installed = ctx.acting_install.is_some_and(|install| {
+                state.find_corp_install(install).is_some() || state.find_rig_install(install).is_some()
+            });
+            if installed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::WasFirstAdvancementThisCard => {
             // Answered from the triggering event itself: `CardAdvanced`
             // already carries the running total, and `== 1` *is* "this was
@@ -1832,6 +1886,8 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::StoleAgendaDuringLastRun
         | EffectRequirement::ArchivesHasFacedownCard
         | EffectRequirement::AccessingArchives
+        | EffectRequirement::AccessedAnyCardDuringLastRun
+        | EffectRequirement::ThisCardIsInstalled
         | EffectRequirement::MadeSuccessfulRunThisTurn
         | EffectRequirement::ThisCardCountersAtMost(_)
         | EffectRequirement::CurrentlyAccessingACard

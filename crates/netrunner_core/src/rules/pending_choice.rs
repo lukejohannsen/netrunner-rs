@@ -118,7 +118,7 @@ pub(crate) fn eligible_positions(
         .into_iter()
         .enumerate()
         .filter(|(_, id)| registry.get(id).is_some_and(|card| card_matches_filter(card, filter)))
-        .filter(|(position, _)| instance_matches_filter(state, chooser, zone, *position, filter))
+        .filter(|(position, _)| instance_matches_filter(state, registry, chooser, zone, *position, filter))
         .map(|(position, _)| position)
         .collect()
 }
@@ -135,6 +135,7 @@ pub(crate) fn eligible_positions(
 /// `NotInstalledThisTurn` had the same flaw for a card installed twice.
 fn instance_matches_filter(
     state: &GameState,
+    registry: &CardRegistry,
     chooser: Side,
     zone: &CardZoneRef,
     position: usize,
@@ -156,6 +157,17 @@ fn instance_matches_filter(
         // Only an unrezzed installed Corp card can be a rez target. The
         // Runner has no rez state, so a rig card is never eligible.
         CardFilter::UnrezzedIce => corp_install.is_some_and(|c| !c.rezzed),
+        // The state-dependent half of "could the Runner install this right
+        // now": affordability, memory budget, console limit — shared with
+        // `Effect::InstallRunnerCardFromGrip`'s own re-check so the offer
+        // and the resolution can never disagree. Grip cards only; the
+        // definition-level type half already ran in `card_matches_filter`.
+        CardFilter::InstallableRunnerCard => {
+            matches!(zone, CardZoneRef::OwnGrip)
+                && state.runner.grip.get(position).is_some_and(|card| {
+                    crate::rules::engine::can_install_runner_card_from_grip(state, registry, card)
+                })
+        }
         _ => true,
     }
 }
@@ -290,9 +302,24 @@ pub(crate) fn resolve_accept(
         other => other.clone(),
     };
 
-    let mut events = ability::pay_cost_ctx(state, pending.side, &cost_to_pay, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?;
+    let cost_events = ability::pay_cost_ctx(state, pending.side, &cost_to_pay, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?;
+    // A tag paid as a cost (`Cost::TakeTags`, Funhouse's "end the run
+    // unless the Runner takes 1 tag") is still the Runner taking a tag:
+    // NBN: Reality Plus's `Trigger::OnTagsGiven` must fire for it, exactly
+    // as it does when `Effect::GiveTags` dispatches its own event. Only the
+    // *cost's* `TagsGiven` events are dispatched here — an `if_paid` that
+    // gives tags dispatches for itself inside `evaluate_effect` — and the
+    // dispatch runs after `if_paid` so the choice's own effect resolves
+    // first; if that effect parked something, the `TagsGiven` arm's
+    // `fire_each` queues the reaction rather than firing under it.
+    let cost_tag_events: Vec<GameEvent> =
+        cost_events.iter().filter(|e| matches!(e, GameEvent::TagsGiven { .. })).cloned().collect();
+    let mut events = cost_events;
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
     events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()), registry)?);
+    for tag_event in cost_tag_events {
+        events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &tag_event)?);
+    }
 
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_paid`
@@ -680,7 +707,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, source_card, source_install, resume, .. } =
+    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, install, source_card, source_install, resume, .. } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -692,6 +719,41 @@ pub(crate) fn resolve_choose_server(
         && !allowed.contains(&server)
     {
         return Err(RulesError::ServerNotAllowedForChoice { server });
+    }
+
+    // The install-shaped resolution (`Effect::PromptInstallCorpCard`,
+    // Ansel 1.0): the chosen server receives the card the parked decision
+    // names by position, and no run starts. The position was valid at park
+    // time and a parked decision blocks every other action, so the lookup
+    // cannot miss; `UnresolvedCardTarget` covers the impossible rather
+    // than panicking in engine code.
+    if let Some(pending_install) = install {
+        let card_id = match &pending_install.origin {
+            crate::dsl::CardZoneRef::OwnHq => (pending_install.position < state.corp.hq.len())
+                .then(|| state.corp.hq.remove(pending_install.position)),
+            crate::dsl::CardZoneRef::OwnArchives => (pending_install.position < state.corp.archives.len())
+                .then(|| state.corp.archives.remove(pending_install.position).card),
+            _ => None,
+        }
+        .ok_or(RulesError::UnresolvedCardTarget)?;
+        let slot = match registry.get(&card_id).map(|c| &c.card_type) {
+            Some(crate::dsl::CardType::Ice(_)) => InstallSlot::Ice,
+            _ => InstallSlot::Root,
+        };
+        let mut events = vec![GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 }];
+        events.extend(crate::rules::engine::place_corp_card(state, registry, card_id, server, slot, pending_install.pay_cost)?);
+        if resume == PendingChoiceResume::ResumeSubroutines {
+            // The install's own dispatch may have parked something (an
+            // identity reaction); propagate the resume intent exactly as
+            // `resolve_confirm_card_selection` does before resuming the
+            // encounter this decision interrupted.
+            mark_pending_decision_resume_subroutines(state);
+            if let Some(pending) = state.pending_paid_choice.as_mut() {
+                pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
+            }
+            events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+        }
+        return Ok(events);
     }
 
     run::start_run(state, registry, server)?;

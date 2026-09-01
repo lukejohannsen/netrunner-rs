@@ -13,6 +13,28 @@
             "Runner",
             1
           ]
+        },
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnGrip",
+                  "filter": "InstallableRunnerCard",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": "InstallRunnerCardFromGrip"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
         }
       ]
     },
@@ -24,6 +46,28 @@
             "Runner",
             1
           ]
+        },
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnGrip",
+                  "filter": "InstallableRunnerCard",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": "InstallRunnerCardFromGrip"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
         }
       ]
     }

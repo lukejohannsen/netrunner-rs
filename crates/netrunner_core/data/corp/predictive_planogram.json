@@ -38,20 +38,39 @@
           "EffectIf": {
             "condition": "IsTagged",
             "effect": {
-              "Sequence": [
-                {
-                  "GainCredits": [
-                    "Corp",
-                    3
-                  ]
-                },
-                {
-                  "DrawCards": [
-                    "Corp",
-                    3
-                  ]
-                }
-              ]
+              "PresentChoice": {
+                "chooser": "Corp",
+                "options": [
+                  {
+                    "GainCredits": [
+                      "Corp",
+                      3
+                    ]
+                  },
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      3
+                    ]
+                  },
+                  {
+                    "Sequence": [
+                      {
+                        "GainCredits": [
+                          "Corp",
+                          3
+                        ]
+                      },
+                      {
+                        "DrawCards": [
+                          "Corp",
+                          3
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              }
             }
           }
         }

@@ -1023,53 +1023,46 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 1 })));
     }
 
-    /// Both subroutines fire in the same window-close batch —
-    /// `resolve_unbroken_subroutines` only pauses between subroutines for a
-    /// `Trace`/`PendingPrevention`, not `PermitJackOut`, so all 4 net damage
-    /// (2 + 2) resolves before control returns to either side. What
-    /// `PermitJackOut` actually buys the Runner, given this engine's
-    /// per-encounter (not per-subroutine) window granularity, is the ability
-    /// to `JackOut` instead of continuing the run once the encounter
-    /// resolves — checked here via `jack_out_permitted` and the emitted
-    /// event, not via an interrupt between the two subroutines.
+    /// "Do 2 net damage. The Runner may jack out." is a decision *between*
+    /// the two subroutines. It used to be `Effect::PermitJackOut`, a flag
+    /// that `resolve_unbroken_subroutines` never paused for: both
+    /// subroutines fired in one batch, all 4 damage landed, and the "may
+    /// jack out" the Runner had paid two cards for was only ever offered
+    /// after the encounter — when it no longer bought anything. The first
+    /// subroutine now parks a Runner choice; taking it ends the run with
+    /// the second subroutine unfired.
     #[test]
-    fn karuna_first_subroutine_permits_jack_out_and_both_subroutines_deal_net_damage() {
+    fn karuna_lets_the_runner_jack_out_between_its_two_subroutines() {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(4);
         state.runner.grip = (0..5).map(|i| CardId(format!("grip_card_{i}"))).collect();
-        state.corp.installed = vec![crate::rules::InstalledCard {
-            install_id: InstallId(1005),
-            card: CardId("karuna".to_string()),
-            slot: InstallSlot::Ice,
-            rezzed: true,
-            ..Default::default()
-        }];
+        state.corp.installed = vec![corp_ice("karuna", ServerId::Hq)];
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach karuna");
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes approach window");
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes approach window, entering encounter");
-
-        assert!(
-            !state.active_run.as_ref().unwrap().jack_out_permitted,
-            "jack-out should be closed on committing to the encounter"
-        );
-
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter window");
-        let (state, events) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
-            .expect("corp passes encounter window, firing both subroutines");
+        let (after_first, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("corp passes encounter window, firing the first subroutine");
 
-        assert_eq!(state.runner.grip.len(), 1, "4 of the 5 grip cards should have been discarded to the two subroutines' net damage");
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::JackOutPermitted { .. })));
+        assert_eq!(after_first.runner.grip.len(), 3, "only the first subroutine's 2 net damage has resolved");
         assert!(
-            state.active_run.as_ref().unwrap().jack_out_permitted,
-            "the first subroutine should have re-opened the jack-out window"
+            matches!(after_first.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            "the Runner is asked whether to jack out before the second subroutine fires"
         );
+
+        // Jack out: the run ends, the second subroutine never fires.
+        let (jacked_out, _) = apply_action(&after_first, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+            .expect("runner jacks out");
+        assert!(jacked_out.active_run.is_none(), "the run is over");
+        assert_eq!(jacked_out.runner.grip.len(), 3, "no further damage");
+
+        // Stay: the second subroutine fires and the run goes on.
+        let (stayed, _) = apply_action(&after_first, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 })
+            .expect("runner stays in the run");
+        assert_eq!(stayed.runner.grip.len(), 1, "the second subroutine's 2 net damage resolved");
+        assert!(stayed.active_run.is_some(), "and the run continues past Karunā");
     }
 
     #[test]
@@ -1336,8 +1329,12 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDrawn { side: Side::Corp })));
     }
 
+    /// "If the Runner is tagged, you may resolve both instead" — the Corp
+    /// still chooses. It used to resolve both unconditionally when tagged,
+    /// which forced a draw the Corp may not want (a thin R&D, a full HQ).
+    /// Tagged, the choice has three options: either one, or both.
     #[test]
-    fn predictive_planogram_resolves_both_options_when_the_runner_is_tagged() {
+    fn predictive_planogram_may_resolve_both_options_when_the_runner_is_tagged() {
         let registry = sg_registry();
         let mut state = base_state();
         state.corp.resources.credits = Credits(10);
@@ -1345,14 +1342,26 @@ mod system_gateway {
         state.corp.r_and_d = (0..5).map(|i| CardId(format!("rd_card_{i}"))).collect();
         state.runner.tags = 1;
 
-        let (state, events) =
+        let (state, _) =
             apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("predictive_planogram".to_string()) })
                 .expect("play predictive planogram");
+        match &state.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, options, .. }) => {
+                assert_eq!(options.len(), 3, "gain, draw, or both")
+            }
+            other => panic!("expected the Corp's three-way choice, got {other:?}"),
+        }
 
-        assert!(state.pending_decision.is_none(), "tagged case resolves both immediately, no choice needed");
-        assert_eq!(state.corp.resources.credits, Credits(13), "10 - 0 (cost) + 3");
-        assert_eq!(state.corp.hq.len(), 3);
+        let (both, events) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 2 }).expect("corp takes both");
+        assert_eq!(both.corp.resources.credits, Credits(13), "10 - 0 (cost) + 3");
+        assert_eq!(both.corp.hq.len(), 3);
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 3 })));
+
+        let (credits_only, _) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("corp takes credits only");
+        assert_eq!(credits_only.corp.resources.credits, Credits(13));
+        assert!(credits_only.corp.hq.is_empty(), "declined the draw");
     }
 
     #[test]
@@ -1417,6 +1426,96 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("corp picks credits");
         assert_eq!(state.corp.resources.credits, Credits(10), "10 - 2 (rez cost) + 2 (choice)");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 2 })));
+    }
+
+    /// A tag paid as a cost is still a taken tag. Funhouse's encounter —
+    /// "end the run unless the Runner takes 1 tag" — pays `Cost::TakeTags`,
+    /// whose `TagsGiven` event used to go undispatched, so the printed
+    /// pairing (NBN: Reality Plus + Funhouse) never fired the identity.
+    #[test]
+    fn nbn_reality_plus_reacts_to_a_tag_taken_as_a_cost() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.identity = Some(CardId("nbn_reality_plus".to_string()));
+        state.corp.installed = vec![corp_ice("funhouse", ServerId::Hq)];
+
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        assert!(state.pending_paid_choice.is_some(), "funhouse's encounter choice is parked");
+
+        let corp_credits_before = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
+            .expect("runner takes the tag to stay in the run");
+        assert_eq!(state.runner.tags, 1);
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })),
+            "NBN: Reality Plus reacts to the taken tag"
+        );
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("corp takes credits");
+        assert_eq!(state.corp.resources.credits, corp_credits_before.gain(2));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 2 })));
+    }
+
+    /// Zahya's once-per-turn is consumed the moment her trigger fires, and
+    /// `OnRunEnded` fires for a bounced run too — so a 0-access run on a
+    /// central used to burn the once-per-turn for a gain of zero, silently
+    /// disenfranchising a later run the same turn. The 0-access run must
+    /// leave it unconsumed.
+    #[test]
+    fn zahya_sadeghi_is_not_spent_by_a_run_that_accessed_nothing() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(0);
+        state.runner.identity = Some(CardId("zahya_sadeghi".to_string()));
+        state.corp.installed = vec![corp_ice("palisade", ServerId::RnD)];
+        state.corp.hq = vec![CardId("hq_card_0".to_string())];
+
+        // Run 1: R&D, bounced by Palisade's "end the run" — 0 accesses.
+        let state = enter_encounter_with(state, &registry, ServerId::RnD);
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter window");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("corp passes, firing the end-the-run subroutine");
+        assert!(state.active_run.is_none(), "bounced");
+        assert_eq!(state.runner.resources.credits, Credits(0), "no gain from a 0-access run");
+        assert!(state.runner.once_per_turn_used.is_empty(), "and the once-per-turn was not consumed");
+
+        // Run 2, same turn: HQ, one access — the identity still pays out.
+        let (state, mut events) = run_to_completion(state, &registry, ServerId::Hq);
+        let (state, closing_events) = close_all_windows(state, &registry);
+        events.extend(closing_events);
+        let (state, more_events) =
+            apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: CardId("hq_card_0".to_string()) })
+                .expect("pass on the accessed card, concluding the run");
+        events.extend(more_events);
+        assert_eq!(state.runner.resources.credits, Credits(1), "1 card accessed on the HQ run");
+    }
+
+    /// "…while it is installed": an Urtica Cipher accessed out of R&D is
+    /// not installed and deals nothing. The trigger used to fire anyway —
+    /// flat 2 net damage from a deck access, and with another copy on the
+    /// table the first-match token read could even size the hit by *that*
+    /// copy's advancement counters.
+    #[test]
+    fn urtica_cipher_deals_no_damage_when_accessed_from_rnd() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = (0..3).map(|i| CardId(format!("grip_card_{i}"))).collect();
+        state.corp.r_and_d = vec![CardId("urtica_cipher".to_string())];
+        // A second, installed and heavily advanced copy elsewhere must not
+        // answer for the copy being accessed out of R&D.
+        state.corp.installed = vec![installed_with_counters("urtica_cipher", ServerId::Remote(0), 0)];
+        state.corp.installed[0].advancement_tokens = 3;
+
+        let (state, events) = run_to_completion(state, &registry, ServerId::RnD);
+        assert_eq!(state.runner.grip.len(), 3, "no net damage from the R&D access");
+        assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::DamageTaken { .. })), "{events:?}");
     }
 
     #[test]
@@ -1510,28 +1609,67 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::RunEndedByEffect { .. })));
     }
 
+    /// "When this run ends, trash this program" is a rider on the *break*
+    /// ability — Mayfly is only spent by a run in which it broke something.
+    /// It used to trash itself at the end of every run, used or not, which
+    /// made it a one-run program the moment the Runner ran anywhere. The
+    /// break now leaves a hosted counter as the "used this run" marker and
+    /// the run-end trigger reads it; the counter leaves with the card.
     #[test]
-    fn mayfly_trashes_itself_when_the_run_it_was_installed_during_ends() {
+    fn mayfly_is_not_trashed_by_a_run_in_which_it_broke_nothing() {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(4);
-        state.runner.rig = vec![crate::rules::InstalledRunnerCard {
-            card: CardId("mayfly".to_string()),
-            base_strength: 1,
-            ..Default::default()
-        }];
+        let mut mayfly = rig_card_with_counters("mayfly", 0);
+        mayfly.base_strength = 1;
+        state.runner.rig = vec![mayfly];
         state.corp.archives = vec![ArchivedCard::faceup(CardId("hedge_fund".to_string()))];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("initiate run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("reach success, no ice");
         let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open pre-access window");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, events) =
+        let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: CardId("hedge_fund".to_string()) })
                 .expect("pass on hedge fund, concluding the run");
 
-        assert!(state.runner.rig.is_empty(), "mayfly should have trashed itself when the run ended");
+        assert_eq!(state.runner.rig.len(), 1, "mayfly stays: it was not used this run");
+        assert!(!state.runner.heap.contains(&CardId("mayfly".to_string())));
+    }
+
+    #[test]
+    fn mayfly_trashes_itself_when_a_run_in_which_it_broke_a_subroutine_ends() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        let mut mayfly = rig_card_with_counters("mayfly", 0);
+        mayfly.base_strength = 1;
+        state.runner.rig = vec![mayfly];
+        // Palisade on a central: strength 2, one "end the run" subroutine.
+        state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
+        state.corp.hq = vec![CardId("hq_card_0".to_string())];
+
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let mayfly = install_of(&state, "mayfly");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: mayfly, ability_index: 1 })
+            .expect("pump mayfly to strength 2");
+        // Using an ability hands the Corp a chance to respond; it passes.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: mayfly, ability_index: 0 })
+            .expect("break palisade's subroutine");
+        assert_eq!(state.runner.rig[0].counters, 1, "the break left the used-this-run marker");
+
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit to the access");
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: CardId("hq_card_0".to_string()) })
+                .expect("pass on the accessed card, concluding the run");
+
+        assert!(state.runner.rig.is_empty(), "mayfly should have trashed itself when the run it was used in ended");
         assert!(state.runner.heap.contains(&CardId("mayfly".to_string())));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, .. })));
     }
@@ -1606,47 +1744,56 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardsSelected { .. })));
     }
 
+    /// "If there are any cards in HQ, trash 1 of them." The Corp chooses
+    /// which: the printed text says nothing about "at random", and under
+    /// Null Signal Games' rules a player trashing cards from their own hand
+    /// picks them unless the card says otherwise. A previous pass made this
+    /// a seeded random trash on the reasoning that choosing "removed the
+    /// drawback" — but the drawback is the card, not which card, and the
+    /// engine is not the place to re-balance print.
     #[test]
-    fn hansei_review_gains_ten_credits_then_trashes_one_hq_card() {
+    fn hansei_review_gains_ten_credits_then_lets_the_corp_choose_one_hq_card_to_trash() {
         let registry = sg_registry();
         let mut state = base_state();
         state.corp.resources.credits = Credits(5);
-        state.corp.hq = vec![CardId("hansei_review".to_string()), CardId("hedge_fund".to_string())];
+        state.corp.hq =
+            vec![CardId("hansei_review".to_string()), CardId("hedge_fund".to_string()), CardId("offworld_office".to_string())];
 
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hansei_review".to_string()) })
                 .expect("play hansei review");
 
         assert_eq!(state.corp.resources.credits, Credits(10), "5 - 5 (cost) + 10 (effect)");
-        // "Trash 1 random card from HQ": the engine picks, not the Corp —
-        // this used to be a `PromptChooseCards`, which let the Corp ditch
-        // its worst card and removed the drawback entirely.
-        assert!(state.pending_decision.is_none(), "no choice is offered");
-        assert!(state.corp.hq.is_empty(), "the one remaining HQ card was trashed");
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })),
+            "the Corp picks the card"
+        );
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
+                .expect("toggle hedge fund");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm the trash");
+
+        assert_eq!(state.corp.hq, vec![CardId("offworld_office".to_string())], "the chosen card left HQ; the other stayed");
         assert!(state.corp.archives_contains(&CardId("hedge_fund".to_string())));
-        assert!(state.corp.archives.iter().any(|a| a.card.0 == "hedge_fund" && a.facedown), "unseen, so facedown");
     }
 
-    /// The random pick is the state's PRNG, so it is deterministic under the
-    /// seed and a replay trashes the same card.
+    /// With nothing left in HQ after paying for it, the trash clause has
+    /// nothing to do and parks no decision — the "if there are any cards in
+    /// HQ" is `PromptChooseCards`'s own fewer-than-`min` no-op.
     #[test]
-    fn hansei_reviews_random_trash_is_deterministic_under_the_seed() {
+    fn hansei_review_with_an_otherwise_empty_hq_trashes_nothing_and_asks_nothing() {
         let registry = sg_registry();
-        let hand: Vec<CardId> = ["hedge_fund", "government_subsidy", "offworld_office", "palisade"].iter().map(|c| CardId(c.to_string())).collect();
-        let trashed_with = |seed: u64| {
-            let mut state = base_state();
-            state.seed = seed;
-            state.corp.resources.credits = Credits(5);
-            state.corp.hq = vec![CardId("hansei_review".to_string())];
-            state.corp.hq.extend(hand.iter().cloned());
-            let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hansei_review".to_string()) })
-                .expect("play");
-            assert_eq!(state.corp.hq.len(), 3);
-            state.corp.archives.iter().find(|a| a.card.0 != "hansei_review").map(|a| a.card.clone()).expect("one hand card trashed")
-        };
-        assert_eq!(trashed_with(11), trashed_with(11), "same seed, same card");
-        let picks: std::collections::HashSet<CardId> = (1..40).map(trashed_with).collect();
-        assert!(picks.len() > 1, "different seeds reach different cards: {picks:?}");
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("hansei_review".to_string())];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hansei_review".to_string()) })
+                .expect("play hansei review");
+
+        assert_eq!(state.corp.resources.credits, Credits(10));
+        assert!(state.pending_decision.is_none());
+        assert!(state.corp.hq.is_empty());
     }
 
     #[test]
@@ -1673,6 +1820,112 @@ mod system_gateway {
         assert!(events
             .iter()
             .any(|e| matches!(e, crate::rules::GameEvent::CardsSelected { revealed: true, .. })));
+        assert!(
+            state.pending_decision.is_none(),
+            "without a successful run this turn there is no install offer — the card just goes to the grip"
+        );
+    }
+
+    /// "If you made a successful run this turn, you may install that
+    /// program." The install clause was previously unmodelled: the found
+    /// icebreaker always went to the grip and the Runner paid a click to
+    /// install it later. The search now offers the install — paying the
+    /// program's cost — whenever a successful run happened this turn.
+    #[test]
+    fn mutual_favor_may_install_the_found_icebreaker_after_a_successful_run() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.made_successful_run_this_turn = true;
+        state.runner.grip = vec![CardId("mutual_favor".to_string())];
+        state.runner.stack = vec![CardId("corroder".to_string())];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: CardId("mutual_favor".to_string()) })
+                .expect("play mutual favor");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
+                .expect("toggle corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm search");
+
+        assert!(state.runner.grip.contains(&CardId("corroder".to_string())), "the find lands in the grip first");
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            "and the Runner is offered the install"
+        );
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install it");
+        assert!(state.runner.rig.iter().any(|c| c.card == CardId("corroder".to_string())));
+        assert!(!state.runner.grip.contains(&CardId("corroder".to_string())));
+        assert_eq!(state.runner.resources.credits, Credits(3), "5 - 2: the install cost is paid, unlike a subroutine install");
+    }
+
+    /// Pantograph's second clause — "Then, you may install 1 card from
+    /// your grip." — was previously unmodelled entirely. The offer excludes
+    /// what an effect install cannot do: a Trojan (host choice), and
+    /// anything the Runner cannot pay for.
+    #[test]
+    fn pantograph_may_install_a_card_from_grip_when_an_agenda_is_scored() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.runner.resources.credits = Credits(2);
+        state.runner.rig = vec![rig_card_with_counters("pantograph", 0)];
+        // corroder (2[c] program) is installable with the credit Pantograph
+        // just paid out; botulus is a Trojan and must not be offered.
+        state.runner.grip = vec![CardId("corroder".to_string()), CardId("botulus".to_string())];
+        state.corp.installed = vec![installed_with_counters("tomorrows_headline", ServerId::Remote(0), 0)];
+        state.corp.installed[0].advancement_tokens = 3;
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "tomorrows_headline") })
+                .expect("score tomorrow's headline");
+        assert_eq!(state.runner.resources.credits, Credits(3), "pantograph's 1[c] came first");
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            "then the install offer"
+        );
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose to install");
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(
+            offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position } if *position == 0)),
+            "corroder (position 0) is offered"
+        );
+        assert!(
+            !offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position } if *position == 1)),
+            "botulus, a Trojan, is not: {offered:?}"
+        );
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("toggle corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm install");
+        assert!(state.runner.rig.iter().any(|c| c.card == CardId("corroder".to_string())));
+        assert_eq!(state.runner.resources.credits, Credits(1), "3 - 2: the install cost is paid");
+    }
+
+    /// The other half of the offer filter: with nothing affordable in the
+    /// grip, choosing "install" simply finds no eligible card and nothing
+    /// is parked — never a dead-end decision.
+    #[test]
+    fn pantographs_install_offer_finds_no_card_the_runner_cannot_afford() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![rig_card_with_counters("pantograph", 0)];
+        // corroder costs 2; after Pantograph's +1 the Runner has 1.
+        state.runner.grip = vec![CardId("corroder".to_string())];
+        state.corp.installed = vec![installed_with_counters("tomorrows_headline", ServerId::Remote(0), 0)];
+        state.corp.installed[0].advancement_tokens = 3;
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "tomorrows_headline") })
+                .expect("score tomorrow's headline");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose to install");
+        assert!(state.pending_decision.is_none(), "no eligible card, so the selection never parks");
+        assert_eq!(state.runner.grip, vec![CardId("corroder".to_string())]);
     }
 
     #[test]
@@ -1752,8 +2005,11 @@ mod system_gateway {
         assert!(state.pending_decision.is_none(), "the vault's own server didn't score the agenda");
     }
 
+    /// "You may trash 1 installed resource" — the Corp can decline. A
+    /// previous pass removed the opt-out as if the trash were mandatory;
+    /// the printed card says "may".
     #[test]
-    fn above_the_law_trashes_an_installed_runner_resource() {
+    fn above_the_law_may_trash_an_installed_runner_resource() {
         let registry = sg_registry();
         let mut state = base_state();
         state.corp.installed = vec![crate::rules::InstalledCard {
@@ -1768,12 +2024,18 @@ mod system_gateway {
             ..Default::default()
         }];
 
-        let (state, _) =
+        let (scored, _) =
             apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "above_the_law") })
                 .expect("score above the law");
-        // "Trash 1 installed resource" is mandatory on the printed card; the
-        // opt-out `PresentChoice` this used to be wrapped in is gone, so the
-        // selection is parked directly.
+        assert!(matches!(scored.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })));
+
+        // Decline: the resource stays.
+        let (declined, _) = apply_action(&scored, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
+        assert_eq!(declined.runner.rig.len(), 1);
+        assert!(declined.pending_decision.is_none());
+
+        // Accept: pick the resource and trash it.
+        let (state, _) = apply_action(&scored, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("accept");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. })));
         let (state, _) = apply_action(
             &state,
@@ -3395,7 +3657,7 @@ mod system_gateway {
             ..Default::default()
         }];
         state.corp.installed = vec![corp_ice("ansel_1_0", ServerId::Hq)];
-        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        state.corp.hq = vec![CardId("nico_campaign".to_string())];
 
         state = enter_encounter_with(state, &registry, ServerId::Hq);
 
@@ -3413,20 +3675,118 @@ mod system_gateway {
         assert!(state.runner.rig.is_empty(), "corroder should have been trashed");
         assert!(state.runner.heap.contains(&CardId("corroder".to_string())));
 
-        // Subroutine 2: may install 1 card from HQ or Archives — choose HQ.
+        // Subroutine 2: may install 1 card from HQ or Archives — choose HQ,
+        // pick the asset, and pick where it goes: the printed text fixes
+        // neither the server nor waives the cost (an asset installs free
+        // either way; the ICE tax case is pinned by
+        // `ansels_install_pays_the_ice_install_tax`).
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to install from HQ");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
-                .expect("toggle hedge_fund");
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "nico_campaign") })
+                .expect("toggle nico_campaign");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
-            .expect("confirm install, ignoring cost, resuming subroutine resolution");
-        assert!(!state.corp.hq.contains(&CardId("hedge_fund".to_string())));
-        assert!(state.corp.installed.iter().any(|c| c.card == CardId("hedge_fund".to_string()) && c.server == ServerId::Hq && !c.rezzed));
-        assert_eq!(state.corp.resources.credits, Credits(10), "installed ignoring hedge_fund's printed cost — unchanged from the starting balance");
+            .expect("confirm the pick, parking the destination choice");
+        match &state.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseServer { chooser: Side::Corp, allowed_servers: Some(allowed), install: Some(_), .. }) => {
+                assert!(
+                    allowed.iter().all(|server| matches!(server, ServerId::Remote(_))),
+                    "an asset is remote-only: {allowed:?}"
+                );
+            }
+            other => panic!("expected the Corp's destination choice, got {other:?}"),
+        }
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) })
+                .expect("install into a new remote, resuming subroutine resolution");
+        assert!(!state.corp.hq.contains(&CardId("nico_campaign".to_string())));
+        assert!(state.corp.installed.iter().any(|c| c.card == CardId("nico_campaign".to_string()) && c.server == ServerId::Remote(0) && !c.rezzed));
+        assert_eq!(state.corp.resources.credits, Credits(10), "an asset installs for free — unchanged from the starting balance");
 
         // Subroutine 3: prevent steal/trash for the remainder of this run.
         assert!(state.active_run.as_ref().unwrap().runner_cannot_steal_or_trash);
+    }
+
+    /// Null Signal Games' install rule: new ICE goes in the **outermost**
+    /// position. `corp.installed`'s per-server vec order is what the run
+    /// approaches positionally, and every install used to append — which
+    /// put each new piece *innermost* and silently reversed the approach
+    /// order of every stacked server.
+    #[test]
+    fn installing_ice_lands_outermost_so_the_runner_approaches_the_newest_first() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![corp_ice("tithe", ServerId::Hq)];
+        state.corp.hq = vec![CardId("palisade".to_string())];
+
+        let (mut state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallCard { card_id: CardId("palisade".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice },
+        )
+        .expect("install palisade onto HQ");
+        assert_eq!(state.corp.resources.credits, Credits(9), "1[c]: one piece of ICE already protects HQ");
+        assert_eq!(
+            state.corp.installed.iter().map(|c| c.card.0.as_str()).collect::<Vec<_>>(),
+            vec!["palisade", "tithe"],
+            "the new piece sits in front — outermost"
+        );
+
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the outermost ICE");
+        assert_eq!(state.active_run.as_ref().unwrap().ice[0].card_id, CardId("palisade".to_string()), "newest first");
+    }
+
+    /// Ansel 1.0's install pays the normal cost — 1[c] per piece of ICE
+    /// already protecting the chosen server. Only Brân prints "ignoring
+    /// all costs".
+    #[test]
+    fn ansels_install_pays_the_ice_install_tax() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard {
+            card: CardId("corroder".to_string()),
+            base_strength: 2,
+            ..Default::default()
+        }];
+        state.corp.installed = vec![corp_ice("ansel_1_0", ServerId::Hq)];
+        state.corp.hq = vec![CardId("palisade".to_string())];
+
+        state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter window");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("corp passes, firing subroutine 1");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
+                .expect("toggle corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm trash");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+            .expect("choose to install from HQ");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "palisade") })
+                .expect("toggle palisade");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm the pick");
+        let credits_before = state.corp.resources.credits;
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq })
+                .expect("install onto HQ, behind the encounter");
+        assert_eq!(state.corp.resources.credits.0, credits_before.0 - 1, "Ansel itself already protects HQ: the tax is 1[c]");
+        assert_eq!(
+            state.corp.installed.iter().filter(|c| c.slot == InstallSlot::Ice).map(|c| c.card.0.as_str()).collect::<Vec<_>>(),
+            vec!["palisade", "ansel_1_0"],
+            "the new ICE is outermost — behind a Runner already at Ansel, so it is never approached this run"
+        );
+        // The run is still standing on Ansel; its remaining subroutine
+        // resolves and the encounter concludes normally.
+        assert!(state.active_run.as_ref().unwrap().runner_cannot_steal_or_trash, "subroutine 3 resolved after the install");
     }
 
     #[test]

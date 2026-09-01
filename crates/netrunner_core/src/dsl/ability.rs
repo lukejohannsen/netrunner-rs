@@ -187,6 +187,24 @@ pub enum EffectRequirement {
     /// paid ability" answer yes on essentially every action, which is the
     /// gate `WindowCheckpoint::PostAction` depends on.
     DuringEncounter,
+    /// The most recently concluded run (`GameState::last_completed_run`)
+    /// accessed at least one card — e.g. Zahya Sadeghi, whose "once per
+    /// turn" is consumed the moment her trigger fires, and whose
+    /// `Trigger::OnRunEnded` also fires for a bounced or jacked-out run on
+    /// HQ/R&D where the gain would be 0. Without this gate a 0-access run
+    /// silently burned the once-per-turn a later run that turn would have
+    /// paid out on.
+    AccessedAnyCardDuringLastRun,
+    /// The reacting card is, right now, an installed copy — the dispatch
+    /// named an install that is still on the table. e.g. Urtica Cipher's
+    /// "when the Runner accesses this asset **while it is installed**":
+    /// `Trigger::OnAccessed` also fires for an R&D/HQ/Archives access,
+    /// where an ambush's own text says it does not apply. Checked off
+    /// `ResolutionContext::acting_install` (present exactly when the
+    /// trigger fired against a live install), never by first-match
+    /// `CardId` — a copy installed elsewhere must not answer for the copy
+    /// being accessed out of R&D.
+    ThisCardIsInstalled,
     /// The advancement just placed by the `Trigger::OnAdvance` event
     /// currently being dispatched was the first one this card has ever
     /// received — e.g. Weyland Consortium: Built to Last's "whenever you

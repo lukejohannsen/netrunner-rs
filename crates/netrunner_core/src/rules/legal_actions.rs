@@ -296,7 +296,7 @@ fn static_candidates() -> Vec<PlayerAction> {
 }
 
 /// Distinct `Remote(n)` ids the Corp has already installed into, sorted.
-fn existing_remote_ids(state: &GameState) -> Vec<u32> {
+pub(crate) fn existing_remote_ids(state: &GameState) -> Vec<u32> {
     let mut ids: Vec<u32> = state
         .corp
         .installed
@@ -321,7 +321,7 @@ fn existing_remote_ids(state: &GameState) -> Vec<u32> {
 /// `max + 1` ratcheted ids upward all game, and `ActionSpace` indexes
 /// only `MAX_REMOTE_SERVERS` of them — past that, installs into and runs
 /// on the new remote were legal but invisible to the RL mask.
-fn fresh_remote_id(existing: &[u32]) -> u32 {
+pub(crate) fn fresh_remote_id(existing: &[u32]) -> u32 {
     (0..).find(|id| !existing.contains(id)).expect("the naturals are unbounded")
 }
 

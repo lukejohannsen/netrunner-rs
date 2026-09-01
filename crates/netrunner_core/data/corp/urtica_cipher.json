@@ -22,7 +22,8 @@
             "HostedAdvancementTokens"
           ]
         }
-      ]
+      ],
+      "requirement": "ThisCardIsInstalled"
     }
   ],
   "numeric_id": 30045,

@@ -773,6 +773,28 @@ pub enum PendingChoiceResume {
     ResumeSubroutines,
 }
 
+/// The install half of a `PendingDecision::ChooseServer` — which card the
+/// chosen server receives, named as a **position** into `origin`, never a
+/// `CardId`: the decision passes through `PublicGameState` unmasked, and a
+/// position names a slot in the Corp's own hand without publishing what
+/// sits in it (the same rule `ChooseCards::selected` follows). The card
+/// stays in `origin` until the destination is chosen; a parked decision
+/// blocks every other action, so the position cannot go stale. The
+/// `allowed_servers` computed for it do let the opponent infer the card's
+/// broad class (a remotes-only offer means agenda-or-asset) — accepted:
+/// the install lands one action later and reveals the same through its
+/// slot.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct PendingInstallFromZone {
+    pub origin: CardZoneRef,
+    pub position: usize,
+    /// Whether the install pays its normal costs (for ICE, 1[c] per piece
+    /// already protecting the destination). Ansel 1.0 pays — only Brân
+    /// 1.0's printed text says "ignoring all costs", and that one takes
+    /// the `Effect::InstallFromZoneIgnoringCost` path instead.
+    pub pay_cost: bool,
+}
+
 /// A decision parked by an `Effect`, awaiting a resolving `PlayerAction`.
 /// Lives as a sibling field on `GameState`, same rationale as
 /// `PendingPaidChoice`. Currently exactly one shape is needed; more
@@ -858,6 +880,16 @@ pub enum PendingDecision {
         /// `None` means any server; otherwise only these are offered — see
         /// `Effect::PromptChooseServer::allowed_servers`.
         allowed_servers: Option<Vec<ServerId>>,
+        /// `Some` turns the resolution from "start a run against the chosen
+        /// server" into "install this card into it" — Ansel 1.0's "You may
+        /// install 1 card from HQ or Archives", where the Corp picks the
+        /// destination (`Effect::PromptInstallCorpCard`). Reuses this
+        /// decision rather than adding a sibling: the choice *is* "pick a
+        /// server", with the same action, action-space slot, candidate
+        /// generation and masking pass-through a run-target choice already
+        /// has. `None` for every run-shaped choice.
+        #[serde(default)]
+        install: Option<PendingInstallFromZone>,
         /// Seeded onto the resulting `run::RunState::on_success_effect` —
         /// see `Effect::PromptChooseServer::on_success`.
         on_success: Option<Box<Effect>>,

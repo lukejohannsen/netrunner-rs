@@ -354,8 +354,14 @@ pub fn dispatch_event(
             }
         }
 
+        // Through `fire_each` (not `fire_direct`) although the audience is
+        // one card: a tag can be *paid* as a cost (`Cost::TakeTags`,
+        // Funhouse), and `pending_choice::resolve_accept` dispatches this
+        // event after the choice's own effect — which may itself have
+        // parked something. `fire_plan`'s blocked-resolution guard then
+        // queues the reaction instead of firing it under the parked state.
         GameEvent::TagsGiven { side: Side::Runner, .. } => match state.corp.identity.clone() {
-            Some(identity) => fire_direct(state, registry, &identity, None, Trigger::OnTagsGiven, event),
+            Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnTagsGiven, event),
             None => Ok(Vec::new()),
         },
 

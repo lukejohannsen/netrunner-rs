@@ -48,11 +48,6 @@ pub enum CardTarget {
     /// `RulesError::UnresolvedCardTarget` if `acting_card` isn't a hosted
     /// card. e.g. Tranquilizer's "derez host ice" once counters reach 3.
     HostIce,
-    /// One card from HQ chosen at random by the engine (`GameState::
-    /// next_u64`, so deterministic under the seed) — *Hansei Review*'s
-    /// "trash 1 random card from HQ". Not a `PromptChooseCards`: that lets
-    /// the Corp pick, which removes the card's entire drawback.
-    RandomFromHq,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -213,12 +208,6 @@ pub enum Effect {
     /// Saturating-removes `amount` generic counters from `acting_card`. Same
     /// target/error rules as `AddCounters`.
     RemoveCounters(u32),
-    /// Unconditionally sets the active run's `jack_out_permitted` flag —
-    /// e.g. Karunā's first subroutine ("do 2 net damage. The Runner may jack
-    /// out."), where jacking out is normally only permitted before
-    /// `RunPhase::Success`. `RulesError::NoActiveRun` if there's no run to
-    /// grant it on.
-    PermitJackOut,
     /// Evaluates `effect` only if `condition` holds; otherwise silently
     /// no-ops (`Ok(Vec::new())`) — the same soft-gate convention
     /// `dsl::card::TriggeredEffect::requirement` already uses, but usable
@@ -425,11 +414,10 @@ pub enum Effect {
     /// into `into` (a placeholder substituted with `source_card`'s own
     /// currently-installed server), skipping its install cost entirely.
     /// `slot`: `None` infers `Ice` for `CardType::Ice(_)` and `Root`
-    /// otherwise (Ansel 1.0's "install 1 card" is type-agnostic); `Some`
+    /// otherwise; `Some`
     /// pins it explicitly (Brân 1.0's subroutine only ever offers ICE, but
     /// authors it explicitly for clarity). `insert_after`: `None` appends
-    /// to the end of `CorpState::installed` (Ansel 1.0 — no positional
-    /// requirement in its text); `Some(host_card_id)` (substituted from
+    /// to the end of `CorpState::installed`; `Some(host_card_id)` (substituted from
     /// `source_card`, same as `into`) inserts immediately after that
     /// card's own index instead, which — since `CorpState::installed`'s
     /// vec order is install order and `run::engine::build_run_ice` derives
@@ -449,6 +437,35 @@ pub enum Effect {
         /// themselves, and a first-match-by-title lookup picked the first.
         insert_after: Option<crate::rules::InstallId>,
     },
+    /// Parks the Corp's choice of *destination server* for installing the
+    /// resolving card — `acting_card`, a card sitting in `origin_zone`
+    /// (`OwnHq` or `OwnArchives`) — then installs it there **paying** the
+    /// normal install cost: Ansel 1.0's "You may install 1 card from HQ or
+    /// Archives", whose printed text neither fixes the server nor waives
+    /// the cost. Parks a `PendingDecision::ChooseServer` carrying a
+    /// `state::PendingInstallFromZone` (see its doc for why the card is a
+    /// position, not an id), with `allowed_servers` precomputed by
+    /// `engine::corp_install_destinations` — agendas/assets to remotes
+    /// only, ICE only where the per-protecting-ICE tax is affordable.
+    /// Resolved by the same `PlayerAction::ChooseServerForPendingDecision`
+    /// a run-target choice uses. Contrast `InstallFromZoneIgnoringCost`
+    /// (Brân 1.0): a *positional* install — "directly inward from this
+    /// ice" — that ignores costs and offers no server choice.
+    PromptInstallCorpCard { origin_zone: CardZoneRef },
+    /// Installs the resolving card — `acting_card`, a card sitting in the
+    /// Runner's grip — into the rig, **paying** its install cost (with the
+    /// usual discounts) and respecting the memory budget, the console limit
+    /// and the unique rule: Pantograph's "you may install 1 card from your
+    /// grip", Mutual Favor's "you may install that program" (the search has
+    /// already moved the found icebreaker to the grip, so both install from
+    /// the one zone). A Trojan is out of scope — its host is a choice no
+    /// parked effect models yet — and is never offered; see `CardFilter::
+    /// InstallableRunnerCard`, whose eligibility this effect re-checks,
+    /// silently no-oping (the card stays in the grip) if the pick has
+    /// become uninstallable since it was offered. Contrast
+    /// `InstallFromZoneIgnoringCost`, the Corp-side subroutine install
+    /// that pays nothing.
+    InstallRunnerCardFromGrip,
     /// Sets `RunState::runner_cannot_steal_or_trash`, blocking `PlayerAction::
     /// StealAgenda`/`TrashAccessedCard` for the remainder of the current
     /// run — e.g. Ansel 1.0's third subroutine. `RulesError::NoActiveRun`
@@ -598,7 +615,6 @@ impl Effect {
             | Effect::PreventTrash
             | Effect::AddCounters(..)
             | Effect::RemoveCounters(..)
-            | Effect::PermitJackOut
             | Effect::GainCreditsPerCardAccessedThisRun(..)
             | Effect::RezInstalledIgnoringCost(..)
             | Effect::TakeAllCountersAsCredits(..)
@@ -608,6 +624,8 @@ impl Effect {
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
             | Effect::InstallFromZoneIgnoringCost { .. }
+            | Effect::PromptInstallCorpCard { .. }
+            | Effect::InstallRunnerCardFromGrip
             | Effect::PreventStealAndTrashForRemainderOfRun
             | Effect::PreventScoringForRemainderOfTurn
             | Effect::AddAdvancementTokens(..)
@@ -675,14 +693,6 @@ mod tests {
             serde_json::from_str::<Effect>(no_restrict_json).unwrap(),
             Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }
         );
-    }
-
-    #[test]
-    fn permit_jack_out_round_trips_through_json() {
-        let effect = Effect::PermitJackOut;
-        let json = serde_json::to_string(&effect).unwrap();
-        assert_eq!(json, r#""PermitJackOut""#);
-        assert_eq!(serde_json::from_str::<Effect>(&json).unwrap(), effect);
     }
 
     #[test]
