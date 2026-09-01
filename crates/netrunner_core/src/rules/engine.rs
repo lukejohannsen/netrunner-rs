@@ -548,12 +548,7 @@ fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Ve
     require_phase(state, GamePhase::Action(side))?;
     let mut next = state.clone();
     let mut events = run::advance_run(&mut next, RunAction::JackOut, registry)?;
-    // Snapshotted before `active_run` is cleared, mirroring `run::access`'s
-    // `RunCompleted` site — see `Trigger::OnRunEnded`'s doc comment.
-    if let Some(run) = next.active_run.as_ref() {
-        next.last_completed_run = Some(crate::rules::state::CompletedRun::snapshot(run));
-    }
-    next.active_run = None;
+    run::end_run(&mut next);
     // A window can be open here (e.g. mid-ApproachIce on the second+ ICE,
     // where jack_out_permitted is already true from a prior pass) — clear it
     // too, or it would survive with no active_run left to ever close it
@@ -637,6 +632,12 @@ fn play_event(
     let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
     events.push(played_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &played_event)?);
+    // A played Event is trashed once it resolves — it goes to the Heap,
+    // faceup, exactly as `play_operation` archives an Operation. This used
+    // to be missing, so every Event the Runner played left the game: the
+    // Heap under-reported by one card per Event, and the card-conservation
+    // sweep in `netrunner_session` could not have passed.
+    next.runner.heap.push(card_id);
 
     Ok((next, events))
 }
@@ -644,8 +645,7 @@ fn play_event(
 /// Corp-only mirror of `play_event`: spends 1 click and the card's
 /// registry-defined credit cost, moves `card_id` out of HQ into Archives
 /// (Operations are trashed as part of being played, same as real
-/// Netrunner/Null Signal Games rules — unlike `play_event`, which currently
-/// has no Heap-placement step for played Events), then resolves its
+/// Netrunner/Null Signal Games rules), then resolves its
 /// `OnPlay` triggers. `card_id`'s registry `CardType` must be `Operation`
 /// (`RulesError::CardNotOperation` otherwise) — checked before paying the
 /// credit cost, so an ineligible card never mutates `next`'s credits.
@@ -1735,6 +1735,23 @@ mod tests {
             crate::rules::state::MemoryUnits(crate::rules::memory::RUNNER_BASE_MEMORY_UNITS);
         state.runner.grip = grip;
         state
+    }
+
+    /// A played Event is trashed to the Heap once it resolves. It used to
+    /// vanish — `play_event` took it from the grip and put it nowhere — so
+    /// the Heap under-counted by one card per Event played.
+    #[test]
+    fn a_played_event_goes_to_the_heap() {
+        let card_id = CardId("sure_gamble".to_string());
+        let state = runner_state_with_grip(4, 5, vec![card_id.clone()]);
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("sure_gamble", Side::Runner, CardType::Event, 0, None));
+
+        let (next, _events) =
+            apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: card_id.clone() }).expect("event plays");
+
+        assert!(next.runner.grip.is_empty());
+        assert_eq!(next.runner.heap, vec![card_id]);
     }
 
     #[test]

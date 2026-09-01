@@ -10,7 +10,7 @@ use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run::{self, AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{
-    ArchivedCard, Clicks, CompletedRun, Credits, GamePhase, GameState, InstalledRunnerCard, PendingChoiceResume, PendingDecision, PendingPaidChoice,
+    ArchivedCard, Clicks, Credits, GamePhase, GameState, InstalledRunnerCard, PendingChoiceResume, PendingDecision, PendingPaidChoice,
     PendingPaidChoiceResume, PendingPrevention, PendingPreventionKind, PreventionKind, PreventionResume, Side,
     TraceResume, TraceState, WindowCheckpoint,
 };
@@ -173,12 +173,11 @@ pub fn evaluate_effect(
         }
 
         Effect::EndTheRun => {
-            let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+            if state.active_run.is_none() {
+                return Err(RulesError::NoActiveRun);
+            }
+            let run = run::end_run(state).expect("checked Some above");
             let server = run.server;
-            // Snapshotted before `active_run` is cleared — see
-            // `Trigger::OnRunEnded`'s doc comment.
-            state.last_completed_run = Some(CompletedRun::snapshot(run));
-            state.active_run = None;
             let ended_event = GameEvent::RunEndedByEffect { server };
             let mut events = vec![ended_event.clone()];
             events.extend(dispatcher::dispatch_event(state, registry, &ended_event)?);
@@ -1749,6 +1748,7 @@ pub(crate) fn consume_requirement(state: &mut GameState, requirement: &EffectReq
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::state::CompletedRun;
     use crate::rules::state::InstallId;
     use crate::rules::test_support::fixture_install_id;
     use crate::dsl::{AbilityDef, CardDefinition, CardId, CardType, DamageType, IceType, SubroutineDef, TriggeredEffect};
@@ -2908,6 +2908,26 @@ mod tests {
                 duration: BoostDuration::Encounter,
             }]
         );
+    }
+
+    /// ROADMAP Rules Audit T8: "until the end of this encounter" buffs used
+    /// to survive an unbroken "end the run" subroutine, because only the
+    /// normal ICE pass reset them. Every way a run ends now goes through
+    /// `run::end_run`, which resets them; `Turn`-duration buffs are the
+    /// turn's business and stay.
+    #[test]
+    fn end_the_run_clears_encounter_strength_buffs_but_not_turn_buffs() {
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
+        state.runner.rig[0].encounter_strength_buff = 3;
+        state.runner.rig[0].turn_strength_buff = 1;
+
+        evaluate_effect(&mut state, &Effect::EndTheRun, &mut ResolutionContext::for_card(None), &CardRegistry::new())
+            .expect("a run is active");
+
+        assert!(state.active_run.is_none());
+        assert!(state.last_completed_run.is_some(), "the ended run is still snapshotted for OnRunEnded");
+        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
+        assert_eq!(state.runner.rig[0].turn_strength_buff, 1);
     }
 
     #[test]

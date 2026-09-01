@@ -6,6 +6,7 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::action::RunAction;
 use crate::rules::run::state::{EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId, SubroutineStatus};
+use crate::rules::state::CompletedRun;
 use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side, WindowCheckpoint};
 
 /// Builds one `RunIce` from an `InstalledCard` known to be ICE (caller
@@ -417,6 +418,31 @@ fn step_subroutine(
     }
 }
 
+/// Ends the active run — the **only** way `active_run` goes from `Some` to
+/// `None` outside of tests.
+///
+/// Three things must happen together whenever a run ends, however it
+/// ends: `last_completed_run` is snapshotted so a deferred
+/// `Trigger::OnRunEnded` can still see the run; `active_run` is cleared;
+/// and every `BoostDuration::Encounter` strength buff is reset. Six sites
+/// used to clear the run by hand and only the normal ICE pass reset the
+/// buffs, so a Runner bounced by an unbroken "end the run" subroutine kept
+/// every pumped point of breaker strength for the rest of the turn, and
+/// into their next run, for free (ROADMAP Rules Audit T8). Same move as
+/// `drain_deferred_triggers` and `memory::refresh`: one choke point rather
+/// than N sites that can each forget one of the three.
+///
+/// Returns the run it ended, for callers that still need to read it
+/// (`access_server`'s `RunCompleted`, `jack_out`'s event lookup).
+pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
+    let run = state.active_run.take();
+    if let Some(run) = &run {
+        state.last_completed_run = Some(CompletedRun::snapshot(run));
+    }
+    state.runner.reset_encounter_strength_buffs();
+    run
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -470,6 +496,7 @@ mod tests {
             ..Default::default()
         }
     }
+
 
     /// Builds a `RunIce` with `subroutine_count` placeholder `Pending`
     /// subroutines — identity/effect content doesn't matter for tests using

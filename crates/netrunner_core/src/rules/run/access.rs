@@ -64,8 +64,15 @@ fn compute_accessed_cards(state: &mut GameState, server: ServerId) -> Vec<CardId
         }
         // A successful run accesses everything in Archives, facedown
         // cards included — accessing them is exactly how the Runner sees
-        // them.
-        ServerId::Archives => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
+        // them — plus, as on every other server, any upgrade in its root.
+        // The root was missing here alone, while `install_card_candidates`
+        // offered upgrades onto Archives: an upgrade installed there could
+        // never be accessed or trashed (ROADMAP Rules Audit T12).
+        ServerId::Archives => {
+            let mut accessed: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
+            accessed.extend(root_installs_on(state, server));
+            accessed
+        }
         ServerId::Remote(_) => root_installs_on(state, server),
     }
 }
@@ -276,7 +283,7 @@ fn try_replace_access(
         .expect("just confirmed access_replacement is Some above");
 
     let mut events = ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(None), registry)?;
-    state.active_run = None;
+    super::engine::end_run(state);
     events.push(GameEvent::AccessReplaced { server });
     Ok(Some(events))
 }
@@ -292,7 +299,7 @@ pub fn access_server(
 
     let accessed = compute_accessed_cards(state, server);
     if accessed.is_empty() {
-        state.active_run = None;
+        super::engine::end_run(state);
         return Ok(Vec::new());
     }
 
@@ -432,7 +439,7 @@ fn finish_if_game_over(
     events_so_far: &[GameEvent],
 ) -> Option<Vec<GameEvent>> {
     if let GamePhase::GameOver(winner) = state.phase {
-        state.active_run = None;
+        super::engine::end_run(state);
         let mut events = Vec::new();
         if !matches!(events_so_far.last(), Some(GameEvent::GameOver { .. })) {
             events.push(GameEvent::GameOver { winner });
@@ -465,8 +472,7 @@ fn advance_or_finish(
 
     match access.unaccessed_cards.len() {
         0 => {
-            state.last_completed_run = Some(crate::rules::state::CompletedRun::snapshot(run));
-            state.active_run = None;
+            super::engine::end_run(state);
             let completed_event = GameEvent::RunCompleted { server };
             let mut events = vec![completed_event.clone()];
             events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed_event)?);
@@ -513,6 +519,14 @@ pub fn resolve_steal(
         events.extend(ability::pay_cost(state, Side::Runner, cost, Some(card_id))?);
     }
 
+    // The agenda leaves the Corp's zone — HQ, the top of R&D, the remote's
+    // root, or Archives — and enters the Runner's score area. This removal
+    // was missing: the card was pushed onto `scored_agendas` and *also*
+    // stayed where it was, so the same top card of R&D was stolen again on
+    // the next run and an installed agenda stayed scorable after being
+    // stolen (ROADMAP Rules Audit T2). `pending.server` is what tells two
+    // copies of one agenda in two remotes apart.
+    remove_from_corp_zone(state, card_id, pending.server);
     state.runner.scored_agendas.push(card_id.clone());
     // Counted for `Trigger::OnRunEnded` consumers that gate on "if the
     // Runner stole any agendas during that run" (AMAZE Amusements), since
@@ -533,6 +547,79 @@ pub fn resolve_steal(
     Ok(events)
 }
 
+/// Where an accessed Corp card was taken from, so the caller can tell a
+/// trashed upgrade (which keeps applying for the run if it says so) from a
+/// trashed HQ or R&D card.
+enum RemovedFrom {
+    Hand,
+    Deck,
+    Archives,
+    Installed { slot: InstallSlot },
+    /// Nothing matched — the card is not in any Corp zone. Callers treat
+    /// this as "nothing to remove" rather than an error; the access state
+    /// that named the card is the authority on its existence.
+    Nowhere,
+}
+
+/// Removes one copy of `card_id` from the Corp zone the Runner accessed it
+/// in, preferring the zone `server` names.
+///
+/// Zone lookups are by `CardId`, and two copies of one card are
+/// interchangeable everywhere except the table: for an install the copy in
+/// `server`'s root is the accessed one, so that is removed first, before
+/// falling back to any root install of that card. R&D is searched from the
+/// top (the end of the `Vec` — see `compute_accessed_cards`), since the
+/// accessed copy is the top one and a duplicate may sit deeper. Archives
+/// is included because an agenda *stolen* out of Archives leaves it, even
+/// though a card *trashed* while being accessed there stays put.
+fn remove_from_corp_zone(state: &mut GameState, card_id: &CardId, server: ServerId) -> RemovedFrom {
+    let installed_at = |installed: &crate::rules::state::InstalledCard| {
+        &installed.card == card_id && installed.slot == InstallSlot::Root
+    };
+    if let Some(pos) = state
+        .corp
+        .installed
+        .iter()
+        .position(|c| installed_at(c) && c.server == server)
+        .or_else(|| state.corp.installed.iter().position(installed_at))
+    {
+        let slot = state.corp.installed[pos].slot;
+        state.corp.installed.remove(pos);
+        return RemovedFrom::Installed { slot };
+    }
+    match server {
+        ServerId::Hq => {
+            if let Some(pos) = state.corp.hq.iter().position(|c| c == card_id) {
+                state.corp.hq.remove(pos);
+                return RemovedFrom::Hand;
+            }
+        }
+        ServerId::RnD => {
+            if let Some(pos) = state.corp.r_and_d.iter().rposition(|c| c == card_id) {
+                state.corp.r_and_d.remove(pos);
+                return RemovedFrom::Deck;
+            }
+        }
+        ServerId::Archives => {
+            if let Some(pos) = state.corp.archives.iter().position(|c| &c.card == card_id) {
+                state.corp.archives.remove(pos);
+                return RemovedFrom::Archives;
+            }
+        }
+        ServerId::Remote(_) => {}
+    }
+    // Not where the server said — take it from wherever it actually is.
+    if let Some(pos) = state.corp.hq.iter().position(|c| c == card_id) {
+        state.corp.hq.remove(pos);
+        RemovedFrom::Hand
+    } else if let Some(pos) = state.corp.r_and_d.iter().rposition(|c| c == card_id) {
+        state.corp.r_and_d.remove(pos);
+        RemovedFrom::Deck
+    } else {
+        RemovedFrom::Nowhere
+    }
+}
+
 /// Removes `card_id` from wherever it currently lives (HQ, R&D, or a
 /// Root-slot Corp install) and pushes it onto Archives — unless it was
 /// already being accessed *from* Archives, in which case it's already
@@ -541,13 +628,7 @@ fn move_to_archives(state: &mut GameState, registry: &CardRegistry, card_id: &Ca
     if server == ServerId::Archives {
         return;
     }
-    if let Some(pos) = state.corp.hq.iter().position(|c| c == card_id) {
-        state.corp.hq.remove(pos);
-    } else if let Some(pos) = state.corp.r_and_d.iter().position(|c| c == card_id) {
-        state.corp.r_and_d.remove(pos);
-    } else if let Some(pos) = state.corp.installed.iter().position(|c| &c.card == card_id) {
-        let was_root = state.corp.installed[pos].slot == InstallSlot::Root;
-        state.corp.installed.remove(pos);
+    if let RemovedFrom::Installed { slot: InstallSlot::Root } = remove_from_corp_zone(state, card_id, server) {
         // "(If the Runner trashes this card while accessing it, this ability
         // still applies for the remainder of this run.)" — record it so
         // `Trigger::OnRunEnded` can still reach it from the registry once
@@ -556,8 +637,7 @@ fn move_to_archives(state: &mut GameState, registry: &CardRegistry, card_id: &Ca
         // records this; an effect-driven trash of a persistent upgrade
         // mid-run does not, since no card in this set needs that and the
         // `Cost::TrashSelf` path has no registry to check the flag against.
-        if was_root
-            && registry.get(card_id).is_some_and(|card| card.persistent_after_trash)
+        if registry.get(card_id).is_some_and(|card| card.persistent_after_trash)
             && let Some(run) = state.active_run.as_mut()
         {
             run.persistent_trashed_upgrades.push(card_id.clone());
@@ -1315,6 +1395,79 @@ mod tests {
                 GameEvent::RunCompleted { server: ServerId::Archives },
             ]
         );
+    }
+
+    /// ROADMAP Rules Audit T2: stealing used to push the agenda onto the
+    /// Runner's score area and leave it where it was, so the same top card
+    /// of R&D was stolen every run and an installed agenda stayed scorable
+    /// after being stolen. One test per zone an agenda can be accessed in.
+    #[test]
+    fn a_stolen_agenda_leaves_the_corp_zone_it_was_accessed_from() {
+        let registry = CardRegistry::from_cards(vec![agenda_card("offworld_office", 2)]);
+        let agenda = CardId("offworld_office".to_string());
+        let other = CardId("unregistered_filler".to_string());
+
+        // R&D: the *top* copy (end of the Vec) goes; a duplicate deeper stays.
+        let mut state = game_state(Vec::new(), vec![agenda.clone(), other.clone(), agenda.clone()], Vec::new(), Vec::new(), 0);
+        state.active_run = Some(run_in_success(ServerId::RnD));
+        access_server(&mut state, ServerId::RnD, &registry).unwrap();
+        resolve_steal(&mut state, &agenda, &registry).unwrap();
+        assert_eq!(state.corp.r_and_d, vec![agenda.clone(), other.clone()], "the top copy left R&D");
+        assert_eq!(state.runner.scored_agendas, vec![agenda.clone()]);
+
+        // HQ.
+        let mut state = game_state(vec![agenda.clone()], Vec::new(), Vec::new(), Vec::new(), 0);
+        state.active_run = Some(run_in_success(ServerId::Hq));
+        access_server(&mut state, ServerId::Hq, &registry).unwrap();
+        resolve_steal(&mut state, &agenda, &registry).unwrap();
+        assert!(state.corp.hq.is_empty(), "the stolen agenda left HQ");
+
+        // Archives: a stolen agenda leaves Archives too (a *trashed* card
+        // accessed there stays — that is `move_to_archives`' early return).
+        let mut state = game_state(Vec::new(), Vec::new(), vec![agenda.clone()], Vec::new(), 0);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+        resolve_steal(&mut state, &agenda, &registry).unwrap();
+        assert!(state.corp.archives.is_empty(), "the stolen agenda left Archives");
+
+        // Two copies installed in two remotes: the run's server says which.
+        let installed = vec![
+            InstalledCard { card: agenda.clone(), server: ServerId::Remote(0), advancement_tokens: 1, ..Default::default() },
+            InstalledCard { card: agenda.clone(), server: ServerId::Remote(1), advancement_tokens: 2, ..Default::default() },
+        ];
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
+        state.active_run = Some(run_in_success(ServerId::Remote(1)));
+        access_server(&mut state, ServerId::Remote(1), &registry).unwrap();
+        resolve_steal(&mut state, &agenda, &registry).unwrap();
+        assert_eq!(state.corp.installed.len(), 1);
+        assert_eq!(state.corp.installed[0].server, ServerId::Remote(0), "the copy in the run's remote is the one taken");
+        assert_eq!(state.corp.installed[0].advancement_tokens, 1);
+    }
+
+    /// ROADMAP Rules Audit T12: Archives was the one server whose root
+    /// installs were not accessed, while `install_card_candidates` offered
+    /// upgrades onto it — so an upgrade there could never be trashed.
+    #[test]
+    fn an_upgrade_in_archives_root_is_accessed_alongside_the_archived_cards() {
+        let registry = CardRegistry::from_cards(vec![trashable_card("manegarm_skunkworks", 2)]);
+        let upgrade = CardId("manegarm_skunkworks".to_string());
+        let archived = CardId("hedge_fund".to_string());
+        let installed = vec![InstalledCard {
+            card: upgrade.clone(),
+            server: ServerId::Archives,
+            slot: InstallSlot::Root,
+            rezzed: true,
+            ..Default::default()
+        }];
+        let mut state = game_state(Vec::new(), Vec::new(), vec![archived.clone()], installed, 0);
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        let access = state.active_run.as_ref().unwrap().access_state.as_ref().expect("two cards to access");
+        let AccessPhase::SelectNextCard { selectable_cards } = &access.phase else {
+            panic!("two accessed cards should present a selection, got {:?}", access.phase);
+        };
+        assert_eq!(selectable_cards, &vec![archived, upgrade]);
     }
 
     #[test]

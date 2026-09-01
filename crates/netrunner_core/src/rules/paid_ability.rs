@@ -315,7 +315,20 @@ fn close_run_window(state: &mut GameState, registry: &CardRegistry) -> Result<Ve
             let server = state.active_run.as_ref().expect("checked Some above").server;
             let mut events = run::access_server(state, server, registry)?;
             if state.active_run.is_none() {
-                events.push(GameEvent::RunCompleted { server });
+                // Nothing was presented — an empty server, or a replaced
+                // access — so the run is over here rather than in
+                // `access::advance_or_finish`. `RunCompleted` is
+                // *dispatched*, not merely pushed: a run on an empty
+                // Archives is the most ordinary run there is, and Mayfly's
+                // "when this run ends, trash this program" never fired on
+                // one because this arm only recorded the event. Skipped
+                // when access already concluded with its own
+                // `RunCompleted` (a flatline mid-access).
+                if !events.iter().any(|e| matches!(e, GameEvent::RunCompleted { .. })) {
+                    let completed = GameEvent::RunCompleted { server };
+                    events.push(completed.clone());
+                    events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed)?);
+                }
             } else {
                 // A card was just presented (or `SelectNextCard` was
                 // reached, in which case this is a no-op) — open a fresh
@@ -700,6 +713,47 @@ mod tests {
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
         );
+    }
+
+    /// A run on an empty server still *ends*, and `Trigger::OnRunEnded`
+    /// must hear about it. This arm used to push `RunCompleted` into the
+    /// event list without dispatching it, so Mayfly's "when this run ends,
+    /// trash this program" never fired on the most ordinary run there is —
+    /// a run at an empty Archives.
+    #[test]
+    fn closing_the_success_window_on_an_empty_server_dispatches_run_ended() {
+        let mayfly = CardId("mayfly".to_string());
+        let registry = CardRegistry::from_cards(vec![crate::dsl::CardDefinition {
+            id: mayfly.clone(),
+            title: "Mayfly".to_string(),
+            side: Side::Runner,
+            card_type: crate::dsl::CardType::Program,
+            triggers: vec![crate::dsl::TriggeredEffect {
+                trigger: crate::dsl::Trigger::OnRunEnded,
+                effects: vec![crate::dsl::Effect::GainCredits(Side::Runner, 1)],
+                requirement: None,
+            }],
+            is_playable: true,
+            ..Default::default()
+        }]);
+        let mut state = base_state();
+        state.runner.rig = vec![crate::rules::state::InstalledRunnerCard { card: mayfly, ..Default::default() }];
+        state.active_run = Some(RunState {
+            server: ServerId::Archives,
+            phase: RunPhase::Success,
+            jack_out_permitted: true,
+            ..Default::default()
+        });
+        open_window(&mut state);
+        let credits_before = state.runner.resources.credits;
+
+        pass_priority(&mut state, &registry, Side::Runner).expect("first pass should succeed");
+        let events = pass_priority(&mut state, &registry, Side::Corp).expect("second pass should succeed");
+
+        assert!(state.active_run.is_none());
+        assert!(events.contains(&GameEvent::RunCompleted { server: ServerId::Archives }));
+        assert_eq!(state.runner.resources.credits, credits_before.gain(1), "OnRunEnded fired");
+        assert_eq!(state.last_completed_run.as_ref().map(|r| r.server), Some(ServerId::Archives));
     }
 
     #[test]

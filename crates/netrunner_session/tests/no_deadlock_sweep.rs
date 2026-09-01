@@ -21,7 +21,7 @@
 use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks;
-use netrunner_core::rules::{GameState, MaskedZone, PublicAccessPhase, Side};
+use netrunner_core::rules::{Deck, GameState, MaskedZone, PublicAccessPhase, Side};
 use netrunner_session::coverage::sample_pool_card_ids;
 use netrunner_session::{Coverage, Seat, Session, SessionStep, StallReason};
 
@@ -219,6 +219,7 @@ fn no_client_view_ever_names_a_card_it_conceals() {
             match session.step() {
                 SessionStep::Awaiting { side, view } => {
                     assert_no_concealed_card_is_named(&view, session.state(), seed, &matchup, side);
+                    assert_cards_are_conserved(session.state(), &corp_deck.to_deck(), &runner_deck.to_deck(), seed, &matchup);
 
                     assert!(
                         !view.legal_actions.is_empty(),
@@ -241,6 +242,49 @@ fn no_client_view_ever_names_a_card_it_conceals() {
             }
         }
     }
+}
+
+/// **No card is ever created or destroyed.** Every card a deck started with
+/// is in exactly one zone at every step: for the Corp, HQ, R&D, Archives,
+/// the table, either score area, or removed from the game; for the Runner,
+/// the grip, stack, heap or rig.
+///
+/// Cheap to state and it catches a whole class at once. Two rules
+/// violations in the Rules Audit were conservation failures — a stolen
+/// agenda stayed in the Corp's zone *and* entered the Runner's score area
+/// (one card in two places), and a played Event went nowhere (one card in
+/// no place) — and neither was visible to a test that looked at one zone.
+fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: &Deck, seed: u64, matchup: &str) {
+    use std::collections::BTreeMap;
+
+    fn tally<'a>(ids: impl Iterator<Item = &'a netrunner_core::dsl::CardId>) -> BTreeMap<String, u32> {
+        let mut counts = BTreeMap::new();
+        for id in ids {
+            *counts.entry(id.0.clone()).or_default() += 1;
+        }
+        counts
+    }
+    fn deck_tally(deck: &Deck) -> BTreeMap<String, u32> {
+        deck.cards.iter().map(|(id, count)| (id.0.clone(), *count)).collect()
+    }
+
+    let corp = &state.corp;
+    let corp_cards = tally(
+        corp.hq
+            .iter()
+            .chain(&corp.r_and_d)
+            .chain(corp.archives.iter().map(|a| &a.card))
+            .chain(corp.installed.iter().map(|c| &c.card))
+            .chain(&corp.scored_agendas)
+            .chain(&state.runner.scored_agendas)
+            .chain(&corp.removed_from_game),
+    );
+    assert_eq!(corp_cards, deck_tally(corp_deck), "seed {seed} ({matchup}): Corp cards are not conserved");
+
+    let runner = &state.runner;
+    let runner_cards =
+        tally(runner.grip.iter().chain(&runner.stack).chain(&runner.heap).chain(runner.rig.iter().map(|c| &c.card)));
+    assert_eq!(runner_cards, deck_tally(runner_deck), "seed {seed} ({matchup}): Runner cards are not conserved");
 }
 
 /// Asserts the invariant for one view.
