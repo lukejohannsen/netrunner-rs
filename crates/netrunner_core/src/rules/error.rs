@@ -311,6 +311,14 @@ pub enum RulesError {
     #[error("the runner cannot steal or trash cards for the remainder of this run")]
     StealAndTrashPreventedThisRun,
 
+    /// Any action after `GamePhase::GameOver`. Checked first in
+    /// `apply_action`, so `legal_actions` is empty once the game has ended
+    /// whatever else the state still holds. Before this guard the handlers
+    /// with no phase check of their own (`PassPriority`, every pending-choice
+    /// resolver) stayed legal after a win, and one of them could revert it.
+    #[error("the game is over ({winner:?} won); no further action is legal")]
+    GameIsOver { winner: Side },
+
     #[error("piece of ice {0:?} cannot be broken by spending a click (not click-breakable)")]
     IceNotClickBreakable(CardId),
 }

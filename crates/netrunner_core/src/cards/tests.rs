@@ -3778,6 +3778,50 @@ mod system_gateway {
         assert_eq!(state.runner.rig[1].effective_strength(), 4, "Unity: 1 base + 3 (installed icebreaker count)");
     }
 
+    /// The win-reverting bug (ROADMAP Rules Audit §4). Clearinghouse's
+    /// start-of-turn choice is parked *under* the start-of-turn window; when
+    /// the choice flatlines the Runner, the window used to survive, so
+    /// `current_actor` still named the Corp, `PassPriority` was legal, and
+    /// two passes later `close_window` wrote `phase = Action(Corp)`: play
+    /// continued with the Runner at zero cards and no flatline on record.
+    #[test]
+    fn clearinghouse_flatline_at_corp_turn_start_ends_the_game_and_leaves_no_legal_action() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.r_and_d = vec![CardId("filler_card".to_string())];
+        state.corp.installed = vec![installed_with_counters("clearinghouse", ServerId::Remote(0), 0)];
+        state.corp.installed[0].advancement_tokens = 3;
+        // Two cards against three meat damage: a flatline.
+        state.runner.grip = vec![CardId("grip_card_0".to_string()), CardId("grip_card_1".to_string())];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes end-of-turn");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes, entering their start of turn");
+        assert!(state.paid_ability_window.is_some(), "the start-of-turn window is open over the parked choice");
+
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+            .expect("corp chooses to trash clearinghouse for damage");
+
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp), "{events:?}");
+        assert!(events.contains(&crate::rules::GameEvent::RunnerFlatlined));
+        assert_eq!(events.iter().filter(|e| matches!(e, crate::rules::GameEvent::GameOver { .. })).count(), 1);
+        assert!(state.paid_ability_window.is_none(), "the window died with the game");
+        assert!(state.pending_decision.is_none());
+        assert_eq!(crate::rules::current_actor(&state), None);
+        assert!(crate::rules::legal_actions(&state, &registry).is_empty(), "nothing is legal in a finished game");
+        for side in [Side::Corp, Side::Runner] {
+            assert_eq!(
+                apply_action(&state, &registry, PlayerAction::PassPriority { side }).err(),
+                Some(RulesError::GameIsOver { winner: Side::Corp })
+            );
+        }
+    }
+
     #[test]
     fn clearinghouse_may_trash_itself_for_meat_damage_equal_to_its_advancement_tokens() {
         let registry = sg_registry();

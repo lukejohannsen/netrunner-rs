@@ -4,6 +4,7 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
+use crate::rules::win;
 use crate::rules::state::{ArchivedCard, Clicks, GamePhase, GameState, Side, WindowCheckpoint};
 
 /// Clicks the Corp receives at the start of each turn. A base turn-structure
@@ -278,11 +279,17 @@ pub(crate) fn enter_start_of_turn(
     next_side: Side,
     registry: &CardRegistry,
 ) -> Result<(), RulesError> {
+    // The discard-phase-end dispatch just before this can end the game
+    // (a flatlining `OnDiscardPhaseEnd`); writing `StartOfTurn` over a
+    // `GameOver` would revert the win. Same guard again below, after the
+    // start-of-turn triggers, before a window is opened over the corpse.
+    if next.is_over() {
+        return Ok(());
+    }
     next.phase = GamePhase::StartOfTurn(next_side);
 
     if next_side == Side::Corp && next.corp.r_and_d.is_empty() {
-        next.phase = GamePhase::GameOver(Side::Runner);
-        events.push(GameEvent::GameOver { winner: Side::Runner });
+        events.extend(win::end_game(next, Side::Runner));
         return Ok(());
     }
 
@@ -329,6 +336,9 @@ pub(crate) fn enter_start_of_turn(
     // other rez-gated ability in this engine — `dispatch_event` applies this
     // same scoping from `GameEvent::TurnStarted::side`.
     events.extend(dispatcher::dispatch_event(next, registry, &turn_started_event)?);
+    if next.is_over() {
+        return Ok(());
+    }
 
     // Open a paid ability window before handing control over, giving both
     // sides a chance to fire a `Trigger::Paid` ability at the top of the new
@@ -402,6 +412,42 @@ mod tests {
             phase: GamePhase::Action(active_turn),
             ..Default::default()
         }
+    }
+
+    /// `enter_start_of_turn` runs right after the discard-phase-end dispatch
+    /// and used to write `StartOfTurn` first thing — a flatlining
+    /// `OnDiscardPhaseEnd` (Jinteki: Restoring Humanity's shape, with
+    /// damage instead of a credit) would have had its win overwritten one
+    /// statement later.
+    #[test]
+    fn a_discard_phase_end_flatline_is_not_overwritten_by_start_of_turn() {
+        let identity = crate::dsl::CardDefinition {
+            id: CardId("lethal_identity".to_string()),
+            title: "Lethal".to_string(),
+            side: Side::Corp,
+            card_type: crate::dsl::CardType::Identity,
+            triggers: vec![crate::dsl::TriggeredEffect {
+                trigger: crate::dsl::Trigger::OnDiscardPhaseEnd,
+                effects: vec![crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
+                requirement: None,
+            }],
+            ..Default::default()
+        };
+        let registry = CardRegistry::from_cards(vec![identity]);
+        let mut state = game_state(Side::Corp, 0, 5, 0, 5);
+        state.corp.identity = Some(CardId("lethal_identity".to_string()));
+        state.corp.r_and_d = vec![CardId("filler".to_string())];
+        assert!(state.runner.grip.is_empty(), "any damage flatlines");
+        let turn_before = state.turn;
+
+        let (state, _) = end_turn(&state, &registry).expect("corp ends turn");
+        let (state, events) = close_all_windows(state, &registry);
+
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp), "{events:?}");
+        assert_eq!(state.turn, turn_before, "the Runner's turn never started");
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::TurnStarted { side: Side::Runner, .. })));
+        assert!(state.paid_ability_window.is_none(), "no start-of-turn window over a finished game");
+        assert_eq!(events.iter().filter(|e| matches!(e, GameEvent::GameOver { .. })).count(), 1);
     }
 
     #[test]

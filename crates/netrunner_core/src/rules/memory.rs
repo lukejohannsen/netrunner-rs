@@ -103,7 +103,7 @@ pub(crate) fn refresh(state: &mut GameState, registry: &CardRegistry) {
 /// resolves first, and the next action re-checks — and once the game is
 /// over.
 pub(crate) fn enforce_limit(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
-    if state.is_over() || state.is_resolution_blocked() {
+    if state.resolution_halted() {
         return Ok(Vec::new());
     }
     let balance = memory_balance(state, registry);

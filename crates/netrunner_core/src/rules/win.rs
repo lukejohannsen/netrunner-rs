@@ -1,6 +1,43 @@
 use crate::cards::CardRegistry;
 use crate::dsl::CardId;
+use crate::rules::event::GameEvent;
 use crate::rules::state::{GamePhase, GameState, Side};
+
+/// The single transition into `GamePhase::GameOver` — every win, by any
+/// route (agenda points, flatline, deck-out), goes through here.
+///
+/// Sets the phase **and clears everything that was mid-resolution**: the
+/// run (through `run::end_run`, so `last_completed_run` bookkeeping is
+/// the same as for a run that ended in access), the paid-ability window,
+/// the trace, the prevention, the paid choice, the decision and the
+/// deferred-trigger queue. Before this existed, `phase` was assigned at
+/// four sites and none of them cleared any of that. `current_actor` puts a
+/// parked window ahead of the phase, so after *Clearinghouse* flatlined the
+/// Runner from its start-of-turn choice the start-of-turn window was still
+/// open, `PassPriority` was legal, and two passes later `close_window`
+/// wrote `phase = Action(Corp)` — **the Corp's win was silently reverted**
+/// (ROADMAP Rules Audit §4). The same leftovers let post-game effects and
+/// triggers keep firing, and an `Err` from one of those rejected the very
+/// action that had ended the game.
+///
+/// Idempotent, and the `GameOver` event is emitted here and only here, so
+/// two paths ending the game in one action (a steal whose identity
+/// reaction flatlines, then the access machinery noticing) cannot emit it
+/// twice. Returns the event on the transition, nothing if already over.
+pub(crate) fn end_game(state: &mut GameState, winner: Side) -> Vec<GameEvent> {
+    if state.is_over() {
+        return Vec::new();
+    }
+    state.phase = GamePhase::GameOver(winner);
+    crate::rules::run::end_run(state);
+    state.paid_ability_window = None;
+    state.active_trace = None;
+    state.pending_prevention = None;
+    state.pending_paid_choice = None;
+    state.pending_decision = None;
+    state.deferred_triggers.clear();
+    vec![GameEvent::GameOver { winner }]
+}
 
 /// Agenda points either side needs to win the game outright.
 const WINNING_AGENDA_POINTS: u32 = 7;
@@ -41,14 +78,19 @@ fn total_agenda_points(scored_agendas: &[CardId], registry: &CardRegistry) -> u3
 /// empty" as a general predicate here — reachable from `access_server` too
 /// — would end the game a turn early. Deck-out is handled inline at the one
 /// place that actually attempts the draw: `turn::enter_start_of_turn`.
-pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) {
-    if matches!(state.phase, GamePhase::GameOver(_)) {
-        return;
+///
+/// Returns the `GameOver` event when this call ended the game (via
+/// [`end_game`]), so callers append it like any other event.
+pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) -> Vec<GameEvent> {
+    if state.is_over() {
+        return Vec::new();
     }
     if total_agenda_points(&state.corp.scored_agendas, registry) >= WINNING_AGENDA_POINTS {
-        state.phase = GamePhase::GameOver(Side::Corp);
+        end_game(state, Side::Corp)
     } else if total_agenda_points(&state.runner.scored_agendas, registry) >= WINNING_AGENDA_POINTS {
-        state.phase = GamePhase::GameOver(Side::Runner);
+        end_game(state, Side::Runner)
+    } else {
+        Vec::new()
     }
 }
 

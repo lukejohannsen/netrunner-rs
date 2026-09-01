@@ -1,6 +1,6 @@
 use crate::dsl::{CardId, DamageType};
 use crate::rules::event::GameEvent;
-use crate::rules::state::{GamePhase, GameState, Side};
+use crate::rules::state::{GameState, Side};
 
 /// Applies `amount` points of `damage_type` damage to the Runner.
 ///
@@ -44,8 +44,9 @@ pub fn apply_damage(
         for card in &discarded {
             state.runner.heap.push(card.clone());
         }
-        state.phase = GamePhase::GameOver(Side::Corp);
-        return (vec![GameEvent::RunnerFlatlined, GameEvent::GameOver { winner: Side::Corp }], discarded);
+        let mut events = vec![GameEvent::RunnerFlatlined];
+        events.extend(crate::rules::win::end_game(state, Side::Corp));
+        return (events, discarded);
     }
 
     if damage_type == DamageType::Brain {
@@ -72,7 +73,7 @@ mod tests {
     use crate::dsl::CardId;
     use crate::rules::error::RulesError;
     use crate::rules::state::{
-        AgendaPoints, Clicks, CorpState, Credits, MemoryUnits, PlayerResources, RunnerState,
+        AgendaPoints, Clicks, CorpState, Credits, GamePhase, MemoryUnits, PlayerResources, RunnerState,
     };
     use std::collections::HashSet;
 
@@ -196,7 +197,7 @@ mod tests {
         let action = crate::rules::PlayerAction::GainCreditClick { side: Side::Runner };
         assert!(matches!(
             crate::rules::apply_action(&state, &crate::cards::CardRegistry::new(), action),
-            Err(RulesError::WrongPhase { .. })
+            Err(RulesError::GameIsOver { winner: Side::Corp })
         ));
     }
 

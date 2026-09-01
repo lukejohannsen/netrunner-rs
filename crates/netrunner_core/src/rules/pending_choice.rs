@@ -401,7 +401,7 @@ pub(crate) fn resolve_choose_trigger_to_resolve(
     let mut events = vec![GameEvent::TriggerOrderChosen { chooser, card: chosen.card.clone(), trigger: chosen.trigger }];
     events.extend(crate::rules::dispatcher::fire_deferred(state, registry, &chosen)?);
 
-    if resume == PendingChoiceResume::ResumeSubroutines && !state.is_resolution_blocked() {
+    if resume == PendingChoiceResume::ResumeSubroutines && !state.resolution_halted() {
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
     Ok(events)

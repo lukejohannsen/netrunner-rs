@@ -1093,6 +1093,21 @@ impl GameState {
             || self.pending_decision.is_some()
     }
 
+    /// Whether a resolution loop must stop *now*: something is parked, or
+    /// the game is over. Every loop that fires effects or triggers checks
+    /// this rather than `is_resolution_blocked` alone — before it did,
+    /// `GameOver` stopped nothing by default, and the rest of a trigger
+    /// plan, a `Sequence`, or a deferred queue kept resolving into a
+    /// finished game (ROADMAP Rules Audit §4).
+    ///
+    /// Deliberately a separate predicate rather than folding `is_over` into
+    /// `is_resolution_blocked`: `dispatcher::fire_plan` *queues* the
+    /// remainder of a plan when blocked, and `win::end_game` has just
+    /// emptied that queue — the two conditions want different follow-ups.
+    pub fn resolution_halted(&self) -> bool {
+        self.is_over() || self.is_resolution_blocked()
+    }
+
     pub fn resources(&self, side: Side) -> &PlayerResources {
         match side {
             Side::Corp => &self.corp.resources,

@@ -453,6 +453,12 @@ fn fire_plan(
     }
     let mut events = Vec::new();
     for (index, due) in plan.iter().enumerate() {
+        // A finished game fires nothing further and queues nothing either
+        // — `win::end_game` has just emptied the queue, and refilling it
+        // would leave triggers to drain into a game that is over.
+        if state.is_over() {
+            break;
+        }
         if state.is_resolution_blocked() {
             state.deferred_triggers.extend(plan[index..].iter().cloned());
             break;
@@ -496,7 +502,7 @@ fn offer_trigger_order(
     registry: &CardRegistry,
     plan: &[DeferredTrigger],
 ) -> Result<Option<Vec<GameEvent>>, RulesError> {
-    if state.is_resolution_blocked() {
+    if state.resolution_halted() {
         return Ok(None);
     }
     let reacting: Vec<DeferredTrigger> =
@@ -609,7 +615,9 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
                 | GameEvent::RunInitiated { .. }
         )
     );
-    !run_scoped || state.active_run.is_some()
+    // And nothing applies to a game that is over — a trigger drained after
+    // the flatline that ended the game has no game to act on.
+    !state.is_over() && (!run_scoped || state.active_run.is_some())
 }
 
 /// Fires whatever `fire_each` had to queue, once whatever blocked it has
@@ -631,7 +639,7 @@ pub(crate) fn drain_deferred_triggers(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
-    while !state.is_resolution_blocked() && !state.deferred_triggers.is_empty() {
+    while !state.resolution_halted() && !state.deferred_triggers.is_empty() {
         let due = state.deferred_triggers.remove(0);
         events.extend(fire_one(state, registry, &due)?);
     }
@@ -729,6 +737,45 @@ mod tests {
 
         assert_eq!(state.runner.resources.credits, Credits(6));
         assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("reacts".to_string()), trigger: Trigger::OnTurnStart }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
+    }
+
+    /// A plan stops at `GameOver`: the rest of the reacting cards neither
+    /// fire nor get queued. Before `win::end_game`/`resolution_halted`, a
+    /// flatline mid-plan left the remaining triggers firing into a finished
+    /// game — and an `Err` from one of them rejected the flatlining action.
+    #[test]
+    fn fire_plan_stops_once_the_game_is_over() {
+        // Mixed sides so the order is fixed by rule (active side first) and
+        // the plan fires straight through rather than parking a
+        // `ChooseTriggerOrder` for one controller.
+        let mut registry = CardRegistry::new();
+        registry.insert(card_with_trigger(
+            "lethal",
+            Side::Runner,
+            Trigger::OnDamageAboutToResolve,
+            Effect::DealDamage(crate::dsl::DamageType::Net, 5),
+        ));
+        registry.insert(card_with_trigger("payout", Side::Corp, Trigger::OnDamageAboutToResolve, Effect::GainCredits(Side::Corp, 1)));
+
+        let mut state = empty_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![rig_card("lethal")];
+        state.corp.installed = vec![crate::rules::state::InstalledCard {
+            install_id: InstallId(1074),
+            card: CardId("payout".to_string()),
+            rezzed: true,
+            ..Default::default()
+        }];
+        assert!(state.runner.grip.is_empty(), "any damage flatlines");
+
+        let damage = GameEvent::DamageAboutToResolve { damage_type: crate::dsl::DamageType::Net, amount: 1 };
+        let events = dispatch_event(&mut state, &registry, &damage).unwrap();
+
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
+        assert_eq!(state.corp.resources.credits, Credits(5), "the second reactor never fired");
+        assert!(state.deferred_triggers.is_empty(), "and was not queued for later either");
+        assert_eq!(events.iter().filter(|e| matches!(e, GameEvent::GameOver { .. })).count(), 1);
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::CreditsGained { .. })));
     }
 
     #[test]

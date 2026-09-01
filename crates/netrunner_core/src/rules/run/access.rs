@@ -5,7 +5,7 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessPhase, AccessState, RunPhase, ServerId};
-use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallSlot, Side};
+use crate::rules::state::{ArchivedCard, GameState, InstallSlot, Side};
 use crate::rules::win::check_win_conditions;
 
 /// Root (non-ICE) installs on `server` — ICE is excluded via
@@ -129,7 +129,7 @@ fn enter_pending_choice(
     // above), only `dispatch_event`'s `OnAccessed` reaction to it.
     let mut events =
         dispatcher::dispatch_event(state, registry, &GameEvent::CardAccessed { card: card_id.clone(), server })?;
-    if let Some(finish) = finish_if_game_over(state, server, &events) {
+    if let Some(finish) = finish_if_game_over(state, server) {
         events.extend(finish);
         return Ok(events);
     }
@@ -428,28 +428,17 @@ pub fn resolve_select_card(
 /// agenda-point win), clears `active_run` and returns the terminal events;
 /// otherwise `None`. Shared by every place in this file that fires
 /// card-trigger effects capable of ending the game out from under an
-/// in-progress access.
-///
-/// `events_so_far` is whatever's already been collected in the caller's
-/// local `events` vec: some triggers (e.g. a flatlining `Effect::
-/// DealDamage`, via `damage::apply_damage`) already emit their own
-/// `GameEvent::GameOver` as part of their normal return value, unlike
-/// `win::check_win_conditions` (which only mutates `state.phase` and emits
-/// nothing) — so this only appends a fresh `GameOver` if the caller's
-/// events don't already end with one, to avoid emitting it twice.
-fn finish_if_game_over(
-    state: &mut GameState,
-    server: ServerId,
-    events_so_far: &[GameEvent],
-) -> Option<Vec<GameEvent>> {
-    if let GamePhase::GameOver(winner) = state.phase {
+/// in-progress access. `GameOver` itself is emitted by `win::end_game`,
+/// which every way of ending the game goes through; this only closes the
+/// run's own bookkeeping.
+fn finish_if_game_over(state: &mut GameState, server: ServerId) -> Option<Vec<GameEvent>> {
+    if state.is_over() {
+        // `win::end_game` has already ended the run and emitted `GameOver`
+        // — this used to push its own `GameOver` unless the caller's last
+        // event was one, and `advance_or_finish` passed an empty slice, so
+        // a steal whose identity reaction flatlined emitted it twice.
         super::engine::end_run(state);
-        let mut events = Vec::new();
-        if !matches!(events_so_far.last(), Some(GameEvent::GameOver { .. })) {
-            events.push(GameEvent::GameOver { winner });
-        }
-        events.push(GameEvent::RunCompleted { server });
-        Some(events)
+        Some(vec![GameEvent::RunCompleted { server }])
     } else {
         None
     }
@@ -466,7 +455,7 @@ fn advance_or_finish(
     server: ServerId,
     resolved_card: CardId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if let Some(events) = finish_if_game_over(state, server, &[]) {
+    if let Some(events) = finish_if_game_over(state, server) {
         return Ok(events);
     }
 
@@ -546,7 +535,7 @@ pub fn resolve_steal(
     // unconditional dispatch, no per-turn gate.
     events.extend(dispatcher::dispatch_event(state, registry, &stolen_event)?);
 
-    check_win_conditions(state, registry);
+    events.extend(check_win_conditions(state, registry));
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
 }
@@ -820,7 +809,7 @@ fn resolve_access_trigger(
         }
         // Only the effect-resolving branch can flatline the Runner, so the
         // game-over check belongs here rather than around the whole body.
-        if let Some(finish) = finish_if_game_over(state, pending.server, &events) {
+        if let Some(finish) = finish_if_game_over(state, pending.server) {
             events.extend(finish);
             return Ok(events);
         }
@@ -854,6 +843,7 @@ pub fn resolve_decline_access_trigger(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::state::GamePhase;
     use crate::dsl::{AccessInteraction, CardDefinition, CardTarget, CardType, DamageType, Effect, InteractiveOnAccess, Trigger, TriggeredEffect};
     use crate::rules::run::state::RunState;
     use crate::rules::state::{
@@ -1549,6 +1539,42 @@ mod tests {
         assert_eq!(state.corp.archives.len(), 1);
         assert_eq!(state.corp.installed.len(), 2, "{:?}", state.corp.installed);
         assert_eq!(state.corp.installed[1].counters, 9);
+    }
+
+    /// Jinteki: Personal Evolution's shape — the steal succeeds, the
+    /// identity's reaction flatlines the Runner. `GameOver` used to be
+    /// emitted twice on this path (once by the flatline, once by
+    /// `advance_or_finish`'s `finish_if_game_over`, which could not see the
+    /// first); `win::end_game` is now the only emitter.
+    #[test]
+    fn stealing_an_agenda_whose_identity_reaction_flatlines_emits_game_over_once() {
+        let identity = CardDefinition {
+            id: CardId("jinteki_pe_ish".to_string()),
+            title: "PE".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Identity,
+            triggers: vec![crate::dsl::TriggeredEffect {
+                trigger: crate::dsl::Trigger::OnAgendaStolen,
+                effects: vec![Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
+                requirement: None,
+            }],
+            ..Default::default()
+        };
+        let registry = CardRegistry::from_cards(vec![agenda_card("offworld_office", 2), identity]);
+        let agenda = CardId("offworld_office".to_string());
+        let mut state = game_state(vec![agenda.clone()], Vec::new(), Vec::new(), Vec::new(), 0);
+        state.corp.identity = Some(CardId("jinteki_pe_ish".to_string()));
+        assert!(state.runner.grip.is_empty());
+        state.active_run = Some(run_in_success(ServerId::Hq));
+        access_server(&mut state, ServerId::Hq, &registry).unwrap();
+
+        let events = resolve_steal(&mut state, &agenda, &registry).unwrap();
+
+        assert_eq!(state.runner.scored_agendas, vec![agenda], "the steal itself stands");
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
+        assert_eq!(events.iter().filter(|e| matches!(e, GameEvent::GameOver { .. })).count(), 1, "{events:?}");
+        assert!(state.active_run.is_none());
+        assert!(events.contains(&GameEvent::RunCompleted { server: ServerId::Hq }));
     }
 
     /// ROADMAP Rules Audit T12: Archives was the one server whose root
