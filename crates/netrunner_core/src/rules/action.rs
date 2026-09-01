@@ -18,8 +18,11 @@ pub enum PlayerAction {
     /// Spend 1 click, draw 1 card from the Stack into the Grip. Runner-only for now.
     DrawCardClick,
     /// Spend 1 click, move `card_id` from HQ onto `zone` as a newly installed,
-    /// unrezzed card occupying `slot`. Corp-only (Runner grip/rig aren't
-    /// modeled with card identity yet). The caller declares `slot` explicitly
+    /// unrezzed card occupying `slot`. Corp-only; the Runner's installs are
+    /// `InstallHardware`/`InstallProgram`/`InstallResource`. Costs no
+    /// credits for a Root install and 1[c] per piece of ICE already
+    /// protecting `zone` for an ICE install — the printed cost is paid at
+    /// `RezIce`, not here. The caller declares `slot` explicitly
     /// (rather than the engine deriving it from the card's `dsl::CardType`,
     /// which it can't look up — no `CardRegistry` is wired in) so that
     /// `run::access_server` can correctly exclude ICE from what a run
