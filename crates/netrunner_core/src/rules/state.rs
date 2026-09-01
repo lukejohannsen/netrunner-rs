@@ -373,7 +373,12 @@ pub struct InstalledRunnerCard {
     /// that need to reference their own host (e.g. `EffectRequirement::
     /// EncounteringHostIce`, `CardTarget::HostIce`).
     #[serde(default)]
-    pub hosted_on_ice: Option<CardId>,
+    ///
+    /// An `InstallId`, not a `CardId`: with two copies of the host ICE
+    /// installed, a card id could not say which one this trojan sits on —
+    /// so trashing either took the trojans of both, and *Botulus* could
+    /// break on the wrong copy (ROADMAP Rules Audit §4).
+    pub hosted_on_ice: Option<InstallId>,
 }
 
 impl InstalledRunnerCard {

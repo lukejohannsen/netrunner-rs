@@ -227,7 +227,7 @@ fn remove_installed_card(
             let pos = state.corp.installed.iter().position(|c| c.install_id == install_id)?;
             let removed = state.corp.installed.remove(pos);
             let cascade = if removed.slot == InstallSlot::Ice {
-                ability::cascade_trash_hosted_programs(state, &removed.card)
+                ability::cascade_trash_hosted_programs(state, removed.install_id)
             } else {
                 Vec::new()
             };

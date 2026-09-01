@@ -1098,7 +1098,6 @@ fn install_program_on_ice(
     if host_install.slot != InstallSlot::Ice {
         return Err(RulesError::HostIsNotIce(host_install.card.clone()));
     }
-    let host_ice_id = host_install.card.clone();
 
     let memory_cost = card_def.memory_cost.unwrap_or(0);
 
@@ -1114,7 +1113,7 @@ fn install_program_on_ice(
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let mut rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
-    rig_card.hosted_on_ice = Some(host_ice_id);
+    rig_card.hosted_on_ice = Some(host);
     events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };

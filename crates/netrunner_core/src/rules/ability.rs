@@ -1109,18 +1109,11 @@ fn resolve_corp_installed_target(
             Ok((installed.install_id, card.clone(), *server))
         }
         CardTarget::HostIce => {
-            // The acting trojan's host. `hosted_on_ice` is still a `CardId`,
-            // so the host is the first install of that card — two copies of
-            // one ICE remain indistinguishable here until it carries an
-            // `InstallId` (ROADMAP).
-            let host = acting_rig_card(state, ctx).and_then(|c| c.hosted_on_ice.clone()).ok_or(RulesError::UnresolvedCardTarget)?;
-            let installed = state
-                .corp
-                .installed
-                .iter()
-                .find(|c| c.card == host)
-                .ok_or_else(|| RulesError::CardNotInstalled { card: host.clone() })?;
-            Ok((installed.install_id, host, installed.server))
+            // The acting trojan's host, by install — exact even with two
+            // copies of the host ICE on the table.
+            let host = acting_rig_card(state, ctx).and_then(|c| c.hosted_on_ice).ok_or(RulesError::UnresolvedCardTarget)?;
+            let installed = state.find_corp_install(host).ok_or(RulesError::InstallNotFound(host))?;
+            Ok((host, installed.card.clone(), installed.server))
         }
         CardTarget::ThisCard | CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } => {
             Err(RulesError::UnresolvedCardTarget)
@@ -1179,10 +1172,11 @@ pub(crate) fn trash_card(
             // A rezzed install was face-up on the table, so the Runner has
             // already seen it; an unrezzed one they never did.
             let seen = state.corp.installed[position].rezzed || runner_is_accessing(state, card);
+            let install = state.corp.installed[position].install_id;
             state.corp.installed.remove(position);
             state.corp.archives.push(orient(card.clone(), seen));
             let mut events = vec![GameEvent::CardTrashed { side: Side::Corp, card: card.clone() }];
-            events.extend(cascade_trash_hosted_programs(state, card));
+            events.extend(cascade_trash_hosted_programs(state, install));
             Ok(events)
         }
 
@@ -1244,25 +1238,15 @@ pub(crate) fn trash_card(
 /// events) if nothing is hosted on `host_card_id`, so this is zero-overhead
 /// for the overwhelming majority of Corp cards that never host anything.
 ///
-/// Keyed by `CardId` because `InstalledRunnerCard::hosted_on_ice` is one:
-/// with two copies of one ICE installed, trashing either takes the
-/// trojans hosted on both. Converting the host reference to an `InstallId`
-/// is the fix, and a wider change than this call site (ROADMAP).
-pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host_card_id: &CardId) -> Vec<GameEvent> {
-    let hosted: Vec<CardId> = state
-        .runner
-        .rig
-        .iter()
-        .filter(|c| c.hosted_on_ice.as_ref() == Some(host_card_id))
-        .map(|c| c.card.clone())
-        .collect();
+/// Keyed by the host's `InstallId`, so with two copies of one ICE installed
+/// only the trojans on the copy that left go — `hosted_on_ice` used to be a
+/// `CardId` and both copies' trojans went together.
+pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
     let mut events = Vec::new();
-    for card in hosted {
-        if let Some(position) = state.runner.rig.iter().position(|c| c.card == card) {
-            let removed = state.runner.rig.remove(position);
-            state.runner.heap.push(removed.card.clone());
-            events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card });
-        }
+    while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_ice == Some(host)) {
+        let removed = state.runner.rig.remove(position);
+        state.runner.heap.push(removed.card.clone());
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card });
     }
     events
 }
@@ -1306,10 +1290,11 @@ fn trash_this_card(state: &mut GameState, ctx: &ResolutionContext<'_>) -> Result
         // widened for the access case: a card the Runner is accessing right
         // now has been seen regardless of rez state.
         let seen = state.corp.installed[position].rezzed || runner_is_accessing(state, card_id);
+        let install = state.corp.installed[position].install_id;
         state.corp.installed.remove(position);
         state.corp.archives.push(orient(card_id.clone(), seen));
         let mut events = vec![GameEvent::CardTrashed { side: Side::Corp, card: card_id.clone() }];
-        events.extend(cascade_trash_hosted_programs(state, card_id));
+        events.extend(cascade_trash_hosted_programs(state, install));
         return Ok(events);
     }
     if ctx.acting_install.is_some() && acting_rig_position(state, ctx).is_none() {
@@ -1685,10 +1670,11 @@ pub fn check_requirement(
             Ok(())
         }
         EffectRequirement::EncounteringHostIce => {
-            let host = acting_rig_card(state, ctx).and_then(|c| c.hosted_on_ice.as_ref());
-            let Some(host) = host else { return Err(RulesError::RequirementNotMet) };
+            let Some(host) = acting_rig_card(state, ctx).and_then(|c| c.hosted_on_ice) else {
+                return Err(RulesError::RequirementNotMet);
+            };
             let matches = state.active_run.as_ref().is_some_and(|run| {
-                run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| &ice.card_id == host)
+                run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| ice.install_id == host)
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }

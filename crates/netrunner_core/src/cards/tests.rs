@@ -610,7 +610,7 @@ mod system_gateway {
             PlayerAction::InstallProgramOnIce { card_id: CardId("botulus".to_string()), host: install_of(&state, "palisade") },
         )
         .expect("hosting on ICE is the one way in");
-        assert_eq!(state.runner.rig[0].hosted_on_ice, Some(CardId("palisade".to_string())));
+        assert_eq!(state.runner.rig[0].hosted_on_ice, Some(install_of(&state, "palisade")));
     }
 
     /// A selection-trash of a piece of ICE takes the trojans hosted on it,
@@ -623,7 +623,7 @@ mod system_gateway {
         state.phase = GamePhase::Action(Side::Runner);
         state.corp.installed = vec![corp_ice("palisade", ServerId::Hq), corp_ice("whitespace", ServerId::RnD)];
         let mut rig = rig_of(&["botulus", "corroder"]);
-        rig[0].hosted_on_ice = Some(CardId("palisade".to_string()));
+        rig[0].hosted_on_ice = Some(fixture_install_id("palisade"));
         state.runner.rig = rig;
         // A Runner-side "trash 1 installed Corp card" selection, hand-built:
         // no pool card offers exactly this, but Ansel 1.0/Retribution park
@@ -846,7 +846,7 @@ mod system_gateway {
         state.runner.resources.clicks = Clicks(4);
         state.corp.installed = vec![corp_ice("palisade", ServerId::Hq)];
         let mut rig = rig_of(&["botulus", "corroder", "cleaver", "buzzsaw", "carmen"]);
-        rig[0].hosted_on_ice = Some(CardId("palisade".to_string()));
+        rig[0].hosted_on_ice = Some(fixture_install_id("palisade"));
         state.runner.rig = rig;
         assert_eq!(crate::rules::memory::memory_balance(&state, &registry), -1);
 
@@ -2980,7 +2980,7 @@ mod system_gateway {
             },
         )
         .expect("botulus hosts on unrezzed ice");
-        assert_eq!(hosted.runner.rig[0].hosted_on_ice, Some(CardId("wall_of_static".to_string())));
+        assert_eq!(hosted.runner.rig[0].hosted_on_ice, Some(install_of(&hosted, "wall_of_static")));
 
         // Offered, not merely resolvable — which only became true once the
         // memory-cost filter was fixed, and is what gives the assertion
@@ -3024,7 +3024,7 @@ mod system_gateway {
             },
         )
         .expect("install botulus onto wall of static");
-        assert_eq!(state.runner.rig[0].hosted_on_ice, Some(CardId("wall_of_static".to_string())));
+        assert_eq!(state.runner.rig[0].hosted_on_ice, Some(install_of(&state, "wall_of_static")));
         assert_eq!(state.runner.rig[0].counters, 1, "OnInstall places 1 virus counter");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CountersAdded { amount: 1, .. })));
 
@@ -3822,6 +3822,39 @@ mod system_gateway {
                 Some(RulesError::GameIsOver { winner: Side::Corp })
             );
         }
+    }
+
+    /// `hosted_on_ice` is an install: with two Palisades on one server, the
+    /// Botulus on the first breaks only while the first is encountered, and
+    /// the Botulus on the second only then. As a `CardId` the host matched
+    /// both copies (or, resolved through the first Botulus, neither).
+    #[test]
+    fn two_botulus_on_two_copies_of_one_ice_each_break_only_on_their_own_host() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let palisade = |install: u32| crate::rules::InstalledCard { install_id: InstallId(install), ..corp_ice("palisade", ServerId::Hq) };
+        state.corp.installed = vec![palisade(7001), palisade(7002)];
+        let botulus = |install: u32, host: u32| crate::rules::InstalledRunnerCard {
+            install_id: InstallId(install),
+            card: CardId("botulus".to_string()),
+            counters: 1,
+            hosted_on_ice: Some(InstallId(host)),
+            ..Default::default()
+        };
+        state.runner.rig = vec![botulus(8001, 7001), botulus(8002, 7002)];
+
+        // Encounter the outermost Palisade (install 7001).
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        let activate = |target: u32| PlayerAction::ActivateAbility { target: InstallId(target), ability_index: 0 };
+        assert!(legal.contains(&activate(8001)), "the Botulus hosted on the encountered Palisade may break: {legal:?}");
+        assert!(!legal.contains(&activate(8002)), "the Botulus on the *other* Palisade may not");
+
+        let (state, _) = apply_action(&state, &registry, activate(8001)).expect("break with the right botulus");
+        assert_eq!(state.runner.rig[0].counters, 0, "it spent its own counter");
+        assert_eq!(state.runner.rig[1].counters, 1, "the other copy's counter is untouched");
     }
 
     /// Two copies of one counter card are two cards. Trigger dispatch used
