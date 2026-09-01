@@ -425,6 +425,28 @@ fn install_card(
         })?;
     next.corp.hq.remove(position);
 
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true)?);
+    Ok((next, events))
+}
+
+/// The placement half every Corp install shares — `install_card` (the
+/// click action) and `pending_choice::resolve_choose_server`'s install
+/// branch (`Effect::PromptInstallCorpCard`, Ansel 1.0): type/slot
+/// validation, the one-agenda-or-asset-per-remote install-over, the
+/// per-protecting-ICE install tax (when `pay_cost`), the unique rule, the
+/// outermost ICE insertion, and the `CardInstalled` event with its
+/// identity dispatch. The caller owns getting the card *out* of wherever
+/// it was (HQ by id, an origin zone by position) and its own guards.
+pub(crate) fn place_corp_card(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+    zone: TargetZone,
+    slot: InstallSlot,
+    pay_cost: bool,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Corp;
     // The registry lookup stays even though the printed cost is not paid
     // here: a card the engine cannot describe is not installable.
     let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
@@ -446,7 +468,7 @@ fn install_card(
             return Err(RulesError::CardTypeMismatch { card: card_id, expected: "an agenda, asset or upgrade" });
         }
     }
-    let mut events = vec![GameEvent::ClickSpent { side }];
+    let mut events = Vec::new();
 
     // A remote holds one agenda or asset. Installing a second is
     // "installing over": the occupant is trashed as part of the install —
@@ -477,17 +499,17 @@ fn install_card(
     // used to pay `card_def.cost` here as well, so every Corp card cost
     // double and the escalating ICE tax did not exist (ROADMAP Rules
     // Audit T3).
-    let install_cost = match slot {
-        InstallSlot::Ice => ice_protecting(&next, zone),
-        InstallSlot::Root => 0,
+    let install_cost = match (pay_cost, slot) {
+        (true, InstallSlot::Ice) => ice_protecting(next, zone),
+        _ => 0,
     };
     if install_cost > 0 {
-        events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(install_cost), Some(&card_id))?);
+        events.extend(ability::pay_cost(next, side, &Cost::Credits(install_cost), Some(&card_id))?);
     }
 
-    events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
+    events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
     let install_id = next.allocate_install_id();
-    next.corp.installed.push(InstalledCard {
+    let new_card = InstalledCard {
         card: card_id.clone(),
         install_id,
         server: zone,
@@ -496,7 +518,24 @@ fn install_card(
         advancement_tokens: 0,
         counters: 0,
         installed_this_turn: true,
-    });
+    };
+    // New ICE is installed in the **outermost** position (Null Signal
+    // Games' install rule): `corp.installed`'s vec order per server is
+    // outermost-to-innermost (`run::start_run` reads it positionally, and
+    // position 0 is approached first), so the new piece goes in front of
+    // the server's existing ICE, not at the end. Appending — what this
+    // did for every install until the fidelity audit — put each new ICE
+    // *innermost*, silently reversing the approach order of every stacked
+    // server. Root installs have no order and simply append; Brân 1.0's
+    // "directly inward from this ice" pins its own position via
+    // `Effect::InstallFromZoneIgnoringCost::insert_after` instead.
+    let outermost = (slot == InstallSlot::Ice)
+        .then(|| next.corp.installed.iter().position(|c| c.server == zone && c.slot == InstallSlot::Ice))
+        .flatten();
+    match outermost {
+        Some(index) => next.corp.installed.insert(index, new_card),
+        None => next.corp.installed.push(new_card),
+    }
     let installed_event = GameEvent::CardInstalled {
         side,
         card: card_id,
@@ -507,9 +546,39 @@ fn install_card(
     // Haas-Bioroid: Engineering the Future-style identity reaction — gated
     // by `EffectRequirement::FirstInstallThisTurn` on the identity's own
     // `TriggeredEffect`, so this dispatch is unconditional here.
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
+    events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
 
-    Ok((next, events))
+    Ok(events)
+}
+
+/// Every server `card_def` could legally and affordably be installed into
+/// right now — the offer `Effect::PromptInstallCorpCard` parks as
+/// `PendingDecision::ChooseServer::allowed_servers`. Agendas and assets
+/// are remote-only; ICE and upgrades may also take a central. An ICE
+/// destination whose per-protecting-ICE tax the Corp cannot pay is not
+/// offered at all — a fresh remote is always free, so the offer is never
+/// empty for an installable type. Computed at park time and safe to trust
+/// at resolution: a parked decision blocks every other action, so nothing
+/// can change in between.
+pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl::CardDefinition) -> Vec<ServerId> {
+    let existing = super::legal_actions::existing_remote_ids(state);
+    let mut remotes: Vec<ServerId> = existing.iter().copied().map(ServerId::Remote).collect();
+    remotes.push(ServerId::Remote(super::legal_actions::fresh_remote_id(&existing)));
+    match card_def.card_type {
+        CardType::Agenda | CardType::Asset => remotes,
+        CardType::Upgrade => {
+            let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
+            zones.extend(remotes);
+            zones
+        }
+        CardType::Ice(_) => {
+            let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
+            zones.extend(remotes);
+            zones.retain(|zone| ice_protecting(state, *zone) <= state.corp.resources.credits.0);
+            zones
+        }
+        _ => Vec::new(),
+    }
 }
 
 /// The ◆ rule: if `card_id` is unique and `side` already has a copy in

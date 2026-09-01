@@ -707,7 +707,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, source_card, source_install, resume, .. } =
+    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, install, source_card, source_install, resume, .. } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -719,6 +719,41 @@ pub(crate) fn resolve_choose_server(
         && !allowed.contains(&server)
     {
         return Err(RulesError::ServerNotAllowedForChoice { server });
+    }
+
+    // The install-shaped resolution (`Effect::PromptInstallCorpCard`,
+    // Ansel 1.0): the chosen server receives the card the parked decision
+    // names by position, and no run starts. The position was valid at park
+    // time and a parked decision blocks every other action, so the lookup
+    // cannot miss; `UnresolvedCardTarget` covers the impossible rather
+    // than panicking in engine code.
+    if let Some(pending_install) = install {
+        let card_id = match &pending_install.origin {
+            crate::dsl::CardZoneRef::OwnHq => (pending_install.position < state.corp.hq.len())
+                .then(|| state.corp.hq.remove(pending_install.position)),
+            crate::dsl::CardZoneRef::OwnArchives => (pending_install.position < state.corp.archives.len())
+                .then(|| state.corp.archives.remove(pending_install.position).card),
+            _ => None,
+        }
+        .ok_or(RulesError::UnresolvedCardTarget)?;
+        let slot = match registry.get(&card_id).map(|c| &c.card_type) {
+            Some(crate::dsl::CardType::Ice(_)) => InstallSlot::Ice,
+            _ => InstallSlot::Root,
+        };
+        let mut events = vec![GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 }];
+        events.extend(crate::rules::engine::place_corp_card(state, registry, card_id, server, slot, pending_install.pay_cost)?);
+        if resume == PendingChoiceResume::ResumeSubroutines {
+            // The install's own dispatch may have parked something (an
+            // identity reaction); propagate the resume intent exactly as
+            // `resolve_confirm_card_selection` does before resuming the
+            // encounter this decision interrupted.
+            mark_pending_decision_resume_subroutines(state);
+            if let Some(pending) = state.pending_paid_choice.as_mut() {
+                pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
+            }
+            events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+        }
+        return Ok(events);
     }
 
     run::start_run(state, registry, server)?;

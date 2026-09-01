@@ -761,11 +761,57 @@ pub fn evaluate_effect(
                 bonus_run_credits: *bonus_run_credits,
                 allowed_servers: allowed_servers.clone(),
                 on_success: on_success.clone(),
+                install: None,
                 source_card: acting_card.cloned(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: *chooser }])
+        }
+
+        Effect::PromptInstallCorpCard { origin_zone } => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // First match by position: two copies of one card in HQ are
+            // indistinguishable and interchangeable, so "the copy the Corp
+            // just selected" and "the first copy" are the same card.
+            let position = match origin_zone {
+                crate::dsl::CardZoneRef::OwnHq => state.corp.hq.iter().position(|c| c == &card_id),
+                crate::dsl::CardZoneRef::OwnArchives => {
+                    state.corp.archives.iter().position(|a| a.card == card_id)
+                }
+                _ => return Err(RulesError::UnresolvedCardTarget),
+            };
+            // Card gone from the zone, an uninstallable type, or (for ICE)
+            // no affordable destination: nothing to offer — the same
+            // "nothing to do" leniency `PromptChooseCards` establishes. A
+            // fresh remote is always free, so this only bites for a type
+            // that cannot be installed at all.
+            let Some(position) = position else { return Ok(Vec::new()) };
+            let Some(card_def) = registry.get(&card_id) else { return Ok(Vec::new()) };
+            let allowed = crate::rules::engine::corp_install_destinations(state, card_def);
+            if allowed.is_empty() {
+                return Ok(Vec::new());
+            }
+            state.pending_decision = Some(PendingDecision::ChooseServer {
+                chooser: Side::Corp,
+                rez_cost_delta: 0,
+                bonus_run_credits: 0,
+                allowed_servers: Some(allowed),
+                on_success: None,
+                install: Some(crate::rules::state::PendingInstallFromZone {
+                    origin: origin_zone.clone(),
+                    position,
+                    pay_cost: true,
+                }),
+                // Deliberately NOT the chosen card: `source_card` passes
+                // through the masked view, and the pick out of HQ is
+                // hidden information until it lands. The install payload
+                // above names it by position instead.
+                source_card: None,
+                source_install: ctx.acting_install,
+                resume: PendingChoiceResume::None,
+            });
+            Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
         }
 
         Effect::RezInstalledIgnoringCost(install) => {

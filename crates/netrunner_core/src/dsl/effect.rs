@@ -414,11 +414,10 @@ pub enum Effect {
     /// into `into` (a placeholder substituted with `source_card`'s own
     /// currently-installed server), skipping its install cost entirely.
     /// `slot`: `None` infers `Ice` for `CardType::Ice(_)` and `Root`
-    /// otherwise (Ansel 1.0's "install 1 card" is type-agnostic); `Some`
+    /// otherwise; `Some`
     /// pins it explicitly (Brân 1.0's subroutine only ever offers ICE, but
     /// authors it explicitly for clarity). `insert_after`: `None` appends
-    /// to the end of `CorpState::installed` (Ansel 1.0 — no positional
-    /// requirement in its text); `Some(host_card_id)` (substituted from
+    /// to the end of `CorpState::installed`; `Some(host_card_id)` (substituted from
     /// `source_card`, same as `into`) inserts immediately after that
     /// card's own index instead, which — since `CorpState::installed`'s
     /// vec order is install order and `run::engine::build_run_ice` derives
@@ -438,6 +437,21 @@ pub enum Effect {
         /// themselves, and a first-match-by-title lookup picked the first.
         insert_after: Option<crate::rules::InstallId>,
     },
+    /// Parks the Corp's choice of *destination server* for installing the
+    /// resolving card — `acting_card`, a card sitting in `origin_zone`
+    /// (`OwnHq` or `OwnArchives`) — then installs it there **paying** the
+    /// normal install cost: Ansel 1.0's "You may install 1 card from HQ or
+    /// Archives", whose printed text neither fixes the server nor waives
+    /// the cost. Parks a `PendingDecision::ChooseServer` carrying a
+    /// `state::PendingInstallFromZone` (see its doc for why the card is a
+    /// position, not an id), with `allowed_servers` precomputed by
+    /// `engine::corp_install_destinations` — agendas/assets to remotes
+    /// only, ICE only where the per-protecting-ICE tax is affordable.
+    /// Resolved by the same `PlayerAction::ChooseServerForPendingDecision`
+    /// a run-target choice uses. Contrast `InstallFromZoneIgnoringCost`
+    /// (Brân 1.0): a *positional* install — "directly inward from this
+    /// ice" — that ignores costs and offers no server choice.
+    PromptInstallCorpCard { origin_zone: CardZoneRef },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
     /// usual discounts) and respecting the memory budget, the console limit
@@ -610,6 +624,7 @@ impl Effect {
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
             | Effect::InstallFromZoneIgnoringCost { .. }
+            | Effect::PromptInstallCorpCard { .. }
             | Effect::InstallRunnerCardFromGrip
             | Effect::PreventStealAndTrashForRemainderOfRun
             | Effect::PreventScoringForRemainderOfTurn

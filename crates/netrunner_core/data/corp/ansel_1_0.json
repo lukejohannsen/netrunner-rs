@@ -35,18 +35,23 @@
               "PromptChooseCards": {
                 "side": "Corp",
                 "source": "OwnHq",
-                "filter": "Any",
+                "filter": {
+                  "CardTypeOneOf": [
+                    {
+                      "Ice": "Barrier"
+                    },
+                    "Agenda",
+                    "Asset",
+                    "Upgrade"
+                  ]
+                },
                 "min": 1,
                 "max": 1,
                 "reveal": false,
                 "shuffle_after": false,
                 "then": {
-                  "InstallFromZoneIgnoringCost": {
-                    "card_id": "",
-                    "origin_zone": "OwnHq",
-                    "into": "Archives",
-                    "slot": null,
-                    "insert_after": null
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnHq"
                   }
                 }
               }
@@ -55,18 +60,23 @@
               "PromptChooseCards": {
                 "side": "Corp",
                 "source": "OwnArchives",
-                "filter": "Any",
+                "filter": {
+                  "CardTypeOneOf": [
+                    {
+                      "Ice": "Barrier"
+                    },
+                    "Agenda",
+                    "Asset",
+                    "Upgrade"
+                  ]
+                },
                 "min": 1,
                 "max": 1,
                 "reveal": false,
                 "shuffle_after": false,
                 "then": {
-                  "InstallFromZoneIgnoringCost": {
-                    "card_id": "",
-                    "origin_zone": "OwnArchives",
-                    "into": "Archives",
-                    "slot": null,
-                    "insert_after": null
+                  "PromptInstallCorpCard": {
+                    "origin_zone": "OwnArchives"
                   }
                 }
               }

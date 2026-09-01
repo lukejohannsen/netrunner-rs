@@ -3657,7 +3657,7 @@ mod system_gateway {
             ..Default::default()
         }];
         state.corp.installed = vec![corp_ice("ansel_1_0", ServerId::Hq)];
-        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        state.corp.hq = vec![CardId("nico_campaign".to_string())];
 
         state = enter_encounter_with(state, &registry, ServerId::Hq);
 
@@ -3675,20 +3675,118 @@ mod system_gateway {
         assert!(state.runner.rig.is_empty(), "corroder should have been trashed");
         assert!(state.runner.heap.contains(&CardId("corroder".to_string())));
 
-        // Subroutine 2: may install 1 card from HQ or Archives — choose HQ.
+        // Subroutine 2: may install 1 card from HQ or Archives — choose HQ,
+        // pick the asset, and pick where it goes: the printed text fixes
+        // neither the server nor waives the cost (an asset installs free
+        // either way; the ICE tax case is pinned by
+        // `ansels_install_pays_the_ice_install_tax`).
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to install from HQ");
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
-                .expect("toggle hedge_fund");
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "nico_campaign") })
+                .expect("toggle nico_campaign");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
-            .expect("confirm install, ignoring cost, resuming subroutine resolution");
-        assert!(!state.corp.hq.contains(&CardId("hedge_fund".to_string())));
-        assert!(state.corp.installed.iter().any(|c| c.card == CardId("hedge_fund".to_string()) && c.server == ServerId::Hq && !c.rezzed));
-        assert_eq!(state.corp.resources.credits, Credits(10), "installed ignoring hedge_fund's printed cost — unchanged from the starting balance");
+            .expect("confirm the pick, parking the destination choice");
+        match &state.pending_decision {
+            Some(crate::rules::PendingDecision::ChooseServer { chooser: Side::Corp, allowed_servers: Some(allowed), install: Some(_), .. }) => {
+                assert!(
+                    allowed.iter().all(|server| matches!(server, ServerId::Remote(_))),
+                    "an asset is remote-only: {allowed:?}"
+                );
+            }
+            other => panic!("expected the Corp's destination choice, got {other:?}"),
+        }
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) })
+                .expect("install into a new remote, resuming subroutine resolution");
+        assert!(!state.corp.hq.contains(&CardId("nico_campaign".to_string())));
+        assert!(state.corp.installed.iter().any(|c| c.card == CardId("nico_campaign".to_string()) && c.server == ServerId::Remote(0) && !c.rezzed));
+        assert_eq!(state.corp.resources.credits, Credits(10), "an asset installs for free — unchanged from the starting balance");
 
         // Subroutine 3: prevent steal/trash for the remainder of this run.
         assert!(state.active_run.as_ref().unwrap().runner_cannot_steal_or_trash);
+    }
+
+    /// Null Signal Games' install rule: new ICE goes in the **outermost**
+    /// position. `corp.installed`'s per-server vec order is what the run
+    /// approaches positionally, and every install used to append — which
+    /// put each new piece *innermost* and silently reversed the approach
+    /// order of every stacked server.
+    #[test]
+    fn installing_ice_lands_outermost_so_the_runner_approaches_the_newest_first() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![corp_ice("tithe", ServerId::Hq)];
+        state.corp.hq = vec![CardId("palisade".to_string())];
+
+        let (mut state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallCard { card_id: CardId("palisade".to_string()), zone: ServerId::Hq, slot: InstallSlot::Ice },
+        )
+        .expect("install palisade onto HQ");
+        assert_eq!(state.corp.resources.credits, Credits(9), "1[c]: one piece of ICE already protects HQ");
+        assert_eq!(
+            state.corp.installed.iter().map(|c| c.card.0.as_str()).collect::<Vec<_>>(),
+            vec!["palisade", "tithe"],
+            "the new piece sits in front — outermost"
+        );
+
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the outermost ICE");
+        assert_eq!(state.active_run.as_ref().unwrap().ice[0].card_id, CardId("palisade".to_string()), "newest first");
+    }
+
+    /// Ansel 1.0's install pays the normal cost — 1[c] per piece of ICE
+    /// already protecting the chosen server. Only Brân prints "ignoring
+    /// all costs".
+    #[test]
+    fn ansels_install_pays_the_ice_install_tax() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard {
+            card: CardId("corroder".to_string()),
+            base_strength: 2,
+            ..Default::default()
+        }];
+        state.corp.installed = vec![corp_ice("ansel_1_0", ServerId::Hq)];
+        state.corp.hq = vec![CardId("palisade".to_string())];
+
+        state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter window");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("corp passes, firing subroutine 1");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
+                .expect("toggle corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm trash");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
+            .expect("choose to install from HQ");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "palisade") })
+                .expect("toggle palisade");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm the pick");
+        let credits_before = state.corp.resources.credits;
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq })
+                .expect("install onto HQ, behind the encounter");
+        assert_eq!(state.corp.resources.credits.0, credits_before.0 - 1, "Ansel itself already protects HQ: the tax is 1[c]");
+        assert_eq!(
+            state.corp.installed.iter().filter(|c| c.slot == InstallSlot::Ice).map(|c| c.card.0.as_str()).collect::<Vec<_>>(),
+            vec!["palisade", "ansel_1_0"],
+            "the new ICE is outermost — behind a Runner already at Ansel, so it is never approached this run"
+        );
+        // The run is still standing on Ansel; its remaining subroutine
+        // resolves and the encounter concludes normally.
+        assert!(state.active_run.as_ref().unwrap().runner_cannot_steal_or_trash, "subroutine 3 resolved after the install");
     }
 
     #[test]
