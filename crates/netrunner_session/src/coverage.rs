@@ -399,7 +399,12 @@ pub const ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS: &[(&str, &str)] = &[
 /// AGENTS.md's Testing Rule runs the sweeps deep before merging engine work.
 pub const ACTIONS_RARE_WITH_SAMPLE_DECKS: &[(&str, &str, u64)] = &[
     ("TrashResource", "needs a tagged Runner with a resource installed, on the Corp's turn", 512),
-    ("BreakSubroutineWithClick", "needs an encounter with a rezzed Ansel 1.0 or Brân 1.0", 256),
+    // Measured 10 in one 192-game random sample and 0 in another of 96: a
+    // random Corp seldom holds the 6[c] a bioroid rezzes for, and while the
+    // free `BreakSubroutine` exists (Rules Audit T1) it dilutes the random
+    // Runner's choice N-to-1 at every encounter. Expect this to drop back
+    // to the hundreds once T1 is deleted; re-measure then.
+    ("BreakSubroutineWithClick", "needs an encounter with a rezzed Ansel 1.0 or Brân 1.0", 1024),
     ("RemoveTag", "needs a tag the Runner still has on their own turn, with 2 credits", 128),
 ];
 

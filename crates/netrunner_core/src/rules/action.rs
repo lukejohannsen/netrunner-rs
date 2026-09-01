@@ -290,9 +290,11 @@ pub enum PlayerAction {
     /// stealable Agenda (`mandatory_steal` or `steal_cost` is set) —
     /// `RulesError::NotInAccessPhase` otherwise. If the card has a
     /// `steal_cost`, it's paid here (`RulesError::CannotAffordStealCost` if
-    /// unaffordable). Moves the card into `RunnerState::scored_agendas`,
-    /// checks win conditions, and advances to the next accessed card (or
-    /// finalizes the run) — see `run::access::resolve_steal`. Blocked while
+    /// unaffordable). Moves the card out of the Corp zone it was accessed
+    /// in — HQ, the top of R&D, the run's remote, or Archives — and into
+    /// `RunnerState::scored_agendas`, checks win conditions, and advances
+    /// to the next accessed card (or finalizes the run) — see
+    /// `run::access::resolve_steal`. Blocked while
     /// a Paid Ability Window is open (`RulesError::BlockedByPaidAbilityWindow`)
     /// — both sides must pass priority first via `PassPriority`. Resolving
     /// this action may itself open a fresh window if it presents another

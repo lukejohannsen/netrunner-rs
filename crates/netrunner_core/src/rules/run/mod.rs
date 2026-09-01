@@ -9,7 +9,7 @@ pub use access::{
 };
 pub use action::RunAction;
 pub use engine::{advance_run, start_run};
-pub(crate) use engine::{check_run_may_begin, transition_subroutine};
+pub(crate) use engine::{check_run_may_begin, end_run, transition_subroutine};
 pub use state::{
     AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId,
     SubroutineStatus,
