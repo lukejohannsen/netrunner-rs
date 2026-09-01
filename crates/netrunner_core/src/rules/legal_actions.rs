@@ -301,12 +301,18 @@ fn existing_remote_ids(state: &GameState) -> Vec<u32> {
     ids
 }
 
-/// One remote id beyond every existing one — offers "install into a new
-/// remote" without the engine having any such concept itself (see
+/// The smallest remote id not currently in use — offers "install into a
+/// new remote" without the engine having any such concept itself (see
 /// `ServerId`'s doc comment: `Remote(n)` for any `n` is accepted
 /// unconditionally, nothing tracks which ids are "in use").
+///
+/// Smallest unused rather than `max + 1`: an emptied remote is a remote
+/// that no longer exists, and the next new server may take its number.
+/// `max + 1` ratcheted ids upward all game, and `ActionSpace` indexes
+/// only `MAX_REMOTE_SERVERS` of them — past that, installs into and runs
+/// on the new remote were legal but invisible to the RL mask.
 fn fresh_remote_id(existing: &[u32]) -> u32 {
-    existing.iter().max().map_or(0, |max| max + 1)
+    (0..).find(|id| !existing.contains(id)).expect("the naturals are unbounded")
 }
 
 /// `engine::install_card` never checks that `slot`/`zone` correspond to the
@@ -1168,5 +1174,15 @@ mod tests {
         assert!(!legal_actions_for(&corp, &registry, Side::Runner).contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
         assert!(legal_actions_for(&corp, &registry, Side::Corp).contains(&PlayerAction::EndTurn));
         assert!(!legal_actions_for(&corp, &registry, Side::Runner).contains(&PlayerAction::EndTurn));
+    }
+
+    /// An emptied remote's number is offered again; ids never ratchet past
+    /// what `ActionSpace` can index just because servers came and went.
+    #[test]
+    fn fresh_remote_ids_are_recycled() {
+        assert_eq!(fresh_remote_id(&[]), 0);
+        assert_eq!(fresh_remote_id(&[0, 1, 2]), 3);
+        assert_eq!(fresh_remote_id(&[0, 2]), 1, "remote 1 was emptied and comes back");
+        assert_eq!(fresh_remote_id(&[3]), 0);
     }
 }

@@ -391,8 +391,32 @@ fn install_card(
 
     // The registry lookup stays even though the printed cost is not paid
     // here: a card the engine cannot describe is not installable.
-    registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
     let mut events = vec![GameEvent::ClickSpent { side }];
+
+    // A remote holds one agenda or asset. Installing a second is
+    // "installing over": the occupant is trashed as part of the install —
+    // to Archives, faceup if it was rezzed (the Runner had seen it) and
+    // facedown otherwise. Upgrades stack in a root freely and do not block
+    // this. Nothing enforced any of it before, so a remote could hold three
+    // agendas and a single breach accessed them all (ROADMAP Rules Audit
+    // T5).
+    if slot == InstallSlot::Root && matches!(card_def.card_type, CardType::Agenda | CardType::Asset) {
+        let occupant = next.corp.installed.iter().position(|c| {
+            c.server == zone
+                && c.slot == InstallSlot::Root
+                && registry.get(&c.card).is_some_and(|d| matches!(d.card_type, CardType::Agenda | CardType::Asset))
+        });
+        if let Some(pos) = occupant {
+            let trashed = next.corp.installed.remove(pos);
+            next.corp.archives.push(if trashed.rezzed {
+                ArchivedCard::faceup(trashed.card.clone())
+            } else {
+                ArchivedCard::facedown(trashed.card.clone())
+            });
+            events.push(GameEvent::CardTrashed { side, card: trashed.card });
+        }
+    }
     // Installing costs the Corp nothing for an agenda, asset or upgrade,
     // and 1[c] per piece of ICE already protecting the server for ICE —
     // the printed `cost` is the *rez* cost and is paid by `rez_ice`. This
@@ -1940,6 +1964,73 @@ mod tests {
         .expect("third ICE on HQ costs 2");
         assert_eq!(next.corp.resources.credits, Credits(3), "two ICE already on HQ; the one on R&D does not count");
         assert!(events.contains(&GameEvent::CreditsSpent { side: Side::Corp, amount: 2 }));
+    }
+
+    /// Rules Audit T5: a remote holds one agenda or asset, so installing a
+    /// second one trashes the first — faceup if it was rezzed, facedown if
+    /// not. An upgrade is not an occupant in this sense and does not block.
+    #[test]
+    fn installing_an_agenda_or_asset_over_a_remotes_occupant_trashes_the_occupant() {
+        let agenda = CardId("offworld_office".to_string());
+        let asset = CardId("pad_campaign".to_string());
+        let upgrade = CardId("manegarm_skunkworks".to_string());
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("offworld_office", Side::Corp, CardType::Agenda, 0, Some(4)));
+        registry.insert(test_card("pad_campaign", Side::Corp, CardType::Asset, 2, None));
+        registry.insert(test_card("manegarm_skunkworks", Side::Corp, CardType::Upgrade, 2, None));
+        let installed = vec![
+            InstalledCard {
+                card: asset.clone(),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Root,
+                rezzed: true,
+                ..Default::default()
+            },
+            InstalledCard {
+                card: upgrade.clone(),
+                install_id: InstallId(2),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Root,
+                ..Default::default()
+            },
+        ];
+        let state = corp_state_with_hq_and_installed(3, 5, vec![agenda.clone()], installed);
+
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root },
+        )
+        .expect("installing over is legal");
+
+        let remote_root: Vec<&CardId> =
+            next.corp.installed.iter().filter(|c| c.server == ServerId::Remote(0)).map(|c| &c.card).collect();
+        assert_eq!(remote_root, vec![&upgrade, &agenda], "the asset left, the upgrade stayed, the agenda arrived");
+        assert_eq!(next.corp.archives, vec![ArchivedCard::faceup(asset.clone())], "a rezzed occupant lands faceup");
+        assert!(events.contains(&GameEvent::CardTrashed { side: Side::Corp, card: asset }));
+
+        // An unrezzed occupant lands facedown, and an upgrade installs
+        // alongside without trashing anything.
+        let mut next = next;
+        next.corp.hq.push(agenda.clone());
+        let (next, _) = apply_action(
+            &next,
+            &registry,
+            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root },
+        )
+        .expect("a second copy over the first");
+        assert_eq!(next.corp.archives.last().map(|a| a.facedown), Some(true));
+        let mut next = next;
+        next.corp.hq.push(upgrade.clone());
+        let (next, events) = apply_action(
+            &next,
+            &registry,
+            PlayerAction::InstallCard { card_id: upgrade.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root },
+        )
+        .expect("upgrades stack");
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::CardTrashed { .. })));
+        assert_eq!(next.corp.installed.iter().filter(|c| c.server == ServerId::Remote(0)).count(), 3);
     }
 
     /// Rules Audit T3: agendas, assets and upgrades install for free — the
