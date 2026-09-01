@@ -396,7 +396,19 @@ pub struct RunnerState {
     /// comment for the same rationale.
     pub identity: Option<CardId>,
     pub resources: PlayerResources,
-    /// Unspent memory units available for installing programs.
+    /// Memory units free for installing programs.
+    ///
+    /// **A cached report, not the authority.** The number is derived from
+    /// what is installed — `memory::available_memory` — and refreshed at a
+    /// single choke point in `engine::apply_action` after every handler.
+    /// Do not decrement it on install or restore it on trash; change the
+    /// rig and the report follows.
+    ///
+    /// It was a spent resource until memory was derived, which meant a
+    /// program's cost was never given back when it left play. See
+    /// `rules::memory` for why deriving beats refunding here, and
+    /// `GamePhase::Discard`'s `required` for the same "stored value became
+    /// a report" move made earlier for the discard count.
     pub memory_units: MemoryUnits,
     /// Cumulative Brain damage taken. Permanently reduces the Runner's max
     /// hand size (see `turn::max_hand_size`) — unlike Net/Meat damage, which
@@ -464,11 +476,11 @@ pub struct RunnerState {
     /// `CardDefinition::max_hand_size_bonus` (e.g. T400 Memory Diamond's
     /// "+1 maximum hand size") plus any Agenda-scored `Effect::
     /// GainMaxHandSize` (e.g. Superconducting Hub) and identity-level bonus
-    /// read once at `GameState::setup`. Deliberately one-way/permanent —
-    /// unlike `memory_bonus`, this crate makes no attempt to decrement it
-    /// if the granting Hardware later leaves play (see `engine::
-    /// install_hardware`'s doc comment for the same simplification and its
-    /// rationale).
+    /// read once at `GameState::setup`. Deliberately one-way/permanent: it
+    /// is **not** board-derived the way `memory_units` now is, because
+    /// Agendas and identities contribute to it as well as Hardware, so
+    /// summing the rig would not reproduce it. That is the whole difference
+    /// between the two — see `rules::memory`.
     #[serde(default)]
     pub max_hand_size_bonus: u32,
 }

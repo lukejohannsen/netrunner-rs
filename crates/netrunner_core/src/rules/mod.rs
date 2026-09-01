@@ -9,6 +9,7 @@ mod error;
 mod event;
 mod legal_actions;
 mod masking;
+pub mod memory;
 mod paid_ability;
 pub(crate) mod pending_choice;
 mod run;

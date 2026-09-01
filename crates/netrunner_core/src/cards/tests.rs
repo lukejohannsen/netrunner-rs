@@ -403,7 +403,7 @@ fn cleaver_pumps_strength_and_breaks_up_to_two_barrier_subroutines() {
         ..Default::default()
     }];
 
-    let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("cleaver".to_string()), memory_cost: 1 })
+    let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("cleaver".to_string()) })
         .expect("install cleaver");
     assert_eq!(state.runner.resources.credits, Credits(7), "10 - 3 (Cleaver's install cost)");
 
@@ -472,6 +472,182 @@ mod system_gateway {
 
     fn sg_registry() -> CardRegistry {
         registry()
+    }
+
+    /// A program that declares a memory cost must actually be *offered*.
+    ///
+    /// This is the check nothing performed, and its absence hid a total
+    /// exclusion: both candidate generators built `InstallProgram` with
+    /// `memory_cost: 0` while `engine::install_program` treated the
+    /// registry's declared value as authoritative and rejected a mismatch.
+    /// `legal_actions` keeps only candidates `apply_action` accepts, so
+    /// every program was filtered out before reaching any caller — and all
+    /// 14 playable programs declare a cost, so no Runner could install one
+    /// at all through the legal-action path. Every per-card test reached
+    /// past it by calling `apply_action` directly with the right value.
+    ///
+    /// The round trip is asserted alongside because the index path failed
+    /// the same way for a different reason: `ActionSpace::action_at` takes
+    /// no `CardRegistry` and so could only ever synthesise `0`.
+    #[test]
+    fn a_program_with_a_memory_cost_is_offered_and_round_trips() {
+        let registry = sg_registry();
+        assert_eq!(
+            registry.get(&CardId("corroder".to_string())).expect("corroder is registered").memory_cost,
+            Some(1),
+            "the premise: Corroder declares a memory cost"
+        );
+
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("corroder".to_string())];
+
+        let install = crate::rules::legal_actions(&state, &registry)
+            .into_iter()
+            .find(|a| matches!(a, PlayerAction::InstallProgram { card_id, .. } if card_id.0 == "corroder"))
+            .expect("installing Corroder must be a legal action");
+
+        let index = crate::rules::ActionSpace::index_of(&state, &install).expect("it has an index");
+        assert_eq!(
+            crate::rules::ActionSpace::action_at(&state, index),
+            Some(install.clone()),
+            "and the index decodes back to the same action"
+        );
+
+        let (state, _) = apply_action(&state, &registry, install).expect("and it resolves");
+        assert_eq!(state.runner.rig[0].card, CardId("corroder".to_string()));
+    }
+
+    /// Memory is freed when a program leaves play.
+    ///
+    /// This is the bug that fixing the install path would otherwise have
+    /// woken up. Memory used to be *spent* — `MemoryUnits::spend` was called
+    /// by the two install handlers and refunded by none of the five paths a
+    /// rig card can leave play by — so a Runner whose programs were trashed
+    /// lost that memory permanently. It went unnoticed because no program
+    /// could be installed through a legal action at all, so nothing was ever
+    /// spent. Memory is now derived from the rig (`rules::memory`), which
+    /// makes freeing it automatic rather than something five sites must
+    /// each remember to do.
+    #[test]
+    fn trashing_a_program_frees_its_memory() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("corroder".to_string())];
+
+        // Read the derived budget, not the fixture's hand-set field —
+        // `base_state` seeds a number that the refresh in `apply_action`
+        // immediately corrects.
+        let base = crate::rules::memory::available_memory(&state, &registry);
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) },
+        )
+        .expect("install corroder");
+        assert_eq!(state.runner.memory_units.0, base - 1, "Corroder reserves 1 MU while installed");
+
+        let mut trashed = state.clone();
+        crate::rules::evaluate_effect(
+            &mut trashed,
+            &crate::dsl::Effect::TrashCard(crate::dsl::CardTarget::RunnerRig(CardId("corroder".to_string()))),
+            &mut crate::rules::ResolutionContext::default(),
+            &registry,
+        )
+        .expect("trash corroder");
+        assert!(trashed.runner.rig.is_empty());
+
+        // The report is refreshed by `apply_action`, so drive one — any
+        // action will do; this asserts the refresh point, not the effect.
+        let (trashed, _) =
+            apply_action(&trashed, &registry, PlayerAction::GainCreditClick { side: Side::Runner })
+                .expect("any action refreshes the memory report");
+        assert_eq!(trashed.runner.memory_units.0, base, "and gives it back on leaving play");
+    }
+
+    /// The `memory_bonus` half of the same property.
+    ///
+    /// `install_hardware` used to add a console's "+1[mu]" straight onto
+    /// `memory_units` and never remove it, which its own comment recorded as
+    /// a deliberate shortcut ("threading a `CardRegistry` through every
+    /// trash path... would be a much larger refactor"). Deriving the budget
+    /// made that free.
+    #[test]
+    fn a_trashed_console_takes_its_memory_bonus_with_it() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("pennyshaver".to_string())];
+
+        let base = crate::rules::memory::available_memory(&state, &registry);
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallHardware { card_id: CardId("pennyshaver".to_string()) },
+        )
+        .expect("install pennyshaver");
+        assert_eq!(state.runner.memory_units.0, base + 1, "the console grants +1 MU");
+
+        let mut trashed = state.clone();
+        crate::rules::evaluate_effect(
+            &mut trashed,
+            &crate::dsl::Effect::TrashCard(crate::dsl::CardTarget::RunnerRig(CardId("pennyshaver".to_string()))),
+            &mut crate::rules::ResolutionContext::default(),
+            &registry,
+        )
+        .expect("trash pennyshaver");
+        let (trashed, _) =
+            apply_action(&trashed, &registry, PlayerAction::GainCreditClick { side: Side::Runner })
+                .expect("any action refreshes the memory report");
+        assert_eq!(trashed.runner.memory_units.0, base, "and takes it away again");
+    }
+
+    /// The memory limit binds through `legal_actions`, not merely through a
+    /// rejection.
+    ///
+    /// A bot never submits an action it was not offered, so a limit that
+    /// only shows up as an `Err` from `apply_action` is invisible to one.
+    /// The base budget is 4 and every System Gateway breaker costs 1, so a
+    /// fifth is the one that must stop being offered.
+    #[test]
+    fn a_full_rig_stops_offering_further_program_installs() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(50);
+        let programs =
+            ["corroder", "cleaver", "buzzsaw", "carmen", "unity"].map(|id| CardId(id.to_string()));
+        state.runner.grip = programs.to_vec();
+
+        for card_id in programs.iter().take(4) {
+            state.runner.resources.clicks = Clicks(4);
+            let install = PlayerAction::InstallProgram { card_id: card_id.clone() };
+            assert!(
+                crate::rules::legal_actions(&state, &registry).contains(&install),
+                "{} must still be offered with memory free",
+                card_id.0
+            );
+            state = apply_action(&state, &registry, install).expect("install").0;
+        }
+
+        assert_eq!(state.runner.memory_units, crate::rules::MemoryUnits(0), "4 MU, four 1-MU programs");
+        state.runner.resources.clicks = Clicks(4);
+        let fifth = PlayerAction::InstallProgram { card_id: programs[4].clone() };
+        assert!(
+            !crate::rules::legal_actions(&state, &registry).contains(&fifth),
+            "a fifth program must not be offered with no memory left"
+        );
+        assert!(matches!(
+            apply_action(&state, &registry, fifth),
+            Err(crate::rules::RulesError::InsufficientMemory { available: 0, requested: 1 })
+        ));
     }
 
     #[test]
@@ -619,7 +795,7 @@ mod system_gateway {
         }];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("buzzsaw".to_string()), memory_cost: 1 })
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("buzzsaw".to_string()) })
                 .expect("install buzzsaw");
         assert_eq!(state.runner.resources.credits, Credits(6), "10 - 4 (Buzzsaw's install cost)");
 
@@ -2258,7 +2434,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()), memory_cost: 1 },
+            PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) },
         )
         .expect("install corroder");
         assert_eq!(state.runner.resources.credits, Credits(9), "10 - 2 (cost) + 1 (DZMZ discount)");
@@ -2267,7 +2443,7 @@ mod system_gateway {
         let (state, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()), memory_cost: 1 },
+            PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()) },
         )
         .expect("install gordian blade");
         assert_eq!(state.runner.resources.credits, Credits(5), "9 - 4 (cost), discount already used this turn");
@@ -2315,7 +2491,7 @@ mod system_gateway {
         let (state_no_run, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("carmen".to_string()), memory_cost: 1 },
+            PlayerAction::InstallProgram { card_id: CardId("carmen".to_string()) },
         )
         .expect("install carmen without a successful run this turn");
         assert_eq!(state_no_run.runner.resources.credits, Credits(5), "10 - 5, no discount");
@@ -2324,7 +2500,7 @@ mod system_gateway {
         let (state_after_run, _) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallProgram { card_id: CardId("carmen".to_string()), memory_cost: 1 },
+            PlayerAction::InstallProgram { card_id: CardId("carmen".to_string()) },
         )
         .expect("install carmen after a successful run this turn");
         assert_eq!(state_after_run.runner.resources.credits, Credits(7), "10 - 5 + 2 (discount)");
@@ -2463,15 +2639,14 @@ mod system_gateway {
     /// own `ClientView` masks to `None` was written straight into a
     /// candidate for `legal_actions_for(Runner)`.
     ///
-    /// **It was latent rather than live, for a reason worth recording:**
-    /// `legal_actions` keeps only candidates `apply_action` accepts, and
-    /// the candidate is built with `memory_cost: 0` while
-    /// `install_program_on_ice` requires the registry's declared value —
-    /// `1` for both *Botulus* and *Tranquilizer*. So the leaking candidate
-    /// was filtered out before reaching any view. That filter is itself a
-    /// separate bug (no Trojan can currently be installed through
-    /// `legal_actions` at all); fixing it must not reopen this hole, which
-    /// is what the last assertion here guards.
+    /// **It was latent when written, and is live now.** `legal_actions`
+    /// keeps only candidates `apply_action` accepts, and the candidate used
+    /// to be built with `memory_cost: 0` while `install_program_on_ice`
+    /// demanded the registry's declared value — `1` for both *Botulus* and
+    /// *Tranquilizer* — so the leaking candidate was filtered out before
+    /// reaching any view. That filter was its own bug and is now fixed, so
+    /// this action finally reaches a `ClientView` and the last assertion
+    /// here does real work rather than passing vacuously.
     ///
     /// Withdrawing the action was never an option — real Netrunner allows
     /// the host to be unrezzed — so the fix is that it names the install.
@@ -2505,17 +2680,27 @@ mod system_gateway {
             PlayerAction::InstallProgramOnIce {
                 card_id: CardId("botulus".to_string()),
                 host: crate::rules::InstallId(1),
-                memory_cost: 1,
             },
         )
         .expect("botulus hosts on unrezzed ice");
         assert_eq!(hosted.runner.rig[0].hosted_on_ice, Some(CardId("wall_of_static".to_string())));
 
+        // Offered, not merely resolvable — which only became true once the
+        // memory-cost filter was fixed, and is what gives the assertion
+        // below something to be true *of*.
+        assert!(
+            view.legal_actions.iter().any(|a| matches!(
+                a,
+                PlayerAction::InstallProgramOnIce { host, .. } if *host == crate::rules::InstallId(1)
+            )),
+            "hosting on unrezzed ice is a legal action: {:?}",
+            view.legal_actions
+        );
+
         // The masking half, and the one that regresses if anyone reverts
         // the payload to a `CardId`: nothing the Runner is offered may name
         // the ice. Stated over the whole action list rather than over
-        // `InstallProgramOnIce` alone, so it still holds once that action
-        // becomes reachable.
+        // `InstallProgramOnIce` alone.
         assert!(
             !format!("{:?}", view.legal_actions).contains("wall_of_static"),
             "no legal action may name an ice this view masks: {:?}",
@@ -2539,7 +2724,6 @@ mod system_gateway {
             PlayerAction::InstallProgramOnIce {
                 card_id: CardId("botulus".to_string()),
                 host: install_of(&state, "wall_of_static"),
-                memory_cost: 1,
             },
         )
         .expect("install botulus onto wall of static");
@@ -2617,7 +2801,6 @@ mod system_gateway {
             PlayerAction::InstallProgramOnIce {
                 card_id: CardId("tranquilizer".to_string()),
                 host: install_of(&state, "wall_of_static"),
-                memory_cost: 1,
             },
         )
         .expect("install tranquilizer");
@@ -2726,7 +2909,7 @@ mod system_gateway {
         state.runner.grip = vec![CardId("leech".to_string())];
 
         let (state, _) =
-            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("leech".to_string()), memory_cost: 1 })
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("leech".to_string()) })
                 .expect("install leech");
         // Leech's own OnInstall doesn't place a counter (only Cookbook's
         // optional reaction can, and only Leech's OnSuccessfulRun does) —

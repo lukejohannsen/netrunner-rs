@@ -405,10 +405,7 @@ impl ActionSpace {
         }
         if let Some(local) = in_segment(index, INSTALL_PROGRAM_START, INSTALL_PROGRAM_LEN) {
             let card_id = state.runner.grip.get(local)?.clone();
-            // Matches `legal_actions.rs::play_card_candidates`'s own
-            // behavior: no data-driven memory-cost stat exists on
-            // `dsl::CardDefinition` yet, so this is never a real choice today either.
-            return Some(PlayerAction::InstallProgram { card_id, memory_cost: 0 });
+            return Some(PlayerAction::InstallProgram { card_id });
         }
         if let Some(local) = in_segment(index, PLAY_OPERATION_START, PLAY_OPERATION_LEN) {
             let card_id = state.corp.hq.get(local)?.clone();
@@ -505,7 +502,7 @@ impl ActionSpace {
             let ice_slot = local % MAX_INSTALLED_PER_SIDE;
             let card_id = state.runner.grip.get(hand_slot)?.clone();
             let host = state.corp.installed.get(ice_slot)?.install_id;
-            return Some(PlayerAction::InstallProgramOnIce { card_id, host, memory_cost: 0 });
+            return Some(PlayerAction::InstallProgramOnIce { card_id, host });
         }
         // Same out-of-order-panic hazard as `INSTALL_PROGRAM_ON_ICE` above —
         // `BREAK_SUBROUTINE_WITH_CLICK` is defined last in the const chain,

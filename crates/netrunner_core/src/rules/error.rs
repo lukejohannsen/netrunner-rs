@@ -238,8 +238,6 @@ pub enum RulesError {
     #[error("expected a {expected:?} prevention window but {actual:?} is currently pending")]
     PreventionKindMismatch { expected: PreventionKind, actual: PreventionKind },
 
-    #[error("card declares memory_cost {expected} but InstallProgram named {actual}")]
-    MismatchedMemoryCost { expected: u32, actual: u32 },
 
     #[error("card {0:?} is not an active installed/rigged card and cannot hold counters")]
     CardNotEligibleForCounters(CardId),
