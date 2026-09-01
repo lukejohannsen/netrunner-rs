@@ -174,6 +174,17 @@ pub struct CardDefinition {
     #[serde(default)]
     pub unique: bool,
 
+    /// Printed link (the ⚡ value on a Runner identity), added to the
+    /// Runner's total in a trace. Joined from the catalog's `base_link` like
+    /// `unique`, never authored. `None` for every non-identity; `Some(0)`
+    /// for the many identities that print no link. Seeded into
+    /// `RunnerState::link_strength` at setup — only identities carry it in
+    /// the implemented pool (*Kate "Mac" McCaffrey* is the one non-zero
+    /// case), so a static seed suffices; hardware that adds link would need
+    /// a derived value the way `memory` derives the budget.
+    #[serde(default)]
+    pub base_link: Option<u32>,
+
     /// A hard precondition gating `PlayerAction::PlayEvent`/`PlayOperation`
     /// for this specific card — checked *before* its click/credit cost is
     /// paid, same placement as `AbilityDef::requirement` in
@@ -412,6 +423,7 @@ impl Default for CardDefinition {
             interactive_on_access: None,
             subtypes: Vec::new(),
             unique: false,
+            base_link: None,
             play_requirement: None,
             recurring_credits: None,
             first_install_discount: None,
