@@ -16,18 +16,36 @@ const MEMORY_WEIGHT: f64 = 0.5;
 
 /// A rezzed piece of ICE, on top of `BOARD_PRESENCE_WEIGHT`. Set so that
 /// rezzing a mid-cost ICE during an approach (−`cost` × 0.4 credits,
-/// +1.0 presence, +this) comes out ahead of passing: Palisade at 3 is
-/// +0.8, a 6-cost bioroid is −0.4 and stays unrezzed until the Corp is
+/// +1.0 presence, +this, −`UNREZZED_INSTALL_WEIGHT`) comes out ahead of
+/// passing: the rez delta is 1.4 − 0.4 × cost, so Palisade at 3 is +0.2
+/// and a 6-cost bioroid is −1.0 and stays unrezzed until the Corp is
 /// richer. Before this term a one-ply Corp rezzed only ICE costing ≤ 1.
-const REZZED_ICE_WEIGHT: f64 = 1.0;
+/// Moved 1.0 → 1.4 in step with `UNREZZED_INSTALL_WEIGHT` 0.6 → 1.0 so
+/// that delta did not change.
+const REZZED_ICE_WEIGHT: f64 = 1.4;
+/// A rezzed asset or upgrade, on top of `BOARD_PRESENCE_WEIGHT`. Without
+/// it a rezzed non-ICE card was worth `BOARD_PRESENCE_WEIGHT −
+/// UNREZZED_INSTALL_WEIGHT` = +0.4 minus its rez cost × 0.4, so nothing
+/// costing 2 or more was ever rezzed: Nico Campaign and Manegarm Skunkworks
+/// were installed 33 and 34 times in 96 heuristic-vs-heuristic games and
+/// rezzed never. Rezzing is now 1.0 − 0.4 × cost — +0.2 for a 2-cost
+/// asset — and anything above zero gets rezzed eventually, because a rez
+/// costs no click and competes with `EndTurn` at 0 once the clicks are
+/// spent.
+const REZZED_ASSET_WEIGHT: f64 = 1.0;
 /// An unrezzed install. Installing was worth exactly nothing to a one-ply
 /// evaluator (the rezzed count did not move), so `GainCreditClick`'s flat
 /// +0.4 always won and the heuristic Corp never installed ICE — which is
 /// why heuristic-vs-random play never once produced an `IceEncountered`
-/// event (ROADMAP Rules Audit §0). Set above 0.4 so a card in hand is
-/// worth putting on the table, below the rezzed value so rezzing it is
-/// still progress.
-const UNREZZED_INSTALL_WEIGHT: f64 = 0.6;
+/// event (ROADMAP Rules Audit §0). Raised 0.6 → 1.0 for `HQ_FLOOR`: a
+/// draw below the floor has to beat a credit (`HQ_SHORTFALL_WEIGHT` >
+/// 0.4), and installing *from* the floor then loses that same weight, so
+/// at 0.6 the Corp would have stalled at the floor clicking for credits —
+/// the rhythm it already had. At 1.0 an install from the floor is +0.5
+/// and still wins. A welcome side effect: a second ICE on a server (1[c]
+/// to install) is now +0.6 and happens, where it was +0.2 and never did;
+/// a third at +0.2 still does not.
+const UNREZZED_INSTALL_WEIGHT: f64 = 1.0;
 /// One advancement token on an installed card, counted only up to the
 /// card's `advancement_requirement`. Advancing costs a click and a credit
 /// (−0.4) against `GainCreditClick`'s +0.4, so a token must be worth more
@@ -75,8 +93,14 @@ const PENDING_SUBROUTINE_WEIGHT: f64 = 1.0;
 /// a Runner selection during access). With the parked state itself
 /// costing something, `ConfirmCardSelection` is progress the moment it is
 /// legal, and the toggles leading up to it are a short walk, not a
-/// wander.
-const UNRESOLVED_DECISION_WEIGHT: f64 = 0.5;
+/// wander. **It must outweigh whatever confirming gives up**: at 0.5 it
+/// exactly cancelled the `HQ_SHORTFALL_WEIGHT` of the card a Corp
+/// selection from an at-floor HQ hands over, confirm tied with a toggle,
+/// and the tie-break jitter wandered for 10,000 steps (heuristic Corp vs
+/// random Runner, seed 77, Discretion Advised vs Planning Ahead). Set
+/// well above the largest per-card term on either side (`GRIP_SHORTFALL_
+/// WEIGHT` 0.7, `HQ_SHORTFALL_WEIGHT` 0.5, a rig card's 1.0 presence).
+const UNRESOLVED_DECISION_WEIGHT: f64 = 2.0;
 /// Each point by which the encountered ICE's strength exceeds the best
 /// matching breaker's. Pumping strength changes nothing else a static
 /// evaluator sees, so a Runner holding Cleaver against a strength-4
@@ -120,6 +144,25 @@ const SAVINGS_SHORTFALL_WEIGHT: f64 = 0.3;
 const GRIP_SHORTFALL_WEIGHT: f64 = 0.7;
 /// Cards in grip below which `GRIP_SHORTFALL_WEIGHT` applies.
 const GRIP_FLOOR: usize = 3;
+/// The Corp's `GRIP_SHORTFALL_WEIGHT`: each card HQ is below `HQ_FLOOR`.
+/// The heuristic Corp never clicked to draw (0 in every heuristic
+/// seating) and deployed about one card a turn — the mandatory draw —
+/// spending the rest of its clicks on credits. Below the floor a draw is
+/// +0.5 against a credit's +0.4; an install from the floor is
+/// `UNREZZED_INSTALL_WEIGHT` − 0.5 = +0.5 (see that constant for why it
+/// had to rise first), so the Corp alternates draw and install rather
+/// than stalling; at the floor a draw is worth 0 and the clicks go to
+/// installs and advancement.
+const HQ_SHORTFALL_WEIGHT: f64 = 0.5;
+/// Cards in HQ below which `HQ_SHORTFALL_WEIGHT` applies. Two, not the
+/// Runner's three: the mandatory draw already feeds HQ every turn, and
+/// every card held there is one more an HQ run can steal.
+const HQ_FLOOR: usize = 3;
+/// R&D size below which the HQ term switches off. A Corp that draws its
+/// deck out loses at the next mandatory draw, and a one-ply evaluator
+/// sees that only one action too late. R&D's size is public, so the brake
+/// reads nothing the Corp's `ClientView` does not show.
+const RD_DRAW_RESERVE: usize = 5;
 
 /// A rough static evaluation of `state` from `side`'s perspective: positive
 /// favors `side`, negative favors the opponent. Shared by `HeuristicAgent`'s
@@ -151,6 +194,9 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
             score -= state.corp.bad_publicity as f64 * BAD_PUBLICITY_WEIGHT;
             for installed in &state.corp.installed {
                 score += corp_install_value(installed, registry);
+            }
+            if state.corp.r_and_d.len() >= RD_DRAW_RESERVE {
+                score -= HQ_FLOOR.saturating_sub(state.corp.hq.len()) as f64 * HQ_SHORTFALL_WEIGHT;
             }
         }
         Side::Runner => {
@@ -293,7 +339,7 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry) -> f64
     let def = registry.get(&installed.card);
     let is_ice = def.is_some_and(|d| matches!(d.card_type, CardType::Ice(_)));
     let mut value = if installed.rezzed {
-        BOARD_PRESENCE_WEIGHT + if is_ice { REZZED_ICE_WEIGHT } else { 0.0 }
+        BOARD_PRESENCE_WEIGHT + if is_ice { REZZED_ICE_WEIGHT } else { REZZED_ASSET_WEIGHT }
     } else {
         UNREZZED_INSTALL_WEIGHT
     };
@@ -887,5 +933,130 @@ mod tests {
         };
         assert!(holding(GRIP_FLOOR, false) > holding(GRIP_FLOOR - 1, true), "draw up to the floor first");
         assert!(holding(GRIP_FLOOR, true) > holding(GRIP_FLOOR + 1, false), "then run rather than keep drawing");
+    }
+
+    fn asset(id: &str, cost: u32) -> CardDefinition {
+        CardDefinition { card_type: CardType::Asset, ..ice(id, cost) }
+    }
+
+    fn corp_cards(prefix: &str, n: usize) -> Vec<CardId> {
+        (0..n).map(|i| CardId(format!("{prefix}_{i}"))).collect()
+    }
+
+    /// The whole point of `REZZED_ASSET_WEIGHT`: a 2-cost asset is worth
+    /// its rez.
+    #[test]
+    fn a_two_cost_asset_is_worth_rezzing() {
+        let registry = CardRegistry::from_cards(vec![asset("nico_campaign", 2)]);
+        let nico = |rezzed, credits| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(credits);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId("nico_campaign".to_string()),
+                install_id: InstallId(1),
+                rezzed,
+                ..Default::default()
+            }];
+            evaluate_state(&state, Side::Corp, &registry)
+        };
+        assert!(nico(true, 3) > nico(false, 5), "paying 2 to rez Nico Campaign is progress");
+    }
+
+    /// `UNREZZED_INSTALL_WEIGHT`'s side effect: paying the 1[c] to put a
+    /// second ICE on a server beats a credit click, from an HQ above the
+    /// floor (at the floor the card's `HQ_SHORTFALL_WEIGHT` tips it back).
+    #[test]
+    fn a_second_ice_on_a_server_beats_a_credit_click() {
+        let registry = CardRegistry::from_cards(vec![ice("palisade", 3)]);
+        let board = |installed_count, credits, hq| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(credits);
+            state.corp.r_and_d = corp_cards("rd", RD_DRAW_RESERVE);
+            state.corp.hq = corp_cards("palisade", hq);
+            state.corp.installed = (0..installed_count)
+                .map(|i| InstalledCard { card: CardId("palisade".to_string()), install_id: InstallId(i), ..Default::default() })
+                .collect();
+            evaluate_state(&state, Side::Corp, &registry)
+        };
+        // Second ICE: paid 1 to install it from an above-floor HQ, versus clicking for a credit.
+        assert!(board(2, 4, HQ_FLOOR) > board(1, 6, HQ_FLOOR + 1));
+    }
+
+    /// The HQ term is a shortfall below a floor, and a thin R&D switches
+    /// it off so the Corp does not draw itself to a deck-out.
+    #[test]
+    fn an_hq_below_the_floor_costs_something_and_a_thin_r_and_d_switches_it_off() {
+        let registry = CardRegistry::new();
+        let holding = |hq, rd| {
+            let mut state = GameState::new(0);
+            state.corp.hq = corp_cards("hq", hq);
+            state.corp.r_and_d = corp_cards("rd", rd);
+            evaluate_state(&state, Side::Corp, &registry)
+        };
+        let stocked = RD_DRAW_RESERVE + 10;
+        assert!((holding(1, stocked) - holding(0, stocked) - HQ_SHORTFALL_WEIGHT).abs() < 1e-9);
+        assert_eq!(holding(HQ_FLOOR + 1, stocked), holding(HQ_FLOOR, stocked), "cards past the floor are worth nothing");
+        assert_eq!(holding(0, RD_DRAW_RESERVE - 1), holding(HQ_FLOOR, RD_DRAW_RESERVE - 1), "no draw pressure on a thin R&D");
+    }
+
+    /// Below the floor the Corp draws rather than clicking for a credit;
+    /// at the floor it still installs rather than stalling — the trap the
+    /// `UNREZZED_INSTALL_WEIGHT` bump exists to avoid.
+    #[test]
+    fn the_corp_draws_below_the_hq_floor_and_still_installs_from_it() {
+        let registry = CardRegistry::from_cards(vec![asset("clearinghouse", 0)]);
+        let state = |hq, credits, installed| {
+            let mut state = GameState::new(0);
+            state.corp.resources.credits = Credits(credits);
+            state.corp.r_and_d = corp_cards("rd", RD_DRAW_RESERVE + 10);
+            state.corp.hq = corp_cards("clearinghouse", hq);
+            state.corp.installed = (0..installed)
+                .map(|i| InstalledCard { card: CardId("clearinghouse".to_string()), install_id: InstallId(i), ..Default::default() })
+                .collect();
+            evaluate_state(&state, Side::Corp, &registry)
+        };
+        assert!(state(HQ_FLOOR, 5, 0) > state(HQ_FLOOR - 1, 6, 0), "draw up to the floor rather than click for a credit");
+        assert!(state(HQ_FLOOR - 1, 5, 1) > state(HQ_FLOOR, 6, 0), "install from the floor rather than click for a credit");
+    }
+
+    /// The stall that set `UNRESOLVED_DECISION_WEIGHT`'s size: resolving
+    /// a parked selection must beat keeping it parked even when confirming
+    /// costs a card from an at-floor hand, on either side.
+    #[test]
+    fn resolving_a_decision_outweighs_the_card_it_costs_from_an_at_floor_hand() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef};
+        use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+        let registry = CardRegistry::new();
+        let parked = |side: Side, source: CardZoneRef| PendingDecision::ChooseCards {
+            side,
+            source,
+            filter: CardFilter::Any,
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: None,
+            then: None,
+            selected: Vec::new(),
+            source_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        };
+        let mut corp_parked = GameState::new(0);
+        corp_parked.phase = GamePhase::Action(Side::Corp);
+        corp_parked.corp.r_and_d = corp_cards("rd", RD_DRAW_RESERVE + 10);
+        corp_parked.corp.hq = corp_cards("hq", HQ_FLOOR);
+        let mut corp_resolved = corp_parked.clone();
+        corp_resolved.corp.hq.pop();
+        corp_parked.pending_decision = Some(parked(Side::Corp, CardZoneRef::OwnHq));
+        assert!(evaluate_state(&corp_resolved, Side::Corp, &registry) > evaluate_state(&corp_parked, Side::Corp, &registry));
+
+        let mut runner_parked = GameState::new(0);
+        runner_parked.phase = GamePhase::Action(Side::Runner);
+        runner_parked.runner.grip = corp_cards("grip", GRIP_FLOOR);
+        let mut runner_resolved = runner_parked.clone();
+        runner_resolved.runner.grip.pop();
+        runner_parked.pending_decision = Some(parked(Side::Runner, CardZoneRef::OwnGrip));
+        assert!(evaluate_state(&runner_resolved, Side::Runner, &registry) > evaluate_state(&runner_parked, Side::Runner, &registry));
     }
 }

@@ -228,6 +228,27 @@ mod tests {
         assert_eq!(chosen, PlayerAction::DrawCardClick { side: Side::Runner });
     }
 
+    /// The Corp-side counterpart of the Runner's draw test: with an empty
+    /// HQ and a stocked R&D, the Corp clicks to draw rather than for a
+    /// credit (ROADMAP Phase 2 §5's Corp item).
+    #[test]
+    fn corp_draws_with_an_empty_hq_instead_of_clicking_for_a_credit() {
+        let mut registry = CardRegistry::new();
+        registry.insert(blank_card("filler", CardType::Asset));
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.corp.r_and_d = vec![CardId("filler".to_string()); 10];
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.contains(&PlayerAction::DrawCardClick { side: Side::Corp }));
+        assert!(view.legal_actions.contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
+
+        let chosen = HeuristicAgent::new(Side::Corp, 3).select_action(&view, &registry);
+        assert_eq!(chosen, PlayerAction::DrawCardClick { side: Side::Corp });
+    }
+
     #[test]
     fn always_returns_a_member_of_legal_actions() {
         let mut registry = CardRegistry::new();
