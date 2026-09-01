@@ -232,6 +232,9 @@ pub enum RulesError {
     #[error("the break named ice {actual:?}, but the ICE currently being encountered is {expected:?}")]
     MismatchedIceId { expected: CardId, actual: CardId },
 
+    #[error("ICE {card:?} can only be rezzed while the Runner is approaching it")]
+    IceNotBeingApproached { card: CardId },
+
     #[error("no pending prevention window is currently open")]
     NoPendingPrevention,
 

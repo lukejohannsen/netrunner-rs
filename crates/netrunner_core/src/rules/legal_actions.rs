@@ -353,9 +353,9 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
 }
 
 /// `rez_ice`'s name is misleading — it rezzes any unrezzed Corp install,
-/// not just `InstallSlot::Ice` ones (confirmed in `engine::rez_ice`, which
-/// never checks `slot`). Its own phase/rez-window legality is left to the
-/// probe.
+/// not just `InstallSlot::Ice` ones. *When* each kind may be rezzed (ICE
+/// only while approached; assets and upgrades at any priority) is the
+/// handler's rule, and the probe applies it.
 fn rez_ice_candidates(state: &GameState) -> Vec<PlayerAction> {
     state
         .corp
@@ -864,6 +864,7 @@ mod tests {
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {
+                install_id: crate::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("wall_of_static".to_string()),
                 current_strength: 3,
                 ice_type: IceType::Barrier,
@@ -1106,6 +1107,7 @@ mod tests {
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![RunIce {
+                install_id: InstallId(1067),
                 card_id: CardId("ice_wall".to_string()),
                 current_strength: 1,
                 ice_type: IceType::Barrier,

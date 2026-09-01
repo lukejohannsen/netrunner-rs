@@ -2212,6 +2212,7 @@ mod tests {
         ice_type: IceType,
     ) -> RunIce {
         RunIce {
+            install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId(card_id.to_string()),
             current_strength: strength,
             ice_type,

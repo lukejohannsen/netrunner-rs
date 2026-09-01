@@ -888,6 +888,7 @@ mod tests {
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
             ice: vec![RunIce {
+                install_id: crate::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("ice_wall".to_string()),
                 current_strength: 0,
                 ice_type: IceType::Barrier,
@@ -1012,6 +1013,7 @@ mod tests {
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![RunIce {
+                install_id: crate::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("ice_wall".to_string()),
                 current_strength: 0,
                 ice_type: IceType::Barrier,

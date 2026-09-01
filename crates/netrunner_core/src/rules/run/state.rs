@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::rules::state::InstallId;
+
 use crate::dsl::{CardId, Cost, Effect, IceType, SubroutineDef};
 use crate::rules::state::Side;
 
@@ -67,6 +69,13 @@ pub struct EncounteredSubroutine {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunIce {
     pub card_id: CardId,
+    /// Which install this is — the handle `PlayerAction::RezIce` names.
+    /// `card_id` cannot tell two copies of one ICE on a server apart, and
+    /// "is this the ICE being approached" is exactly the question the rez
+    /// rule asks (Rules Audit T10). `serde(default)` so a history recorded
+    /// before the field existed still deserializes, to the placeholder.
+    #[serde(default)]
+    pub install_id: InstallId,
     pub current_strength: i32,
     /// This ICE's subtype, seeded from `CardDefinition::card_type`'s `CardType::Ice(_)`
     /// at `engine::build_run_ice` — the data `Effect::BreakSubroutines`'s

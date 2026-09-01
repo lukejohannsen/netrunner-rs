@@ -405,6 +405,7 @@ mod tests {
             phase: RunPhase::EncounterIce,
             position: 0,
             ice: vec![RunIce {
+                install_id: netrunner_core::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("ice_wall".to_string()),
                 current_strength: 1,
                 ice_type: IceType::Barrier,
@@ -481,6 +482,7 @@ mod tests {
                 phase: RunPhase::EncounterIce,
                 position: 0,
                 ice: vec![RunIce {
+                    install_id: netrunner_core::rules::InstallId::PLACEHOLDER,
                     card_id: CardId("palisade".to_string()),
                     current_strength: 4,
                     ice_type: IceType::Barrier,

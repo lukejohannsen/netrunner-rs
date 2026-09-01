@@ -149,6 +149,10 @@ pub struct PublicRunnerState {
 /// as a real physical card) — unless the viewer is the Corp.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicRunIce {
+    /// Public: the same per-instance handle `PublicInstalledCard` carries
+    /// outside its identity gate. A client rezzing the approached ICE, or a
+    /// search rebuilding the run from this view, addresses it by this.
+    pub install_id: InstallId,
     pub rezzed: bool,
     pub identity: Option<PublicRunIceIdentity>,
 }
@@ -261,6 +265,7 @@ pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState
 fn mask_run_ice(ice: &RunIce, owner_view: bool) -> PublicRunIce {
     let identity_visible = owner_view || ice.rezzed;
     PublicRunIce {
+        install_id: ice.install_id,
         rezzed: ice.rezzed,
         identity: identity_visible.then(|| PublicRunIceIdentity {
             card: ice.card_id.clone(),
@@ -850,6 +855,7 @@ mod tests {
 
     fn run_ice(id: &str, rezzed: bool) -> RunIce {
         RunIce {
+            install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId(id.to_string()),
             current_strength: 3,
             ice_type: IceType::Barrier,
