@@ -29,7 +29,16 @@ pub enum GameEvent {
     RunJackedOut { server: ServerId },
     RunCompleted { server: ServerId },
     CardInstalled { side: Side, card: CardId, server: ServerId },
-    IceRezzed { card: CardId, server: ServerId },
+    /// `install` names which copy was rezzed, so `Trigger::OnRez` resolves
+    /// on that copy — two Nico Campaigns used to load both sets of counters
+    /// onto the first. `serde(default)` (the placeholder) for histories
+    /// recorded before the field existed.
+    IceRezzed {
+        card: CardId,
+        server: ServerId,
+        #[serde(default)]
+        install: crate::rules::state::InstallId,
+    },
     /// A rezzed Corp installed card was flipped back face-down —
     /// `Effect::DerezCard`'s only emission site. No player-driven derez
     /// action exists (rez itself is otherwise one-way).

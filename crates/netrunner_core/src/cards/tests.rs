@@ -3824,6 +3824,151 @@ mod system_gateway {
         }
     }
 
+    /// Two copies of one counter card are two cards. Trigger dispatch used
+    /// to plan by `CardId`, so both Fermenters' `OnTurnStart` resolved on
+    /// copy #1 — copy #2 never accrued a counter in its life, and cashing
+    /// it read copy #1's total and trashed copy #1.
+    #[test]
+    fn two_fermenters_accrue_and_cash_their_own_counters() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.runner.resources.credits = Credits(0);
+        let fermenter = |install: u32, counters: u32| crate::rules::InstalledRunnerCard {
+            install_id: InstallId(install),
+            card: CardId("fermenter".to_string()),
+            counters,
+            ..Default::default()
+        };
+        state.runner.rig = vec![fermenter(3001, 2), fermenter(3002, 0)];
+
+        // Corp ends its turn; the Runner's turn start fires both Fermenters,
+        // and two same-side reactors hand the Runner the order.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("pass");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("pass, runner turn starts");
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseTriggerOrder { .. })),
+            "{:?}",
+            state.pending_decision
+        );
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ChooseTriggerToResolve { index: 0 }).expect("order the two");
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.runner.rig[0].counters, 3, "copy #1 gained one");
+        assert_eq!(state.runner.rig[1].counters, 1, "copy #2 gained one of its own");
+
+        // Cash copy #2: its own counter's worth, and copy #2 is what goes.
+        let credits_before = state.runner.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(3002), ability_index: 0 })
+            .expect("cash the second fermenter");
+        assert_eq!(state.runner.resources.credits, credits_before.gain(2), "1 counter × 2 credits");
+        assert_eq!(state.runner.rig.len(), 1);
+        assert_eq!(state.runner.rig[0].install_id, InstallId(3001), "copy #1 is still installed");
+        assert_eq!(state.runner.rig[0].counters, 3, "with its own counters intact");
+    }
+
+    /// `OnRez` resolves on the copy that was rezzed: `IceRezzed` names the
+    /// install. Before, rezzing the second Nico Campaign loaded its nine
+    /// counters onto the first — possibly still unrezzed, where masking
+    /// hides counters, so nothing showed the discrepancy.
+    #[test]
+    fn two_nico_campaigns_each_rez_with_their_own_nine_counters() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(10);
+        let nico = |install: u32, server: ServerId| crate::rules::InstalledCard {
+            install_id: InstallId(install),
+            card: CardId("nico_campaign".to_string()),
+            server,
+            slot: InstallSlot::Root,
+            rezzed: false,
+            ..Default::default()
+        };
+        state.corp.installed = vec![nico(4001, ServerId::Remote(0)), nico(4002, ServerId::Remote(1))];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: InstallId(4002) }).expect("rez the second");
+
+        assert!(!state.corp.installed[0].rezzed);
+        assert_eq!(state.corp.installed[0].counters, 0, "the unrezzed first copy is untouched");
+        assert!(state.corp.installed[1].rezzed);
+        assert_eq!(state.corp.installed[1].counters, 9, "the rezzed copy holds its own counters");
+    }
+
+    /// An ambush's damage is sized by *its own* advancement counters. The
+    /// `OnAccessed` reaction used to read the first installed Urtica, so a
+    /// decoy with no counters dealt the other copy's damage — a flatline
+    /// the Runner did nothing to deserve.
+    #[test]
+    fn urtica_cipher_decoy_deals_only_its_own_advancement_damage() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = (0..4).map(|i| CardId(format!("grip_{i}"))).collect();
+        let urtica = |install: u32, server: ServerId, advancement_tokens: u32| crate::rules::InstalledCard {
+            install_id: InstallId(install),
+            card: CardId("urtica_cipher".to_string()),
+            server,
+            slot: InstallSlot::Root,
+            advancement_tokens,
+            ..Default::default()
+        };
+        state.corp.installed = vec![urtica(5001, ServerId::Remote(0), 3), urtica(5002, ServerId::Remote(1), 0)];
+
+        // Run the *decoy* in Remote(1).
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(1) }).expect("run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the server");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit");
+        let (state, events) = close_all_windows(state, &registry);
+
+        assert!(!events.contains(&crate::rules::GameEvent::RunnerFlatlined), "{events:?}");
+        assert_eq!(state.runner.grip.len(), 2, "2 net damage — the decoy's own printed 2, plus its 0 counters");
+        assert!(state.active_run.is_some(), "the run goes on to the access decision");
+    }
+
+    /// A choice parked by a trigger acts on the copy that triggered. With
+    /// two Clearinghouses the Corp orders the two reactions; resolving the
+    /// second copy's choice must size the damage by *its* counters and
+    /// trash *it*.
+    #[test]
+    fn clearinghouse_choice_trashes_the_copy_that_triggered() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.r_and_d = vec![CardId("filler_card".to_string())];
+        let clearinghouse = |install: u32, server: ServerId, advancement_tokens: u32| crate::rules::InstalledCard {
+            install_id: InstallId(install),
+            card: CardId("clearinghouse".to_string()),
+            server,
+            slot: InstallSlot::Root,
+            rezzed: true,
+            advancement_tokens,
+            ..Default::default()
+        };
+        state.corp.installed = vec![clearinghouse(6001, ServerId::Remote(0), 0), clearinghouse(6002, ServerId::Remote(1), 3)];
+        state.runner.grip = (0..5).map(|i| CardId(format!("grip_{i}"))).collect();
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("pass");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("pass, corp turn starts");
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseTriggerOrder { .. })));
+
+        // Resolve the *second* copy's trigger first, then take its damage option.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseTriggerToResolve { index: 1 }).expect("second copy first");
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { source_install: Some(InstallId(6002)), .. })));
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash for damage");
+
+        assert!(events.contains(&crate::rules::GameEvent::DamageTaken { damage_type: crate::dsl::DamageType::Meat, amount: 3 }), "{events:?}");
+        assert_eq!(state.runner.grip.len(), 2);
+        assert_eq!(state.corp.installed.len(), 1, "one Clearinghouse trashed itself");
+        assert_eq!(state.corp.installed[0].install_id, InstallId(6001), "the *other* copy is the one still installed");
+    }
+
     #[test]
     fn clearinghouse_may_trash_itself_for_meat_damage_equal_to_its_advancement_tokens() {
         let registry = sg_registry();

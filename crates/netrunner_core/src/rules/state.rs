@@ -924,6 +924,17 @@ pub struct DeferredTrigger {
     /// counter on *that* program. `None` is the ordinary "acts on itself"
     /// case.
     pub target: Option<CardId>,
+    /// The install `card` is — `None` for an identity, or for a card that
+    /// has already left play. Without it a deferred trigger resolved
+    /// against the *first* installed copy of `card`: two Fermenters queued
+    /// two `OnTurnStart` entries and both loaded copy #1 (ROADMAP Rules
+    /// Audit §4). Every plan builder in `dispatcher` fills it from the
+    /// install it iterated.
+    #[serde(default)]
+    pub install: Option<InstallId>,
+    /// The install `target` is, on the same terms.
+    #[serde(default)]
+    pub target_install: Option<InstallId>,
     /// The event that fired this trigger, carried across the defer boundary
     /// so `dispatcher::fire_one` can rebuild the same
     /// `ability::ResolutionContext` the trigger would have had if it had

@@ -608,7 +608,7 @@ fn rez_ice(
     // Games priority rule 4.
     paid_ability::note_window_action(&mut next, side);
 
-    let rezzed_event = GameEvent::IceRezzed { card: ice_id, server };
+    let rezzed_event = GameEvent::IceRezzed { card: ice_id, server, install: ice };
     events.push(rezzed_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &rezzed_event)?);
     Ok((next, events))
@@ -2361,7 +2361,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 1 },
-                GameEvent::IceRezzed { card: card_id, server: ServerId::Remote(0) },
+                GameEvent::IceRezzed { card: card_id, server: ServerId::Remote(0), install: next.corp.installed[0].install_id },
             ]
         );
     }
@@ -2499,7 +2499,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
-                GameEvent::IceRezzed { card: card_id, server: ServerId::Hq },
+                GameEvent::IceRezzed { card: card_id, server: ServerId::Hq, install: next.corp.installed[0].install_id },
             ]
         );
     }
@@ -4972,7 +4972,7 @@ mod tests {
             ..Default::default()
         };
         state.corp.installed = vec![rezzed("parks_a_choice"), rezzed("pad_campaign")];
-        state.deferred_triggers = vec![crate::rules::state::DeferredTrigger {
+        state.deferred_triggers = vec![crate::rules::state::DeferredTrigger { install: None, target_install: None,
             card: CardId("pad_campaign".to_string()),
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
@@ -5029,12 +5029,12 @@ mod tests {
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
             pending: vec![
-                crate::rules::state::DeferredTrigger {
+                crate::rules::state::DeferredTrigger { install: None, target_install: None,
                     card: CardId("pad_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
                 },
-                crate::rules::state::DeferredTrigger {
+                crate::rules::state::DeferredTrigger { install: None, target_install: None,
                     card: CardId("nico_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
@@ -5106,7 +5106,7 @@ mod tests {
         // The two copies are told apart only by the event they carry — the
         // same shape a real dispatch produces, since `DeferredTrigger` has
         // no install handle.
-        let due = |id: &str, clicks: u32| crate::rules::state::DeferredTrigger {
+        let due = |id: &str, clicks: u32| crate::rules::state::DeferredTrigger { install: None, target_install: None,
             card: CardId(id.to_string()),
             trigger: Trigger::OnTurnStart,
             target: None,
@@ -5178,7 +5178,7 @@ mod tests {
             install_id: InstallId(7),
             ..Default::default()
         }];
-        let due = |trigger: Trigger| crate::rules::state::DeferredTrigger {
+        let due = |trigger: Trigger| crate::rules::state::DeferredTrigger { install: None, target_install: None,
             card: CardId("docklands_style_pass".to_string()),
             trigger,
             target: None,

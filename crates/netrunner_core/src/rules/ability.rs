@@ -10,7 +10,7 @@ use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run::{self, AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{
-    ArchivedCard, Clicks, Credits, GameState, InstallId, InstalledCard, InstalledRunnerCard, OncePerTurnKey, PendingChoiceResume, PendingDecision, PendingPaidChoice,
+    ArchivedCard, Clicks, Credits, DeferredTrigger, GameState, InstallId, InstalledCard, InstalledRunnerCard, OncePerTurnKey, PendingChoiceResume, PendingDecision, PendingPaidChoice,
     PendingPaidChoiceResume, PendingPrevention, PendingPreventionKind, PreventionKind, PreventionResume, Side,
     TraceResume, TraceState, WindowCheckpoint,
 };
@@ -773,7 +773,7 @@ pub fn evaluate_effect(
             // `CardId` — wrong with two copies of one ICE — and was
             // unreachable besides: Send a Message, the only user, fires with
             // no run (scored) or mid-access (stolen).
-            let rezzed_event = GameEvent::IceRezzed { card: card_id.clone(), server };
+            let rezzed_event = GameEvent::IceRezzed { card: card_id.clone(), server, install: *install };
             let mut events = vec![rezzed_event.clone()];
             events.extend(dispatcher::dispatch_event(state, registry, &rezzed_event)?);
             Ok(events)
@@ -917,7 +917,15 @@ pub fn process_card_triggers(
     trigger: Trigger,
     triggering_event: Option<&GameEvent>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    fire_card_triggers(state, registry, card_id, trigger, None, triggering_event, false)
+    let due = DeferredTrigger {
+        card: card_id.clone(),
+        trigger,
+        target: None,
+        install: None,
+        target_install: None,
+        event: triggering_event.cloned(),
+    };
+    fire_card_triggers(state, registry, &due, false)
 }
 
 /// The one loop behind `process_card_triggers` and every firing in
@@ -939,12 +947,12 @@ pub fn process_card_triggers(
 pub(crate) fn fire_card_triggers(
     state: &mut GameState,
     registry: &CardRegistry,
-    card_id: &CardId,
-    trigger: Trigger,
-    target: Option<&CardId>,
-    triggering_event: Option<&GameEvent>,
+    due: &DeferredTrigger,
     announce: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    let card_id = &due.card;
+    let trigger = due.trigger;
+    let triggering_event = due.event.as_ref();
     let Some(card) = registry.get(card_id) else {
         return Ok(Vec::new());
     };
@@ -956,7 +964,7 @@ pub(crate) fn fire_card_triggers(
         // otherwise) — separate contexts, and one pair per
         // `TriggeredEffect`, so nothing a trigger's own effects accumulate
         // leaks into the next trigger on the same card.
-        let owner_ctx = ResolutionContext::for_trigger(Some(card_id), triggering_event);
+        let owner_ctx = ResolutionContext::for_install_trigger(due.install, Some(card_id), triggering_event);
         if let Some(requirement) = &triggered.requirement
             && check_requirement(state, requirement, card_side, &owner_ctx, registry).is_err()
         {
@@ -969,7 +977,10 @@ pub(crate) fn fire_card_triggers(
         if announce {
             events.push(GameEvent::TriggerFired { card: card_id.clone(), trigger });
         }
-        let mut effect_ctx = ResolutionContext::for_trigger(Some(target.unwrap_or(card_id)), triggering_event);
+        let mut effect_ctx = match &due.target {
+            Some(target) => ResolutionContext::for_install_trigger(due.target_install, Some(target), triggering_event),
+            None => ResolutionContext::for_install_trigger(due.install, Some(card_id), triggering_event),
+        };
         for effect in &triggered.effects {
             events.extend(evaluate_effect(state, effect, &mut effect_ctx, registry)?);
             // A trigger's effect list is a `Sequence` in all but name and

@@ -1102,7 +1102,7 @@ mod tests {
     #[test]
     fn choose_trigger_order_decision_roundtrips_and_matches_mask() {
         let mut state = base_state();
-        let due = |trigger: crate::dsl::Trigger| crate::rules::state::DeferredTrigger {
+        let due = |trigger: crate::dsl::Trigger| crate::rules::state::DeferredTrigger { install: None, target_install: None,
             card: CardId("hedge_fund".to_string()),
             trigger,
             target: None,
