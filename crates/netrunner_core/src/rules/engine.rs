@@ -393,11 +393,23 @@ fn install_card(
         })?;
     next.corp.hq.remove(position);
 
-    let card_def = registry
-        .get(&card_id)
-        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    // The registry lookup stays even though the printed cost is not paid
+    // here: a card the engine cannot describe is not installable.
+    registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
+    // Installing costs the Corp nothing for an agenda, asset or upgrade,
+    // and 1[c] per piece of ICE already protecting the server for ICE —
+    // the printed `cost` is the *rez* cost and is paid by `rez_ice`. This
+    // used to pay `card_def.cost` here as well, so every Corp card cost
+    // double and the escalating ICE tax did not exist (ROADMAP Rules
+    // Audit T3).
+    let install_cost = match slot {
+        InstallSlot::Ice => ice_protecting(&next, zone),
+        InstallSlot::Root => 0,
+    };
+    if install_cost > 0 {
+        events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(install_cost), Some(&card_id))?);
+    }
 
     let install_id = next.allocate_install_id();
     next.corp.installed.push(InstalledCard {
@@ -423,6 +435,12 @@ fn install_card(
     events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
     Ok((next, events))
+}
+
+/// How many pieces of ICE already protect `server` — the install cost of
+/// the next one.
+fn ice_protecting(state: &GameState, server: TargetZone) -> u32 {
+    state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Ice).count() as u32
 }
 
 fn rez_ice(
@@ -1873,7 +1891,9 @@ mod tests {
         .expect("action should succeed");
 
         assert_eq!(next.corp.resources.clicks, Clicks(2));
-        assert_eq!(next.corp.resources.credits, Credits(4));
+        // The first ICE on a server installs for free; the printed cost is
+        // the rez cost and is paid by `RezIce`.
+        assert_eq!(next.corp.resources.credits, Credits(5));
         assert!(next.corp.hq.is_empty());
         assert_eq!(
             next.corp.installed,
@@ -1893,7 +1913,6 @@ mod tests {
             events,
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
-                GameEvent::CreditsSpent { side: Side::Corp, amount: 1 },
                 GameEvent::CardInstalled {
                     side: Side::Corp,
                     card: card_id,
@@ -1905,6 +1924,56 @@ mod tests {
         // Original state is untouched.
         assert_eq!(state.corp.hq, vec![CardId("ice_wall".to_string())]);
         assert!(state.corp.installed.is_empty());
+    }
+
+    /// Rules Audit T3: ICE costs 1[c] per piece of ICE already protecting
+    /// that server — counted per server, so ICE elsewhere is free of charge.
+    #[test]
+    fn ice_install_costs_one_credit_per_ice_already_protecting_the_server() {
+        let card_id = CardId("ice_wall".to_string());
+        let already = |server, id| InstalledCard {
+            card: CardId("ice_wall".to_string()),
+            install_id: InstallId(id),
+            server,
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        };
+        let state = corp_state_with_hq_and_installed(
+            3,
+            5,
+            vec![card_id.clone()],
+            vec![already(ServerId::Hq, 1), already(ServerId::Hq, 2), already(ServerId::RnD, 3)],
+        );
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("ice_wall", Side::Corp, CardType::Ice(crate::dsl::IceType::Barrier), 4, None));
+
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice },
+        )
+        .expect("third ICE on HQ costs 2");
+        assert_eq!(next.corp.resources.credits, Credits(3), "two ICE already on HQ; the one on R&D does not count");
+        assert!(events.contains(&GameEvent::CreditsSpent { side: Side::Corp, amount: 2 }));
+    }
+
+    /// Rules Audit T3: agendas, assets and upgrades install for free — the
+    /// printed cost is what rezzing costs.
+    #[test]
+    fn root_installs_cost_no_credits_regardless_of_printed_cost() {
+        let card_id = CardId("pad_campaign".to_string());
+        let state = corp_state_with_hq_and_installed(3, 0, vec![card_id.clone()], Vec::new());
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("pad_campaign", Side::Corp, CardType::Asset, 2, None));
+
+        let (next, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root },
+        )
+        .expect("a broke Corp can still install an asset");
+        assert_eq!(next.corp.resources.credits, Credits(0));
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::CreditsSpent { .. })));
     }
 
     #[test]
@@ -1922,9 +1991,18 @@ mod tests {
     }
 
     #[test]
-    fn corp_install_card_with_insufficient_credits_for_registry_cost_returns_not_enough_credits() {
+    fn corp_install_card_with_insufficient_credits_for_the_ice_tax_returns_not_enough_credits() {
         let card_id = CardId("ice_wall".to_string());
-        let state = corp_state_with_hq_and_installed(3, 0, vec![card_id.clone()], Vec::new());
+        // One ICE already on HQ makes the next one cost 1, which a Corp on
+        // zero credits cannot pay. (The printed cost is irrelevant here.)
+        let already = InstalledCard {
+            card: card_id.clone(),
+            install_id: InstallId(1),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        };
+        let state = corp_state_with_hq_and_installed(3, 0, vec![card_id.clone()], vec![already]);
         let mut registry = CardRegistry::new();
         registry.insert(test_card("ice_wall", Side::Corp, CardType::Ice(crate::dsl::IceType::Barrier), 1, None));
 

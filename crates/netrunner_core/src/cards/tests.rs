@@ -119,8 +119,8 @@ fn haas_bioroid_engineering_the_future_gains_one_credit_on_first_install_but_not
         PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(0), slot: InstallSlot::Root },
     )
     .expect("first install should succeed");
-    // Started at 10, paid 2 for PAD Campaign, gained 1 from the identity bonus.
-    assert_eq!(state.corp.resources.credits, Credits(9));
+    // Started at 10, installing an asset is free, gained 1 from the identity bonus.
+    assert_eq!(state.corp.resources.credits, Credits(11));
     assert!(state.corp.first_install_used_this_turn);
     assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 1 })));
 
@@ -130,8 +130,8 @@ fn haas_bioroid_engineering_the_future_gains_one_credit_on_first_install_but_not
         PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(1), slot: InstallSlot::Root },
     )
     .expect("second install should succeed");
-    // Paid another 2 for the second PAD Campaign, no further bonus this turn.
-    assert_eq!(state.corp.resources.credits, Credits(7));
+    // The second PAD Campaign is free too, and there is no further bonus this turn.
+    assert_eq!(state.corp.resources.credits, Credits(11));
 }
 
 #[test]
@@ -230,13 +230,13 @@ fn pad_campaign_gains_one_credit_at_the_start_of_the_corps_next_turn() {
         },
     )
     .expect("install pad campaign");
-    // Started at 10, paid 2 to install — unrezzed installs stay silent at
+    // Started at 10; installing is free. Unrezzed installs stay silent at
     // start of turn, so this must be rezzed for the trigger to fire below.
-    assert_eq!(state.corp.resources.credits, Credits(8));
+    assert_eq!(state.corp.resources.credits, Credits(10));
     let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "pad_campaign") })
         .expect("rez pad campaign");
-    // Rez also pays the card's registry cost (2 more): 8 -> 6.
-    assert_eq!(state.corp.resources.credits, Credits(6));
+    // Rez pays the card's printed cost: 10 -> 8.
+    assert_eq!(state.corp.resources.credits, Credits(8));
 
     // Corp's own turn ending doesn't refire their own start-of-turn — only
     // the Runner's turn ending (advancing back to the Corp) does.
@@ -246,7 +246,7 @@ fn pad_campaign_gains_one_credit_at_the_start_of_the_corps_next_turn() {
     let (state, close_events) = close_all_windows(state, &registry);
     events.extend(close_events);
 
-    assert_eq!(state.corp.resources.credits, Credits(7), "PAD Campaign should gain 1 credit at the start of the Corp's next turn");
+    assert_eq!(state.corp.resources.credits, Credits(9), "PAD Campaign should gain 1 credit at the start of the Corp's next turn");
     assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 1 })));
 }
 
@@ -2043,7 +2043,7 @@ mod system_gateway {
             },
         )
         .expect("install regolith mining license");
-        assert_eq!(state.corp.resources.credits, Credits(8), "10 - 2 (install cost)");
+        assert_eq!(state.corp.resources.credits, Credits(10), "installing an asset is free");
 
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "regolith_mining_license") })
@@ -2058,7 +2058,7 @@ mod system_gateway {
         )
         .expect("activate regolith mining license");
         assert_eq!(state.corp.installed[0].counters, 12, "partial spend leaves it in play");
-        assert_eq!(state.corp.resources.credits, Credits(9), "8 - 2 (rez also pays the card's own printed cost) + 3");
+        assert_eq!(state.corp.resources.credits, Credits(11), "10 - 2 (rez pays the printed cost) + 3");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 3 })));
     }
 
@@ -2102,11 +2102,11 @@ mod system_gateway {
             },
         )
         .expect("install nico campaign");
-        assert_eq!(state.corp.resources.credits, Credits(8));
+        assert_eq!(state.corp.resources.credits, Credits(10), "installing is free");
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "nico_campaign") })
                 .expect("rez nico campaign");
-        assert_eq!(state.corp.resources.credits, Credits(6), "8 - 2 (rez cost)");
+        assert_eq!(state.corp.resources.credits, Credits(8), "10 - 2 (rez cost)");
         assert_eq!(state.corp.installed[0].counters, 9);
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CountersAdded { amount: 9, .. })));
 
@@ -2117,7 +2117,7 @@ mod system_gateway {
         events.extend(close_events);
 
         assert_eq!(state.corp.installed[0].counters, 6, "partial spend leaves it in play");
-        assert_eq!(state.corp.resources.credits, Credits(9), "6 + 3");
+        assert_eq!(state.corp.resources.credits, Credits(11), "8 + 3");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 3 })));
     }
 

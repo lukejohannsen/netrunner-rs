@@ -693,22 +693,52 @@ mod tests {
         assert!(without_clicks.contains(&PlayerAction::EndTurn));
     }
 
+    /// The probe is what filters an unaffordable install: the first ICE on
+    /// a server is free even to a Corp on zero credits, and the second
+    /// costs 1[c], which that Corp cannot pay (Rules Audit T3).
     #[test]
-    fn credit_constraint_on_install_card() {
+    fn install_card_candidates_are_filtered_by_the_ice_tax_not_the_printed_cost() {
         let mut registry = CardRegistry::new();
         let mut ice = blank_card("ice_wall", CardType::Ice(IceType::Barrier));
-        ice.cost = 1;
+        ice.cost = 4;
         registry.insert(ice);
 
         let mut poor = corp_state(3, 0);
         poor.corp.hq = vec![CardId("ice_wall".to_string())];
         let poor_legal = legal_actions(&poor, &registry);
-        assert!(!poor_legal.iter().any(|a| matches!(a, PlayerAction::InstallCard { .. })));
+        assert!(
+            poor_legal.contains(&PlayerAction::InstallCard {
+                card_id: CardId("ice_wall".to_string()),
+                zone: ServerId::Hq,
+                slot: InstallSlot::Ice
+            }),
+            "the first ICE on a server is free, whatever it costs to rez"
+        );
 
-        let mut rich = corp_state(3, 1);
-        rich.corp.hq = vec![CardId("ice_wall".to_string())];
-        let rich_legal = legal_actions(&rich, &registry);
-        assert!(rich_legal.iter().any(|a| matches!(a, PlayerAction::InstallCard { .. })));
+        poor.corp.installed = vec![crate::rules::InstalledCard {
+            card: CardId("ice_wall".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            ..Default::default()
+        }];
+        let poor_legal = legal_actions(&poor, &registry);
+        assert!(
+            !poor_legal.contains(&PlayerAction::InstallCard {
+                card_id: CardId("ice_wall".to_string()),
+                zone: ServerId::Hq,
+                slot: InstallSlot::Ice
+            }),
+            "a second ICE on HQ costs 1, which a broke Corp cannot pay"
+        );
+        assert!(
+            poor_legal.contains(&PlayerAction::InstallCard {
+                card_id: CardId("ice_wall".to_string()),
+                zone: ServerId::RnD,
+                slot: InstallSlot::Ice
+            }),
+            "but the first ICE on R&D is still free"
+        );
     }
 
     #[test]
