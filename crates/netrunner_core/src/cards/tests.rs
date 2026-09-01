@@ -1159,7 +1159,7 @@ mod system_gateway {
         }];
         state.runner.stack = (0..3).map(|i| CardId(format!("stack_card_{i}"))).collect();
 
-        let (state, events) = apply_action(&state, &registry, PlayerAction::DrawCardClick).expect("draw a card");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("draw a card");
 
         assert_eq!(state.runner.grip.len(), 2, "1 basic + 1 bonus from Verbal Plasticity");
         assert_eq!(events.iter().filter(|e| matches!(e, crate::rules::GameEvent::CardDrawn { .. })).count(), 2);

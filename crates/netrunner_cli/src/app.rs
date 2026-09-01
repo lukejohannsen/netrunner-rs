@@ -231,7 +231,7 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
 
     match action {
         PlayerAction::GainCreditClick { side } => format!("Gain 1 credit ({side:?})"),
-        PlayerAction::DrawCardClick => "Draw a card".to_string(),
+        PlayerAction::DrawCardClick { .. } => "Draw a card".to_string(),
         PlayerAction::InstallCard { card_id, zone, slot } => {
             format!("Install {} into {:?} ({:?})", title(card_id), zone, slot)
         }

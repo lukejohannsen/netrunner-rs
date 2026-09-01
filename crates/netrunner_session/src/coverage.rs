@@ -679,7 +679,7 @@ mod tests {
     fn json_round_trips_and_is_sorted() {
         let mut coverage = Coverage::default();
         coverage.absorb_entry(&entry(Side::Corp, PlayerAction::EndTurn, vec![]), &registry());
-        coverage.absorb_entry(&entry(Side::Corp, PlayerAction::DrawCardClick, vec![]), &registry());
+        coverage.absorb_entry(&entry(Side::Corp, PlayerAction::DrawCardClick { side: Side::Corp }, vec![]), &registry());
         let json = coverage.to_json();
         let back: Coverage = serde_json::from_str(&json).expect("round trip");
         assert_eq!(back, coverage);

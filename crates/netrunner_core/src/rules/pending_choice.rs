@@ -790,7 +790,7 @@ mod tests {
         });
         let registry = CardRegistry::new();
 
-        let result = crate::rules::apply_action(&state, &registry, PlayerAction::DrawCardClick);
+        let result = crate::rules::apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner });
         assert_eq!(result, Err(RulesError::ActionBlockedByPendingPaidChoice { side: Side::Runner }));
 
         let (next, _) =
@@ -798,7 +798,7 @@ mod tests {
         assert!(next.pending_paid_choice.is_none());
         state = next;
         // Now unblocked.
-        assert!(crate::rules::apply_action(&state, &registry, PlayerAction::DrawCardClick).is_ok());
+        assert!(crate::rules::apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).is_ok());
     }
 
     /// A `ChooseCards` selection must never grow past its `max`. It used to:

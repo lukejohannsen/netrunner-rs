@@ -94,7 +94,7 @@ pub fn apply_action(
     }
     let resolved = match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
-        PlayerAction::DrawCardClick => draw_card_click(state, registry),
+        PlayerAction::DrawCardClick { side } => draw_card_click(state, registry, side),
         PlayerAction::InstallCard { card_id, zone, slot } => {
             install_card(state, registry, card_id, zone, slot)
         }
@@ -244,7 +244,7 @@ enum ActionKind {
 fn classify_action(action: &PlayerAction) -> ActionKind {
     match action {
         PlayerAction::GainCreditClick { .. }
-        | PlayerAction::DrawCardClick
+        | PlayerAction::DrawCardClick { .. }
         | PlayerAction::InstallCard { .. }
         | PlayerAction::InstallHardware { .. }
         | PlayerAction::InstallProgram { .. }
@@ -345,16 +345,23 @@ fn gain_credit_click(
     ))
 }
 
-fn draw_card_click(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    let side = Side::Runner;
+fn draw_card_click(state: &GameState, registry: &CardRegistry, side: Side) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
+    // See `PlayerAction::DrawCardClick { side: Side::Runner }`: the Corp's click-draw from an empty
+    // R&D is refused rather than resolved as a deck-out.
+    if side == Side::Corp && state.corp.r_and_d.is_empty() {
+        return Err(RulesError::EmptyZone { side, zone: crate::dsl::StackZone::RAndD });
+    }
     let mut next = state.clone();
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    if let Some(card) = next.runner.stack.pop() {
-        next.runner.grip.push(card);
+    let drawn = match side {
+        Side::Runner => next.runner.stack.pop().map(|card| next.runner.grip.push(card)),
+        Side::Corp => next.corp.r_and_d.pop().map(|card| next.corp.hq.push(card)),
+    };
+    if drawn.is_some() {
         events.push(GameEvent::CardDrawn { side });
     }
 
@@ -1831,6 +1838,37 @@ mod tests {
         assert_eq!(next.runner.heap, vec![card_id]);
     }
 
+    /// Rules Audit T4: the Corp's click-to-draw. Spends a click, moves the
+    /// top of R&D into HQ, fires the basic-draw event for its side, and is
+    /// refused (and not offered) on an empty R&D.
+    #[test]
+    fn corp_can_draw_with_a_click_but_not_from_an_empty_rnd() {
+        let mut state = corp_state(3, 5);
+        state.corp.r_and_d = vec![CardId("bottom".to_string()), CardId("top".to_string())];
+        let (next, events) = apply_action(&state, &registry(), PlayerAction::DrawCardClick { side: Side::Corp })
+            .expect("the Corp draws with a click");
+        assert_eq!(next.corp.resources.clicks, Clicks(2));
+        assert_eq!(next.corp.hq, vec![CardId("top".to_string())]);
+        assert_eq!(next.corp.r_and_d, vec![CardId("bottom".to_string())]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::ClickSpent { side: Side::Corp },
+                GameEvent::CardDrawn { side: Side::Corp },
+                GameEvent::BasicDrawActionTaken { side: Side::Corp },
+            ]
+        );
+
+        let mut empty = corp_state(3, 5);
+        empty.corp.r_and_d.clear();
+        assert!(apply_action(&empty, &registry(), PlayerAction::DrawCardClick { side: Side::Corp }).is_err());
+        assert!(!crate::rules::legal_actions(&empty, &registry()).contains(&PlayerAction::DrawCardClick { side: Side::Corp }));
+        assert!(
+            !crate::rules::legal_actions(&state, &registry()).contains(&PlayerAction::DrawCardClick { side: Side::Runner }),
+            "the Runner's draw is not the Corp's"
+        );
+    }
+
     #[test]
     fn corp_gain_credit_click_spends_click_and_gains_credit() {
         let state = corp_state(3, 5);
@@ -1859,7 +1897,7 @@ mod tests {
     fn runner_draw_card_click_spends_click_and_draws_card() {
         let state = runner_state(4, 10, 5);
         let (next, events) =
-            apply_action(&state, &registry(), PlayerAction::DrawCardClick).expect("action should succeed");
+            apply_action(&state, &registry(), PlayerAction::DrawCardClick { side: Side::Runner }).expect("action should succeed");
 
         assert_eq!(next.runner.resources.clicks, Clicks(3));
         assert_eq!(next.runner.stack.len(), 9);
@@ -1907,7 +1945,7 @@ mod tests {
     fn runner_draw_card_click_with_empty_stack_does_not_underflow() {
         let state = runner_state(2, 0, 3);
         let (next, events) =
-            apply_action(&state, &registry(), PlayerAction::DrawCardClick).expect("action should succeed");
+            apply_action(&state, &registry(), PlayerAction::DrawCardClick { side: Side::Runner }).expect("action should succeed");
 
         assert_eq!(next.runner.stack.len(), 0);
         assert_eq!(next.runner.grip.len(), 3);
@@ -5043,7 +5081,7 @@ mod tests {
             ..Default::default()
         });
 
-        for action in [PlayerAction::GainCreditClick { side: Side::Runner }, PlayerAction::DrawCardClick] {
+        for action in [PlayerAction::GainCreditClick { side: Side::Runner }, PlayerAction::DrawCardClick { side: Side::Runner }] {
             assert!(
                 matches!(
                     apply_action(&state, &registry, action.clone()),
@@ -5089,7 +5127,7 @@ mod tests {
         ];
 
         let basic_actions =
-            [PlayerAction::GainCreditClick { side: Side::Runner }, PlayerAction::DrawCardClick];
+            [PlayerAction::GainCreditClick { side: Side::Runner }, PlayerAction::DrawCardClick { side: Side::Runner }];
         let assert_all_blocked = |state: &GameState, at: &str| {
             for action in &basic_actions {
                 assert!(

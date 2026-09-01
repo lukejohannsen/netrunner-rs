@@ -112,10 +112,11 @@ pub fn legal_actions_for(state: &GameState, registry: &CardRegistry, side: Side)
 /// already known to be legal for *someone*; this only resolves *who*.
 fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
     match action {
-        PlayerAction::GainCreditClick { side } | PlayerAction::PassPriority { side } => *side,
+        PlayerAction::GainCreditClick { side }
+        | PlayerAction::DrawCardClick { side }
+        | PlayerAction::PassPriority { side } => *side,
 
-        PlayerAction::DrawCardClick
-        | PlayerAction::InitiateRun { .. }
+        PlayerAction::InitiateRun { .. }
         | PlayerAction::ContinueRun
         | PlayerAction::JackOut
         | PlayerAction::CompleteRun
@@ -270,7 +271,8 @@ fn static_candidates() -> Vec<PlayerAction> {
     vec![
         PlayerAction::GainCreditClick { side: Side::Corp },
         PlayerAction::GainCreditClick { side: Side::Runner },
-        PlayerAction::DrawCardClick,
+        PlayerAction::DrawCardClick { side: Side::Corp },
+        PlayerAction::DrawCardClick { side: Side::Runner },
         PlayerAction::ContinueRun,
         PlayerAction::JackOut,
         PlayerAction::CompleteRun,
@@ -788,13 +790,13 @@ mod tests {
             );
         }
         assert!(runner_legal.contains(&PlayerAction::GainCreditClick { side: Side::Runner }));
-        assert!(runner_legal.contains(&PlayerAction::DrawCardClick));
+        assert!(runner_legal.contains(&PlayerAction::DrawCardClick { side: Side::Runner }));
         assert!(runner_legal.contains(&PlayerAction::EndTurn));
 
         let corp_legal = legal_actions(&corp_state(3, 5), &registry);
         for action in &corp_legal {
             assert!(
-                !matches!(action, PlayerAction::DrawCardClick | PlayerAction::InitiateRun { .. }),
+                !matches!(action, PlayerAction::DrawCardClick { .. } | PlayerAction::InitiateRun { .. }),
                 "unexpected Runner-only action during the Corp's turn: {action:?}"
             );
         }

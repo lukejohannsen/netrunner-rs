@@ -27,7 +27,9 @@ use crate::rules::legal_actions::legal_actions;
 use crate::rules::run::{AccessPhase, ServerId};
 use crate::rules::state::{GamePhase, GameState, InstallId, InstallSlot, Side};
 
-pub const MAX_HAND_SIZE: usize = 12;
+/// Hand slots. 5 plus a turn of click-draws and an `Effect::DrawCards`
+/// reaches 12, and the Corp can click-draw too now; 16 leaves room.
+pub const MAX_HAND_SIZE: usize = 16;
 /// Raised 20 → 32 after real games overflowed it. This module's doc
 /// comment used to claim "real games essentially never reach these caps";
 /// for this one that was simply wrong — ordinary System Gateway matchups
@@ -44,15 +46,28 @@ pub const MAX_INSTALLED_PER_SIDE: usize = 32;
 pub const MAX_REMOTE_SERVERS: usize = 10;
 pub const MAX_SUBROUTINES: usize = 8;
 pub const MAX_ABILITIES_PER_CARD: usize = 4;
-pub const MAX_ACCESS_SELECTION: usize = MAX_HAND_SIZE;
+/// The largest deck zone a selection can be over — *Malapert Data Vault*
+/// selects from all of R&D, and a Standard Corp deck is up to 49 cards.
+/// `ToggleCardSelection` used to be bounded by `MAX_INSTALLED_PER_SIDE`
+/// under a comment claiming every selectable zone was hand-sized; R&D and
+/// the Stack are decks.
+pub const MAX_DECK_ZONE: usize = 50;
+/// An Archives breach accesses everything in it, and Archives grows all
+/// game; this was `MAX_HAND_SIZE` and real games passed it routinely,
+/// leaving the RL path able to address only the oldest twelve cards.
+pub const MAX_ACCESS_SELECTION: usize = 32;
 pub const MAX_TRACE_BID: u32 = 30;
 /// The largest `Cost::AnyOf` any System Gateway card offers (Manegarm
 /// Skunkworks: clicks or credits) — widen if a future card needs more
 /// alternatives.
 pub const MAX_COST_CHOICE_OPTIONS: usize = 2;
-/// The largest `Effect::PresentChoice` option list any System Gateway card
-/// offers — widen if a future card needs more.
-pub const MAX_PENDING_CHOICE_OPTIONS: usize = 2;
+/// The most `Effect::PresentChoice` options any card presents. It was 2,
+/// under a comment saying that was the largest in System Gateway; *Ansel*
+/// *1.0* and *Brân 1.0* present three, so the index path could never take
+/// the third — the decline (ROADMAP Rules Audit T11).
+/// `every_card_fits_the_action_space_caps` now checks every card's JSON
+/// against this and the other per-card caps.
+pub const MAX_PENDING_CHOICE_OPTIONS: usize = 4;
 
 /// `Hq`/`RnD`/`Archives` plus `MAX_REMOTE_SERVERS` numbered remotes.
 const ZONE_COUNT: usize = 3 + MAX_REMOTE_SERVERS;
@@ -63,7 +78,11 @@ const ZONE_COUNT: usize = 3 + MAX_REMOTE_SERVERS;
 const UNIT_START: usize = 0;
 const UNIT_LEN: usize = 9;
 
-const GAIN_CREDIT_START: usize = UNIT_START + UNIT_LEN;
+/// `DrawCardClick { side }`, two-wide like `GainCreditClick`. Layout v2:
+/// the draw used to be a single Runner-only unit slot.
+const DRAW_CARD_START: usize = UNIT_START + UNIT_LEN;
+const DRAW_CARD_LEN: usize = 2;
+const GAIN_CREDIT_START: usize = DRAW_CARD_START + DRAW_CARD_LEN;
 const GAIN_CREDIT_LEN: usize = 2;
 
 const PASS_PRIORITY_START: usize = GAIN_CREDIT_START + GAIN_CREDIT_LEN;
@@ -90,16 +109,8 @@ const INSTALL_PROGRAM_LEN: usize = MAX_HAND_SIZE;
 const PLAY_OPERATION_START: usize = INSTALL_PROGRAM_START + INSTALL_PROGRAM_LEN;
 const PLAY_OPERATION_LEN: usize = MAX_HAND_SIZE;
 
-/// A reserved hole. This segment encoded `PlayerAction::BreakSubroutine`,
-/// the free break of any subroutine on any ICE, deleted as Rules Audit T1.
-/// The indices are kept and never legal rather than removed, so no later
-/// segment shifts and an exported policy's head stays aligned — the
-/// append-never-shift rule, applied to a deletion. Reclaim it the next
-/// time the layout has to break anyway (Rules Audit B.10).
-const BREAK_SUBROUTINE_START: usize = PLAY_OPERATION_START + PLAY_OPERATION_LEN;
-const BREAK_SUBROUTINE_LEN: usize = MAX_SUBROUTINES;
 
-const DISCARD_CARD_START: usize = BREAK_SUBROUTINE_START + BREAK_SUBROUTINE_LEN;
+const DISCARD_CARD_START: usize = PLAY_OPERATION_START + PLAY_OPERATION_LEN;
 const DISCARD_CARD_LEN: usize = MAX_HAND_SIZE;
 
 const ACTIVATE_ABILITY_CORP_START: usize = DISCARD_CARD_START + DISCARD_CARD_LEN;
@@ -143,17 +154,12 @@ const RESOLVE_PENDING_CHOICE_LEN: usize = MAX_PENDING_CHOICE_OPTIONS;
 
 /// `ToggleCardSelection` is encoded by position within the pending
 /// `PendingDecision::ChooseCards`'s *raw* zone contents (see
-/// `pending_choice::zone_card_ids`) — the largest such zone any System
-/// Gateway card selects from is an installed-card list
-/// (`MAX_INSTALLED_PER_SIDE`), which dominates the hand-sized zones
-/// (HQ/Archives/R&D/Stack/Grip/Heap, all `<= MAX_HAND_SIZE`).
-///
-/// The action now *carries* that position, so encode and decode are the
-/// identity here and neither needs the `GameState` any more. This segment's
-/// meaning is unchanged — the payload caught up with the encoding, not the
-/// other way round.
+/// `pending_choice::zone_card_ids`). The largest zone any card selects
+/// from is a whole deck (`MAX_DECK_ZONE`); installed-card lists and hands
+/// are smaller. The action carries that position, so encode and decode
+/// are the identity here and neither needs the `GameState`.
 const TOGGLE_CARD_SELECTION_START: usize = RESOLVE_PENDING_CHOICE_START + RESOLVE_PENDING_CHOICE_LEN;
-const TOGGLE_CARD_SELECTION_LEN: usize = MAX_INSTALLED_PER_SIDE;
+const TOGGLE_CARD_SELECTION_LEN: usize = MAX_DECK_ZONE;
 
 const CONFIRM_CARD_SELECTION_START: usize = TOGGLE_CARD_SELECTION_START + TOGGLE_CARD_SELECTION_LEN;
 
@@ -173,15 +179,6 @@ const INSTALL_PROGRAM_ON_ICE_LEN: usize = MAX_HAND_SIZE * MAX_INSTALLED_PER_SIDE
 const BREAK_SUBROUTINE_WITH_CLICK_START: usize = INSTALL_PROGRAM_ON_ICE_START + INSTALL_PROGRAM_ON_ICE_LEN;
 const BREAK_SUBROUTINE_WITH_CLICK_LEN: usize = MAX_SUBROUTINES;
 
-/// `PurgeVirusCounters` is payload-free and would sit naturally in the
-/// `UNIT` segment with the other nine — but inserting it there would shift
-/// every subsequent index by one, silently changing what ~1,000 slots mean
-/// to an already-exported policy network. Appended here instead, so every
-/// existing index keeps its meaning and only the head *width* changes.
-/// Same principle as `observation::CARD_VOCAB`'s numeric_id ordering:
-/// append, never shift.
-const PURGE_VIRUS_COUNTERS_START: usize = BREAK_SUBROUTINE_WITH_CLICK_START + BREAK_SUBROUTINE_WITH_CLICK_LEN;
-const PURGE_VIRUS_COUNTERS_LEN: usize = 1;
 
 /// `ChooseTriggerToResolve` is encoded by position within the parked
 /// `PendingDecision::ChooseTriggerOrder`'s own `pending` list, which is
@@ -190,9 +187,11 @@ const PURGE_VIRUS_COUNTERS_LEN: usize = 1;
 /// covers it with room to spare, matching how `ToggleCardSelection` bounds
 /// its own zone-position encoding.
 ///
-/// Appended, like `PurgeVirusCounters` before it — see that segment's doc
-/// comment for why nothing is ever inserted mid-space.
-const CHOOSE_TRIGGER_START: usize = PURGE_VIRUS_COUNTERS_START + PURGE_VIRUS_COUNTERS_LEN;
+/// The last segment. Layout v2 folded `PurgeVirusCounters` into the unit
+/// block and reclaimed the deleted free break's hole, shifting indices —
+/// the one break the append-never-shift rule permits, taken once, for
+/// every layout change at the same time (ROADMAP Rules Audit B.10).
+const CHOOSE_TRIGGER_START: usize = BREAK_SUBROUTINE_WITH_CLICK_START + BREAK_SUBROUTINE_WITH_CLICK_LEN;
 const CHOOSE_TRIGGER_LEN: usize = MAX_INSTALLED_PER_SIDE;
 
 /// A fixed, categorical index space over `PlayerAction` — see the module
@@ -213,7 +212,7 @@ impl ActionSpace {
     /// legality.
     pub fn index_of(state: &GameState, action: &PlayerAction) -> Option<usize> {
         match action {
-            PlayerAction::DrawCardClick => Some(UNIT_START),
+            PlayerAction::DrawCardClick { side } => Some(DRAW_CARD_START + side_index(*side)),
             PlayerAction::ContinueRun => Some(UNIT_START + 1),
             PlayerAction::JackOut => Some(UNIT_START + 2),
             PlayerAction::CompleteRun => Some(UNIT_START + 3),
@@ -223,7 +222,7 @@ impl ActionSpace {
             PlayerAction::RemoveTag => Some(UNIT_START + 7),
             PlayerAction::DeclinePendingPaidChoice => Some(UNIT_START + 8),
 
-            PlayerAction::PurgeVirusCounters => Some(PURGE_VIRUS_COUNTERS_START),
+            PlayerAction::PurgeVirusCounters => Some(UNIT_START),
 
             PlayerAction::ChooseTriggerToResolve { card_id } => {
                 let Some(crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. }) =
@@ -365,7 +364,7 @@ impl ActionSpace {
     pub fn action_at(state: &GameState, index: usize) -> Option<PlayerAction> {
         if let Some(local) = in_segment(index, UNIT_START, UNIT_LEN) {
             return Some(match local {
-                0 => PlayerAction::DrawCardClick,
+                0 => PlayerAction::PurgeVirusCounters,
                 1 => PlayerAction::ContinueRun,
                 2 => PlayerAction::JackOut,
                 3 => PlayerAction::CompleteRun,
@@ -375,6 +374,9 @@ impl ActionSpace {
                 7 => PlayerAction::RemoveTag,
                 _ => PlayerAction::DeclinePendingPaidChoice,
             });
+        }
+        if let Some(local) = in_segment(index, DRAW_CARD_START, DRAW_CARD_LEN) {
+            return Some(PlayerAction::DrawCardClick { side: side_from_index(local)? });
         }
         if let Some(local) = in_segment(index, GAIN_CREDIT_START, GAIN_CREDIT_LEN) {
             return Some(PlayerAction::GainCreditClick { side: side_from_index(local)? });
@@ -413,8 +415,6 @@ impl ActionSpace {
             let card_id = state.corp.hq.get(local)?.clone();
             return Some(PlayerAction::PlayOperation { card_id });
         }
-        // `BREAK_SUBROUTINE_START..+LEN` decodes to nothing: see the
-        // constant's doc comment.
         if let Some(local) = in_segment(index, DISCARD_CARD_START, DISCARD_CARD_LEN) {
             let GamePhase::Discard { side, .. } = state.phase else { return None };
             let card_id = hand_for(state, side).get(local)?.clone();
@@ -503,9 +503,6 @@ impl ActionSpace {
         if let Some(local) = in_segment(index, BREAK_SUBROUTINE_WITH_CLICK_START, BREAK_SUBROUTINE_WITH_CLICK_LEN) {
             let ice_id = current_ice_id(state)?;
             return Some(PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: local });
-        }
-        if in_segment(index, PURGE_VIRUS_COUNTERS_START, PURGE_VIRUS_COUNTERS_LEN).is_some() {
-            return Some(PlayerAction::PurgeVirusCounters);
         }
         if let Some(local) = in_segment(index, CHOOSE_TRIGGER_START, CHOOSE_TRIGGER_LEN) {
             let crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. } =
@@ -851,7 +848,7 @@ mod tests {
         let legal = legal_actions(&state, &registry);
         assert!(legal.contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
         assert!(legal.contains(&PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }));
-        assert!(!legal.contains(&PlayerAction::DrawCardClick), "DrawCardClick is Runner-only today");
+        assert!(!legal.contains(&PlayerAction::DrawCardClick { side: Side::Runner }), "the Runner's draw is not the Corp's");
     }
 
     /// The appended `PurgeVirusCounters` slot, checked explicitly rather
@@ -912,12 +909,6 @@ mod tests {
         )
         .unwrap();
         assert!(mask[pump_index], "Corroder's pump ability should be legal mid-encounter");
-        // The deleted free break's segment stays in the space and stays
-        // dark: no index in it is ever legal.
-        assert!(
-            (BREAK_SUBROUTINE_START..BREAK_SUBROUTINE_START + BREAK_SUBROUTINE_LEN).all(|i| !mask[i]),
-            "the reserved BreakSubroutine hole must never be legal"
-        );
         assert!(!mask[UNIT_START + 4], "EndTurn should be illegal while a run is active");
     }
 
@@ -1177,6 +1168,81 @@ mod tests {
         // needs retraining — though slots that were previously unreachable
         // (the second and third copy of a card, which the old
         // first-match-by-`CardId` lookup could never address) now are.
-        assert_eq!(ActionSpace::SIZE, 1357);
+        //
+        // **1357 → 1646: layout v2 (ROADMAP Rules Audit B.10).** Taken as
+        // one deliberate break, since the Rules Audit already declared
+        // every recorded policy stale: `DrawCardClick` grew a `side` and its
+        // own two-wide segment (the Corp can draw), `MAX_HAND_SIZE` 12 → 16,
+        // `MAX_ACCESS_SELECTION` 12 → 32 (Archives breaches), the
+        // `ToggleCardSelection` bound became `MAX_DECK_ZONE` = 50 (Malapert
+        // Data Vault selects from all of R&D), `MAX_PENDING_CHOICE_OPTIONS`
+        // 2 → 4 (Ansel 1.0 / Brân 1.0 present three), the deleted free
+        // break's hole was reclaimed and `PurgeVirusCounters` folded into
+        // the unit block. Every card in the pool is checked against the
+        // per-card caps by `every_card_fits_the_action_space_caps`.
+        assert_eq!(ActionSpace::SIZE, 1646);
+    }
+
+    /// Rules Audit T11: the cap that was wrong for Ansel 1.0 and Brân 1.0
+    /// was wrong because nothing walked the card JSON to check it. Every
+    /// embedded playable card, against every per-card cap in the space.
+    #[test]
+    fn every_card_fits_the_action_space_caps() {
+        use crate::dsl::{Cost, Effect};
+        for card in crate::cards::embedded_playable_cards() {
+            let id = &card.id.0;
+            assert!(card.abilities.len() <= MAX_ABILITIES_PER_CARD, "{id}: {} abilities", card.abilities.len());
+            assert!(card.subroutines.len() <= MAX_SUBROUTINES, "{id}: {} subroutines", card.subroutines.len());
+            let mut effects: Vec<Effect> = Vec::new();
+            for ability in &card.abilities {
+                effects.push(ability.effect.clone());
+                if let Some(Cost::AnyOf(options)) = &ability.cost {
+                    assert!(options.len() <= MAX_COST_CHOICE_OPTIONS, "{id}: a cost with {} alternatives", options.len());
+                }
+            }
+            effects.extend(card.triggers.iter().flat_map(|t| t.effects.iter().cloned()));
+            effects.extend(card.subroutines.iter().map(|s| s.effect.clone()));
+            if let Some(interactive) = &card.interactive_on_access {
+                effects.extend(interactive.effects.iter().cloned());
+            }
+            for effect in &effects {
+                effect.for_each_effect(&mut |e| match e {
+                    Effect::PresentChoice { options, .. } => assert!(
+                        options.len() <= MAX_PENDING_CHOICE_OPTIONS,
+                        "{id}: a PresentChoice with {} options",
+                        options.len()
+                    ),
+                    Effect::OfferPaidChoice { cost: Cost::AnyOf(options), .. } => assert!(
+                        options.len() <= MAX_COST_CHOICE_OPTIONS,
+                        "{id}: a paid choice with {} cost alternatives",
+                        options.len()
+                    ),
+                    _ => {}
+                });
+            }
+        }
+    }
+
+    /// The concrete case behind T11: a three-option `PresentChoice` — the
+    /// third being "decline" — must give its decline an index.
+    #[test]
+    fn a_three_option_pending_choice_can_be_declined_on_the_index_path() {
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: vec![
+                crate::dsl::Effect::GainCredits(Side::Corp, 1),
+                crate::dsl::Effect::GainCredits(Side::Corp, 2),
+                crate::dsl::Effect::Sequence(Vec::new()),
+            ],
+            source_card: None,
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+        let decline = PlayerAction::ResolvePendingChoice { option_index: 2 };
+        let index = ActionSpace::index_of(&state, &decline).expect("the third option has an index now");
+        assert_eq!(ActionSpace::action_at(&state, index), Some(decline.clone()));
+        let registry = CardRegistry::new();
+        assert!(get_action_mask(&state, &registry)[index], "and the mask offers it");
     }
 }
