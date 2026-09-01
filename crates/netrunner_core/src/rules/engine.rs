@@ -375,7 +375,10 @@ fn draw_card_click(state: &GameState, registry: &CardRegistry, side: Side) -> Re
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
     // See `PlayerAction::DrawCardClick { side: Side::Runner }`: the Corp's click-draw from an empty
-    // R&D is refused rather than resolved as a deck-out.
+    // R&D is refused rather than resolved as a deck-out. The Runner's is
+    // *not* refused: a Runner never decks out, so clicking to draw from an
+    // empty stack spends the click and draws nothing — the asymmetry is the
+    // rules', not an oversight.
     if side == Side::Corp && state.corp.r_and_d.is_empty() {
         return Err(RulesError::EmptyZone { side, zone: crate::dsl::StackZone::RAndD });
     }
