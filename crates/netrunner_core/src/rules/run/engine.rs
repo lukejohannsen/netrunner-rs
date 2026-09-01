@@ -189,6 +189,8 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
 
     state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(),
         on_success_effect: None,
+        on_success_card: None,
+        on_success_install: None,
         additional_rd_access: 0,
         additional_hq_access: 0,
         access_replacement: None,

@@ -12,30 +12,6 @@
           "AddCounters": 12
         }
       ]
-    },
-    {
-      "trigger": "OnSuccessfulRun",
-      "effects": [
-        {
-          "RemoveCounters": 3
-        },
-        {
-          "GainCredits": [
-            "Runner",
-            3
-          ]
-        },
-        {
-          "EffectIf": {
-            "condition": {
-              "ThisCardCountersAtMost": 0
-            },
-            "effect": {
-              "TrashCard": "ThisCard"
-            }
-          }
-        }
-      ]
     }
   ],
   "abilities": [
@@ -48,7 +24,35 @@
         "PromptChooseServer": {
           "chooser": "Runner",
           "rez_cost_delta": 0,
-          "bonus_run_credits": 0
+          "bonus_run_credits": 0,
+          "allowed_servers": [
+            "Hq",
+            "RnD",
+            "Archives"
+          ],
+          "on_success": {
+            "Sequence": [
+              {
+                "RemoveCounters": 3
+              },
+              {
+                "GainCredits": [
+                  "Runner",
+                  3
+                ]
+              },
+              {
+                "EffectIf": {
+                  "condition": {
+                    "ThisCardCountersAtMost": 0
+                  },
+                  "effect": {
+                    "TrashCard": "ThisCard"
+                  }
+                }
+              }
+            ]
+          }
         }
       }
     }

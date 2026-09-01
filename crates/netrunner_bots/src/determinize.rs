@@ -316,6 +316,10 @@ fn determinize_run(
         agendas_stolen_this_run: 0,
         persistent_trashed_upgrades: Vec::new(),
         on_success_effect: None,
+        // Not in the view either: a rollout only ever *starts* runs of its own,
+        // so the rider's source is whatever it seeds itself.
+        on_success_card: None,
+        on_success_install: None,
     }
 }
 

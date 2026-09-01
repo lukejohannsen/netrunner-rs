@@ -622,6 +622,12 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        Effect::GainCreditsAmount(side, amount) => {
+            let amount = resolve_amount(amount, ctx, state, registry);
+            state.resources_mut(*side).credits = state.resources(*side).credits.gain(amount);
+            Ok(vec![GameEvent::CreditsGained { side: *side, amount }])
+        }
+
         Effect::LoseCredits(side, amount) => {
             state.resources_mut(*side).credits = Credits(state.resources(*side).credits.0.saturating_sub(*amount));
             Ok(vec![GameEvent::CreditsLost { side: *side, amount: *amount }])
@@ -1082,8 +1088,8 @@ fn owning_side_of_target(target: &CardTarget, acting_card: Option<&CardId>, regi
         CardTarget::ThisCard => {
             acting_card.and_then(|id| registry.get(id)).map(|c| c.side).unwrap_or(Side::Runner)
         }
-        // A Trojan's host is always a Corp installed card.
-        CardTarget::HostIce => Side::Corp,
+        // A Trojan's host is always a Corp installed card; HQ is the Corp's.
+        CardTarget::HostIce | CardTarget::RandomFromHq => Side::Corp,
     }
 }
 
@@ -1115,7 +1121,7 @@ fn resolve_corp_installed_target(
             let installed = state.find_corp_install(host).ok_or(RulesError::InstallNotFound(host))?;
             Ok((host, installed.card.clone(), installed.server))
         }
-        CardTarget::ThisCard | CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } => {
+        CardTarget::ThisCard | CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::RandomFromHq => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -1198,6 +1204,20 @@ pub(crate) fn trash_card(
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card);
             Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone() }])
+        }
+
+        CardTarget::RandomFromHq => {
+            // The roll comes from the state's own PRNG, so a replay of the
+            // same action history trashes the same card. An empty HQ is the
+            // same "already gone" no-op as the other arms.
+            if state.corp.hq.is_empty() {
+                return Ok(Vec::new());
+            }
+            let index = (state.next_u64() as usize) % state.corp.hq.len();
+            let card = state.corp.hq.remove(index);
+            // Out of the Corp's hand, unseen: facedown.
+            state.corp.archives.push(ArchivedCard::facedown(card.clone()));
+            Ok(vec![GameEvent::CardTrashed { side: Side::Corp, card }])
         }
 
         CardTarget::TopOfStack { side, zone } => {
@@ -1769,6 +1789,7 @@ fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state: &GameStat
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
+        Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,
     }
 }
 

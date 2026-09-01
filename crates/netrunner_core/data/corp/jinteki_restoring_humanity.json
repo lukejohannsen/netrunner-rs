@@ -11,9 +11,9 @@
       "requirement": "ArchivesHasFacedownCard",
       "effects": [
         {
-          "GainCredits": [
+          "GainCreditsAmount": [
             "Corp",
-            1
+            "FacedownCardsInArchives"
           ]
         }
       ]

@@ -228,10 +228,13 @@ pub fn dispatch_event(
             // it fires exactly once even if a run somehow re-enters
             // `Success`. Resolved before the card-trigger sweep below so an
             // access bonus it grants is in place for the same breach.
-            let on_success = state.active_run.as_mut().and_then(|run| run.on_success_effect.take());
+            let on_success = state.active_run.as_mut().and_then(|run| {
+                run.on_success_effect.take().map(|effect| (effect, run.on_success_card.take(), run.on_success_install.take()))
+            });
             let mut events = Vec::new();
-            if let Some(effect) = on_success {
-                events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_trigger(None, Some(event)), registry)?);
+            if let Some((effect, card, install)) = on_success {
+                let mut ctx = ability::ResolutionContext::for_install_trigger(install, card.as_ref(), Some(event));
+                events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
             }
 
             let mut candidates: Vec<(Side, (Option<InstallId>, CardId))> = Vec::new();

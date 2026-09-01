@@ -9,36 +9,37 @@
       "trigger": "OnApproachServer",
       "effects": [
         {
-          "PresentChoice": {
-            "chooser": "Corp",
-            "options": [
-              {
-                "Sequence": [
-                  {
-                    "LoseCredits": [
-                      "Corp",
-                      2
-                    ]
-                  },
-                  {
-                    "PromptChooseCards": {
-                      "side": "Corp",
-                      "source": "OwnHq",
-                      "filter": "Any",
-                      "min": 2,
-                      "max": 2,
-                      "reveal": false,
-                      "shuffle_after": false,
-                      "destination": "OwnArchives",
-                      "then": "EndTheRun"
-                    }
-                  }
-                ]
-              },
-              {
-                "Sequence": []
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnHq",
+                "count": 2
               }
-            ]
+            },
+            "effect": {
+              "OfferPaidChoice": {
+                "side": "Corp",
+                "cost": {
+                  "Credits": 2
+                },
+                "if_paid": {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnHq",
+                    "filter": "Any",
+                    "min": 2,
+                    "max": 2,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OwnArchives",
+                    "then": "EndTheRun"
+                  }
+                },
+                "if_declined": {
+                  "Sequence": []
+                }
+              }
+            }
           }
         }
       ]

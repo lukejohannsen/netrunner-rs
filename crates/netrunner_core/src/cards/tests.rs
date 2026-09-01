@@ -1618,17 +1618,35 @@ mod system_gateway {
                 .expect("play hansei review");
 
         assert_eq!(state.corp.resources.credits, Credits(10), "5 - 5 (cost) + 10 (effect)");
-        assert_eq!(state.corp.hq, vec![CardId("hedge_fund".to_string())]);
-
-        let (state, _) =
-            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") })
-                .expect("toggle hedge_fund");
-        let (state, events) =
-            apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm trash");
-
-        assert!(state.corp.hq.is_empty());
+        // "Trash 1 random card from HQ": the engine picks, not the Corp —
+        // this used to be a `PromptChooseCards`, which let the Corp ditch
+        // its worst card and removed the drawback entirely.
+        assert!(state.pending_decision.is_none(), "no choice is offered");
+        assert!(state.corp.hq.is_empty(), "the one remaining HQ card was trashed");
         assert!(state.corp.archives_contains(&CardId("hedge_fund".to_string())));
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardsSelected { .. })));
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "hedge_fund" && a.facedown), "unseen, so facedown");
+    }
+
+    /// The random pick is the state's PRNG, so it is deterministic under the
+    /// seed and a replay trashes the same card.
+    #[test]
+    fn hansei_reviews_random_trash_is_deterministic_under_the_seed() {
+        let registry = sg_registry();
+        let hand: Vec<CardId> = ["hedge_fund", "government_subsidy", "offworld_office", "palisade"].iter().map(|c| CardId(c.to_string())).collect();
+        let trashed_with = |seed: u64| {
+            let mut state = base_state();
+            state.seed = seed;
+            state.corp.resources.credits = Credits(5);
+            state.corp.hq = vec![CardId("hansei_review".to_string())];
+            state.corp.hq.extend(hand.iter().cloned());
+            let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hansei_review".to_string()) })
+                .expect("play");
+            assert_eq!(state.corp.hq.len(), 3);
+            state.corp.archives.iter().find(|a| a.card.0 != "hansei_review").map(|a| a.card.clone()).expect("one hand card trashed")
+        };
+        assert_eq!(trashed_with(11), trashed_with(11), "same seed, same card");
+        let picks: std::collections::HashSet<CardId> = (1..40).map(trashed_with).collect();
+        assert!(picks.len() > 1, "different seeds reach different cards: {picks:?}");
     }
 
     #[test]
@@ -1735,7 +1753,7 @@ mod system_gateway {
     }
 
     #[test]
-    fn above_the_law_may_trash_an_installed_runner_resource() {
+    fn above_the_law_trashes_an_installed_runner_resource() {
         let registry = sg_registry();
         let mut state = base_state();
         state.corp.installed = vec![crate::rules::InstalledCard {
@@ -1753,8 +1771,10 @@ mod system_gateway {
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "above_the_law") })
                 .expect("score above the law");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
-            .expect("choose to trash a resource");
+        // "Trash 1 installed resource" is mandatory on the printed card; the
+        // opt-out `PresentChoice` this used to be wrapped in is gone, so the
+        // selection is parked directly.
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { .. })));
         let (state, _) = apply_action(
             &state,
             &registry,
@@ -2096,8 +2116,8 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun)
             .expect("reach the approach-server step, firing OnApproachServer");
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
-            .expect("corp chooses to pay and trash");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
+            .expect("corp pays 2 to trash");
         let (state, _) = apply_action(
             &state,
             &registry,
@@ -2118,6 +2138,52 @@ mod system_gateway {
         assert_eq!(state.corp.archives.len(), 2);
         assert!(state.active_run.is_none(), "the run should have ended");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::RunEndedByEffect { .. })));
+    }
+
+    /// Anoetic Void's 2[c] is a *cost*, and its two-card trash is what the
+    /// cost buys. It used to be `LoseCredits` (saturating, so a Corp on 0
+    /// credits ended the run for free) followed by a card selection that
+    /// silently no-oped with fewer than two cards in HQ — the Corp paid and
+    /// the run went on.
+    #[test]
+    fn anoetic_void_is_a_real_cost_declinable_unaffordable_and_needs_two_cards_in_hq() {
+        let registry = sg_registry();
+        let base = |credits: u32, hq: Vec<&str>| {
+            let mut state = base_state();
+            state.phase = GamePhase::Action(Side::Runner);
+            state.runner.resources.clicks = Clicks(4);
+            state.corp.resources.credits = Credits(credits);
+            state.corp.hq = hq.into_iter().map(|c| CardId(c.to_string())).collect();
+            state.corp.installed = vec![crate::rules::InstalledCard {
+                install_id: InstallId(1031),
+                card: CardId("anoetic_void".to_string()),
+                server: ServerId::Remote(0),
+                rezzed: true,
+                ..Default::default()
+            }];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+            apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the server").0
+        };
+
+        // Declined: nothing is paid, the run continues to its pre-access window.
+        let state = base(5, vec!["hedge_fund", "government_subsidy"]);
+        assert!(state.pending_paid_choice.is_some());
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("decline");
+        assert_eq!(state.corp.resources.credits, Credits(5));
+        assert_eq!(state.corp.hq.len(), 2);
+        assert!(state.active_run.is_some(), "the run goes on");
+
+        // Unaffordable: accepting is not even offered; the Corp can only decline.
+        let state = base(1, vec!["hedge_fund", "government_subsidy"]);
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Corp);
+        assert!(!legal.iter().any(|a| matches!(a, PlayerAction::AcceptPendingPaidChoice { .. })), "{legal:?}");
+        assert!(legal.contains(&PlayerAction::DeclinePendingPaidChoice));
+
+        // One card in HQ: no offer at all — there is nothing to buy.
+        let state = base(5, vec!["hedge_fund"]);
+        assert!(state.pending_paid_choice.is_none(), "{:?}", state.pending_paid_choice);
+        assert_eq!(state.corp.resources.credits, Credits(5));
+        assert!(state.active_run.is_some());
     }
 
     #[test]
@@ -2234,20 +2300,13 @@ mod system_gateway {
         assert_eq!(state.runner.resources.credits, Credits(8 + 9), "8 + 3 credits x 3 more successful runs");
     }
 
+    /// The payout is the rider on Red Team's *own* run ("If successful,
+    /// take 3[c] from this resource"), not a reaction to every successful
+    /// run. This used to be a `Trigger::OnSuccessfulRun`, so a plain basic
+    /// action run paid out too — and on remotes, which the click cannot
+    /// even target.
     #[test]
-    fn red_team_pays_out_on_any_successful_run_not_only_ones_it_initiated() {
-        // Documents a deliberate simplification: real Red Team only pays
-        // out for runs *it itself* initiates ("[click]: Run a central
-        // server you have not run this turn..."). This engine's
-        // `Trigger::OnSuccessfulRun` dispatch has no per-run
-        // initiator-attribution mechanism (building one would mean adding
-        // a new field to every one of ~30 `RunState` construction sites
-        // across the crate for a single card), so Red Team's payout fires
-        // for *any* successful run while it's installed — including a
-        // plain `PlayerAction::InitiateRun` the Runner took via the basic
-        // action, not through Red Team's own paid ability. Also
-        // unenforced: the real restriction to central servers only, and
-        // "a server not already run this turn."
+    fn red_team_does_not_pay_out_on_a_run_it_did_not_start() {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
@@ -2257,11 +2316,39 @@ mod system_gateway {
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("initiate run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("resolves immediately, empty rd");
-        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
 
-        assert_eq!(state.runner.rig[0].counters, 9);
-        assert_eq!(state.runner.resources.credits, Credits(3));
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 3 })));
+        assert_eq!(state.runner.rig[0].counters, 12, "a basic-action run is not Red Team's run");
+        assert_eq!(state.runner.resources.credits, Credits(0));
+    }
+
+    /// "[click]: Run a **central** server" — the server choice offers only
+    /// centrals. ("…you have not run this turn" is still unmodelled; see
+    /// ROADMAP.)
+    #[test]
+    fn red_teams_click_offers_central_servers_only() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![rig_card_with_counters("red_team", 12)];
+        state.corp.installed = vec![installed_with_counters("nico_campaign", ServerId::Remote(0), 0)];
+
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { target: install_of(&state, "red_team"), ability_index: 0 },
+        )
+        .expect("click red team");
+        let offered: Vec<ServerId> = crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+            .into_iter()
+            .filter_map(|a| match a {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect();
+        assert!(offered.contains(&ServerId::Hq) && offered.contains(&ServerId::RnD) && offered.contains(&ServerId::Archives), "{offered:?}");
+        assert!(!offered.iter().any(|s| matches!(s, ServerId::Remote(_))), "no remote: {offered:?}");
     }
 
     #[test]
@@ -4341,6 +4428,23 @@ mod system_gateway {
         let state =
             corp_turn_end_with_archives(&registry, vec![ArchivedCard::facedown(CardId("hedge_fund".to_string()))]);
         assert_eq!(state.corp.resources.credits, Credits(6), "5 + 1 for the facedown card in Archives");
+    }
+
+    /// "Gain 1[c] **for each** facedown card in Archives" — the printed
+    /// text scales; this used to pay a flat 1.
+    #[test]
+    fn jinteki_restoring_humanity_gains_one_credit_per_facedown_card() {
+        let registry = sg_registry();
+        let state = corp_turn_end_with_archives(
+            &registry,
+            vec![
+                ArchivedCard::facedown(CardId("hedge_fund".to_string())),
+                ArchivedCard::facedown(CardId("government_subsidy".to_string())),
+                ArchivedCard::faceup(CardId("palisade".to_string())),
+                ArchivedCard::facedown(CardId("offworld_office".to_string())),
+            ],
+        );
+        assert_eq!(state.corp.resources.credits, Credits(8), "5 + 3 facedown cards; the faceup one does not count");
     }
 
     #[test]
