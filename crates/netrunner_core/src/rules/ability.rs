@@ -66,6 +66,11 @@ pub struct ResolutionContext<'a> {
     /// as returned by `damage::apply_damage`. Backs
     /// `EffectRequirement::LastDamageTrashedOddCostCard` (*Diviner*).
     pub damage_discarded: Vec<CardId>,
+    /// Credits actually removed by the most recent `Effect::LoseCredits`
+    /// in this same resolution — overwritten per `LoseCredits`, never
+    /// accumulated, mirroring `damage_discarded`'s contract. Backs
+    /// `Amount::CreditsLostThisResolution` (*Account Siphon*).
+    pub credits_lost: u32,
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -488,6 +493,7 @@ pub fn evaluate_effect(
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
             match duration {
                 BoostDuration::Encounter => card.encounter_strength_buff += *amount as i32,
+                BoostDuration::Run => card.run_strength_buff += *amount as i32,
                 BoostDuration::Turn => card.turn_strength_buff += *amount as i32,
             }
             let new_strength = card.effective_strength();
@@ -605,9 +611,9 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::AdditionalAccessGranted { server: *server, count: *count }])
         }
 
-        Effect::SetAccessReplacement { server, effect } => {
+        Effect::SetAccessReplacement { server, effect, optional } => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
-            run.access_replacement = Some((*server, (**effect).clone()));
+            run.access_replacement = Some((*server, (**effect).clone(), *optional));
             Ok(vec![GameEvent::AccessReplacementSet { server: *server }])
         }
 
@@ -639,8 +645,15 @@ pub fn evaluate_effect(
         }
 
         Effect::LoseCredits(side, amount) => {
-            state.resources_mut(*side).credits = Credits(state.resources(*side).credits.0.saturating_sub(*amount));
-            Ok(vec![GameEvent::CreditsLost { side: *side, amount: *amount }])
+            let before = state.resources(*side).credits.0;
+            // What was actually removed, not the printed amount — recorded
+            // for `Amount::CreditsLostThisResolution` (Account Siphon's
+            // "2[c] for each credit lost"), and emitted, since "loses 3"
+            // against a 2-credit pool loses 2.
+            let lost = (*amount).min(before);
+            state.resources_mut(*side).credits = Credits(before - lost);
+            ctx.credits_lost = lost;
+            Ok(vec![GameEvent::CreditsLost { side: *side, amount: lost }])
         }
 
         Effect::LoseClicks(amount) => {
@@ -1830,7 +1843,10 @@ pub(crate) fn computed_runner_strength(card: &InstalledRunnerCard, state: &GameS
         .and_then(|def| def.strength_modifier)
         .map(|modifier| match modifier {
             StrengthModifier::PerInstalledIcebreaker(per) => per * installed_icebreaker_count(state, registry) as i32,
-            StrengthModifier::WhileProtectingRemote(_) | StrengthModifier::WhileHostedAdvancementsAtLeast { .. } => 0,
+            // The three Corp-ICE modifiers never apply to a rig card.
+            StrengthModifier::WhileProtectingRemote(_)
+            | StrengthModifier::WhileHostedAdvancementsAtLeast { .. }
+            | StrengthModifier::PerHostedAdvancement(_) => 0,
         })
         .unwrap_or(0);
     card.effective_strength() + bonus
@@ -1844,6 +1860,7 @@ fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state: &GameStat
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
         Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,
+        Amount::CreditsLostThisResolution => ctx.credits_lost,
     }
 }
 
@@ -2231,13 +2248,13 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(replacement.clone()) }, &mut ResolutionContext::for_card(None),
+            &Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(replacement.clone()), optional: false }, &mut ResolutionContext::for_card(None),
             &CardRegistry::new())
         .unwrap();
 
         assert_eq!(
             state.active_run.as_ref().unwrap().access_replacement,
-            Some((ServerId::Hq, replacement))
+            Some((ServerId::Hq, replacement, false))
         );
         assert_eq!(events, vec![GameEvent::AccessReplacementSet { server: ServerId::Hq }]);
     }
@@ -2248,7 +2265,7 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::SetAccessReplacement {
+                &Effect::SetAccessReplacement { optional: false,
                     server: ServerId::Hq,
                     effect: Box::new(Effect::GainCredits(Side::Runner, 8)),
                 }, &mut ResolutionContext::for_card(None),

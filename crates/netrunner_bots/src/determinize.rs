@@ -388,6 +388,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             install_id: card.install_id,
             base_strength: card.current_strength,
             encounter_strength_buff: 0,
+            run_strength_buff: 0,
             turn_strength_buff: 0,
             // Both public and both carried by the view. `counters` was
             // simply being dropped, which made every counter-costed

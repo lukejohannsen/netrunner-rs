@@ -932,6 +932,7 @@ fn seed_rig_card(
         base_strength,
         card: card_id,
         encounter_strength_buff: 0,
+        run_strength_buff: 0,
         turn_strength_buff: 0,
         counters: 0,
         hosted_on_ice: None,

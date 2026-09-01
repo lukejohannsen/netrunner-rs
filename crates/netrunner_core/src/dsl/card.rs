@@ -36,6 +36,13 @@ pub enum StrengthModifier {
     /// Adds `bonus` while this card carries at least `threshold` hosted
     /// advancement tokens — e.g. Pharos.
     WhileHostedAdvancementsAtLeast { threshold: u32, bonus: i32 },
+    /// Adds the payload **per** hosted advancement token — Ice Wall's "+1
+    /// strength for each hosted advancement counter." Not expressible as
+    /// `WhileHostedAdvancementsAtLeast`, which is a threshold, not a rate.
+    /// Corp-ICE-only like the two threshold variants: baked by
+    /// `run::engine::build_run_ice` at encounter time (advancement cannot
+    /// change mid-run — `AdvanceCard` is a Corp action-phase click).
+    PerHostedAdvancement(i32),
 }
 
 /// A card subtype the engine dispatches a reactive identity trigger off of

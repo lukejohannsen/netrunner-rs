@@ -30,5 +30,8 @@
     }
   ],
   "numeric_id": 30048,
-  "is_playable": true
+  "is_playable": true,
+  "subtypes": [
+    "Transaction"
+  ]
 }

@@ -14,6 +14,7 @@
         {
           "SetAccessReplacement": {
             "server": "Hq",
+            "optional": true,
             "effect": {
               "Sequence": [
                 {
@@ -23,9 +24,15 @@
                   ]
                 },
                 {
-                  "GainCredits": [
+                  "GainCreditsAmount": [
                     "Runner",
-                    10
+                    "CreditsLostThisResolution"
+                  ]
+                },
+                {
+                  "GainCreditsAmount": [
+                    "Runner",
+                    "CreditsLostThisResolution"
                   ]
                 },
                 {
