@@ -640,6 +640,7 @@ mod system_gateway {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            source_install: None,
             resume: crate::rules::PendingChoiceResume::None,
         });
 
@@ -675,6 +676,7 @@ mod system_gateway {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            source_install: None,
             resume: crate::rules::PendingChoiceResume::None,
         };
         let run = |destination: crate::dsl::CardZoneRef| {
@@ -1157,7 +1159,7 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 1 })));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDrawn { side: Side::Runner })));
         assert!(state.runner.stack.is_empty(), "the drawn card should have left the stack");
-        assert!(state.runner.once_per_turn_used.contains("rene_loup_arcemont"));
+        assert!(state.runner.once_per_turn_used.iter().any(|k| k.tag == "rene_loup_arcemont"));
     }
 
     #[test]
@@ -2687,7 +2689,7 @@ mod system_gateway {
         );
         assert!(!state.corp.installed.iter().any(|c| c.card == CardId("pad_campaign".to_string())));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashedFromAccess { cost_paid: 0, .. })));
-        assert!(state.runner.once_per_turn_used.contains("carnivore"));
+        assert!(state.runner.once_per_turn_used.iter().any(|k| k.tag == "carnivore"));
     }
 
     #[test]
@@ -4381,6 +4383,85 @@ mod system_gateway {
 
         assert_eq!(state.corp.installed[0].advancement_tokens, 2);
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAdvanced { advancement_tokens: 2, .. })));
+    }
+
+    /// The `then` of a card selection acts on the *selected install*. It
+    /// used to act on the first install matching the selected card's id, so
+    /// with two Offworld Offices in two remotes Seamless Launch advanced the
+    /// wrong one — while `ScoreAgenda`, which names an `InstallId`, scored
+    /// from the right one, and the two disagreed.
+    #[test]
+    fn seamless_launch_advances_the_selected_offworld_office_not_the_first() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("seamless_launch".to_string())];
+        let office = |install: u32, server: ServerId| crate::rules::InstalledCard {
+            install_id: InstallId(install),
+            card: CardId("offworld_office".to_string()),
+            server,
+            installed_this_turn: false,
+            ..Default::default()
+        };
+        state.corp.installed = vec![office(1042, ServerId::Remote(0)), office(1043, ServerId::Remote(1))];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("seamless_launch".to_string()) })
+                .expect("play seamless launch");
+        // Position 1 in `corp.installed`: the second copy. (`position_of`
+        // is first-match by card, so it is not usable here.)
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("pick the second office");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+
+        assert_eq!(state.corp.installed[0].advancement_tokens, 0, "the first copy is untouched");
+        assert_eq!(state.corp.installed[1].advancement_tokens, 2, "the selected copy was advanced");
+    }
+
+    /// "Once per turn" is per card. Three installed Telework Contracts are
+    /// three cards; the per-turn key used to be the bare tag, so the copies
+    /// shared one use — and the counters spent came off the first copy
+    /// whichever one was clicked.
+    #[test]
+    fn two_telework_contracts_are_each_usable_once_per_turn_and_spend_their_own_counters() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        let contract = |install: u32| crate::rules::InstalledRunnerCard {
+            install_id: InstallId(install),
+            card: CardId("telework_contract".to_string()),
+            counters: 9,
+            ..Default::default()
+        };
+        state.runner.rig = vec![contract(2001), contract(2002)];
+        let credits_before = state.runner.resources.credits;
+
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 0 },
+        )
+        .expect("click the second contract");
+        assert_eq!(state.runner.rig[0].counters, 9, "the first copy keeps its counters");
+        assert_eq!(state.runner.rig[1].counters, 6, "the clicked copy paid");
+        assert_eq!(state.runner.resources.credits, credits_before.gain(3));
+
+        assert!(
+            matches!(
+                apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2002), ability_index: 0 }),
+                Err(RulesError::RequirementNotMet)
+            ),
+            "the same copy is spent for the turn"
+        );
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 },
+        )
+        .expect("the other copy has its own once-per-turn");
+        assert_eq!(state.runner.rig[0].counters, 6);
+        assert_eq!(state.runner.resources.credits, credits_before.gain(6));
     }
 
     /// The "that you did not install this turn" restriction is enforced by

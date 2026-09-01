@@ -1287,7 +1287,7 @@ fn activate_ability(
         return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
     }
     if let Some(requirement) = &ability.requirement {
-        ability::check_requirement(state, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
+        ability::check_requirement(state, requirement, side, &ability::ResolutionContext::for_install(target, &card_id), registry)?;
     }
 
     let mut next = state.clone();
@@ -1299,23 +1299,23 @@ fn activate_ability(
         // once-per-turn consumption, unlike `first_install_discount`.
         let discounted = match (cost, &ability.cost_discount_if) {
             (Cost::Credits(amount), Some((requirement, discount)))
-                if ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok() =>
+                if ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_install(target, &card_id), registry).is_ok() =>
             {
                 Cost::Credits(amount.saturating_sub(*discount))
             }
             _ => cost.clone(),
         };
-        events.extend(ability::pay_cost(&mut next, side, &discounted, Some(&card_id))?);
+        events.extend(ability::pay_cost_ctx(&mut next, side, &discounted, &ability::ResolutionContext::for_install(target, &card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
-    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability::ResolutionContext::for_card(Some(&card_id)), registry)?);
+    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability::ResolutionContext::for_install(target, &card_id), registry)?);
     // `check_requirement` above only reads — without this, a `Paid`
     // ability's `EffectRequirement::OncePerTurn` (e.g. Telework Contract's
     // click ability) would never actually get marked used and could be
     // activated any number of times per turn. Mirrors
     // `process_card_triggers`'s own check-then-consume ordering.
     if let Some(requirement) = &ability.requirement {
-        ability::consume_requirement(&mut next, requirement, side);
+        ability::consume_requirement(&mut next, requirement, side, &ability::ResolutionContext::for_install(target, &card_id));
     }
     paid_ability::note_window_action(&mut next, side);
 
@@ -3516,6 +3516,7 @@ mod tests {
         let mut state = corp_state(3, 5);
         state.active_trace = Some(crate::rules::state::TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength: 2,
             corp_bid: None,
             effect_on_success: Effect::GiveTags(1),
@@ -4980,6 +4981,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
             source_card: Some(CardId("parks_a_choice".to_string())),
+            source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
 

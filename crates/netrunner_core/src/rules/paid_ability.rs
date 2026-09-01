@@ -11,7 +11,7 @@ use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, AccessPhase, RunAction, RunPhase};
-use crate::rules::state::{GamePhase, GameState, PaidAbilityWindow, PendingPreventionKind, PreventionResume, Side, WindowCheckpoint};
+use crate::rules::state::{GamePhase, GameState, InstallId, PaidAbilityWindow, PendingPreventionKind, PreventionResume, Side, WindowCheckpoint};
 use crate::rules::turn;
 
 /// Opens a PAW at `checkpoint` with `active_priority` getting priority first
@@ -218,18 +218,16 @@ fn close_window(
 /// `EffectRequirement::DuringEncounter`: before it, every icebreaker in the
 /// rig answered "yes" here on every action of every turn.
 pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry, side: Side) -> bool {
-    active_cards_of(state, side).into_iter().any(|card_id| {
+    active_cards_of(state, side).into_iter().any(|(install, card_id)| {
         let Some(card) = registry.get(&card_id) else { return false };
+        // Asked per *install*, as `activate_ability` will resolve it: a
+        // `Cost::RemoveCounters` is affordable by the copy that holds the
+        // counters, and `OncePerTurn` is spent per copy.
+        let ctx = ability::ResolutionContext::for_install(install, &card_id);
         card.abilities.iter().any(|ability| {
             ability.trigger == Trigger::Paid
-                && ability
-                    .requirement
-                    .as_ref()
-                    .is_none_or(|req| ability::check_requirement(state, req, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok())
-                && ability
-                    .cost
-                    .as_ref()
-                    .is_none_or(|cost| ability::cost_is_affordable(state, side, cost, Some(&card_id)))
+                && ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, side, &ctx, registry).is_ok())
+                && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, side, cost, &ctx))
         })
     })
 }
@@ -244,10 +242,10 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
 /// is `PassPriority`. No identity in the pool declares a paid ability
 /// today; when one does, it needs an install handle first, and this list
 /// grows with it.
-fn active_cards_of(state: &GameState, side: Side) -> Vec<CardId> {
+fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, CardId)> {
     match side {
-        Side::Corp => state.corp.installed.iter().filter(|c| c.rezzed).map(|c| c.card.clone()).collect(),
-        Side::Runner => state.runner.rig.iter().map(|c| c.card.clone()).collect(),
+        Side::Corp => state.corp.installed.iter().filter(|c| c.rezzed).map(|c| (c.install_id, c.card.clone())).collect(),
+        Side::Runner => state.runner.rig.iter().map(|c| (c.install_id, c.card.clone())).collect(),
     }
 }
 
@@ -288,7 +286,7 @@ fn close_prevention_window(state: &mut GameState, registry: &CardRegistry) -> Re
                 // park a *new* prevention window, which would loop forever
                 // here (the card granting the ability doesn't get "used up"
                 // by one activation).
-                ability::trash_card(state, &target, pending.source_card.as_ref())?
+                ability::trash_card(state, &target, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?
             }
         }
     };
@@ -873,6 +871,7 @@ mod tests {
         state.pending_prevention = Some(PendingPrevention {
             kind: PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 3, prevented: 1 },
             source_card: None,
+            source_install: None,
             resume: PreventionResume::None,
         });
         state.paid_ability_window = Some(PaidAbilityWindow {
@@ -925,6 +924,7 @@ mod tests {
         state.pending_prevention = Some(PendingPrevention {
             kind: PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 1, prevented: 0 },
             source_card: None,
+            source_install: None,
             resume: PreventionResume::ResumeSubroutines,
         });
         state.paid_ability_window = Some(PaidAbilityWindow {

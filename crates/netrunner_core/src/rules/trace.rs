@@ -68,7 +68,7 @@ pub(crate) fn submit_runner_bid(
         events.extend(ability::evaluate_effect(
             state,
             &trace.effect_on_success,
-            &mut ability::ResolutionContext::for_card(trace.initiating_card.as_ref()),
+            &mut ability::ResolutionContext::for_parked(trace.initiating_install, trace.initiating_card.as_ref()),
             registry,
         )?);
     }
@@ -110,6 +110,7 @@ mod tests {
     fn active_trace(base_strength: u32, corp_bid: Option<u32>, on_success: Effect) -> TraceState {
         TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength,
             corp_bid,
             effect_on_success: on_success,
@@ -251,6 +252,7 @@ mod tests {
         crate::rules::test_support::install_the_runs_ice(&mut state);
         state.active_trace = Some(TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength: 2,
             corp_bid: Some(0),
             effect_on_success: Effect::EndTheRun,
@@ -270,6 +272,7 @@ mod tests {
         state.active_run = Some(ice_with_trace_pending_resume(Effect::GiveTags(3), Effect::EndTheRun));
         state.active_trace = Some(TraceState {
             initiating_card: None,
+            initiating_install: None,
             base_strength: 5,
             corp_bid: Some(0),
             effect_on_success: Effect::EndTheRun,

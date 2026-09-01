@@ -696,6 +696,7 @@ mod tests {
             // Position 0 — the rezzed Palisade.
             selected: vec![0],
             source_card: None,
+            source_install: None,
             resume: PendingChoiceResume::None,
         });
 
