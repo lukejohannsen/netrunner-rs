@@ -3719,6 +3719,35 @@ mod system_gateway {
         assert_eq!(state.runner.resources.clicks, Clicks(2), "1 for the event, 1 for its own click loss");
     }
 
+    /// Rules Audit T6: scoring is not an action. It costs no click and is
+    /// legal on zero clicks — the Corp advances an agenda with the turn's
+    /// last click and scores it before ending the turn, which a click cost
+    /// made impossible.
+    #[test]
+    fn scoring_costs_no_click_and_is_legal_on_zero_clicks() {
+        let registry = registry();
+        let mut state = base_state();
+        state.corp.resources.clicks = Clicks(0);
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1041),
+            card: CardId("offworld_office".to_string()),
+            server: ServerId::Remote(0),
+            advancement_tokens: 4,
+            ..Default::default()
+        }];
+        let target = install_of(&state, "offworld_office");
+
+        assert!(
+            crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::ScoreAgenda { target }),
+            "scoring is offered with no clicks left"
+        );
+        let (next, events) =
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target }).expect("scoring is free");
+        assert_eq!(next.corp.resources.clicks, Clicks(0));
+        assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::ClickSpent { .. })), "{events:?}");
+        assert_eq!(next.corp.scored_agendas, vec![CardId("offworld_office".to_string())]);
+    }
+
     #[test]
     fn luminal_transubstantiation_gains_three_clicks_and_locks_out_further_scoring() {
         let registry = sg_registry();
@@ -3748,8 +3777,9 @@ mod system_gateway {
         )
         .expect("luminal should score");
 
-        // 3 - 1 (the score action) + 3 (the agenda's own grant) = 5.
-        assert_eq!(state.corp.resources.clicks, Clicks(5));
+        // 3 + 3 (the agenda's own grant) = 6: scoring itself costs no
+        // click (Rules Audit T6).
+        assert_eq!(state.corp.resources.clicks, Clicks(6));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::ClicksGained { side: Side::Corp, amount: 3 })));
         assert!(state.corp.cannot_score_agendas_this_turn);
 

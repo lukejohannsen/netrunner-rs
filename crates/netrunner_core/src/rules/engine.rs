@@ -256,10 +256,17 @@ fn classify_action(action: &PlayerAction) -> ActionKind {
         | PlayerAction::PlayEvent { .. }
         | PlayerAction::PlayOperation { .. }
         | PlayerAction::AdvanceCard { .. }
-        | PlayerAction::ScoreAgenda { .. }
         | PlayerAction::RemoveTag
         | PlayerAction::TrashResource { .. }
         | PlayerAction::PurgeVirusCounters => ActionKind::BasicClickAction,
+
+        // Scoring costs no click and is not an action in the rules' sense,
+        // but it shares both consequences of the classification: it
+        // cannot happen while a run is in progress, and the Runner gets a
+        // window to respond after it — which is where "when the Corp
+        // scores an agenda" reactions live. Grouped here for those two
+        // guards, not for the click.
+        PlayerAction::ScoreAgenda { .. } => ActionKind::BasicClickAction,
 
         // `InitiateRun` is a click action, but the run it starts owns the
         // checkpoints from here on. Classifying it `Other` also keeps the
@@ -1267,8 +1274,14 @@ fn score_agenda(
     }
     let agenda_points = card_def.agenda_points.unwrap_or(0);
 
+    // No click is spent. Scoring is not one of the Corp's actions in
+    // Netrunner: an agenda with enough advancement may be scored any time
+    // the Corp has priority during their own turn, including on zero clicks
+    // before ending it. This used to `spend_click`, "matching AdvanceCard's
+    // shape" — and it changed what was scorable: a 5/3 advanced with the
+    // turn's last click could not be scored until the next turn (ROADMAP
+    // Rules Audit T6).
     let mut next = state.clone();
-    spend_click(&mut next, side)?;
     next.corp.installed.remove(position);
     next.corp.scored_agendas.push(card_id.clone());
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
@@ -1276,7 +1289,7 @@ fn score_agenda(
         next.corp.agenda_points_scored_this_turn.saturating_add(agenda_points);
 
     let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server };
-    let mut events = vec![GameEvent::ClickSpent { side }, scored_event.clone()];
+    let mut events = vec![scored_event.clone()];
     // `dispatch_event` fires the agenda's own "on score" text (e.g. Hostile
     // Takeover), then the Corp identity's reactive ability if one is set
     // (e.g. Jinteki: Personal Evolution) — unconditional dispatch, no
