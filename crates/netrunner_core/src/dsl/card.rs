@@ -191,21 +191,29 @@ pub struct CardDefinition {
     pub first_install_discount: Option<u32>,
 
     /// Memory units this Program reserves while installed — mirrors
-    /// `strength`'s shape exactly. `None` for the common case (Hardware, or
-    /// a Program not yet migrated to declare one); read by
-    /// `engine::install_program`, which otherwise leaves the caller-supplied
-    /// `PlayerAction::InstallProgram::memory_cost` unchecked. `Some` only
-    /// meaningful on `CardType::Program`.
+    /// `strength`'s shape exactly. `Some` only meaningful on
+    /// `CardType::Program`; every playable Program declares one, and `None`
+    /// reserves nothing.
+    ///
+    /// **The sole authority on the cost.** `PlayerAction::InstallProgram`
+    /// used to carry a caller-supplied `memory_cost` that had to match this
+    /// exactly — and `legal_actions` always named `0`, so every Program
+    /// with a cost was rejected by its own legality probe and could never
+    /// be installed. The action no longer carries one. Read here by
+    /// `engine::install_program` and summed by `rules::memory` over the
+    /// whole rig.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_cost: Option<u32>,
 
-    /// Additional memory units a Hardware install grants the Runner (e.g. a
-    /// console's "+1[mu]"), added to `RunnerState::memory_units` once at
-    /// `engine::install_hardware` time. `None` for the common case (no MU
-    /// bonus). The opposite direction of `memory_cost` — what a Program
-    /// *spends* rather than what Hardware *grants*. Deliberately never
-    /// decremented if the granting Hardware later leaves play (see
-    /// `install_hardware`'s doc comment).
+    /// Additional memory units this card grants the Runner (e.g. a
+    /// console's "+1[mu]"). `None` for the common case (no MU bonus). The
+    /// opposite direction of `memory_cost` — what Hardware *grants* rather
+    /// than what a Program *spends*, and `rules::memory` sums both over the
+    /// rig to derive the Runner's free memory.
+    ///
+    /// It therefore applies for exactly as long as the granting card is
+    /// installed. It used to be added once at `install_hardware` time and
+    /// never removed, so a trashed console kept granting memory forever.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_bonus: Option<u32>,
 

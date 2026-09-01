@@ -5,11 +5,12 @@ use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
+use crate::rules::memory;
 use crate::rules::paid_ability;
 use crate::rules::pending_choice;
 use crate::rules::run::{self, RunAction, RunPhase};
 use crate::rules::setup;
-use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, Side, WindowCheckpoint};
+use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, Side, WindowCheckpoint};
 use crate::rules::trace;
 use crate::rules::turn;
 use crate::rules::win;
@@ -105,12 +106,10 @@ pub fn apply_action(
         PlayerAction::PlayEvent { card_id } => play_event(state, registry, card_id),
         PlayerAction::PlayOperation { card_id } => play_operation(state, registry, card_id),
         PlayerAction::InstallHardware { card_id } => install_hardware(state, registry, card_id),
-        PlayerAction::InstallProgram { card_id, memory_cost } => {
-            install_program(state, registry, card_id, memory_cost)
-        }
+        PlayerAction::InstallProgram { card_id } => install_program(state, registry, card_id),
         PlayerAction::InstallResource { card_id } => install_resource(state, registry, card_id),
-        PlayerAction::InstallProgramOnIce { card_id, host, memory_cost } => {
-            install_program_on_ice(state, registry, card_id, host, memory_cost)
+        PlayerAction::InstallProgramOnIce { card_id, host } => {
+            install_program_on_ice(state, registry, card_id, host)
         }
         PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
             break_subroutine(state, ice_id, subroutine_index, registry)
@@ -176,6 +175,14 @@ pub fn apply_action(
     // a trigger actually parked something.
     let (mut next, mut events) = resolved;
     events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
+
+    // Refresh the Runner's memory report from what is now installed. Placed
+    // here for the same reason as the drain above: memory is derived from
+    // the board (`rules::memory`), and one call after every handler cannot
+    // be forgotten the way a refund threaded through each of the five paths
+    // a rig card leaves play by could. It runs after the drain because a
+    // deferred trigger can itself trash or install a rig card.
+    memory::refresh(&mut next, registry);
     events.extend(open_post_action_window(&mut next, registry, &action_kind));
     Ok((next, events))
 }
@@ -788,8 +795,8 @@ fn install_hardware(
     // "Limit 1 console per player" (e.g. Carnivore, Pennyshaver, Pantograph)
     // — checked after the ordinary phase/click/hand checks above, matching
     // every other card-specific rejection in this function (e.g.
-    // `MismatchedMemoryCost` in `install_program`) running only once the
-    // action is otherwise well-formed.
+    // `install_program`'s memory-budget check) running only once the action
+    // is otherwise well-formed.
     if card_def.subtypes.contains(&CardSubtype::Console)
         && next.runner.rig.iter().any(|installed| {
             registry.get(&installed.card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Console))
@@ -804,17 +811,16 @@ fn install_hardware(
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
-    // MU/max-hand-size bonuses (e.g. a console's "+1[mu]", T400 Memory
-    // Diamond's "+1 maximum hand size") take effect immediately on install.
-    // Deliberately one-way: neither is decremented if this Hardware later
-    // leaves play — see `RunnerState::max_hand_size_bonus`'s doc comment.
-    // Threading a `CardRegistry` through every trash path (`ability::
-    // trash_card`/`trash_this_card`/`pay_cost`) to refund these correctly
-    // would be a much larger refactor than this milestone's actual cards
-    // need; revisit if a future card's balance depends on the refund.
-    if let Some(bonus) = card_def.memory_bonus {
-        next.runner.memory_units = MemoryUnits(next.runner.memory_units.0 + bonus);
-    }
+    // `memory_bonus` is deliberately *not* applied here: memory is derived
+    // from what is installed (`memory::available_memory`), so a console's
+    // "+1[mu]" takes effect by virtue of the console being in the rig and
+    // goes away when it leaves. This used to add the bonus one-way, which
+    // meant a trashed console kept granting memory forever.
+    //
+    // `max_hand_size_bonus` stays one-way and is applied here, because it
+    // is genuinely not board-derived: Agendas (`Effect::GainMaxHandSize`)
+    // and identities contribute to it too, so summing the rig would not
+    // reproduce it. See `RunnerState::max_hand_size_bonus`.
     if let Some(bonus) = card_def.max_hand_size_bonus {
         next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
     }
@@ -823,40 +829,45 @@ fn install_hardware(
     Ok((next, events))
 }
 
+/// Rejects an install the Runner has no memory for, **before** any cost is
+/// paid, so an unaffordable one leaves the game state untouched.
+///
+/// Reads the derived budget (`memory::available_memory`) rather than a
+/// running balance: the two are the same number, but only one of them can
+/// go stale.
+fn require_memory_for(state: &GameState, registry: &CardRegistry, cost: u32) -> Result<(), RulesError> {
+    let available = memory::available_memory(state, registry);
+    if cost > available {
+        return Err(RulesError::InsufficientMemory { available, requested: cost });
+    }
+    Ok(())
+}
+
 fn install_program(
     state: &GameState,
     registry: &CardRegistry,
     card_id: CardId,
-    memory_cost: u8,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
+
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
 
-    let available = next.runner.memory_units.0;
-    let requested = memory_cost as u32;
-    next.runner.memory_units = next
-        .runner
-        .memory_units
-        .spend(requested)
-        .ok_or(RulesError::InsufficientMemory { available, requested })?;
-
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
-    // A registered `memory_cost` is authoritative — the caller-supplied
-    // value must match it exactly. `None` (the common case for a card with
-    // no `memory_cost` set yet) leaves the caller free to name any value,
-    // preserving this action's existing behavior for every card that
-    // hasn't been migrated to declare one.
-    if let Some(expected) = card_def.memory_cost
-        && expected != requested
-    {
-        return Err(RulesError::MismatchedMemoryCost { expected, actual: requested });
-    }
+    // The registry is the only authority on the cost — the action no longer
+    // carries one that could disagree with it. Checked against the derived
+    // budget rather than a running balance: the two are the same number,
+    // but only one of them can go stale. Ordered after the phase/click/hand
+    // checks like every other card-specific rejection here; an `Err` throws
+    // the whole cloned `next` away, so nothing is spent either way.
+    let memory_cost = card_def.memory_cost.unwrap_or(0);
+    require_memory_for(&next, registry, memory_cost)?;
+
     let mut cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Program);
     // A conditional per-card discount (e.g. Carmen: "-2 to install if you
     // made a successful run this turn") stacks independently on top of the
@@ -874,8 +885,11 @@ fn install_program(
     next.runner.rig.push(rig_card);
     // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
     // Programs only, unconditional otherwise — no per-turn gate) resolved by
-    // `dispatch_event` from this one event.
-    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost };
+    // `dispatch_event` from this one event. `memory_cost` is a record of
+    // what this install actually reserved, read from the registry — it used
+    // to be whatever the caller named, which `legal_actions` always set to 0.
+    let installed_event =
+        GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };
     events.push(installed_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
@@ -893,7 +907,6 @@ fn install_program_on_ice(
     registry: &CardRegistry,
     card_id: CardId,
     host: InstallId,
-    memory_cost: u8,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
@@ -917,26 +930,15 @@ fn install_program_on_ice(
     }
     let host_ice_id = host_install.card.clone();
 
+    let memory_cost = card_def.memory_cost.unwrap_or(0);
+
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
+    // Same budget check as `install_program`. The host validation above has
+    // to precede it because a bad host is the more specific complaint.
+    require_memory_for(&next, registry, memory_cost)?;
 
-    let available = next.runner.memory_units.0;
-    let requested = memory_cost as u32;
-    next.runner.memory_units = next
-        .runner
-        .memory_units
-        .spend(requested)
-        .ok_or(RulesError::InsufficientMemory { available, requested })?;
-
-    let card_def = registry
-        .get(&card_id)
-        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
-    if let Some(expected) = card_def.memory_cost
-        && expected != requested
-    {
-        return Err(RulesError::MismatchedMemoryCost { expected, actual: requested });
-    }
     let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Program);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
@@ -944,7 +946,7 @@ fn install_program_on_ice(
     let mut rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     rig_card.hosted_on_ice = Some(host_ice_id);
     next.runner.rig.push(rig_card);
-    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost };
+    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };
     events.push(installed_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
@@ -1721,15 +1723,16 @@ mod tests {
         state
     }
 
-    fn runner_state_with_grip(
-        clicks: u32,
-        credits: u32,
-        memory_units: u32,
-        grip: Vec<CardId>,
-    ) -> GameState {
+    /// No `memory_units` parameter: it is derived from the rig by
+    /// `rules::memory` and refreshed by `apply_action`, so a fixture that
+    /// set it would only be overwritten. A test needing a tight budget
+    /// gives its card a large `memory_cost` instead — see
+    /// `runner_install_program_with_insufficient_memory_returns_insufficient_memory`.
+    fn runner_state_with_grip(clicks: u32, credits: u32, grip: Vec<CardId>) -> GameState {
         let mut state = runner_state(clicks, 0, 0);
         state.runner.resources.credits = Credits(credits);
-        state.runner.memory_units = crate::rules::state::MemoryUnits(memory_units);
+        state.runner.memory_units =
+            crate::rules::state::MemoryUnits(crate::rules::memory::RUNNER_BASE_MEMORY_UNITS);
         state.runner.grip = grip;
         state
     }
@@ -2764,7 +2767,7 @@ mod tests {
     #[test]
     fn runner_play_event_removes_card_from_grip_and_spends_click_and_credits() {
         let card_id = CardId("sure_gamble".to_string());
-        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
         let mut registry = CardRegistry::new();
         registry.insert(test_card("sure_gamble", Side::Runner, CardType::Event, 5, None));
 
@@ -2790,7 +2793,7 @@ mod tests {
     #[test]
     fn runner_play_event_fires_on_play_trigger_and_grants_credits() {
         let card_id = CardId("sure_gamble".to_string());
-        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
         let mut registry = CardRegistry::new();
         let mut card = test_card("sure_gamble", Side::Runner, CardType::Event, 5, None);
         card.triggers = vec![TriggeredEffect {
@@ -2819,7 +2822,7 @@ mod tests {
     #[test]
     fn runner_play_event_not_in_registry_returns_card_not_found_in_registry() {
         let card_id = CardId("sure_gamble".to_string());
-        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
 
         let result = apply_action(&state, &registry(), PlayerAction::PlayEvent { card_id: card_id.clone() });
 
@@ -2829,7 +2832,7 @@ mod tests {
     #[test]
     fn runner_play_event_with_insufficient_credits_for_registry_cost_returns_not_enough_credits() {
         let card_id = CardId("sure_gamble".to_string());
-        let state = runner_state_with_grip(3, 0, 0, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 0, vec![card_id.clone()]);
         let mut registry = CardRegistry::new();
         registry.insert(test_card("sure_gamble", Side::Runner, CardType::Event, 5, None));
 
@@ -2859,7 +2862,7 @@ mod tests {
     #[test]
     fn runner_play_event_with_card_not_in_grip_returns_card_not_in_hand() {
         let card_id = CardId("sure_gamble".to_string());
-        let state = runner_state_with_grip(3, 5, 0, Vec::new());
+        let state = runner_state_with_grip(3, 5, Vec::new());
         let result = apply_action(&state, &registry(), PlayerAction::PlayEvent { card_id: card_id.clone() });
 
         assert_eq!(
@@ -2871,7 +2874,7 @@ mod tests {
     #[test]
     fn runner_play_event_with_zero_clicks_returns_not_enough_clicks() {
         let card_id = CardId("sure_gamble".to_string());
-        let state = runner_state_with_grip(0, 5, 0, vec![card_id.clone()]);
+        let state = runner_state_with_grip(0, 5, vec![card_id.clone()]);
         let result = apply_action(&state, &registry(), PlayerAction::PlayEvent { card_id });
 
         assert_eq!(
@@ -3075,7 +3078,7 @@ mod tests {
     #[test]
     fn runner_install_hardware_moves_card_from_grip_to_rig_and_spends_click() {
         let card_id = CardId("clone_chip".to_string());
-        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
         let mut reg = registry();
         reg.insert(test_card("clone_chip", Side::Runner, CardType::Hardware, 0, None));
         let (next, events) = apply_action(
@@ -3121,7 +3124,7 @@ mod tests {
     #[test]
     fn runner_install_hardware_with_card_not_in_grip_returns_card_not_in_hand() {
         let card_id = CardId("clone_chip".to_string());
-        let state = runner_state_with_grip(3, 5, 0, Vec::new());
+        let state = runner_state_with_grip(3, 5, Vec::new());
         let result = apply_action(&state, &registry(), PlayerAction::InstallHardware { card_id: card_id.clone() });
 
         assert_eq!(
@@ -3133,13 +3136,17 @@ mod tests {
     #[test]
     fn runner_install_program_moves_card_and_reserves_memory() {
         let card_id = CardId("gordian_blade".to_string());
-        let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
         let mut reg = registry();
-        reg.insert(test_card("gordian_blade", Side::Runner, CardType::Program, 0, None));
+        // Declares a cost, so this test actually exercises reservation —
+        // the amount now comes from the registry, not from the action.
+        let mut blade = test_card("gordian_blade", Side::Runner, CardType::Program, 0, None);
+        blade.memory_cost = Some(3);
+        reg.insert(blade);
         let (next, events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
+            PlayerAction::InstallProgram { card_id: card_id.clone() },
         )
         .expect("action should succeed");
 
@@ -3173,7 +3180,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallProgram { card_id, memory_cost: 3 },
+            PlayerAction::InstallProgram { card_id },
         );
 
         assert_eq!(
@@ -3188,11 +3195,11 @@ mod tests {
     #[test]
     fn runner_install_program_with_card_not_in_grip_returns_card_not_in_hand() {
         let card_id = CardId("gordian_blade".to_string());
-        let state = runner_state_with_grip(3, 5, 4, Vec::new());
+        let state = runner_state_with_grip(3, 5, Vec::new());
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
+            PlayerAction::InstallProgram { card_id: card_id.clone() },
         );
 
         assert_eq!(
@@ -3201,29 +3208,36 @@ mod tests {
         );
     }
 
+    /// Insufficiency now comes from the **card**, not from a hand-set
+    /// field: `memory_units` is a report derived from what is installed
+    /// (`rules::memory`), so setting it directly no longer expresses
+    /// anything. A program costing more than the base budget of 4 is the
+    /// honest way to reach the error.
     #[test]
     fn runner_install_program_with_insufficient_memory_returns_insufficient_memory() {
         let card_id = CardId("gordian_blade".to_string());
-        let state = runner_state_with_grip(3, 5, 2, vec![card_id.clone()]);
-        let result = apply_action(
-            &state,
-            &registry(),
-            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 3 },
-        );
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
+        let mut reg = registry();
+        let mut oversized = test_card("gordian_blade", Side::Runner, CardType::Program, 0, None);
+        oversized.memory_cost = Some(5);
+        reg.insert(oversized);
 
-        assert_eq!(
-            result,
-            Err(RulesError::InsufficientMemory { available: 2, requested: 3 })
-        );
+        let result =
+            apply_action(&state, &reg, PlayerAction::InstallProgram { card_id: card_id.clone() });
 
-        // Original state is untouched: the card is still in the grip.
+        assert_eq!(result, Err(RulesError::InsufficientMemory { available: 4, requested: 5 }));
+
+        // Rejected before anything is spent: the card is still in the grip,
+        // and the click and credits are untouched.
         assert_eq!(state.runner.grip, vec![card_id]);
+        assert_eq!(state.runner.resources.clicks, Clicks(3));
+        assert_eq!(state.runner.resources.credits, Credits(5));
     }
 
     #[test]
     fn install_program_seeds_base_strength_from_registry() {
         let card_id = CardId("corroder".to_string());
-        let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
         let mut reg = registry();
         let mut corroder = test_card("corroder", Side::Runner, CardType::Program, 0, None);
         corroder.strength = Some(2);
@@ -3232,7 +3246,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 1 },
+            PlayerAction::InstallProgram { card_id: card_id.clone() },
         )
         .expect("action should succeed");
 
@@ -3247,7 +3261,7 @@ mod tests {
     #[test]
     fn install_program_with_matching_registry_memory_cost_succeeds() {
         let card_id = CardId("corroder".to_string());
-        let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
         let mut reg = registry();
         let mut corroder = test_card("corroder", Side::Runner, CardType::Program, 0, None);
         corroder.memory_cost = Some(1);
@@ -3256,35 +3270,18 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 1 },
+            PlayerAction::InstallProgram { card_id: card_id.clone() },
         )
         .expect("action should succeed");
 
         assert_eq!(next.runner.memory_units, crate::rules::state::MemoryUnits(3));
     }
 
-    #[test]
-    fn install_program_with_mismatched_memory_cost_returns_mismatched_memory_cost() {
-        let card_id = CardId("corroder".to_string());
-        let state = runner_state_with_grip(3, 5, 4, vec![card_id.clone()]);
-        let mut reg = registry();
-        let mut corroder = test_card("corroder", Side::Runner, CardType::Program, 0, None);
-        corroder.memory_cost = Some(1);
-        reg.insert(corroder);
-
-        let result = apply_action(
-            &state,
-            &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 2 },
-        );
-
-        assert_eq!(result, Err(RulesError::MismatchedMemoryCost { expected: 1, actual: 2 }));
-    }
 
     #[test]
     fn install_hardware_seeds_zero_base_strength_for_non_strength_card() {
         let card_id = CardId("clone_chip".to_string());
-        let state = runner_state_with_grip(3, 5, 0, vec![card_id.clone()]);
+        let state = runner_state_with_grip(3, 5, vec![card_id.clone()]);
         let mut reg = registry();
         reg.insert(test_card("clone_chip", Side::Runner, CardType::Hardware, 0, None));
 

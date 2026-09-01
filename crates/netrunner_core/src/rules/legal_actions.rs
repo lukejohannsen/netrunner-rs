@@ -388,15 +388,20 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
         match card.card_type {
             CardType::Event => candidates.push(PlayerAction::PlayEvent { card_id: card_id.clone() }),
             CardType::Hardware => candidates.push(PlayerAction::InstallHardware { card_id: card_id.clone() }),
-            // No data-driven memory-unit stat exists on `CardDefinition` (see
-            // `CardDefinition::strength`'s doc comment) — `memory_cost` is entirely
-            // caller-chosen, so this only ever offers 0.
-            //
             // A Trojan (`installs_on_ice: true`, e.g. Botulus) can't be
             // installed via the ordinary Rig-install flow at all — see
             // `install_program_on_ice_candidates` instead.
+            //
+            // How much memory this reserves is not named here, and that is
+            // the whole point: this used to offer `memory_cost: 0` against a
+            // handler that demanded the registry's declared value, so every
+            // program with a cost — which is all of them — was rejected by
+            // the `apply_action` probe below and never offered at all. The
+            // comment that stood here justified the `0` by saying no
+            // memory-unit stat existed on `CardDefinition`. That was true
+            // when written and stopped being true when the field was added.
             CardType::Program if !card.installs_on_ice => {
-                candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), memory_cost: 0 })
+                candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone() })
             }
             CardType::Resource => candidates.push(PlayerAction::InstallResource { card_id: card_id.clone() }),
             _ => {}
@@ -434,7 +439,6 @@ fn install_program_on_ice_candidates(state: &GameState, registry: &CardRegistry)
                 candidates.push(PlayerAction::InstallProgramOnIce {
                     card_id: card_id.clone(),
                     host: *host,
-                    memory_cost: 0,
                 });
             }
         }

@@ -9,11 +9,7 @@ use crate::rules::turn;
 
 const STARTING_CREDITS: u32 = 5;
 const OPENING_HAND_SIZE: u32 = 5;
-/// Every Runner identity's base rig capacity in this engine (real Netrunner
-/// varies this per-identity; no identity-level override mechanism exists
-/// yet — see `CardDefinition::memory_cost`'s doc comment for the matching per-Program
-/// side of this budget).
-const RUNNER_BASE_MEMORY_UNITS: u32 = 4;
+use crate::rules::memory::RUNNER_BASE_MEMORY_UNITS;
 
 impl GameState {
     /// Validates both decks, builds a fresh, deterministically-seeded
@@ -44,6 +40,9 @@ impl GameState {
 
         state.corp.resources.credits = Credits(STARTING_CREDITS);
         state.runner.resources.credits = Credits(STARTING_CREDITS);
+        // Seeded directly rather than through `memory::refresh` only
+        // because the rig is provably empty here; every later change to it
+        // goes through the refresh in `engine::apply_action`.
         state.runner.memory_units = MemoryUnits(RUNNER_BASE_MEMORY_UNITS);
 
         state.corp.r_and_d = expand_deck(corp_deck);

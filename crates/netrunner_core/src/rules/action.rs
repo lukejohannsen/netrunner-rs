@@ -88,10 +88,22 @@ pub enum PlayerAction {
     /// Spend 1 click, move `card_id` from the Grip into the Rig. Runner-only.
     /// No credit cost yet, for the same reason as `PlayEvent`.
     InstallHardware { card_id: CardId },
-    /// Spend 1 click, move `card_id` from the Grip into the Rig, reserving
-    /// `memory_cost` memory units. Runner-only. No credit cost yet, for the
-    /// same reason as `PlayEvent`.
-    InstallProgram { card_id: CardId, memory_cost: u8 },
+    /// Spend 1 click, move `card_id` from the Grip into the Rig. Runner-only.
+    /// No credit cost yet, for the same reason as `PlayEvent`.
+    ///
+    /// **Carries no memory cost, deliberately.** It used to, and the caller
+    /// had to name a value matching the card's registry `memory_cost`
+    /// exactly — which `legal_actions` never did (it always offered `0`),
+    /// so no program with a declared cost was ever a legal action. The
+    /// registry is the only authority and every handler already holds one,
+    /// so the field was pure duplication with a way to be wrong. It also
+    /// could not survive the `ActionSpace` round trip: `action_at` takes no
+    /// `CardRegistry` and could only ever synthesise `0`.
+    ///
+    /// How many memory units this reserves is therefore not a property of
+    /// the action at all — see `runner::available_memory`, which derives
+    /// the Runner's free memory from what is on the board.
+    InstallProgram { card_id: CardId },
     /// Spend 1 click and `card_id`'s registry `cost` in credits, move
     /// `card_id` from the Grip into the Rig. Runner-only. Mirrors
     /// `InstallHardware` exactly (no memory-unit reservation, unlike
@@ -106,14 +118,14 @@ pub enum PlayerAction {
     /// Program (`dsl::CardDefinition::installs_on_ice == true`) and
     /// `host` must name a real Corp `InstalledCard` with `slot ==
     /// InstallSlot::Ice` — rezzed or not, real rules allow hosting on
-    /// unrezzed ICE. Mirrors `InstallProgram` otherwise (same memory-unit
-    /// reservation/cost computation) — e.g. Botulus, Tranquilizer.
+    /// unrezzed ICE. Mirrors `InstallProgram` otherwise, including carrying
+    /// no memory cost (see there) — e.g. Botulus, Tranquilizer.
     ///
     /// **`host` is an `InstallId` precisely because unrezzed ICE is a legal
     /// host.** Naming it by `CardId` handed the Runner the identity their
     /// own `ClientView` masks to `None` — a fog-of-war leak straight
     /// through `legal_actions_for`. See `state::InstallId`.
-    InstallProgramOnIce { card_id: CardId, host: InstallId, memory_cost: u8 },
+    InstallProgramOnIce { card_id: CardId, host: InstallId },
     /// Break the next pending subroutine on the ICE currently being
     /// encountered. Runner-only; delegates to `run::advance_run`'s
     /// `RunAction::BreakSubroutine`. `ice_id` is cross-checked against
