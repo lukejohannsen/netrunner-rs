@@ -186,14 +186,14 @@ impl NetrunnerEnv {
             return Err(OutOfRangeIndex(index));
         }
 
-        let value_before = evaluate_state(self.session.state(), self.agent_side);
+        let value_before = evaluate_state(self.session.state(), self.agent_side, self.session.registry());
 
         match self.submit_index(index) {
             Ok(()) => {
                 self.steps_this_episode += 1;
                 self.fast_forward_opponent();
 
-                let value_after = evaluate_state(self.session.state(), self.agent_side);
+                let value_after = evaluate_state(self.session.state(), self.agent_side, self.session.registry());
                 let reward = (squash(value_after) - squash(value_before)) as f32;
                 let terminated = self.is_over();
                 let truncated = !terminated && self.steps_this_episode >= self.max_episode_steps;

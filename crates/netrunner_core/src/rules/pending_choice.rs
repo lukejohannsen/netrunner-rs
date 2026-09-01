@@ -195,37 +195,31 @@ fn is_corp_archives(chooser: Side, zone: &CardZoneRef) -> bool {
     }
 }
 
-/// Removes `card_id` from an installed-card zone (`OpponentInstalled`/
-/// `OwnInstalled`), returning it to its owner's discard pile — the
-/// `TrashCard`-shaped half of `ConfirmCardSelection`'s resolution for
-/// Ballista/Retribution/Above the Law. No-ops (returns `false`) if
-/// `card_id` isn't actually installed there anymore, mirroring
-/// `ability::trash_this_card`'s "already gone" leniency.
-fn remove_installed_card(state: &mut GameState, chooser: Side, zone: &CardZoneRef, card_id: &CardId) -> bool {
-    let owner = owning_side(chooser, zone);
-    match owner {
+/// Takes the install `install_id` off its owner's table, returning the
+/// card and whether it was public there (rezzed, or any Runner card) so
+/// the caller can orient it in Archives. `None` if nothing by that id is
+/// installed any more, mirroring `ability::trash_this_card`'s "already
+/// gone" leniency.
+///
+/// Removal only — the caller pushes the card into the selection's
+/// `destination`, once. This used to push into the owner's discard pile
+/// itself *and* the caller then pushed into `destination`, so every card
+/// trashed through a selection (Ansel 1.0, Ballista, Retribution, Above the
+/// Law) arrived in the Heap or Archives twice. The card-conservation sweep
+/// caught it the first time a heuristic Runner installed a program for
+/// Ansel to trash. Keyed by `InstallId`, not first-matching `CardId`, so
+/// with two copies installed the one the chooser pointed at is the one
+/// that goes.
+fn remove_installed_card(state: &mut GameState, chooser: Side, zone: &CardZoneRef, install_id: InstallId) -> Option<(CardId, bool)> {
+    match owning_side(chooser, zone) {
         Side::Corp => {
-            if let Some(pos) = state.corp.installed.iter().position(|c| &c.card == card_id) {
-                // Rezzed installs were face-up on the table; unrezzed ones
-                // the Runner never saw. Same rule as `ability::trash_card`.
-                let was_rezzed = state.corp.installed[pos].rezzed;
-                state.corp.installed.remove(pos);
-                state.corp.archives.push(if was_rezzed {
-                    ArchivedCard::faceup(card_id.clone())
-                } else {
-                    ArchivedCard::facedown(card_id.clone())
-                });
-                return true;
-            }
-            false
+            let pos = state.corp.installed.iter().position(|c| c.install_id == install_id)?;
+            let removed = state.corp.installed.remove(pos);
+            Some((removed.card, removed.rezzed))
         }
         Side::Runner => {
-            if let Some(pos) = state.runner.rig.iter().position(|c| &c.card == card_id) {
-                state.runner.rig.remove(pos);
-                state.runner.heap.push(card_id.clone());
-                return true;
-            }
-            false
+            let pos = state.runner.rig.iter().position(|c| c.install_id == install_id)?;
+            Some((state.runner.rig.remove(pos).card, true))
         }
     }
 }
@@ -493,37 +487,42 @@ pub(crate) fn resolve_confirm_card_selection(
     let mut events = vec![GameEvent::CardsSelected { side, cards: selected.clone(), revealed: reveal }];
 
     if let Some(dest) = &destination {
-        for card_id in &selected {
-            let moved = match &source {
-                CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => {
-                    remove_installed_card(state, side, &source, card_id)
-                }
+        for (index, card_id) in selected.iter().enumerate() {
+            // `Some(was_public)` once the card has left `source`: whether
+            // the Runner had seen it decides its orientation if `dest` is
+            // Archives. A card from a hidden zone (HQ, R&D) was not seen; a
+            // rezzed install or any Runner card was.
+            let moved: Option<bool> = match &source {
+                CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => selected_installs
+                    .get(index)
+                    .and_then(|install_id| remove_installed_card(state, side, &source, *install_id))
+                    .map(|(_, was_public)| was_public),
                 _ if is_corp_archives(side, &source) => {
-                    if let Some(pos) = state.corp.archives.iter().position(|a| &a.card == card_id) {
-                        state.corp.archives.remove(pos);
-                        true
-                    } else {
-                        false
-                    }
+                    let pos = state.corp.archives.iter().position(|a| &a.card == card_id);
+                    pos.map(|pos| !state.corp.archives.remove(pos).facedown)
                 }
                 _ => {
                     if let Some(zone) = plain_zone_mut(state, side, &source)
                         && let Some(pos) = zone.iter().position(|c| c == card_id)
                     {
                         zone.remove(pos);
-                        true
+                        Some(false)
                     } else {
-                        false
+                        None
                     }
                 }
             };
-            if moved {
+            if let Some(was_public) = moved {
                 if is_corp_archives(side, dest) {
-                    // Everything routed into Archives this way is the Corp
-                    // trashing its own cards out of a hidden zone (HQ/R&D) —
-                    // e.g. Longevity Serum, Hansei Review, Anoetic Void — so
-                    // the Runner has not seen them and they land facedown.
-                    state.corp.archives.push(ArchivedCard::facedown(card_id.clone()));
+                    // The Corp trashing its own cards out of HQ/R&D (Longevity
+                    // Serum, Hansei Review, Anoetic Void) lands them facedown —
+                    // the Runner has not seen them. A rezzed install it trashes
+                    // was on the table and stays faceup.
+                    state.corp.archives.push(if was_public {
+                        ArchivedCard::faceup(card_id.clone())
+                    } else {
+                        ArchivedCard::facedown(card_id.clone())
+                    });
                 } else if let Some(zone) = plain_zone_mut(state, side, dest) {
                     zone.push(card_id.clone());
                 }
@@ -945,5 +944,44 @@ mod tests {
         assert!(state.pending_decision.is_none());
         assert!(state.runner.grip.is_empty(), "both copies left the grip");
         assert_eq!(state.runner.heap.len(), 2, "both copies reached the heap");
+    }
+
+    /// A card trashed through a selection must arrive in its discard pile
+    /// exactly once, and with two identical installs the one at the chosen
+    /// position is the one that goes. `remove_installed_card` used to push
+    /// into the Heap itself and then the destination branch pushed again —
+    /// found by the card-conservation sweep the first time a heuristic
+    /// Runner installed a program for Ansel 1.0 to trash.
+    #[test]
+    fn trashing_an_installed_card_through_a_selection_moves_it_exactly_once_by_install_id() {
+        use crate::dsl::{CardFilter, CardZoneRef};
+        use crate::rules::state::{InstalledRunnerCard, PendingChoiceResume};
+
+        let mut state = GameState::new(0);
+        let marjanah = CardId("marjanah".to_string());
+        state.runner.rig = vec![
+            InstalledRunnerCard { card: marjanah.clone(), install_id: InstallId(1), counters: 1, ..Default::default() },
+            InstalledRunnerCard { card: marjanah.clone(), install_id: InstallId(2), counters: 2, ..Default::default() },
+        ];
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OpponentInstalled,
+            filter: CardFilter::Any,
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(CardZoneRef::OpponentDiscard),
+            then: None,
+            selected: vec![1],
+            source_card: None,
+            resume: PendingChoiceResume::None,
+        });
+
+        resolve_confirm_card_selection(&mut state, &CardRegistry::new()).expect("a valid selection resolves");
+
+        assert_eq!(state.runner.heap, vec![marjanah], "one copy in the Heap, not two");
+        assert_eq!(state.runner.rig.len(), 1);
+        assert_eq!(state.runner.rig[0].install_id, InstallId(1), "the copy at position 1 (id 2) was trashed");
     }
 }

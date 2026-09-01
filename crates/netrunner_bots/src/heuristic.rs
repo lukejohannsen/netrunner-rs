@@ -40,7 +40,7 @@ impl BotAgent for HeuristicAgent {
         let mut best: Option<(f64, usize)> = None;
         for (index, action) in view.legal_actions.iter().enumerate() {
             let Ok((next, _events)) = apply_action(&sample, registry, action.clone()) else { continue };
-            let score = evaluate_state(&next, self.side) + self.rng.random::<f64>() * TIE_BREAK_JITTER;
+            let score = evaluate_state(&next, self.side, registry) + self.rng.random::<f64>() * TIE_BREAK_JITTER;
             if best.is_none_or(|(best_score, _)| score > best_score) {
                 best = Some((score, index));
             }
