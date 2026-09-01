@@ -121,11 +121,6 @@ pub fn evaluate_effect(
             }
         }
 
-        Effect::BreakSubroutine(index) => {
-            let (card_id, _effect) = run::transition_subroutine(state, *index, SubroutineStatus::Broken)?;
-            Ok(vec![GameEvent::SubroutineBroken { card_id, index: *index }])
-        }
-
         Effect::ModifyStrength(delta) => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             if run.phase != RunPhase::EncounterIce {
@@ -2232,87 +2227,6 @@ mod tests {
                 .collect(),
             rezzed,
         }
-    }
-
-    #[test]
-    fn break_subroutine_breaks_the_targeted_pending_subroutine() {
-        let mut state = game_state();
-        state.active_run = Some(RunState {
-            phase: RP::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 2, true)],
-            jack_out_permitted: true,
-            ..Default::default()
-        });
-
-        let events = evaluate_effect(&mut state, &Effect::BreakSubroutine(0), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
-
-        assert_eq!(
-            events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
-        );
-        let run = state.active_run.unwrap();
-        assert_eq!(run.ice[0].subroutines[0].status, SubroutineStatus::Broken);
-        assert_eq!(run.ice[0].subroutines[1].status, SubroutineStatus::Pending);
-    }
-
-    #[test]
-    fn break_subroutine_out_of_range_index_errors() {
-        let mut state = game_state();
-        state.active_run = Some(RunState {
-            phase: RP::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
-            jack_out_permitted: true,
-            ..Default::default()
-        });
-
-        assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(1), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
-            Err(RulesError::InvalidSubroutineIndex(1))
-        );
-    }
-
-    #[test]
-    fn break_subroutine_already_broken_errors() {
-        let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 1, true);
-        ice.subroutines[0].status = SubroutineStatus::Broken;
-        state.active_run =
-            Some(RunState {
-                phase: RP::EncounterIce,
-                ice: vec![ice],
-                jack_out_permitted: true,
-                ..Default::default()
-            });
-
-        assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
-            Err(RulesError::SubroutineAlreadyHandled)
-        );
-    }
-
-    #[test]
-    fn break_subroutine_with_no_active_run_errors() {
-        let mut state = game_state();
-        assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
-            Err(RulesError::NoActiveRun)
-        );
-    }
-
-    #[test]
-    fn break_subroutine_outside_encounter_ice_errors() {
-        let mut state = game_state();
-        state.active_run =
-            Some(RunState {
-                phase: RP::ApproachIce,
-                jack_out_permitted: true,
-                ..Default::default()
-            });
-
-        assert_eq!(
-            evaluate_effect(&mut state, &Effect::BreakSubroutine(0), &mut ResolutionContext::for_card(None), &CardRegistry::new()),
-            Err(RulesError::NotInEncounter)
-        );
     }
 
     #[test]

@@ -124,7 +124,6 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         | PlayerAction::InstallProgram { .. }
         | PlayerAction::InstallResource { .. }
         | PlayerAction::InstallProgramOnIce { .. }
-        | PlayerAction::BreakSubroutine { .. }
         | PlayerAction::BreakSubroutineWithClick { .. }
         | PlayerAction::RemoveTag
         | PlayerAction::SelectCardToAccess { .. }
@@ -199,7 +198,6 @@ fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
     candidates.extend(initiate_run_candidates(state));
     candidates.extend(play_card_candidates(state, registry));
     candidates.extend(install_program_on_ice_candidates(state, registry));
-    candidates.extend(break_subroutine_candidates(state));
     candidates.extend(break_subroutine_with_click_candidates(state, registry));
     candidates.extend(discard_candidates(state));
     candidates.extend(activate_ability_candidates(state, registry));
@@ -446,23 +444,8 @@ fn install_program_on_ice_candidates(state: &GameState, registry: &CardRegistry)
     candidates
 }
 
-/// Exact read of the ICE currently being encountered's pending subroutines
-/// — no guessing needed, `RunIce`/`EncounteredSubroutine` give this
-/// directly.
-fn break_subroutine_candidates(state: &GameState) -> Vec<PlayerAction> {
-    let Some(run) = &state.active_run else { return Vec::new() };
-    if run.phase != RunPhase::EncounterIce {
-        return Vec::new();
-    }
-    let Some(ice) = run.ice.get(run.position) else { return Vec::new() };
-    ice.subroutines
-        .iter()
-        .filter(|s| s.status == SubroutineStatus::Pending)
-        .map(|s| PlayerAction::BreakSubroutine { ice_id: ice.card_id.clone(), subroutine_index: s.id })
-        .collect()
-}
 
-/// Same shape as `break_subroutine_candidates`, gated additionally on the
+/// One `BreakSubroutineWithClick` per pending subroutine, gated on the
 /// currently-encountered ICE being `click_breakable` and the Runner having
 /// at least 1 click left to spend — e.g. Ansel 1.0, Brân 1.0.
 fn break_subroutine_with_click_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
@@ -899,8 +882,11 @@ mod tests {
         let legal = legal_actions(&state, &registry);
 
         assert!(legal.contains(&PlayerAction::PassPriority { side: Side::Runner }));
-        assert!(legal.contains(&PlayerAction::BreakSubroutine { ice_id: CardId("wall_of_static".to_string()), subroutine_index: 0 }));
+        // The breaker's pump is offered; no free break exists. Wall of
+        // Static is not a bioroid either, so the click-break is not offered
+        // — the Runner's only way through is the breaker (Rules Audit T1).
         assert!(legal.contains(&PlayerAction::ActivateAbility { target: install_of(&state, "corroder"), ability_index: 0 }));
+        assert!(!legal.iter().any(|a| matches!(a, PlayerAction::BreakSubroutineWithClick { .. })));
         assert!(!legal.iter().any(|a| matches!(
             a,
             PlayerAction::GainCreditClick { .. }

@@ -248,9 +248,6 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::InstallProgramOnIce { card_id, host, .. } => {
             format!("Install {} onto {}", title(card_id), install_label(host))
         }
-        PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
-            format!("Break subroutine {subroutine_index} on {}", title(ice_id))
-        }
         PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index } => {
             format!("Break subroutine {subroutine_index} on {} (spend a click)", title(ice_id))
         }
