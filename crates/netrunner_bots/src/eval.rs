@@ -102,6 +102,24 @@ const STRENGTH_SHORTFALL_WEIGHT: f64 = 0.9;
 /// 0.3 more. (Carmen's install is +0.5, already below a run at +0.6; a
 /// pre-existing weight interaction this term does not touch.)
 const SAVINGS_SHORTFALL_WEIGHT: f64 = 0.3;
+/// Each card the Runner's grip is below `GRIP_FLOOR`. A card in hand was
+/// worth nothing to the evaluator, so `DrawCardClick` never beat anything
+/// and the heuristic Runner clicked it once in 96 games: its grip was the
+/// opening hand plus event draws, which is what capped program installs
+/// at 66 per 96 games after the run and savings terms — a breaker in the
+/// opening hand was installed on turn one, and no other breaker was ever
+/// drawn (ROADMAP Phase 2 §5). Shaped as a shortfall below a floor rather
+/// than a value per card so it does not tax installs from a healthy hand:
+/// below the floor a draw is +0.7, ahead of an open-server run's +0.6 and
+/// a credit's +0.4, and installing from a 3-card grip loses 0.7 of
+/// Cleaver's +1.3 — so the Runner draws one card first, then installs at
+/// full margin; at or above the floor the term is flat and runs resume.
+/// The floor is below the hand limit so a draw never has to be discarded.
+/// Runner-only: the Corp's mandatory draw hides the same blindness, and
+/// what a heuristic Corp should hold is a different question.
+const GRIP_SHORTFALL_WEIGHT: f64 = 0.7;
+/// Cards in grip below which `GRIP_SHORTFALL_WEIGHT` applies.
+const GRIP_FLOOR: usize = 3;
 
 /// A rough static evaluation of `state` from `side`'s perspective: positive
 /// favors `side`, negative favors the opponent. Shared by `HeuristicAgent`'s
@@ -141,6 +159,7 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
             score += state.runner.memory_units.0 as f64 * MEMORY_WEIGHT;
             score += breaker_coverage(state, registry) as f64 * BREAKER_COVERAGE_WEIGHT;
             score -= breaker_savings_shortfall(state, registry) as f64 * SAVINGS_SHORTFALL_WEIGHT;
+            score -= GRIP_FLOOR.saturating_sub(state.runner.grip.len()) as f64 * GRIP_SHORTFALL_WEIGHT;
             if let Some(run) = &state.active_run {
                 if run_is_breakable(state, run, registry) {
                     score += ACTIVE_RUN_WEIGHT;
@@ -835,5 +854,38 @@ mod tests {
         installed.runner.memory_units = MemoryUnits(3);
         installed.runner.rig = vec![rig_card("cleaver")];
         assert!(evaluate_state(&installed, Side::Runner, &registry) > evaluate_state(&clicked, Side::Runner, &registry));
+    }
+
+    /// The grip term is a shortfall below a floor: each card up to the
+    /// floor is worth `GRIP_SHORTFALL_WEIGHT`, cards past it nothing.
+    #[test]
+    fn a_grip_below_the_floor_costs_something_and_a_full_one_does_not() {
+        let registry = CardRegistry::new();
+        let with_grip = |cards: usize| {
+            let mut state = GameState::new(0);
+            state.runner.grip = (0..cards).map(|i| CardId(format!("card_{i}"))).collect();
+            evaluate_state(&state, Side::Runner, &registry)
+        };
+        assert!((with_grip(1) - with_grip(0) - GRIP_SHORTFALL_WEIGHT).abs() < 1e-9);
+        assert!((with_grip(GRIP_FLOOR) - with_grip(GRIP_FLOOR - 1) - GRIP_SHORTFALL_WEIGHT).abs() < 1e-9);
+        assert_eq!(with_grip(GRIP_FLOOR + 1), with_grip(GRIP_FLOOR), "cards past the floor are worth nothing");
+    }
+
+    /// Why the weight sits above the run term: with a thin grip a draw
+    /// beats an open-server run; with the floor met, the run wins again.
+    #[test]
+    fn drawing_beats_an_open_run_below_the_grip_floor_and_not_above_it() {
+        use netrunner_core::rules::ServerId;
+        let registry = CardRegistry::new();
+        let holding = |cards: usize, running: bool| {
+            let mut state = GameState::new(0);
+            state.runner.grip = (0..cards).map(|i| CardId(format!("card_{i}"))).collect();
+            if running {
+                state.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
+            }
+            evaluate_state(&state, Side::Runner, &registry)
+        };
+        assert!(holding(GRIP_FLOOR, false) > holding(GRIP_FLOOR - 1, true), "draw up to the floor first");
+        assert!(holding(GRIP_FLOOR, true) > holding(GRIP_FLOOR + 1, false), "then run rather than keep drawing");
     }
 }

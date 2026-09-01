@@ -205,6 +205,29 @@ mod tests {
         assert_eq!(chosen, PlayerAction::GainCreditClick { side: Side::Runner }, "should save for Cleaver");
     }
 
+    /// With an empty grip, open servers and a stack to draw from, the
+    /// Runner draws before it runs (ROADMAP Phase 2 §5's draw item).
+    #[test]
+    fn draws_with_an_empty_grip_instead_of_running_an_open_server() {
+        let mut registry = CardRegistry::new();
+        let mut filler = blank_card("filler", CardType::Resource);
+        filler.side = Side::Runner;
+        filler.cost = 9;
+        registry.insert(filler);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.stack = vec![CardId("filler".to_string()); 5];
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(view.legal_actions.iter().any(|a| matches!(a, PlayerAction::InitiateRun { .. })));
+        assert!(view.legal_actions.contains(&PlayerAction::DrawCardClick { side: Side::Runner }));
+
+        let chosen = HeuristicAgent::new(Side::Runner, 3).select_action(&view, &registry);
+        assert_eq!(chosen, PlayerAction::DrawCardClick { side: Side::Runner });
+    }
+
     #[test]
     fn always_returns_a_member_of_legal_actions() {
         let mut registry = CardRegistry::new();
