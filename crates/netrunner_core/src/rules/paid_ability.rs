@@ -227,18 +227,20 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
 }
 
 /// Every card `side` could activate a paid ability from: their rezzed
-/// installs (Corp) or rig (Runner), plus their identity.
+/// installs (Corp) or rig (Runner).
+///
+/// **Not the identity.** `ActivateAbility` names an `InstallId`, and an
+/// identity has none — `activate_ability_candidates` never offers one and
+/// `engine::activate_ability` could not resolve one — so an identity paid
+/// ability counted here would open a window in which the only legal move
+/// is `PassPriority`. No identity in the pool declares a paid ability
+/// today; when one does, it needs an install handle first, and this list
+/// grows with it.
 fn active_cards_of(state: &GameState, side: Side) -> Vec<CardId> {
-    let mut cards: Vec<CardId> = match side {
+    match side {
         Side::Corp => state.corp.installed.iter().filter(|c| c.rezzed).map(|c| c.card.clone()).collect(),
         Side::Runner => state.runner.rig.iter().map(|c| c.card.clone()).collect(),
-    };
-    let identity = match side {
-        Side::Corp => state.corp.identity.clone(),
-        Side::Runner => state.runner.identity.clone(),
-    };
-    cards.extend(identity);
-    cards
+    }
 }
 
 /// `close_window`'s `WindowCheckpoint::Prevention` arm: applies whatever's
@@ -428,6 +430,31 @@ mod tests {
             phase: GamePhase::Action(Side::Runner),
             ..Default::default()
         }
+    }
+
+    /// An identity's paid ability cannot be activated (`ActivateAbility`
+    /// names an `InstallId`; an identity has none), so it must not count as
+    /// "usable" either — that opened a post-action window whose only legal
+    /// move was `PassPriority`.
+    #[test]
+    fn an_identitys_paid_ability_does_not_count_as_usable() {
+        let mut registry = CardRegistry::new();
+        registry.insert(crate::dsl::CardDefinition {
+            id: CardId("identity_with_paid_ability".to_string()),
+            card_type: crate::dsl::CardType::Identity,
+            abilities: vec![crate::dsl::AbilityDef {
+                trigger: Trigger::Paid,
+                cost: None,
+                requirement: None,
+                effect: Effect::GainCredits(Side::Corp, 1),
+                cost_discount_if: None,
+            }],
+            ..Default::default()
+        });
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("identity_with_paid_ability".to_string()));
+
+        assert!(!has_usable_paid_ability(&state, &registry, Side::Corp));
     }
 
     fn run_ice(rezzed: bool, subroutines: Vec<EncounteredSubroutine>) -> RunIce {

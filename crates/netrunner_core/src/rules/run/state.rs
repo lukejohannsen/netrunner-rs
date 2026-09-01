@@ -81,10 +81,8 @@ pub struct RunIce {
     pub current_strength: i32,
     /// This ICE's subtype, seeded from `CardDefinition::card_type`'s `CardType::Ice(_)`
     /// at `engine::build_run_ice` — the data `Effect::BreakSubroutines`'s
-    /// `restrict_to` gate compares against. Defaults to `IceType::Barrier`
-    /// for an unregistered card (same leniency as `current_strength`'s `0`
-    /// default), which is harmless since such ICE has no strength/
-    /// subroutines to break anyway.
+    /// `restrict_to` gate compares against. A card that is not ICE never
+    /// becomes a `RunIce` at all (it used to default to `Barrier`).
     pub ice_type: IceType,
     pub subroutines: Vec<EncounteredSubroutine>,
     /// Mirrors `InstalledCard::rezzed` — flipped by `rez_ice` when rezzing

@@ -35,7 +35,7 @@
                     "origin_zone": "OwnHq",
                     "into": "Archives",
                     "slot": "Ice",
-                    "insert_after": ""
+                    "insert_after": 0
                   }
                 }
               }
@@ -59,7 +59,7 @@
                     "origin_zone": "OwnArchives",
                     "into": "Archives",
                     "slot": "Ice",
-                    "insert_after": ""
+                    "insert_after": 0
                   }
                 }
               }

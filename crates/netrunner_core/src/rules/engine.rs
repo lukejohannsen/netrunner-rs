@@ -8,7 +8,7 @@ use crate::rules::event::GameEvent;
 use crate::rules::memory;
 use crate::rules::paid_ability;
 use crate::rules::pending_choice;
-use crate::rules::run::{self, RunAction, RunPhase};
+use crate::rules::run::{self, RunAction, RunPhase, ServerId};
 use crate::rules::setup;
 use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, Side, WindowCheckpoint};
 use crate::rules::trace;
@@ -418,6 +418,24 @@ fn install_card(
     // The registry lookup stays even though the printed cost is not paid
     // here: a card the engine cannot describe is not installable.
     let card_def = registry.get(&card_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    // The slot must fit the card. `install_card_candidates` only ever
+    // offers matching pairs, but `apply_action` is the authority, not
+    // `legal_actions` (AGENTS.md): a remote client submits here directly,
+    // and without this an agenda in an ICE slot became a 0-strength barrier
+    // the run encountered. Agendas and assets are remote-only; upgrades may
+    // root on a central.
+    match (slot, &card_def.card_type) {
+        (InstallSlot::Ice, CardType::Ice(_)) | (InstallSlot::Root, CardType::Upgrade) => {}
+        (InstallSlot::Ice, _) => return Err(RulesError::CardTypeMismatch { card: card_id, expected: "ice" }),
+        (InstallSlot::Root, CardType::Agenda | CardType::Asset) => {
+            if !matches!(zone, ServerId::Remote(_)) {
+                return Err(RulesError::NotInstallableInCentralServer { card: card_id });
+            }
+        }
+        (InstallSlot::Root, _) => {
+            return Err(RulesError::CardTypeMismatch { card: card_id, expected: "an agenda, asset or upgrade" });
+        }
+    }
     let mut events = vec![GameEvent::ClickSpent { side }];
 
     // A remote holds one agenda or asset. Installing a second is
@@ -740,6 +758,11 @@ fn play_event(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    // `apply_action` owns the type check (see `install_card`); before it,
+    // any grip card could be "played" as an event and sent to the heap.
+    if card_def.card_type != CardType::Event {
+        return Err(RulesError::CardTypeMismatch { card: card_id, expected: "an event" });
+    }
     // Hard play-legality gate (e.g. Scorched Earth's "the Runner must be
     // tagged") — checked before its credit cost is paid, mirroring
     // `activate_ability`'s identical placement for `AbilityDef::requirement`.
@@ -912,6 +935,9 @@ fn install_hardware(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if card_def.card_type != CardType::Hardware {
+        return Err(RulesError::CardTypeMismatch { card: card_id, expected: "hardware" });
+    }
     // "Limit 1 console per player" (e.g. Carnivore, Pennyshaver, Pantograph)
     // — checked after the ordinary phase/click/hand checks above, matching
     // every other card-specific rejection in this function (e.g.
@@ -980,6 +1006,9 @@ fn install_program(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if card_def.card_type != CardType::Program {
+        return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program" });
+    }
     // The registry is the only authority on the cost — the action no longer
     // carries one that could disagree with it. Checked against the derived
     // budget rather than a running balance: the two are the same number,
@@ -1037,6 +1066,9 @@ fn install_program_on_ice(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if card_def.card_type != CardType::Program {
+        return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program" });
+    }
     if !card_def.installs_on_ice {
         return Err(RulesError::NotATrojanProgram(card_id));
     }
@@ -1098,6 +1130,9 @@ fn install_resource(
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
+    if card_def.card_type != CardType::Resource {
+        return Err(RulesError::CardNotResource { card: card_id });
+    }
     let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Resource);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
@@ -5149,6 +5184,68 @@ mod tests {
             "the event says which of the card's triggers was picked"
         );
         assert!(next.pending_decision.is_none());
+    }
+
+    /// `apply_action` is the authority on legality, not `legal_actions`:
+    /// a remote client submits straight into it. Every install/play
+    /// handler therefore checks the card's type against what the action
+    /// does, instead of trusting the candidate generator to have paired
+    /// them. Before this, an agenda submitted with `InstallSlot::Ice` was
+    /// installed as ICE and encountered as a 0-strength barrier.
+    #[test]
+    fn install_and_play_handlers_reject_a_card_of_the_wrong_type() {
+        let mut registry = CardRegistry::new();
+        registry.insert(test_card("agenda", Side::Corp, CardType::Agenda, 0, Some(3)));
+        registry.insert(test_card("ice", Side::Corp, CardType::Ice(crate::dsl::IceType::Barrier), 0, None));
+        registry.insert(test_card("event", Side::Runner, CardType::Event, 0, None));
+        registry.insert(test_card("hardware", Side::Runner, CardType::Hardware, 0, None));
+        registry.insert(test_card("program", Side::Runner, CardType::Program, 0, None));
+        registry.insert(test_card("resource", Side::Runner, CardType::Resource, 0, None));
+        let card = |id: &str| CardId(id.to_string());
+
+        let mut corp = corp_state(3, 5);
+        corp.corp.hq = vec![card("agenda"), card("ice")];
+        let install = |card_id: &str, zone: ServerId, slot: InstallSlot| {
+            apply_action(&corp, &registry, PlayerAction::InstallCard { card_id: card(card_id), zone, slot })
+        };
+        assert_eq!(
+            install("agenda", ServerId::Remote(0), InstallSlot::Ice).err(),
+            Some(RulesError::CardTypeMismatch { card: card("agenda"), expected: "ice" })
+        );
+        assert_eq!(
+            install("ice", ServerId::Remote(0), InstallSlot::Root).err(),
+            Some(RulesError::CardTypeMismatch { card: card("ice"), expected: "an agenda, asset or upgrade" })
+        );
+        assert_eq!(
+            install("agenda", ServerId::Hq, InstallSlot::Root).err(),
+            Some(RulesError::NotInstallableInCentralServer { card: card("agenda") })
+        );
+        assert!(install("agenda", ServerId::Remote(0), InstallSlot::Root).is_ok(), "the matching pair still works");
+        assert!(install("ice", ServerId::Hq, InstallSlot::Ice).is_ok());
+
+        let mut runner = runner_state(4, 0, 0);
+        runner.runner.grip = vec![card("event"), card("hardware"), card("program"), card("resource")];
+        let play = |action: PlayerAction| apply_action(&runner, &registry, action).err();
+        assert_eq!(
+            play(PlayerAction::PlayEvent { card_id: card("resource") }),
+            Some(RulesError::CardTypeMismatch { card: card("resource"), expected: "an event" })
+        );
+        assert_eq!(
+            play(PlayerAction::InstallHardware { card_id: card("program") }),
+            Some(RulesError::CardTypeMismatch { card: card("program"), expected: "hardware" })
+        );
+        assert_eq!(
+            play(PlayerAction::InstallProgram { card_id: card("hardware") }),
+            Some(RulesError::CardTypeMismatch { card: card("hardware"), expected: "a program" })
+        );
+        assert_eq!(
+            play(PlayerAction::InstallResource { card_id: card("event") }),
+            Some(RulesError::CardNotResource { card: card("event") })
+        );
+        assert_eq!(play(PlayerAction::PlayEvent { card_id: card("event") }), None);
+        assert_eq!(play(PlayerAction::InstallHardware { card_id: card("hardware") }), None);
+        assert_eq!(play(PlayerAction::InstallProgram { card_id: card("program") }), None);
+        assert_eq!(play(PlayerAction::InstallResource { card_id: card("resource") }), None);
     }
 
     /// Corp state whose Runner opponent holds one usable paid ability

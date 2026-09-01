@@ -354,7 +354,17 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
                     candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot: InstallSlot::Root });
                 }
             }
-            _ => {}
+            // Spelled out rather than `_ => {}` so a new `CardType` is a
+            // compile error here instead of a card class that silently
+            // never gets offered — which is the shape the memory-cost bug
+            // had (`play_card_candidates`). Operations are played, not
+            // installed; the Runner types cannot be in HQ.
+            CardType::Operation
+            | CardType::Identity
+            | CardType::Event
+            | CardType::Hardware
+            | CardType::Program
+            | CardType::Resource => {}
         }
     }
     candidates
@@ -410,7 +420,17 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
                 candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone() })
             }
             CardType::Resource => candidates.push(PlayerAction::InstallResource { card_id: card_id.clone() }),
-            _ => {}
+            // A trojan (`installs_on_ice`) — offered by
+            // `install_program_on_ice_candidates` instead.
+            CardType::Program => {}
+            // Corp types cannot be in the grip. Listed, not `_`, so a new
+            // `CardType` must decide here whether it is playable from hand.
+            CardType::Agenda
+            | CardType::Asset
+            | CardType::Operation
+            | CardType::Ice(_)
+            | CardType::Identity
+            | CardType::Upgrade => {}
         }
     }
     for card_id in &state.corp.hq {
