@@ -220,7 +220,7 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
         RunPhase::ApproachIce => {
             events.push(GameEvent::IceApproached { server, position: run.position as u32 })
         }
-        RunPhase::Success => events.push(GameEvent::RunSucceeded { server }),
+        RunPhase::Success => events.push(GameEvent::ServerApproached { server }),
         _ => {}
     }
     events
@@ -252,7 +252,7 @@ pub fn advance_run(
         RunAction::BreakSubroutine(index) => step_subroutine(state, index, false, registry)?,
     };
 
-    // `IceEncountered`/`RunSucceeded` may have just been emitted above (only
+    // `IceEncountered`/`ServerApproached` may have just been emitted above (only
     // ever from the `Continue` arm) — dispatched here, in the one function
     // every `Continue` step funnels through (this crate's own
     // `PlayerAction::ContinueRun` handler, and `paid_ability::close_window`'s
@@ -265,7 +265,7 @@ pub fn advance_run(
     // dispatches `OnRunStart` itself) is never fired twice.
     let reactive: Vec<GameEvent> = events
         .iter()
-        .filter(|event| matches!(event, GameEvent::IceEncountered { .. } | GameEvent::RunSucceeded { .. }))
+        .filter(|event| matches!(event, GameEvent::IceEncountered { .. } | GameEvent::ServerApproached { .. }))
         .cloned()
         .collect();
     for event in reactive {
@@ -302,7 +302,7 @@ fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
                 // pass) — the window opens here too (Netrunner/Null Signal
                 // Games rule 3).
                 run.jack_out_permitted = true;
-                Ok(vec![GameEvent::RunSucceeded { server }])
+                Ok(vec![GameEvent::ServerApproached { server }])
             } else {
                 // Initial approach of the outermost ICE — window stays
                 // closed (already `false` from `initiate_run`;
@@ -544,7 +544,7 @@ mod tests {
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::Success);
-        assert_eq!(events, vec![GameEvent::RunSucceeded { server: ServerId::Hq }]);
+        assert_eq!(events, vec![GameEvent::ServerApproached { server: ServerId::Hq }]);
     }
 
     #[test]
@@ -576,7 +576,7 @@ mod tests {
             events,
             vec![
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::RunSucceeded { server: ServerId::Hq },
+                GameEvent::ServerApproached { server: ServerId::Hq },
             ]
         );
         // Never encountered — its subroutines were never touched.
@@ -755,7 +755,7 @@ mod tests {
             events,
             vec![
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::RunSucceeded { server: ServerId::Hq },
+                GameEvent::ServerApproached { server: ServerId::Hq },
             ]
         );
     }

@@ -842,8 +842,8 @@ mod system_gateway {
 
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open access window");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to the approach step");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes access window");
         let (state, _) =
@@ -881,7 +881,8 @@ mod system_gateway {
         state.corp.hq = vec![CardId("hq_card_0".to_string()), CardId("hq_card_1".to_string())];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to the approach step");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
 
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::AdditionalAccessGranted { server: ServerId::Hq, count: 1 })));
         assert_eq!(state.active_run.as_ref().unwrap().additional_hq_access, 1);
@@ -1900,8 +1901,10 @@ mod system_gateway {
                 .expect("choose hq");
         let (state, events2) =
             apply_action(&state, &registry, PlayerAction::ContinueRun).expect("resolves immediately, empty hq");
+        let (state, events3) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
         let mut events = events;
         events.extend(events2);
+        events.extend(events3);
 
         assert_eq!(state.runner.rig[0].counters, 9);
         assert_eq!(state.runner.resources.credits, Credits(8), "5 + 3");
@@ -1909,7 +1912,6 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 3 })));
 
         // Close out the run so a fresh one can be initiated.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("complete run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
         let (mut state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
@@ -1960,7 +1962,8 @@ mod system_gateway {
         state.runner.rig = vec![rig_card_with_counters("red_team", 12)];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("initiate run");
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("resolves immediately, empty rd");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("resolves immediately, empty rd");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
 
         assert_eq!(state.runner.rig[0].counters, 9);
         assert_eq!(state.runner.resources.credits, Credits(3));
@@ -2231,12 +2234,12 @@ mod system_gateway {
         assert_eq!(state.runner.resources.credits, Credits(7), "10 - 3 (install cost)");
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
-        let (state, events) =
+        let (state, _) =
             apply_action(&state, &registry, PlayerAction::ContinueRun).expect("resolves immediately, empty hq");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
         assert_eq!(state.runner.rig[0].counters, 1, "gained 1 counter from the successful run");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CountersAdded { amount: 1, .. })));
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("complete run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
 
@@ -2351,8 +2354,8 @@ mod system_gateway {
                 .expect("install carnivore");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("initiate run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("open access window");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to the approach step");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes access window");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
@@ -3240,12 +3243,13 @@ mod system_gateway {
         state.corp.r_and_d = (0..3).map(|i| CardId(format!("rd_card_{i}"))).collect();
 
         // `Trigger::OnSuccessfulRunOnRnD` fires (and parks the "place a
-        // counter?" choice) the moment `RunSucceeded` fires during
-        // `ContinueRun`, before `CompleteRun` — resolve it before
+        // counter?" choice) the moment `RunSucceeded` fires, on
+        // `CompleteRun`, ahead of the pre-access window — resolve it before
         // continuing, rather than using `run_to_completion`'s all-in-one
         // helper, which would otherwise hit `ActionBlockedByPendingDecision`.
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("initiate run");
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue run to success");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue run to the approach step");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
         assert!(events
             .iter()
             .any(|e| matches!(e, crate::rules::GameEvent::PendingChoicePresented { chooser: Side::Runner, .. })));
@@ -3986,7 +3990,8 @@ mod system_gateway {
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq })
                 .expect("choose HQ");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to the approach step");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
 
         // The on-success rider fired: 1 card drawn, and the extra access is
         // seeded before the breach is computed.
@@ -4011,7 +4016,8 @@ mod system_gateway {
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD })
                 .expect("choose R&D");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to the approach step");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("commit: the run is now successful");
 
         let run = state.active_run.as_ref().unwrap();
         assert_eq!(run.additional_rd_access, 1, "R&D, not the authored HQ placeholder");
