@@ -129,18 +129,6 @@ pub enum PlayerAction {
     /// own `ClientView` masks to `None` — a fog-of-war leak straight
     /// through `legal_actions_for`. See `state::InstallId`.
     InstallProgramOnIce { card_id: CardId, host: InstallId },
-    /// Break the next pending subroutine on the ICE currently being
-    /// encountered. Runner-only; delegates to `run::advance_run`'s
-    /// `RunAction::BreakSubroutine`. `ice_id` is cross-checked against
-    /// `RunState::ice[position].card_id` before delegating —
-    /// `RulesError::MismatchedIceId` if it doesn't match the ICE actually
-    /// being encountered, since `transition_subroutine` itself identifies the
-    /// right `RunIce` positionally (`run.position`), not by `ice_id`, and so
-    /// can't catch a caller-supplied mismatch on its own. `subroutine_index`
-    /// addresses one specific `EncounteredSubroutine` by its `id`/index
-    /// within `RunIce::subroutines`, bounds/status-checked by
-    /// `transition_subroutine`.
-    BreakSubroutine { ice_id: CardId, subroutine_index: usize },
     /// Breaks a subroutine by spending a Runner click instead of matching a
     /// breaker to it — Bioroid-style ICE only (`dsl::CardDefinition::
     /// click_breakable == true`, e.g. Ansel 1.0, Brân 1.0). A dedicated
@@ -474,7 +462,6 @@ impl PlayerAction {
         "InstallProgram",
         "InstallResource",
         "InstallProgramOnIce",
-        "BreakSubroutine",
         "BreakSubroutineWithClick",
         "EndTurn",
         "DiscardCard",
@@ -541,7 +528,6 @@ mod tests {
             PlayerAction::InstallProgram { card_id: card() },
             PlayerAction::InstallResource { card_id: card() },
             PlayerAction::InstallProgramOnIce { card_id: card(), host: install },
-            PlayerAction::BreakSubroutine { ice_id: card(), subroutine_index: 0 },
             PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },
             PlayerAction::EndTurn,
             PlayerAction::DiscardCard { card_id: card() },
@@ -587,7 +573,6 @@ mod tests {
                 | PlayerAction::InstallProgram { .. }
                 | PlayerAction::InstallResource { .. }
                 | PlayerAction::InstallProgramOnIce { .. }
-                | PlayerAction::BreakSubroutine { .. }
                 | PlayerAction::BreakSubroutineWithClick { .. }
                 | PlayerAction::EndTurn
                 | PlayerAction::DiscardCard { .. }

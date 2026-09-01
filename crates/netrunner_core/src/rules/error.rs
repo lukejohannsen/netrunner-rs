@@ -229,7 +229,7 @@ pub enum RulesError {
     #[error("a soft-gated requirement was not met")]
     RequirementNotMet,
 
-    #[error("BreakSubroutine named ice {actual:?}, but the ICE currently being encountered is {expected:?}")]
+    #[error("the break named ice {actual:?}, but the ICE currently being encountered is {expected:?}")]
     MismatchedIceId { expected: CardId, actual: CardId },
 
     #[error("no pending prevention window is currently open")]

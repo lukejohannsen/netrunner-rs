@@ -90,6 +90,12 @@ const INSTALL_PROGRAM_LEN: usize = MAX_HAND_SIZE;
 const PLAY_OPERATION_START: usize = INSTALL_PROGRAM_START + INSTALL_PROGRAM_LEN;
 const PLAY_OPERATION_LEN: usize = MAX_HAND_SIZE;
 
+/// A reserved hole. This segment encoded `PlayerAction::BreakSubroutine`,
+/// the free break of any subroutine on any ICE, deleted as Rules Audit T1.
+/// The indices are kept and never legal rather than removed, so no later
+/// segment shifts and an exported policy's head stays aligned — the
+/// append-never-shift rule, applied to a deletion. Reclaim it the next
+/// time the layout has to break anyway (Rules Audit B.10).
 const BREAK_SUBROUTINE_START: usize = PLAY_OPERATION_START + PLAY_OPERATION_LEN;
 const BREAK_SUBROUTINE_LEN: usize = MAX_SUBROUTINES;
 
@@ -267,10 +273,6 @@ impl ActionSpace {
                 Some(PLAY_OPERATION_START + bounded_position(&state.corp.hq, card_id, MAX_HAND_SIZE)?)
             }
 
-            PlayerAction::BreakSubroutine { subroutine_index, .. } => {
-                (*subroutine_index < MAX_SUBROUTINES).then_some(BREAK_SUBROUTINE_START + subroutine_index)
-            }
-
             PlayerAction::BreakSubroutineWithClick { subroutine_index, .. } => (*subroutine_index
                 < MAX_SUBROUTINES)
                 .then_some(BREAK_SUBROUTINE_WITH_CLICK_START + subroutine_index),
@@ -411,10 +413,8 @@ impl ActionSpace {
             let card_id = state.corp.hq.get(local)?.clone();
             return Some(PlayerAction::PlayOperation { card_id });
         }
-        if let Some(local) = in_segment(index, BREAK_SUBROUTINE_START, BREAK_SUBROUTINE_LEN) {
-            let ice_id = current_ice_id(state)?;
-            return Some(PlayerAction::BreakSubroutine { ice_id, subroutine_index: local });
-        }
+        // `BREAK_SUBROUTINE_START..+LEN` decodes to nothing: see the
+        // constant's doc comment.
         if let Some(local) = in_segment(index, DISCARD_CARD_START, DISCARD_CARD_LEN) {
             let GamePhase::Discard { side, .. } = state.phase else { return None };
             let card_id = hand_for(state, side).get(local)?.clone();
@@ -490,13 +490,6 @@ impl ActionSpace {
             let card_id = state.runner.grip.get(local)?.clone();
             return Some(PlayerAction::InstallResource { card_id });
         }
-        // Must stay the LAST check: `INSTALL_PROGRAM_ON_ICE_START` is
-        // defined after every other segment in the const chain above, and
-        // `in_segment` eagerly computes `index - start` (via `then_some`,
-        // not a lazily-evaluated `then`) even when the range test fails —
-        // checking this segment any earlier would underflow-panic for
-        // every smaller index that reaches this line before matching an
-        // earlier segment.
         if let Some(local) = in_segment(index, INSTALL_PROGRAM_ON_ICE_START, INSTALL_PROGRAM_ON_ICE_LEN) {
             let hand_slot = local / MAX_INSTALLED_PER_SIDE;
             let ice_slot = local % MAX_INSTALLED_PER_SIDE;
@@ -538,8 +531,18 @@ pub fn get_action_mask(state: &GameState, registry: &CardRegistry) -> Vec<bool> 
         .collect()
 }
 
+/// `Some(index - start)` when `index` falls in `[start, start + len)`.
+///
+/// The subtraction is inside a closure, deliberately. It used to be an
+/// eager `then_some(index - start)`, which underflows for any index below
+/// `start` — silently in release, a panic in debug — so `action_at` could
+/// only test segments in ascending order and its last arm carried a
+/// "must stay the LAST check" warning. Deleting `PlayerAction::
+/// BreakSubroutine` left its segment a hole with no arm, every index in
+/// it fell through to later, higher-`start` arms, and the eager form
+/// panicked on all of them. Lazy, the arms can be in any order.
 fn in_segment(index: usize, start: usize, len: usize) -> Option<usize> {
-    (index >= start && index < start + len).then_some(index - start)
+    (index >= start && index < start + len).then(|| index - start)
 }
 
 fn side_index(side: Side) -> usize {
@@ -907,11 +910,13 @@ mod tests {
             &PlayerAction::ActivateAbility { target: install_of(&state, "corroder"), ability_index: 0 },
         )
         .unwrap();
-        let break_index =
-            ActionSpace::index_of(&state, &PlayerAction::BreakSubroutine { ice_id: CardId("ice_wall".to_string()), subroutine_index: 0 })
-                .unwrap();
         assert!(mask[pump_index], "Corroder's pump ability should be legal mid-encounter");
-        assert!(mask[break_index], "breaking the pending subroutine should be legal mid-encounter");
+        // The deleted free break's segment stays in the space and stays
+        // dark: no index in it is ever legal.
+        assert!(
+            (BREAK_SUBROUTINE_START..BREAK_SUBROUTINE_START + BREAK_SUBROUTINE_LEN).all(|i| !mask[i]),
+            "the reserved BreakSubroutine hole must never be legal"
+        );
         assert!(!mask[UNIT_START + 4], "EndTurn should be illegal while a run is active");
     }
 

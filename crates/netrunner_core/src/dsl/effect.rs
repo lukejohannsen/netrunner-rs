@@ -61,12 +61,6 @@ pub enum Effect {
     /// param: damage in this engine's model always targets the Runner,
     /// same as `apply_damage` itself.
     DealDamage(DamageType, usize),
-    /// Never side-ambiguous — always targets whatever ICE the current run
-    /// is encountering. Unlike `RunAction::BreakSubroutine`'s index (chosen
-    /// by the player breaking a subroutine manually), this `usize` is the
-    /// index of the specific subroutine this effect itself is wired to
-    /// break — a target, not a count.
-    BreakSubroutine(usize),
     ModifyStrength(i32),
     /// `Side`-explicit for the same reason as `GainCredits`.
     DrawCards(Side, u32),
@@ -564,7 +558,6 @@ impl Effect {
             // Leaves: everything that holds no `Effect`.
             Effect::GainCredits(..)
             | Effect::DealDamage(..)
-            | Effect::BreakSubroutine(..)
             | Effect::ModifyStrength(..)
             | Effect::DrawCards(..)
             | Effect::EndTheRun

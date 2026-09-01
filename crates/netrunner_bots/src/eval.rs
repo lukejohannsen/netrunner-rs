@@ -66,6 +66,15 @@ const PENDING_SUBROUTINE_WEIGHT: f64 = 1.0;
 /// legal, and the toggles leading up to it are a short walk, not a
 /// wander.
 const UNRESOLVED_DECISION_WEIGHT: f64 = 0.5;
+/// Each point by which the encountered ICE's strength exceeds the best
+/// matching breaker's. Pumping strength changes nothing else a static
+/// evaluator sees, so a Runner holding Cleaver against a strength-4
+/// Barrier never paid to pump and never got to break: once the free
+/// break was deleted, heuristic-vs-heuristic broke 100 subroutines in 96
+/// games and let 1,151 fire. At 0.9 a 2[c] pump (−0.8) closes one point
+/// of shortfall and comes out ahead; a pump past the ICE's strength is
+/// worth nothing.
+const STRENGTH_SHORTFALL_WEIGHT: f64 = 0.9;
 
 /// A rough static evaluation of `state` from `side`'s perspective: positive
 /// favors `side`, negative favors the opponent. Shared by `HeuristicAgent`'s
@@ -107,10 +116,47 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
             if let Some(run) = &state.active_run {
                 score += ACTIVE_RUN_WEIGHT;
                 score -= pending_subroutines(run) as f64 * PENDING_SUBROUTINE_WEIGHT;
+                score -= strength_shortfall(state, run, registry) as f64 * STRENGTH_SHORTFALL_WEIGHT;
             }
         }
     }
     score
+}
+
+/// How far the strongest rig breaker able to break the encountered ICE's
+/// subtype falls short of its strength — zero when a breaker matches or
+/// exceeds it, when no breaker matches at all (there is nothing to pump),
+/// or outside an encounter.
+fn strength_shortfall(state: &GameState, run: &RunState, registry: &CardRegistry) -> i32 {
+    if run.phase != RunPhase::EncounterIce {
+        return 0;
+    }
+    let Some(ice) = run.ice.get(run.position) else { return 0 };
+    let best = state
+        .runner
+        .rig
+        .iter()
+        .filter(|card| breaks_subtype(card, ice.ice_type, registry))
+        .map(|card| card.effective_strength())
+        .max();
+    best.map_or(0, |strength| (ice.current_strength - strength).max(0))
+}
+
+/// Whether `card`'s abilities include a `BreakSubroutines` that applies to
+/// `subtype` — restricted to it, or unrestricted.
+fn breaks_subtype(card: &netrunner_core::rules::InstalledRunnerCard, subtype: IceType, registry: &CardRegistry) -> bool {
+    let Some(def) = registry.get(&card.card) else { return false };
+    let mut found = false;
+    for ability in &def.abilities {
+        ability.effect.for_each_effect(&mut |effect| {
+            if let Effect::BreakSubroutines { restrict_to, .. } = effect
+                && restrict_to.is_none_or(|r| r == subtype)
+            {
+                found = true;
+            }
+        });
+    }
+    found
 }
 
 /// Subroutines on the currently encountered ICE that have neither been
@@ -413,6 +459,46 @@ mod tests {
             evaluate_state(&parked, Side::Corp, &registry),
             evaluate_state(&clear, Side::Corp, &registry),
             "the opponent's parked decision is not the Corp's problem"
+        );
+    }
+
+    /// Pumping a matching breaker up to the ICE's strength is worth its
+    /// credits; a breaker for the wrong subtype leaves nothing to pump.
+    #[test]
+    fn a_strength_shortfall_against_a_matching_breaker_is_worth_pumping() {
+        use netrunner_core::rules::{RunIce, ServerId};
+        let registry = CardRegistry::from_cards(vec![breaker("cleaver", Some(IceType::Barrier))]);
+        let encountering = |strength: i32, credits: u32| {
+            let mut state = GameState::new(0);
+            state.runner.resources.credits = Credits(credits);
+            state.runner.rig = vec![InstalledRunnerCard {
+                card: CardId("cleaver".to_string()),
+                base_strength: strength,
+                ..Default::default()
+            }];
+            state.active_run = Some(RunState {
+                server: ServerId::Hq,
+                phase: RunPhase::EncounterIce,
+                position: 0,
+                ice: vec![RunIce {
+                    card_id: CardId("palisade".to_string()),
+                    current_strength: 4,
+                    ice_type: IceType::Barrier,
+                    subroutines: Vec::new(),
+                    rezzed: true,
+                }],
+                ..Default::default()
+            });
+            state
+        };
+        let short = encountering(3, 2);
+        let pumped = encountering(4, 0); // paid 2 to pump one point
+        assert!(evaluate_state(&pumped, Side::Runner, &registry) > evaluate_state(&short, Side::Runner, &registry));
+        let over = encountering(5, 0);
+        assert_eq!(
+            evaluate_state(&over, Side::Runner, &registry),
+            evaluate_state(&pumped, Side::Runner, &registry),
+            "strength past the ICE's is worth nothing more"
         );
     }
 }

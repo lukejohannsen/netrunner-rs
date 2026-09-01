@@ -111,9 +111,6 @@ pub fn apply_action(
         PlayerAction::InstallProgramOnIce { card_id, host } => {
             install_program_on_ice(state, registry, card_id, host)
         }
-        PlayerAction::BreakSubroutine { ice_id, subroutine_index } => {
-            break_subroutine(state, ice_id, subroutine_index, registry)
-        }
         PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index } => {
             break_subroutine_with_click(state, ice_id, subroutine_index, registry)
         }
@@ -278,7 +275,6 @@ fn classify_action(action: &PlayerAction) -> ActionKind {
         | PlayerAction::ContinueRun
         | PlayerAction::JackOut
         | PlayerAction::CompleteRun
-        | PlayerAction::BreakSubroutine { .. }
         | PlayerAction::BreakSubroutineWithClick { .. }
         | PlayerAction::SelectCardToAccess { .. }
         | PlayerAction::StealAgenda { .. }
@@ -1013,48 +1009,20 @@ fn install_resource(
     Ok((next, events))
 }
 
-fn break_subroutine(
-    state: &GameState,
-    ice_id: CardId,
-    subroutine_index: usize,
-    registry: &CardRegistry,
-) -> Result<(GameState, Vec<GameEvent>), RulesError> {
-    let side = Side::Runner;
-    require_phase(state, GamePhase::Action(side))?;
 
-    // Cross-check `ice_id` against the ICE actually being encountered before
-    // delegating — `transition_subroutine` identifies the right `RunIce`
-    // positionally (`run.position`), not by `ice_id`, so it can't catch a
-    // caller-supplied mismatch on its own. See
-    // `PlayerAction::BreakSubroutine`'s doc comment.
-    let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
-    if run.phase != RunPhase::EncounterIce {
-        return Err(RulesError::NotInEncounter);
-    }
-    let current_ice = run.ice.get(run.position).ok_or(RulesError::NotInEncounter)?;
-    if current_ice.card_id != ice_id {
-        return Err(RulesError::MismatchedIceId {
-            expected: current_ice.card_id.clone(),
-            actual: ice_id,
-        });
-    }
-
-    // `step_subroutine` (via `advance_run`) does its own bounds/status
-    // validation against `RunIce::subroutines`, so there's no need to
-    // duplicate that here — just forward the index.
-    let mut next = state.clone();
-    let events = run::advance_run(&mut next, RunAction::BreakSubroutine(subroutine_index), registry)?;
-    // Priority-independent like RezIce (not gated on whose priority it is),
-    // but still gives the other side a fresh chance to respond if a window
-    // is open.
-    paid_ability::note_window_action(&mut next, side);
-
-    Ok((next, events))
-}
-
-/// `PlayerAction::BreakSubroutineWithClick`'s handler — identical
-/// legality/delegation shape to `break_subroutine`, plus the
-/// `click_breakable` gate and a click cost instead of no cost at all.
+/// `PlayerAction::BreakSubroutineWithClick`'s handler: the bioroid rule,
+/// "[click]: break 1 subroutine on this ICE". Cross-checks `ice_id`
+/// against the ICE actually being encountered before delegating —
+/// `transition_subroutine` identifies the `RunIce` positionally and cannot
+/// catch a caller-supplied mismatch on its own.
+///
+/// This and `Effect::BreakSubroutines` (an icebreaker's paid ability) are
+/// the only two ways a subroutine is broken. A third, `PlayerAction::
+/// BreakSubroutine`, used to break any subroutine on any ICE for nothing —
+/// no breaker, no strength, no cost — and was offered at every encounter,
+/// which made ICE a no-op card class and every icebreaker worthless
+/// (ROADMAP Rules Audit T1). It is deleted rather than gated: gating it
+/// would have duplicated `BreakSubroutines`.
 fn break_subroutine_with_click(
     state: &GameState,
     ice_id: CardId,
@@ -3408,8 +3376,18 @@ mod tests {
         );
     }
 
+    /// A bioroid's "[click]: break 1 subroutine" — the one free-standing
+    /// break action left. The registry must say the ICE is click-breakable.
+    fn click_breakable_registry() -> CardRegistry {
+        let mut registry = CardRegistry::new();
+        let mut ice = test_card("ice_wall", Side::Corp, CardType::Ice(crate::dsl::IceType::Barrier), 0, None);
+        ice.click_breakable = true;
+        registry.insert(ice);
+        registry
+    }
+
     #[test]
-    fn runner_break_subroutine_decrements_pending_on_current_ice() {
+    fn runner_click_break_decrements_pending_on_current_ice() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
@@ -3420,30 +3398,32 @@ mod tests {
         });
         let (next, events) = apply_action(
             &state,
-            &registry(),
-            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
+            &click_breakable_registry(),
+            PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: 0 },
         )
         .expect("action should succeed");
 
-        // No click cost: breaking a subroutine isn't a click action.
-        assert_eq!(next.runner.resources.clicks, Clicks(3));
+        assert_eq!(next.runner.resources.clicks, Clicks(2), "the click is the cost");
         let ice = &next.active_run.as_ref().unwrap().ice[0];
         assert_eq!(ice.subroutines[0].status, SubroutineStatus::Broken);
         assert_eq!(ice.subroutines[1].status, SubroutineStatus::Pending);
         assert_eq!(
             events,
-            vec![GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 }]
+            vec![
+                GameEvent::ClickSpent { side: Side::Runner },
+                GameEvent::SubroutineBroken { card_id: CardId("ice_wall".to_string()), index: 0 },
+            ]
         );
     }
 
     #[test]
-    fn corp_turn_break_subroutine_returns_not_your_turn() {
+    fn corp_turn_click_break_returns_not_your_turn() {
         let ice_id = CardId("ice_wall".to_string());
         let state = corp_state(3, 5);
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
+            PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: 0 },
         );
 
         assert_eq!(
@@ -3456,20 +3436,20 @@ mod tests {
     }
 
     #[test]
-    fn runner_break_subroutine_with_no_active_run_returns_no_active_run() {
+    fn runner_click_break_with_no_active_run_returns_no_active_run() {
         let ice_id = CardId("ice_wall".to_string());
         let state = runner_state(3, 0, 0);
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
+            PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: 0 },
         );
 
         assert_eq!(result, Err(RulesError::NoActiveRun));
     }
 
     #[test]
-    fn runner_break_subroutine_with_index_out_of_range_returns_invalid_subroutine_index() {
+    fn runner_click_break_with_index_out_of_range_returns_invalid_subroutine_index() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
@@ -3480,15 +3460,15 @@ mod tests {
         });
         let result = apply_action(
             &state,
-            &registry(),
-            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 1 },
+            &click_breakable_registry(),
+            PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: 1 },
         );
 
         assert_eq!(result, Err(RulesError::InvalidSubroutineIndex(1)));
     }
 
     #[test]
-    fn runner_break_subroutine_outside_encounter_ice_returns_not_in_encounter() {
+    fn runner_click_break_outside_encounter_ice_returns_not_in_encounter() {
         let ice_id = CardId("ice_wall".to_string());
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
@@ -3500,14 +3480,14 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::BreakSubroutine { ice_id, subroutine_index: 0 },
+            PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index: 0 },
         );
 
         assert_eq!(result, Err(RulesError::NotInEncounter));
     }
 
     #[test]
-    fn runner_break_subroutine_with_mismatched_ice_id_returns_error() {
+    fn runner_click_break_with_mismatched_ice_id_returns_error() {
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
@@ -3518,7 +3498,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::BreakSubroutine { ice_id: CardId("some_other_ice".to_string()), subroutine_index: 0 },
+            PlayerAction::BreakSubroutineWithClick { ice_id: CardId("some_other_ice".to_string()), subroutine_index: 0 },
         );
 
         assert_eq!(
