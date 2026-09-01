@@ -55,6 +55,7 @@ fn fill_catalog_metadata(cards: &mut [CardDefinition]) {
         card.artist.clone_from(&entry.artist);
         card.image_url.clone_from(&entry.image_url);
         card.unique = entry.unique;
+        card.base_link = entry.base_link;
     }
 }
 
@@ -171,8 +172,9 @@ mod catalog_join_tests {
             let Some(numeric_id) = card.numeric_id else { continue };
             let Some(entry) = catalog.get_by_numeric_id(numeric_id) else { continue };
 
-            let checks: [(&str, Option<i64>, Option<i64>); 6] = [
+            let checks: [(&str, Option<i64>, Option<i64>); 7] = [
                 ("cost", Some(i64::from(entry.cost)), Some(i64::from(card.cost))),
+                ("base_link", entry.base_link.map(i64::from), card.base_link.map(i64::from)),
                 ("strength", entry.strength.map(i64::from), card.strength.map(i64::from)),
                 ("agenda_points", entry.agenda_points.map(i64::from), card.agenda_points.map(i64::from)),
                 (

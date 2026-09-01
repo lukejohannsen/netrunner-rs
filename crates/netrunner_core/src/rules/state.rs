@@ -432,11 +432,12 @@ pub struct RunnerState {
     /// masked. See `CorpState::scored_agendas`'s doc comment.
     pub scored_agendas: Vec<CardId>,
     /// Static link strength, added to the Runner's bid when resolving a
-    /// trace (see `TraceState`). **Structurally always `0` today:** no
-    /// `CardDefinition` field carries printed link and no `Effect` raises
-    /// it, so identities and hardware with link are silently linkless
-    /// (ROADMAP Rules Audit, Tier 2). Nothing in the current pool has a
-    /// Trace, which is why this is recorded rather than fixed. Public
+    /// trace (see `TraceState`). Seeded at setup from the identity's
+    /// printed `CardDefinition::base_link` (joined from the catalog);
+    /// nothing wrote it before that, so every Runner traced at 0. No
+    /// `Effect` raises it and no hardware in the implemented pool grants
+    /// link — when one does, derive this from the rig the way `memory`
+    /// derives the budget rather than adding a second writer. Public
     /// information, same treatment as `tags`.
     pub link_strength: u32,
     /// Whether the Runner's "first successful HQ run this turn" bonus

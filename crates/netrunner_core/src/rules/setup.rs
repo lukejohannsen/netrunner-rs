@@ -78,6 +78,10 @@ impl GameState {
             registry.get(&corp_deck.identity).and_then(|c| c.max_hand_size_bonus).unwrap_or(0);
         state.runner.max_hand_size_bonus =
             registry.get(&runner_deck.identity).and_then(|c| c.max_hand_size_bonus).unwrap_or(0);
+        // Printed link, same pattern. Nothing wrote `link_strength` before
+        // this, so every Runner traced at link 0 — *Kate "Mac" McCaffrey*
+        // included (ROADMAP Rules Audit, Tier 2).
+        state.runner.link_strength = registry.get(&runner_deck.identity).and_then(|c| c.base_link).unwrap_or(0);
 
         state.phase = GamePhase::Mulligan(Side::Corp);
 
@@ -308,6 +312,21 @@ mod tests {
         let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 42).unwrap();
 
         assert_eq!(state.runner.memory_units, crate::rules::state::MemoryUnits(RUNNER_BASE_MEMORY_UNITS));
+    }
+
+    /// `link_strength` was never written before setup seeded it, so every
+    /// Runner traced at link 0 whatever their identity printed.
+    #[test]
+    fn setup_seeds_the_runners_link_from_the_identitys_printed_value() {
+        let (mut registry, corp_deck, runner_deck) = setup_fixtures();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 42).unwrap();
+        assert_eq!(state.runner.link_strength, 0, "an identity with no printed link");
+
+        let mut linked = registry.get(&CardId("runner_id".to_string())).unwrap().clone();
+        linked.base_link = Some(1);
+        registry.insert(linked);
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 42).unwrap();
+        assert_eq!(state.runner.link_strength, 1);
     }
 
     #[test]

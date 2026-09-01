@@ -570,6 +570,20 @@ mod system_gateway {
         assert_eq!(trashed.runner.memory_units.0, base, "and gives it back on leaving play");
     }
 
+    /// Printed link is joined from the catalog, never authored. *Kate
+    /// "Mac" McCaffrey* is the only implemented identity with link; every
+    /// System Gateway Runner identity prints 0.
+    #[test]
+    fn printed_link_comes_from_the_catalog() {
+        let registry = sg_registry();
+        let link = |id: &str| registry.get(&CardId(id.to_string())).expect(id).base_link;
+        assert_eq!(link("kate_mccaffrey"), Some(1));
+        for identity in ["rene_loup_arcemont", "zahya_sadeghi", "tao_salonga"] {
+            assert_eq!(link(identity), Some(0), "{identity}");
+        }
+        assert_eq!(link("corroder"), None, "not an identity: no printed link at all");
+    }
+
     /// A hand-built rig of `ids`, each with its own fixture `InstallId` so
     /// the selection machinery can address them individually.
     fn rig_of(ids: &[&str]) -> Vec<crate::rules::InstalledRunnerCard> {
