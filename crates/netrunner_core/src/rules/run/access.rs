@@ -69,6 +69,18 @@ fn compute_accessed_cards(state: &mut GameState, server: ServerId) -> Vec<CardId
         // offered upgrades onto Archives: an upgrade installed there could
         // never be accessed or trashed (ROADMAP Rules Audit T12).
         ServerId::Archives => {
+            // Breaching Archives turns every facedown card there faceup —
+            // the Runner has now seen them, and they stay public afterwards
+            // (Null Signal Games rules: cards in Archives are faceup once
+            // accessed). Nothing flipped them before, so a card the Runner
+            // had just been shown was masked from them again the moment the
+            // run ended, and *Jinteki: Restoring Humanity* kept paying for
+            // "facedown" cards the Runner had read (ROADMAP Rules Audit,
+            // Tier 2). Done here, at breach, rather than per card: the
+            // whole zone is accessed at once.
+            for archived in state.corp.archives.iter_mut() {
+                archived.facedown = false;
+            }
             let mut accessed: Vec<CardId> = state.corp.archives.iter().map(|a| a.card.clone()).collect();
             accessed.extend(root_installs_on(state, server));
             accessed
@@ -81,21 +93,14 @@ fn compute_accessed_cards(state: &mut GameState, server: ServerId) -> Vec<CardId
 /// `CardRegistry` definition (or the "unrecognized card" defaults if it
 /// isn't registered — nothing stealable or trashable, so the only legal
 /// resolution is `PlayerAction::PassAccessedCard`).
-fn compute_pending_choice(card_id: &CardId, runner_credits: u32, registry: &CardRegistry) -> AccessPhase {
+fn compute_pending_choice(card_id: &CardId, registry: &CardRegistry) -> AccessPhase {
     let card_def = registry.get(card_id);
     let is_agenda = card_def.is_some_and(|c| c.agenda_points.is_some());
     let steal_cost = card_def.and_then(|c| c.steal_cost.clone());
     let mandatory_steal = is_agenda && steal_cost.is_none();
     let trash_cost = card_def.and_then(|c| c.trash_cost);
-    let can_trash = trash_cost.is_some_and(|cost| runner_credits >= cost);
 
-    AccessPhase::PendingChoice {
-        card_id: card_id.clone(),
-        can_trash,
-        trash_cost,
-        mandatory_steal,
-        steal_cost,
-    }
+    AccessPhase::PendingChoice { card_id: card_id.clone(), trash_cost, mandatory_steal, steal_cost }
 }
 
 /// Sets `access.phase` to the `PendingChoice` computed from `card_id`'s
@@ -141,10 +146,9 @@ fn enter_pending_choice(
         return Ok(events);
     }
 
-    let runner_credits = state.runner.resources.credits.0;
     let run = state.active_run.as_mut().expect("enter_pending_choice called mid-access");
     let access = run.access_state.as_mut().expect("enter_pending_choice called mid-access");
-    access.phase = compute_pending_choice(card_id, runner_credits, registry);
+    access.phase = compute_pending_choice(card_id, registry);
     Ok(events)
 }
 
@@ -1307,6 +1311,46 @@ mod tests {
         );
     }
 
+    /// Breaching Archives turns its facedown cards faceup — the Runner has
+    /// seen them, and keeps seeing them after the run. Nothing flipped
+    /// them before: the Runner's view named the card mid-access and masked
+    /// it again the moment the run ended.
+    #[test]
+    fn accessing_archives_turns_its_facedown_cards_faceup_for_good() {
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
+        state.corp.archives = vec![
+            crate::rules::ArchivedCard::facedown(CardId("hedge_fund".to_string())),
+            crate::rules::ArchivedCard::faceup(CardId("ice_wall".to_string())),
+        ];
+        state.active_run = Some(run_in_success(ServerId::Archives));
+        let registry = registry();
+
+        access_server(&mut state, ServerId::Archives, &registry).unwrap();
+
+        assert!(state.corp.archives.iter().all(|a| !a.facedown), "{:?}", state.corp.archives);
+        let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(
+            view.corp.archives.iter().map(|a| a.card.clone()).collect::<Vec<_>>(),
+            vec![Some(CardId("hedge_fund".to_string())), Some(CardId("ice_wall".to_string()))],
+            "the Runner's view now names every card in Archives"
+        );
+    }
+
+    /// A replaced access (`Effect::SetAccessReplacement`) never breaches, so
+    /// nothing is revealed.
+    #[test]
+    fn a_replaced_archives_access_leaves_facedown_cards_facedown() {
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), Vec::new(), 0);
+        state.corp.archives = vec![crate::rules::ArchivedCard::facedown(CardId("hedge_fund".to_string()))];
+        let mut run = run_in_success(ServerId::Archives);
+        run.access_replacement = Some((ServerId::Archives, Effect::GainCredits(Side::Runner, 1)));
+        state.active_run = Some(run);
+
+        access_server(&mut state, ServerId::Archives, &registry()).unwrap();
+
+        assert!(state.corp.archives[0].facedown);
+    }
+
     #[test]
     fn accessing_remote_skips_installed_ice_and_yields_only_root_installs() {
         let installed = vec![
@@ -1776,7 +1820,6 @@ mod tests {
             access_state.phase,
             AccessPhase::PendingChoice {
                 card_id: CardId("ice_wall".to_string()),
-                can_trash: false,
                 trash_cost: None,
                 mandatory_steal: false,
                 steal_cost: None,
@@ -2223,7 +2266,6 @@ mod tests {
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
             AccessPhase::PendingChoice {
                 card_id: card_id.clone(),
-                can_trash: false,
                 trash_cost: None,
                 mandatory_steal: false,
                 steal_cost: None,
@@ -2273,7 +2315,6 @@ mod tests {
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
             AccessPhase::PendingChoice {
                 card_id: card_id.clone(),
-                can_trash: false,
                 trash_cost: None,
                 mandatory_steal: false,
                 steal_cost: None,
@@ -2413,7 +2454,6 @@ mod tests {
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
             AccessPhase::PendingChoice {
                 card_id: CardId("snare".to_string()),
-                can_trash: false,
                 trash_cost: None,
                 mandatory_steal: false,
                 steal_cost: None,
@@ -2483,7 +2523,6 @@ mod tests {
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
             AccessPhase::PendingChoice {
                 card_id,
-                can_trash: false,
                 trash_cost: None,
                 mandatory_steal: false,
                 steal_cost: None,
@@ -2532,7 +2571,6 @@ mod tests {
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
             AccessPhase::PendingChoice {
                 card_id: card_id.clone(),
-                can_trash: false,
                 trash_cost: None,
                 mandatory_steal: true,
                 steal_cost: None,

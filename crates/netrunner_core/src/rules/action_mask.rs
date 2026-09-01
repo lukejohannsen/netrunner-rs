@@ -963,7 +963,6 @@ mod tests {
                 server: ServerId::Remote(0),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("agenda_x".to_string()),
-                    can_trash: false,
                     trash_cost: None,
                     mandatory_steal: true,
                     steal_cost: None,

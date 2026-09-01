@@ -9,11 +9,12 @@
 //! state. This makes correctness free for everything `apply_action` already
 //! enforces — phase, the `active_trace` global gate, per-handler
 //! `paid_ability_window` gating, priority, costs, ability trigger/requirement
-//! checks, hand-size limits — with zero duplicated rules logic. The one
-//! exception is `install_card_candidates`: `engine::install_card` never
-//! checks that a card's `CardType` matches the `InstallSlot`/`ServerId`
-//! it's being installed into (see its doc comment there), so this module
-//! applies that correspondence itself before probing.
+//! checks, hand-size limits — with zero duplicated rules logic. The type
+//! dispatch in `install_card_candidates`/`play_card_candidates` decides
+//! only *which action to propose* for a card; whether the card fits the
+//! action is checked again by the handler (`engine::install_card` and
+//! friends), so a remote client that skips this module gets the same
+//! answer. This module used to be the only place that rule lived.
 
 use crate::cards::CardRegistry;
 use crate::dsl::{CardId, CardType, Trigger};
@@ -573,7 +574,7 @@ fn access_flow_candidates(state: &GameState) -> Vec<PlayerAction> {
             PlayerAction::PayAccessTrigger { card_id: card_id.clone() },
             PlayerAction::DeclineAccessTrigger { card_id: card_id.clone() },
         ],
-        AccessPhase::PendingChoice { card_id, can_trash, trash_cost, mandatory_steal, steal_cost } => {
+        AccessPhase::PendingChoice { card_id, trash_cost, mandatory_steal, steal_cost } => {
             let mut candidates = Vec::new();
             // `Effect::PreventStealAndTrashForRemainderOfRun` (e.g. Ansel
             // 1.0) blocks both actions outright for the rest of this run —
@@ -584,7 +585,13 @@ fn access_flow_candidates(state: &GameState) -> Vec<PlayerAction> {
             if !steal_and_trash_blocked && (*mandatory_steal || steal_cost.is_some()) {
                 candidates.push(PlayerAction::StealAgenda { card_id: card_id.clone() });
             }
-            if !steal_and_trash_blocked && *can_trash && trash_cost.is_some() {
+            // Affordability is not checked here: `resolve_trash` reads the
+            // Runner's live credits, and the `apply_action` probe below
+            // drops the candidate if they cannot pay. The state used to
+            // carry a `can_trash` hint frozen at presentation, and gating on
+            // it hid the trash from a Runner who gained the credits in the
+            // window between being shown the card and deciding.
+            if !steal_and_trash_blocked && trash_cost.is_some() {
                 candidates.push(PlayerAction::TrashAccessedCard { card_id: card_id.clone() });
             }
             // Also offered when a mandatory steal was itself blocked above —
@@ -994,7 +1001,6 @@ mod tests {
             access_state: Some(AccessState {
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("agenda".to_string()),
-                    can_trash: false,
                     trash_cost: None,
                     mandatory_steal: true,
                     steal_cost: None,
@@ -1012,6 +1018,38 @@ mod tests {
         );
     }
 
+    /// Whether the trash is offered follows the Runner's *live* credits.
+    /// The access state used to carry a `can_trash` hint computed when the
+    /// card was presented, and this list trusted it — so credits gained in
+    /// the paid-ability window before deciding never unlocked the trash.
+    #[test]
+    fn trash_is_offered_from_live_credits_not_a_hint_frozen_at_presentation() {
+        let mut state = runner_state(3, 5);
+        state.active_run = Some(RunState {
+            phase: RunPhase::AccessingCard,
+            access_state: Some(AccessState {
+                phase: AccessPhase::PendingChoice {
+                    card_id: CardId("asset".to_string()),
+                    trash_cost: Some(2),
+                    mandatory_steal: false,
+                    steal_cost: None,
+                },
+                ..Default::default()
+            }),
+            jack_out_permitted: true,
+            ..Default::default()
+        });
+        let trash = PlayerAction::TrashAccessedCard { card_id: CardId("asset".to_string()) };
+
+        state.runner.resources.credits = Credits(1);
+        assert!(!legal_actions(&state, &CardRegistry::new()).contains(&trash), "1 credit cannot pay a trash cost of 2");
+
+        // The Runner gains a credit while the card is still presented
+        // (a paid ability in the pre-trash window).
+        state.runner.resources.credits = Credits(2);
+        assert!(legal_actions(&state, &CardRegistry::new()).contains(&trash), "and now it can");
+    }
+
     #[test]
     fn trashable_non_agenda_offers_trash_and_pass_not_steal() {
         let mut state = runner_state(3, 5);
@@ -1020,7 +1058,6 @@ mod tests {
             access_state: Some(AccessState {
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("asset".to_string()),
-                    can_trash: true,
                     trash_cost: Some(2),
                     mandatory_steal: false,
                     steal_cost: None,

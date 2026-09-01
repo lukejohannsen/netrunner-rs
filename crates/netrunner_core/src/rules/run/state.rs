@@ -129,11 +129,13 @@ pub enum AccessPhase {
     },
     PendingChoice {
         card_id: CardId,
-        /// Whether the Runner can currently afford `trash_cost` (`false` if
-        /// `trash_cost` is `None` — nothing to trash here at all). A
-        /// precomputed hint; `run::access::resolve_trash` re-checks
-        /// affordability itself regardless.
-        can_trash: bool,
+        /// The printed trash cost, if the card has one. Whether the Runner
+        /// can *afford* it is not stored: a `can_trash` hint used to sit
+        /// here, computed once when the card was presented, and
+        /// `legal_actions` trusted it — so a Runner who gained credits in
+        /// the paid-ability window before deciding was never offered the
+        /// trash. `run::access::resolve_trash` reads live credits and is
+        /// the one authority (ROADMAP Rules Audit, Tier 2).
         trash_cost: Option<u32>,
         /// `true` for a "free" Agenda (an Agenda with no `steal_cost`) —
         /// `PlayerAction::PassAccessedCard` is illegal while this is set.
