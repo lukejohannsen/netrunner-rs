@@ -165,6 +165,15 @@ pub struct CardDefinition {
     #[serde(default)]
     pub subtypes: Vec<CardSubtype>,
 
+    /// ◆ — unique. At most one copy may be in play per side: installing a
+    /// second trashes the first (`engine::trash_earlier_unique_copy`).
+    /// This is an install-time rule, not a deckbuilding one — three copies
+    /// in a deck are legal. Joined from the NetrunnerDB catalog's
+    /// `uniqueness` on `numeric_id`, never authored in card JSON, so it
+    /// cannot drift from the printed card (ROADMAP Rules Audit T7).
+    #[serde(default)]
+    pub unique: bool,
+
     /// A hard precondition gating `PlayerAction::PlayEvent`/`PlayOperation`
     /// for this specific card — checked *before* its click/credit cost is
     /// paid, same placement as `AbilityDef::requirement` in
@@ -402,6 +411,7 @@ impl Default for CardDefinition {
             subroutines: Vec::new(),
             interactive_on_access: None,
             subtypes: Vec::new(),
+            unique: false,
             play_requirement: None,
             recurring_credits: None,
             first_install_discount: None,

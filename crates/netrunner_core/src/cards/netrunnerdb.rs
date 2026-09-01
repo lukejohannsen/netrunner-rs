@@ -154,6 +154,7 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         subroutines: Vec::new(),
         interactive_on_access: None,
         subtypes: Vec::new(),
+        unique: dto.uniqueness.unwrap_or(false),
         play_requirement: None,
         recurring_credits: None,
         first_install_discount: None,
