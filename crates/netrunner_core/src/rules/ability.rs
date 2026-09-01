@@ -445,6 +445,22 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::CardInstalled { side: Side::Corp, card: card_id.clone(), server: *into }])
         }
 
+        Effect::InstallRunnerCardFromGrip => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // Eligibility may have shifted since the selection was offered
+            // (`CardFilter::InstallableRunnerCard` checked it then — but
+            // Mutual Favor's fetched icebreaker was never filtered on
+            // affordability at all). If the pick is not installable, the
+            // card simply stays in the grip: the same "nothing to do"
+            // leniency `PromptChooseCards`'s fewer-than-`min` case
+            // establishes, never an error that would fail the decision
+            // resolving it.
+            if !crate::rules::engine::can_install_runner_card_from_grip(state, registry, &card_id) {
+                return Ok(Vec::new());
+            }
+            crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
+        }
+
         Effect::PreventStealAndTrashForRemainderOfRun => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.runner_cannot_steal_or_trash = true;
@@ -1689,6 +1705,18 @@ pub fn check_requirement(
                 state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce);
             if encountering { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::AccessedAnyCardDuringLastRun => {
+            let accessed = state.last_completed_run.as_ref().is_some_and(|run| run.cards_accessed > 0);
+            if accessed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::ThisCardIsInstalled => {
+            // Deliberately off the *install* the dispatch named, never a
+            // first-match CardId fallback — see the variant's doc comment.
+            let installed = ctx.acting_install.is_some_and(|install| {
+                state.find_corp_install(install).is_some() || state.find_rig_install(install).is_some()
+            });
+            if installed { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::WasFirstAdvancementThisCard => {
             // Answered from the triggering event itself: `CardAdvanced`
             // already carries the running total, and `== 1` *is* "this was
@@ -1812,6 +1840,8 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::StoleAgendaDuringLastRun
         | EffectRequirement::ArchivesHasFacedownCard
         | EffectRequirement::AccessingArchives
+        | EffectRequirement::AccessedAnyCardDuringLastRun
+        | EffectRequirement::ThisCardIsInstalled
         | EffectRequirement::MadeSuccessfulRunThisTurn
         | EffectRequirement::ThisCardCountersAtMost(_)
         | EffectRequirement::CurrentlyAccessingACard

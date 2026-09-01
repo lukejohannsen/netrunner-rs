@@ -12,7 +12,12 @@
         "And": [
           "LastRunWasOnHqOrRnD",
           {
-            "OncePerTurn": "zahya_sadeghi"
+            "And": [
+              "AccessedAnyCardDuringLastRun",
+              {
+                "OncePerTurn": "zahya_sadeghi"
+              }
+            ]
           }
         ]
       },

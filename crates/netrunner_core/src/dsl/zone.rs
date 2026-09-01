@@ -64,6 +64,17 @@ pub enum CardFilter {
     /// `ToggleCardSelection` validation, and `PromptChooseCards`'s
     /// availability check — already goes through.
     NotInstalledThisTurn,
+    /// A card the Runner could install from the grip right now — a
+    /// non-Trojan Program, Hardware or Resource that is affordable, fits
+    /// the memory budget and respects the console limit: the target set of
+    /// Pantograph's "you may install 1 card from your grip". The type half
+    /// lives in `card_matches_filter`; affordability and the budgets are
+    /// state-dependent, answered by `rules::engine::
+    /// can_install_runner_card_from_grip` through `eligible_positions`, so
+    /// a selection never offers an install its resolution would refuse. A
+    /// Trojan is excluded — its host is a choice no parked effect models
+    /// yet; the Runner installs one with a click instead.
+    InstallableRunnerCard,
     /// An installed piece of ice that is **not already rezzed** — the only
     /// legal target of "rez 1 installed piece of ice" (*Send a Message*).
     ///
@@ -99,6 +110,15 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
             types.iter().any(|t| card_matches_filter(card, &CardFilter::CardType(t.clone())))
         }
         CardFilter::Icebreaker => card.card_type == CardType::Program && card.strength.is_some(),
+        // The definition-level half only: it must be an installable Runner
+        // type at all (a Trojan is not — see the variant's doc comment).
+        // Affordability/memory/console are state-dependent and applied by
+        // `eligible_positions`.
+        CardFilter::InstallableRunnerCard => match card.card_type {
+            CardType::Program => !card.installs_on_ice,
+            CardType::Hardware | CardType::Resource => true,
+            _ => false,
+        },
         // The definition-level half: it must be ice at all. The
         // "not rezzed" half is instance-level, applied by `eligible_cards`.
         CardFilter::UnrezzedIce => matches!(card.card_type, CardType::Ice(_)),

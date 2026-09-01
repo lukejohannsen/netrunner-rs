@@ -17,7 +17,23 @@
             "max": 1,
             "reveal": true,
             "shuffle_after": true,
-            "destination": "OwnGrip"
+            "destination": "OwnGrip",
+            "then": {
+              "EffectIf": {
+                "condition": "MadeSuccessfulRunThisTurn",
+                "effect": {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      "InstallRunnerCardFromGrip",
+                      {
+                        "Sequence": []
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       ]

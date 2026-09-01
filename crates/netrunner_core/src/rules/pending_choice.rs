@@ -118,7 +118,7 @@ pub(crate) fn eligible_positions(
         .into_iter()
         .enumerate()
         .filter(|(_, id)| registry.get(id).is_some_and(|card| card_matches_filter(card, filter)))
-        .filter(|(position, _)| instance_matches_filter(state, chooser, zone, *position, filter))
+        .filter(|(position, _)| instance_matches_filter(state, registry, chooser, zone, *position, filter))
         .map(|(position, _)| position)
         .collect()
 }
@@ -135,6 +135,7 @@ pub(crate) fn eligible_positions(
 /// `NotInstalledThisTurn` had the same flaw for a card installed twice.
 fn instance_matches_filter(
     state: &GameState,
+    registry: &CardRegistry,
     chooser: Side,
     zone: &CardZoneRef,
     position: usize,
@@ -156,6 +157,17 @@ fn instance_matches_filter(
         // Only an unrezzed installed Corp card can be a rez target. The
         // Runner has no rez state, so a rig card is never eligible.
         CardFilter::UnrezzedIce => corp_install.is_some_and(|c| !c.rezzed),
+        // The state-dependent half of "could the Runner install this right
+        // now": affordability, memory budget, console limit — shared with
+        // `Effect::InstallRunnerCardFromGrip`'s own re-check so the offer
+        // and the resolution can never disagree. Grip cards only; the
+        // definition-level type half already ran in `card_matches_filter`.
+        CardFilter::InstallableRunnerCard => {
+            matches!(zone, CardZoneRef::OwnGrip)
+                && state.runner.grip.get(position).is_some_and(|card| {
+                    crate::rules::engine::can_install_runner_card_from_grip(state, registry, card)
+                })
+        }
         _ => true,
     }
 }
@@ -290,9 +302,24 @@ pub(crate) fn resolve_accept(
         other => other.clone(),
     };
 
-    let mut events = ability::pay_cost_ctx(state, pending.side, &cost_to_pay, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?;
+    let cost_events = ability::pay_cost_ctx(state, pending.side, &cost_to_pay, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?;
+    // A tag paid as a cost (`Cost::TakeTags`, Funhouse's "end the run
+    // unless the Runner takes 1 tag") is still the Runner taking a tag:
+    // NBN: Reality Plus's `Trigger::OnTagsGiven` must fire for it, exactly
+    // as it does when `Effect::GiveTags` dispatches its own event. Only the
+    // *cost's* `TagsGiven` events are dispatched here — an `if_paid` that
+    // gives tags dispatches for itself inside `evaluate_effect` — and the
+    // dispatch runs after `if_paid` so the choice's own effect resolves
+    // first; if that effect parked something, the `TagsGiven` arm's
+    // `fire_each` queues the reaction rather than firing under it.
+    let cost_tag_events: Vec<GameEvent> =
+        cost_events.iter().filter(|e| matches!(e, GameEvent::TagsGiven { .. })).cloned().collect();
+    let mut events = cost_events;
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
     events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()), registry)?);
+    for tag_event in cost_tag_events {
+        events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &tag_event)?);
+    }
 
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_paid`

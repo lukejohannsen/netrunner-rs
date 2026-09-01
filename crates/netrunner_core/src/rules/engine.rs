@@ -932,6 +932,140 @@ fn discounted_install_cost(next: &mut GameState, registry: &CardRegistry, base_c
     base_cost.saturating_sub(discount)
 }
 
+/// The credit cost installing `card_def` from the grip would charge right
+/// now, **without** consuming the once-per-turn discount flag — the
+/// read-only preview `can_install_runner_card_from_grip` needs. Mirrors
+/// `discounted_install_cost` plus `install_program`'s conditional per-card
+/// discount; the real install still goes through those, which do consume.
+pub(crate) fn preview_runner_install_cost(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_def: &crate::dsl::CardDefinition,
+) -> u32 {
+    let kind = match card_def.card_type {
+        CardType::Hardware => InstallKind::Hardware,
+        CardType::Program => InstallKind::Program,
+        _ => InstallKind::Resource,
+    };
+    let mut cost = card_def.cost;
+    if !state.runner.first_install_discount_used_this_turn {
+        cost = cost.saturating_sub(applicable_first_install_discount(state, registry, kind));
+    }
+    if let Some((requirement, amount)) = &card_def.install_cost_discount_if
+        && ability::check_requirement(state, requirement, Side::Runner, &ability::ResolutionContext::for_card(Some(&card_def.id)), registry).is_ok()
+    {
+        cost = cost.saturating_sub(*amount);
+    }
+    cost
+}
+
+/// Whether `card_id` could be installed out of the grip by an effect right
+/// now — the eligibility gate `CardFilter::InstallableRunnerCard` and
+/// `Effect::InstallRunnerCardFromGrip` share, so a selection never offers
+/// an install its resolution would refuse: an installable type (a
+/// non-Trojan Program, Hardware or Resource — a Trojan's host is a choice
+/// no parked effect models yet), affordable, within the memory budget,
+/// respecting the console limit. The click is no part of it: an effect
+/// install costs none.
+pub(crate) fn can_install_runner_card_from_grip(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+) -> bool {
+    if !state.runner.grip.contains(card_id) {
+        return false;
+    }
+    let Some(card_def) = registry.get(card_id) else { return false };
+    match card_def.card_type {
+        CardType::Program => {
+            if card_def.installs_on_ice
+                || memory::available_memory(state, registry) < card_def.memory_cost.unwrap_or(0)
+            {
+                return false;
+            }
+        }
+        CardType::Hardware => {
+            if card_def.subtypes.contains(&CardSubtype::Console)
+                && state.runner.rig.iter().any(|installed| {
+                    registry.get(&installed.card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Console))
+                })
+            {
+                return false;
+            }
+        }
+        CardType::Resource => {}
+        _ => return false,
+    }
+    state.runner.resources.credits.0 >= preview_runner_install_cost(state, registry, card_def)
+}
+
+/// `Effect::InstallRunnerCardFromGrip`'s working half: takes `card_id`
+/// from the grip, prices it (consuming the same discounts a click install
+/// would), pays, seeds and pushes the rig entry, and fires the type's
+/// installed event — Pantograph's "you may install 1 card from your grip",
+/// Mutual Favor's "you may install that program". A fourth sibling of the
+/// three click handlers below rather than a refactor of them: each of
+/// those validates the *action's declared* type and owns its own error
+/// shape, which `legal_actions` probes, while this path dispatches on the
+/// card's actual type after `can_install_runner_card_from_grip` has
+/// already vouched for it. A pricing change must touch this and
+/// `preview_runner_install_cost` together.
+pub(crate) fn install_runner_card_from_grip_paying_cost(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Runner;
+    take_from_grip(next, side, &card_id)?;
+    let card_def = registry
+        .get(&card_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?
+        .clone();
+    let mut events = Vec::new();
+    match card_def.card_type {
+        CardType::Program => {
+            let memory_cost = card_def.memory_cost.unwrap_or(0);
+            require_memory_for(next, registry, memory_cost)?;
+            let mut cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Program);
+            if let Some((requirement, amount)) = &card_def.install_cost_discount_if
+                && ability::check_requirement(next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok()
+            {
+                cost = cost.saturating_sub(*amount);
+            }
+            events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
+            let rig_card = seed_rig_card(next, registry, card_id.clone())?;
+            events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
+            next.runner.rig.push(rig_card);
+            let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };
+            events.push(installed_event.clone());
+            events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
+        }
+        CardType::Hardware => {
+            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Hardware);
+            events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
+            let rig_card = seed_rig_card(next, registry, card_id.clone())?;
+            events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
+            next.runner.rig.push(rig_card);
+            if let Some(bonus) = card_def.max_hand_size_bonus {
+                next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
+            }
+            events.push(GameEvent::HardwareInstalled { side, card: card_id });
+        }
+        CardType::Resource => {
+            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Resource);
+            events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
+            let rig_card = seed_rig_card(next, registry, card_id.clone())?;
+            events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
+            next.runner.rig.push(rig_card);
+            let installed_event = GameEvent::ResourceInstalled { side, card: card_id };
+            events.push(installed_event.clone());
+            events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
+        }
+        _ => return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program, hardware or resource" }),
+    }
+    Ok(events)
+}
+
 fn install_hardware(
     state: &GameState,
     registry: &CardRegistry,

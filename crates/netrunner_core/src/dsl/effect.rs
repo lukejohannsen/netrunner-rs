@@ -438,6 +438,20 @@ pub enum Effect {
         /// themselves, and a first-match-by-title lookup picked the first.
         insert_after: Option<crate::rules::InstallId>,
     },
+    /// Installs the resolving card — `acting_card`, a card sitting in the
+    /// Runner's grip — into the rig, **paying** its install cost (with the
+    /// usual discounts) and respecting the memory budget, the console limit
+    /// and the unique rule: Pantograph's "you may install 1 card from your
+    /// grip", Mutual Favor's "you may install that program" (the search has
+    /// already moved the found icebreaker to the grip, so both install from
+    /// the one zone). A Trojan is out of scope — its host is a choice no
+    /// parked effect models yet — and is never offered; see `CardFilter::
+    /// InstallableRunnerCard`, whose eligibility this effect re-checks,
+    /// silently no-oping (the card stays in the grip) if the pick has
+    /// become uninstallable since it was offered. Contrast
+    /// `InstallFromZoneIgnoringCost`, the Corp-side subroutine install
+    /// that pays nothing.
+    InstallRunnerCardFromGrip,
     /// Sets `RunState::runner_cannot_steal_or_trash`, blocking `PlayerAction::
     /// StealAgenda`/`TrashAccessedCard` for the remainder of the current
     /// run — e.g. Ansel 1.0's third subroutine. `RulesError::NoActiveRun`
@@ -596,6 +610,7 @@ impl Effect {
             | Effect::GainCreditsPerCounter { .. }
             | Effect::SwapInstalledIce(..)
             | Effect::InstallFromZoneIgnoringCost { .. }
+            | Effect::InstallRunnerCardFromGrip
             | Effect::PreventStealAndTrashForRemainderOfRun
             | Effect::PreventScoringForRemainderOfTurn
             | Effect::AddAdvancementTokens(..)

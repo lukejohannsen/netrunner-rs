@@ -1428,6 +1428,96 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 2 })));
     }
 
+    /// A tag paid as a cost is still a taken tag. Funhouse's encounter —
+    /// "end the run unless the Runner takes 1 tag" — pays `Cost::TakeTags`,
+    /// whose `TagsGiven` event used to go undispatched, so the printed
+    /// pairing (NBN: Reality Plus + Funhouse) never fired the identity.
+    #[test]
+    fn nbn_reality_plus_reacts_to_a_tag_taken_as_a_cost() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.identity = Some(CardId("nbn_reality_plus".to_string()));
+        state.corp.installed = vec![corp_ice("funhouse", ServerId::Hq)];
+
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        assert!(state.pending_paid_choice.is_some(), "funhouse's encounter choice is parked");
+
+        let corp_credits_before = state.corp.resources.credits;
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
+            .expect("runner takes the tag to stay in the run");
+        assert_eq!(state.runner.tags, 1);
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })),
+            "NBN: Reality Plus reacts to the taken tag"
+        );
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("corp takes credits");
+        assert_eq!(state.corp.resources.credits, corp_credits_before.gain(2));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, amount: 2 })));
+    }
+
+    /// Zahya's once-per-turn is consumed the moment her trigger fires, and
+    /// `OnRunEnded` fires for a bounced run too — so a 0-access run on a
+    /// central used to burn the once-per-turn for a gain of zero, silently
+    /// disenfranchising a later run the same turn. The 0-access run must
+    /// leave it unconsumed.
+    #[test]
+    fn zahya_sadeghi_is_not_spent_by_a_run_that_accessed_nothing() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(0);
+        state.runner.identity = Some(CardId("zahya_sadeghi".to_string()));
+        state.corp.installed = vec![corp_ice("palisade", ServerId::RnD)];
+        state.corp.hq = vec![CardId("hq_card_0".to_string())];
+
+        // Run 1: R&D, bounced by Palisade's "end the run" — 0 accesses.
+        let state = enter_encounter_with(state, &registry, ServerId::RnD);
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes encounter window");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
+            .expect("corp passes, firing the end-the-run subroutine");
+        assert!(state.active_run.is_none(), "bounced");
+        assert_eq!(state.runner.resources.credits, Credits(0), "no gain from a 0-access run");
+        assert!(state.runner.once_per_turn_used.is_empty(), "and the once-per-turn was not consumed");
+
+        // Run 2, same turn: HQ, one access — the identity still pays out.
+        let (state, mut events) = run_to_completion(state, &registry, ServerId::Hq);
+        let (state, closing_events) = close_all_windows(state, &registry);
+        events.extend(closing_events);
+        let (state, more_events) =
+            apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: CardId("hq_card_0".to_string()) })
+                .expect("pass on the accessed card, concluding the run");
+        events.extend(more_events);
+        assert_eq!(state.runner.resources.credits, Credits(1), "1 card accessed on the HQ run");
+    }
+
+    /// "…while it is installed": an Urtica Cipher accessed out of R&D is
+    /// not installed and deals nothing. The trigger used to fire anyway —
+    /// flat 2 net damage from a deck access, and with another copy on the
+    /// table the first-match token read could even size the hit by *that*
+    /// copy's advancement counters.
+    #[test]
+    fn urtica_cipher_deals_no_damage_when_accessed_from_rnd() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = (0..3).map(|i| CardId(format!("grip_card_{i}"))).collect();
+        state.corp.r_and_d = vec![CardId("urtica_cipher".to_string())];
+        // A second, installed and heavily advanced copy elsewhere must not
+        // answer for the copy being accessed out of R&D.
+        state.corp.installed = vec![installed_with_counters("urtica_cipher", ServerId::Remote(0), 0)];
+        state.corp.installed[0].advancement_tokens = 3;
+
+        let (state, events) = run_to_completion(state, &registry, ServerId::RnD);
+        assert_eq!(state.runner.grip.len(), 3, "no net damage from the R&D access");
+        assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::DamageTaken { .. })), "{events:?}");
+    }
+
     #[test]
     fn zahya_sadeghi_gains_a_credit_per_card_accessed_when_a_run_on_hq_ends() {
         let registry = sg_registry();
@@ -1730,6 +1820,112 @@ mod system_gateway {
         assert!(events
             .iter()
             .any(|e| matches!(e, crate::rules::GameEvent::CardsSelected { revealed: true, .. })));
+        assert!(
+            state.pending_decision.is_none(),
+            "without a successful run this turn there is no install offer — the card just goes to the grip"
+        );
+    }
+
+    /// "If you made a successful run this turn, you may install that
+    /// program." The install clause was previously unmodelled: the found
+    /// icebreaker always went to the grip and the Runner paid a click to
+    /// install it later. The search now offers the install — paying the
+    /// program's cost — whenever a successful run happened this turn.
+    #[test]
+    fn mutual_favor_may_install_the_found_icebreaker_after_a_successful_run() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.made_successful_run_this_turn = true;
+        state.runner.grip = vec![CardId("mutual_favor".to_string())];
+        state.runner.stack = vec![CardId("corroder".to_string())];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: CardId("mutual_favor".to_string()) })
+                .expect("play mutual favor");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "corroder") })
+                .expect("toggle corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm search");
+
+        assert!(state.runner.grip.contains(&CardId("corroder".to_string())), "the find lands in the grip first");
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            "and the Runner is offered the install"
+        );
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("install it");
+        assert!(state.runner.rig.iter().any(|c| c.card == CardId("corroder".to_string())));
+        assert!(!state.runner.grip.contains(&CardId("corroder".to_string())));
+        assert_eq!(state.runner.resources.credits, Credits(3), "5 - 2: the install cost is paid, unlike a subroutine install");
+    }
+
+    /// Pantograph's second clause — "Then, you may install 1 card from
+    /// your grip." — was previously unmodelled entirely. The offer excludes
+    /// what an effect install cannot do: a Trojan (host choice), and
+    /// anything the Runner cannot pay for.
+    #[test]
+    fn pantograph_may_install_a_card_from_grip_when_an_agenda_is_scored() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.runner.resources.credits = Credits(2);
+        state.runner.rig = vec![rig_card_with_counters("pantograph", 0)];
+        // corroder (2[c] program) is installable with the credit Pantograph
+        // just paid out; botulus is a Trojan and must not be offered.
+        state.runner.grip = vec![CardId("corroder".to_string()), CardId("botulus".to_string())];
+        state.corp.installed = vec![installed_with_counters("tomorrows_headline", ServerId::Remote(0), 0)];
+        state.corp.installed[0].advancement_tokens = 3;
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "tomorrows_headline") })
+                .expect("score tomorrow's headline");
+        assert_eq!(state.runner.resources.credits, Credits(3), "pantograph's 1[c] came first");
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            "then the install offer"
+        );
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose to install");
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(
+            offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position } if *position == 0)),
+            "corroder (position 0) is offered"
+        );
+        assert!(
+            !offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position } if *position == 1)),
+            "botulus, a Trojan, is not: {offered:?}"
+        );
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("toggle corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm install");
+        assert!(state.runner.rig.iter().any(|c| c.card == CardId("corroder".to_string())));
+        assert_eq!(state.runner.resources.credits, Credits(1), "3 - 2: the install cost is paid");
+    }
+
+    /// The other half of the offer filter: with nothing affordable in the
+    /// grip, choosing "install" simply finds no eligible card and nothing
+    /// is parked — never a dead-end decision.
+    #[test]
+    fn pantographs_install_offer_finds_no_card_the_runner_cannot_afford() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![rig_card_with_counters("pantograph", 0)];
+        // corroder costs 2; after Pantograph's +1 the Runner has 1.
+        state.runner.grip = vec![CardId("corroder".to_string())];
+        state.corp.installed = vec![installed_with_counters("tomorrows_headline", ServerId::Remote(0), 0)];
+        state.corp.installed[0].advancement_tokens = 3;
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "tomorrows_headline") })
+                .expect("score tomorrow's headline");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose to install");
+        assert!(state.pending_decision.is_none(), "no eligible card, so the selection never parks");
+        assert_eq!(state.runner.grip, vec![CardId("corroder".to_string())]);
     }
 
     #[test]
