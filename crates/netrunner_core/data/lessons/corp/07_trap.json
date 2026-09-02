@@ -1,0 +1,163 @@
+{
+  "id": "corp_07_trap",
+  "side": "Corp",
+  "title": "Traps and net damage",
+  "intro": "Not every face-down card in a remote is an agenda. Urtica Cipher is an asset that can be advanced like one; when the Runner accesses it, it does 2 net damage plus 1 per advancement token. Net damage discards cards from the Runner's grip at random — and a Runner who must discard more cards than they hold is flatlined and loses.\n\nYou installed Urtica Cipher and advanced it once. This lesson: advance it again, then let the Runner walk into it.",
+  "outro": "Four cards gone from the Runner's grip for the price of two advancements. The Runner cannot tell a trap from an agenda from the outside, which is exactly why they will now hesitate over your next advanced card. That is the whole Corp track: money, servers, ice, scoring, and bluff. Press Enter to graduate to the starter game.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "urtica_cipher",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayOperation": {
+        "card_id": "hedge_fund"
+      }
+    },
+    {
+      "InstallCard": {
+        "card_id": "urtica_cipher",
+        "zone": {
+          "Remote": 0
+        },
+        "slot": "Root"
+      }
+    },
+    {
+      "AdvanceCard": {
+        "target": 1
+      }
+    },
+    "EndTurn"
+  ],
+  "opponent": [
+    {
+      "action": {
+        "InitiateRun": {
+          "server": {
+            "Remote": 0
+          }
+        }
+      },
+      "turn": 4
+    }
+  ],
+  "steps": [
+    {
+      "prose": "Advance Urtica Cipher again. From the Runner's side it now looks like a 2-advanced agenda.",
+      "allow": {
+        "Card": {
+          "kind": "AdvanceCard",
+          "card": "urtica_cipher"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "CardAdvanced",
+          "card": "urtica_cipher"
+        }
+      },
+      "solution": [
+        {
+          "AdvanceCard": {
+            "target": 1
+          }
+        }
+      ]
+    },
+    {
+      "prose": "Take a credit and end your turn.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "DrawCardClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Corp"
+          }
+        },
+        "EndTurn"
+      ]
+    },
+    {
+      "prose": "The Runner is running Remote 0. Do not rez Urtica — a trap works face down. Pass priority and let them access it.",
+      "allow": {
+        "Kind": "PassPriority"
+      },
+      "advance_when": {
+        "Kind": "DamageTaken"
+      },
+      "solution": [
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        }
+      ],
+      "hint": "Choose Pass priority."
+    }
+  ]
+}

@@ -1,0 +1,97 @@
+{
+  "id": "corp_02_operation",
+  "side": "Corp",
+  "title": "Playing an operation",
+  "intro": "Clicking for a credit is slow. Operations are the Corp's one-shot cards: pay the cost, resolve the text, and the card goes to Archives. Hedge Fund costs 5 and pays 9 — a net gain of 4 for a single click.\n\nThis lesson: play Hedge Fund, then finish your turn.",
+  "outro": "Hedge Fund is the best money in the deck, and the Runner's Sure Gamble is its mirror. Watch the play cost: you must have the 5 credits before you get the 9. Next: servers, and what installing a card into one means.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand"
+  ],
+  "opponent": [],
+  "steps": [
+    {
+      "prose": "You have 5 credits and 3 clicks. Hedge Fund costs 5: play it and take 9.",
+      "allow": {
+        "Card": {
+          "kind": "PlayOperation",
+          "card": "hedge_fund"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "OperationPlayed",
+          "card": "hedge_fund"
+        }
+      },
+      "solution": [
+        {
+          "PlayOperation": {
+            "card_id": "hedge_fund"
+          }
+        }
+      ],
+      "hint": "Choose Play Hedge Fund."
+    },
+    {
+      "prose": "Nine credits. Spend your two remaining clicks however you like, then end your turn — with 5 cards in HQ there is nothing to discard.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "DrawCardClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Corp"
+          }
+        },
+        {
+          "GainCreditClick": {
+            "side": "Corp"
+          }
+        },
+        "EndTurn"
+      ]
+    }
+  ]
+}

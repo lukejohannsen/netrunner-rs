@@ -1,0 +1,143 @@
+{
+  "id": "runner_05_stealing",
+  "side": "Runner",
+  "title": "Accessing and stealing",
+  "intro": "When you access an agenda you steal it: it goes to your score area and its points count for you. Six points win the starter game. R&D is the Corp's deck, and a run on it accesses the top card — whatever the Corp will draw next.\n\nThis lesson: run R&D and steal what is on top.",
+  "outro": "Two points. An agenda is worth the same to whoever scores it, which is why the Corp hides them behind ice and why you run. Next: accessing more than one card at a time.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "tithe",
+      "nico_campaign",
+      "regolith_mining_license",
+      "whitespace",
+      "diviner",
+      "offworld_office",
+      "palisade"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayEvent": {
+        "card_id": "sure_gamble"
+      }
+    }
+  ],
+  "opponent": [],
+  "steps": [
+    {
+      "prose": "Spend a click to run R&D.",
+      "allow": {
+        "Server": {
+          "kind": "InitiateRun",
+          "server": "RnD"
+        }
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunInitiated",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        {
+          "InitiateRun": {
+            "server": "RnD"
+          }
+        }
+      ],
+      "hint": "Choose Run R&D."
+    },
+    {
+      "prose": "Nothing protects R&D. Continue to the server.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "ServerApproached",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        "ContinueRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Continue run."
+    },
+    {
+      "prose": "You are at the server. This is your last chance to jack out; instead, complete the run — it becomes successful and you breach the server.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "CompleteRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunSucceeded",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        "CompleteRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Complete run."
+    },
+    {
+      "prose": "The top card is Offworld Office. Steal it.",
+      "allow": {
+        "Card": {
+          "kind": "StealAgenda",
+          "card": "offworld_office"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "AgendaStolen",
+          "card": "offworld_office"
+        }
+      },
+      "solution": [
+        {
+          "StealAgenda": {
+            "card_id": "offworld_office"
+          }
+        }
+      ],
+      "hint": "Choose Steal Offworld Office."
+    }
+  ]
+}

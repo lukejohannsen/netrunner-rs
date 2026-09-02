@@ -44,8 +44,11 @@ impl ScriptedAgent {
     /// with three clicks unspent is a stranger board than one that clicked
     /// for credits, and a Corp that never draws would deck out no sooner
     /// either way); `DiscardCard` for the discard phase; and the first
-    /// legal action for anything else — a pending choice some card forced,
-    /// where "first option" is as neutral as this agent can be.
+    /// `ContinueRun`/`CompleteRun` so a *scripted* run — the only kind this
+    /// agent makes — carries through to its access rather than jacking
+    /// out; and the first legal action for anything else — a pending choice
+    /// some card forced, where "first option" is as neutral as this agent
+    /// can be.
     fn passive(legal: &[PlayerAction]) -> PlayerAction {
         let prefer = |predicate: fn(&PlayerAction) -> bool| legal.iter().find(|action| predicate(action)).cloned();
         prefer(|a| matches!(a, PlayerAction::KeepHand))
@@ -54,6 +57,8 @@ impl ScriptedAgent {
             .or_else(|| prefer(|a| matches!(a, PlayerAction::GainCreditClick { .. })))
             .or_else(|| prefer(|a| matches!(a, PlayerAction::EndTurn)))
             .or_else(|| prefer(|a| matches!(a, PlayerAction::DiscardCard { .. })))
+            .or_else(|| prefer(|a| matches!(a, PlayerAction::ContinueRun)))
+            .or_else(|| prefer(|a| matches!(a, PlayerAction::CompleteRun)))
             .unwrap_or_else(|| legal[0].clone())
     }
 }

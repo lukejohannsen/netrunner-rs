@@ -1,0 +1,299 @@
+{
+  "id": "corp_06_breaker",
+  "side": "Corp",
+  "title": "Defending against a breaker",
+  "intro": "Ice only stops a Runner who cannot break it. Cleaver is a barrier breaker: for credits it raises its strength and breaks Palisade's subroutine. A Runner with the right breaker and enough credits gets through — ice taxes them, it does not wall them out.\n\nYou have Palisade in front of a remote holding Offworld Office with 2 tokens; the Runner installed Cleaver last turn. This lesson: rez when they run, and see what a breaker does.",
+  "outro": "The Runner paid 3 credits and a click to steal 2 points. Ice bought you time, not safety: score faster, stack a second piece of ice, or keep the agenda in HQ until you can. The game is to 6, so this is a setback, not the end. Next: a trap.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayOperation": {
+        "card_id": "hedge_fund"
+      }
+    },
+    {
+      "InstallCard": {
+        "card_id": "palisade",
+        "zone": {
+          "Remote": 0
+        },
+        "slot": "Ice"
+      }
+    },
+    {
+      "InstallCard": {
+        "card_id": "offworld_office",
+        "zone": {
+          "Remote": 0
+        },
+        "slot": "Root"
+      }
+    },
+    "EndTurn",
+    {
+      "AdvanceCard": {
+        "target": 2
+      }
+    },
+    {
+      "AdvanceCard": {
+        "target": 2
+      }
+    }
+  ],
+  "opponent": [
+    {
+      "action": {
+        "InstallProgram": {
+          "card_id": "cleaver"
+        }
+      },
+      "turn": 2
+    },
+    {
+      "action": {
+        "GainCreditClick": {
+          "side": "Runner"
+        }
+      },
+      "turn": 2
+    },
+    {
+      "action": {
+        "GainCreditClick": {
+          "side": "Runner"
+        }
+      },
+      "turn": 2
+    },
+    {
+      "action": {
+        "GainCreditClick": {
+          "side": "Runner"
+        }
+      },
+      "turn": 2
+    },
+    {
+      "action": {
+        "InitiateRun": {
+          "server": {
+            "Remote": 0
+          }
+        }
+      },
+      "turn": 4
+    },
+    {
+      "action": {
+        "ActivateAbility": {
+          "target": 3,
+          "ability_index": 1
+        }
+      }
+    },
+    {
+      "action": {
+        "ActivateAbility": {
+          "target": 3,
+          "ability_index": 0
+        }
+      }
+    },
+    {
+      "action": {
+        "StealAgenda": {
+          "card_id": "offworld_office"
+        }
+      }
+    }
+  ],
+  "steps": [
+    {
+      "prose": "Advance Offworld Office toward its 4.",
+      "allow": {
+        "Card": {
+          "kind": "AdvanceCard",
+          "card": "offworld_office"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "CardAdvanced",
+          "card": "offworld_office"
+        }
+      },
+      "solution": [
+        {
+          "AdvanceCard": {
+            "target": 2
+          }
+        }
+      ]
+    },
+    {
+      "prose": "Three tokens, and that was your last click. You have 6 credits — enough for the rez. End your turn.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "DrawCardClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        "EndTurn"
+      ]
+    },
+    {
+      "prose": "The Runner is running Remote 0. Rez Palisade (3 credits) — it has strength 4 while protecting a remote.",
+      "allow": {
+        "Card": {
+          "kind": "RezIce",
+          "card": "palisade"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "IceRezzed",
+          "card": "palisade"
+        }
+      },
+      "solution": [
+        {
+          "RezIce": {
+            "ice": 1
+          }
+        }
+      ],
+      "hint": "Choose Rez Palisade."
+    },
+    {
+      "prose": "Watch: the Runner pays 2 to boost Cleaver to strength 4, then 1 to break the subroutine. Pass priority whenever you are asked.",
+      "allow": {
+        "Kind": "PassPriority"
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "SubroutineBroken",
+          "card": "palisade"
+        }
+      },
+      "solution": [
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        }
+      ],
+      "hint": "Choose Pass priority."
+    },
+    {
+      "prose": "Palisade is broken, so the Runner reaches the server and accesses the agenda. Pass priority.",
+      "allow": {
+        "Kind": "PassPriority"
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "AgendaStolen",
+          "card": "offworld_office"
+        }
+      },
+      "solution": [
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        }
+      ],
+      "hint": "Choose Pass priority."
+    }
+  ]
+}

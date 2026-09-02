@@ -63,6 +63,11 @@ pub struct LessonSession {
     absorbed: usize,
     /// Counts the opening actions submitted, for `OpeningRejected`.
     opening_index: usize,
+    /// Set when the learner is first handed a decision. Nothing before that
+    /// — the opening's own events, the opponent's turns leading up to it —
+    /// counts toward a step: an opening that advances an agenda must not
+    /// tick off the "advance the agenda" step it exists to set up.
+    handed_over: bool,
 }
 
 impl LessonSession {
@@ -85,6 +90,7 @@ impl LessonSession {
             learner,
             absorbed: 0,
             opening_index: 0,
+            handed_over: false,
         })
     }
 
@@ -112,7 +118,18 @@ impl LessonSession {
                 SessionStep::Applied { .. } => continue,
                 SessionStep::Awaiting { side, view } => {
                     debug_assert_eq!(side, self.learner, "only the learner's seat is external");
-                    if let Some(action) = self.opening.pop_front() {
+                    let pass = view.legal_actions.iter().find(|action| matches!(action, PlayerAction::PassPriority { .. })).cloned();
+                    if let Some(action) = self.opening.front() {
+                        // An opening is written as the turn's actions; the
+                        // paid-ability windows between them are passed
+                        // through, the same rule as below.
+                        if !view.legal_actions.contains(action)
+                            && let Some(pass) = pass
+                        {
+                            self.session.submit(pass).expect("passing priority is legal: it was in legal_actions");
+                            continue;
+                        }
+                        let action = self.opening.pop_front().expect("front was Some");
                         let index = self.opening_index;
                         self.opening_index += 1;
                         self.session
@@ -121,13 +138,13 @@ impl LessonSession {
                         continue;
                     }
                     let allowed: Vec<PlayerAction> = self.progress.allowed(&view).into_iter().cloned().collect();
-                    let pass = view.legal_actions.iter().find(|action| matches!(action, PlayerAction::PassPriority { .. }));
                     if let Some(pass) = pass
                         && (view.legal_actions.len() == 1 || allowed.is_empty())
                     {
-                        self.session.submit(pass.clone()).expect("passing priority is legal: it was in legal_actions");
+                        self.session.submit(pass).expect("passing priority is legal: it was in legal_actions");
                         continue;
                     }
+                    self.handed_over = true;
                     return Ok(LessonStep::Prompt {
                         view,
                         allowed,
@@ -149,11 +166,15 @@ impl LessonSession {
         self.session.submit(action)
     }
 
-    /// Feeds every recorded action since the last call into the lesson.
+    /// Feeds every recorded action since the last call into the lesson —
+    /// once the learner has been handed over to; before that the entries
+    /// are only skipped past.
     fn absorb(&mut self) {
         let entries = self.session.history().entries();
-        for entry in &entries[self.absorbed..] {
-            self.progress.observe(&entry.events);
+        if self.handed_over {
+            for entry in &entries[self.absorbed..] {
+                self.progress.observe(&entry.events);
+            }
         }
         self.absorbed = entries.len();
     }
