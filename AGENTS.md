@@ -48,6 +48,7 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 | `netrunner_gym` | PyO3 RL environment over the fixed `ActionSpace`. |
 | `netrunner_selfplay` | High-volume self-play data generation for training. |
 | `netrunner_card_sync` | Async NetrunnerDB API sync and cross-platform disk caching — the only crate doing network I/O for card data. |
+| `netrunner_rating` | Pure, engine-free Glicko-2 ratings: a `RatingBook` of one rating per track (human-vs-human, human-vs-bot, bot benchmark), participant and role, serializable whole. No I/O; the CLI's `bench` and the server own their files. |
 
 Bot *logic* belongs in `netrunner_bots`, not in `netrunner_gym` or `netrunner_selfplay`; those are harnesses. `netrunner_session` is a **driver**, not a harness and not a rules authority — it owns the loop, never a rule.
 
@@ -142,6 +143,7 @@ The bar for any change: `cargo test --workspace` fully green and `cargo clippy -
 - `cargo run -p netrunner_cli`: Run the TUI client (local match vs. a bot).
 - `cargo run -p netrunner_server -- --serve`: Run the standalone headless WebSocket server.
 - `cargo run -p netrunner_selfplay`: Generate self-play training data.
+- `cargo run --release -p netrunner_cli -- bench --bots random,heuristic,puct --games 12 --seed 1`: Rate every seating of a set of bots on the Glicko-2 benchmark ladder (`--report` for JSON, `--bots puct,puct-onnx --model X` to place a trained policy on it).
 
 ### Testing & Quality
 - `cargo test --workspace`: Run unit and integration tests across all crates.

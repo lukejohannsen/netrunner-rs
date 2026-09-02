@@ -15,6 +15,7 @@ use uuid::Uuid;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_rating::{RatingBook, Track};
 use netrunner_server::{ClientMessage, MatchSummary, ServerMessage};
 
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
@@ -300,4 +301,87 @@ async fn spectating_an_unknown_match_is_refused() {
     let mut socket = open(&url, ClientMessage::Spectate { match_id: Uuid::new_v4() }).await;
     assert!(matches!(next(&mut socket).await, ServerMessage::ConnectRejected { .. }));
     assert!(closed_by_server(&mut socket).await);
+}
+
+/// The daemon writes the book after the session task ends, which is a
+/// moment after the client saw `GameEnded`; poll for it.
+async fn wait_for_book(path: &std::path::Path, ready: impl Fn(&RatingBook) -> bool) -> RatingBook {
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if let Ok(json) = std::fs::read_to_string(path)
+                && let Ok(book) = RatingBook::from_json(&json)
+                && ready(&book)
+            {
+                return book;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the rating book is written within 10s")
+}
+
+#[tokio::test]
+async fn a_surrender_against_the_bot_is_rated_on_the_human_vs_bot_track() {
+    let dir = std::env::temp_dir().join(format!("netrunner_ratings_bot_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("ratings.json");
+    let url = start_server(ServeOptions {
+        bot_runner: ServeBotKind::Heuristic,
+        seed: Some(1),
+        ratings_file: Some(path.clone()),
+        ..ServeOptions::default()
+    })
+    .await;
+
+    let mut quitter = open(&url, connect("quitter", Some(Side::Corp))).await;
+    joined(next(&mut quitter).await);
+    state_update(next(&mut quitter).await);
+    send(&mut quitter, ClientMessage::Surrender).await;
+    assert!(matches!(next(&mut quitter).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
+
+    let book = wait_for_book(&path, |book| book.standing(Track::HumanVsBot, "quitter").is_some()).await;
+    let human = book.standing(Track::HumanVsBot, "quitter").unwrap();
+    let bot = book.standing(Track::HumanVsBot, "bot:heuristic").unwrap();
+    assert_eq!((human.corp.losses, human.corp.wins), (1, 0), "a surrender is a loss");
+    assert!(human.corp.rating.rating < 1500.0);
+    assert_eq!(bot.runner.wins, 1);
+    assert!(bot.runner.rating.rating > 1500.0);
+    assert!(book.standing(Track::HumanVsHuman, "quitter").is_none(), "the tracks never mix");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Two humans, one surrenders; then the daemon is restarted on the same
+/// file and a second match adds to the same standings.
+#[tokio::test]
+async fn human_matches_are_rated_on_their_own_track_and_the_book_survives_a_restart() {
+    let dir = std::env::temp_dir().join(format!("netrunner_ratings_human_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("ratings.json");
+    let options = || ServeOptions { bot_runner: ServeBotKind::None, seed: Some(1), ratings_file: Some(path.clone()), ..ServeOptions::default() };
+
+    for round in 1..=2u32 {
+        let url = start_server(options()).await;
+        let mut ann = open(&url, connect("ann", Some(Side::Corp))).await;
+        queued(next(&mut ann).await);
+        let mut bo = open(&url, connect("bo", None)).await;
+        joined(next(&mut bo).await);
+        joined(next(&mut ann).await);
+        state_update(next(&mut ann).await);
+        state_update(next(&mut bo).await);
+        // The Corp is the awaited seat on its mulligan, so its surrender
+        // is read at once (a non-acting seat's is read when it is next
+        // awaited — see the ROADMAP entry).
+        send(&mut ann, ClientMessage::Surrender).await;
+        assert!(matches!(next(&mut bo).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
+        let book = wait_for_book(&path, |book| {
+            book.standing(Track::HumanVsHuman, "ann").is_some_and(|standing| standing.corp.losses == round)
+        })
+        .await;
+        let bo_standing = book.standing(Track::HumanVsHuman, "bo").unwrap();
+        assert_eq!(bo_standing.runner.wins, round);
+        assert!(bo_standing.runner.rating.rating > 1500.0);
+        assert!(book.standing(Track::HumanVsBot, "ann").is_none());
+    }
+    let _ = std::fs::remove_dir_all(&dir);
 }

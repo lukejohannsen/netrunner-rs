@@ -177,6 +177,11 @@ pub struct MatchSession {
     spectators: Vec<mpsc::UnboundedSender<ServerMessage>>,
     reconnect_grace: Duration,
     turn_timeout: TurnTimeout,
+    /// Who won and why, once a `GameEnded` has gone out — the result
+    /// `run_with_outcome` hands back, so the host can rate a match ended
+    /// by surrender, disconnect or clock, none of which the final
+    /// `GameState` records.
+    outcome: Option<(Side, GameEndReason)>,
     /// When the decision currently awaited runs out, if a clock is on.
     /// Lives here rather than in `await_seat` so that a rejected action —
     /// which re-enters `await_seat` for the same decision — finds the
@@ -207,6 +212,7 @@ impl MatchSession {
             spectators: Vec::new(),
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             turn_timeout: None,
+            outcome: None,
             decision_deadline: None,
         }
     }
@@ -235,7 +241,16 @@ impl MatchSession {
     /// and returns the final `GameState` — callers check
     /// `matches!(final.phase, GamePhase::GameOver(_))` to tell a real
     /// conclusion from an early exit.
-    pub async fn run(mut self) -> GameState {
+    pub async fn run(self) -> GameState {
+        self.run_with_outcome().await.0
+    }
+
+    /// `run`, plus the verdict the seats were sent: `None` only for a
+    /// stall, where nobody won. The final state alone cannot say who won
+    /// a match ended by surrender, disconnect or clock — the engine never
+    /// reached `GameOver` — and those are exactly the results a rating
+    /// must still count.
+    pub async fn run_with_outcome(mut self) -> (GameState, Option<(Side, GameEndReason)>) {
         // Without this, a channel-backed side would have nothing to act on
         // for its very first decision: every subsequent `StateUpdate` is
         // only sent *after* an action is applied, but nothing has been
@@ -308,7 +323,8 @@ impl MatchSession {
                 SessionStep::Stalled(_) => break,
             }
         }
-        self.session.into_parts().0
+        let outcome = self.outcome;
+        (self.session.into_parts().0, outcome)
     }
 
     /// The awaiting seat's next message, servicing reattachments for
@@ -463,6 +479,7 @@ impl MatchSession {
     }
 
     fn send_game_ended(&mut self, winner: Side, reason: GameEndReason) {
+        self.outcome = Some((winner, reason));
         self.broadcast(ServerMessage::GameEnded { winner, reason });
     }
 }

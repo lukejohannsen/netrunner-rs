@@ -223,6 +223,49 @@ pub enum Mode {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Play every seating of a set of bots against each other, in
+    /// parallel, and rate them on the bot-benchmark track (Glicko-2, a
+    /// rating per role). The offline half of Phase 3's rating engine and
+    /// the harness for comparing a trained policy against the search it
+    /// replaced.
+    Bench {
+        /// Bot kinds to seat, comma-separated. Every ordered pair plays,
+        /// a kind against itself included — that pairing is what says
+        /// whether the Corp or the Runner chair is the stronger one for
+        /// a given bot. `human` and `onnx` cannot be seated here.
+        #[arg(long, value_delimiter = ',', default_value = "random,heuristic")]
+        bots: Vec<BotKind>,
+        /// Games per ordered pairing, rotating through the sample-deck
+        /// matchups the way `--headless --all-matchups` does.
+        #[arg(long, default_value_t = 12)]
+        games: u32,
+        /// Base seed; game n of the whole run plays on `seed + n`, so the
+        /// same arguments reproduce the same ladder. Random if omitted.
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Search iterations per decision for `mcts`, `puct` and
+        /// `puct-onnx`; part of those bots' participant ids (`puct@32`).
+        #[arg(long, default_value_t = 32)]
+        simulations: usize,
+        /// Worker threads. All cores if omitted.
+        #[arg(long)]
+        threads: Option<usize>,
+        /// Write every game's result, each pairing's tally and the ladder
+        /// as JSON here.
+        #[arg(long)]
+        report: Option<PathBuf>,
+        /// A rating book to load before and save after the run, so a
+        /// ladder accumulates across runs. Fresh and unsaved if omitted:
+        /// a benchmark's point is the code as it stands today.
+        #[arg(long)]
+        ratings: Option<PathBuf>,
+        /// Suffix for every participant id (`heuristic#abc123`), so two
+        /// versions of the same bot rate as different participants in a
+        /// saved book.
+        #[arg(long)]
+        label: Option<String>,
+    },
+
     /// List the matches the `netrunner_server --serve` daemon at
     /// `--server` is hosting, with the ids `--spectate` takes.
     Matches,

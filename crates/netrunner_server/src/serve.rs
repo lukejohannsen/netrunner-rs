@@ -41,6 +41,7 @@
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex as StdMutex, MutexGuard};
 use std::time::{Duration, Instant};
 
@@ -54,6 +55,7 @@ use uuid::Uuid;
 use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{GameState, Side};
+use netrunner_rating::{Outcome, RatingBook, Track};
 
 use crate::match_session::{MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::{ClientMessage, MatchSummary, ServerMessage};
@@ -75,6 +77,25 @@ impl ServeBotKind {
             ServeBotKind::Heuristic => "heuristic bot",
             ServeBotKind::Mcts => "mcts bot",
             ServeBotKind::None => unreachable!("a human-vs-human daemon seats no bot"),
+        }
+    }
+
+    /// The bot's participant id in the rating book. Prefixed so no human
+    /// name can collide with it on the human-vs-bot track — a player is
+    /// free to call themselves "heuristic".
+    fn rating_id(self) -> &'static str {
+        match self {
+            ServeBotKind::Heuristic => "bot:heuristic",
+            ServeBotKind::Mcts => "bot:mcts",
+            ServeBotKind::None => unreachable!("a human-vs-human daemon seats no bot"),
+        }
+    }
+
+    /// Which ladder a match on this daemon counts toward.
+    fn track(self) -> Track {
+        match self {
+            ServeBotKind::None => Track::HumanVsHuman,
+            ServeBotKind::Heuristic | ServeBotKind::Mcts => Track::HumanVsBot,
         }
     }
 }
@@ -99,6 +120,12 @@ pub struct ServeOptions {
     pub max_matches: Option<usize>,
     /// See `MatchSession::with_turn_timeout`; `None` runs without a clock.
     pub turn_timeout: TurnTimeout,
+    /// Where the daemon keeps its `netrunner_rating::RatingBook`. Loaded
+    /// at bind, rewritten after every rated match (temp file plus
+    /// rename, like the deck store and the card cache), and the only
+    /// thing that makes a rating *persistent*. `None` rates nothing: a
+    /// daemon with no file is stateless, which is what every test wants.
+    pub ratings_file: Option<PathBuf>,
 }
 
 impl Default for ServeOptions {
@@ -109,6 +136,7 @@ impl Default for ServeOptions {
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             max_matches: None,
             turn_timeout: None,
+            ratings_file: None,
         }
     }
 }
@@ -153,17 +181,20 @@ struct PendingHuman {
 
 impl PendingHuman {
     fn seated(self) -> SeatedPlayer {
-        SeatedPlayer { name: self.player_name, token: self.token, slot: self.slot }
+        SeatedPlayer { rating_id: self.player_name.clone(), name: self.player_name, token: self.token, slot: self.slot }
     }
 }
 
-/// A player about to be seated: the name `MatchList` will show, the token
-/// `MatchJoined` will carry (already issued if they came through the
-/// lobby, so one token spans queue and match), and the slot the session
-/// plays them through. A bot seat carries a token too, unused — cheaper
-/// than a second type for the one case that never resumes.
+/// A player about to be seated: the name `MatchList` will show, the id
+/// the rating book knows them by (the name itself for a human, a
+/// `bot:` id for a bot), the token `MatchJoined` will carry (already
+/// issued if they came through the lobby, so one token spans queue and
+/// match), and the slot the session plays them through. A bot seat
+/// carries a token too, unused — cheaper than a second type for the one
+/// case that never resumes.
 struct SeatedPlayer {
     name: String,
+    rating_id: String,
     token: Uuid,
     slot: PlayerSlot,
 }
@@ -183,6 +214,8 @@ impl SeatedPlayer {
 struct Registry {
     matches: HashMap<Uuid, MatchEntry>,
     seats: HashMap<Uuid, SeatTicket>,
+    /// Every rating the daemon holds; see `ServeOptions::ratings_file`.
+    ratings: RatingBook,
     /// Arrival order; pairing takes the first waiter in the newcomer's room.
     lobby: Vec<PendingHuman>,
     /// Claimed by `allocate`, never reused: match `n` plays on
@@ -253,6 +286,42 @@ impl Shared {
         registry.sweep_lobby();
         registry.match_list(&self.options)
     }
+
+    /// Rates one finished match and rewrites the book. Under the registry
+    /// lock, so two matches ending at once serialize their updates; the
+    /// write is a few kilobytes and the lock is never held across an
+    /// await, so that is fine. A failed write is logged, not fatal: the
+    /// ratings are already applied in memory and the next match's write
+    /// carries them.
+    fn rate(&self, track: Track, corp: &str, runner: &str, outcome: Outcome) {
+        let Some(path) = &self.options.ratings_file else { return };
+        let mut registry = self.lock();
+        let (corp_after, runner_after) = registry.ratings.record(track, corp, runner, outcome);
+        tracing::info!(
+            ?track, corp, runner, ?outcome,
+            corp_rating = corp_after.corp.rating.rating, runner_rating = runner_after.runner.rating.rating,
+            "match rated"
+        );
+        if let Err(error) = save_ratings(path, &registry.ratings) {
+            tracing::warn!(path = %path.display(), ?error, "could not save the rating book");
+        }
+    }
+}
+
+fn load_ratings(path: &Path) -> std::io::Result<RatingBook> {
+    if !path.exists() {
+        return Ok(RatingBook::default());
+    }
+    let json = std::fs::read_to_string(path)?;
+    RatingBook::from_json(&json).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+}
+
+/// Temp file plus rename, so a crash mid-write leaves the previous book
+/// intact rather than half a JSON document.
+fn save_ratings(path: &Path, book: &RatingBook) -> std::io::Result<()> {
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, book.to_json())?;
+    std::fs::rename(tmp, path)
 }
 
 pub struct Server {
@@ -266,9 +335,13 @@ impl Server {
     pub async fn bind(addr: &str, options: ServeOptions) -> std::io::Result<Self> {
         let listener = TcpListener::bind(addr).await?;
         let base_seed = options.seed.unwrap_or_else(rand::random);
+        let ratings = match &options.ratings_file {
+            Some(path) => load_ratings(path)?,
+            None => RatingBook::default(),
+        };
         let shared = Shared {
             cards: fixtures::kate_vs_hb_registry(),
-            registry: Arc::new(StdMutex::new(Registry::default())),
+            registry: Arc::new(StdMutex::new(Registry { ratings, ..Registry::default() })),
             options,
             base_seed,
         };
@@ -451,9 +524,10 @@ fn seat_vs_bot(
     let (match_id, seed) = registry.allocate(shared.base_seed);
 
     let human_side = preferred_side.unwrap_or(Side::Corp);
-    let human = SeatedPlayer { name: player_name, token: Uuid::new_v4(), slot };
+    let human = SeatedPlayer { rating_id: player_name.clone(), name: player_name, token: Uuid::new_v4(), slot };
     let bot = SeatedPlayer {
         name: kind.seat_name().to_string(),
+        rating_id: kind.rating_id().to_string(),
         token: Uuid::new_v4(),
         slot: PlayerSlot::Bot(make_serve_agent(kind, human_side.other(), seed.wrapping_add(1))),
     };
@@ -527,6 +601,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         .filter_map(|(player, side)| player.channel_tx().map(|tx| (side, player.token, tx.clone())))
         .collect();
     let (corp_name, runner_name) = (corp.name, runner.name);
+    let (corp_rating_id, runner_rating_id) = (corp.rating_id, runner.rating_id);
 
     let session = MatchSession::new(state, shared.cards.clone(), corp.slot, runner.slot)
         .with_reconnect_grace(shared.options.reconnect_grace)
@@ -541,14 +616,24 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         tokens.push(session_token);
     }
 
-    let registry = Arc::clone(&shared.registry);
+    let shared = shared.clone();
     tokio::spawn(async move {
-        session.run().await;
-        let mut registry = registry.lock().expect("daemon registry poisoned");
-        registry.matches.remove(&match_id);
-        for token in tokens {
-            registry.seats.remove(&token);
+        let (_state, outcome) = session.run_with_outcome().await;
+        {
+            let mut registry = shared.lock();
+            registry.matches.remove(&match_id);
+            for token in tokens {
+                registry.seats.remove(&token);
+            }
         }
+        // A forfeit — surrender, disconnect, clock — is a loss like any
+        // other; a stall (`None`) is nobody's and goes unrated.
+        let outcome = match outcome {
+            Some((Side::Corp, _)) => Outcome::CorpWin,
+            Some((Side::Runner, _)) => Outcome::RunnerWin,
+            None => return,
+        };
+        shared.rate(shared.options.bot_runner.track(), &corp_rating_id, &runner_rating_id, outcome);
     });
 }
 
