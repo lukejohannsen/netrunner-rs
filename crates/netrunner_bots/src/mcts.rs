@@ -3,12 +3,15 @@ use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{apply_action, legal_actions as engine_legal_actions, GamePhase, GameState, PlayerAction, Side};
+use netrunner_core::rules::{
+    apply_action, current_actor, legal_actions as engine_legal_actions, GamePhase, GameState, PlayerAction, Side,
+};
 use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
 use crate::determinize::determinize;
 use crate::eval::evaluate_state;
+use crate::puct::{pick_action, ActionStat, ESCAPE_RNG_SALT, MAX_GREEDY_REPEATS};
 
 // Both `Node::new` (per expansion) and `rollout` (per rollout ply) call
 // `netrunner_core::rules::legal_actions`, which itself validates every
@@ -46,6 +49,12 @@ pub struct MctsAgent {
     exploration: f64,
     trees: usize,
     seed: u64,
+    /// What `select_action` last chose, and how many times in a row — the
+    /// input to `pick_action`'s cycle break. Same bookkeeping as
+    /// `PuctAgent`, for the same reason: see `MAX_GREEDY_REPEATS`. A bare
+    /// argmax over root visits re-picks a state-preserving action forever.
+    last_action: Option<PlayerAction>,
+    repeats: usize,
 }
 
 impl MctsAgent {
@@ -62,7 +71,16 @@ impl MctsAgent {
     }
 
     pub fn with_config(side: Side, seed: u64, iterations: usize, max_depth: usize, exploration: f64, trees: usize) -> Self {
-        Self { side, iterations: iterations.max(1), max_depth: max_depth.max(1), exploration, trees: trees.max(1), seed }
+        Self {
+            side,
+            iterations: iterations.max(1),
+            max_depth: max_depth.max(1),
+            exploration,
+            trees: trees.max(1),
+            seed,
+            last_action: None,
+            repeats: 0,
+        }
     }
 }
 
@@ -107,11 +125,23 @@ impl BotAgent for MctsAgent {
             }
         }
 
-        merged
+        // `index: None` throughout — MCTS never encodes against the
+        // `ActionSpace`, and `pick_action` reads only the action, visits
+        // and value.
+        let stats: Vec<ActionStat> = merged
             .into_iter()
-            .max_by(|a, b| a.1.cmp(&b.1).then_with(|| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal)))
-            .map(|(action, _, _)| action)
-            .unwrap_or_else(|| view.legal_actions[0].clone())
+            .map(|(action, visits, total_value)| ActionStat { index: None, action, visits, total_value })
+            .collect();
+        // `self.seed` advanced above, so the escape draw changes per call
+        // and the agent stays a pure function of its construction seed.
+        let mut rng = StdRng::seed_from_u64(self.seed ^ ESCAPE_RNG_SALT);
+        let avoid = if self.repeats >= MAX_GREEDY_REPEATS { self.last_action.as_ref() } else { None };
+        let chosen = pick_action(&stats, false, avoid, &mut rng)
+            .map(|stat| stat.action.clone())
+            .unwrap_or_else(|| view.legal_actions[0].clone());
+        self.repeats = if self.last_action.as_ref() == Some(&chosen) { self.repeats + 1 } else { 0 };
+        self.last_action = Some(chosen.clone());
+        chosen
     }
 }
 
@@ -183,11 +213,18 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
     }
 
     let parent_visits = node.visits.max(1) as f64;
+    // Negamax: values are from `side` throughout, so where the opponent
+    // decides the edge they take is the one that *minimises* them. See
+    // `PuctNode::select_edge` for the history — both searches maximised
+    // the agent's value at every node until September 2026.
+    let agent_to_move = current_actor(&node.state).is_none_or(|actor| actor == side);
     let chosen = node
         .children
         .iter_mut()
         .max_by(|(_, a), (_, b)| {
-            uct(a, parent_visits, exploration).partial_cmp(&uct(b, parent_visits, exploration)).unwrap_or(std::cmp::Ordering::Equal)
+            uct(a, parent_visits, exploration, agent_to_move)
+                .partial_cmp(&uct(b, parent_visits, exploration, agent_to_move))
+                .unwrap_or(std::cmp::Ordering::Equal)
         })
         .expect("children is non-empty");
     let value = simulate(&mut chosen.1, registry, side, depth_budget - 1, exploration, rng);
@@ -196,9 +233,10 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
     value
 }
 
-fn uct(child: &Node, parent_visits: f64, exploration: f64) -> f64 {
+fn uct(child: &Node, parent_visits: f64, exploration: f64, agent_to_move: bool) -> f64 {
     let visits = child.visits.max(1) as f64;
     let exploitation = child.total_value / visits;
+    let exploitation = if agent_to_move { exploitation } else { -exploitation };
     exploitation + exploration * (parent_visits.ln() / visits).sqrt()
 }
 
@@ -400,6 +438,53 @@ mod tests {
         let mut agent = MctsAgent::with_config(Side::Corp, 123, 200, 10, DEFAULT_EXPLORATION, 2);
         let chosen = agent.select_action(&view, &registry);
         assert_eq!(chosen, PlayerAction::ScoreAgenda { target: InstallId(1) });
+    }
+
+    /// The bookkeeping `pick_action`'s cycle break depends on, pinned at
+    /// the agent: a repeat count that grows on an identical pick, resets on
+    /// a different one, and at the bound strikes the repeated action.
+    /// Which action greedy prefers on this view is not pinned — rollouts
+    /// vary with the advancing seed — so the test plants the repeat state
+    /// rather than trying to provoke it.
+    #[test]
+    fn select_action_strikes_the_repeated_action_at_the_bound() {
+        let registry = CardRegistry::new();
+        let mut state = GameState::new(0);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.len() > 1);
+
+        let mut agent = MctsAgent::with_config(Side::Corp, 3, 16, 4, DEFAULT_EXPLORATION, 1);
+        let first = agent.select_action(&view, &registry);
+        assert_eq!(agent.repeats, 0, "a first pick repeats nothing");
+
+        agent.last_action = Some(first.clone());
+        agent.repeats = MAX_GREEDY_REPEATS;
+        let escaped = agent.select_action(&view, &registry);
+        assert_ne!(escaped, first, "at the bound the repeated action is struck from the candidates");
+        assert!(view.legal_actions.contains(&escaped));
+        assert_eq!(agent.repeats, 0, "a different pick resets the count");
+        assert_eq!(agent.last_action, Some(escaped));
+    }
+
+    /// UCT at an opponent node prefers the child that is worst for the
+    /// agent — the negamax half of the search.
+    #[test]
+    fn uct_flips_sign_where_the_opponent_decides() {
+        let child = |total_value: f64| Node {
+            state: GameState::new(0),
+            untried: Vec::new(),
+            children: Vec::new(),
+            visits: 10,
+            total_value,
+        };
+        let good = child(8.0);
+        let bad = child(-5.0);
+        assert!(uct(&good, 20.0, DEFAULT_EXPLORATION, true) > uct(&bad, 20.0, DEFAULT_EXPLORATION, true));
+        assert!(uct(&good, 20.0, DEFAULT_EXPLORATION, false) < uct(&bad, 20.0, DEFAULT_EXPLORATION, false));
     }
 
     #[test]

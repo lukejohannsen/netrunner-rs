@@ -72,6 +72,10 @@ def main():
                         help="Head-to-head games a candidate plays against the incumbent before promotion")
     parser.add_argument("--promote-threshold", type=float, default=0.55,
                         help="Candidate score (wins + draws/2, over arena games) needed to be promoted")
+    parser.add_argument("--value-target-mix", type=float, default=0.5,
+                        help="Passed to the trainer: share of the value target taken from the search's root value")
+    parser.add_argument("--value-loss-weight", type=float, default=0.25,
+                        help="Passed to the trainer: weight of the value loss against the policy loss")
     parser.add_argument("--skip-arena", action="store_true",
                         help="Promote every checkpoint unconditionally (the pre-gating behaviour)")
     args = parser.parse_args()
@@ -127,6 +131,8 @@ def main():
         ]
         if args.window is not None:
             train_cmd.extend(["--window", str(args.window)])
+        train_cmd.extend(["--value-target-mix", str(args.value_target_mix),
+                          "--value-loss-weight", str(args.value_loss_weight)])
         res = run_cmd(
             train_cmd,
             f"Iteration {iter_idx}/{args.iterations}: Training Neural Network",

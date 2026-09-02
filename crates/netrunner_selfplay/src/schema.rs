@@ -36,6 +36,12 @@ pub struct SelfPlayStep {
     /// state's `ActionSpace`, sparse; dense length is
     /// `GameTrajectory::action_space_size`.
     pub policy_target: SparseVec,
+    /// `PuctSearchStats::root_value`: what the search believed about this
+    /// position from the acting side, in `[-1, 1]`. A second value-head
+    /// target beside `GameTrajectory::outcome_corp` — see that field's doc
+    /// comment for why the outcome alone taught the head nothing; the
+    /// trainer mixes the two (`--value-target-mix`).
+    pub search_value: f32,
     /// `ActionSpace` index of the action actually applied to the game.
     pub action_taken: usize,
     /// `Side::Corp as u8 == 0`, `Side::Runner as u8 == 1`.

@@ -22,16 +22,17 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
-use rand::distr::weighted::WeightedIndex;
-use rand::distr::Distribution;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
+use rand::SeedableRng;
 use rayon::prelude::*;
 
-use netrunner_bots::{encode_observation, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator, OBS_SIZE};
+use netrunner_bots::{
+    encode_observation, pick_action, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator,
+    MAX_GREEDY_REPEATS, OBS_SIZE,
+};
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
-use netrunner_core::rules::{ActionSpace, GamePhase, GameState, RulesError, Side};
+use netrunner_core::rules::{ActionSpace, GamePhase, GameState, PlayerAction, RulesError, Side};
 use netrunner_session::{Seat, Session, SessionStep, SubmitError};
 
 use schema::{sparse, GameTrajectory, SelfPlayStep};
@@ -218,61 +219,25 @@ fn normalized_policy_target(visit_counts: &[u32]) -> Vec<f32> {
     visit_counts.iter().map(|&visits| visits as f32 / total as f32).collect()
 }
 
-/// How many times the same action index may be chosen back-to-back before
-/// selection stops being greedy.
-///
-/// Legitimate repeats exist — clicking for credits three or four times in a
-/// row is ordinary play — but each of those consumes a click and moves the
-/// game on. A run far past a turn's worth of clicks means the state is
-/// cycling instead, so the bound sits comfortably above normal repetition.
-const MAX_GREEDY_REPEATS: usize = 8;
-
-/// Picks which searched action to actually play: weighted-sampled by
-/// visit count while `ply < temp_plies` (the "temperature" phase), then
-/// greedy (max visits) afterward — mirrors `PuctAgent::select_action`'s own
-/// greedy tie-break once temperature drops out.
-///
-/// `repeats` breaks deterministic cycles. Greedy selection is a pure
-/// function of the visit counts, so a decision that leaves the state
-/// essentially unchanged gets re-picked forever: toggling one card of a
-/// card-selection on and off is the observed case — a perfect two-cycle
-/// that burned a whole game's step budget even though
-/// `ConfirmCardSelection` was legal and sitting right there. Weak search
-/// makes it likelier (few simulations against a uniform evaluator leave
-/// visit counts nearly flat), but nothing about greedy selection rules it
-/// out at any strength, so escaping is handled here rather than assumed
-/// away. Falling back to sampling keeps the escape probabilistic instead of
-/// forcing a specific action, so it perturbs the trajectory as little as
-/// possible.
+/// Picks which searched action to actually play: visit-weighted while
+/// `ply < temp_plies` (the "temperature" phase), greedy afterward, and —
+/// once the same action has been chosen `MAX_GREEDY_REPEATS` times in a
+/// row — anything *but* that action. The mechanism is `netrunner_bots::
+/// pick_action`, shared with `PuctAgent::select_action` so the arena and
+/// self-play cannot disagree about what a stall is; this wrapper only adds
+/// the temperature schedule, which is a training concern.
 ///
 /// `None` only if `actions` is empty, which `PuctAgent::search` no longer
-/// produces — it reports one stat per `view.legal_actions` entry. Returned
-/// as an `Option` rather than asserted anyway: this runs unattended for
-/// millions of games, and killing a whole training run over one
-/// unreachable-by-contract decision is the wrong trade. The caller plays a
-/// legal action and records nothing for that ply instead.
+/// produces. The caller plays a legal action and records nothing for that
+/// ply instead of ending the run.
 fn choose_action<'a>(
     actions: &'a [ActionStat],
     ply: usize,
     temp_plies: usize,
-    repeats: usize,
+    repeated: Option<&PlayerAction>,
     rng: &mut StdRng,
 ) -> Option<&'a ActionStat> {
-    if actions.is_empty() {
-        return None;
-    }
-    if ply < temp_plies || repeats >= MAX_GREEDY_REPEATS {
-        let weights: Vec<u32> = actions.iter().map(|stat| stat.visits).collect();
-        if let Ok(distribution) = WeightedIndex::new(&weights) {
-            return Some(&actions[distribution.sample(rng)]);
-        }
-        // Every action has zero visits, so visit-weighted sampling has
-        // nothing to work with. Uniform choice still breaks the cycle.
-        if repeats >= MAX_GREEDY_REPEATS {
-            return Some(&actions[rng.random_range(0..actions.len())]);
-        }
-    }
-    actions.iter().max_by_key(|stat| stat.visits)
+    pick_action(actions, ply < temp_plies, repeated, rng)
 }
 
 /// Re-keys a search's visit counts into `state`'s `ActionSpace` encoding.
@@ -339,9 +304,10 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
 
     let mut steps: Vec<SelfPlayStep> = Vec::new();
     let mut ply = 0usize;
-    // Consecutive identical chosen indices, for `choose_action`'s
-    // cycle-breaking fallback.
-    let mut last_index: Option<usize> = None;
+    // Consecutive identical chosen actions, for `choose_action`'s cycle
+    // break. Compared as `PlayerAction`s rather than real-state indices so
+    // the count means the same thing here as inside `PuctAgent`.
+    let mut last_action: Option<PlayerAction> = None;
     let mut repeats = 0usize;
 
     // The session's own `MAX_STEPS` bounds this now; the local copy this
@@ -367,15 +333,16 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
         // on. See `policy_target_for`.
         let policy_target = policy_target_for(session.state(), &stats.actions);
 
-        let Some(chosen) = choose_action(&stats.actions, ply, cli.temp_plies, repeats, &mut rng) else {
+        let repeated = if repeats >= MAX_GREEDY_REPEATS { last_action.as_ref() } else { None };
+        let Some(chosen) = choose_action(&stats.actions, ply, cli.temp_plies, repeated, &mut rng) else {
             // Unreachable by `search`'s contract. Play on rather than end
             // the run; the ply simply contributes no training example.
             session.submit(view.legal_actions[0].clone())?;
             continue;
         };
         let chosen_index = ActionSpace::index_of(session.state(), &chosen.action);
-        repeats = if last_index.is_some() && last_index == chosen_index { repeats + 1 } else { 0 };
-        last_index = chosen_index;
+        repeats = if last_action.as_ref() == Some(&chosen.action) { repeats + 1 } else { 0 };
+        last_action = Some(chosen.action.clone());
 
         // A step whose action has no slot in the real state's encoding
         // can't be labelled, so it is played but not recorded.
@@ -383,6 +350,7 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
             steps.push(SelfPlayStep {
                 observation: sparse(&observation),
                 policy_target: sparse(&policy_target),
+                search_value: stats.root_value,
                 action_taken,
                 active_side: side as u8,
             });
@@ -525,8 +493,8 @@ mod tests {
     #[test]
     fn choose_action_reports_no_choice_rather_than_panicking_on_an_empty_list() {
         let mut rng = StdRng::seed_from_u64(0);
-        assert!(choose_action(&[], 0, 8, 0, &mut rng).is_none());
-        assert!(choose_action(&[], 99, 8, MAX_GREEDY_REPEATS, &mut rng).is_none());
+        assert!(choose_action(&[], 0, 8, None, &mut rng).is_none());
+        assert!(choose_action(&[], 99, 8, Some(&PlayerAction::EndTurn), &mut rng).is_none());
     }
 
     #[test]
