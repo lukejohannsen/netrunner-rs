@@ -213,6 +213,40 @@ pub enum Command {
         #[command(subcommand)]
         action: DeckAction,
     },
+
+    /// Learn to play: scripted lessons for each side, then the Null Signal
+    /// Games starter game.
+    Learn {
+        #[command(subcommand)]
+        action: LearnAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum LearnAction {
+    /// List both lesson tracks.
+    List,
+
+    /// Play one lesson by id (see `learn list`).
+    Lesson {
+        id: String,
+    },
+
+    /// Play a side's whole track in order, then its starter game.
+    Track {
+        #[arg(value_enum)]
+        side: SideArg,
+    },
+
+    /// The unguided starter game: Null Signal's preset decks, 6 agenda
+    /// points to win, against the heuristic bot. `--boosted` adds each
+    /// side's booster pack and plays to the Standard 7.
+    Game {
+        #[arg(value_enum)]
+        side: SideArg,
+        #[arg(long)]
+        boosted: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

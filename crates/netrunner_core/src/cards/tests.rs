@@ -2896,7 +2896,7 @@ mod system_gateway {
             let action = legal
                 .iter()
                 .find(|a| matches!(a, PlayerAction::PassPriority { .. }))
-                .or_else(|| legal.iter().find(|a| matches!(a, PlayerAction::EndTurn { .. })))
+                .or_else(|| legal.iter().find(|a| matches!(a, PlayerAction::EndTurn)))
                 .or_else(|| legal.first())
                 .cloned()
                 .expect("a legal action");

@@ -153,10 +153,67 @@ pub trait RenderableView {
     fn human_side(&self) -> Side;
     fn view(&self) -> Option<&ClientView>;
     fn selected(&self) -> usize;
+    /// Labels for the actions on offer, in the order they are listed.
+    /// Under a lesson this is the gated subset, not all of
+    /// `view.legal_actions` — see `tui::LocalUiState::offered_actions`.
     fn legal_action_labels(&self) -> Vec<String>;
+    /// The action the highlight sits on, for the coaching panel to explain.
+    fn selected_action(&self) -> Option<PlayerAction>;
     /// The running action log. Both paths have one now, so both render the
     /// same four-region layout.
     fn action_log(&self) -> &[String];
+    /// The engine's reason for refusing the last submission, until the
+    /// next state arrives. `None` on a path that has none to show.
+    fn last_rejection(&self) -> Option<&str> {
+        None
+    }
+    /// Lesson coaching to render beside the board; `None` outside a lesson,
+    /// which is the only case the remote path ever has.
+    fn coaching(&self) -> Option<&Coaching> {
+        None
+    }
+    /// An open popup, which owns the keyboard until dismissed.
+    fn modal(&self) -> Option<&Modal> {
+        None
+    }
+}
+
+/// A popup that owns the keyboard until dismissed: lesson intros and
+/// outros, the game-over notice. The one modal the TUI had before this —
+/// game over — was a `Clear` + bordered `Paragraph` with its own key loop
+/// and no routing; `tui::draw_modal` generalises the drawing and
+/// `tui::prompt_human` routes keys to an open one first.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Modal {
+    pub title: String,
+    pub body: String,
+    pub footer: String,
+}
+
+impl Modal {
+    pub fn new(title: &str, body: &str, footer: &str) -> Self {
+        Self { title: title.to_string(), body: body.to_string(), footer: footer.to_string() }
+    }
+}
+
+/// What the coaching panel shows during one lesson step — a projection of
+/// `netrunner_core::tutorial::Step` plus the two UI facts it needs (which
+/// step this is, and whether the escape hatch is open).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Coaching {
+    pub title: String,
+    /// One-based, for display.
+    pub step: usize,
+    pub total: usize,
+    pub prose: String,
+    pub hint: Option<String>,
+    /// Whether the step's filter matched at least one legal action. When
+    /// it did not, the list falls back to every legal action and the panel
+    /// says so — the lesson's gate can narrow the list, never empty it.
+    pub gated: bool,
+    /// The escape hatch is open: the player asked to see every legal
+    /// action rather than the step's subset.
+    pub showing_all: bool,
 }
 
 impl RenderableView for App {
@@ -180,8 +237,16 @@ impl RenderableView for App {
         self.legal_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect()
     }
 
+    fn selected_action(&self) -> Option<PlayerAction> {
+        self.legal_actions().get(self.selected).cloned()
+    }
+
     fn action_log(&self) -> &[String] {
         &self.action_log
+    }
+
+    fn last_rejection(&self) -> Option<&str> {
+        self.last_rejection.as_deref()
     }
 }
 
@@ -303,10 +368,158 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
     }
 }
 
+/// One sentence on what an action *does* and what it costs — the
+/// pedagogical sibling of `describe_action`, which only labels. Shown in a
+/// lesson's coaching panel for whichever action the highlight sits on, so a
+/// new player can read the list without already knowing the game.
+///
+/// Exhaustive over every variant on purpose: a new action that ships
+/// without an explanation is a compile error, not a silent gap in the
+/// tutorial. `PurgeVirusCounters`' click-cost label in `describe_action`
+/// was the precedent for spelling out a cost at the point of choosing.
+pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Option<&ClientView>) -> String {
+    let title = |card_id: &netrunner_core::dsl::CardId| -> String {
+        registry.get(card_id).map(|c| c.title.clone()).unwrap_or_else(|| card_id.0.clone())
+    };
+    let _ = view;
+    match action {
+        PlayerAction::GainCreditClick { .. } => "Spend 1 click to take 1 credit from the bank. Always available; the slowest way to make money.".to_string(),
+        PlayerAction::DrawCardClick { side } => match side {
+            Side::Corp => "Spend 1 click to draw the top card of R&D into HQ.".to_string(),
+            Side::Runner => "Spend 1 click to draw the top card of your stack into your grip.".to_string(),
+        },
+        PlayerAction::InstallCard { card_id, zone, slot } => {
+            let what = match slot {
+                InstallSlot::Ice => "as ice protecting",
+                InstallSlot::Root => "face down in the root of",
+            };
+            format!(
+                "Spend 1 click to install {} {what} {zone:?}. Installing a new remote server creates it. Ice costs 1 credit per piece already protecting that server; the card stays unrezzed (and hidden) until you pay to rez it.",
+                title(card_id)
+            )
+        }
+        PlayerAction::RezIce { .. } => "Pay the card's rez cost to turn it face up. Ice only stops the Runner once it is rezzed, and you usually rez it as they approach it.".to_string(),
+        PlayerAction::InitiateRun { server } => format!(
+            "Spend 1 click to run {server:?}: approach each piece of ice protecting it in turn, and if you get past them all, breach the server and access its cards."
+        ),
+        PlayerAction::ContinueRun => "Move to the next phase of the run: approach the next piece of ice, or breach the server if there is none left.".to_string(),
+        PlayerAction::JackOut => "End the run voluntarily. You can jack out after passing a piece of ice; you cannot while encountering one.".to_string(),
+        PlayerAction::CompleteRun => "Finish the run now that its accesses are done.".to_string(),
+        PlayerAction::PlayEvent { card_id } => format!(
+            "Spend 1 click and the play cost to play {}: resolve its text, then it goes to the heap.",
+            title(card_id)
+        ),
+        PlayerAction::PlayOperation { card_id } => format!(
+            "Spend 1 click and the play cost to play {}: resolve its text, then it goes to Archives.",
+            title(card_id)
+        ),
+        PlayerAction::InstallHardware { card_id } => format!("Spend 1 click and its install cost to install {} in your rig. Hardware stays in play.", title(card_id)),
+        PlayerAction::InstallProgram { card_id } => format!(
+            "Spend 1 click and its install cost to install {}. Programs take memory (MU); you have 4 MU by default, and an icebreaker is how you get through ice.",
+            title(card_id)
+        ),
+        PlayerAction::InstallResource { card_id } => format!(
+            "Spend 1 click and its install cost to install {}. Resources stay in play but can be trashed by the Corp if you are tagged.",
+            title(card_id)
+        ),
+        PlayerAction::InstallProgramOnIce { card_id, .. } => format!("Install {} hosted on a piece of ice — a trojan works on the ice it lives on.", title(card_id)),
+        PlayerAction::BreakSubroutineWithClick { .. } => "Spend a click to break one subroutine on this ice (a card ability allows it here). A broken subroutine does not fire.".to_string(),
+        PlayerAction::EndTurn => "End your turn. Unspent clicks are lost; if you hold more cards than your hand size (5), you discard down first.".to_string(),
+        PlayerAction::DiscardCard { card_id } => format!("Discard {} to get down to your maximum hand size.", title(card_id)),
+        PlayerAction::KeepHand => "Keep these 5 cards as your opening hand.".to_string(),
+        PlayerAction::TakeMulligan => "Shuffle this hand back and draw 5 new cards. You only get one mulligan, and you keep whatever comes.".to_string(),
+        PlayerAction::ActivateAbility { .. } => "Use one of this card's paid abilities, paying its cost — an icebreaker's abilities boost its strength or break subroutines during an encounter.".to_string(),
+        PlayerAction::AdvanceCard { .. } => "Spend 1 click and 1 credit to place an advancement token. An agenda scores once it has as many tokens as its advancement requirement.".to_string(),
+        PlayerAction::ScoreAgenda { .. } => "Score this fully advanced agenda: its points go to your score area, and 7 points (6 in the starter game) wins.".to_string(),
+        PlayerAction::RemoveTag => "Spend 1 click and 2 credits to remove a tag. While tagged, the Corp can trash your resources.".to_string(),
+        PlayerAction::PurgeVirusCounters => "Spend all 3 clicks to remove every virus counter in play.".to_string(),
+        PlayerAction::ChooseTriggerToResolve { .. } => "Several of your cards want to trigger at once; choose which resolves first.".to_string(),
+        PlayerAction::TrashResource { .. } => "Spend 1 click and 2 credits to trash one of the tagged Runner's resources.".to_string(),
+        PlayerAction::SelectCardToAccess { card_id } => format!("Look at {} — accessing a card means seeing it, and stealing it if it is an agenda.", title(card_id)),
+        PlayerAction::StealAgenda { card_id } => format!("Steal {}: an accessed agenda goes to your score area and its points count for you.", title(card_id)),
+        PlayerAction::TrashAccessedCard { card_id } => format!("Pay the trash cost to send {} to Archives instead of leaving it where it is.", title(card_id)),
+        PlayerAction::PassAccessedCard { card_id } => format!("Leave {} where it is and move on.", title(card_id)),
+        PlayerAction::PayAccessTrigger { card_id } => format!("Pay the cost {} asks for on access.", title(card_id)),
+        PlayerAction::DeclineAccessTrigger { card_id } => format!("Decline to pay for {}'s access ability.", title(card_id)),
+        PlayerAction::PassPriority { .. } => "You have nothing to do in this paid-ability window; let play continue.".to_string(),
+        PlayerAction::SubmitCorpTraceBid { amount } => format!("Spend {amount} credits to raise your trace strength."),
+        PlayerAction::SubmitRunnerTraceBid { amount } => format!("Spend {amount} credits to raise your link strength against the trace."),
+        PlayerAction::AcceptPendingPaidChoice { .. } => "Pay the offered cost to get the card's effect.".to_string(),
+        PlayerAction::DeclinePendingPaidChoice => "Do not pay; the optional effect does not happen.".to_string(),
+        PlayerAction::ResolvePendingChoice { .. } => "Pick this option for the card that is asking you to choose.".to_string(),
+        PlayerAction::ToggleCardSelection { .. } => "Add or remove this card from the selection a card effect is asking for.".to_string(),
+        PlayerAction::ConfirmCardSelection => "Confirm the cards you selected.".to_string(),
+        PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?} as the server this card effect applies to."),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use netrunner_bots::RandomAgent;
+    use netrunner_core::dsl::CardId;
+    use netrunner_core::rules::ServerId;
+
+    /// One instance per variant, mirroring `PlayerAction::VARIANT_NAMES`'
+    /// own test: an explanation is required for every action a lesson can
+    /// offer, and it has to say more than the label does.
+    #[test]
+    fn every_action_has_an_explanation_that_says_more_than_its_label() {
+        let card = || CardId("hedge_fund".to_string());
+        let install = InstallId(1);
+        let actions = vec![
+            PlayerAction::GainCreditClick { side: Side::Corp },
+            PlayerAction::DrawCardClick { side: Side::Runner },
+            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Remote(1), slot: InstallSlot::Ice },
+            PlayerAction::RezIce { ice: install },
+            PlayerAction::InitiateRun { server: ServerId::Hq },
+            PlayerAction::ContinueRun,
+            PlayerAction::JackOut,
+            PlayerAction::CompleteRun,
+            PlayerAction::PlayEvent { card_id: card() },
+            PlayerAction::PlayOperation { card_id: card() },
+            PlayerAction::InstallHardware { card_id: card() },
+            PlayerAction::InstallProgram { card_id: card() },
+            PlayerAction::InstallResource { card_id: card() },
+            PlayerAction::InstallProgramOnIce { card_id: card(), host: install },
+            PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },
+            PlayerAction::EndTurn,
+            PlayerAction::DiscardCard { card_id: card() },
+            PlayerAction::KeepHand,
+            PlayerAction::TakeMulligan,
+            PlayerAction::ActivateAbility { target: install, ability_index: 0 },
+            PlayerAction::AdvanceCard { target: install },
+            PlayerAction::ScoreAgenda { target: install },
+            PlayerAction::RemoveTag,
+            PlayerAction::PurgeVirusCounters,
+            PlayerAction::ChooseTriggerToResolve { index: 0 },
+            PlayerAction::TrashResource { target: install },
+            PlayerAction::SelectCardToAccess { card_id: card() },
+            PlayerAction::StealAgenda { card_id: card() },
+            PlayerAction::TrashAccessedCard { card_id: card() },
+            PlayerAction::PassAccessedCard { card_id: card() },
+            PlayerAction::PayAccessTrigger { card_id: card() },
+            PlayerAction::DeclineAccessTrigger { card_id: card() },
+            PlayerAction::PassPriority { side: Side::Corp },
+            PlayerAction::SubmitCorpTraceBid { amount: 2 },
+            PlayerAction::SubmitRunnerTraceBid { amount: 1 },
+            PlayerAction::AcceptPendingPaidChoice { cost_option_index: None },
+            PlayerAction::DeclinePendingPaidChoice,
+            PlayerAction::ResolvePendingChoice { option_index: 0 },
+            PlayerAction::ToggleCardSelection { position: 0 },
+            PlayerAction::ConfirmCardSelection,
+            PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD },
+        ];
+        assert_eq!(actions.len(), PlayerAction::VARIANT_NAMES.len(), "one instance per variant");
+        let registry = CardRegistry::new();
+        for action in &actions {
+            let explanation = explain_action(action, &registry, None);
+            let label = describe_action(action, &registry, None);
+            assert!(explanation.len() > label.len(), "{action:?}: {explanation:?} should say more than {label:?}");
+            assert!(explanation.ends_with('.'), "{action:?}: an explanation is a sentence: {explanation:?}");
+        }
+    }
+
     use netrunner_core::rules::GameState;
     use netrunner_server::{MatchSession, PlayerSlot};
 

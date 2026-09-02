@@ -6,4 +6,5 @@ pub mod decks;
 pub mod dsl;
 pub mod format;
 pub mod rules;
+pub mod tutorial;
 pub mod view;

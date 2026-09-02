@@ -1,0 +1,143 @@
+{
+  "id": "runner_01_clicks",
+  "side": "Runner",
+  "title": "Clicks and credits",
+  "intro": "You are the Runner. Each turn you get 4 clicks (one more than the Corp) and, unlike the Corp, no forced draw. Your hand is your grip, your deck is your stack, your discard pile is your heap. Credits pay for everything, so making money is the first skill.\n\nThis lesson: keep your hand, play Sure Gamble, and take a couple of basic actions.",
+  "outro": "Sure Gamble turned 5 credits into 9 for one click — four credits better than clicking four times. Events are one-shot cards: play them, resolve them, they go to the heap. Next: installing a program so you can get through ice.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "steps": [
+    {
+      "prose": "The Corp keeps its hand first, then it is your turn to decide. This hand has Sure Gamble in it, which is exactly what you want. Keep it.",
+      "allow": {
+        "Kind": "KeepHand"
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "HandKept",
+          "side": "Runner"
+        }
+      },
+      "solution": [
+        "KeepHand"
+      ],
+      "hint": "Choose Keep hand."
+    },
+    {
+      "prose": "The Corp has taken its first turn. You have 4 clicks and 5 credits. Sure Gamble costs 5 and gives you 9: play it.",
+      "allow": {
+        "Card": {
+          "kind": "PlayEvent",
+          "card": "sure_gamble"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "EventPlayed",
+          "card": "sure_gamble"
+        }
+      },
+      "solution": [
+        {
+          "PlayEvent": {
+            "card_id": "sure_gamble"
+          }
+        }
+      ],
+      "hint": "Choose Play Sure Gamble."
+    },
+    {
+      "prose": "Nine credits. The basic actions are always there too: click for 1 credit.",
+      "allow": {
+        "Kind": "GainCreditClick"
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "CreditsGained",
+          "side": "Runner"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Gain 1 credit."
+    },
+    {
+      "prose": "And click to draw a card from your stack.",
+      "allow": {
+        "Kind": "DrawCardClick"
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "BasicDrawActionTaken",
+          "side": "Runner"
+        }
+      },
+      "solution": [
+        {
+          "DrawCardClick": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Draw a card."
+    },
+    {
+      "prose": "Last click: take a credit, then end your turn.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "DrawCardClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Runner"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Runner"
+          }
+        },
+        "EndTurn"
+      ],
+      "hint": "Gain 1 credit, then End turn."
+    }
+  ]
+}
