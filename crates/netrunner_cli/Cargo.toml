@@ -23,6 +23,8 @@ rand = "0.9"
 tokio = { workspace = true }
 tokio-tungstenite = "0.24"
 futures-util = "0.3"
+# Only the type: the session token `ServerMessage::MatchJoined` issues.
+uuid = "1"
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 

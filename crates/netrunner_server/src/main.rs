@@ -1,17 +1,11 @@
-use std::sync::Arc;
+use std::time::Duration;
 
 use clap::{Parser, ValueEnum};
-use futures_util::StreamExt;
-use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{mpsc, Mutex};
-use tokio_tungstenite::tungstenite::Message as WsMessage;
-use uuid::Uuid;
 
 use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent, RandomAgent};
-use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{GamePhase, GameState, Side};
-use netrunner_server::protocol::ClientMessage;
-use netrunner_server::{fixtures, net, MatchSession, PlayerSlot, ServerMessage};
+use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
+use netrunner_server::{fixtures, MatchSession, PlayerSlot, DEFAULT_RECONNECT_GRACE};
 
 #[derive(Parser, Debug)]
 #[command(name = "netrunner_server", about = "Authoritative match host for netrunner_core")]
@@ -55,6 +49,12 @@ struct Config {
     /// together as a human-vs-human match.
     #[arg(long, value_enum, default_value_t = ServeBotKind::Heuristic)]
     bot_runner: ServeBotKind,
+
+    /// (serve mode) How many seconds a match waits for a disconnected
+    /// player whose action it needs before awarding the game to the other
+    /// side. A client resumes with the session token from `MatchJoined`.
+    #[arg(long, default_value_t = DEFAULT_RECONNECT_GRACE.as_secs())]
+    reconnect_grace_secs: u64,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -64,26 +64,11 @@ enum BotKind {
     Mcts,
 }
 
-#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
-enum ServeBotKind {
-    Heuristic,
-    Mcts,
-    None,
-}
-
 fn make_agent(kind: BotKind, side: Side, seed: u64) -> Box<dyn BotAgent> {
     match kind {
         BotKind::Random => Box::new(RandomAgent::new(seed)),
         BotKind::Heuristic => Box::new(HeuristicAgent::new(side, seed)),
         BotKind::Mcts => Box::new(MctsAgent::new(side, seed)),
-    }
-}
-
-fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64) -> Box<dyn BotAgent> {
-    match kind {
-        ServeBotKind::Heuristic => Box::new(HeuristicAgent::new(side, seed)),
-        ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed)),
-        ServeBotKind::None => unreachable!("caller only invokes this for a bot-backed ServeBotKind"),
     }
 }
 
@@ -129,157 +114,14 @@ async fn run_headless(config: &Config) -> Result<(), Box<dyn std::error::Error>>
     Ok(())
 }
 
-/// A connected-but-unmatched human client, waiting in the lobby for a
-/// second human to pair against (only populated when `--bot-runner none`).
-struct PendingHuman {
-    preferred_side: Option<Side>,
-    tx: mpsc::UnboundedSender<ServerMessage>,
-    slot: PlayerSlot,
-}
-
-type Lobby = Arc<Mutex<Option<PendingHuman>>>;
-
 async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-
-    let addr = format!("{}:{}", config.host, config.port);
-    let listener = TcpListener::bind(&addr).await?;
-    tracing::info!(%addr, bot_runner = ?config.bot_runner, "netrunner_server listening");
-
-    let registry = fixtures::kate_vs_hb_registry();
-    let lobby: Lobby = Arc::new(Mutex::new(None));
-    let bot_runner = config.bot_runner;
-    let base_seed = config.seed.unwrap_or_else(rand::random);
-
-    loop {
-        let (stream, peer_addr) = listener.accept().await?;
-        let registry = registry.clone();
-        let lobby = lobby.clone();
-        let seed = base_seed.wrapping_add(rand::random::<u64>());
-        tokio::spawn(async move {
-            if let Err(error) = handle_connection(stream, registry, lobby, bot_runner, seed).await {
-                tracing::warn!(%peer_addr, ?error, "connection ended with an error");
-            }
-        });
-    }
-}
-
-async fn handle_connection(
-    stream: TcpStream,
-    registry: CardRegistry,
-    lobby: Lobby,
-    bot_runner: ServeBotKind,
-    seed: u64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut ws_stream = tokio_tungstenite::accept_async(stream).await?;
-
-    let (player_name, preferred_side) = loop {
-        match ws_stream.next().await {
-            Some(Ok(WsMessage::Text(text))) => match serde_json::from_str::<ClientMessage>(&text) {
-                Ok(ClientMessage::Connect { player_name, preferred_side }) => break (player_name, preferred_side),
-                _ => continue,
-            },
-            Some(Ok(_)) => continue,
-            _ => return Err("connection closed before handshake".into()),
-        }
+    let options = ServeOptions {
+        bot_runner: config.bot_runner,
+        seed: config.seed,
+        reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
     };
-    tracing::info!(%player_name, ?preferred_side, "client connected");
-
-    let (session_tx, bridge_rx) = mpsc::unbounded_channel::<ServerMessage>();
-    let (bridge_tx, session_rx) = mpsc::unbounded_channel::<ClientMessage>();
-    tokio::spawn(net::bridge_websocket(ws_stream, bridge_tx, bridge_rx));
-
-    let slot = PlayerSlot::Channel { tx: session_tx.clone(), rx: session_rx };
-
-    if bot_runner == ServeBotKind::None {
-        pair_with_human(lobby, registry, preferred_side, session_tx, slot, seed).await;
-    } else {
-        spawn_vs_bot(registry, preferred_side, bot_runner, session_tx, slot, seed);
-    }
+    let server = Server::bind(&format!("{}:{}", config.host, config.port), options).await?;
+    server.run().await?;
     Ok(())
-}
-
-fn spawn_vs_bot(
-    registry: CardRegistry,
-    preferred_side: Option<Side>,
-    bot_runner: ServeBotKind,
-    tx: mpsc::UnboundedSender<ServerMessage>,
-    slot: PlayerSlot,
-    seed: u64,
-) {
-    let human_side = preferred_side.unwrap_or(Side::Corp);
-    let bot_side = human_side.other();
-    let match_id = Uuid::new_v4();
-    let _ = tx.send(ServerMessage::MatchJoined { match_id, assigned_side: human_side });
-
-    let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
-    let (state, _events) = match GameState::setup(&corp_deck, &runner_deck, &registry, seed) {
-        Ok(setup) => setup,
-        Err(error) => {
-            let _ = tx.send(ServerMessage::ActionRejected { reason: format!("match setup failed: {error:?}") });
-            return;
-        }
-    };
-
-    let bot_agent = make_serve_agent(bot_runner, bot_side, seed.wrapping_add(1));
-    let (corp_slot, runner_slot) = match human_side {
-        Side::Corp => (slot, PlayerSlot::Bot(bot_agent)),
-        Side::Runner => (PlayerSlot::Bot(bot_agent), slot),
-    };
-
-    tokio::spawn(async move {
-        MatchSession::new(state, registry, corp_slot, runner_slot).run().await;
-    });
-}
-
-/// First connection under `--bot-runner none` waits in the lobby; the
-/// second connection pairs with it and starts the match for both.
-async fn pair_with_human(
-    lobby: Lobby,
-    registry: CardRegistry,
-    preferred_side: Option<Side>,
-    tx: mpsc::UnboundedSender<ServerMessage>,
-    slot: PlayerSlot,
-    seed: u64,
-) {
-    let mut guard = lobby.lock().await;
-    let Some(first) = guard.take() else {
-        *guard = Some(PendingHuman { preferred_side, tx, slot });
-        return;
-    };
-    drop(guard);
-
-    let second = PendingHuman { preferred_side, tx, slot };
-    let (corp, runner) = assign_sides(first, second);
-
-    let match_id = Uuid::new_v4();
-    let _ = corp.tx.send(ServerMessage::MatchJoined { match_id, assigned_side: Side::Corp });
-    let _ = runner.tx.send(ServerMessage::MatchJoined { match_id, assigned_side: Side::Runner });
-
-    let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
-    let (state, _events) = match GameState::setup(&corp_deck, &runner_deck, &registry, seed) {
-        Ok(setup) => setup,
-        Err(error) => {
-            let reason = format!("match setup failed: {error:?}");
-            let _ = corp.tx.send(ServerMessage::ActionRejected { reason: reason.clone() });
-            let _ = runner.tx.send(ServerMessage::ActionRejected { reason });
-            return;
-        }
-    };
-
-    tokio::spawn(async move {
-        MatchSession::new(state, registry, corp.slot, runner.slot).run().await;
-    });
-}
-
-/// First player's explicit side preference wins; otherwise the second
-/// player's; otherwise the first connection defaults to Corp.
-fn assign_sides(a: PendingHuman, b: PendingHuman) -> (PendingHuman, PendingHuman) {
-    match (a.preferred_side, b.preferred_side) {
-        (Some(Side::Corp), _) => (a, b),
-        (Some(Side::Runner), _) => (b, a),
-        (_, Some(Side::Corp)) => (b, a),
-        (_, Some(Side::Runner)) => (a, b),
-        _ => (a, b),
-    }
 }

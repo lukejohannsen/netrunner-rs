@@ -97,9 +97,9 @@ Two layers, with distinct roles — do not conflate them:
 
 A client receives a `ClientView` and nothing else. Fog of war is enforced at this boundary, never by asking a client to be polite about what it renders.
 
-**Current gaps, tracked in `ROADMAP.md`:**
-* `PublicInstalledCard` carries no `counters` field, so a player cannot see counters on their own card. The omission was correctly conservative — counters on an unrezzed Corp card would leak — but it needs a real rule (always visible to the owner; visible to the opponent once faceup) rather than blanket omission.
-* **Engine `GameEvent`s do not reach clients at all.** `ServerMessage` carries only `ClientView` snapshots. Per-viewer event sanitization (stripping unrevealed `CardAccessed` IDs from the non-accessing player) is a real requirement — but it is the *second* step. The stream has to exist first.
+A seat also receives its own copy of the action log: `ServerMessage::ActionLog` carries a `PublicHistoryEntry`, the `HistoryEntry` masked per viewer by `rules::masking::{mask_action_for_player, mask_event_for_player}` against the state that action produced. The raw entry never leaves the host. (Two gaps this section once listed — counters invisible on a player's own cards, and events not reaching clients at all — are closed; `ROADMAP.md` Phase 1 §2 and Phase 4 §1 record how.)
+
+**Connections are not seats.** `MatchSession` addresses a channel-backed player by `Side`; the `mpsc` pair behind it is one WebSocket's worth of connection and can be replaced mid-match through a `ReattachHandle`, after which the seat gets a fresh `ClientView` — the same full snapshot every action already produces. `netrunner_server::serve` issues a per-seat session token at `MatchJoined` and honours it on `ClientMessage::Resume`; see `ROADMAP.md` Phase 4 §2 for the grace-period rule.
 
 ---
 

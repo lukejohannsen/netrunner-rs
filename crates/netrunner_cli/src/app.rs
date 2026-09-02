@@ -35,6 +35,13 @@ pub struct App {
     /// ActionLog`. Remote play had no log at all until the match driver
     /// grew a `MatchHistory` the server could forward.
     pub action_log: Vec<String>,
+    /// `rx` has closed under us — the socket behind it dropped. The render
+    /// loop owns what happens next (`remote::Reconnector`); this struct only
+    /// notices, and refuses to submit anything until `reconnected`.
+    pub connection_lost: bool,
+    /// What the header shows while the connection is down, set by the
+    /// render loop from `Reconnector::status_line`.
+    pub connection_notice: Option<String>,
 }
 
 /// Cap on retained log lines, shared by both TUI paths.
@@ -78,9 +85,24 @@ impl App {
             last_rejection: None,
             game_ended: None,
             action_log: Vec::new(),
+            connection_lost: false,
+            connection_notice: None,
         };
         app.drain_messages();
         app
+    }
+
+    /// Swaps in the channel pair a successful `Resume` produced. The first
+    /// message on the new `rx` is the server's fresh `StateUpdate`, so the
+    /// board is current the moment this returns; the log is not replayed
+    /// (see `ServerMessage::ActionLog`), and says so.
+    pub fn reconnected(&mut self, tx: mpsc::UnboundedSender<ClientMessage>, rx: mpsc::UnboundedReceiver<ServerMessage>) {
+        self.tx = tx;
+        self.rx = rx;
+        self.connection_lost = false;
+        self.connection_notice = None;
+        self.action_log.push("(reconnected — actions resolved while away are not listed)".to_string());
+        self.drain_messages();
     }
 
     /// Non-blocking drain of every message the match session has sent
@@ -88,7 +110,19 @@ impl App {
     /// render tick, mirroring the ~100ms `event::poll` cadence the render
     /// loop already uses for keyboard input.
     pub fn drain_messages(&mut self) {
-        while let Ok(message) = self.rx.try_recv() {
+        loop {
+            let message = match self.rx.try_recv() {
+                Ok(message) => message,
+                Err(mpsc::error::TryRecvError::Empty) => break,
+                // Every sender is gone: the bridge task behind the socket
+                // ended. Distinct from `Empty`, which is just "nothing
+                // yet" — the two used to be treated alike, so a dropped
+                // socket looked like a very quiet opponent.
+                Err(mpsc::error::TryRecvError::Disconnected) => {
+                    self.connection_lost = true;
+                    break;
+                }
+            };
             match message {
                 ServerMessage::StateUpdate(view) => {
                     if self.selected >= view.legal_actions.len() {
@@ -102,7 +136,9 @@ impl App {
                 }
                 ServerMessage::ActionRejected { reason } => self.last_rejection = Some(reason),
                 ServerMessage::GameEnded { winner, reason } => self.game_ended = Some((winner, reason)),
-                ServerMessage::MatchJoined { .. } => {}
+                // Both are handshake replies, consumed in `remote` before
+                // the channel pair ever reaches `App`.
+                ServerMessage::MatchJoined { .. } | ServerMessage::ResumeRejected { .. } => {}
             }
         }
     }
@@ -116,6 +152,11 @@ impl App {
     }
 
     fn submit_selected_action(&mut self) {
+        // The action would vanish into a closed channel, and the view it
+        // was chosen from may be stale by the time the seat is back.
+        if self.connection_lost {
+            return;
+        }
         let Some(action) = self.legal_actions().get(self.selected).cloned() else { return };
         let _ = self.tx.send(ClientMessage::SubmitAction(action));
     }
@@ -174,6 +215,12 @@ pub trait RenderableView {
     /// The engine's reason for refusing the last submission, until the
     /// next state arrives. `None` on a path that has none to show.
     fn last_rejection(&self) -> Option<&str> {
+        None
+    }
+    /// A connection-status line for the header, while the remote path is
+    /// between sockets. `None` everywhere else — the local path has no
+    /// connection to lose.
+    fn connection_notice(&self) -> Option<&str> {
         None
     }
     /// Lesson coaching to render beside the board; `None` outside a lesson,
@@ -256,6 +303,9 @@ impl RenderableView for App {
 
     fn last_rejection(&self) -> Option<&str> {
         self.last_rejection.as_deref()
+    }
+    fn connection_notice(&self) -> Option<&str> {
+        self.connection_notice.as_deref()
     }
 }
 
@@ -659,5 +709,63 @@ mod tests {
             }
             tokio::time::sleep(std::time::Duration::from_millis(1)).await;
         }
+    }
+}
+
+/// `App`'s half of reconnection: it notices the closed channel, holds
+/// submissions, and picks up where the new channel starts.
+#[cfg(test)]
+mod connection_tests {
+    use super::*;
+    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use netrunner_core::rules::{GamePhase, GameState};
+    use netrunner_core::view::build_client_view;
+
+    fn app_with_channels() -> (App, mpsc::UnboundedSender<ServerMessage>, mpsc::UnboundedReceiver<ClientMessage>) {
+        let registry = crate::decks::kate_vs_hb_registry();
+        let (server_tx, rx) = mpsc::unbounded_channel();
+        let (tx, client_rx) = mpsc::unbounded_channel();
+        (App::new(registry, Side::Corp, tx, rx), server_tx, client_rx)
+    }
+
+    fn a_view(registry: &CardRegistry) -> ClientView {
+        let (corp_deck, runner_deck) = netrunner_server::fixtures::kate_vs_hb_decks();
+        let (mut state, _) = GameState::setup(&corp_deck, &runner_deck, registry, 1).unwrap();
+        state.phase = GamePhase::Action(Side::Corp);
+        build_client_view(&state, registry, Side::Corp)
+    }
+
+    #[test]
+    fn a_closed_channel_is_a_lost_connection_not_an_empty_one() {
+        let (mut app, server_tx, _client_rx) = app_with_channels();
+        app.drain_messages();
+        assert!(!app.connection_lost, "nothing yet is not a disconnect");
+        drop(server_tx);
+        app.drain_messages();
+        assert!(app.connection_lost);
+    }
+
+    #[test]
+    fn nothing_is_submitted_while_the_connection_is_down_and_the_new_channel_takes_over() {
+        let (mut app, server_tx, mut old_client_rx) = app_with_channels();
+        let view = a_view(&app.registry);
+        server_tx.send(ServerMessage::StateUpdate(Box::new(view.clone()))).unwrap();
+        drop(server_tx);
+        app.drain_messages();
+        assert!(app.connection_lost);
+        assert!(app.view.is_some(), "the last view stays on screen");
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(old_client_rx.try_recv().is_err(), "an action chosen from a possibly-stale view is not sent");
+
+        let (new_server_tx, new_rx) = mpsc::unbounded_channel();
+        let (new_tx, mut new_client_rx) = mpsc::unbounded_channel();
+        new_server_tx.send(ServerMessage::StateUpdate(Box::new(view))).unwrap();
+        app.reconnected(new_tx, new_rx);
+        assert!(!app.connection_lost);
+        assert!(app.action_log.last().unwrap().contains("reconnected"));
+
+        app.handle_key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+        assert!(matches!(new_client_rx.try_recv(), Ok(ClientMessage::SubmitAction(_))), "submissions go down the new channel");
     }
 }
