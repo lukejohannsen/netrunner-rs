@@ -121,6 +121,8 @@ cargo run --release -p netrunner_cli -- --headless --all-matchups --games 96 \
 
 and `diff` the JSON against the previous report. Random-vs-random is the seating that reaches the most rules; a heuristic seating measures the bot as much as the engine. Quote the load-bearing deltas in the ROADMAP entry.
 
+Heuristic seatings are byte-identical run to run since `determinize`'s pools were sorted (September 2026), so they are valid before/after measurements too — but reproducibility buys *attribution*, not *significance*: any code change re-rolls all 96 games, so a small heuristic delta can be pure trajectory drift. A change claiming a small heuristic effect must beat the **seed-spread band** recorded under `ROADMAP.md` Phase 2 §5, or show the effect across several seeds.
+
 Related mechanical gates, all of which must stay green:
 
 - `every_system_gateway_card_is_implemented_or_explicitly_excluded` — the gate for calling any set complete. Add cards there rather than silencing it.
