@@ -28,6 +28,12 @@ pub enum GameEndReason {
     /// is the only thing that can observe it, and it reports the *other*
     /// side as the winner.
     Disconnected,
+    /// The side that had to act stayed connected and simply never
+    /// answered within the host's per-decision clock
+    /// (`MatchSession::with_turn_timeout`). The third transport outcome:
+    /// like `Disconnected` it is reported by the pump with the *other*
+    /// side as the winner, and the final `GameState` is not `GameOver`.
+    TimedOut,
 }
 
 /// Best-effort classification — see `GameEndReason`'s doc comment. A
@@ -37,9 +43,10 @@ pub enum GameEndReason {
 /// `turn::enter_start_of_turn`'s doc comment); anything else defaults to
 /// the ordinary agenda-point threshold.
 ///
-/// `Surrender` and `Disconnected` are never produced here: neither is a
-/// rules outcome at all, so only the transport that received the concession
-/// (or lost the client) can report them.
+/// `Surrender`, `Disconnected` and `TimedOut` are never produced here: none
+/// is a rules outcome at all, so only the transport that received the
+/// concession (or lost the client, or watched its clock run out) can
+/// report them.
 pub fn classify_end_reason(events: &[GameEvent], winner: Side, state: &GameState) -> GameEndReason {
     if events.iter().any(|event| matches!(event, GameEvent::RunnerFlatlined)) {
         return GameEndReason::Flatline;

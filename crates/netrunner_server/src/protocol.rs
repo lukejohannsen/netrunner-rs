@@ -4,6 +4,8 @@
 //! this crate actually wires up today) and a future WebSocket transport can
 //! both carry the exact same types unchanged.
 
+use std::time::Duration;
+
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -115,5 +117,14 @@ pub enum ServerMessage {
     /// entry carries the action's `Vec<GameEvent>`.
     ActionLog(Box<PublicHistoryEntry>),
     ActionRejected { reason: String },
+    /// `side` has `remaining` to answer the decision it was just offered,
+    /// or forfeits with `GameEndReason::TimedOut`. Sent to both seats when
+    /// a clock starts, and again to a seat that reattaches mid-decision
+    /// with what is left; never sent when the host runs without a clock,
+    /// so a clock-less match's message sequence is exactly what it was.
+    /// A message rather than a `ClientView` field: the view is the
+    /// engine's, and `netrunner_core` knows no wall clock. One message per
+    /// decision rather than ticks: the client can count down by itself.
+    DecisionClock { side: Side, remaining: Duration },
     GameEnded { winner: Side, reason: GameEndReason },
 }

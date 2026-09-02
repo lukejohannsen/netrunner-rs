@@ -694,6 +694,10 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         view.runner.agenda_points,
         to_win = view.rules.winning_agenda_points,
     );
+    let text = match app.decision_clock() {
+        Some((side, remaining)) => format!("{text} | Clock: {side:?} {}s", remaining.as_secs()),
+        None => text,
+    };
     frame.render_widget(Paragraph::new(text), area);
 }
 

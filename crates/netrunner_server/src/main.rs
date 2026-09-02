@@ -62,6 +62,13 @@ struct Config {
     /// side. A client resumes with the session token from `MatchJoined`.
     #[arg(long, default_value_t = DEFAULT_RECONNECT_GRACE.as_secs())]
     reconnect_grace_secs: u64,
+
+    /// (serve mode) How many seconds a player has to answer each decision
+    /// it is offered before forfeiting the match — per decision, not per
+    /// turn, and neither a rejected action nor a reconnect restarts it.
+    /// No clock if omitted.
+    #[arg(long)]
+    turn_timeout_secs: Option<u64>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -128,6 +135,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         seed: config.seed,
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
         max_matches: config.max_matches,
+        turn_timeout: config.turn_timeout_secs.map(Duration::from_secs),
     };
     let server = Server::bind(&format!("{}:{}", config.host, config.port), options).await?;
     server.run().await?;

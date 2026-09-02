@@ -55,7 +55,7 @@ use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{GameState, Side};
 
-use crate::match_session::{MatchSession, PlayerSlot, ReattachHandle, DEFAULT_RECONNECT_GRACE};
+use crate::match_session::{MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::{ClientMessage, MatchSummary, ServerMessage};
 use crate::{fixtures, net};
 
@@ -97,6 +97,8 @@ pub struct ServeOptions {
     /// matches end was rejected: it needs a wake-up from the session-exit
     /// task, and nobody has asked to wait.
     pub max_matches: Option<usize>,
+    /// See `MatchSession::with_turn_timeout`; `None` runs without a clock.
+    pub turn_timeout: TurnTimeout,
 }
 
 impl Default for ServeOptions {
@@ -106,6 +108,7 @@ impl Default for ServeOptions {
             seed: None,
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             max_matches: None,
+            turn_timeout: None,
         }
     }
 }
@@ -498,7 +501,8 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     let (corp_name, runner_name) = (corp.name, runner.name);
 
     let session = MatchSession::new(state, shared.cards.clone(), corp.slot, runner.slot)
-        .with_reconnect_grace(shared.options.reconnect_grace);
+        .with_reconnect_grace(shared.options.reconnect_grace)
+        .with_turn_timeout(shared.options.turn_timeout);
     let handle = session.reattach_handle();
     registry.matches.insert(match_id, MatchEntry { corp: corp_name, runner: runner_name, started_at: Instant::now(), handle: handle.clone() });
 

@@ -39,6 +39,24 @@ use crate::protocol::{ClientMessage, GameEndReason, ServerMessage};
 /// the *other* player took ten minutes would be a strange rule.
 pub const DEFAULT_RECONNECT_GRACE: Duration = Duration::from_secs(30);
 
+/// A seat's cost of not answering: every awaited decision gets this long
+/// before the match is awarded to the other side (`GameEndReason::
+/// TimedOut`). `None` — the default — means no clock at all.
+///
+/// **Per decision, not per turn.** `await_seat` is entered once per
+/// `SessionStep::Awaiting`, which is exactly "this player has been asked
+/// something and has not answered"; a per-turn chess clock would need
+/// accounting across steps and a rule for the paid-ability windows the
+/// *opponent* opens during your turn. **A rejected action does not restart
+/// it** — the deadline is kept on the session and cleared only when an
+/// action is applied, or a client could submit garbage to buy time. **A
+/// reattach does not restart it either** (only the reconnect grace is
+/// reset then), or dropping the socket would. And when it runs out the
+/// pump forfeits rather than playing something on the seat's behalf: there
+/// is no universally legal action to play — `EndTurn` is illegal under a
+/// pending decision — and choosing one would make the host a player.
+pub type TurnTimeout = Option<Duration>;
+
 /// How a caller describes one side when constructing a `MatchSession`.
 ///
 /// Kept as this crate's own type rather than exposing
@@ -142,6 +160,12 @@ pub struct MatchSession {
     reattach_tx: mpsc::UnboundedSender<Reattach>,
     reattach_rx: mpsc::UnboundedReceiver<Reattach>,
     reconnect_grace: Duration,
+    turn_timeout: TurnTimeout,
+    /// When the decision currently awaited runs out, if a clock is on.
+    /// Lives here rather than in `await_seat` so that a rejected action —
+    /// which re-enters `await_seat` for the same decision — finds the
+    /// clock already running. Cleared by `run` when an action applies.
+    decision_deadline: Option<Instant>,
 }
 
 /// What `await_seat` came back with.
@@ -149,6 +173,8 @@ enum SeatEvent {
     Message(ClientMessage),
     /// Detached for the whole grace period while the session needed it.
     Forfeited,
+    /// Attached, or not, but silent for the whole `TurnTimeout`.
+    TimedOut,
 }
 
 impl MatchSession {
@@ -163,7 +189,15 @@ impl MatchSession {
             reattach_tx,
             reattach_rx,
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
+            turn_timeout: None,
+            decision_deadline: None,
         }
+    }
+
+    /// See `TurnTimeout`. `None` (the default) runs without a clock.
+    pub fn with_turn_timeout(mut self, timeout: TurnTimeout) -> Self {
+        self.turn_timeout = timeout;
+        self
     }
 
     /// Overrides `DEFAULT_RECONNECT_GRACE`. Zero means a dropped seat
@@ -200,7 +234,10 @@ impl MatchSession {
                 // next `Awaiting` is deliberate: a window or a decision can
                 // hand several consecutive actions to one side, and the
                 // *other* side's board must not freeze meanwhile.
-                SessionStep::Applied { .. } => self.broadcast_applied(),
+                SessionStep::Applied { .. } => {
+                    self.decision_deadline = None;
+                    self.broadcast_applied();
+                }
                 SessionStep::Awaiting { side, .. } => {
                     let message = match self.await_seat(side).await {
                         SeatEvent::Message(message) => message,
@@ -213,10 +250,17 @@ impl MatchSession {
                             self.send_game_ended(side.other(), GameEndReason::Disconnected);
                             break;
                         }
+                        SeatEvent::TimedOut => {
+                            self.send_game_ended(side.other(), GameEndReason::TimedOut);
+                            break;
+                        }
                     };
                     match message {
                         ClientMessage::SubmitAction(action) => match self.session.submit(action) {
-                            Ok(()) => self.broadcast_applied(),
+                            Ok(()) => {
+                                self.decision_deadline = None;
+                                self.broadcast_applied();
+                            }
                             // A bot slot only ever picks from
                             // `view.legal_actions`, so this is only
                             // reachable for a misbehaving channel client.
@@ -256,6 +300,13 @@ impl MatchSession {
     /// the match alive — it is, after all, present.
     async fn await_seat(&mut self, side: Side) -> SeatEvent {
         let mut deadline: Option<Instant> = None;
+        if self.decision_deadline.is_none()
+            && let Some(timeout) = self.turn_timeout
+        {
+            self.decision_deadline = Some(Instant::now() + timeout);
+            self.broadcast(ServerMessage::DecisionClock { side, remaining: timeout });
+        }
+        let decision_deadline = self.decision_deadline;
         loop {
             let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, .. } = self;
             let seat = match side {
@@ -285,6 +336,10 @@ impl MatchSession {
                         *slot = ChannelSeat { tx, rx, detached: false };
                         let view = build_client_view(session.state(), session.registry(), reattached);
                         slot.send(ServerMessage::StateUpdate(Box::new(view)));
+                        if let Some(decision_deadline) = decision_deadline {
+                            let remaining = decision_deadline.saturating_duration_since(Instant::now());
+                            slot.send(ServerMessage::DecisionClock { side, remaining });
+                        }
                         if reattached == side {
                             deadline = None;
                         }
@@ -299,6 +354,11 @@ impl MatchSession {
                 },
                 _ = tokio::time::sleep_until(deadline.unwrap_or_else(Instant::now)), if deadline.is_some() => {
                     return SeatEvent::Forfeited;
+                }
+                // Both clocks can run at once for a detached seat;
+                // whichever fires first names the reason.
+                _ = tokio::time::sleep_until(decision_deadline.unwrap_or_else(Instant::now)), if decision_deadline.is_some() => {
+                    return SeatEvent::TimedOut;
                 }
             }
         }
@@ -706,6 +766,177 @@ mod reattach_tests {
         assert!(runner_rx.try_recv().is_err(), "no GameEnded was sent");
         corp_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
         expect_state_update(&mut corp_rx).await;
+
+        run.abort();
+    }
+
+    // ----- the per-decision clock (`TurnTimeout`) -----
+
+    fn expect_clock(message: Option<ServerMessage>) -> (Side, Duration) {
+        match message {
+            Some(ServerMessage::DecisionClock { side, remaining }) => (side, remaining),
+            other => panic!("expected a DecisionClock, got {other:?}"),
+        }
+    }
+
+    fn expect_game_ended(message: Option<ServerMessage>) -> (Side, GameEndReason) {
+        match message {
+            Some(ServerMessage::GameEnded { winner, reason }) => (winner, reason),
+            other => panic!("expected GameEnded, got {other:?}"),
+        }
+    }
+
+    /// Both seats attached and both told the Corp is on the clock; the
+    /// Corp says nothing, and the Runner is awarded the game.
+    #[tokio::test(start_paused = true)]
+    async fn a_connected_seat_that_never_moves_forfeits_at_the_turn_timeout() {
+        let (state, registry) = state(23);
+        let (_corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (_runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot).with_turn_timeout(Some(Duration::from_secs(20)));
+        let handle = session.reattach_handle();
+        let run = tokio::spawn(session.run());
+
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+        assert_eq!(expect_clock(corp_rx.recv().await), (Side::Corp, Duration::from_secs(20)));
+        assert_eq!(expect_clock(runner_rx.recv().await), (Side::Corp, Duration::from_secs(20)));
+
+        assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Runner, GameEndReason::TimedOut));
+        let final_state = run.await.unwrap();
+        assert!(!matches!(final_state.phase, GamePhase::GameOver(_)), "a timeout is not a rules outcome");
+        assert!(!handle.is_live());
+    }
+
+    /// Dropping the socket buys no time: the seat comes back ten seconds
+    /// before the clock runs out, is told exactly that, and still forfeits
+    /// — by the clock, not by the (longer) reconnect grace.
+    #[tokio::test(start_paused = true)]
+    async fn the_turn_clock_is_not_reset_by_a_reattach() {
+        let (state, registry) = state(29);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (_runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot)
+            .with_reconnect_grace(Duration::from_secs(60))
+            .with_turn_timeout(Some(Duration::from_secs(30)));
+        let handle = session.reattach_handle();
+        let run = tokio::spawn(session.run());
+
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+        expect_clock(corp_rx.recv().await);
+        expect_clock(runner_rx.recv().await);
+
+        tokio::time::sleep(Duration::from_secs(10)).await;
+        drop(corp_tx);
+        drop(corp_rx);
+        tokio::time::sleep(Duration::from_secs(10)).await;
+
+        let (_corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let PlayerSlot::Channel { tx, rx } = corp_slot else { unreachable!() };
+        handle.reattach(Side::Corp, tx, rx).unwrap();
+        expect_state_update(&mut corp_rx).await;
+        assert_eq!(expect_clock(corp_rx.recv().await), (Side::Corp, Duration::from_secs(10)), "what is left, not a fresh clock");
+
+        assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Runner, GameEndReason::TimedOut));
+        run.await.unwrap();
+    }
+
+    /// The clock is per decision: an applied action ends it, and the next
+    /// decision — the Runner's mulligan — starts its own.
+    #[tokio::test(start_paused = true)]
+    async fn a_submitted_action_starts_a_fresh_clock() {
+        let (state, registry) = state(31);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (_runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot).with_turn_timeout(Some(Duration::from_secs(30)));
+        let run = tokio::spawn(session.run());
+
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+        expect_clock(corp_rx.recv().await);
+        expect_clock(runner_rx.recv().await);
+
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        corp_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        expect_state_update(&mut corp_rx).await;
+        assert!(matches!(corp_rx.recv().await, Some(ServerMessage::ActionLog(_))));
+        expect_state_update(&mut runner_rx).await;
+        assert!(matches!(runner_rx.recv().await, Some(ServerMessage::ActionLog(_))));
+        assert_eq!(expect_clock(corp_rx.recv().await), (Side::Runner, Duration::from_secs(30)));
+        assert_eq!(expect_clock(runner_rx.recv().await), (Side::Runner, Duration::from_secs(30)));
+
+        // 40 seconds after the Corp's clock started, 20 into the Runner's.
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        assert!(runner_rx.try_recv().is_err(), "no GameEnded: the Runner has ten seconds left");
+        assert!(corp_rx.try_recv().is_err());
+
+        run.abort();
+    }
+
+    /// The design decision on `TurnTimeout`, pinned: an illegal submission
+    /// is answered with `ActionRejected` and nothing else — no new clock,
+    /// and the old one still fires on time.
+    #[tokio::test(start_paused = true)]
+    async fn a_rejected_action_does_not_restart_the_clock() {
+        let started = Instant::now();
+        let (state, registry) = state(37);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (_runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot).with_turn_timeout(Some(Duration::from_secs(30)));
+        let run = tokio::spawn(session.run());
+
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+        expect_clock(corp_rx.recv().await);
+        expect_clock(runner_rx.recv().await);
+
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        corp_tx.send(ClientMessage::SubmitAction(PlayerAction::EndTurn)).unwrap();
+        assert!(matches!(corp_rx.recv().await, Some(ServerMessage::ActionRejected { .. })));
+        tokio::time::sleep(Duration::from_secs(5)).await;
+        assert!(corp_rx.try_recv().is_err(), "no second DecisionClock");
+
+        assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Runner, GameEndReason::TimedOut));
+        assert!(started.elapsed() >= Duration::from_secs(30), "the original clock ran its full length");
+        run.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn the_reconnect_grace_still_wins_when_it_is_shorter() {
+        let (state, registry) = state(41);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (_runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot)
+            .with_reconnect_grace(Duration::from_secs(5))
+            .with_turn_timeout(Some(Duration::from_secs(30)));
+        let run = tokio::spawn(session.run());
+
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+        expect_clock(runner_rx.recv().await);
+        drop(corp_tx);
+        drop(corp_rx);
+
+        assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Runner, GameEndReason::Disconnected));
+        run.await.unwrap();
+    }
+
+    /// Off by default, and silent when off: a clock-less match's message
+    /// sequence is exactly what it was before the clock existed.
+    #[tokio::test]
+    async fn no_clock_message_is_sent_when_the_timeout_is_off() {
+        let (state, registry) = state(43);
+        let (_corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (_runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot);
+        let run = tokio::spawn(session.run());
+
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+        tokio::task::yield_now().await;
+        assert!(corp_rx.try_recv().is_err());
+        assert!(runner_rx.try_recv().is_err());
 
         run.abort();
     }
