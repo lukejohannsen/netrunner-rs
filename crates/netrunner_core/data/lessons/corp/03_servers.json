@@ -1,0 +1,124 @@
+{
+  "id": "corp_03_servers",
+  "side": "Corp",
+  "title": "Servers and installing",
+  "intro": "The Corp's cards live in servers. HQ (your hand), R&D (your deck) and Archives (your discard pile) are the three central servers; every other card you install goes into a remote server you create. An installed card is face down until you rez it by paying its rez cost — the Runner can see that something is there, but not what.\n\nNico Campaign is an asset: rezzed, it pays you 3 credits at the start of each of your turns.\n\nThis lesson: install Nico Campaign into a new remote and rez it.",
+  "outro": "Remote servers are where agendas get scored and where assets like Nico Campaign earn. Anything in a remote can be run at, so the next lesson puts ice in front of it.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayOperation": {
+        "card_id": "hedge_fund"
+      }
+    }
+  ],
+  "opponent": [],
+  "steps": [
+    {
+      "prose": "Install Nico Campaign. Installing into a new remote server creates that server — choose the install into Remote 0.",
+      "allow": {
+        "Card": {
+          "kind": "InstallCard",
+          "card": "nico_campaign"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "CardInstalled",
+          "card": "nico_campaign"
+        }
+      },
+      "solution": [
+        {
+          "InstallCard": {
+            "card_id": "nico_campaign",
+            "zone": {
+              "Remote": 0
+            },
+            "slot": "Root"
+          }
+        }
+      ],
+      "hint": "Choose Install Nico Campaign into Remote(0) (Root)."
+    },
+    {
+      "prose": "It is face down. Rez it now for 2 credits so it starts paying next turn — rezzing does not cost a click.",
+      "allow": {
+        "Card": {
+          "kind": "RezIce",
+          "card": "nico_campaign"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "IceRezzed",
+          "card": "nico_campaign"
+        }
+      },
+      "solution": [
+        {
+          "RezIce": {
+            "ice": 1
+          }
+        }
+      ],
+      "hint": "Choose Rez Nico Campaign."
+    },
+    {
+      "prose": "Spend any clicks you have left, then end your turn.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "DrawCardClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Corp"
+          }
+        },
+        "EndTurn"
+      ]
+    }
+  ]
+}

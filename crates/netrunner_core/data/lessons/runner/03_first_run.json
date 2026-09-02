@@ -1,0 +1,237 @@
+{
+  "id": "runner_03_first_run",
+  "side": "Runner",
+  "title": "Your first run",
+  "intro": "A run is how you attack a server. It has six phases: initiation, approach ice, encounter ice, movement, success, and run ends. With no ice in the way you go straight from initiation to success and access the server's cards.\n\nArchives is the Corp's discard pile, and the Corp discarded a card last turn. This lesson: run Archives and walk through the phases — watch the strip in the coaching panel.",
+  "outro": "A successful run on Archives lets you access every card in it. Nothing there scores, but Archives is a real target: agendas the Corp was forced to discard are stolen from there. Next: running through ice.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayEvent": {
+        "card_id": "sure_gamble"
+      }
+    },
+    {
+      "InstallProgram": {
+        "card_id": "cleaver"
+      }
+    }
+  ],
+  "opponent": [],
+  "steps": [
+    {
+      "prose": "Spend a click to run Archives.",
+      "allow": {
+        "Server": {
+          "kind": "InitiateRun",
+          "server": "Archives"
+        }
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunInitiated",
+          "server": "Archives"
+        }
+      },
+      "solution": [
+        {
+          "InitiateRun": {
+            "server": "Archives"
+          }
+        }
+      ],
+      "hint": "Choose Run Archives."
+    },
+    {
+      "prose": "No ice protects Archives, so the approach-ice and encounter phases are skipped. Continue: you move straight to the server.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "ServerApproached",
+          "server": "Archives"
+        }
+      },
+      "solution": [
+        "ContinueRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Continue run."
+    },
+    {
+      "prose": "You are at the server. This is your last chance to jack out; instead, complete the run — it becomes successful and you breach the server.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "CompleteRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunSucceeded",
+          "server": "Archives"
+        }
+      },
+      "solution": [
+        "CompleteRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Complete run."
+    },
+    {
+      "prose": "You access every card in Archives — the one the Corp discarded. Look at it; the run then ends.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "SelectCardToAccess"
+          },
+          {
+            "Kind": "PassAccessedCard"
+          },
+          {
+            "Kind": "TrashAccessedCard"
+          },
+          {
+            "Kind": "StealAgenda"
+          },
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "CompleteRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunCompleted",
+          "server": "Archives"
+        }
+      },
+      "solution": [
+        {
+          "PassAccessedCard": {
+            "card_id": "hedge_fund"
+          }
+        },
+        {
+          "PassAccessedCard": {
+            "card_id": "tithe"
+          }
+        },
+        {
+          "PassAccessedCard": {
+            "card_id": "regolith_mining_license"
+          }
+        },
+        {
+          "PassAccessedCard": {
+            "card_id": "whitespace"
+          }
+        },
+        {
+          "PassAccessedCard": {
+            "card_id": "nico_campaign"
+          }
+        },
+        {
+          "PassAccessedCard": {
+            "card_id": "offworld_office"
+          }
+        },
+        {
+          "PassAccessedCard": {
+            "card_id": "palisade"
+          }
+        },
+        "ContinueRun",
+        "CompleteRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Pass on each card."
+    },
+    {
+      "prose": "Spend any clicks you have left, then end your turn.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "DrawCardClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Runner"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Runner"
+          }
+        },
+        "EndTurn"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,146 @@
+{
+  "id": "corp_05_scoring",
+  "side": "Corp",
+  "title": "Advancing and scoring",
+  "intro": "Agendas are how the Corp wins. Install one into a remote, spend clicks and credits advancing it, and once it has as many advancement tokens as its advancement requirement, score it. Offworld Office needs 4 and is worth 2 points; scoring it also pays you 7 credits. Six points win the starter game.\n\nYou installed it and advanced it once last turn. This lesson: advance it to 4 and score.",
+  "outro": "Two points on the board and 7 credits back. In a real game you would protect that remote with ice first, since an agenda in an undefended remote is one run from being stolen. Next: what happens when the Runner brings a breaker.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayOperation": {
+        "card_id": "hedge_fund"
+      }
+    },
+    {
+      "InstallCard": {
+        "card_id": "offworld_office",
+        "zone": {
+          "Remote": 0
+        },
+        "slot": "Root"
+      }
+    },
+    {
+      "AdvanceCard": {
+        "target": 1
+      }
+    },
+    "EndTurn"
+  ],
+  "opponent": [],
+  "steps": [
+    {
+      "prose": "Offworld Office has 1 advancement token. Advance it (1 click, 1 credit).",
+      "allow": {
+        "Card": {
+          "kind": "AdvanceCard",
+          "card": "offworld_office"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "CardAdvanced",
+          "card": "offworld_office"
+        }
+      },
+      "solution": [
+        {
+          "AdvanceCard": {
+            "target": 1
+          }
+        }
+      ],
+      "hint": "Choose Advance Offworld Office."
+    },
+    {
+      "prose": "Again.",
+      "allow": {
+        "Card": {
+          "kind": "AdvanceCard",
+          "card": "offworld_office"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "CardAdvanced",
+          "card": "offworld_office"
+        }
+      },
+      "solution": [
+        {
+          "AdvanceCard": {
+            "target": 1
+          }
+        }
+      ]
+    },
+    {
+      "prose": "Once more, for the fourth token.",
+      "allow": {
+        "Card": {
+          "kind": "AdvanceCard",
+          "card": "offworld_office"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "CardAdvanced",
+          "card": "offworld_office"
+        }
+      },
+      "solution": [
+        {
+          "AdvanceCard": {
+            "target": 1
+          }
+        }
+      ]
+    },
+    {
+      "prose": "Four tokens meets the requirement. Score it — scoring costs no click.",
+      "allow": {
+        "Card": {
+          "kind": "ScoreAgenda",
+          "card": "offworld_office"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "AgendaScored",
+          "card": "offworld_office"
+        }
+      },
+      "solution": [
+        {
+          "ScoreAgenda": {
+            "target": 1
+          }
+        }
+      ],
+      "hint": "Choose Score Offworld Office."
+    }
+  ]
+}

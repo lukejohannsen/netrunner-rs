@@ -1,0 +1,102 @@
+{
+  "id": "runner_02_program",
+  "side": "Runner",
+  "title": "Programs and memory",
+  "intro": "Programs are the cards you install to get through ice. Cleaver is an icebreaker for barriers: during an encounter it can boost its strength and break subroutines, for credits. Every program uses memory (MU); you have 4 MU, and Cleaver takes 1.\n\nThis lesson: install Cleaver.",
+  "outro": "Cleaver sits in your rig, ready for any barrier. You will not be able to break everything — a barrier breaker does nothing against a sentry or a code gate — so a full rig has one breaker of each type. Next: your first run.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayEvent": {
+        "card_id": "sure_gamble"
+      }
+    }
+  ],
+  "opponent": [],
+  "steps": [
+    {
+      "prose": "You have 9 credits after Sure Gamble. Install Cleaver (3 credits, 1 MU).",
+      "allow": {
+        "Card": {
+          "kind": "InstallProgram",
+          "card": "cleaver"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "ProgramInstalled",
+          "card": "cleaver"
+        }
+      },
+      "solution": [
+        {
+          "InstallProgram": {
+            "card_id": "cleaver"
+          }
+        }
+      ],
+      "hint": "Choose Install Cleaver."
+    },
+    {
+      "prose": "Spend any clicks you have left, then end your turn.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "DrawCardClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Runner"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Runner"
+          }
+        },
+        {
+          "GainCreditClick": {
+            "side": "Runner"
+          }
+        },
+        "EndTurn"
+      ]
+    }
+  ]
+}

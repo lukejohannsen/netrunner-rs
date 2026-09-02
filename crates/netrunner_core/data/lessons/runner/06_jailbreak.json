@@ -1,0 +1,272 @@
+{
+  "id": "runner_06_jailbreak",
+  "side": "Runner",
+  "title": "Multi-access with Jailbreak",
+  "intro": "One access per run is slow. Jailbreak is an event that makes a run on HQ or R&D and, if it succeeds, accesses one extra card and draws you one. The top two cards of R&D are Offworld Office and then Hedge Fund.\n\nThis lesson: play Jailbreak on R&D and take both accesses.",
+  "outro": "Two cards for one click. Multi-access is how Runners find agendas faster than the Corp can score them; the Corp answers by putting ice on R&D and by keeping agendas out of the top of the deck. Next: knowing when not to run.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "tithe",
+      "nico_campaign",
+      "regolith_mining_license",
+      "whitespace",
+      "diviner",
+      "offworld_office",
+      "hedge_fund",
+      "palisade"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayEvent": {
+        "card_id": "sure_gamble"
+      }
+    }
+  ],
+  "opponent": [],
+  "steps": [
+    {
+      "prose": "Play Jailbreak (it costs 0).",
+      "allow": {
+        "Card": {
+          "kind": "PlayEvent",
+          "card": "jailbreak"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "EventPlayed",
+          "card": "jailbreak"
+        }
+      },
+      "solution": [
+        {
+          "PlayEvent": {
+            "card_id": "jailbreak"
+          }
+        }
+      ],
+      "hint": "Choose Play Jailbreak."
+    },
+    {
+      "prose": "Jailbreak asks which central server to run. Choose R&D.",
+      "allow": {
+        "Server": {
+          "kind": "ChooseServerForPendingDecision",
+          "server": "RnD"
+        }
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunInitiated",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        {
+          "ChooseServerForPendingDecision": {
+            "server": "RnD"
+          }
+        }
+      ],
+      "hint": "Choose RnD."
+    },
+    {
+      "prose": "Nothing protects R&D. Continue to the server.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "ServerApproached",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        "ContinueRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Continue run."
+    },
+    {
+      "prose": "Complete the run. It is successful, so Jailbreak draws you a card and grants a second access.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "CompleteRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunSucceeded",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        "CompleteRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Complete run."
+    },
+    {
+      "prose": "Two accesses, and with more than one card to access you choose the order. Select Offworld Office and steal it, then look at Hedge Fund and pass.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "SelectCardToAccess"
+          },
+          {
+            "Kind": "PassAccessedCard"
+          },
+          {
+            "Kind": "TrashAccessedCard"
+          },
+          {
+            "Kind": "StealAgenda"
+          },
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "CompleteRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "AgendaStolen",
+          "card": "offworld_office"
+        }
+      },
+      "solution": [
+        {
+          "SelectCardToAccess": {
+            "card_id": "offworld_office"
+          }
+        },
+        {
+          "StealAgenda": {
+            "card_id": "offworld_office"
+          }
+        },
+        {
+          "SelectCardToAccess": {
+            "card_id": "hedge_fund"
+          }
+        },
+        {
+          "PassAccessedCard": {
+            "card_id": "hedge_fund"
+          }
+        },
+        "ContinueRun",
+        "CompleteRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Steal Offworld Office; pass on Hedge Fund."
+    },
+    {
+      "prose": "Finish the accesses; the run then ends.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "SelectCardToAccess"
+          },
+          {
+            "Kind": "PassAccessedCard"
+          },
+          {
+            "Kind": "TrashAccessedCard"
+          },
+          {
+            "Kind": "StealAgenda"
+          },
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "CompleteRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunCompleted",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        {
+          "SelectCardToAccess": {
+            "card_id": "hedge_fund"
+          }
+        },
+        {
+          "PassAccessedCard": {
+            "card_id": "hedge_fund"
+          }
+        },
+        {
+          "SelectCardToAccess": {
+            "card_id": "offworld_office"
+          }
+        },
+        {
+          "StealAgenda": {
+            "card_id": "offworld_office"
+          }
+        },
+        "ContinueRun",
+        "CompleteRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Pass on Hedge Fund."
+    }
+  ]
+}

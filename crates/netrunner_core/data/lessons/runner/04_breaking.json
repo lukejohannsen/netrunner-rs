@@ -1,0 +1,245 @@
+{
+  "id": "runner_04_breaking",
+  "side": "Runner",
+  "title": "Breaking ice",
+  "intro": "The Corp installed a piece of ice in front of R&D and will rez it when you approach. Palisade is a barrier, strength 2, with one subroutine: end the run. Cleaver has strength 3, so it can break that subroutine for 1 credit — no boost needed against a central server.\n\nThis lesson: run R&D, break Palisade, and access the top card.",
+  "outro": "You paid 1 credit to walk through a piece of ice the Corp paid 3 to rez. That is the running economy: your breaker's cost against their rez cost. Strength matters too — a barrier stronger than Cleaver needs boosting first, 2 credits per point. Next: stealing an agenda.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "hedge_fund",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayEvent": {
+        "card_id": "sure_gamble"
+      }
+    },
+    {
+      "InstallProgram": {
+        "card_id": "cleaver"
+      }
+    }
+  ],
+  "opponent": [
+    {
+      "action": {
+        "InstallCard": {
+          "card_id": "palisade",
+          "zone": "RnD",
+          "slot": "Ice"
+        }
+      },
+      "turn": 1
+    },
+    {
+      "action": {
+        "RezIce": {
+          "ice": 1
+        }
+      },
+      "turn": 2
+    }
+  ],
+  "steps": [
+    {
+      "prose": "Spend a click to run R&D.",
+      "allow": {
+        "Server": {
+          "kind": "InitiateRun",
+          "server": "RnD"
+        }
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunInitiated",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        {
+          "InitiateRun": {
+            "server": "RnD"
+          }
+        }
+      ],
+      "hint": "Choose Run R&D."
+    },
+    {
+      "prose": "You are approaching the ice. Continue; the Corp will rez Palisade as you arrive.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "IceRezzed",
+          "card": "palisade"
+        }
+      },
+      "solution": [
+        "ContinueRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Continue run."
+    },
+    {
+      "prose": "You are encountering Palisade. Use Cleaver's first ability to break its subroutine (1 credit).",
+      "allow": {
+        "Card": {
+          "kind": "ActivateAbility",
+          "card": "cleaver"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "SubroutineBroken",
+          "card": "palisade"
+        }
+      },
+      "solution": [
+        {
+          "ActivateAbility": {
+            "target": 2,
+            "ability_index": 0
+          }
+        }
+      ],
+      "hint": "Choose Activate ability 0 on Cleaver."
+    },
+    {
+      "prose": "Broken: the subroutine will not fire. Continue past the ice to the server.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "ServerApproached",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        "ContinueRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Continue run."
+    },
+    {
+      "prose": "You are at the server. This is your last chance to jack out; instead, complete the run — it becomes successful and you breach the server.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "CompleteRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunSucceeded",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        "CompleteRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Complete run."
+    },
+    {
+      "prose": "Look at the top card of R&D — Hedge Fund. Pass on it; the run then ends.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "SelectCardToAccess"
+          },
+          {
+            "Kind": "PassAccessedCard"
+          },
+          {
+            "Kind": "TrashAccessedCard"
+          },
+          {
+            "Kind": "StealAgenda"
+          },
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "CompleteRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunCompleted",
+          "server": "RnD"
+        }
+      },
+      "solution": [
+        {
+          "PassAccessedCard": {
+            "card_id": "hedge_fund"
+          }
+        },
+        "ContinueRun",
+        "CompleteRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Pass on the card."
+    }
+  ]
+}

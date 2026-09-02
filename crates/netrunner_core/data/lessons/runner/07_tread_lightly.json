@@ -1,0 +1,219 @@
+{
+  "id": "runner_07_tread_lightly",
+  "side": "Runner",
+  "title": "Tread Lightly, and when not to run",
+  "intro": "The Corp has ice on HQ. Tread Lightly makes a run during which every rez costs the Corp 3 more — so rezzing Palisade costs them 6, not 3. And once you have passed a piece of ice you may jack out: end the run yourself, keeping your credits and having learned what protects the server.\n\nThis lesson: play Tread Lightly on HQ, break Palisade, then jack out instead of accessing.",
+  "outro": "You spent 2 credits; the Corp spent 6 to keep you out of a server you then chose not to enter. You now know HQ is behind a barrier you can break, and the Corp is poorer. Not every run has to end in an access. That is the Runner track: money, breakers, runs, accesses, and choosing your moment. Press Enter to graduate to the starter game.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayEvent": {
+        "card_id": "sure_gamble"
+      }
+    },
+    {
+      "InstallProgram": {
+        "card_id": "cleaver"
+      }
+    }
+  ],
+  "opponent": [
+    {
+      "action": {
+        "InstallCard": {
+          "card_id": "palisade",
+          "zone": "Hq",
+          "slot": "Ice"
+        }
+      },
+      "turn": 1
+    },
+    {
+      "action": {
+        "RezIce": {
+          "ice": 1
+        }
+      },
+      "turn": 2
+    }
+  ],
+  "steps": [
+    {
+      "prose": "Play Tread Lightly (1 credit).",
+      "allow": {
+        "Card": {
+          "kind": "PlayEvent",
+          "card": "tread_lightly"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "EventPlayed",
+          "card": "tread_lightly"
+        }
+      },
+      "solution": [
+        {
+          "PlayEvent": {
+            "card_id": "tread_lightly"
+          }
+        }
+      ],
+      "hint": "Choose Play Tread Lightly."
+    },
+    {
+      "prose": "Choose HQ as the server to run.",
+      "allow": {
+        "Server": {
+          "kind": "ChooseServerForPendingDecision",
+          "server": "Hq"
+        }
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunInitiated",
+          "server": "Hq"
+        }
+      },
+      "solution": [
+        {
+          "ChooseServerForPendingDecision": {
+            "server": "Hq"
+          }
+        }
+      ],
+      "hint": "Choose Hq."
+    },
+    {
+      "prose": "Approach the ice. The Corp will rez Palisade — for 6 credits, thanks to Tread Lightly.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "IceRezzed",
+          "card": "palisade"
+        }
+      },
+      "solution": [
+        "ContinueRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Continue run."
+    },
+    {
+      "prose": "Break Palisade's subroutine with Cleaver (1 credit).",
+      "allow": {
+        "Card": {
+          "kind": "ActivateAbility",
+          "card": "cleaver"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "SubroutineBroken",
+          "card": "palisade"
+        }
+      },
+      "solution": [
+        {
+          "ActivateAbility": {
+            "target": 2,
+            "ability_index": 0
+          }
+        }
+      ],
+      "hint": "Choose Activate ability 0 on Cleaver."
+    },
+    {
+      "prose": "Continue past the ice to the server.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "ContinueRun"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "ServerApproached",
+          "server": "Hq"
+        }
+      },
+      "solution": [
+        "ContinueRun",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Continue run."
+    },
+    {
+      "prose": "You are at HQ, and this is the moment you may jack out. You have seen what guards HQ and the Corp has paid 6 for it; that is enough for today. Jack out.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "JackOut"
+          },
+          {
+            "Kind": "PassPriority"
+          }
+        ]
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunJackedOut",
+          "server": "Hq"
+        }
+      },
+      "solution": [
+        "JackOut",
+        {
+          "PassPriority": {
+            "side": "Runner"
+          }
+        }
+      ],
+      "hint": "Choose Jack out."
+    }
+  ]
+}

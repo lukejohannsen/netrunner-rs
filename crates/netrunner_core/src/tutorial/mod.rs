@@ -89,7 +89,12 @@ pub struct Step {
     pub allow: ActionPredicate,
     /// The event that completes the step.
     pub advance_when: EventPredicate,
-    /// The play the author intends, in order. `LessonSession` never uses
+    /// The play the author intends: candidate actions in order of
+    /// preference, of which the first one the step allows is played at
+    /// each prompt until the step advances. A preference list rather than
+    /// a fixed sequence because the prompts between two intended plays —
+    /// priority windows, "continue run" beats — vary in number, and an
+    /// author should not have to count them. `LessonSession` never reads
     /// it; the lesson gate does, to prove the step is completable through
     /// its own `allow` and that `advance_when` then fires.
     pub solution: Vec<PlayerAction>,

@@ -1,0 +1,176 @@
+{
+  "id": "corp_04_ice",
+  "side": "Corp",
+  "title": "Ice and rezzing",
+  "intro": "Ice protects a server. It is installed in front of the server, face down, and only stops the Runner once you rez it — which you may do at the moment they approach it, after seeing them commit a click to the run. Palisade is a barrier: its one subroutine ends the run, and it has +2 strength while protecting a remote.\n\nThis lesson: put Palisade in front of your remote, then rez it when the Runner runs.",
+  "outro": "You rezzed at the last possible moment, so the Runner spent a click and got nothing. Rezzing costs credits, so keep some in reserve on the Runner's turn. Next: advancing and scoring the agenda the ice is there to protect.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher",
+      "whitespace"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen",
+      "overclock"
+    ]
+  },
+  "opening": [
+    "KeepHand",
+    {
+      "PlayOperation": {
+        "card_id": "hedge_fund"
+      }
+    },
+    {
+      "InstallCard": {
+        "card_id": "nico_campaign",
+        "zone": {
+          "Remote": 0
+        },
+        "slot": "Root"
+      }
+    }
+  ],
+  "opponent": [
+    {
+      "action": {
+        "InitiateRun": {
+          "server": {
+            "Remote": 0
+          }
+        }
+      },
+      "turn": 2
+    }
+  ],
+  "steps": [
+    {
+      "prose": "Nico Campaign sits in Remote 0. Install Palisade as ice protecting that server.",
+      "allow": {
+        "Card": {
+          "kind": "InstallCard",
+          "card": "palisade"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "CardInstalled",
+          "card": "palisade"
+        }
+      },
+      "solution": [
+        {
+          "InstallCard": {
+            "card_id": "palisade",
+            "zone": {
+              "Remote": 0
+            },
+            "slot": "Ice"
+          }
+        }
+      ],
+      "hint": "Choose Install Palisade into Remote(0) (Ice)."
+    },
+    {
+      "prose": "Leave Palisade unrezzed — you want the Runner to commit first. That was your last click, so end your turn.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "DrawCardClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        "EndTurn"
+      ]
+    },
+    {
+      "prose": "The Runner is running your remote and is approaching Palisade. Rez it now (3 credits).",
+      "allow": {
+        "Card": {
+          "kind": "RezIce",
+          "card": "palisade"
+        }
+      },
+      "advance_when": {
+        "Card": {
+          "kind": "IceRezzed",
+          "card": "palisade"
+        }
+      },
+      "solution": [
+        {
+          "RezIce": {
+            "ice": 2
+          }
+        }
+      ],
+      "hint": "Choose Rez Palisade."
+    },
+    {
+      "prose": "The Runner has no way to break a barrier. Pass priority and watch Palisade's subroutine end the run.",
+      "allow": {
+        "Kind": "PassPriority"
+      },
+      "advance_when": {
+        "Server": {
+          "kind": "RunEndedByEffect",
+          "server": {
+            "Remote": 0
+          }
+        }
+      },
+      "solution": [
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        },
+        {
+          "PassPriority": {
+            "side": "Corp"
+          }
+        }
+      ],
+      "hint": "Choose Pass priority."
+    }
+  ]
+}

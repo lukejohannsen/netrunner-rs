@@ -1,11 +1,11 @@
 //! The two lesson gates ROADMAP Phase 1.75 §9 requires, run over every
 //! embedded lesson:
 //!
-//! - **every lesson is completable** — the author's `solution` for each
-//!   step is played through the step's own `allow` filter, and the step
-//!   must advance by the time its solution is exhausted; the lesson must
-//!   reach `Complete`, never `Ended` or `Stalled`. The lesson analogue of
-//!   `every_sample_deck_matchup_finishes`.
+//! - **every lesson is completable** — at every prompt the first of the
+//!   step's `solution` actions that the step's own `allow` filter lets
+//!   through is played, and the step must advance within a bounded number
+//!   of prompts; the lesson must reach `Complete`, never `Ended` or
+//!   `Stalled`. The lesson analogue of `every_sample_deck_matchup_finishes`.
 //! - **every gated step offers at least one action** at every point it is
 //!   live — the deadlock analogue, and why §6 gates on a predicate rather
 //!   than an index.
@@ -13,13 +13,14 @@
 //! A failure names the lesson, the step, and the legal actions at that
 //! point, which is what an author needs to fix the JSON.
 
-use std::collections::VecDeque;
-
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::tutorial::embedded_lessons;
 use netrunner_session::{LessonSession, LessonStep};
 
 const MAX_PROMPTS: usize = 500;
+/// A step whose solution keeps being accepted without the step advancing
+/// is mis-authored (its `advance_when` never fires), not slow.
+const MAX_PROMPTS_PER_STEP: usize = 30;
 
 #[test]
 fn every_lesson_is_completable_through_its_own_gates() {
@@ -32,9 +33,8 @@ fn every_lesson_is_completable_through_its_own_gates() {
         let id = lesson.id.clone();
         let steps = lesson.steps.clone();
         let mut session = LessonSession::start(lesson, registry.clone(), 0).unwrap_or_else(|e| panic!("lesson {id}: {e}"));
-        let mut queue: VecDeque<netrunner_core::rules::PlayerAction> = VecDeque::new();
-        let mut queued_for: Option<usize> = None;
         let mut prompts = 0;
+        let mut prompts_in_step = (0usize, 0usize);
 
         loop {
             prompts += 1;
@@ -48,24 +48,20 @@ fn every_lesson_is_completable_through_its_own_gates() {
                         view.phase,
                         view.legal_actions
                     );
-                    if queued_for != Some(step) {
-                        queue = steps[step].solution.iter().cloned().collect();
-                        queued_for = Some(step);
-                    }
-                    let Some(action) = queue.pop_front() else {
-                        panic!(
-                            "lesson {id} step {step}: the solution ran out without advancing the step at turn {} ({:?}); allowed: {:#?}",
-                            view.turn, view.phase, allowed
-                        );
-                    };
+                    prompts_in_step = if prompts_in_step.0 == step { (step, prompts_in_step.1 + 1) } else { (step, 1) };
                     assert!(
-                        allowed.contains(&action),
-                        "lesson {id} step {step}: solution action {action:?} is not allowed at turn {} ({:?}); allowed: {:#?}; legal: {:#?}",
+                        prompts_in_step.1 <= MAX_PROMPTS_PER_STEP,
+                        "lesson {id} step {step}: {MAX_PROMPTS_PER_STEP} prompts without advancing at turn {} ({:?}); allowed: {:#?}",
                         view.turn,
                         view.phase,
-                        allowed,
-                        view.legal_actions
+                        allowed
                     );
+                    let Some(action) = steps[step].solution.iter().find(|action| allowed.contains(action)).cloned() else {
+                        panic!(
+                            "lesson {id} step {step}: none of the solution's actions is allowed at turn {} ({:?}); allowed: {:#?}; legal: {:#?}",
+                            view.turn, view.phase, allowed, view.legal_actions
+                        );
+                    };
                     session.submit(action.clone()).unwrap_or_else(|e| panic!("lesson {id} step {step}: {action:?} rejected: {e}"));
                 }
                 LessonStep::Complete { .. } => {
