@@ -6,7 +6,12 @@ use crate::dsl::effect::Effect;
 use crate::dsl::trigger::Trigger;
 use crate::rules::Side;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// `Ord` is derived so a set of ids has one canonical order regardless of
+/// which `HashMap` it was pulled out of. `netrunner_bots::determinize`
+/// depends on that: it seeds a shuffle over "every card that could be in
+/// a hidden zone", and a seeded shuffle of an unordered input is not
+/// reproducible.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct CardId(pub String);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
