@@ -492,6 +492,17 @@ pub struct RunnerState {
     /// discounts like Carmen's.
     #[serde(default)]
     pub made_successful_run_this_turn: bool,
+    /// Every server the Runner has initiated a run against this turn, in
+    /// order, reset when the Runner's turn starts. Backs Red Team's "Run a
+    /// central server you have not run this turn" — a restriction on which
+    /// servers an `Effect::PromptChooseServer` may *offer*
+    /// (`exclude_servers_run_this_turn`). On `GameState` rather than
+    /// `ability::ResolutionContext` because it has to survive every action
+    /// of the turn, not one resolution (AGENTS.md's State Hygiene test);
+    /// recorded by `run::start_run` so a run started by a card counts the
+    /// same as a click. Public — both players watched the runs happen.
+    #[serde(default)]
+    pub servers_run_this_turn: Vec<ServerId>,
     /// Snapshot of `made_successful_run_this_turn` taken when the Runner's
     /// turn ends (`turn::end_turn`), read by `EffectRequirement::
     /// RunnerMadeSuccessfulRunLastTurn` — e.g. Public Trail's play

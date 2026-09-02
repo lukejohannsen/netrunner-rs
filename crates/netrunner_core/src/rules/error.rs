@@ -127,6 +127,13 @@ pub enum RulesError {
     #[error("no run is currently awaiting an access choice for that card")]
     NotInAccessPhase,
 
+    /// `Effect::PromptChooseServer` with `exclude_servers_run_this_turn`
+    /// found nothing left to offer — raised *before* parking, so the
+    /// ability is withheld rather than a click spent on an unresolvable
+    /// decision (Red Team once every central was run this turn).
+    #[error("every server this ability may target has already been run this turn")]
+    NoServerLeftToRun,
+
     #[error("{card:?} is not one of the cards currently offered for access selection")]
     InvalidAccessSelection { card: CardId },
 

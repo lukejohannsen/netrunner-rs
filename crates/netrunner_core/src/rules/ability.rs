@@ -744,7 +744,14 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingCardSelectionOffered { side: *side, min: *min, max: *max }])
         }
 
-        Effect::PromptChooseServer { chooser, rez_cost_delta, bonus_run_credits, allowed_servers, on_success } => {
+        Effect::PromptChooseServer {
+            chooser,
+            rez_cost_delta,
+            bonus_run_credits,
+            allowed_servers,
+            on_success,
+            exclude_servers_run_this_turn,
+        } => {
             // A parked `ChooseServer` is only ever resolved by
             // `run::start_run`, which rejects a second concurrent run — so
             // parking one while a run is active creates a decision *nothing*
@@ -768,11 +775,41 @@ pub fn evaluate_effect(
             // function's doc comment; a narrower copy here is exactly what
             // caused the original deadlock.
             run::check_run_may_begin(state)?;
+            // Narrow the offer here, for the same reason as the check
+            // above: an offer with nothing in it is a decision nothing can
+            // resolve, and refusing to park makes the probe drop the
+            // ability. The narrowed list is what the decision carries, so
+            // resolution's re-check and the candidate filter need no
+            // knowledge of why a server is missing.
+            let allowed_servers = if *exclude_servers_run_this_turn {
+                let already_run = &state.runner.servers_run_this_turn;
+                // `None` means every server — enumerated the way
+                // `legal_actions` offers them, fresh remote included.
+                let every_server = || {
+                    let existing = crate::rules::legal_actions::existing_remote_ids(state);
+                    let mut servers = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
+                    servers.extend(existing.iter().copied().map(ServerId::Remote));
+                    servers.push(ServerId::Remote(crate::rules::legal_actions::fresh_remote_id(&existing)));
+                    servers
+                };
+                let offered: Vec<ServerId> = allowed_servers
+                    .clone()
+                    .unwrap_or_else(every_server)
+                    .into_iter()
+                    .filter(|server| !already_run.contains(server))
+                    .collect();
+                if offered.is_empty() {
+                    return Err(RulesError::NoServerLeftToRun);
+                }
+                Some(offered)
+            } else {
+                allowed_servers.clone()
+            };
             state.pending_decision = Some(PendingDecision::ChooseServer {
                 chooser: *chooser,
                 rez_cost_delta: *rez_cost_delta,
                 bonus_run_credits: *bonus_run_credits,
-                allowed_servers: allowed_servers.clone(),
+                allowed_servers,
                 on_success: on_success.clone(),
                 install: None,
                 source_card: acting_card.cloned(),

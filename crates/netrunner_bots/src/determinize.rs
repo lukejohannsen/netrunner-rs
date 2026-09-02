@@ -285,6 +285,12 @@ fn determinize_run(
         // `OnAccessed` trigger runs; never surfaced in `ClientView`, and a
         // rollout re-derives it from its own play-out.
         currently_accessing: None,
+        // Public, and load-bearing for a rollout that trashes the pending
+        // card: the sample must take the same instance the real game will.
+        pending_install: access.pending_install,
+        // Not in the view; a rollout that re-picks an already-resolved copy
+        // takes the other one, which is harmless.
+        resolved_installs: Vec::new(),
         unaccessed_cards: determinize_access_cards(&access.unaccessed_cards, &mut pools.corp_any),
         resolved_cards: determinize_access_cards(&access.resolved_cards, &mut pools.corp_any),
         phase: determinize_access_phase(&access.phase, &mut pools.corp_any),
@@ -419,7 +425,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         heap: view.runner.heap.clone(),
         link_strength: view.runner.link_strength,
         first_hq_run_used_this_turn: false,
-        first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0,
+        first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
     };
 
     let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
@@ -559,7 +565,7 @@ mod tests {
                 heap: Vec::new(),
                 link_strength: 0,
                 first_hq_run_used_this_turn: false,
-                first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0,
+                first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: Vec::new(),
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,

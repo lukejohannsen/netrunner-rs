@@ -5,7 +5,7 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessPhase, AccessState, RunPhase, ServerId};
-use crate::rules::state::{ArchivedCard, GameState, InstallSlot, Side};
+use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, Side};
 use crate::rules::win::check_win_conditions;
 
 /// Root (non-ICE) installs on `server` — ICE is excluded via
@@ -93,6 +93,25 @@ fn compute_accessed_cards(state: &mut GameState, server: ServerId) -> Vec<CardId
 /// `CardRegistry` definition (or the "unrecognized card" defaults if it
 /// isn't registered — nothing stealable or trashable, so the only legal
 /// resolution is `PlayerAction::PassAccessedCard`).
+/// The installed instance `card_id` resolves to on `server`, if it is a
+/// root install there: the first copy not already resolved this breach.
+/// `None` for a card accessed out of a hidden zone. See
+/// `AccessState::pending_install`.
+fn resolve_install(state: &GameState, server: ServerId, card_id: &CardId) -> Option<InstallId> {
+    let resolved = state
+        .active_run
+        .as_ref()
+        .and_then(|run| run.access_state.as_ref())
+        .map(|access| access.resolved_installs.clone())
+        .unwrap_or_default();
+    state
+        .corp
+        .installed
+        .iter()
+        .find(|c| &c.card == card_id && c.server == server && c.slot == InstallSlot::Root && !resolved.contains(&c.install_id))
+        .map(|c| c.install_id)
+}
+
 fn compute_pending_choice(card_id: &CardId, registry: &CardRegistry) -> AccessPhase {
     let card_def = registry.get(card_id);
     let is_agenda = card_def.is_some_and(|c| c.agenda_points.is_some());
@@ -120,15 +139,20 @@ fn enter_pending_choice(
     // runs, so a trap that trashes itself out of that trigger is still
     // recognized as seen by the Runner (and lands faceup in Archives). See
     // `AccessState::currently_accessing`.
+    let install = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|a| a.pending_install);
     if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
         access.currently_accessing = Some(card_id.clone());
     }
 
-    // Dispatched from the `CardAccessed { card, server }` shape directly —
-    // this function doesn't itself emit `CardAccessed` (see the doc comment
-    // above), only `dispatch_event`'s `OnAccessed` reaction to it.
-    let mut events =
-        dispatcher::dispatch_event(state, registry, &GameEvent::CardAccessed { card: card_id.clone(), server })?;
+    // Dispatched from the `CardAccessed { card, server, install }` shape
+    // directly — this function doesn't itself emit `CardAccessed` (see the
+    // doc comment above), only `dispatch_event`'s `OnAccessed` reaction to
+    // it.
+    let mut events = dispatcher::dispatch_event(
+        state,
+        registry,
+        &GameEvent::CardAccessed { card: card_id.clone(), server, install },
+    )?;
     if let Some(finish) = finish_if_game_over(state, server) {
         events.extend(finish);
         return Ok(events);
@@ -191,7 +215,13 @@ fn present_card_for_access(
     server: ServerId,
     card_id: &CardId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server }];
+    // Pin the instance first: every later step of this card's resolution
+    // (its `OnAccessed` trigger, a trash, a steal) reads it from here.
+    let install = resolve_install(state, server, card_id);
+    if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
+        access.pending_install = install;
+    }
+    let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server, install }];
 
     // An unmet `requirement` means the trigger does not apply to *this*
     // access at all (Snare! accessed in Archives), so nothing is parked and
@@ -342,7 +372,7 @@ pub fn access_server(
         // immediately (with either `PendingInteractiveTrigger` or, via
         // `enter_pending_choice`, the real `PendingChoice`). `AccessState`
         // must exist first since both paths borrow `run.access_state.as_mut()`.
-        run.access_state = Some(AccessState { currently_accessing: None,
+        run.access_state = Some(AccessState { currently_accessing: None, pending_install: None, resolved_installs: Vec::new(),
             server,
             unaccessed_cards: Vec::new(),
             resolved_cards: Vec::new(),
@@ -351,7 +381,7 @@ pub fn access_server(
 
         present_card_for_access(state, registry, server, &card_id)
     } else {
-        run.access_state = Some(AccessState { currently_accessing: None,
+        run.access_state = Some(AccessState { currently_accessing: None, pending_install: None, resolved_installs: Vec::new(),
             server,
             unaccessed_cards: accessed.clone(),
             resolved_cards: Vec::new(),
@@ -369,6 +399,8 @@ struct PendingAccess {
     mandatory_steal: bool,
     steal_cost: Option<Cost>,
     trash_cost: Option<u32>,
+    /// `AccessState::pending_install` — the instance to take out of play.
+    install: Option<InstallId>,
 }
 
 /// Confirms a run is parked in `RunPhase::AccessingCard` awaiting a choice
@@ -398,6 +430,7 @@ fn require_pending(state: &GameState, card_id: &CardId) -> Result<PendingAccess,
         mandatory_steal: *mandatory_steal,
         steal_cost: steal_cost.clone(),
         trash_cost: *trash_cost,
+        install: access.pending_install,
     })
 }
 
@@ -484,6 +517,9 @@ fn advance_or_finish(
     let run = state.active_run.as_mut().expect("advance_or_finish called mid-access");
     let access = run.access_state.as_mut().expect("advance_or_finish called mid-access");
     access.resolved_cards.push(resolved_card);
+    if let Some(install) = access.pending_install.take() {
+        access.resolved_installs.push(install);
+    }
 
     match access.unaccessed_cards.len() {
         0 => {
@@ -541,7 +577,7 @@ pub fn resolve_steal(
     // the next run and an installed agenda stayed scorable after being
     // stolen (ROADMAP Rules Audit T2). `pending.server` is what tells two
     // copies of one agenda in two remotes apart.
-    remove_from_corp_zone(state, card_id, pending.server);
+    remove_from_corp_zone(state, card_id, pending.server, pending.install);
     state.runner.scored_agendas.push(card_id.clone());
     // Counted for `Trigger::OnRunEnded` consumers that gate on "if the
     // Runner stole any agendas during that run" (AMAZE Amusements), since
@@ -587,14 +623,30 @@ enum RemovedFrom {
 /// accessed copy is the top one and a duplicate may sit deeper. Archives
 /// is included because an agenda *stolen* out of Archives leaves it, even
 /// though a card *trashed* while being accessed there stays put.
-fn remove_from_corp_zone(state: &mut GameState, card_id: &CardId, server: ServerId) -> RemovedFrom {
+fn remove_from_corp_zone(
+    state: &mut GameState,
+    card_id: &CardId,
+    server: ServerId,
+    install: Option<InstallId>,
+) -> RemovedFrom {
+    // The access pinned the exact instance: take that one and nothing
+    // else. Two copies of one upgrade in a root used to both resolve to
+    // the lower-indexed install (ROADMAP Rules Audit follow-ups).
+    if let Some(install) = install
+        && let Some(pos) = state.corp.installed.iter().position(|c| c.install_id == install)
+    {
+        let slot = state.corp.installed[pos].slot;
+        state.corp.installed.remove(pos);
+        return RemovedFrom::Installed { slot };
+    }
     let installed_at = |installed: &crate::rules::state::InstalledCard| {
         &installed.card == card_id && installed.slot == InstallSlot::Root
     };
-    // A card accessed on a remote is one of that remote's root installs;
-    // prefer the copy on the run's server and fall back to any root copy
-    // only there (`AccessState` is `CardId`-keyed, so two copies in two
-    // remotes cannot be told apart yet). A card accessed in HQ, R&D or
+    // Without a pinned instance (a history recorded before
+    // `pending_install` existed, or a card sampled into a root by
+    // `determinize`): a card accessed on a remote is one of that remote's
+    // root installs; prefer the copy on the run's server and fall back to
+    // any root copy only there. A card accessed in HQ, R&D or
     // Archives is a card *in that zone*: only an upgrade installed in that
     // central's root may be matched among the installs. The fallback used
     // to apply to every server, so stealing Offworld Office off the top of
@@ -649,11 +701,17 @@ fn remove_from_corp_zone(state: &mut GameState, card_id: &CardId, server: Server
 /// Root-slot Corp install) and pushes it onto Archives — unless it was
 /// already being accessed *from* Archives, in which case it's already
 /// there and this is a no-op.
-fn move_to_archives(state: &mut GameState, registry: &CardRegistry, card_id: &CardId, server: ServerId) {
+fn move_to_archives(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+    server: ServerId,
+    install: Option<InstallId>,
+) {
     if server == ServerId::Archives {
         return;
     }
-    if let RemovedFrom::Installed { slot: InstallSlot::Root } = remove_from_corp_zone(state, card_id, server) {
+    if let RemovedFrom::Installed { slot: InstallSlot::Root } = remove_from_corp_zone(state, card_id, server, install) {
         // "(If the Runner trashes this card while accessing it, this ability
         // still applies for the remainder of this run.)" — record it so
         // `Trigger::OnRunEnded` can still reach it from the registry once
@@ -692,8 +750,9 @@ pub fn trash_currently_accessed_card_without_cost(
     };
     let card_id = card_id.clone();
     let server = access.server;
+    let install = access.pending_install;
 
-    move_to_archives(state, registry, &card_id, server);
+    move_to_archives(state, registry, &card_id, server, install);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 0 };
     let mut events = vec![trashed_event.clone()];
     events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
@@ -720,7 +779,7 @@ pub fn resolve_trash(
     }
 
     let mut events = ability::pay_cost(state, Side::Runner, &Cost::Credits(cost), Some(card_id))?;
-    move_to_archives(state, registry, card_id, pending.server);
+    move_to_archives(state, registry, card_id, pending.server, pending.install);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost };
     events.push(trashed_event.clone());
     events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
@@ -1008,6 +1067,7 @@ mod tests {
             vec![GameEvent::CardAccessed {
                 card: CardId("hedge_fund".to_string()),
                 server: ServerId::Hq,
+                install: None,
             }]
         );
         // The RNG step still advances even with only one possible index.
@@ -1078,6 +1138,7 @@ mod tests {
             vec![GameEvent::CardAccessed {
                 card: CardId("hedge_fund".to_string()),
                 server: ServerId::RnD,
+                install: None,
             }]
         );
     }
@@ -1236,7 +1297,7 @@ mod tests {
         // never fired.
         assert_eq!(
             events,
-            vec![GameEvent::CardAccessed { card: CardId("hedge_fund".to_string()), server: ServerId::Hq }]
+            vec![GameEvent::CardAccessed { card: CardId("hedge_fund".to_string()), server: ServerId::Hq, install: None }]
         );
         assert_eq!(state.runner.resources.credits, Credits(0));
         assert!(state.active_run.is_some());
@@ -1385,6 +1446,7 @@ mod tests {
             },
             InstalledCard {
                 card: CardId("pad_campaign".to_string()),
+                install_id: InstallId(5),
                 server: ServerId::Remote(0),
                 ..Default::default()
             },
@@ -1402,8 +1464,10 @@ mod tests {
             access_server(&mut state, ServerId::Remote(0), &registry()).unwrap(),
             vec![GameEvent::CardAccessed {
                 card: CardId("pad_campaign".to_string()),
-                server: ServerId::Remote(0)
-            }]
+                server: ServerId::Remote(0),
+                install: Some(InstallId(5)),
+            }],
+            "a root card is accessed as its instance"
         );
     }
 
@@ -1497,9 +1561,23 @@ mod tests {
         assert!(state.corp.archives.is_empty(), "the stolen agenda left Archives");
 
         // Two copies installed in two remotes: the run's server says which.
+        // Distinct install ids, because the access now pins the instance
+        // and would otherwise be told "the first card with this id".
         let installed = vec![
-            InstalledCard { card: agenda.clone(), server: ServerId::Remote(0), advancement_tokens: 1, ..Default::default() },
-            InstalledCard { card: agenda.clone(), server: ServerId::Remote(1), advancement_tokens: 2, ..Default::default() },
+            InstalledCard {
+                card: agenda.clone(),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                advancement_tokens: 1,
+                ..Default::default()
+            },
+            InstalledCard {
+                card: agenda.clone(),
+                install_id: InstallId(2),
+                server: ServerId::Remote(1),
+                advancement_tokens: 2,
+                ..Default::default()
+            },
         ];
         let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
         state.active_run = Some(run_in_success(ServerId::Remote(1)));
@@ -1872,7 +1950,8 @@ mod tests {
             selected,
             vec![GameEvent::CardAccessed {
                 card: CardId("ice_wall".to_string()),
-                server: ServerId::Archives
+                server: ServerId::Archives,
+                install: None,
             }]
         );
 
@@ -1886,7 +1965,8 @@ mod tests {
                 GameEvent::AccessPassed { card: CardId("ice_wall".to_string()) },
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
-                    server: ServerId::Archives
+                    server: ServerId::Archives,
+                    install: None,
                 },
             ]
         );
@@ -1922,7 +2002,8 @@ mod tests {
             events,
             vec![GameEvent::CardAccessed {
                 card: CardId("ice_wall".to_string()),
-                server: ServerId::Archives
+                server: ServerId::Archives,
+                install: None,
             }]
         );
         let access_state = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
@@ -1945,7 +2026,8 @@ mod tests {
                 GameEvent::AccessPassed { card: CardId("ice_wall".to_string()) },
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
-                    server: ServerId::Archives
+                    server: ServerId::Archives,
+                    install: None,
                 },
             ]
         );
@@ -1995,7 +2077,8 @@ mod tests {
                 GameEvent::AccessPassed { card: CardId("card_1".to_string()) },
                 GameEvent::CardAccessed {
                     card: CardId("card_2".to_string()),
-                    server: ServerId::Archives
+                    server: ServerId::Archives,
+                    install: None,
                 },
             ]
         );
@@ -2026,7 +2109,8 @@ mod tests {
                 GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
                 GameEvent::CardAccessed {
                     card: CardId("ice_wall".to_string()),
-                    server: ServerId::Archives
+                    server: ServerId::Archives,
+                    install: None,
                 },
             ]
         );
@@ -2158,7 +2242,7 @@ mod tests {
         assert_eq!(state.runner.heap.len(), 2);
         assert_eq!(
             events[0],
-            GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives }
+            GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None }
         );
         assert_eq!(
             events[1],
@@ -2262,7 +2346,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::RunnerFlatlined,
                 GameEvent::GameOver { winner: Side::Corp },
@@ -2312,7 +2396,7 @@ mod tests {
             events,
             vec![
                 GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
-                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::RunnerFlatlined,
                 GameEvent::GameOver { winner: Side::Corp },
@@ -2343,7 +2427,7 @@ mod tests {
 
         assert_eq!(
             events,
-            vec![GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives }]
+            vec![GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives, install: None }]
         );
         assert_eq!(
             state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase,
@@ -2583,7 +2667,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives },
+                GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Archives, install: None },
                 GameEvent::TriggerFired { card: CardId("snare".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
             ]
@@ -2744,7 +2828,7 @@ mod tests {
             events,
             vec![
                 GameEvent::AccessPassed { card: CardId("hedge_fund".to_string()) },
-                GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives },
+                GameEvent::CardAccessed { card: CardId("fetal_ai".to_string()), server: ServerId::Archives, install: None },
             ]
         );
         assert_eq!(
@@ -2786,12 +2870,85 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CardAccessed { card: CardId("shock_ish".to_string()), server: ServerId::Hq },
+                GameEvent::CardAccessed { card: CardId("shock_ish".to_string()), server: ServerId::Hq, install: None },
                 GameEvent::TriggerFired { card: CardId("shock_ish".to_string()), trigger: crate::dsl::Trigger::OnAccessed },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
                 GameEvent::CardTrashed { side: Side::Corp, card: CardId("shock_ish".to_string()) },
                 GameEvent::RunCompleted { server: ServerId::Hq },
             ]
         );
+    }
+
+    /// Two copies of one upgrade in a root are two instances. Each pick
+    /// pins one; trashing takes exactly that one, and the next pick pins
+    /// the other. Before `pending_install`, both trashes removed the
+    /// lower-indexed copy and the second one stayed installed forever.
+    #[test]
+    fn two_copies_of_one_upgrade_in_a_root_are_trashed_as_two_instances() {
+        let upgrade = CardId("skunkworks".to_string());
+        let registry = CardRegistry::from_cards(vec![trashable_card("skunkworks", 0)]);
+        let installed = vec![
+            InstalledCard { card: upgrade.clone(), install_id: InstallId(1), server: ServerId::Remote(0), ..Default::default() },
+            InstalledCard { card: upgrade.clone(), install_id: InstallId(2), server: ServerId::Remote(0), ..Default::default() },
+        ];
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
+        state.active_run = Some(run_in_success(ServerId::Remote(0)));
+        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
+
+        // Both offered; picking "skunkworks" pins the first unresolved instance.
+        resolve_select_card(&mut state, &upgrade, &registry).unwrap();
+        let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert_eq!(access.pending_install, Some(InstallId(1)));
+
+        resolve_trash(&mut state, &upgrade, &registry).unwrap();
+        assert_eq!(state.corp.installed.len(), 1, "one copy left");
+        assert_eq!(state.corp.installed[0].install_id, InstallId(2), "the pinned instance is the one that left");
+        let access = state.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
+        assert_eq!(access.resolved_installs, vec![InstallId(1)]);
+        assert_eq!(access.pending_install, Some(InstallId(2)), "the last card was auto-presented as the other instance");
+
+        resolve_trash(&mut state, &upgrade, &registry).unwrap();
+        assert!(state.corp.installed.is_empty(), "both instances trashed, none duplicated");
+        assert_eq!(state.corp.archives.len(), 2);
+    }
+
+    /// `OnAccessed` fires against the instance being accessed: an
+    /// `AddCounters` trap installed twice puts one counter on *each* copy,
+    /// where the by-`CardId` lookup put both on the first.
+    #[test]
+    fn on_accessed_fires_against_the_instance_being_accessed() {
+        let trap = CardId("counter_trap".to_string());
+        let registry = CardRegistry::from_cards(vec![card_with_on_accessed("counter_trap", vec![Effect::AddCounters(1)])]);
+        let installed = vec![
+            InstalledCard { card: trap.clone(), install_id: InstallId(1), server: ServerId::Remote(0), rezzed: true, ..Default::default() },
+            InstalledCard { card: trap.clone(), install_id: InstallId(2), server: ServerId::Remote(0), rezzed: true, ..Default::default() },
+        ];
+        let mut state = game_state(Vec::new(), Vec::new(), Vec::new(), installed, 0);
+        state.active_run = Some(run_in_success(ServerId::Remote(0)));
+        access_server(&mut state, ServerId::Remote(0), &registry).unwrap();
+
+        let events = resolve_select_card(&mut state, &trap, &registry).unwrap();
+        assert!(
+            events.iter().any(|e| matches!(e, GameEvent::CardAccessed { install: Some(InstallId(1)), .. })),
+            "{events:?}"
+        );
+        resolve_pass(&mut state, &trap, &registry).unwrap();
+        let counters: Vec<(InstallId, u32)> = state.corp.installed.iter().map(|c| (c.install_id, c.counters)).collect();
+        assert_eq!(counters, vec![(InstallId(1), 1), (InstallId(2), 1)], "one counter on each instance");
+    }
+
+    /// A card accessed out of HQ is a zone card: no instance to pin, and
+    /// the by-`CardId` removal path is the one that runs.
+    #[test]
+    fn an_accessed_zone_card_has_no_install() {
+        let agenda = CardId("agenda".to_string());
+        let registry = CardRegistry::from_cards(vec![agenda_card("agenda", 2)]);
+        let mut state = game_state(vec![agenda.clone()], Vec::new(), Vec::new(), Vec::new(), 0);
+        state.active_run = Some(run_in_success(ServerId::Hq));
+        let events = access_server(&mut state, ServerId::Hq, &registry).unwrap();
+        assert!(events.iter().any(|e| matches!(e, GameEvent::CardAccessed { install: None, .. })), "{events:?}");
+        assert_eq!(state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().pending_install, None);
+        resolve_steal(&mut state, &agenda, &registry).unwrap();
+        assert!(state.corp.hq.is_empty());
     }
 }

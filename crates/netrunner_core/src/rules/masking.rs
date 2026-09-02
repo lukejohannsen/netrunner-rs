@@ -142,6 +142,11 @@ pub struct PublicRunnerState {
     /// Never masked — static link strength, like `tags`, is plain public
     /// information (relevant to both sides during a trace).
     pub link_strength: u32,
+    /// Never masked — see `RunnerState::servers_run_this_turn`; a bot
+    /// searching from the view needs it to offer Red Team's click only
+    /// where the engine will.
+    #[serde(default)]
+    pub servers_run_this_turn: Vec<ServerId>,
 }
 
 /// A run's ICE as seen by a particular viewer: `rezzed` is always public,
@@ -195,6 +200,11 @@ pub struct PublicAccessState {
     pub server: ServerId,
     pub unaccessed_cards: MaskedZone,
     pub resolved_cards: MaskedZone,
+    /// Never masked — an install id is public, same as
+    /// `PublicInstalledCard::install_id`; it says *which* root card is
+    /// being resolved, not what it is.
+    #[serde(default)]
+    pub pending_install: Option<InstallId>,
     pub phase: PublicAccessPhase,
 }
 
@@ -303,6 +313,7 @@ fn mask_access_state(access: &AccessState, card_visible: bool) -> PublicAccessSt
         server: access.server,
         unaccessed_cards: mask_zone(&access.unaccessed_cards, card_visible),
         resolved_cards: mask_zone(&access.resolved_cards, card_visible),
+        pending_install: access.pending_install,
         phase: mask_access_phase(&access.phase, card_visible),
     }
 }
@@ -425,6 +436,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         heap: runner.heap.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         link_strength: runner.link_strength,
+        servers_run_this_turn: runner.servers_run_this_turn.clone(),
     }
 }
 
@@ -920,7 +932,7 @@ mod tests {
 
     #[test]
     fn accessed_hq_card_identity_is_hidden_from_corp_but_visible_to_runner() {
-        let access = AccessState {
+        let access = AccessState { pending_install: None, resolved_installs: Vec::new(),
             unaccessed_cards: vec![CardId("agenda".to_string())],
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("hedge_fund".to_string()),
@@ -949,7 +961,7 @@ mod tests {
 
     #[test]
     fn accessed_archives_card_identity_is_visible_to_both_sides() {
-        let access = AccessState {
+        let access = AccessState { pending_install: None, resolved_installs: Vec::new(),
             server: ServerId::Archives,
             phase: AccessPhase::PendingChoice {
                 card_id: CardId("cyberdex_trial".to_string()),

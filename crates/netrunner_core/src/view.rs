@@ -74,6 +74,10 @@ pub struct RunnerClientView {
     pub rig: Vec<PublicInstalledRunnerCard>,
     pub link_strength: u32,
     pub scored_agendas: Vec<CardId>,
+    /// Servers run this turn, oldest first — public, see
+    /// `PublicRunnerState::servers_run_this_turn`.
+    #[serde(default)]
+    pub servers_run_this_turn: Vec<ServerId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -183,6 +187,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
         heap: public.runner.heap,
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,
+        servers_run_this_turn: public.runner.servers_run_this_turn.clone(),
         scored_agendas: public.runner.scored_agendas,
     };
 
@@ -357,7 +362,7 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState {
+            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("hedge_fund".to_string()),
                     trash_cost: None,

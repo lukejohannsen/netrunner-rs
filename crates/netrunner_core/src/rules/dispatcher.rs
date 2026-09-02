@@ -118,8 +118,11 @@ pub fn dispatch_event(
             Ok(events)
         }
 
-        GameEvent::CardAccessed { card, server } => {
-            fire_direct(state, registry, card, root_install_of(state, card, *server), Trigger::OnAccessed, event)
+        GameEvent::CardAccessed { card, server, install } => {
+            // The access pinned the instance; the by-`CardId` lookup is the
+            // fallback for an event that carries none.
+            let install = install.or_else(|| root_install_of(state, card, *server));
+            fire_direct(state, registry, card, install, Trigger::OnAccessed, event)
         }
 
         GameEvent::CardTrashedFromAccess { card, .. } => {

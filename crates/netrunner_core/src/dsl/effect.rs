@@ -334,6 +334,17 @@ pub enum Effect {
         /// applies to that same breach.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         on_success: Option<Box<Effect>>,
+        /// Drop from the offer every server the Runner has already run
+        /// this turn (`RunnerState::servers_run_this_turn`) — Red Team's
+        /// "Run a central server you have not run this turn". A field
+        /// rather than a variant or an `EffectRequirement`: a requirement
+        /// can only gate the whole ability, and nothing composable narrows
+        /// a server *offer*. Applied when the decision is parked, and if
+        /// nothing is left to offer the effect fails instead of parking,
+        /// so `legal_actions`' probe withholds the ability rather than
+        /// offering a click that parks an unresolvable decision.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        exclude_servers_run_this_turn: bool,
     },
     /// Rezzes `card_id`, an already-installed Corp card, skipping the
     /// credit-cost payment `PlayerAction::RezIce` would otherwise require —

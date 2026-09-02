@@ -331,6 +331,7 @@ pub(crate) fn enter_start_of_turn(
         next.runner.first_install_discount_used_this_turn = false;
         next.runner.once_per_turn_used.clear();
         next.runner.made_successful_run_this_turn = false;
+        next.runner.servers_run_this_turn.clear();
     }
 
     // `Trigger::OnTurnStart` — e.g. PAD Campaign's "gain 1 credit". Only

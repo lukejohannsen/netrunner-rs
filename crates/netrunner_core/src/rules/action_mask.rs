@@ -975,7 +975,7 @@ mod tests {
             server: ServerId::Remote(0),
             phase: RunPhase::AccessingCard,
             jack_out_permitted: true,
-            access_state: Some(AccessState {
+            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
                 server: ServerId::Remote(0),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("agenda_x".to_string()),

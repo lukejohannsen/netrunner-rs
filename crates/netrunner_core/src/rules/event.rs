@@ -52,7 +52,18 @@ pub enum GameEvent {
     HardwareInstalled { side: Side, card: CardId },
     ProgramInstalled { side: Side, card: CardId, memory_cost: u8 },
     ResourceInstalled { side: Side, card: CardId },
-    CardAccessed { card: CardId, server: ServerId },
+    /// `install` names the instance when the accessed card is a root
+    /// install (`AccessState::pending_install`), so `Trigger::OnAccessed`
+    /// fires against *that* copy's counters rather than the first copy's.
+    /// `serde(default)` so a history recorded before the field existed
+    /// still deserializes; the dispatcher falls back to a by-`CardId`
+    /// lookup for `None`.
+    CardAccessed {
+        card: CardId,
+        server: ServerId,
+        #[serde(default)]
+        install: Option<crate::rules::state::InstallId>,
+    },
     TurnEnded { side: Side },
     TurnStarted { side: Side, clicks: u32 },
     DiscardPending { side: Side, required: usize },

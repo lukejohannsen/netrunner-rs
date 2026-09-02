@@ -166,6 +166,25 @@ pub struct AccessState {
     /// placeholder at dispatch time. `None` outside that window.
     #[serde(default)]
     pub currently_accessing: Option<CardId>,
+    /// Which *installed instance* the card in `phase` is, when it is a
+    /// root install (an upgrade in a central's root, or anything in a
+    /// remote's root); `None` for a card accessed out of HQ, R&D or
+    /// Archives. `phase` and the lists above stay `CardId`-keyed on
+    /// purpose: two copies of one upgrade are the same printed card, both
+    /// get accessed in the same breach, and `SelectCardToAccess`'s action
+    /// slot is a position, so the Runner's *choice* between them is
+    /// immaterial. What must be exact is which instance leaves play and
+    /// whose counters an `OnAccessed` trigger reads — that is this field.
+    /// Kept here rather than on the phase variants because there is only
+    /// ever one pending card and the variants are built in dozens of
+    /// fixtures. Set by `access::present_card_for_access`.
+    #[serde(default)]
+    pub pending_install: Option<InstallId>,
+    /// Instances already resolved this breach, so the next pick of the same
+    /// `CardId` resolves to the *other* copy — two Manegarm Skunkworks in
+    /// one root used to both resolve to the first one installed.
+    #[serde(default)]
+    pub resolved_installs: Vec<InstallId>,
     pub phase: AccessPhase,
 }
 
@@ -182,6 +201,8 @@ impl Default for AccessState {
             unaccessed_cards: Vec::new(),
             resolved_cards: Vec::new(),
             currently_accessing: None,
+            pending_install: None,
+            resolved_installs: Vec::new(),
             phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
         }
     }

@@ -977,7 +977,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Archives,
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState {
+            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
                 server: ServerId::Archives,
                 unaccessed_cards: vec![CardId("a".to_string()), CardId("b".to_string())],
                 phase: AccessPhase::SelectNextCard {
@@ -1009,7 +1009,7 @@ mod tests {
         let mut state = runner_state(3, 5);
         state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState {
+            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("agenda".to_string()),
                     trash_cost: None,
@@ -1038,7 +1038,7 @@ mod tests {
         let mut state = runner_state(3, 5);
         state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState {
+            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("asset".to_string()),
                     trash_cost: Some(2),
@@ -1066,7 +1066,7 @@ mod tests {
         let mut state = runner_state(3, 5);
         state.active_run = Some(RunState {
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState {
+            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
                 phase: AccessPhase::PendingChoice {
                     card_id: CardId("asset".to_string()),
                     trash_cost: Some(2),
