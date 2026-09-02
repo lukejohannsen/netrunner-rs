@@ -26,7 +26,7 @@ use tokio::time::Instant;
 
 use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{GameState, Side, Viewer};
+use netrunner_core::rules::{legal_actions_for, GameState, Side, Viewer};
 use netrunner_core::view::build_client_view;
 use netrunner_session::{Seat, Session, SessionStep};
 
@@ -187,15 +187,42 @@ pub struct MatchSession {
     /// which re-enters `await_seat` for the same decision — finds the
     /// clock already running. Cleared by `run` when an action applies.
     decision_deadline: Option<Instant>,
+    /// The reconnect grace clock: which detached seat the session is
+    /// waiting on and when it forfeits. On the session for the same
+    /// reason as `decision_deadline` — `await_seat` is re-entered
+    /// whenever the *other* seat's action applies mid-decision, and a
+    /// clock local to one call would restart then, so an opponent could
+    /// keep a vanished player's seat alive by acting. Cleared when that
+    /// seat reattaches.
+    grace_deadline: Option<(Side, Instant)>,
 }
 
 /// What `await_seat` came back with.
 enum SeatEvent {
+    /// From the awaited seat.
     Message(ClientMessage),
-    /// Detached for the whole grace period while the session needed it.
+    /// The awaited seat was detached for the whole grace period.
     Forfeited,
-    /// Attached, or not, but silent for the whole `TurnTimeout`.
+    /// The awaited seat was attached, or not, but silent for the whole
+    /// `TurnTimeout`.
     TimedOut,
+    /// The *other* seat conceded. A player may surrender at any moment,
+    /// not only when asked something; before this arm existed, the
+    /// non-acting seat's `Surrender` sat unread until its next decision.
+    Surrendered { by: Side },
+    /// The *other* seat submitted an action it was entitled to, and it
+    /// applied. Its view can legitimately offer one — `RezIce` is the
+    /// Corp's during the Runner's approach whatever the window's priority
+    /// — so an out-of-turn action is not refused on sight. It *is*
+    /// checked against that seat's own `legal_actions_for` slice first,
+    /// unlike the awaited seat's (AGENTS.md's Session Rule): a
+    /// `PlayerAction` carries no submitter, so a side-free action such as
+    /// `KeepHand` sent by the idle Runner would otherwise be applied as
+    /// the Corp's mulligan. That slice is exactly what the seat's view
+    /// offered it, and the check costs one `legal_actions` per
+    /// out-of-turn message, which is rare. Refusals are answered inside
+    /// `await_seat` and never surface here.
+    IdleActionApplied,
 }
 
 impl MatchSession {
@@ -214,6 +241,7 @@ impl MatchSession {
             turn_timeout: None,
             outcome: None,
             decision_deadline: None,
+            grace_deadline: None,
         }
     }
 
@@ -286,6 +314,18 @@ impl MatchSession {
                             self.send_game_ended(side.other(), GameEndReason::TimedOut);
                             break;
                         }
+                        SeatEvent::Surrendered { by } => {
+                            self.send_game_ended(by.other(), GameEndReason::Surrender);
+                            break;
+                        }
+                        // The board changed under the awaited decision, so
+                        // re-step: the same seat is asked again, from a
+                        // fresh view, on a fresh clock.
+                        SeatEvent::IdleActionApplied => {
+                            self.decision_deadline = None;
+                            self.broadcast_applied();
+                            continue;
+                        }
                     };
                     match message {
                         ClientMessage::SubmitAction(action) => match self.session.submit(action) {
@@ -330,12 +370,13 @@ impl MatchSession {
     /// The awaiting seat's next message, servicing reattachments for
     /// *either* seat meanwhile — the non-acting side's client can come
     /// back at any time, and must get its view then, not when its turn
-    /// comes round. The grace clock starts when this seat is observed
-    /// detached (on entry, or when its `rx` closes under us) and is reset
-    /// by a reattach, so a client that keeps dropping and returning keeps
-    /// the match alive — it is, after all, present.
+    /// comes round — and reading the *idle* seat too, for a surrender or
+    /// an out-of-turn action (see `SeatEvent`). The grace clock starts
+    /// when this seat is observed detached (on entry, or when its `rx`
+    /// closes under us) and is reset by a reattach, so a client that
+    /// keeps dropping and returning keeps the match alive — it is, after
+    /// all, present.
     async fn await_seat(&mut self, side: Side) -> SeatEvent {
-        let mut deadline: Option<Instant> = None;
         if self.decision_deadline.is_none()
             && let Some(timeout) = self.turn_timeout
         {
@@ -343,18 +384,24 @@ impl MatchSession {
             self.broadcast(ServerMessage::DecisionClock { side, remaining: timeout });
         }
         let decision_deadline = self.decision_deadline;
+        // A clock left over from waiting on the *other* seat does not
+        // carry across: the seat it was for is no longer needed.
+        if matches!(self.grace_deadline, Some((waiting_on, _)) if waiting_on != side) {
+            self.grace_deadline = None;
+        }
         loop {
-            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, .. } = self;
-            let seat = match side {
-                Side::Corp => corp.as_mut(),
-                Side::Runner => runner.as_mut(),
-            }
+            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, grace_deadline, .. } = self;
+            let (seat, idle) = match side {
+                Side::Corp => (corp.as_mut(), runner.as_mut()),
+                Side::Runner => (runner.as_mut(), corp.as_mut()),
+            };
             // `Awaiting` only ever names a `Seat::External`, and every
             // External seat here came from a `PlayerSlot::Channel`.
-            .expect("a bot seat never yields Awaiting");
-            if seat.detached && deadline.is_none() {
-                deadline = Some(Instant::now() + *reconnect_grace);
+            let seat = seat.expect("a bot seat never yields Awaiting");
+            if seat.detached && grace_deadline.is_none() {
+                *grace_deadline = Some((side, Instant::now() + *reconnect_grace));
             }
+            let deadline = grace_deadline.map(|(_, at)| at);
 
             tokio::select! {
                 // Reattachments first: a queued one must beat a deadline
@@ -377,7 +424,7 @@ impl MatchSession {
                                 slot.send(ServerMessage::DecisionClock { side, remaining });
                             }
                             if reattached == side {
-                                deadline = None;
+                                *grace_deadline = None;
                             }
                         }
                     }
@@ -395,8 +442,37 @@ impl MatchSession {
                     Some(message) => return SeatEvent::Message(message),
                     None => {
                         seat.detached = true;
-                        deadline = Some(Instant::now() + *reconnect_grace);
+                        *grace_deadline = Some((side, Instant::now() + *reconnect_grace));
                     }
+                },
+                message = Self::recv_idle(idle) => match message {
+                    Some(ClientMessage::Surrender) => return SeatEvent::Surrendered { by: side.other() },
+                    Some(ClientMessage::SubmitAction(action)) => {
+                        let offered = legal_actions_for(session.state(), session.registry(), side.other()).contains(&action);
+                        let applied = offered && session.submit(action).is_ok();
+                        if applied {
+                            return SeatEvent::IdleActionApplied;
+                        }
+                        let idle = match side.other() {
+                            Side::Corp => corp.as_mut(),
+                            Side::Runner => runner.as_mut(),
+                        };
+                        if let Some(idle) = idle {
+                            idle.send(ServerMessage::ActionRejected { reason: "not one of your legal actions right now".into() });
+                        }
+                    }
+                    // Its socket closed: park it, with no clock — it is
+                    // not needed, and the clock starts when it is.
+                    None => {
+                        let idle = match side.other() {
+                            Side::Corp => corp.as_mut(),
+                            Side::Runner => runner.as_mut(),
+                        };
+                        if let Some(idle) = idle {
+                            idle.detached = true;
+                        }
+                    }
+                    Some(_) => {}
                 },
                 _ = tokio::time::sleep_until(deadline.unwrap_or_else(Instant::now)), if deadline.is_some() => {
                     return SeatEvent::Forfeited;
@@ -418,6 +494,15 @@ impl MatchSession {
             std::future::pending().await
         } else {
             seat.rx.recv().await
+        }
+    }
+
+    /// `recv_attached` for the seat that is *not* awaited: a bot seat has
+    /// no channel and never resolves either.
+    async fn recv_idle(seat: Option<&mut ChannelSeat>) -> Option<ClientMessage> {
+        match seat {
+            Some(seat) => Self::recv_attached(seat).await,
+            None => std::future::pending().await,
         }
     }
 
@@ -1041,6 +1126,78 @@ mod reattach_tests {
         drop(corp_rx);
 
         assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Runner, GameEndReason::Disconnected));
+        run.await.unwrap();
+    }
+
+    // ----- the idle seat -----
+
+    #[tokio::test]
+    async fn the_idle_seat_can_surrender_without_waiting_for_its_turn() {
+        let (state, registry) = state(59);
+        let (_corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot);
+        let run = tokio::spawn(session.run_with_outcome());
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+
+        // The Corp's mulligan is awaited; the Runner concedes anyway.
+        runner_tx.send(ClientMessage::Surrender).unwrap();
+        assert_eq!(expect_game_ended(corp_rx.recv().await), (Side::Corp, GameEndReason::Surrender));
+        assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Corp, GameEndReason::Surrender));
+        let (_state, outcome) = run.await.unwrap();
+        assert_eq!(outcome, Some((Side::Corp, GameEndReason::Surrender)));
+    }
+
+    /// An out-of-turn action the engine refuses is answered at once and
+    /// never applied later — before this, it queued until the seat's turn
+    /// and was then applied if it happened to be legal.
+    #[tokio::test]
+    async fn an_out_of_turn_action_is_refused_at_once_and_not_replayed_later() {
+        let (state, registry) = state(61);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot);
+        let run = tokio::spawn(session.run());
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+
+        runner_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        assert!(matches!(runner_rx.recv().await, Some(ServerMessage::ActionRejected { .. })));
+
+        corp_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        expect_state_update(&mut corp_rx).await;
+        let view = match runner_rx.recv().await {
+            Some(ServerMessage::StateUpdate(view)) => *view,
+            other => panic!("expected the Runner's StateUpdate, got {other:?}"),
+        };
+        assert!(matches!(view.phase, GamePhase::Mulligan(Side::Runner)), "the Runner's mulligan is still to be answered");
+        assert!(view.legal_actions.contains(&PlayerAction::KeepHand));
+
+        run.abort();
+    }
+
+    /// The grace clock lives on the session: the opponent acting out of
+    /// turn (refused here, but the same holds for an applied action) does
+    /// not restart it.
+    #[tokio::test(start_paused = true)]
+    async fn the_opponents_activity_does_not_restart_a_detached_seats_grace_clock() {
+        let (state, registry) = state(67);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot).with_reconnect_grace(Duration::from_secs(30));
+        let run = tokio::spawn(session.run());
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+        drop(corp_tx);
+        drop(corp_rx);
+
+        tokio::time::sleep(Duration::from_secs(20)).await;
+        runner_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        assert!(matches!(runner_rx.recv().await, Some(ServerMessage::ActionRejected { .. })));
+        let started = Instant::now();
+        assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Runner, GameEndReason::Disconnected));
+        assert!(started.elapsed() <= Duration::from_secs(10), "forfeited at 30 s, not 50");
         run.await.unwrap();
     }
 
