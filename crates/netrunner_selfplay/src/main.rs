@@ -5,6 +5,14 @@
 //! Games rotate through all twelve Corp/Runner pairings by default so a
 //! training set covers the whole implemented card pool rather than one
 //! matchup's slice of it; `--matchup` pins a single pairing.
+//!
+//! `--arena-candidate` switches the binary into **arena** mode: no
+//! trajectories, just `-n` games of a candidate network against the
+//! incumbent (`--arena-incumbent`, or the uniform search without one),
+//! each side taking both chairs, summarised as one JSON line. This is the
+//! evaluator step AlphaZero's loop has and ours did not: without it every
+//! checkpoint was promoted, and one bad network drove six iterations of
+//! self-play into "the Runner wins" (ROADMAP Phase 2 §5).
 
 mod fixtures;
 mod schema;
@@ -27,6 +35,7 @@ use netrunner_core::rules::{ActionSpace, GamePhase, GameState, RulesError, Side}
 use netrunner_session::{Seat, Session, SessionStep, SubmitError};
 
 use schema::{GameTrajectory, SelfPlayStep};
+use serde::Serialize;
 
 #[derive(Parser)]
 #[command(about = "Runs PuctAgent vs. PuctAgent self-play games and writes training trajectories to disk.")]
@@ -38,8 +47,9 @@ struct Cli {
     #[arg(short = 's', long = "simulations")]
     simulations: usize,
     /// Directory to write one `game_NNNNN.jsonl` file per game into.
-    #[arg(short = 'o', long = "output-dir")]
-    output_dir: PathBuf,
+    /// Not used in arena mode.
+    #[arg(short = 'o', long = "output-dir", required_unless_present = "arena_candidate")]
+    output_dir: Option<PathBuf>,
     /// Optional ONNX policy/value model to drive search priors/values with
     /// (requires building with `--features onnx`); omit for the
     /// no-network `UniformPolicyEvaluator` baseline.
@@ -54,6 +64,16 @@ struct Cli {
     /// all twelve pairings, which is what a general training set wants.
     #[arg(long = "matchup")]
     matchup: Option<String>,
+    /// Arena mode: pit this ONNX model against `--arena-incumbent` for
+    /// `-n` games (Corp in even-numbered games, Runner in odd) and print
+    /// one JSON summary line instead of writing trajectories.
+    #[arg(long = "arena-candidate")]
+    arena_candidate: Option<PathBuf>,
+    /// The model the candidate has to beat. Omit for the no-network
+    /// `UniformPolicyEvaluator` — what the first candidate of a training
+    /// run is distilled from, and so the first thing it has to beat.
+    #[arg(long = "arena-incumbent")]
+    arena_incumbent: Option<PathBuf>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -77,6 +97,81 @@ enum SelfPlayError {
     Onnx(#[from] netrunner_bots::OnnxPolicyError),
     #[error("no sample-deck matchup named {0:?}; expected one of: {1}")]
     UnknownMatchup(String, String),
+    #[error("an arena session with two Agent seats yielded {0:?} instead of ending or stalling")]
+    ArenaUnexpectedStep(String),
+}
+
+/// How one arena game went, from the candidate's side of the table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ArenaResult {
+    CandidateWin,
+    IncumbentWin,
+    /// The session stalled at `MAX_STEPS` — nobody won, and it counts as
+    /// half a point each in `ArenaSummary::candidate_score`.
+    Draw,
+}
+
+/// The one line arena mode prints: what `scripts/run_iteration_loop.py`
+/// reads to decide a promotion.
+#[derive(Debug, Serialize, PartialEq)]
+struct ArenaSummary {
+    games: usize,
+    candidate_wins: usize,
+    incumbent_wins: usize,
+    draws: usize,
+    /// `(wins + draws / 2) / games` — 1.0 is a clean sweep, 0.5 is parity.
+    candidate_score: f64,
+}
+
+fn summarize(results: &[ArenaResult]) -> ArenaSummary {
+    let count = |wanted: ArenaResult| results.iter().filter(|r| **r == wanted).count();
+    let (candidate_wins, incumbent_wins, draws) =
+        (count(ArenaResult::CandidateWin), count(ArenaResult::IncumbentWin), count(ArenaResult::Draw));
+    let games = results.len();
+    let candidate_score = if games == 0 { 0.0 } else { (candidate_wins as f64 + draws as f64 / 2.0) / games as f64 };
+    ArenaSummary { games, candidate_wins, incumbent_wins, draws, candidate_score }
+}
+
+/// The candidate takes the Corp chair in even-numbered games and the
+/// Runner chair in odd ones, so with the matchup rotating on the same
+/// index every pairing is played from both sides over a 24-game arena.
+fn candidate_side(game_index: usize) -> Side {
+    if game_index.is_multiple_of(2) { Side::Corp } else { Side::Runner }
+}
+
+/// One arena game. `candidate`/`incumbent` are model paths, `None` meaning
+/// the uniform evaluator; both seats are ordinary `Seat::Agent`s, because
+/// here only the chosen action matters, not the visit counts self-play
+/// records.
+fn play_arena_game(
+    game_index: usize,
+    cli: &Cli,
+    candidate: &Option<PathBuf>,
+    incumbent: &Option<PathBuf>,
+) -> Result<ArenaResult, SelfPlayError> {
+    let registry = fixtures::registry();
+    let matchup = matchup_for(game_index, cli)?;
+    let (corp_deck, runner_deck) = matchup.decks();
+    let seed = game_index as u64;
+    let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
+
+    let candidate_side = candidate_side(game_index);
+    let config = PuctConfig { iterations: cli.simulations.max(1), ..PuctConfig::default() };
+    let seat = |side: Side, seat_seed: u64| -> Result<Seat, SelfPlayError> {
+        let model = if side == candidate_side { candidate } else { incumbent };
+        let evaluator = make_evaluator(side, model)?;
+        Ok(Seat::Agent(Box::new(PuctAgent::with_config(side, seat_seed, evaluator, config))))
+    };
+    let corp = seat(Side::Corp, seed)?;
+    let runner = seat(Side::Runner, seed.wrapping_add(1))?;
+    let mut session = Session::new(state, registry, corp, runner).without_history();
+    match session.run() {
+        SessionStep::Ended { winner, .. } => {
+            Ok(if winner == candidate_side { ArenaResult::CandidateWin } else { ArenaResult::IncumbentWin })
+        }
+        SessionStep::Stalled(_) => Ok(ArenaResult::Draw),
+        other => Err(SelfPlayError::ArenaUnexpectedStep(format!("{other:?}"))),
+    }
 }
 
 fn make_evaluator(side: Side, model_path: &Option<PathBuf>) -> Result<Box<dyn PolicyEvaluator>, SelfPlayError> {
@@ -297,11 +392,22 @@ fn write_trajectory(output_dir: &Path, game_index: usize, trajectory: &GameTraje
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
-    fs::create_dir_all(&cli.output_dir)?;
+
+    if cli.arena_candidate.is_some() {
+        let results = (0..cli.num_games)
+            .into_par_iter()
+            .map(|game_index| play_arena_game(game_index, &cli, &cli.arena_candidate, &cli.arena_incumbent))
+            .collect::<Result<Vec<_>, _>>()?;
+        println!("{}", serde_json::to_string(&summarize(&results))?);
+        return Ok(());
+    }
+
+    let output_dir = cli.output_dir.as_ref().expect("clap requires --output-dir outside arena mode");
+    fs::create_dir_all(output_dir)?;
 
     (0..cli.num_games).into_par_iter().try_for_each(|game_index| -> Result<(), SelfPlayError> {
         let trajectory = play_one_game(game_index, &cli)?;
-        write_trajectory(&cli.output_dir, game_index, &trajectory)
+        write_trajectory(output_dir, game_index, &trajectory)
     })?;
 
     Ok(())
@@ -395,5 +501,37 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(0);
         assert!(choose_action(&[], 0, 8, 0, &mut rng).is_none());
         assert!(choose_action(&[], 99, 8, MAX_GREEDY_REPEATS, &mut rng).is_none());
+    }
+
+    #[test]
+    fn candidate_score_counts_a_stall_as_half() {
+        let summary = summarize(&[ArenaResult::CandidateWin, ArenaResult::Draw, ArenaResult::IncumbentWin, ArenaResult::Draw]);
+        assert_eq!(
+            summary,
+            ArenaSummary { games: 4, candidate_wins: 1, incumbent_wins: 1, draws: 2, candidate_score: 0.5 }
+        );
+        assert_eq!(summarize(&[]).candidate_score, 0.0, "no games is not a pass");
+    }
+
+    #[test]
+    fn the_candidate_alternates_chairs_across_games() {
+        assert_eq!(candidate_side(0), Side::Corp);
+        assert_eq!(candidate_side(1), Side::Runner);
+        assert_eq!(candidate_side(12), Side::Corp, "the same matchup, the other chair");
+    }
+
+    /// The arena path end to end with no network on either side: two real
+    /// games at a token search budget, summarised. Guards the seat wiring
+    /// and the JSON shape the training loop parses.
+    #[test]
+    fn a_uniform_arena_plays_its_games_and_accounts_for_every_one() {
+        let cli = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "unused.onnx"]);
+        let results: Vec<ArenaResult> =
+            (0..2).map(|i| play_arena_game(i, &cli, &None, &None).expect("uniform arena game")).collect();
+        let summary = summarize(&results);
+        assert_eq!(summary.games, 2);
+        assert_eq!(summary.candidate_wins + summary.incumbent_wins + summary.draws, 2);
+        let line = serde_json::to_string(&summary).unwrap();
+        assert!(line.contains("\"candidate_score\""), "{line}");
     }
 }
