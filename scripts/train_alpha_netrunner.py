@@ -137,8 +137,11 @@ class NetrunnerCorpus:
         self.action_space_size = None
         self.observations = None
         self.policies = None
-        values = []
+        outcomes = []
+        search_values = []
+        positions = []
         self.game_of_sample = []
+        self.missing_search_value = 0
         self.outcomes = {1.0: 0, -1.0: 0, 0.0: 0}
         seeds = {}
         game_index = 0
@@ -170,21 +173,52 @@ class NetrunnerCorpus:
                     game_index += 1
                     outcome_corp = float(game["outcome_corp"])
                     self.outcomes[outcome_corp] = self.outcomes.get(outcome_corp, 0) + 1
-                    for step in game["steps"]:
+                    steps = game["steps"]
+                    for position, step in enumerate(steps):
                         self.observations.append(step["observation"])
                         self.policies.append(step["policy_target"])
-                        values.append(outcome_corp if step["active_side"] == 0 else -outcome_corp)
+                        outcomes.append(outcome_corp if step["active_side"] == 0 else -outcome_corp)
+                        # Recorded from the acting side already, like the
+                        # outcome above once it is signed.
+                        if "search_value" in step:
+                            search_values.append(float(step["search_value"]))
+                        else:
+                            search_values.append(0.0)
+                            self.missing_search_value += 1
+                        positions.append(position / max(1, len(steps) - 1))
                         self.game_of_sample.append(game_index)
         if self.observations is None:
             raise ValueError(f"No trajectory steps found in '{data_dir}'")
         self.observations.freeze()
         self.policies.freeze()
-        self.values = np.asarray(values, dtype=np.float32)
+        self.outcomes_by_sample = np.asarray(outcomes, dtype=np.float32)
+        self.search_values = np.asarray(search_values, dtype=np.float32)
+        self.positions = np.asarray(positions, dtype=np.float32)
         self.game_of_sample = np.asarray(self.game_of_sample, dtype=np.int64)
         self.game_count = game_index
+        self.values = self.outcomes_by_sample
+
+    def set_value_target_mix(self, mix: float):
+        """The value head's target: `(1 - mix)` of the game's final outcome plus
+        `mix` of the search's own root value at that decision, both from the
+        acting side.
+
+        The outcome alone taught the head nothing: a 64-simulation search's
+        game is decided largely by opening noise, every position of a game
+        carries the same label, and the head memorised games — held-out MSE
+        never beat predicting zero at 96, 288, 960 or 2,400 games while the
+        training loss sat at 0.01–0.05 (ROADMAP Phase 2 §5). The root value
+        is what the search believed about *this* position, and it varies
+        within a game. A corpus recorded before `search_value` existed can
+        only be trained with `mix == 0`, and is refused otherwise rather
+        than silently trained on zeros."""
+        if mix > 0.0 and self.missing_search_value:
+            raise ValueError(f"{self.missing_search_value} steps carry no search_value; this corpus predates it, "
+                             "so --value-target-mix must be 0")
+        self.values = ((1.0 - mix) * self.outcomes_by_sample + mix * self.search_values).astype(np.float32)
 
     def __len__(self):
-        return len(self.values)
+        return len(self.outcomes_by_sample)
 
     def split_by_game(self, val_fraction: float, seed: int = 0):
         """Indices of the training and validation samples, with every game
@@ -234,9 +268,11 @@ def losses(model, obs, target_pi, target_val):
     return policy_loss, value_loss
 
 
-def run_epoch(model, corpus, rows, batch_size, device, optimizer=None):
+def run_epoch(model, corpus, rows, batch_size, device, optimizer=None, value_loss_weight=1.0):
     """One pass over `rows`; trains when `optimizer` is given, else evaluates.
-    Returns (policy loss, value loss) averaged per sample."""
+    Returns (policy loss, value loss) averaged per sample, each unweighted —
+    `value_loss_weight` scales the value term in the gradient only, so the
+    reported losses stay comparable across weights."""
     total_p, total_v = 0.0, 0.0
     order = np.random.permutation(rows) if optimizer is not None else rows
     for start in range(0, len(order), batch_size):
@@ -245,7 +281,7 @@ def run_epoch(model, corpus, rows, batch_size, device, optimizer=None):
         if optimizer is not None:
             optimizer.zero_grad()
             policy_loss, value_loss = losses(model, obs, target_pi, target_val)
-            (policy_loss + value_loss).backward()
+            (policy_loss + value_loss_weight * value_loss).backward()
             optimizer.step()
         else:
             with torch.no_grad():
@@ -253,6 +289,42 @@ def run_epoch(model, corpus, rows, batch_size, device, optimizer=None):
         total_p += policy_loss.item() * len(batch_rows)
         total_v += value_loss.item() * len(batch_rows)
     return total_p / max(1, len(order)), total_v / max(1, len(order))
+
+
+def value_diagnostics(model, corpus, rows, batch_size, device):
+    """How the value head does against the *outcome*, whatever it was trained
+    on — so runs with different `--value-target-mix` stay comparable.
+
+    `mse_vs_outcome` beside `baseline_mse` (predicting zero everywhere, which
+    is the mean squared outcome, i.e. the decided-game fraction) is the test
+    the head kept failing; `sign_accuracy` over decided games is the one it
+    partially passed, and `sign_accuracy_by_decile` (position in the game,
+    ten buckets) shows where — 54% in the opening rising to 66% at the end
+    on the September 2026 corpus. Computed by hand then; recorded here so it
+    is measured every time."""
+    model.eval()
+    preds = []
+    with torch.no_grad():
+        for start in range(0, len(rows), batch_size):
+            batch_rows = rows[start:start + batch_size]
+            obs, _target_pi, _target_val = corpus.batch(batch_rows, device)
+            _logits, value = model(obs)
+            preds.append(value.squeeze(1).cpu().numpy())
+    pred = np.concatenate(preds) if preds else np.zeros(0, dtype=np.float32)
+    outcome = corpus.outcomes_by_sample[rows]
+    decided = outcome != 0.0
+    diag = {
+        "mse_vs_outcome": float(np.mean((pred - outcome) ** 2)) if len(rows) else 0.0,
+        "baseline_mse": float(np.mean(outcome ** 2)) if len(rows) else 0.0,
+        "sign_accuracy": float(np.mean(np.sign(pred[decided]) == np.sign(outcome[decided]))) if decided.any() else 0.0,
+    }
+    deciles = np.minimum((corpus.positions[rows] * 10).astype(int), 9)
+    by_decile = []
+    for d in range(10):
+        pick = decided & (deciles == d)
+        by_decile.append(float(np.mean(np.sign(pred[pick]) == np.sign(outcome[pick]))) if pick.any() else None)
+    diag["sign_accuracy_by_decile"] = by_decile
+    return diag
 
 
 def train(args):
@@ -263,6 +335,7 @@ def train(args):
 
     started = time.time()
     corpus = NetrunnerCorpus(args.data_dir, window=args.window, limit_games=args.limit_games)
+    corpus.set_value_target_mix(args.value_target_mix)
     train_idx, val_idx = corpus.split_by_game(val_fraction=0.1, seed=args.seed)
     outcomes = corpus.outcomes
     print(f"Loaded {corpus.game_count} games, {len(corpus)} decision steps in {time.time() - started:.1f}s "
@@ -273,12 +346,15 @@ def train(args):
     # this. Printed once so "4.5" can be read as "1.9 nats above the floor".
     policy_floor = corpus.policies.entropy(val_idx)
     print(f"Validation policy-target entropy (loss floor): {policy_floor:.4f} nats")
+    print(f"Value target: {1.0 - args.value_target_mix:.2f} x outcome + {args.value_target_mix:.2f} x search root value; "
+          f"value loss weight {args.value_loss_weight:g}")
 
     model = AlphaNetrunnerNet(obs_dim=corpus.observation_size, action_dim=corpus.action_space_size).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
     best_val_loss = float("inf")
     best_epoch = 0
+    best_diag = None
     history = []
     os.makedirs(args.output_dir, exist_ok=True)
     best_pt_path = os.path.join(args.output_dir, "best_model.pt")
@@ -286,20 +362,26 @@ def train(args):
     for epoch in range(1, args.epochs + 1):
         epoch_started = time.time()
         model.train()
-        train_p, train_v = run_epoch(model, corpus, train_idx, args.batch_size, device, optimizer)
+        train_p, train_v = run_epoch(model, corpus, train_idx, args.batch_size, device, optimizer,
+                                     value_loss_weight=args.value_loss_weight)
         model.eval()
         val_p, val_v = run_epoch(model, corpus, val_idx, args.batch_size, device)
-        val_loss = val_p + val_v
+        diag = value_diagnostics(model, corpus, val_idx, args.batch_size, device)
+        # Selected on the same weighted sum the gradient used, so the
+        # checkpoint that ships is the one the training objective preferred.
+        val_loss = val_p + args.value_loss_weight * val_v
         history.append({"epoch": epoch, "train_policy": train_p, "train_value": train_v,
-                        "val_policy": val_p, "val_value": val_v})
+                        "val_policy": val_p, "val_value": val_v, "val_value_diagnostics": diag})
         print(f"Epoch {epoch:02d}/{args.epochs:02d} | "
-              f"Train Loss: {train_p + train_v:.4f} (Policy: {train_p:.4f}, Value: {train_v:.4f}) | "
-              f"Val Loss: {val_loss:.4f} (Policy: {val_p:.4f}, +{val_p - policy_floor:.4f} over floor, "
-              f"Value: {val_v:.4f}) | {time.time() - epoch_started:.0f}s")
+              f"Train (Policy: {train_p:.4f}, Value: {train_v:.4f}) | "
+              f"Val (Policy: {val_p:.4f}, +{val_p - policy_floor:.4f} over floor, Value: {val_v:.4f}) | "
+              f"Value vs outcome: MSE {diag['mse_vs_outcome']:.3f} (predict-zero {diag['baseline_mse']:.3f}), "
+              f"sign {diag['sign_accuracy']:.1%} | {time.time() - epoch_started:.0f}s")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch
+            best_diag = diag
             torch.save(model.state_dict(), best_pt_path)
 
     print("Training complete. Exporting best checkpoint to ONNX...")
@@ -312,7 +394,9 @@ def train(args):
     summary = {
         "games": corpus.game_count, "steps": len(corpus), "train_steps": int(len(train_idx)),
         "val_steps": int(len(val_idx)), "policy_floor": policy_floor, "best_epoch": best_epoch,
-        "best_val_loss": best_val_loss, "epochs": history, "seconds": time.time() - started,
+        "best_val_loss": best_val_loss, "value_target_mix": args.value_target_mix,
+        "value_loss_weight": args.value_loss_weight, "best_value_diagnostics": best_diag,
+        "epochs": history, "seconds": time.time() - started,
     }
     print(json.dumps(summary))
 
@@ -329,5 +413,9 @@ if __name__ == "__main__":
     parser.add_argument("--limit-games", type=int, default=None,
                         help="Use only the first N games, in file order — for measuring how loss scales with data")
     parser.add_argument("--seed", type=int, default=0, help="Seed for the game split and batch order")
+    parser.add_argument("--value-target-mix", type=float, default=0.5,
+                        help="Value target = (1 - mix) x final outcome + mix x search root value (see set_value_target_mix)")
+    parser.add_argument("--value-loss-weight", type=float, default=0.25,
+                        help="Weight of the value loss against the policy loss in the gradient and in checkpoint selection")
     args = parser.parse_args()
     train(args)

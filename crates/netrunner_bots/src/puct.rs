@@ -21,11 +21,13 @@
 //! expands one growing tree per decision, driven by the evaluator's priors
 //! rather than by exploring every branch equally.
 
+use rand::distr::weighted::WeightedIndex;
+use rand::distr::Distribution;
 use rand::rngs::StdRng;
-use rand::SeedableRng;
+use rand::{Rng, SeedableRng};
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{get_action_mask, ActionSpace, GamePhase, GameState, PlayerAction, Side};
+use netrunner_core::rules::{current_actor, get_action_mask, ActionSpace, GamePhase, GameState, PlayerAction, Side};
 use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
@@ -127,16 +129,28 @@ impl PuctNode {
         value
     }
 
-    /// PUCT selection: `argmax_a Q(a) + c_puct * P(a) * sqrt(N_parent) /
+    /// PUCT selection: `argmax_a ±Q(a) + c_puct * P(a) * sqrt(N_parent) /
     /// (1 + N(a))`, with first-play-urgency `Q = 0` for an unvisited edge.
-    fn select_edge(&self, c_puct: f64) -> usize {
+    ///
+    /// `agent_to_move` is the negamax half of the search. Every value in
+    /// the tree is from the agent's fixed perspective (see `simulate`), so
+    /// at a node where the *opponent* decides, the edge they would take is
+    /// the one that minimises Q — the sign flips and the exploration term
+    /// does not. Until September 2026 this maximised the agent's Q at
+    /// every node, opponent's included: the search descended the opponent
+    /// move that was best *for the agent*, modelling the opponent as an
+    /// accomplice, and every backed-up value was the value of that
+    /// fantasy line. Measured on a 960-game uniform-search corpus, the
+    /// root value it produced had correlation −0.04 with the game's
+    /// outcome (ROADMAP Phase 2 §5).
+    fn select_edge(&self, c_puct: f64, agent_to_move: bool) -> usize {
         let sqrt_parent_visits = (self.visits.max(1) as f64).sqrt();
         self.edges
             .iter()
             .enumerate()
             .max_by(|(_, a), (_, b)| {
-                puct_score(a, sqrt_parent_visits, c_puct)
-                    .partial_cmp(&puct_score(b, sqrt_parent_visits, c_puct))
+                puct_score(a, sqrt_parent_visits, c_puct, agent_to_move)
+                    .partial_cmp(&puct_score(b, sqrt_parent_visits, c_puct, agent_to_move))
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
             .map(|(index, _)| index)
@@ -145,20 +159,33 @@ impl PuctNode {
 
 }
 
-fn puct_score(edge: &Edge, sqrt_parent_visits: f64, c_puct: f64) -> f64 {
+fn puct_score(edge: &Edge, sqrt_parent_visits: f64, c_puct: f64, agent_to_move: bool) -> f64 {
     let q = if edge.visits == 0 { 0.0 } else { edge.total_value / edge.visits as f64 };
+    let q = if agent_to_move { q } else { -q };
     let u = c_puct * edge.prior as f64 * sqrt_parent_visits / (1.0 + edge.visits as f64);
     q + u
+}
+
+/// Whether `side` is the one deciding at `state`. `current_actor` is
+/// `None` only in states nobody decides in (`StartOfTurn`, `GameOver`);
+/// those never reach selection, and treating them as the agent's keeps
+/// the sign convention total rather than special-cased.
+fn agent_to_move(state: &GameState, side: Side) -> bool {
+    current_actor(state).is_none_or(|actor| actor == side)
 }
 
 /// One select→expand→backup pass from `node` down, PUCT-style (no
 /// rollout): a terminal state backs up a literal `±1.0`; an unexpanded
 /// node is expanded and its evaluator value backed up directly;
-/// otherwise the best edge is selected, its child lazily created via
+/// otherwise the best edge *for whoever decides at this node* is selected
+/// (`select_edge`'s `agent_to_move`), its child lazily created via
 /// `node.state.step`, and the recursive result accumulated onto both the
 /// edge and this node. Returns the value backpropagated into `node`
 /// itself, always from `side`'s fixed perspective (matching `MctsAgent`/
-/// `evaluate_state`'s convention — see the module doc comment).
+/// `evaluate_state`'s convention — see the module doc comment); the
+/// perspective is fixed and the *selection* flips sign, rather than
+/// negating values on the way up, because the evaluator's value is
+/// already from `side` at every node.
 fn simulate(
     node: &mut PuctNode,
     registry: &CardRegistry,
@@ -194,7 +221,7 @@ fn simulate(
         return value as f64;
     }
 
-    let edge_index = node.select_edge(c_puct);
+    let edge_index = node.select_edge(c_puct, agent_to_move(&node.state, side));
 
     if node.edges[edge_index].child.is_none() {
         let action = node.edges[edge_index].action.clone();
@@ -252,6 +279,11 @@ pub struct PuctAgent {
     seed: u64,
     evaluator: Box<dyn PolicyEvaluator>,
     config: PuctConfig,
+    /// What `select_action` last chose, and how many times in a row it has
+    /// chosen exactly that — the input to `pick_action`'s cycle break. See
+    /// `MAX_GREEDY_REPEATS` for why a `BotAgent` needs one at all.
+    last_action: Option<PlayerAction>,
+    repeats: usize,
 }
 
 impl PuctAgent {
@@ -261,7 +293,7 @@ impl PuctAgent {
 
     pub fn with_config(side: Side, seed: u64, evaluator: impl PolicyEvaluator + 'static, config: PuctConfig) -> Self {
         let config = PuctConfig { iterations: config.iterations.max(1), max_depth: config.max_depth.max(1), ..config };
-        Self { side, seed, evaluator: Box::new(evaluator), config }
+        Self { side, seed, evaluator: Box::new(evaluator), config, last_action: None, repeats: 0 }
     }
 
     /// Runs a full PUCT search from `view`/`registry` and returns every
@@ -328,8 +360,89 @@ impl PuctAgent {
             view.legal_actions.len(),
             "search must report every action the caller may submit"
         );
-        PuctSearchStats { visit_counts, actions }
+        let (total_value, total_visits) =
+            root.edges.iter().fold((0.0f64, 0u32), |(v, n), edge| (v + edge.total_value, n + edge.visits));
+        let root_value = if total_visits == 0 { 0.0 } else { (total_value / total_visits as f64) as f32 };
+        PuctSearchStats { visit_counts, actions, root_value }
     }
+}
+
+/// How many times `select_action` (or self-play's driver) may pick the
+/// same action back-to-back before `pick_action` is asked to escape.
+///
+/// Legitimate repeats exist — clicking for credits three times in a row is
+/// ordinary play — but each of those consumes a click and moves the game
+/// on. A run far past a turn's worth of clicks means the state is cycling
+/// instead, so the bound sits comfortably above normal repetition.
+///
+/// Greedy selection is a pure function of the visit counts, so a decision
+/// that leaves the state essentially unchanged gets re-picked forever:
+/// toggling one card of a card-selection on and off is the observed case —
+/// a perfect two-cycle that burned a whole game's step budget even though
+/// `ConfirmCardSelection` was legal and sitting right there. Self-play's
+/// driver has carried this bound since that was found; `BotAgent::
+/// select_action` did not, and in the September 2026 volume run 14–23 of
+/// every 48 arena games — both seats `PuctAgent`s over a trained network —
+/// ran to `MAX_STEPS` on exactly this (ROADMAP Phase 2 §5). Each was 10,000
+/// decisions of network search, and each handed the candidate half a point.
+pub const MAX_GREEDY_REPEATS: usize = 8;
+
+/// Picks which searched action to play.
+///
+/// Greedy — most visits, `total_value` breaking ties — unless
+/// `sample_by_visits` (AlphaZero's temperature phase: visit-weighted, so
+/// the recorded policy target and the played move come from the same
+/// distribution) or `avoid` is given. `avoid` is the cycle break: the
+/// action just repeated `MAX_GREEDY_REPEATS` times is struck from the
+/// candidates and the rest are sampled by visits, uniformly if the search
+/// never visited any of them.
+///
+/// Striking the repeated action, rather than merely sampling by visits as
+/// the driver used to, is what makes the escape certain: a confident
+/// network puts nearly every visit on its favourite, so a visit-weighted
+/// draw re-picks the favourite with probability ≈ 1 and the "escape" is
+/// another lap of the cycle. Sampling the rest by visits still prefers the
+/// search's second choice over a blind draw, so the trajectory is
+/// perturbed as little as a guaranteed break allows.
+///
+/// `None` only if `actions` is empty, which `PuctAgent::search` never
+/// produces — it reports one stat per `view.legal_actions` entry. Returned
+/// as an `Option` rather than asserted: self-play runs unattended over
+/// millions of games, and killing a run over one unreachable-by-contract
+/// decision is the wrong trade.
+pub fn pick_action<'a>(
+    actions: &'a [ActionStat],
+    sample_by_visits: bool,
+    avoid: Option<&PlayerAction>,
+    rng: &mut impl Rng,
+) -> Option<&'a ActionStat> {
+    if actions.is_empty() {
+        return None;
+    }
+    if let Some(avoid) = avoid {
+        let mut candidates: Vec<&ActionStat> = actions.iter().filter(|stat| stat.action != *avoid).collect();
+        if candidates.is_empty() {
+            // Nothing but the repeated action is legal; there is no cycle
+            // to break, only one move to make.
+            candidates = actions.iter().collect();
+        }
+        let weights: Vec<u32> = candidates.iter().map(|stat| stat.visits).collect();
+        return Some(match WeightedIndex::new(&weights) {
+            Ok(distribution) => candidates[distribution.sample(rng)],
+            Err(_) => candidates[rng.random_range(0..candidates.len())],
+        });
+    }
+    if sample_by_visits {
+        let weights: Vec<u32> = actions.iter().map(|stat| stat.visits).collect();
+        if let Ok(distribution) = WeightedIndex::new(&weights) {
+            return Some(&actions[distribution.sample(rng)]);
+        }
+        // Every action has zero visits: nothing to weight by, fall through
+        // to greedy, which then resolves on `total_value`.
+    }
+    actions.iter().max_by(|a, b| {
+        a.visits.cmp(&b.visits).then_with(|| a.total_value.partial_cmp(&b.total_value).unwrap_or(std::cmp::Ordering::Equal))
+    })
 }
 
 /// One root edge's outcome from `PuctAgent::search`: which
@@ -361,6 +474,18 @@ pub struct PuctSearchStats {
     /// `search` reports every action the caller may submit, with zero
     /// visits for one the search never descended.
     pub actions: Vec<ActionStat>,
+    /// The search's own estimate of the root position from the agent's
+    /// side: the mean of every value backed up through a root edge, in the
+    /// evaluator's `[-1, 1]` convention (`0.0` if nothing was visited).
+    ///
+    /// Recorded by self-play as a value-head target beside the game's
+    /// final outcome. The outcome of a 64-simulation weak-search game is
+    /// largely decided by noise from the opening, and a head trained on it
+    /// alone memorised games rather than judging positions — held-out MSE
+    /// never beat predicting zero at any corpus size (ROADMAP Phase 2 §5).
+    /// The root value is what the search actually believed about *this*
+    /// position, smoother and position-specific, at no extra cost.
+    pub root_value: f32,
 }
 
 impl BotAgent for PuctAgent {
@@ -371,16 +496,34 @@ impl BotAgent for PuctAgent {
         }
 
         let stats = self.search(view, registry);
-        stats
-            .actions
-            .iter()
-            .max_by(|a, b| {
-                a.visits.cmp(&b.visits).then_with(|| a.total_value.partial_cmp(&b.total_value).unwrap_or(std::cmp::Ordering::Equal))
-            })
+        // `search` advanced `self.seed`, so this draw changes every call and
+        // the whole agent stays a pure function of its construction seed.
+        let mut rng = StdRng::seed_from_u64(self.seed ^ ESCAPE_RNG_SALT);
+        let avoid = if self.repeats >= MAX_GREEDY_REPEATS { self.last_action.as_ref() } else { None };
+        let chosen = pick_action(&stats.actions, false, avoid, &mut rng)
             .map(|stat| stat.action.clone())
-            .unwrap_or_else(|| view.legal_actions[0].clone())
+            .unwrap_or_else(|| view.legal_actions[0].clone());
+
+        // Counted per agent, over its own consecutive searched decisions.
+        // Self-play's driver counts across both sides' interleaved
+        // decisions instead, which an agent cannot: it never sees the
+        // opponent's actions. The difference is that a long legitimate
+        // chain — the Corp passing priority through every window of a
+        // deep run with nothing to rez — can reach the bound here and cost
+        // one non-pass pick. Accepted: that is one perturbed decision,
+        // where the alternative was letting a 10,000-step stall through.
+        // A single legal action never reaches this point, so it neither
+        // extends nor resets the count, matching the driver.
+        self.repeats = if self.last_action.as_ref() == Some(&chosen) { self.repeats + 1 } else { 0 };
+        self.last_action = Some(chosen.clone());
+        chosen
     }
 }
+
+/// Decorrelates the escape draw from the determinization stream, which is
+/// seeded from the same counter. Shared with `MctsAgent`, whose
+/// `select_action` runs the same bookkeeping over its merged root stats.
+pub(crate) const ESCAPE_RNG_SALT: u64 = 0x9E37_79B9_7F4A_7C15;
 
 #[cfg(test)]
 mod tests {
@@ -795,6 +938,176 @@ mod tests {
 
         let chosen = agent.select_action(&view, &registry);
         assert!(view.legal_actions.contains(&chosen));
+    }
+
+    fn stat(action: PlayerAction, visits: u32, total_value: f64) -> ActionStat {
+        ActionStat { index: None, action, visits, total_value }
+    }
+
+    #[test]
+    fn pick_action_is_greedy_by_default_and_breaks_visit_ties_on_value() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let actions = [
+            stat(PlayerAction::EndTurn, 5, 0.0),
+            stat(PlayerAction::GainCreditClick { side: Side::Corp }, 9, -1.0),
+            stat(PlayerAction::DrawCardClick { side: Side::Corp }, 9, 2.0),
+        ];
+        let chosen = pick_action(&actions, false, None, &mut rng).expect("non-empty");
+        assert_eq!(chosen.action, PlayerAction::DrawCardClick { side: Side::Corp });
+        assert!(pick_action(&[], false, None, &mut rng).is_none());
+    }
+
+    #[test]
+    fn pick_action_sampling_never_returns_an_unvisited_action_when_another_was_visited() {
+        let mut rng = StdRng::seed_from_u64(1);
+        let actions = [stat(PlayerAction::EndTurn, 0, 0.0), stat(PlayerAction::GainCreditClick { side: Side::Corp }, 3, 0.0)];
+        for _ in 0..50 {
+            let chosen = pick_action(&actions, true, None, &mut rng).expect("non-empty");
+            assert_eq!(chosen.action, PlayerAction::GainCreditClick { side: Side::Corp });
+        }
+    }
+
+    /// The cycle break has to be certain, not likely: with every visit on
+    /// the repeated action a visit-weighted draw would re-pick it with
+    /// probability one, which is precisely the stall it exists to end.
+    #[test]
+    fn pick_action_never_returns_the_avoided_action_even_when_it_holds_every_visit() {
+        let mut rng = StdRng::seed_from_u64(2);
+        let toggle = PlayerAction::ToggleCardSelection { position: 1 };
+        let actions = [
+            stat(toggle.clone(), 16, 0.0),
+            stat(PlayerAction::ToggleCardSelection { position: 0 }, 0, 0.0),
+            stat(PlayerAction::ConfirmCardSelection, 0, 0.0),
+        ];
+        let mut seen_confirm = false;
+        for _ in 0..100 {
+            let chosen = pick_action(&actions, false, Some(&toggle), &mut rng).expect("non-empty");
+            assert_ne!(chosen.action, toggle, "the repeated action must be struck from the candidates");
+            seen_confirm |= chosen.action == PlayerAction::ConfirmCardSelection;
+        }
+        assert!(seen_confirm, "with no visits to weight by, the rest are drawn uniformly");
+
+        // The only legal action is the repeated one: there is no cycle to
+        // break, just one move to make.
+        let only = [stat(toggle.clone(), 4, 0.0)];
+        assert_eq!(pick_action(&only, false, Some(&toggle), &mut rng).expect("non-empty").action, toggle);
+    }
+
+    /// A `PuctAgent` that keeps being handed the same position and keeps
+    /// choosing the same action must stop doing so after the bound —
+    /// pinned at the agent rather than only at `pick_action`, since the
+    /// repeat bookkeeping lives on the agent.
+    #[test]
+    fn select_action_escapes_after_max_greedy_repeats() {
+        struct AlwaysEndTurn;
+        impl PolicyEvaluator for AlwaysEndTurn {
+            fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
+                let mask = get_action_mask(state, registry);
+                let mut priors = vec![0.0f32; ActionSpace::SIZE];
+                if let Some(index) = ActionSpace::index_of(state, &PlayerAction::EndTurn).filter(|&index| mask[index]) {
+                    priors[index] = 1.0;
+                }
+                (priors, 0.0)
+            }
+        }
+
+        let registry = CardRegistry::new();
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.len() > 1);
+
+        let mut agent = PuctAgent::with_config(
+            Side::Corp,
+            7,
+            AlwaysEndTurn,
+            PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 2 },
+        );
+        for _ in 0..MAX_GREEDY_REPEATS + 1 {
+            assert_eq!(agent.select_action(&view, &registry), PlayerAction::EndTurn, "greedy up to the bound");
+        }
+        let escaped = agent.select_action(&view, &registry);
+        assert_ne!(escaped, PlayerAction::EndTurn, "the pick after the bound must be something else");
+        assert!(view.legal_actions.contains(&escaped));
+    }
+
+    /// The negamax half of the search: at a node where the opponent
+    /// decides, the edge selected is the one *worst* for the agent, not
+    /// the one best for it.
+    #[test]
+    fn select_edge_minimises_the_agents_value_where_the_opponent_decides() {
+        let edge = |action: PlayerAction, total_value: f64| Edge {
+            index: None,
+            action,
+            prior: 0.5,
+            visits: 10,
+            total_value,
+            child: None,
+        };
+        let good_for_corp = PlayerAction::GainCreditClick { side: Side::Runner };
+        let bad_for_corp = PlayerAction::DrawCardClick { side: Side::Runner };
+
+        let mut runner_decides = GameState::new(0);
+        runner_decides.phase = GamePhase::Action(Side::Runner);
+        runner_decides.runner.resources.clicks = Clicks(4);
+        assert_eq!(current_actor(&runner_decides), Some(Side::Runner));
+        let node = PuctNode {
+            state: runner_decides,
+            visits: 20,
+            edges: vec![edge(good_for_corp.clone(), 8.0), edge(bad_for_corp.clone(), -5.0)],
+            expanded: true,
+        };
+        let picked = &node.edges[node.select_edge(1.5, agent_to_move(&node.state, Side::Corp))].action;
+        assert_eq!(*picked, bad_for_corp, "the Runner takes the move that hurts the Corp");
+
+        let picked = &node.edges[node.select_edge(1.5, agent_to_move(&node.state, Side::Runner))].action;
+        assert_eq!(*picked, good_for_corp, "from the Runner's own chair the same Q values read the other way");
+
+        let mut corp_decides = GameState::new(0);
+        corp_decides.phase = GamePhase::Action(Side::Corp);
+        corp_decides.corp.resources.clicks = Clicks(3);
+        assert!(agent_to_move(&corp_decides, Side::Corp));
+        assert!(!agent_to_move(&corp_decides, Side::Runner));
+    }
+
+    #[test]
+    fn root_value_is_the_mean_backed_up_value_and_favors_a_winning_position() {
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("winning_agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(7);
+        registry.insert(agenda);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp = empty_corp();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("winning_agenda".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            advancement_tokens: 3,
+            ..Default::default()
+        }];
+        let view = build_client_view(&state, &registry, Side::Corp);
+
+        let mut agent = PuctAgent::with_config(
+            Side::Corp,
+            5,
+            UniformPolicyEvaluator::new(Side::Corp),
+            PuctConfig { c_puct: 1.5, iterations: 64, max_depth: 8 },
+        );
+        let stats = agent.search(&view, &registry);
+        let (value, visits) = stats.actions.iter().fold((0.0, 0u32), |(v, n), s| (v + s.total_value, n + s.visits));
+        assert!((stats.root_value as f64 - value / visits as f64).abs() < 1e-5);
+        assert!((-1.0..=1.0).contains(&stats.root_value));
+        assert!(stats.root_value > 0.0, "a score for the win is one move away: {}", stats.root_value);
     }
 
     #[test]
