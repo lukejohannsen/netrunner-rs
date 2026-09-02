@@ -47,7 +47,7 @@ fn blank_card(id: String, side: Side, card_type: CardType) -> CardDefinition {
         recurring_credits: None,
         first_install_discount: None,
         memory_cost: None,
-        counter_kind: None, numeric_id: None, faction: None, type_line: None, keywords: Vec::new(), set_code: None, influence_cost: None, deck_limit: None, artist: None, image_url: None, memory_bonus: None, max_hand_size_bonus: None, install_cost_discount_if: None, installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, unique: false, base_link: None, is_playable: true,
+        counter_kind: None, numeric_id: None, faction: None, type_line: None, keywords: Vec::new(), set_code: None, influence_cost: None, deck_limit: None, unlimited_influence: false, artist: None, image_url: None, memory_bonus: None, max_hand_size_bonus: None, install_cost_discount_if: None, installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, unique: false, base_link: None, is_playable: true,
     }
 }
 

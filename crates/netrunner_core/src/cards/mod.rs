@@ -31,27 +31,32 @@ pub fn register_playable_cards(registry: &mut CardRegistry) {
 #[cfg(test)]
 mod sg_starter_identity_tests {
     use super::*;
-    use crate::card::CardId as NumericCardId;
+    use crate::dsl::CardId;
 
     /// "The Catalyst: Convention Breaker" (Runner, code 30076) and "The
     /// Syndicate: Profit over Principle" (Corp, code 30077) are System
     /// Gateway's tutorial-only starter identities — their NetrunnerDB
-    /// `stripped_text` is literally `"Starter game only."`, with no rules
-    /// text at all to implement. They stay `is_playable: false`
-    /// permanently; this is a documented decision, not a gap to fill in a
-    /// later milestone.
+    /// `stripped_text` is literally `"Starter game only."`. They were kept
+    /// unplayable while no tutorial existed (a blank identity legal in
+    /// Standard is a deckbuilding hole); *Learn to Play* (ROADMAP Phase
+    /// 1.75) is the use. The assertion that matters is **blankness**: no
+    /// triggers, no abilities — that is what keeps them honest as tutorial
+    /// identities, and it is the reason implementing them cost nothing.
     #[test]
-    fn starter_only_identities_have_no_rules_text_and_stay_permanently_unplayable() {
-        let registry = load_embedded_netrunnerdb_sets().expect("embedded sets should parse");
-
-        let catalyst = registry.get_by_numeric_id(NumericCardId(30076)).expect("The Catalyst should be in the SG catalog");
-        assert_eq!(catalyst.title, "The Catalyst: Convention Breaker");
-        assert!(!catalyst.is_playable);
-
-        let syndicate =
-            registry.get_by_numeric_id(NumericCardId(30077)).expect("The Syndicate should be in the SG catalog");
-        assert_eq!(syndicate.title, "The Syndicate: Profit over Principle");
-        assert!(!syndicate.is_playable);
+    fn starter_identities_are_playable_and_blank() {
+        let mut registry = CardRegistry::new();
+        register_playable_cards(&mut registry);
+        for (id, title, min_deck_size) in [
+            ("the_catalyst", "The Catalyst: Convention Breaker", 30),
+            ("the_syndicate", "The Syndicate: Profit over Principle", 30),
+        ] {
+            let card = registry.get(&CardId(id.to_string())).unwrap_or_else(|| panic!("{id} should be registered"));
+            assert_eq!(card.title, title);
+            assert!(card.is_playable, "{id} is playable for the starter game");
+            assert!(card.triggers.is_empty() && card.abilities.is_empty(), "{id} is blank: \"Starter game only.\"");
+            assert_eq!(card.min_deck_size, Some(min_deck_size), "{id}: the catalog's printed minimum");
+            assert!(card.unlimited_influence, "{id}: the catalog's influence_limit is null");
+        }
     }
 }
 

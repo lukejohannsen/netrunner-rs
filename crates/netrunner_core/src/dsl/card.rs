@@ -340,6 +340,16 @@ pub struct CardDefinition {
     /// validator constants.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deck_limit: Option<u32>,
+    /// The catalog's `influence_limit: null` — an identity with no
+    /// influence budget at all. True only for the *Learn to Play* starter
+    /// identities, whose preset decks mix every faction; the deckbuilding
+    /// validator skips its influence check for such an identity instead of
+    /// applying the flat `DEFAULT_INFLUENCE_LIMIT`. A flag rather than an
+    /// `Option<u32>` limit because `None` would be ambiguous between
+    /// "unset" and "unlimited", and no identity in the pool carries a
+    /// printed limit other than the default.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unlimited_influence: bool,
 
     /// Illustrator credit, sourced from NetrunnerDB's `illustrator` field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -450,6 +460,7 @@ impl Default for CardDefinition {
             set_code: None,
             influence_cost: None,
             deck_limit: None,
+            unlimited_influence: false,
             artist: None,
             image_url: None,
             is_playable: false,

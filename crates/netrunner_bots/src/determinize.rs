@@ -469,6 +469,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         seed: rng.random(),
         rng_step: 0,
         next_install_id,
+        // Public, and the win threshold the search plays toward.
+        rules: view.rules,
     }
 }
 

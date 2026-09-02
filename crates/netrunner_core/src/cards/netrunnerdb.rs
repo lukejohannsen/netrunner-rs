@@ -168,6 +168,7 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         keywords,
         set_code: Some(dto.pack_code),
         influence_cost: non_negative("faction_cost", dto.faction_cost)?,
+        unlimited_influence: false,
         deck_limit: non_negative("deck_limit", dto.deck_limit)?,
         artist: dto.illustrator,
         image_url: None,

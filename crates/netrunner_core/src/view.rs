@@ -93,6 +93,10 @@ pub struct ClientView {
     /// `GameState::turn` verbatim — public information, and counted per
     /// side's turn rather than per round (see that field's doc comment).
     pub turn: u32,
+    /// `GameState::rules` verbatim — a client has to be able to say how
+    /// many agenda points win this match.
+    #[serde(default)]
+    pub rules: crate::rules::MatchRules,
     pub corp: CorpClientView,
     pub runner: RunnerClientView,
     pub active_run: Option<PublicRunState>,
@@ -195,6 +199,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
         side,
         active_player: active_player(state.phase),
         turn: state.turn,
+        rules: state.rules,
         phase: public.phase,
         corp,
         runner,

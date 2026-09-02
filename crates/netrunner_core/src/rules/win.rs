@@ -39,9 +39,6 @@ pub(crate) fn end_game(state: &mut GameState, winner: Side) -> Vec<GameEvent> {
     vec![GameEvent::GameOver { winner }]
 }
 
-/// Agenda points either side needs to win the game outright.
-const WINNING_AGENDA_POINTS: u32 = 7;
-
 /// Looks up `card_id`'s printed agenda point value from `registry`. Returns
 /// `None` if the card isn't in the registry, or is registered but isn't an
 /// Agenda (`dsl::CardDefinition::agenda_points` is `None`) — that `None` is the gate
@@ -85,9 +82,12 @@ pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) -> V
     if state.is_over() {
         return Vec::new();
     }
-    if total_agenda_points(&state.corp.scored_agendas, registry) >= WINNING_AGENDA_POINTS {
+    // The threshold is a match rule (7 in Standard, 6 in the starter game),
+    // read off the state rather than a const — see `MatchRules`.
+    let winning = state.rules.winning_agenda_points;
+    if total_agenda_points(&state.corp.scored_agendas, registry) >= winning {
         end_game(state, Side::Corp)
-    } else if total_agenda_points(&state.runner.scored_agendas, registry) >= WINNING_AGENDA_POINTS {
+    } else if total_agenda_points(&state.runner.scored_agendas, registry) >= winning {
         end_game(state, Side::Runner)
     } else {
         Vec::new()
@@ -242,5 +242,26 @@ mod tests {
         assert_eq!(agenda_value(&CardId("hedge_fund".to_string()), &registry), None);
         // Not registered at all.
         assert_eq!(agenda_value(&CardId("unregistered".to_string()), &registry), None);
+    }
+
+    /// The threshold is a match rule: six points win a starter game and
+    /// leave a Standard one running.
+    #[test]
+    fn the_winning_threshold_comes_from_the_match_rules() {
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            id: CardId("two_pointer".to_string()),
+            title: "two_pointer".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Agenda,
+            agenda_points: Some(2),
+            is_playable: true,
+            ..Default::default()
+        });
+        let mut state = game_state(vec![CardId("two_pointer".to_string()); 3], Vec::new());
+        assert!(check_win_conditions(&mut state, &registry).is_empty(), "six points do not win at Standard's 7");
+        state.rules = crate::rules::MatchRules { winning_agenda_points: 6 };
+        assert!(!check_win_conditions(&mut state, &registry).is_empty(), "six points win a starter game");
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
     }
 }

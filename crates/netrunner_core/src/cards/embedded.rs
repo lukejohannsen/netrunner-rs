@@ -143,12 +143,10 @@ mod tests {
 /// code (titles carry typographic apostrophes, codes don't). Every entry
 /// needs a stated reason — this list is the deliberate exception set for
 /// `every_system_gateway_card_is_implemented_or_explicitly_excluded`, not a
-/// place to silence it.
+/// place to silence it. Empty since the two starter identities landed for
+/// *Learn to Play* (ROADMAP Phase 1.75 §2): 77 of 77.
 #[cfg(test)]
-const SG_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (30076, "The Catalyst: Convention Breaker — \"Starter game only.\", no rules text to implement; permanent"),
-    (30077, "The Syndicate: Profit over Principle — \"Starter game only.\", no rules text to implement; permanent"),
-];
+const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 
 #[cfg(test)]
 mod catalog_join_tests {

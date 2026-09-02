@@ -151,7 +151,10 @@ pub fn validate_deck(
         }
     }
 
-    if influence_spent > DEFAULT_INFLUENCE_LIMIT {
+    // The starter identities have no influence budget (`unlimited_influence`,
+    // the catalog's `influence_limit: null`); every other identity gets the
+    // flat default.
+    if !identity.unlimited_influence && influence_spent > DEFAULT_INFLUENCE_LIMIT {
         return Err(DeckValidationError::InfluenceExceeded { spent: influence_spent, limit: DEFAULT_INFLUENCE_LIMIT });
     }
 

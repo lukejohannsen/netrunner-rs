@@ -1,0 +1,12 @@
+{
+  "id": "the_syndicate",
+  "title": "The Syndicate: Profit over Principle",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 30,
+  "unlimited_influence": true,
+  "triggers": [],
+  "numeric_id": 30077,
+  "is_playable": true
+}

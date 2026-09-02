@@ -1,0 +1,94 @@
+{
+  "id": "the_catalyst_boosted",
+  "name": "The Catalyst — Boosted",
+  "side": "Runner",
+  "category": "Boosted",
+  "description": "The Runner starter deck plus its 10-card booster pack (Wildcat Strike, Mutual Favor, DZMZ Optimizer, Leech, Conduit): 40 cards, played to 7.",
+  "identity": "the_catalyst",
+  "cards": [
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 2
+    },
+    {
+      "card": "creative_commission",
+      "count": 2
+    },
+    {
+      "card": "vrcation",
+      "count": 2
+    },
+    {
+      "card": "overclock",
+      "count": 2
+    },
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "docklands_pass",
+      "count": 1
+    },
+    {
+      "card": "pennyshaver",
+      "count": 1
+    },
+    {
+      "card": "cleaver",
+      "count": 2
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "unity",
+      "count": 2
+    },
+    {
+      "card": "mayfly",
+      "count": 2
+    },
+    {
+      "card": "red_team",
+      "count": 1
+    },
+    {
+      "card": "telework_contract",
+      "count": 2
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 2
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 1
+    },
+    {
+      "card": "wildcat_strike",
+      "count": 2
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 2
+    },
+    {
+      "card": "leech",
+      "count": 2
+    },
+    {
+      "card": "conduit",
+      "count": 2
+    }
+  ]
+}

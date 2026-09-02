@@ -97,14 +97,18 @@ pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result
 }
 
 /// Returns `(min, max)` legal agenda points for a Corp deck of `size`
-/// non-identity cards. The real-game minimum formula is `20 + 2 *
-/// floor((size - 45) / 5)` for `size >= 45`, flattening to `18` below that
-/// (matching a handful of real identities with a reduced minimum deck
-/// size). The `+2` ceiling matches historical Netrunner/Null Signal Games
-/// competition-legality rules — an inferred completion of the brief's
-/// minimum-only formula, not a free invention.
+/// non-identity cards: `min = 2 + 2 * floor(size / 5)`, the rule Null
+/// Signal Games publishes (40–44 cards → 18, 45–49 → 20, 50–54 → 22). The
+/// `+2` ceiling matches historical competition-legality rules. This used
+/// to be written as `20 + 2 * floor((size - 45) / 5)` above 45 with a flat
+/// 18 below, which is the same function on every legal Standard size but
+/// wrong under it: the *Learn to Play* starter Corp deck is 34 cards
+/// carrying 14 agenda points, exactly what the unflattened rule gives.
+/// ROADMAP Phase 1.75 §1 anticipated needing the win threshold as a second
+/// parameter; it does not — size alone determines the range, and the
+/// 6-point starter game changes only `MatchRules::winning_agenda_points`.
 pub(crate) fn agenda_point_range(size: u32) -> (u32, u32) {
-    let min = if size >= 45 { 20 + 2 * ((size - 45) / 5) } else { 18 };
+    let min = 2 + 2 * (size / 5);
     (min, min + 2)
 }
 
@@ -369,5 +373,8 @@ mod tests {
         assert_eq!(agenda_point_range(44), (18, 20));
         assert_eq!(agenda_point_range(45), (20, 22));
         assert_eq!(agenda_point_range(50), (22, 24));
+        // The starter Corp deck: 34 cards, 14 points (ROADMAP Phase 1.75).
+        assert_eq!(agenda_point_range(34), (14, 16));
+        assert_eq!(agenda_point_range(30), (14, 16));
     }
 }

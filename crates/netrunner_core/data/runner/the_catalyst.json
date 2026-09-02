@@ -1,0 +1,13 @@
+{
+  "id": "the_catalyst",
+  "title": "The Catalyst: Convention Breaker",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 30,
+  "base_link": 0,
+  "unlimited_influence": true,
+  "triggers": [],
+  "numeric_id": 30076,
+  "is_playable": true
+}
