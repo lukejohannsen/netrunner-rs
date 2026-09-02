@@ -52,10 +52,10 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
 
     // The ONNX policy takes the Corp seat; a scripted agent takes the
     // Runner's, standing in for the human.
-    let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, model_path)
+    let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, 8, model_path)
         .expect("the fixture model loads at the current observation/action shape");
     let runner_driver =
-        bots::make_driver(BotKind::Heuristic, Side::Runner, 2, model_path).expect("heuristic driver");
+        bots::make_driver(BotKind::Heuristic, Side::Runner, 2, 8, model_path).expect("heuristic driver");
 
     let session = SinglePlayerSession::new(state, registry, corp_driver, runner_driver);
     let (final_state, history) = session.run();
@@ -80,7 +80,7 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
 /// before training anything — must explain itself rather than panic.
 #[test]
 fn a_missing_checkpoint_explains_how_to_produce_one() {
-    let Err(error) = bots::make_driver(BotKind::Onnx, Side::Corp, 0, "checkpoints/does_not_exist.onnx") else {
+    let Err(error) = bots::make_driver(BotKind::Onnx, Side::Corp, 0, 8, "checkpoints/does_not_exist.onnx") else {
         panic!("a missing checkpoint cannot yield a driver");
     };
     assert!(error.contains("run_iteration_loop.py"), "error should point at the training command: {error}");

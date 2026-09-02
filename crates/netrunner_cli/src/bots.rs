@@ -36,7 +36,7 @@ use crate::config::BotKind;
 /// agents (`Mcts`, `Puct`); the others ignore it.
 pub fn make_agent(kind: BotKind, side: Side, seed: u64, simulations: usize) -> Option<Box<dyn BotAgent>> {
     match kind {
-        BotKind::Human | BotKind::Onnx => None,
+        BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
         BotKind::Heuristic => Some(Box::new(HeuristicAgent::new(side, seed))),
         BotKind::Mcts => Some(Box::new(MctsAgent::with_iterations(side, seed, simulations))),
@@ -48,6 +48,50 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64, simulations: usize) -> O
         ))),
     }
 }
+
+/// [`make_agent`] for callers that also hold `--model`: the same kinds,
+/// plus `PuctOnnx` — `PuctAgent` searching over `OnnxPolicyEvaluator`
+/// instead of the uniform one. `Err` is the readable model-loading failure
+/// (`make_driver`'s contract); `Ok(None)` still means "no `BotAgent` form"
+/// (`Human`, `Onnx`).
+pub fn make_agent_with_model(
+    kind: BotKind,
+    side: Side,
+    seed: u64,
+    simulations: usize,
+    model_path: &str,
+) -> Result<Option<Box<dyn BotAgent>>, String> {
+    match kind {
+        BotKind::PuctOnnx => make_puct_onnx_agent(side, seed, simulations, model_path).map(Some),
+        _ => Ok(make_agent(kind, side, seed, simulations)),
+    }
+}
+
+#[cfg(feature = "onnx")]
+fn make_puct_onnx_agent(side: Side, seed: u64, simulations: usize, model_path: &str) -> Result<Box<dyn BotAgent>, String> {
+    use netrunner_bots::OnnxPolicyEvaluator;
+
+    let evaluator = OnnxPolicyEvaluator::new(model_path, side).map_err(|e| onnx_load_error(model_path, &e))?;
+    Ok(Box::new(PuctAgent::with_config(side, seed, evaluator, PuctConfig { iterations: simulations, ..PuctConfig::default() })))
+}
+
+#[cfg(not(feature = "onnx"))]
+fn make_puct_onnx_agent(_side: Side, _seed: u64, _simulations: usize, _model_path: &str) -> Result<Box<dyn BotAgent>, String> {
+    Err(NO_ONNX_FEATURE.to_string())
+}
+
+#[cfg(feature = "onnx")]
+fn onnx_load_error(model_path: &str, error: &dyn std::fmt::Display) -> String {
+    format!(
+        "could not load the ONNX policy at {model_path:?}: {error}\n\
+         Train one first with:\n  \
+         python3 scripts/run_iteration_loop.py --iterations 50 --games-per-iter 100 --simulations 200"
+    )
+}
+
+#[cfg(not(feature = "onnx"))]
+const NO_ONNX_FEATURE: &str = "this binary was built without the `onnx` feature; rebuild with \
+     `cargo run -p netrunner_cli --features onnx -- ...` to play against a trained policy";
 
 /// An index-based `netrunner_bots::Agent` for the `SinglePlayerSession`
 /// path.
@@ -67,7 +111,8 @@ pub fn make_driver(
         BotKind::Human => Err("make_driver was asked for a bot driver for the human seat".to_string()),
         BotKind::Onnx => make_onnx_driver(side, model_path),
         _ => {
-            let agent = make_agent(kind, side, seed, simulations).expect("non-Human, non-Onnx kinds always yield an agent");
+            let agent = make_agent_with_model(kind, side, seed, simulations, model_path)?
+                .expect("every kind but Human and Onnx yields a BotAgent");
             Ok(Box::new(BotAgentIndexAdapter::new(agent, side)))
         }
     }
@@ -77,21 +122,13 @@ pub fn make_driver(
 fn make_onnx_driver(side: Side, model_path: &str) -> Result<Box<dyn Agent>, String> {
     use netrunner_bots::{IndexedOnnxAgent, OnnxPolicyEvaluator};
 
-    let evaluator = OnnxPolicyEvaluator::new(model_path, side).map_err(|e| {
-        format!(
-            "could not load the ONNX policy at {model_path:?}: {e}\n\
-             Train one first with:\n  \
-             python3 scripts/run_iteration_loop.py --iterations 50 --games-per-iter 100 --simulations 200"
-        )
-    })?;
+    let evaluator = OnnxPolicyEvaluator::new(model_path, side).map_err(|e| onnx_load_error(model_path, &e))?;
     Ok(Box::new(IndexedOnnxAgent::new(evaluator)))
 }
 
 #[cfg(not(feature = "onnx"))]
 fn make_onnx_driver(_side: Side, _model_path: &str) -> Result<Box<dyn Agent>, String> {
-    Err("this binary was built without the `onnx` feature; rebuild with \
-         `cargo run -p netrunner_cli --features onnx -- ...` to play against a trained policy"
-        .to_string())
+    Err(NO_ONNX_FEATURE.to_string())
 }
 
 #[cfg(test)]
@@ -102,6 +139,22 @@ mod tests {
     fn human_and_onnx_have_no_bot_agent_form() {
         assert!(make_agent(BotKind::Human, Side::Corp, 0, 8).is_none());
         assert!(make_agent(BotKind::Onnx, Side::Corp, 0, 8).is_none());
+        assert!(make_agent(BotKind::PuctOnnx, Side::Corp, 0, 8).is_none(), "needs a model path — see make_agent_with_model");
+    }
+
+    /// `puct-onnx` is the one kind whose `BotAgent` form can fail to build,
+    /// and it must fail readably whether the feature is on (no such file)
+    /// or off.
+    #[test]
+    fn puct_onnx_without_a_model_is_a_readable_error() {
+        let Err(error) = make_agent_with_model(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx") else {
+            panic!("a missing model cannot produce an agent");
+        };
+        assert!(!error.is_empty());
+        let Err(error) = make_driver(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx") else {
+            panic!("a missing model cannot produce a driver");
+        };
+        assert!(!error.is_empty());
     }
 
     #[test]
