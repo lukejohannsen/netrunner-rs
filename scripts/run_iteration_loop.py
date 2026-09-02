@@ -1,10 +1,23 @@
 #!/usr/bin/env python3
+"""AlphaZero-shaped self-play / train / arena loop over `netrunner_selfplay`.
+
+Each iteration plays `--games-per-iter` games with the incumbent network in
+the search (the uniform search until one is promoted), trains a fresh
+network on the replay window, and promotes it only if it beats the
+incumbent in the arena. Every game of a run has a distinct seed
+(`--seed-offset`), the iteration is resumable (an iteration directory that
+already holds its games is not replayed), and one JSON line per iteration
+goes to `<ckpt-dir>/iterations.log` with the timings and both summaries, so
+an unattended run can be read back afterwards.
+"""
 import argparse
+import glob
 import json
 import os
 import shutil
 import subprocess
 import sys
+import time
 
 def run_cmd(cmd, description, capture=False):
     print(f"\n==================================================")
@@ -14,10 +27,20 @@ def run_cmd(cmd, description, capture=False):
     res = subprocess.run(cmd, capture_output=capture, text=capture)
     if res.returncode != 0:
         if capture:
+            print(res.stdout)
             print(res.stderr)
         print(f"FAILED: {description} failed with return code {res.returncode}")
         sys.exit(res.returncode)
     return res
+
+
+def last_json_line(stdout: str, what: str):
+    lines = [line for line in stdout.splitlines() if line.startswith("{")]
+    if not lines:
+        print(stdout)
+        print(f"FAILED: {what} printed no JSON summary line")
+        sys.exit(1)
+    return json.loads(lines[-1])
 
 
 def arena(candidate, incumbent, games, simulations, description):
@@ -31,19 +54,18 @@ def arena(candidate, incumbent, games, simulations, description):
     if incumbent is not None:
         cmd.extend(["--arena-incumbent", incumbent])
     res = run_cmd(cmd, description, capture=True)
-    lines = [line for line in res.stdout.splitlines() if line.startswith("{")]
-    if not lines:
-        print(res.stdout)
-        print("FAILED: arena printed no JSON summary line")
-        sys.exit(1)
-    return json.loads(lines[-1])
+    return last_json_line(res.stdout, "arena")
 
 def main():
     parser = argparse.ArgumentParser(description="AlphaZero Continuous Self-Play & Training Loop")
     parser.add_argument("--iterations", "-i", type=int, default=100, help="Number of self-play/train iterations")
+    parser.add_argument("--start-iter", type=int, default=1,
+                        help="First iteration to run (resume a run whose earlier iterations are on disk)")
     parser.add_argument("--games-per-iter", "-g", type=int, default=100, help="Games per iteration")
     parser.add_argument("--simulations", "-s", type=int, default=200, help="MCTS simulations per step")
     parser.add_argument("--epochs", "-e", type=int, default=10, help="PyTorch training epochs per iter")
+    parser.add_argument("--window", type=int, default=None,
+                        help="Train on the last N iterations only (the replay window); default every iteration")
     parser.add_argument("--data-dir", type=str, default="./data/selfplay", help="Trajectory output directory")
     parser.add_argument("--ckpt-dir", type=str, default="./checkpoints", help="Checkpoints directory")
     parser.add_argument("--arena-games", type=int, default=48,
@@ -58,6 +80,7 @@ def main():
     os.makedirs(args.ckpt_dir, exist_ok=True)
 
     latest_onnx = os.path.join(args.ckpt_dir, "latest_policy.onnx")
+    iterations_log = os.path.join(args.ckpt_dir, "iterations.log")
 
     # Ensure cargo release binaries are built before starting loop
     run_cmd(
@@ -65,36 +88,53 @@ def main():
         "Building Rust self-play binary (release)"
     )
 
-    for iter_idx in range(1, args.iterations + 1):
+    for iter_idx in range(args.start_iter, args.iterations + 1):
+        record = {"iter": iter_idx, "games": args.games_per_iter, "simulations": args.simulations,
+                  "incumbent": os.path.exists(latest_onnx)}
         iter_data_dir = os.path.join(args.data_dir, f"iter_{iter_idx:03d}")
         os.makedirs(iter_data_dir, exist_ok=True)
 
-        # 1. Run MCTS Self-Play (using active ONNX model if available)
-        selfplay_cmd = [
-            "cargo", "run", "--release", "-p", "netrunner_selfplay", "--features", "onnx", "--",
-            "-n", str(args.games_per_iter),
-            "-s", str(args.simulations),
-            "-o", iter_data_dir,
-        ]
-        if os.path.exists(latest_onnx):
-            selfplay_cmd.extend(["-m", latest_onnx])
-            
-        run_cmd(
-            selfplay_cmd,
-            f"Iteration {iter_idx}/{args.iterations}: MCTS Self-Play ({args.games_per_iter} games)"
-        )
+        # 1. Self-play with the incumbent network in the search, if there is
+        # one. Seeds are `(iter − 1) × games` onward: self-play is
+        # bit-reproducible, so without the offset every un-promoted
+        # iteration would replay the previous one's games exactly.
+        started = time.time()
+        if len(glob.glob(os.path.join(iter_data_dir, "game_*.jsonl"))) >= args.games_per_iter:
+            print(f"\nIteration {iter_idx}: '{iter_data_dir}' already holds its games, self-play skipped.")
+        else:
+            selfplay_cmd = [
+                "cargo", "run", "--release", "-p", "netrunner_selfplay", "--features", "onnx", "--",
+                "-n", str(args.games_per_iter),
+                "-s", str(args.simulations),
+                "-o", iter_data_dir,
+                "--seed-offset", str((iter_idx - 1) * args.games_per_iter),
+            ]
+            if os.path.exists(latest_onnx):
+                selfplay_cmd.extend(["-m", latest_onnx])
+            run_cmd(
+                selfplay_cmd,
+                f"Iteration {iter_idx}/{args.iterations}: MCTS Self-Play ({args.games_per_iter} games)"
+            )
+        record["selfplay_seconds"] = time.time() - started
 
-        # 2. Train Policy/Value Network on cumulative trajectories
+        # 2. Train a fresh network on the replay window.
+        started = time.time()
         train_cmd = [
             sys.executable, "scripts/train_alpha_netrunner.py",
             "-d", args.data_dir,
             "-o", args.ckpt_dir,
             "-e", str(args.epochs),
         ]
-        run_cmd(
+        if args.window is not None:
+            train_cmd.extend(["--window", str(args.window)])
+        res = run_cmd(
             train_cmd,
-            f"Iteration {iter_idx}/{args.iterations}: Training Neural Network"
+            f"Iteration {iter_idx}/{args.iterations}: Training Neural Network",
+            capture=True,
         )
+        print(res.stdout)
+        record["train"] = last_json_line(res.stdout, "training")
+        record["train_seconds"] = time.time() - started
 
         # 3. Gate, then promote. A checkpoint that cannot beat the model
         # that generated its data is not an improvement, whatever its loss
@@ -107,15 +147,22 @@ def main():
         if args.skip_arena:
             shutil.copyfile(iter_onnx, latest_onnx)
             print(f"\n[+] Updated '{latest_onnx}' with newly trained weights (arena skipped).")
+            record["promoted"] = True
+            with open(iterations_log, "a", encoding="utf-8") as log:
+                log.write(json.dumps(record) + "\n")
             continue
 
+        started = time.time()
         incumbent = latest_onnx if os.path.exists(latest_onnx) else None
         summary = arena(
             iter_onnx, incumbent, args.arena_games, args.simulations,
             f"Iteration {iter_idx}/{args.iterations}: Arena, candidate vs "
             f"{'incumbent' if incumbent else 'uniform search'} ({args.arena_games} games)",
         )
+        record["arena"] = summary
+        record["arena_seconds"] = time.time() - started
         promoted = summary["candidate_score"] >= args.promote_threshold
+        record["promoted"] = promoted
         verdict = (
             f"iter={iter_idx} games={summary['games']} wins={summary['candidate_wins']} "
             f"losses={summary['incumbent_wins']} draws={summary['draws']} "
@@ -123,6 +170,8 @@ def main():
         )
         with open(os.path.join(args.ckpt_dir, "promotions.log"), "a", encoding="utf-8") as log:
             log.write(verdict + "\n")
+        with open(iterations_log, "a", encoding="utf-8") as log:
+            log.write(json.dumps(record) + "\n")
         if promoted:
             shutil.copyfile(iter_onnx, latest_onnx)
             print(f"\n[+] PROMOTED: {verdict}", flush=True)

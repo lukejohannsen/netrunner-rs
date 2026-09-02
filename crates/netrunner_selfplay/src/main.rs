@@ -28,13 +28,13 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rayon::prelude::*;
 
-use netrunner_bots::{encode_observation, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator};
+use netrunner_bots::{encode_observation, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator, OBS_SIZE};
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
 use netrunner_core::rules::{ActionSpace, GamePhase, GameState, RulesError, Side};
 use netrunner_session::{Seat, Session, SessionStep, SubmitError};
 
-use schema::{GameTrajectory, SelfPlayStep};
+use schema::{sparse, GameTrajectory, SelfPlayStep};
 use serde::Serialize;
 
 #[derive(Parser)]
@@ -64,6 +64,20 @@ struct Cli {
     /// all twelve pairings, which is what a general training set wants.
     #[arg(long = "matchup")]
     matchup: Option<String>,
+    /// Added to every self-play game's index to form its seed, so that
+    /// successive iterations of a training run play different games.
+    ///
+    /// A game's seed used to be its index alone. Once `determinize`'s pools
+    /// were sorted (September 2026) self-play became bit-reproducible, and
+    /// with it every iteration whose network was not promoted regenerated
+    /// the *identical* corpus: "cumulative" training was then the same 96
+    /// games repeated, with copies of one game on both sides of the
+    /// per-game validation split. `scripts/run_iteration_loop.py` passes
+    /// `(iteration − 1) × games`. Not applied in arena mode, where the
+    /// fixed seeds make one iteration's verdict comparable with the next
+    /// on the same openings.
+    #[arg(long = "seed-offset", default_value_t = 0)]
+    seed_offset: u64,
     /// Arena mode: pit this ONNX model against `--arena-incumbent` for
     /// `-n` games (Corp in even-numbered games, Runner in odd) and print
     /// one JSON summary line instead of writing trajectories.
@@ -306,7 +320,7 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
     let registry = fixtures::registry();
     let matchup = matchup_for(game_index, cli)?;
     let (corp_deck, runner_deck) = matchup.decks();
-    let seed = game_index as u64;
+    let seed = cli.seed_offset.wrapping_add(game_index as u64);
 
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
     // Both seats are `External`: a self-play seat needs `PuctAgent::search`
@@ -366,7 +380,12 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
         // A step whose action has no slot in the real state's encoding
         // can't be labelled, so it is played but not recorded.
         if let Some(action_taken) = chosen_index {
-            steps.push(SelfPlayStep { observation, policy_target, action_taken, active_side: side as u8 });
+            steps.push(SelfPlayStep {
+                observation: sparse(&observation),
+                policy_target: sparse(&policy_target),
+                action_taken,
+                active_side: side as u8,
+            });
         }
 
         session.submit(chosen.action.clone())?;
@@ -379,7 +398,14 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
         _ => 0.0,
     };
 
-    Ok(GameTrajectory { steps, outcome_corp, matchup: matchup.id() })
+    Ok(GameTrajectory {
+        observation_size: OBS_SIZE,
+        action_space_size: ActionSpace::SIZE,
+        seed,
+        steps,
+        outcome_corp,
+        matchup: matchup.id(),
+    })
 }
 
 fn write_trajectory(output_dir: &Path, game_index: usize, trajectory: &GameTrajectory) -> Result<(), SelfPlayError> {
@@ -518,6 +544,31 @@ mod tests {
         assert_eq!(candidate_side(0), Side::Corp);
         assert_eq!(candidate_side(1), Side::Runner);
         assert_eq!(candidate_side(12), Side::Corp, "the same matchup, the other chair");
+    }
+
+    /// Two runs at the same offset are the same game, and a different
+    /// offset is a different game on the same matchup — the property the
+    /// training loop relies on to give every iteration fresh data without
+    /// disturbing the matchup rotation, which is keyed on the index alone.
+    #[test]
+    fn the_seed_offset_changes_the_game_but_not_the_matchup() {
+        let parse = |offset: &str| {
+            Cli::parse_from(["netrunner_selfplay", "-n", "1", "-s", "2", "-o", "unused", "--seed-offset", offset])
+        };
+        let first = play_one_game(3, &parse("0")).expect("self-play game");
+        let again = play_one_game(3, &parse("0")).expect("self-play game");
+        let shifted = play_one_game(3, &parse("1000")).expect("self-play game");
+        assert_eq!(first.seed, 3);
+        assert_eq!(shifted.seed, 1003);
+        assert_eq!(serde_json::to_string(&first).unwrap(), serde_json::to_string(&again).unwrap());
+        assert_eq!(first.matchup, shifted.matchup);
+        assert_ne!(
+            first.steps.first().map(|s| &s.observation),
+            shifted.steps.first().map(|s| &s.observation),
+            "a different seed deals a different opening"
+        );
+        assert_eq!((first.observation_size, first.action_space_size), (OBS_SIZE, ActionSpace::SIZE));
+        assert!(first.steps.iter().all(|s| s.observation.len() < OBS_SIZE / 4), "the observation is written sparse");
     }
 
     /// The arena path end to end with no network on either side: two real
