@@ -1,0 +1,74 @@
+{
+  "id": "the_syndicate_starter",
+  "name": "The Syndicate — Starter",
+  "side": "Corp",
+  "category": "Starter",
+  "description": "Null Signal Games' Learn to Play Corp starter deck (nullsignal.games/players/learn-to-play/learn-to-play-corp/): 34 cards, 14 agenda points, played to 6 points.",
+  "identity": "the_syndicate",
+  "cards": [
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "superconducting_hub",
+      "count": 2
+    },
+    {
+      "card": "nico_campaign",
+      "count": 2
+    },
+    {
+      "card": "urtica_cipher",
+      "count": 2
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 2
+    },
+    {
+      "card": "diviner",
+      "count": 2
+    },
+    {
+      "card": "karuna",
+      "count": 2
+    },
+    {
+      "card": "palisade",
+      "count": 3
+    },
+    {
+      "card": "tithe",
+      "count": 2
+    },
+    {
+      "card": "whitespace",
+      "count": 2
+    },
+    {
+      "card": "seamless_launch",
+      "count": 2
+    },
+    {
+      "card": "government_subsidy",
+      "count": 2
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 1
+    }
+  ]
+}

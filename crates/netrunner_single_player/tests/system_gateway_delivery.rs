@@ -15,7 +15,7 @@ use common::{sg_decks, sg_registry, SG_CORP_CARDS, SG_RUNNER_CARDS};
 use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, RandomAgent};
 use netrunner_core::dsl::CardId;
 use netrunner_bots::Agent;
-use netrunner_core::rules::{validate_deck, GamePhase, GameState, Side, WindowCheckpoint};
+use netrunner_core::rules::{validate_deck, DeckOrder, GamePhase, GameState, Side, WindowCheckpoint};
 use netrunner_session::{Coverage, Seat, Session, SessionStep, StallReason};
 use netrunner_single_player::{SinglePlayerSession, MAX_STEPS};
 
@@ -337,4 +337,44 @@ fn post_action_windows_stay_rare() {
         "post-action windows opened {opened} times in {steps} steps — the gate is too loose, \
          and every action is costing both players a PassPriority"
     );
+
+}
+
+/// The *Learn to Play* starter game (ROADMAP Phase 1.75 §9): the two
+/// starter decks set up under their own rules and play to a result at 6
+/// agenda points. The Corp starter deck's agendas are worth 2, 3 and 1, so
+/// a point win of exactly 6 is reachable and must end the game; a 7-point
+/// rule would have played on.
+#[test]
+fn the_starter_matchup_plays_to_a_result_at_six_points() {
+    use netrunner_core::decks::{by_id, DeckCategory};
+    let registry = sg_registry();
+    let corp = by_id("the_syndicate_starter").expect("embedded starter deck");
+    let runner = by_id("the_catalyst_starter").expect("embedded starter deck");
+    let rules = corp.category.match_rules();
+    assert_eq!(rules.winning_agenda_points, 6);
+    assert_eq!(corp.category, DeckCategory::Starter);
+
+    let mut point_wins = 0;
+    for seed in 0..8u64 {
+        let (state, _events) =
+            GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled)
+                .unwrap_or_else(|e| panic!("starter decks should set up cleanly: {e:?}"));
+        assert_eq!(state.rules, rules);
+        let seating = if seed % 2 == 0 { Seating::RandomCorpHeuristicRunner } else { Seating::RandomBoth };
+        let (corp_driver, runner_driver) = seating.drivers(seed);
+        let (final_state, _history, outcome) =
+            SinglePlayerSession::new(state, registry.clone(), corp_driver, runner_driver).run_with_outcome();
+        let GamePhase::GameOver(winner) = final_state.phase else {
+            panic!("starter game seed {seed} ({seating:?}): expected GameOver within {MAX_STEPS} steps, got {outcome:?}");
+        };
+        // A point win reaches the threshold (a 3-point agenda can carry a
+        // side from 5 to 8, so there is no upper bound to assert); a
+        // flatline or deck-out ends below it.
+        let points = final_state.resources(winner).agenda_points.0;
+        if points >= 6 {
+            point_wins += 1;
+        }
+    }
+    assert!(point_wins > 0, "eight starter games should produce at least one agenda-point win");
 }

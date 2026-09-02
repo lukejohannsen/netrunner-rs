@@ -47,7 +47,8 @@ pub use run::{
     AccessPhase, AccessState, EncounteredSubroutine, RunAction, RunIce, RunPhase, RunState,
     ServerId, SubroutineStatus,
 };
-pub use state::{
+pub use setup::DeckOrder;
+pub use state::{MatchRules, DEFAULT_WINNING_AGENDA_POINTS, 
     ArchivedCard, DeferredTrigger,
     AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard,
     MemoryUnits, PaidAbilityWindow, PendingChoiceResume, PendingDecision, PendingPaidChoice, PendingPaidChoiceResume,

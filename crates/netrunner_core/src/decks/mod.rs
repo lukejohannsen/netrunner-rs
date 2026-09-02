@@ -43,6 +43,7 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::rules::MatchRules;
 use crate::card::CardId as NumericCardId;
 use crate::cards::CardRegistry;
 use crate::deck::{DeckValidationError, Decklist, ValidationReport};
@@ -70,9 +71,11 @@ pub enum DeckCategory {
     /// category `matchups()` yields**, and therefore the only one self-play
     /// and the gym environment ever see.
     Sample,
-    /// A *Learn to Play* starter deck (Phase 1.75 §3), not yet authored.
+    /// One of Null Signal Games' *Learn to Play* starter decks, played to
+    /// 6 agenda points (`match_rules`).
     Starter,
-    /// A starter deck plus its booster pack (Phase 1.75 §3), not yet authored.
+    /// A starter deck plus its booster pack — a full-size deck played
+    /// under Standard rules.
     Boosted,
     /// A deck someone built themselves.
     ///
@@ -82,6 +85,19 @@ pub enum DeckCategory {
     /// corrupt a training run.
     #[default]
     Custom,
+}
+
+impl DeckCategory {
+    /// The rules a deck of this category is played under. This is where a
+    /// deck record carries its variant's win threshold rather than a
+    /// validator guessing: the starter game wins at 6, everything else at
+    /// Standard's 7.
+    pub fn match_rules(self) -> MatchRules {
+        match self {
+            DeckCategory::Starter => MatchRules { winning_agenda_points: 6 },
+            DeckCategory::Sample | DeckCategory::Boosted | DeckCategory::Custom => MatchRules::default(),
+        }
+    }
 }
 
 /// An authored decklist — one of the published samples embedded at compile
@@ -294,7 +310,7 @@ mod tests {
     #[test]
     fn sample_decks_spend_their_influence_budget() {
         let registry = registry();
-        for deck in embedded_decks() {
+        for deck in embedded_decks().into_iter().filter(|deck| deck.category == DeckCategory::Sample) {
             let report = deck.validate(&registry, NsgFormat::Startup).expect("published decks are legal");
             assert!(
                 (14..=15).contains(&report.influence_spent),
@@ -310,7 +326,7 @@ mod tests {
     /// would otherwise silently break a real decklist; this fails instead.
     #[test]
     fn sample_decks_match_the_published_lists() {
-        let decks = embedded_decks();
+        let decks: Vec<DeckFile> = embedded_decks().into_iter().filter(|deck| deck.category == DeckCategory::Sample).collect();
         assert_eq!(decks.len(), 7, "seven System Gateway-only sample decks are published");
 
         let mut sizes: Vec<(String, Side, u32)> =
@@ -331,10 +347,44 @@ mod tests {
         );
     }
 
+    /// The *Learn to Play* lists, pinned the same way: sizes, categories and
+    /// the starter Corp deck's 14 agenda points (18 once boosted).
+    #[test]
+    fn starter_decks_match_the_published_lists() {
+        let registry = registry();
+        let mut decks: Vec<(String, Side, DeckCategory, u32)> = embedded_decks()
+            .into_iter()
+            .filter(|deck| matches!(deck.category, DeckCategory::Starter | DeckCategory::Boosted))
+            .map(|deck| (deck.id.clone(), deck.side, deck.category, deck.size()))
+            .collect();
+        decks.sort_by(|a, b| a.0.cmp(&b.0));
+        assert_eq!(
+            decks,
+            vec![
+                ("the_catalyst_boosted".to_string(), Side::Runner, DeckCategory::Boosted, 40),
+                ("the_catalyst_starter".to_string(), Side::Runner, DeckCategory::Starter, 30),
+                ("the_syndicate_boosted".to_string(), Side::Corp, DeckCategory::Boosted, 44),
+                ("the_syndicate_starter".to_string(), Side::Corp, DeckCategory::Starter, 34),
+            ]
+        );
+        let points = |id: &str| -> u32 {
+            by_id(id)
+                .expect("embedded")
+                .cards
+                .iter()
+                .map(|entry| registry.get(&entry.card).expect("registered").agenda_points.unwrap_or(0) * entry.count)
+                .sum()
+        };
+        assert_eq!(points("the_syndicate_starter"), 14);
+        assert_eq!(points("the_syndicate_boosted"), 18);
+        assert_eq!(DeckCategory::Starter.match_rules().winning_agenda_points, 6);
+        assert_eq!(DeckCategory::Boosted.match_rules().winning_agenda_points, 7);
+    }
+
     #[test]
     fn every_corp_deck_carries_eighteen_agenda_points() {
         let registry = registry();
-        for deck in for_side(Side::Corp) {
+        for deck in for_side(Side::Corp).into_iter().filter(|deck| deck.category == DeckCategory::Sample) {
             let points: u32 = deck
                 .cards
                 .iter()
@@ -363,12 +413,13 @@ mod tests {
         assert!(by_id("no_such_deck").is_none());
     }
 
-    /// Every embedded deck must say it is a sample, because `matchups()`
-    /// filters on exactly that and silently yields nothing otherwise.
+    /// Every embedded deck must state its category: `matchups()` filters
+    /// on `Sample` and silently yields nothing otherwise, and a starter
+    /// deck left `Custom` would be a tutorial deck the tutorial cannot find.
     #[test]
-    fn every_embedded_deck_is_labelled_a_sample() {
+    fn every_embedded_deck_is_labelled_and_none_is_custom() {
         for deck in embedded_decks() {
-            assert_eq!(deck.category, DeckCategory::Sample, "{} must be labelled a sample", deck.id);
+            assert_ne!(deck.category, DeckCategory::Custom, "{} must state its category", deck.id);
         }
     }
 

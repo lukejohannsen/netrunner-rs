@@ -276,7 +276,7 @@ mod tests {
         let missing = dir.path().join("nope");
 
         assert_eq!(read_dir(&missing).expect("missing dir is not an error"), Vec::new());
-        assert_eq!(list(&missing).expect("listing still works").len(), 7, "the seven built-in decks");
+        assert_eq!(list(&missing).expect("listing still works").len(), netrunner_core::decks::embedded_decks().len(), "every built-in deck");
     }
 
     #[test]
@@ -289,7 +289,7 @@ mod tests {
         assert_eq!(read_file(&path).expect("reads back"), deck);
 
         let all = list(dir.path()).expect("lists");
-        assert_eq!(all.len(), 8, "seven built-in plus one saved");
+        assert_eq!(all.len(), netrunner_core::decks::embedded_decks().len() + 1, "the built-in decks plus one saved");
         let saved = all.iter().find(|stored| stored.deck.id == "my_deck").expect("saved deck is listed");
         assert!(!saved.origin.is_embedded());
     }

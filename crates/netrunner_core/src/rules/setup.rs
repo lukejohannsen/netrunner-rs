@@ -4,7 +4,7 @@ use crate::rules::ability;
 use crate::rules::deck::{validate_deck, Deck};
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
-use crate::rules::state::{Credits, GamePhase, GameState, MemoryUnits, Side};
+use crate::rules::state::{Credits, GamePhase, GameState, MatchRules, MemoryUnits, Side};
 use crate::rules::turn;
 
 const STARTING_CREDITS: u32 = 5;
@@ -29,10 +29,28 @@ impl GameState {
         registry: &CardRegistry,
         seed: u64,
     ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+        Self::setup_with(corp_deck, runner_deck, registry, seed, MatchRules::default(), DeckOrder::Shuffled)
+    }
+
+    /// [`setup`](Self::setup) with the two things a tutorial varies: the
+    /// match rules (the starter game wins at 6 points) and the deck order
+    /// (a lesson cannot teach a specific play without pinning which cards
+    /// are drawn). `Fixed` orders are checked as permutations of the
+    /// decklists *after* `validate_deck`, so the decklist stays the
+    /// authority on what is in the deck.
+    pub fn setup_with(
+        corp_deck: &Deck,
+        runner_deck: &Deck,
+        registry: &CardRegistry,
+        seed: u64,
+        rules: MatchRules,
+        order: DeckOrder,
+    ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
         validate_deck(corp_deck, Side::Corp, registry)?;
         validate_deck(runner_deck, Side::Runner, registry)?;
 
         let mut state = GameState::new(seed);
+        state.rules = rules;
         let mut events = Vec::new();
 
         state.corp.identity = Some(corp_deck.identity.clone());
@@ -45,11 +63,21 @@ impl GameState {
         // goes through the refresh in `engine::apply_action`.
         state.runner.memory_units = MemoryUnits(RUNNER_BASE_MEMORY_UNITS);
 
-        state.corp.r_and_d = expand_deck(corp_deck);
-        state.runner.stack = expand_deck(runner_deck);
-
-        shuffle_deck(&mut state, Side::Corp);
-        shuffle_deck(&mut state, Side::Runner);
+        match order {
+            DeckOrder::Shuffled => {
+                state.corp.r_and_d = expand_deck(corp_deck);
+                state.runner.stack = expand_deck(runner_deck);
+                shuffle_deck(&mut state, Side::Corp);
+                shuffle_deck(&mut state, Side::Runner);
+            }
+            DeckOrder::Fixed { corp, runner } => {
+                check_permutation(&corp, &expand_deck(corp_deck), Side::Corp)?;
+                check_permutation(&runner, &expand_deck(runner_deck), Side::Runner)?;
+                // Authored top-first; the draw pops from the end.
+                state.corp.r_and_d = corp.into_iter().rev().collect();
+                state.runner.stack = runner.into_iter().rev().collect();
+            }
+        }
 
         events.extend(ability::evaluate_effect(
             &mut state,
@@ -87,6 +115,30 @@ impl GameState {
 
         Ok((state, events))
     }
+}
+
+/// How `GameState::setup_with` orders the draw decks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeckOrder {
+    /// A seeded Fisher-Yates shuffle — what every ordinary game uses.
+    Shuffled,
+    /// Both decks in an authored order, **top card first**: `corp[0]` is
+    /// the first card the Corp draws. That is the order a lesson author
+    /// thinks in ("the opening hand is these five, then you draw this"),
+    /// so it is the order the API takes; `setup_with` reverses it onto
+    /// `corp.r_and_d`/`runner.stack`, whose draws pop from the end. Each
+    /// sequence must be a permutation of its decklist —
+    /// `RulesError::FixedOrderNotAPermutation` otherwise.
+    Fixed { corp: Vec<CardId>, runner: Vec<CardId> },
+}
+
+/// `order` and `expanded` hold the same cards with the same multiplicity.
+fn check_permutation(order: &[CardId], expanded: &[CardId], side: Side) -> Result<(), RulesError> {
+    let mut a: Vec<&CardId> = order.iter().collect();
+    let mut b: Vec<&CardId> = expanded.iter().collect();
+    a.sort_by(|x, y| x.0.cmp(&y.0));
+    b.sort_by(|x, y| x.0.cmp(&y.0));
+    if a == b { Ok(()) } else { Err(RulesError::FixedOrderNotAPermutation { side }) }
 }
 
 /// Flattens `deck.cards`' `(CardId, count)` pairs into a flat, unshuffled
@@ -477,5 +529,62 @@ mod tests {
                 actual: GamePhase::Mulligan(Side::Corp),
             })
         );
+    }
+
+    /// A fixed order is authored top-first, so the opening hand is exactly
+    /// the first five named cards and the sixth is the next draw.
+    #[test]
+    fn a_fixed_order_deals_the_named_cards_top_first() {
+        let (registry, corp_deck, runner_deck) = setup_fixtures();
+        let mut corp_order = expand_deck(&corp_deck);
+        let mut runner_order = expand_deck(&runner_deck);
+        // Put the agendas first so the order is visibly not the decklist's.
+        corp_order.reverse();
+        runner_order.reverse();
+        let order = DeckOrder::Fixed { corp: corp_order.clone(), runner: runner_order.clone() };
+        let (state, _events) =
+            GameState::setup_with(&corp_deck, &runner_deck, &registry, 42, MatchRules::default(), order).unwrap();
+        assert_eq!(state.corp.hq, corp_order[..5].to_vec(), "the Corp's opening hand is the first five, in order");
+        assert_eq!(state.runner.grip, runner_order[..5].to_vec());
+        assert_eq!(state.corp.r_and_d.last(), Some(&corp_order[5]), "the next draw is the sixth card");
+        assert_eq!(state.rules, MatchRules::default());
+    }
+
+    /// The decklist stays authoritative: an order with a card the deck does
+    /// not contain, one card short, or the other side's deck is refused.
+    #[test]
+    fn a_fixed_order_that_is_not_a_permutation_is_rejected() {
+        let (registry, corp_deck, runner_deck) = setup_fixtures();
+        let corp_order = expand_deck(&corp_deck);
+        let runner_order = expand_deck(&runner_deck);
+        let attempt = |corp: Vec<CardId>, runner: Vec<CardId>| {
+            GameState::setup_with(&corp_deck, &runner_deck, &registry, 1, MatchRules::default(), DeckOrder::Fixed { corp, runner })
+                .map(|_| ())
+        };
+        let mut extra = corp_order.clone();
+        extra.push(CardId("corp_agenda_0".to_string()));
+        assert_eq!(attempt(extra, runner_order.clone()), Err(RulesError::FixedOrderNotAPermutation { side: Side::Corp }));
+        let mut short = runner_order.clone();
+        short.pop();
+        assert_eq!(attempt(corp_order.clone(), short), Err(RulesError::FixedOrderNotAPermutation { side: Side::Runner }));
+        assert_eq!(
+            attempt(runner_order.clone(), corp_order.clone()),
+            Err(RulesError::FixedOrderNotAPermutation { side: Side::Corp }),
+            "the other side's cards are not this side's deck"
+        );
+        assert!(attempt(corp_order, runner_order).is_ok(), "the decklist's own order is a permutation of itself");
+    }
+
+    /// The starter game's threshold rides on the state: a 6-point rule ends
+    /// the game at 6 where Standard plays on.
+    #[test]
+    fn setup_with_applies_the_match_rules() {
+        let (registry, corp_deck, runner_deck) = setup_fixtures();
+        let rules = MatchRules { winning_agenda_points: 6 };
+        let (state, _events) =
+            GameState::setup_with(&corp_deck, &runner_deck, &registry, 7, rules, DeckOrder::Shuffled).unwrap();
+        assert_eq!(state.rules, rules);
+        let (standard, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 7).unwrap();
+        assert_eq!(standard.rules.winning_agenda_points, 7);
     }
 }

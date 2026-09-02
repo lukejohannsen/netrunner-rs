@@ -1100,6 +1100,10 @@ pub struct GameState {
     /// arbitrarily many parked decisions.
     #[serde(default = "first_install_id")]
     pub next_install_id: u32,
+    /// See [`MatchRules`]. Set by `GameState::setup_with`; `setup` and
+    /// `new` leave it at Standard.
+    #[serde(default)]
+    pub rules: MatchRules,
 }
 
 /// `next_install_id`'s serde default. A state recorded before install ids
@@ -1116,6 +1120,31 @@ fn first_install_id() -> u32 {
 /// a deliberate choice about its neutral value in exactly one place instead
 /// of across ~43 test literals.
 ///
+/// Agenda points either side needs to win outright under Standard rules.
+pub const DEFAULT_WINNING_AGENDA_POINTS: u32 = 7;
+
+/// The rules a match is played under — fixed at setup, never threaded
+/// between effects, so this is not the scratchpad pattern AGENTS.md's
+/// State Hygiene Rule bans; it is configuration the engine reads.
+///
+/// A struct rather than a bare `u32` on `GameState`, deliberately: the
+/// *Learn to Play* starter game (ROADMAP Phase 1.75) already varies one
+/// rule, and the next knob should extend this rather than become another
+/// loose field. `serde(default)` on the `GameState` field so a history
+/// recorded before it existed still deserializes, to Standard rules.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatchRules {
+    /// `win::check_win_conditions`'s threshold: 7 in Standard, 6 in the
+    /// starter game.
+    pub winning_agenda_points: u32,
+}
+
+impl Default for MatchRules {
+    fn default() -> Self {
+        Self { winning_agenda_points: DEFAULT_WINNING_AGENDA_POINTS }
+    }
+}
+
 /// `phase` starts at `GamePhase::Action(Side::Corp)`, matching the real
 /// game's turn order — the same value `GameState::new` has always used.
 impl Default for GameState {
@@ -1136,6 +1165,7 @@ impl Default for GameState {
             seed: 0,
             rng_step: 0,
             next_install_id: first_install_id(),
+            rules: MatchRules::default(),
         }
     }
 }
@@ -1309,5 +1339,16 @@ mod tests {
 
         assert_eq!(runner.rig[0].turn_strength_buff, 0);
         assert_eq!(runner.rig[0].encounter_strength_buff, 1);
+    }
+
+    /// A history recorded before `MatchRules` existed still deserializes,
+    /// to Standard's 7 — the replay guarantee the field must not break.
+    #[test]
+    fn a_state_recorded_without_match_rules_deserializes_to_the_standard_seven() {
+        let mut json: serde_json::Value = serde_json::to_value(GameState::new(3)).unwrap();
+        json.as_object_mut().unwrap().remove("rules");
+        let state: GameState = serde_json::from_value(json).unwrap();
+        assert_eq!(state.rules, MatchRules::default());
+        assert_eq!(state.rules.winning_agenda_points, 7);
     }
 }

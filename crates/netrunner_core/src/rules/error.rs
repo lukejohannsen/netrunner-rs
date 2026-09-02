@@ -218,6 +218,12 @@ pub enum RulesError {
     #[error("deck has {size} card(s) but its identity requires at least {minimum}")]
     DeckBelowMinimumSize { size: u32, minimum: u32 },
 
+    /// `DeckOrder::Fixed` named a card sequence that is not a permutation
+    /// of `side`'s decklist — a lesson cannot smuggle in a card the deck
+    /// does not contain, or leave one out.
+    #[error("the fixed deck order for {side:?} is not a permutation of its decklist")]
+    FixedOrderNotAPermutation { side: Side },
+
     #[error("card {card:?} has {count} copies, exceeding the {max}-copy limit")]
     TooManyCopies { card: CardId, count: u32, max: u32 },
 
