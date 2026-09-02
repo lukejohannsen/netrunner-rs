@@ -1,0 +1,29 @@
+{
+  "id": "clean_getaway",
+  "title": "Clean Getaway",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 3,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "on_success": {
+              "GainCredits": [
+                "Runner",
+                6
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35014,
+  "is_playable": true
+}

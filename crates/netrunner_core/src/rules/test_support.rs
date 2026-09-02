@@ -111,11 +111,11 @@ pub(crate) fn install_of(state: &GameState, card: &str) -> InstallId {
 /// one card must spell the positions out, as
 /// `carnivore_can_select_two_copies_of_the_same_card` does.
 pub(crate) fn position_of(state: &GameState, card: &str) -> usize {
-    let Some(PendingDecision::ChooseCards { side, source, .. }) = &state.pending_decision else {
+    let Some(PendingDecision::ChooseCards { side, source, source_install, .. }) = &state.pending_decision else {
         panic!("no ChooseCards decision is parked");
     };
     let id = CardId(card.to_string());
-    pending_choice::zone_card_ids(state, *side, source)
+    pending_choice::zone_card_ids(state, *side, source, *source_install)
         .iter()
         .position(|c| *c == id)
         .unwrap_or_else(|| panic!("{card} is not in the pending decision's source zone"))

@@ -77,6 +77,11 @@ pub enum GameEvent {
     /// `Effect::HostRigCardOnInstall` hosted the rig card `card` on the rig
     /// card `host` (GAMEDRAGON™ Pro on an icebreaker).
     CardHosted { card: CardId, host: CardId },
+    /// `Effect::FlipIdentity` turned `side`'s identity over.
+    IdentityFlipped { side: Side },
+    /// A run that would have approached `from` was redirected to `to`
+    /// (`Effect::RedirectRunOnApproach`).
+    RunRedirected { from: ServerId, to: ServerId },
     AgendaStolen { card: CardId, agenda_points: u32 },
     DamageTaken { damage_type: DamageType, amount: usize },
     RunnerFlatlined,

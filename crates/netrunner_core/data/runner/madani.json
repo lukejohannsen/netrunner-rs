@@ -1,0 +1,57 @@
+{
+  "id": "madani",
+  "title": "Madani",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "subtypes": [
+    "Console"
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "CardType": "Program"
+          },
+          "min": 1,
+          "max": 9,
+          "reveal": false,
+          "shuffle_after": false,
+          "destination": "HostedOnSource"
+        }
+      }
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 0
+      },
+      "requirement": {
+        "OncePerTurn": "madani"
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "HostedOnSource",
+          "filter": "InstallableRunnerCard",
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "InstallRunnerCardFromHost"
+        }
+      }
+    }
+  ],
+  "numeric_id": 35028,
+  "is_playable": true
+}

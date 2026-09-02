@@ -1,0 +1,80 @@
+{
+  "id": "dewi_subrotoputri",
+  "title": "Dewi Subrotoputri: Pedagogical Dhalang",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRun",
+      "requirement": {
+        "And": [
+          {
+            "Not": "IdentityFlipped"
+          },
+          "MemoryFull"
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  "FlipIdentity",
+                  {
+                    "GainCredits": [
+                      "Runner",
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRun",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "Not": "MemoryFull"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "Sequence": [
+                  "FlipIdentity",
+                  {
+                    "DrawCards": [
+                      "Runner",
+                      1
+                    ]
+                  }
+                ]
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35023,
+  "is_playable": true
+}

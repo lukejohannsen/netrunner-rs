@@ -118,6 +118,10 @@ pub struct PublicInstalledRunnerCard {
     /// icebreaker). Public for the same reason as `hosted_on_ice`.
     #[serde(default)]
     pub hosted_on_program: Option<InstallId>,
+    /// Cards hosted faceup on this card without being installed (Madani).
+    /// Public: hosted faceup means hosted faceup.
+    #[serde(default)]
+    pub hosted_cards: Vec<CardId>,
     /// Generic counters (see `dsl::card::CounterKind`) — a bare `u32`, not
     /// the `Option` its Corp counterpart carries. The asymmetry is not an
     /// oversight: a rig card is always face-up (see `PublicRunnerState::
@@ -160,6 +164,9 @@ pub struct PublicRunnerState {
     /// search must see the same candidates the engine offers.
     #[serde(default)]
     pub discarded_this_discard_phase: Vec<CardId>,
+    /// `RunnerState::identity_flipped` — a flip identity's side is public.
+    #[serde(default)]
+    pub identity_flipped: bool,
 }
 
 /// A run's ICE as seen by a particular viewer: `rezzed` is always public,
@@ -247,6 +254,10 @@ pub struct PublicRunState {
     /// rest of this run. A run-scoped restriction announced when it
     /// applies, so both players know it is in force.
     pub runner_cannot_steal_or_trash: bool,
+    /// `RunState::redirect_on_approach` — a Maintenance Access run's
+    /// announced destination. Public: the event was played face-up.
+    #[serde(default)]
+    pub redirect_on_approach: Option<ServerId>,
 }
 
 /// `GameState` as visible to one player: hidden zones are collapsed to a
@@ -577,6 +588,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // the heap or grip a moment ago — never a concealed Corp card.
         | GameEvent::CardAddedToBottomOfStack { .. }
         | GameEvent::CardHosted { .. }
+        | GameEvent::IdentityFlipped { .. }
+        | GameEvent::RunRedirected { .. }
         | GameEvent::AgendaStolen { .. }
         | GameEvent::DamageTaken { .. }
         | GameEvent::RunnerFlatlined
@@ -700,6 +713,7 @@ fn mask_run_state(run: &RunState, viewer: Viewer) -> PublicRunState {
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         runner_cannot_steal_or_trash: run.runner_cannot_steal_or_trash,
+        redirect_on_approach: run.redirect_on_approach,
     }
 }
 
@@ -788,6 +802,7 @@ fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunn
         current_strength: card.effective_strength(),
         hosted_on_ice: card.hosted_on_ice,
         hosted_on_program: card.hosted_on_program,
+        hosted_cards: card.hosted_cards.clone(),
         counters: card.counters,
     }
 }
@@ -806,6 +821,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         link_strength: runner.link_strength,
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
+        identity_flipped: runner.identity_flipped,
     }
 }
 
@@ -1163,6 +1179,7 @@ mod tests {
             current_strength: 3,
             hosted_on_ice: None,
             hosted_on_program: None,
+            hosted_cards: Vec::new(),
             counters: 0,
         }];
         assert_eq!(masked_for_corp.runner.rig, expected);

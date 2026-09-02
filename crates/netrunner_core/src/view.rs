@@ -85,6 +85,9 @@ pub struct RunnerClientView {
     /// public, see `PublicRunnerState::discarded_this_discard_phase`.
     #[serde(default)]
     pub discarded_this_discard_phase: Vec<CardId>,
+    /// `PublicRunnerState::identity_flipped`.
+    #[serde(default)]
+    pub identity_flipped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +207,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         link_strength: public.runner.link_strength,
         servers_run_this_turn: public.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: public.runner.discarded_this_discard_phase.clone(),
+        identity_flipped: public.runner.identity_flipped,
         scored_agendas: public.runner.scored_agendas,
     };
 

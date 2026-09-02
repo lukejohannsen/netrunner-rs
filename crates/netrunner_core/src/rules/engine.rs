@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardSubtype, CardType, Cost, CounterKind, Trigger};
+use crate::dsl::{HostedCreditUse, CardId, CardSubtype, CardType, Cost, CounterKind, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
@@ -608,8 +608,8 @@ fn trash_earlier_unique_copy(next: &mut GameState, registry: &CardRegistry, side
             let Some(pos) = next.runner.rig.iter().position(|c| &c.card == card_id) else { return Vec::new() };
             let earlier = next.runner.rig.remove(pos);
             next.runner.heap.push(earlier.card.clone());
-            let mut events = vec![GameEvent::CardTrashed { side, card: earlier.card }];
-            events.extend(ability::cascade_trash_hosted_on_rig_card(next, earlier.install_id));
+            let mut events = vec![GameEvent::CardTrashed { side, card: earlier.card.clone() }];
+            events.extend(ability::cascade_trash_hosted_on_rig_card(next, &earlier));
             events
         }
     }
@@ -946,6 +946,7 @@ fn seed_rig_card(
         counters: 0,
         hosted_on_ice: None,
         hosted_on_program: None,
+        hosted_cards: Vec::new(),
     })
 }
 
@@ -1086,13 +1087,29 @@ pub(crate) fn can_install_runner_card_from_grip(
 pub(crate) enum RunnerCardSource {
     Grip,
     Heap,
+    /// The cards hosted on this rig install (`InstalledRunnerCard::
+    /// hosted_cards`) — Madani.
+    Hosted(InstallId),
 }
 
 impl RunnerCardSource {
-    fn zone(self, state: &GameState) -> &Vec<CardId> {
+    fn zone(self, state: &GameState) -> Option<&Vec<CardId>> {
         match self {
-            RunnerCardSource::Grip => &state.runner.grip,
-            RunnerCardSource::Heap => &state.runner.heap,
+            RunnerCardSource::Grip => Some(&state.runner.grip),
+            RunnerCardSource::Heap => Some(&state.runner.heap),
+            RunnerCardSource::Hosted(host) => {
+                state.runner.rig.iter().find(|c| c.install_id == host).map(|c| &c.hosted_cards)
+            }
+        }
+    }
+
+    fn zone_mut(self, state: &mut GameState) -> Option<&mut Vec<CardId>> {
+        match self {
+            RunnerCardSource::Grip => Some(&mut state.runner.grip),
+            RunnerCardSource::Heap => Some(&mut state.runner.heap),
+            RunnerCardSource::Hosted(host) => {
+                state.runner.rig.iter_mut().find(|c| c.install_id == host).map(|c| &mut c.hosted_cards)
+            }
         }
     }
 }
@@ -1104,7 +1121,19 @@ pub(crate) fn can_install_runner_card_from_zone(
     card_id: &CardId,
     source: RunnerCardSource,
 ) -> bool {
-    if !source.zone(state).contains(card_id) {
+    can_install_runner_card_from_zone_with_discount(state, registry, card_id, source, 0)
+}
+
+/// `can_install_runner_card_from_zone` with an effect-granted discount off
+/// the price (Illumination's "paying 1[c] less"); 0 for every other install.
+pub(crate) fn can_install_runner_card_from_zone_with_discount(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+    source: RunnerCardSource,
+    discount: u32,
+) -> bool {
+    if !source.zone(state).is_some_and(|zone| zone.contains(card_id)) {
         return false;
     }
     let Some(card_def) = registry.get(card_id) else { return false };
@@ -1128,7 +1157,7 @@ pub(crate) fn can_install_runner_card_from_zone(
         CardType::Resource => {}
         _ => return false,
     }
-    state.runner.resources.credits.0 >= preview_runner_install_cost(state, registry, card_def)
+    state.runner.resources.credits.0 >= preview_runner_install_cost(state, registry, card_def).saturating_sub(discount)
 }
 
 /// `Effect::InstallRunnerCardFromGrip`'s working half: takes `card_id`
@@ -1158,19 +1187,22 @@ pub(crate) fn install_runner_card_from_zone_paying_cost(
     card_id: CardId,
     source: RunnerCardSource,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    install_runner_card_from_zone_with_discount(next, registry, card_id, source, 0)
+}
+
+/// `install_runner_card_from_zone_paying_cost` with an effect-granted
+/// discount — see `can_install_runner_card_from_zone_with_discount`.
+pub(crate) fn install_runner_card_from_zone_with_discount(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+    source: RunnerCardSource,
+    discount: u32,
+) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Runner;
-    match source {
-        RunnerCardSource::Grip => take_from_grip(next, side, &card_id)?,
-        RunnerCardSource::Heap => {
-            let position = next
-                .runner
-                .heap
-                .iter()
-                .position(|c| c == &card_id)
-                .ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
-            next.runner.heap.remove(position);
-        }
-    }
+    let zone = source.zone_mut(next).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
+    let position = zone.iter().position(|c| c == &card_id).ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
+    zone.remove(position);
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?
@@ -1181,7 +1213,8 @@ pub(crate) fn install_runner_card_from_zone_paying_cost(
             let memory_cost = card_def.memory_cost.unwrap_or(0);
             require_memory_for(next, registry, memory_cost)?;
             let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Program)
-                .saturating_sub(per_card_install_discount(next, registry, &card_def));
+                .saturating_sub(per_card_install_discount(next, registry, &card_def))
+                .saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
@@ -1191,7 +1224,7 @@ pub(crate) fn install_runner_card_from_zone_paying_cost(
             events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
         }
         CardType::Hardware => {
-            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Hardware);
+            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Hardware).saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
@@ -1204,7 +1237,7 @@ pub(crate) fn install_runner_card_from_zone_paying_cost(
             events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
         }
         CardType::Resource => {
-            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Resource);
+            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Resource).saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
@@ -1439,7 +1472,15 @@ fn install_resource(
     let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Resource);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
+    // Hosted credits a card lets the Runner spend on this kind of resource
+    // (Open Market: connections and jobs) pay first — see
+    // `CardDefinition::hosted_credits_usable_for`.
+    let subtypes = card_def.subtypes.clone();
+    let (pool_events, from_pools) = ability::drain_hosted_credit_pools(&mut next, registry, cost, |def| {
+        matches!(&def.hosted_credits_usable_for, Some(HostedCreditUse::ResourceInstalls { subtypes: paid }) if paid.iter().any(|s| subtypes.contains(s)))
+    })?;
+    events.extend(pool_events);
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost - from_pools), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
@@ -1827,9 +1868,9 @@ fn trash_resource(
         .position(|c| c.install_id == target)
         .ok_or(RulesError::InstallNotFound(target))?;
     let removed = next.runner.rig.remove(position);
-    next.runner.heap.push(removed.card);
+    next.runner.heap.push(removed.card.clone());
     events.push(GameEvent::CardTrashed { side: Side::Runner, card: card_id });
-    events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, removed.install_id));
+    events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, &removed));
 
     Ok((next, events))
 }

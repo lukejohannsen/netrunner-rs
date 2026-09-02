@@ -180,6 +180,7 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         host_ice_gains_subtypes: Vec::new(),
         hosted_breaker_bonus: None,
         hosted_credits_usable_for: None,
+        trash_when_empty: false,
         installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false,
         is_playable: false,
     })

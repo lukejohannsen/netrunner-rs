@@ -318,8 +318,16 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
     assert_eq!(corp_cards, deck_tally(corp_deck), "seed {seed} ({matchup}): Corp cards are not conserved");
 
     let runner = &state.runner;
-    let runner_cards =
-        tally(runner.grip.iter().chain(&runner.stack).chain(&runner.heap).chain(runner.rig.iter().map(|c| &c.card)));
+    let runner_cards = tally(
+        runner
+            .grip
+            .iter()
+            .chain(&runner.stack)
+            .chain(&runner.heap)
+            .chain(runner.rig.iter().map(|c| &c.card))
+            // Hosted uninstalled on a rig card (Madani) — in no other zone.
+            .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter())),
+    );
     assert_eq!(runner_cards, deck_tally(runner_deck), "seed {seed} ({matchup}): Runner cards are not conserved");
 }
 

@@ -1,0 +1,35 @@
+{
+  "id": "lie_low",
+  "title": "Lie Low",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "DrawCards": [
+                  "Runner",
+                  4
+                ]
+              },
+              {
+                "RemoveTags": 2
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35015,
+  "is_playable": true
+}

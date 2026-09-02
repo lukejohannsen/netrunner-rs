@@ -191,7 +191,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(),
+    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None,
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -373,6 +373,7 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
         if matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run)) {
             state.paid_ability_window = None;
         }
+        apply_approach_redirect(state, registry, &mut events)?;
         let approached: Vec<GameEvent> =
             events.iter().filter(|e| matches!(e, GameEvent::ServerApproached { .. })).cloned().collect();
         for event in approached {
@@ -432,6 +433,7 @@ pub fn advance_run(
     // subroutine effect that happens to emit some other dispatch-relevant
     // event (e.g. `Effect::InitiateRun`'s own `RunInitiated`, which already
     // dispatches `OnRunStart` itself) is never fired twice.
+    apply_approach_redirect(state, registry, &mut events)?;
     let reactive: Vec<GameEvent> = events
         .iter()
         .filter(|event| matches!(event, GameEvent::IceEncountered { .. } | GameEvent::ServerApproached { .. }))
@@ -457,6 +459,54 @@ fn jack_out(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
     }
     run.phase = RunPhase::Ended;
     Ok(vec![GameEvent::RunJackedOut { server: run.server }])
+}
+
+/// `Effect::RedirectRunOnApproach` (Maintenance Access): if this step
+/// reached the server approach and the run carries a redirect, the run
+/// now attacks the redirect's server instead — its ice list becomes that
+/// server's, all counted as passed (the printed text says *approach* HQ,
+/// not run it), and the `ServerApproached` event in `events` names the
+/// new server so `Trigger::OnApproachServer` fires for its root. Applied
+/// at both places a step's events are dispatched, before dispatch, so no
+/// reaction sees the old server. A no-op for every ordinary run.
+fn apply_approach_redirect(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    events: &mut Vec<GameEvent>,
+) -> Result<(), RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(()) };
+    let Some(target) = run.redirect_on_approach else { return Ok(()) };
+    if !events.iter().any(|e| matches!(e, GameEvent::ServerApproached { .. })) {
+        return Ok(());
+    }
+    let from = run.server;
+    let ice: Vec<RunIce> = state
+        .corp
+        .installed
+        .iter()
+        .filter(|installed| installed.server == target && installed.slot == InstallSlot::Ice)
+        .map(|installed| build_run_ice(installed, registry))
+        .collect::<Result<Vec<Option<RunIce>>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    let run = state.active_run.as_mut().expect("checked above");
+    run.redirect_on_approach = None;
+    run.server = target;
+    run.position = ice.len();
+    run.ice = ice;
+    run.phase = RunPhase::Success;
+    for event in events.iter_mut() {
+        if let GameEvent::ServerApproached { server } = event {
+            *server = target;
+        }
+    }
+    // The redirect is recorded just before the approach it changed, so the
+    // log reads "redirected, then approached HQ".
+    let approach = events.iter().position(|e| matches!(e, GameEvent::ServerApproached { .. })).unwrap_or(events.len());
+    events.insert(approach, GameEvent::RunRedirected { from, to: target });
+    state.runner.servers_run_this_turn.push(target);
+    Ok(())
 }
 
 fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {

@@ -1,0 +1,25 @@
+{
+  "id": "maintenance_access",
+  "title": "Maintenance Access",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "InitiateRun": "Archives"
+        },
+        {
+          "RedirectRunOnApproach": "Hq"
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35016,
+  "is_playable": true
+}

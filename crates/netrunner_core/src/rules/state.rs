@@ -395,6 +395,13 @@ pub struct InstalledRunnerCard {
     /// leaving play takes its Trojans.
     #[serde(default)]
     pub hosted_on_program: Option<InstallId>,
+    /// Cards hosted on this card **without being installed** — Madani's
+    /// faceup programs. Public, like the rig. They are not in any other
+    /// zone (the card-conservation invariant counts them here), leave with
+    /// their host (`ability::cascade_trash_hosted_on_rig_card`), and are
+    /// installed out of here by `Effect::InstallRunnerCardFromHost`.
+    #[serde(default)]
+    pub hosted_cards: Vec<CardId>,
 }
 
 impl InstalledRunnerCard {
@@ -420,6 +427,7 @@ impl Default for InstalledRunnerCard {
             counters: 0,
             hosted_on_ice: None,
             hosted_on_program: None,
+            hosted_cards: Vec::new(),
         }
     }
 }
@@ -513,6 +521,12 @@ pub struct RunnerState {
     /// it is exactly the last phase's discards and nothing else.
     #[serde(default)]
     pub discarded_this_discard_phase: Vec<CardId>,
+    /// Whether a flip identity (Dewi Subrotoputri) is showing its back —
+    /// `Effect::FlipIdentity` toggles it and
+    /// `EffectRequirement::IdentityFlipped` gates each side's text. False
+    /// for every identity with one side.
+    #[serde(default)]
+    pub identity_flipped: bool,
     /// Every server the Runner has initiated a run against this turn, in
     /// order, reset when the Runner's turn starts. Backs Red Team's "Run a
     /// central server you have not run this turn" — a restriction on which

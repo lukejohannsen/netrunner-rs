@@ -788,24 +788,21 @@ pub fn resolve_trash(
     // `pay_cost` because that waterfall is purpose-blind and these pools
     // are not; this is the one site that knows the purpose is a trash
     // cost. See `CardDefinition::hosted_credits_usable_for`.
-    let hosted = trash_cost_credit_pools(state, registry);
-    let available = state.runner.resources.credits.0.saturating_add(hosted.iter().map(|(_, c)| c).sum());
+    let pays_trash_costs = |def: &crate::dsl::CardDefinition| def.hosted_credits_usable_for == Some(HostedCreditUse::TrashCosts);
+    let hosted: u32 = state
+        .runner
+        .rig
+        .iter()
+        .filter(|card| registry.get(&card.card).is_some_and(pays_trash_costs))
+        .map(|card| card.counters)
+        .sum();
+    let available = state.runner.resources.credits.0.saturating_add(hosted);
     if available < cost {
         return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available, requested: cost });
     }
 
-    let mut events = Vec::new();
-    let mut remaining = cost;
-    for (install, credits) in hosted {
-        if remaining == 0 {
-            break;
-        }
-        let spend = credits.min(remaining);
-        let ctx = ability::ResolutionContext::for_parked(Some(install), None);
-        events.extend(ability::spend_hosted_credits(state, &ctx, spend)?);
-        remaining -= spend;
-    }
-    events.extend(ability::pay_cost(state, Side::Runner, &Cost::Credits(remaining), Some(card_id))?);
+    let (mut events, from_pools) = ability::drain_hosted_credit_pools(state, registry, cost, pays_trash_costs)?;
+    events.extend(ability::pay_cost(state, Side::Runner, &Cost::Credits(cost - from_pools), Some(card_id))?);
     move_to_archives(state, registry, card_id, pending.server, pending.install);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost };
     events.push(trashed_event.clone());
@@ -813,24 +810,6 @@ pub fn resolve_trash(
 
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
-}
-
-/// Every rig card whose hosted credits may pay a trash cost, with what it
-/// holds, in rig order — the pools `resolve_trash` drains before the
-/// wallet. Empty for every rig without such a card.
-fn trash_cost_credit_pools(state: &GameState, registry: &CardRegistry) -> Vec<(InstallId, u32)> {
-    state
-        .runner
-        .rig
-        .iter()
-        .filter(|card| card.counters > 0)
-        .filter(|card| {
-            registry
-                .get(&card.card)
-                .is_some_and(|def| def.hosted_credits_usable_for == Some(HostedCreditUse::TrashCosts))
-        })
-        .map(|card| (card.install_id, card.counters))
-        .collect()
 }
 
 /// Resolves `PlayerAction::PassAccessedCard`. See its doc comment for the

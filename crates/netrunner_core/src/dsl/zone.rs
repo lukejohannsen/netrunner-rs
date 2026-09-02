@@ -36,6 +36,12 @@ pub enum CardZoneRef {
     /// of its own controller's installed ICE to rez for free. Same "no
     /// embedded filter" note as `OpponentInstalled`.
     OwnInstalled,
+    /// The cards hosted on the parking card itself
+    /// (`rules::state::InstalledRunnerCard::hosted_cards` of the decision's
+    /// `source_install`) — Madani's faceup hosted programs. As a
+    /// *destination* it hosts the selection there; as a *source* it offers
+    /// them. Only meaningful with a Runner rig card as the parking card.
+    HostedOnSource,
 }
 
 /// Which cards within a `CardZoneRef` are eligible to be selected.
@@ -104,6 +110,13 @@ pub enum CardFilter {
     /// now", and a fused variant for each such conjunction would grow this
     /// enum per card rather than per property. Both halves recurse.
     All(Vec<CardFilter>),
+    /// Any card but the parking card itself — "Knickknack" O'Brian's
+    /// "1 of your *other* installed cards". Instance-level: it compares
+    /// installs, so a second copy of the same card is still eligible.
+    NotSourceCard,
+    /// `InstallableRunnerCard` priced `u32` cheaper — the offer half of
+    /// `Effect::InstallRunnerCardFromGripWithDiscount`.
+    InstallableRunnerCardWithDiscount(u32),
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -137,7 +150,9 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::UnrezzedIce => matches!(card.card_type, CardType::Ice(_)),
         // Purely instance-level; the definition says nothing about it.
         CardFilter::DiscardedThisDiscardPhase => true,
+        CardFilter::NotSourceCard => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
+        CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.
         CardFilter::NotInstalledThisTurn => true,

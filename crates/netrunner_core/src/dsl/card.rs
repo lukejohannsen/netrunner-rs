@@ -48,6 +48,10 @@ pub enum StrengthModifier {
     /// `run::engine::build_run_ice` at encounter time (advancement cannot
     /// change mid-run — `AdvanceCard` is a Corp action-phase click).
     PerHostedAdvancement(i32),
+    /// Adds the payload per `CardSubtype::Fracter` card in the Runner's
+    /// heap — Rising Tide. Runner-side and live, like
+    /// `PerInstalledIcebreaker`: the heap changes at any moment.
+    PerFracterInHeap(i32),
 }
 
 /// A card subtype the engine dispatches a reactive identity trigger off of
@@ -58,6 +62,15 @@ pub enum StrengthModifier {
 pub enum CardSubtype {
     Transaction,
     Virus,
+    /// An icebreaker that breaks barriers — Rising Tide's "+1 strength for
+    /// each fracter in your heap" counts them. Authored on every fracter
+    /// (Cleaver, Corroder, Marjanah, Principia, Rising Tide), the way
+    /// `Virus` is authored on every virus program.
+    Fracter,
+    /// A Job resource — Open Market's hosted credits pay to install one.
+    Job,
+    /// A Connection resource — the other type Open Market's credits pay for.
+    Connection,
     /// A singleton restriction, not a trigger-dispatch tag like the other
     /// two variants: `engine::install_hardware` rejects installing a second
     /// `Console`-subtyped Hardware while one is already in the Runner's rig
@@ -339,6 +352,15 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hosted_credits_usable_for: Option<HostedCreditUse>,
 
+    /// Trash this card the moment its hosted credits reach zero *through a
+    /// pool drain* (`hosted_credits_usable_for`) — Open Market's "When it
+    /// is empty, trash it." The card's own turn-start take handles the
+    /// other way it empties with an `EffectIf`, as Telework Contract does;
+    /// only the engine-side drain needs the flag, since no card text runs
+    /// there. `false` for the common case.
+    #[serde(default)]
+    pub trash_when_empty: bool,
+
     /// Marks Bioroid-style ICE the Runner may break a subroutine on by
     /// losing a click instead of matching it with an icebreaker
     /// (`PlayerAction::BreakSubroutineWithClick`) — e.g. Ansel 1.0, Brân
@@ -482,11 +504,15 @@ pub struct HostedBreakerBonus {
 /// hosted credits may be spent on. Deliberately a closed enum with one
 /// value: each purpose names the one engine site that drains the pool, and
 /// a value nothing drains would be a dead restriction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum HostedCreditUse {
     /// The trash cost of a card the Runner is accessing
     /// (`PlayerAction::TrashAccessedCard`) — Azimat.
     TrashCosts,
+    /// The install cost of a Resource carrying any of `subtypes` — Open
+    /// Market's "You can spend hosted credits to install connection and job
+    /// resources". Drained by `engine::install_resource`.
+    ResourceInstalls { subtypes: Vec<CardSubtype> },
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -551,6 +577,7 @@ impl Default for CardDefinition {
             host_ice_gains_subtypes: Vec::new(),
             hosted_breaker_bonus: None,
             hosted_credits_usable_for: None,
+            trash_when_empty: false,
             additional_play_cost: None,
             install_cost_discount_amount: None,
             click_breakable: false,
