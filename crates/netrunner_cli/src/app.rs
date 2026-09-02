@@ -165,6 +165,12 @@ pub trait RenderableView {
     /// The running action log. Both paths have one now, so both render the
     /// same four-region layout.
     fn action_log(&self) -> &[String];
+    /// A title for the actions pane other than the live game's — the
+    /// replay viewer lists a step's events there, where a title promising
+    /// "Enter to act" would lie. `None` keeps the default.
+    fn actions_title(&self) -> Option<String> {
+        None
+    }
     /// The engine's reason for refusing the last submission, until the
     /// next state arrives. `None` on a path that has none to show.
     fn last_rejection(&self) -> Option<&str> {

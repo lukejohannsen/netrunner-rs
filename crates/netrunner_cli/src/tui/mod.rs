@@ -25,6 +25,7 @@ use crate::bots;
 use crate::config::{BotKind, Config, Mode};
 use crate::decks;
 use crate::remote;
+use crate::replay::Replay;
 
 const CORP_MAX_CLICKS: u32 = 3;
 const RUNNER_MAX_CLICKS: u32 = 4;
@@ -146,6 +147,47 @@ pub fn run_lessons(lessons: &[Lesson], registry: &CardRegistry, seed: u64) -> Re
     }
     ratatui::restore();
     Ok(outcome)
+}
+
+/// Steps through a recorded match in one terminal session. Nothing is
+/// submitted anywhere: the keys move a cursor over positions `Replay`
+/// has already computed, and `s` swaps the chair the board is seen from.
+pub fn run_replay(mut replay: Replay) -> Result<(), Box<dyn std::error::Error>> {
+    let mut terminal = ratatui::init();
+    let result = drive_replay(&mut terminal, &mut replay);
+    ratatui::restore();
+    result
+}
+
+fn drive_replay(terminal: &mut ratatui::DefaultTerminal, replay: &mut Replay) -> Result<(), Box<dyn std::error::Error>> {
+    loop {
+        terminal.draw(|frame| draw_frame(frame, replay, None))?;
+        if event::poll(Duration::from_millis(100))?
+            && let Event::Key(key) = event::read()?
+            && !replay_key(replay, key.code)
+        {
+            return Ok(());
+        }
+    }
+}
+
+/// One keypress on the replay; `false` means quit. Separate from the loop
+/// so the bindings can be tested without a terminal.
+fn replay_key(replay: &mut Replay, key: KeyCode) -> bool {
+    match key {
+        KeyCode::Char('q') | KeyCode::Esc => return false,
+        KeyCode::Right | KeyCode::Down | KeyCode::Char(' ') | KeyCode::Enter | KeyCode::Char('l') | KeyCode::Char('j') => {
+            replay.step_forward(1)
+        }
+        KeyCode::Left | KeyCode::Up | KeyCode::Char('h') | KeyCode::Char('k') => replay.step_back(1),
+        KeyCode::PageDown => replay.step_forward(10),
+        KeyCode::PageUp => replay.step_back(10),
+        KeyCode::Home | KeyCode::Char('g') => replay.seek(0),
+        KeyCode::End | KeyCode::Char('G') => replay.seek(usize::MAX),
+        KeyCode::Char('s') => replay.set_side(replay.side().other()),
+        _ => {}
+    }
+    true
 }
 
 /// The unguided starter game (ROADMAP Phase 1.75 §8's graduation): the two
@@ -768,7 +810,9 @@ fn draw_actions(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     if !labels.is_empty() {
         state.select(Some(app.selected()));
     }
-    let mut title = Line::from(if labels.is_empty() {
+    let mut title = Line::from(if let Some(title) = app.actions_title() {
+        title
+    } else if labels.is_empty() {
         "Waiting for the other side...".to_string()
     } else if app.coaching().is_some() {
         "Actions (Up/Down, Enter to act, a to show all, q to quit)".to_string()
@@ -940,6 +984,46 @@ mod tests {
         let rendered = format!("{:?}", terminal.backend().buffer());
         assert!(rendered.contains("rejected: NotYourTurn"), "the rejection line is drawn");
         assert!(rendered.contains("Showing every legal action"), "the escape hatch is announced");
+    }
+
+    /// The replay path through the shared renderer: the events pane title,
+    /// the coaching panel's step counter, and the chair swap all draw, on a
+    /// test backend, at the setup and at the end of a recorded game.
+    #[test]
+    fn a_replay_renders_its_events_pane_and_step_counter() {
+        use netrunner_bots::RandomAgent;
+        use netrunner_core::rules::MatchRules;
+        use netrunner_session::MatchRecordHeader;
+
+        let registry = decks::sample_deck_registry();
+        let (corp, runner) = netrunner_core::decks::matchups().into_iter().next().expect("a sample matchup");
+        let header = MatchRecordHeader { seed: 5, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default() };
+        let (state, _events) = header.setup(&registry).unwrap();
+        let mut session = Session::new(
+            state,
+            registry.clone(),
+            Seat::Agent(Box::new(RandomAgent::new(5))),
+            Seat::Agent(Box::new(RandomAgent::new(6))),
+        );
+        assert!(matches!(session.run(), SessionStep::Ended { .. }));
+        let (_state, history) = session.into_parts();
+        let total = history.len();
+        let mut replay = Replay::load(&header, history, registry, Side::Runner, "game_00000.jsonl").unwrap();
+
+        let mut terminal = Terminal::new(TestBackend::new(140, 40)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &replay, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains(&format!("Step 0 of {total}")), "the coaching panel counts positions");
+        assert!(rendered.contains("Events (none yet"), "the actions pane is retitled for events");
+
+        assert!(replay_key(&mut replay, KeyCode::End));
+        assert!(replay_key(&mut replay, KeyCode::Char('s')));
+        assert_eq!(replay.side(), Side::Corp);
+        terminal.draw(|frame| draw_frame(frame, &replay, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains(&format!("Step {total} of {total}")));
+        assert!(rendered.contains("Game over"), "the header shows the recorded ending");
+        assert!(!replay_key(&mut replay, KeyCode::Char('q')), "q quits");
     }
 
     /// The strip lights exactly one of Null Signal's six phases, and never
