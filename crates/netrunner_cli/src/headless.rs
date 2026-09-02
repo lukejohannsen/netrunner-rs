@@ -19,12 +19,14 @@
 //! that count is itself worth tracking before and after an engine change.
 
 use std::fs;
+use std::io::{self, Write};
+use std::path::Path;
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks as core_decks;
-use netrunner_core::rules::{Deck, GameState, Side};
+use netrunner_core::rules::{Deck, GameState, MatchRules, Side};
 use netrunner_session::coverage::sample_pool_card_ids;
-use netrunner_session::{Coverage, Seat, Session, SessionStep};
+use netrunner_session::{Coverage, MatchHistory, MatchRecordHeader, Seat, Session, SessionStep};
 use netrunner_single_player::SinglePlayerSession;
 
 use crate::bots;
@@ -77,6 +79,9 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let corp_kind = headless_kind(config.corp);
     let runner_kind = headless_kind(config.runner);
     let mut coverage = Coverage::default();
+    if let Some(dir) = &config.record {
+        fs::create_dir_all(dir)?;
+    }
 
     for game_index in 0..config.games {
         let seed = base_seed.wrapping_add(u64::from(game_index));
@@ -105,6 +110,12 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         if config.verbose {
             println!("game {game_index:>5} seed {seed:<20} {matchup:<40} {steps:>6} steps  {}", describe(&outcome));
         }
+        if let Some(dir) = &config.record {
+            // `GameState::setup` above is Standard rules and a shuffled
+            // order, so the header says so.
+            let header = MatchRecordHeader { seed, corp_deck, runner_deck, rules: MatchRules::default() };
+            record_match(dir, game_index, &header, &history)?;
+        }
         coverage.absorb_match(&history, &registry, &outcome);
     }
 
@@ -117,10 +128,67 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// One game's record, `game_NNNNN.jsonl` — the index rather than the seed
+/// in the name so the files sort in play order and the same numbering
+/// `--verbose` prints.
+fn record_match(dir: &Path, game_index: u32, header: &MatchRecordHeader, history: &MatchHistory) -> io::Result<()> {
+    let mut file = io::BufWriter::new(fs::File::create(dir.join(format!("game_{game_index:05}.jsonl")))?);
+    history.write_jsonl(header, &mut file)?;
+    file.flush()
+}
+
 fn describe(outcome: &SessionStep) -> String {
     match outcome {
         SessionStep::Ended { winner, reason } => format!("{winner:?} wins by {reason:?}"),
         SessionStep::Stalled(reason) => format!("stalled: {reason:?}"),
         other => format!("{other:?}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    /// `--record` writes one file per game, in play order, each headed by
+    /// the seed that game was played with.
+    #[test]
+    fn record_writes_one_replayable_file_per_game() {
+        let dir = std::env::temp_dir().join(format!("netrunner_record_test_{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        let config = Config::parse_from([
+            "netrunner_cli",
+            "--headless",
+            "--all-matchups",
+            "--games",
+            "2",
+            "--seed",
+            "11",
+            "--corp",
+            "random",
+            "--runner",
+            "random",
+            "--record",
+            dir.to_str().unwrap(),
+        ]);
+        run(&config).expect("two random-vs-random games play to a result");
+
+        let registry = decks::sample_deck_registry();
+        for (index, expected_seed) in [(0u32, 11u64), (1, 12)] {
+            let path = dir.join(format!("game_{index:05}.jsonl"));
+            let file = io::BufReader::new(fs::File::open(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display())));
+            let (header, history) = MatchHistory::read_jsonl(file).expect("the record reads back");
+            assert_eq!(header.seed, expected_seed);
+            assert!(!history.is_empty());
+            let (mut state, _events) = header.setup(&registry).expect("the header's decks set up");
+            for entry in history.entries() {
+                state = netrunner_core::rules::apply_action(&state, &registry, entry.action.clone())
+                    .expect("a recorded action replays cleanly")
+                    .0;
+            }
+            assert!(matches!(state.phase, netrunner_core::rules::GamePhase::GameOver(_)) || history.len() >= netrunner_session::MAX_STEPS as usize);
+        }
+        let _ = fs::remove_dir_all(&dir);
     }
 }

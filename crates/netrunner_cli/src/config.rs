@@ -46,6 +46,16 @@ pub struct Config {
     #[arg(long)]
     pub verbose: bool,
 
+    /// (headless) Record every game's full action/event history as
+    /// JSON-Lines under this directory, one `game_NNNNN.jsonl` per game: a
+    /// header line naming the seed, both decks and the match rules, then
+    /// one `HistoryEntry` per line. Replaying the actions from the header's
+    /// setup reproduces the final state exactly. The record is the *raw*
+    /// history — what a replay viewer masks per side when rendering — not
+    /// anything a seat was sent.
+    #[arg(long)]
+    pub record: Option<PathBuf>,
+
     /// (headless) Search iterations per decision for `--corp puct` /
     /// `--runner puct` and `mcts`. Low by default because a coverage run
     /// wants many games, not strong ones.
