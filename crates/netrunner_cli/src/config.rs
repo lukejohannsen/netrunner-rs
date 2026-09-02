@@ -230,6 +230,17 @@ pub enum Command {
         #[command(subcommand)]
         action: LearnAction,
     },
+
+    /// Step through a match recorded with `--headless --record`, from one
+    /// side's chair: every position is that seat's masked view, and the
+    /// log is that seat's masked copy. `s` swaps chairs while viewing.
+    Replay {
+        /// A `game_NNNNN.jsonl` written by `--record`.
+        file: PathBuf,
+        /// Whose chair to watch from.
+        #[arg(long, value_enum, default_value_t = SideArg::Corp)]
+        side: SideArg,
+    },
 }
 
 #[derive(Subcommand, Debug)]
