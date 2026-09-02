@@ -23,7 +23,7 @@ This repository contains an asynchronous, turn-based Netrunner card game built i
 - The server is an authoritative host process running `netrunner_core`. It owns the only real `GameState`.
 - It validates incoming `ClientMessage::SubmitAction(PlayerAction)` intents against the engine and pushes `ServerMessage::StateUpdate(Box<ClientView>)` to every channel-backed seat.
 - **These are full masked snapshots, not deltas.** `MatchSession::broadcast_state_updates` rebuilds a fresh per-side `ClientView` after every applied action. Deltas are a possible future optimization, not the current design — do not write code or comments that assume a delta stream exists.
-- Fog of War / hidden state MUST be enforced at the engine boundary via `rules::masking` / `view::build_client_view`, never by asking the client to be polite. A seat receives a `ClientView` and nothing else.
+- Fog of War / hidden state MUST be enforced at the engine boundary via `rules::masking` / `view::build_client_view`, never by asking the client to be polite. A seat receives a `ClientView` and a per-viewer `PublicHistoryEntry` (its copy of the action log, masked by `rules::masking::{mask_action_for_player, mask_event_for_player}` against the state that action produced) and nothing else. The raw `HistoryEntry` never leaves the host.
 
 ### 3. Client Contract (transport- and toolkit-agnostic)
 

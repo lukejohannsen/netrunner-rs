@@ -12,21 +12,54 @@
 
 use serde::{Deserialize, Serialize};
 
-use netrunner_core::rules::{GameEvent, PlayerAction, Side};
+use netrunner_core::rules::{mask_action_for_player, mask_event_for_player, GameEvent, GameState, PlayerAction, PublicAction, Side};
 
 /// One resolved action: which turn it happened during (see
 /// `crate::session::Session::step`'s doc comment for the turn-numbering
 /// convention), which side submitted it, the action itself, and every
 /// `GameEvent` `apply_action` produced applying it.
-/// `Serialize`/`Deserialize` because an entry crosses the process boundary:
-/// `netrunner_server` broadcasts each one to channel seats so a remote
-/// client can render a game log. `PlayerAction` and `GameEvent` already
-/// derive both.
+///
+/// This is the *full* record — the acting side's action and the raw events
+/// — and it never leaves the process: what a seat receives is
+/// `PublicHistoryEntry`, built by `for_viewer`. `Serialize`/`Deserialize`
+/// so a history can be written out and replayed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct HistoryEntry {
     pub turn_number: u32,
     pub side: Side,
     pub action: PlayerAction,
+    pub events: Vec<GameEvent>,
+}
+
+impl HistoryEntry {
+    /// This entry as `viewer` is entitled to see it, masked by
+    /// `netrunner_core::rules::masking` against `state` — which must be the
+    /// position *this* action produced, because concealment is read from
+    /// where the named cards now sit. `Session::last_entry_for` is the
+    /// caller that has that state to hand; there is deliberately no batch
+    /// form over older entries, since masking one against a later state is
+    /// exactly the mistake that would reveal a card trashed since.
+    pub fn for_viewer(&self, state: &GameState, viewer: Side) -> PublicHistoryEntry {
+        PublicHistoryEntry {
+            turn_number: self.turn_number,
+            side: self.side,
+            action: mask_action_for_player(&self.action, self.side, viewer),
+            events: self.events.iter().filter_map(|event| mask_event_for_player(event, state, viewer)).collect(),
+        }
+    }
+}
+
+/// A `HistoryEntry` as one seat sees it: the opponent's card-naming actions
+/// reduced to their public shape and every event the viewer may not see
+/// dropped. This is what crosses the process boundary —
+/// `netrunner_server` sends each seat its own copy after every action, and
+/// the TUI's match log renders the same type on both the local and the
+/// remote path so the two cannot disagree about what a player may read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicHistoryEntry {
+    pub turn_number: u32,
+    pub side: Side,
+    pub action: PublicAction,
     pub events: Vec<GameEvent>,
 }
 

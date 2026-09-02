@@ -192,14 +192,11 @@ fn run_lesson(
     let mut session = LessonSession::start(lesson.clone(), registry.clone(), seed)?;
     let mut ui = LocalUiState::new(registry.clone(), lesson.side);
     ui.modal = Some(Modal::new(&lesson.title, &lesson.intro, "Enter to begin"));
-    let mut mark = 0;
     loop {
         let step = session.step()?;
-        let entries = session.session().history().entries();
-        for entry in &entries[mark..] {
-            push_log_line(&mut ui.action_log, entry, &ui.registry, ui.view.as_ref());
+        for entry in session.drain_log() {
+            push_log_line(&mut ui.action_log, &entry, &ui.registry, ui.view.as_ref());
         }
-        mark = entries.len();
 
         match step {
             LessonStep::Prompt { view, allowed, step, total } => {
@@ -298,14 +295,19 @@ fn drive_local(
     human_side: Side,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
-        // `run` swallows the individual `Applied` steps a bot seat
-        // resolves, so mark the log first and replay the difference —
-        // the idiom that replaced `SinglePlayerSession::with_observer`.
-        let mark = session.history().len();
-        let step = session.run();
-        for entry in &session.history().entries()[mark..] {
-            push_log_line(&mut ui.action_log, entry, &ui.registry, ui.view.as_ref());
-        }
+        // Pumped one `step` at a time rather than through `run`, which
+        // swallows the bot seat's `Applied` steps: each log line is the
+        // human's *masked* copy of that action, and `last_entry_for` reads
+        // concealment off the state the action left, so it has to be taken
+        // before the next one resolves. Diffing the history after `run`
+        // was the old idiom; it also never logged the human's own action,
+        // since the mark was taken after `submit`.
+        let step = loop {
+            match session.step() {
+                SessionStep::Applied { .. } => log_last(session, ui, human_side),
+                other => break other,
+            }
+        };
 
         match step {
             SessionStep::Awaiting { side, view } if side == human_side => {
@@ -313,6 +315,7 @@ fn drive_local(
                 if prompt_human(terminal, ui, |action| session.submit(action))? {
                     return Ok(());
                 }
+                log_last(session, ui, human_side);
             }
             // The ONNX bot seat: index-based, so the session cannot
             // resolve it and hands it back here instead.
@@ -325,14 +328,23 @@ fn drive_local(
                 let action = ActionSpace::action_at(session.state(), index)
                     .ok_or_else(|| format!("the {side:?} policy chose index {index}, which decodes to no action"))?;
                 session.submit(action).map_err(|error| format!("the {side:?} policy chose an action the engine rejected: {error:?}"))?;
+                log_last(session, ui, human_side);
             }
             SessionStep::Ended { winner, reason } => {
                 ui.finish(session.view_for(human_side));
                 return show_game_over(terminal, ui, winner, reason);
             }
             SessionStep::Stalled(reason) => return Err(stall_message(reason).into()),
-            SessionStep::Applied { .. } => unreachable!("`run` only returns once it can no longer apply"),
+            SessionStep::Applied { .. } => unreachable!("the inner loop only breaks once it can no longer apply"),
         }
+    }
+}
+
+/// Appends the action just applied to the human's log, as the human may
+/// see it.
+fn log_last(session: &Session, ui: &mut LocalUiState, human_side: Side) {
+    if let Some(entry) = session.last_entry_for(human_side) {
+        push_log_line(&mut ui.action_log, &entry, &ui.registry, ui.view.as_ref());
     }
 }
 

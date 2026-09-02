@@ -17,7 +17,8 @@ use netrunner_core::view::ClientView;
 /// keeps every existing `netrunner_server::{protocol::,}GameEndReason` path
 /// resolving, and the wire format is unaffected: moving a type does not
 /// change its serde representation.
-pub use netrunner_session::{GameEndReason, HistoryEntry};
+pub use netrunner_core::rules::{ConcealedAction, PublicAction};
+pub use netrunner_session::{GameEndReason, HistoryEntry, PublicHistoryEntry};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
@@ -36,12 +37,20 @@ pub enum ServerMessage {
     /// One resolved action, sent immediately after the `StateUpdate` it
     /// produced, so a client can render a running game log.
     ///
+    /// **Per viewer, like `StateUpdate`.** The Corp's and the Runner's
+    /// copies differ: the acting side's action and the engine's raw events
+    /// name cards the other seat's view conceals (the Corp's facedown
+    /// install, the HQ card the Runner just looked at), so each seat gets
+    /// `Session::last_entry_for(side)` — masked by
+    /// `netrunner_core::rules::masking` at the same boundary as the view.
+    /// The full `HistoryEntry` never leaves the host.
+    ///
     /// One message per action rather than the whole log each time: a
     /// `StateUpdate` is already per-action and the client already drains
     /// messages in a loop, so resending a growing log would cost O(n²)
-    /// bytes over a match. Boxed for the same reason `StateUpdate` is — a
-    /// `HistoryEntry` carries the action's full `Vec<GameEvent>`.
-    ActionLog(Box<HistoryEntry>),
+    /// bytes over a match. Boxed for the same reason `StateUpdate` is — an
+    /// entry carries the action's `Vec<GameEvent>`.
+    ActionLog(Box<PublicHistoryEntry>),
     ActionRejected { reason: String },
     GameEnded { winner: Side, reason: GameEndReason },
 }

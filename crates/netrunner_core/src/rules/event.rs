@@ -128,10 +128,9 @@ pub enum GameEvent {
     ///
     /// Carries the affected card list so a game log can narrate which
     /// viruses were wiped. Every card that can hold virus counters today is
-    /// a public Runner rig card, so this leaks nothing — but if a future
-    /// set prints a Corp card holding virus counters, the tracked
-    /// per-viewer event-masking work (ROADMAP Phase 4) must strip an
-    /// unrezzed one's identity here.
+    /// a public Runner rig card; should a Corp card ever hold them,
+    /// `masking::mask_event_for_player` already strips an unrezzed one
+    /// from the Runner's copy of this list.
     VirusCountersPurged { cards: Vec<CardId> },
     BadPublicityCreditsSpent { amount: u32 },
     BonusRunCreditsSpent { amount: u32 },

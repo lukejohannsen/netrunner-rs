@@ -15,7 +15,7 @@ pub mod net;
 pub mod protocol;
 
 pub use match_session::{MatchSession, PlayerSlot};
-pub use protocol::{ClientMessage, GameEndReason, HistoryEntry, ServerMessage};
+pub use protocol::{ClientMessage, GameEndReason, HistoryEntry, PublicHistoryEntry, ServerMessage};
 
 /// Re-exported so existing `netrunner_server::classify_end_reason` callers
 /// keep working; it now lives in `netrunner_session::outcome`. A caller

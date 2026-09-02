@@ -28,7 +28,7 @@ use netrunner_core::rules::{
 };
 use netrunner_core::view::{build_client_view, ClientView};
 
-use crate::history::{HistoryEntry, MatchHistory};
+use crate::history::{HistoryEntry, MatchHistory, PublicHistoryEntry};
 use crate::outcome::{classify_end_reason, GameEndReason};
 
 /// Guard against a stalled or looping game running forever. One budget for
@@ -263,8 +263,11 @@ impl Session {
     /// one call.
     ///
     /// Intermediate `Applied` steps are swallowed. A caller that needs each
-    /// one — a UI action log, say — takes a mark first and diffs the
-    /// history afterwards:
+    /// one as a *viewer* — a UI action log — must pump `step` itself and
+    /// read `last_entry_for` after each `Applied`, because that mask is
+    /// taken against the state the action left. A caller that wants the
+    /// raw entries (the lesson gate, coverage) can still take a mark first
+    /// and diff the history afterwards:
     ///
     /// ```ignore
     /// let mark = session.history().len();
@@ -324,6 +327,16 @@ impl Session {
     /// was built `without_history`.
     pub fn last_entry(&self) -> Option<&HistoryEntry> {
         self.history.entries().last()
+    }
+
+    /// The most recently recorded action as `viewer` may see it — the only
+    /// form of a log entry that should ever reach a seat. Valid immediately
+    /// after the `submit`/`Applied` that produced it: the mask reads the
+    /// current state, which is that action's post-state and nobody else's.
+    /// A pump that lets several actions resolve before reading the log
+    /// (the TUI's bot turns) must therefore `step` and read after each.
+    pub fn last_entry_for(&self, viewer: Side) -> Option<PublicHistoryEntry> {
+        self.last_entry().map(|entry| entry.for_viewer(&self.state, viewer))
     }
 
     /// The masked view `side` is entitled to. The only way any caller

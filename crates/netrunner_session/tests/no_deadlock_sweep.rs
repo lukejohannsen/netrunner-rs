@@ -21,9 +21,9 @@
 use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks;
-use netrunner_core::rules::{Deck, GameState, MaskedZone, PublicAccessPhase, Side};
+use netrunner_core::rules::{Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side};
 use netrunner_session::coverage::sample_pool_card_ids;
-use netrunner_session::{Coverage, Seat, Session, SessionStep, StallReason};
+use netrunner_session::{Coverage, PublicHistoryEntry, Seat, Session, SessionStep, StallReason};
 
 /// How many seeds the sweep walks, default 32 — sized for the inner loop,
 /// matching `system_gateway_delivery::sweep_seed_count`. Raise it for a deep
@@ -174,7 +174,8 @@ fn the_flatline_during_an_encounter_window_position_plays_out() {
     }
 }
 
-/// **No `ClientView` may name a card it also conceals.**
+/// **No `ClientView`, and no log entry a seat receives, may name a card
+/// the view conceals.**
 ///
 /// Fog of war is meant to be structural at the `ClientView` boundary
 /// (AGENTS.md §2: never by asking the client to be polite), but nothing
@@ -189,14 +190,28 @@ fn the_flatline_during_an_encounter_window_position_plays_out() {
 /// Both actions are *legal* — real Netrunner lets the Runner host on and
 /// swap ICE they cannot identify — so the fix was to name the install
 /// rather than the card (`state::InstallId`), not to withdraw the action.
-/// This is the gate on that: for every view either seat receives, no card
-/// the view hides may appear in `legal_actions` or `pending_decision`.
+///
+/// The log was the third route, and the widest: the server broadcast one
+/// raw `HistoryEntry` to both seats, so the Runner read the Corp's
+/// `InstallCard { card_id }` and `CardInstalled` for a card its view had
+/// just rendered as `card: None`, and the Corp read which HQ card the
+/// Runner had accessed. `Session::last_entry_for` now masks each entry per
+/// seat, and this gate covers it too: after every action, each side's
+/// `PublicHistoryEntry` is checked against the same concealed set as its
+/// view — which for the log is widened past hidden installs to the
+/// opponent's hand, deck and facedown Archives.
+///
+/// The check is on the `Debug` rendering, so it can only see a `CardId`
+/// that is *concealed* from the viewer; a card in the viewer's own hidden
+/// zone (an R&D card the Runner accessed, from the Corp's chair) is theirs
+/// by ownership and invisible to this test — `masking`'s unit tests pin
+/// those rules directly.
 ///
 /// Driven through `Seat::External` on both sides, so every action is chosen
 /// from a real per-seat `ClientView` — the same slice a networked client
 /// gets, and the only shape in which this property is even observable.
 #[test]
-fn no_client_view_ever_names_a_card_it_conceals() {
+fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
     let matchups = decks::matchups();
 
     for seed in 0..sweep_seed_count() {
@@ -235,6 +250,13 @@ fn no_client_view_ever_names_a_card_it_conceals() {
                     session.submit(action).unwrap_or_else(|e| {
                         panic!("seed {seed} ({matchup}): {side:?} submitted a legal action, rejected: {e:?}")
                     });
+                    // Right after the action, against its own post-state —
+                    // the contract `last_entry_for` documents.
+                    for viewer in [Side::Corp, Side::Runner] {
+                        let entry = session.last_entry_for(viewer).expect("the session records history");
+                        let view = session.view_for(viewer);
+                        assert_no_concealed_card_is_named_in_log(&entry, &view, session.state(), seed, &matchup, viewer);
+                    }
                 }
                 // An action resolved with nothing further owed — keep pumping.
                 SessionStep::Applied { .. } => {}
@@ -310,6 +332,88 @@ fn assert_no_concealed_card_is_named(
     matchup: &str,
     side: Side,
 ) {
+    let visible = visible_card_ids(view);
+    let masked = masked_install_ids(view, state, &visible);
+    if masked.is_empty() {
+        return;
+    }
+
+    let actions = format!("{:?}", view.legal_actions);
+    let decision = format!("{:?}", view.pending_decision);
+    for id in masked {
+        let quoted = format!("\"{id}\"");
+        assert!(
+            !actions.contains(&quoted),
+            "seed {seed} ({matchup}): {side:?}'s legal_actions name {id}, which their own view masks — {actions}"
+        );
+        assert!(
+            !decision.contains(&quoted),
+            "seed {seed} ({matchup}): {side:?}'s pending_decision names {id}, which their own view masks — {decision}"
+        );
+    }
+}
+
+/// The log's version of the same invariant, over a wider concealed set:
+/// besides the installs the view masks, everything in the *opponent's*
+/// hidden zones — the Corp's HQ, R&D and facedown Archives for the Runner;
+/// the Runner's grip and stack for the Corp — minus what the view shows
+/// elsewhere. A viewer's own hidden zones are deliberately not in the set:
+/// the Corp naming its own R&D card in a selection it made is not a leak.
+///
+/// Two things in the entry itself count as visible. A `CardsSelected {
+/// revealed: true }` — a reveal is a reveal, and the cards it names may
+/// well still sit in the hand they were revealed from. And the viewer's
+/// *own* action: they chose it from a list they were shown, so a card it
+/// names is theirs to know even once the view has moved on — the Runner
+/// who passes on an HQ card still knows what they passed on after the run
+/// ends and the access reveal is gone.
+fn assert_no_concealed_card_is_named_in_log(
+    entry: &PublicHistoryEntry,
+    view: &netrunner_core::view::ClientView,
+    state: &GameState,
+    seed: u64,
+    matchup: &str,
+    side: Side,
+) {
+    let mut visible = visible_card_ids(view);
+    for event in &entry.events {
+        if let GameEvent::CardsSelected { cards, revealed: true, .. } = event {
+            visible.extend(cards.iter().map(|c| c.0.as_str()));
+        }
+    }
+
+    let mut concealed = masked_install_ids(view, state, &visible);
+    let opponent_hidden: Vec<&netrunner_core::dsl::CardId> = match side {
+        Side::Runner => state
+            .corp
+            .hq
+            .iter()
+            .chain(&state.corp.r_and_d)
+            .chain(state.corp.archives.iter().filter(|a| a.facedown).map(|a| &a.card))
+            .collect(),
+        Side::Corp => state.runner.grip.iter().chain(&state.runner.stack).collect(),
+    };
+    concealed.extend(opponent_hidden.into_iter().map(|c| c.0.as_str()).filter(|id| !visible.contains(id)));
+    if entry.side == side {
+        let own_action = format!("{:?}", entry.action);
+        concealed.retain(|id| !own_action.contains(&format!("\"{id}\"")));
+    }
+    if concealed.is_empty() {
+        return;
+    }
+
+    let rendered = format!("{entry:?}");
+    for id in concealed {
+        let quoted = format!("\"{id}\"");
+        assert!(
+            !rendered.contains(&quoted),
+            "seed {seed} ({matchup}): {side:?}'s log entry names {id}, which their own view conceals — {rendered}"
+        );
+    }
+}
+
+/// Every card identity `view` legitimately shows its viewer.
+fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections::HashSet<&str> {
     use std::collections::HashSet;
 
     let mut visible: HashSet<&str> = HashSet::new();
@@ -359,10 +463,17 @@ fn assert_no_concealed_card_is_named(
         }
     }
 
-    // Every install this view masks, resolved through the real state to the
-    // card it is actually hiding.
-    let masked: Vec<&str> = view
-        .corp
+    visible
+}
+
+/// Every install `view` masks, resolved through the real state to the card
+/// it is actually hiding, minus what the view shows elsewhere.
+fn masked_install_ids<'a>(
+    view: &netrunner_core::view::ClientView,
+    state: &'a GameState,
+    visible: &std::collections::HashSet<&str>,
+) -> Vec<&'a str> {
+    view.corp
         .servers
         .iter()
         .flat_map(|server| server.ice.iter().chain(server.root.iter()))
@@ -370,22 +481,5 @@ fn assert_no_concealed_card_is_named(
         .filter_map(|card| state.find_corp_install(card.install_id))
         .map(|installed| installed.card.0.as_str())
         .filter(|id| !visible.contains(id))
-        .collect();
-    if masked.is_empty() {
-        return;
-    }
-
-    let actions = format!("{:?}", view.legal_actions);
-    let decision = format!("{:?}", view.pending_decision);
-    for id in masked {
-        let quoted = format!("\"{id}\"");
-        assert!(
-            !actions.contains(&quoted),
-            "seed {seed} ({matchup}): {side:?}'s legal_actions name {id}, which their own view masks — {actions}"
-        );
-        assert!(
-            !decision.contains(&quoted),
-            "seed {seed} ({matchup}): {side:?}'s pending_decision names {id}, which their own view masks — {decision}"
-        );
-    }
+        .collect()
 }
