@@ -7,9 +7,9 @@
 use netrunner_bots::RandomAgent;
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks;
-use netrunner_core::rules::{GamePhase, GameState, PlayerAction, Side};
+use netrunner_core::rules::{GamePhase, GameState, MatchRules, PlayerAction, Side};
 use netrunner_session::session::{Seat, SessionStep, SubmitError};
-use netrunner_session::Session;
+use netrunner_session::{HistoryReadError, MatchHistory, MatchRecordHeader, Session};
 
 fn setup(seed: u64) -> (GameState, CardRegistry) {
     let mut registry = CardRegistry::new();
@@ -120,6 +120,40 @@ fn submitting_after_the_match_ends_is_refused() {
     let mut session = bot_vs_bot(6);
     assert!(matches!(session.run(), SessionStep::Ended { .. }));
     assert_eq!(session.submit(PlayerAction::EndTurn), Err(SubmitError::Ended));
+}
+
+/// The JSON-Lines record carries everything a replay needs: the header
+/// reproduces the opening position, the entries reproduce the final one.
+#[test]
+fn a_recorded_history_round_trips_through_jsonl_and_replays_to_the_same_state() {
+    let seed = 9;
+    let mut session = bot_vs_bot(seed);
+    assert!(matches!(session.run(), SessionStep::Ended { .. }));
+    let (final_state, history) = session.into_parts();
+
+    let (corp, runner) = decks::matchups().into_iter().next().expect("at least one sample matchup");
+    let header = MatchRecordHeader { seed, corp_deck: corp.to_deck(), runner_deck: runner.to_deck(), rules: MatchRules::default() };
+    let mut bytes = Vec::new();
+    history.write_jsonl(&header, &mut bytes).expect("writing to a Vec cannot fail");
+    let text = String::from_utf8(bytes).expect("JSON is UTF-8");
+    assert_eq!(text.lines().count(), history.len() + 1, "one header line, then one line per entry");
+
+    let (read_header, read_history) = MatchHistory::read_jsonl(text.as_bytes()).expect("the record reads back");
+    assert_eq!(read_header, header);
+    assert_eq!(read_history, history);
+
+    let mut registry = CardRegistry::new();
+    register_playable_cards(&mut registry);
+    let (mut replayed, _events) = read_header.setup(&registry).expect("the header's decks set up");
+    for entry in read_history.entries() {
+        replayed = netrunner_core::rules::apply_action(&replayed, &registry, entry.action.clone())
+            .expect("a recorded action replays cleanly")
+            .0;
+    }
+    assert_eq!(replayed, final_state);
+
+    assert!(matches!(MatchHistory::read_jsonl("".as_bytes()), Err(HistoryReadError::MissingHeader)));
+    assert!(matches!(MatchHistory::read_jsonl("not json\n".as_bytes()), Err(HistoryReadError::Json { line: 1, .. })));
 }
 
 #[test]

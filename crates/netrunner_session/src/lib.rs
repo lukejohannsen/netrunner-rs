@@ -17,7 +17,7 @@ pub mod outcome;
 pub mod session;
 
 pub use coverage::Coverage;
-pub use history::{HistoryEntry, MatchHistory, PublicHistoryEntry};
+pub use history::{HistoryEntry, HistoryReadError, MatchHistory, MatchRecordHeader, PublicHistoryEntry};
 pub use lesson::{LessonError, LessonSession, LessonStep};
 pub use outcome::{classify_end_reason, GameEndReason};
 pub use session::{Seat, Session, SessionStep, StallReason, SubmitError, MAX_STEPS};

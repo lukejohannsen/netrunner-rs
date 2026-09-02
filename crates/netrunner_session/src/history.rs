@@ -10,9 +10,15 @@
 //! game ended, and couldn't reach this type anyway. Recording now happens
 //! inside the one shared `Session`, so every path gets it for free.
 
+use std::io::{self, BufRead, Write};
+
 use serde::{Deserialize, Serialize};
 
-use netrunner_core::rules::{mask_action_for_player, mask_event_for_player, GameEvent, GameState, PlayerAction, PublicAction, Side};
+use netrunner_core::cards::CardRegistry;
+use netrunner_core::rules::{
+    mask_action_for_player, mask_event_for_player, Deck, DeckOrder, GameEvent, GameState, MatchRules, PlayerAction,
+    PublicAction, RulesError, Side,
+};
 
 /// One resolved action: which turn it happened during (see
 /// `crate::session::Session::step`'s doc comment for the turn-numbering
@@ -64,14 +70,102 @@ pub struct PublicHistoryEntry {
 }
 
 /// The full ordered action/event log of one match, in resolution order.
-#[derive(Debug, Clone, Default)]
+///
+/// `serde(transparent)`: on the wire it *is* its entry list, so a file of
+/// one entry per line (`write_jsonl`) and a single JSON array are the same
+/// data, and neither carries a wrapper key that would have to be kept in
+/// step with this struct's name.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct MatchHistory {
     entries: Vec<HistoryEntry>,
+}
+
+/// What a recorded history needs besides its actions to be replayed: the
+/// seed, the two decks, and the match rules — the exact inputs of
+/// `GameState::setup_with`, so `setup` here reproduces the opening
+/// position and replaying every recorded action from it reproduces the
+/// final one bit for bit (the invariant `Session` pins). Decks are recorded
+/// whole rather than by id: a saved custom deck may not exist by that name
+/// tomorrow, and the record must not depend on it. There is no footer — the
+/// outcome is derivable by replay, and a record cut short by a crash is
+/// still a valid prefix.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MatchRecordHeader {
+    pub seed: u64,
+    pub corp_deck: Deck,
+    pub runner_deck: Deck,
+    /// `serde(default)` for the same reason `GameState::rules` has it: a
+    /// header written without the field is a Standard match.
+    #[serde(default)]
+    pub rules: MatchRules,
+}
+
+impl MatchRecordHeader {
+    /// The opening position this record was played from.
+    pub fn setup(&self, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+        GameState::setup_with(&self.corp_deck, &self.runner_deck, registry, self.seed, self.rules, DeckOrder::Shuffled)
+    }
+}
+
+/// Why a JSON-Lines record could not be read back.
+#[derive(Debug, thiserror::Error)]
+pub enum HistoryReadError {
+    #[error("reading the record: {0}")]
+    Io(#[from] io::Error),
+    /// One-based, so it matches what an editor shows.
+    #[error("line {line} of the record is not valid JSON: {source}")]
+    Json {
+        line: usize,
+        #[source]
+        source: serde_json::Error,
+    },
+    #[error("the record is empty — a match record starts with a header line")]
+    MissingHeader,
 }
 
 impl MatchHistory {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Rebuilds a history from entries read back off disk — the only way
+    /// to construct one outside a `Session`, which is deliberate: a live
+    /// history is only ever appended to by `Session::apply`.
+    pub fn from_entries(entries: Vec<HistoryEntry>) -> Self {
+        Self { entries }
+    }
+
+    /// Writes the record as JSON-Lines: the header on the first line, then
+    /// one `HistoryEntry` per line. One object per line rather than one
+    /// document per file so a record can be appended to while a match is
+    /// still running, tailed, and read back without holding the whole
+    /// match in memory first.
+    pub fn write_jsonl(&self, header: &MatchRecordHeader, mut writer: impl Write) -> io::Result<()> {
+        serde_json::to_writer(&mut writer, header)?;
+        writeln!(writer)?;
+        for entry in &self.entries {
+            serde_json::to_writer(&mut writer, entry)?;
+            writeln!(writer)?;
+        }
+        Ok(())
+    }
+
+    /// Reads back what `write_jsonl` wrote. Blank lines are skipped, so a
+    /// hand-edited record still loads.
+    pub fn read_jsonl(reader: impl BufRead) -> Result<(MatchRecordHeader, MatchHistory), HistoryReadError> {
+        let mut lines = reader.lines();
+        let header_line = lines.next().ok_or(HistoryReadError::MissingHeader)??;
+        let header = serde_json::from_str(&header_line).map_err(|source| HistoryReadError::Json { line: 1, source })?;
+        let mut entries = Vec::new();
+        for (index, line) in lines.enumerate() {
+            let line = line?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            entries.push(serde_json::from_str(&line).map_err(|source| HistoryReadError::Json { line: index + 2, source })?);
+        }
+        Ok((header, MatchHistory { entries }))
     }
 
     pub(crate) fn record(&mut self, turn_number: u32, side: Side, action: PlayerAction, events: Vec<GameEvent>) {
