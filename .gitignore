@@ -7,8 +7,9 @@ venv/
 env/
 .env/
 
-# Generated self-play training artifacts
-/data/selfplay/
+# Generated self-play training artifacts (all of /data is generated: the
+# live corpus, and any stale one moved aside under another name)
+/data/
 /checkpoints/
 
 # Local Claude Code state (per-machine agent settings and permissions)
