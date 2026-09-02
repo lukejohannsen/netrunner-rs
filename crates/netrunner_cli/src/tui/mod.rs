@@ -12,6 +12,7 @@ use ratatui::Frame;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::dsl::{CardId, CounterKind};
+use netrunner_core::rules::Viewer;
 use netrunner_core::rules::{
     get_action_mask, ActionSpace, DeckOrder, GamePhase, GameState, PlayerAction, RunPhase, ServerId, Side,
 };
@@ -47,9 +48,12 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     // fixed Kate-vs-HB matchup out of band, so the remote client just
     // builds the identical registry locally to resolve card titles.
     let registry = decks::kate_vs_hb_registry();
-    let joined = remote::connect_remote(&config.server, config.side.map(Into::into), config.room.clone()).await?;
+    let joined = match config.spectate {
+        Some(match_id) => remote::spectate_remote(&config.server, match_id).await?,
+        None => remote::connect_remote(&config.server, config.side.map(Into::into), config.room.clone()).await?,
+    };
     let session_token = joined.session_token;
-    let mut app = App::new(registry, joined.side, joined.tx, joined.rx);
+    let mut app = App::new(registry, joined.viewer, joined.tx, joined.rx);
 
     let mut terminal = ratatui::init();
     let result = run_event_loop(&mut terminal, &mut app, &config.server, session_token);
@@ -571,8 +575,8 @@ impl RenderableView for LocalUiState {
         &self.registry
     }
 
-    fn human_side(&self) -> Side {
-        self.human_side
+    fn viewer(&self) -> Viewer {
+        Viewer::Player(self.human_side)
     }
 
     fn view(&self) -> Option<&ClientView> {
@@ -613,24 +617,30 @@ impl RenderableView for LocalUiState {
 /// with the last view and the reconnect notice, and `q` still quits, while
 /// `Reconnector` makes one bounded attempt per tick. A game that has
 /// already ended is not resumed — the `GameEnded` is on screen and the
-/// server has dropped the seat's ticket anyway.
+/// server has dropped the seat's ticket anyway. A spectator has no token
+/// and is not resumed either: it can spectate again from the command line.
 fn run_event_loop(
     terminal: &mut ratatui::DefaultTerminal,
     app: &mut App,
     server_url: &str,
-    session_token: uuid::Uuid,
+    session_token: Option<uuid::Uuid>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut reconnector: Option<remote::Reconnector> = None;
     while !app.should_quit {
         app.drain_messages();
         if app.connection_lost && !app.is_game_over() {
-            let attempt = reconnector.get_or_insert_with(|| remote::Reconnector::new(server_url.to_string(), session_token));
-            match attempt.try_resume()? {
-                Some(joined) => {
-                    app.reconnected(joined.tx, joined.rx);
-                    reconnector = None;
+            match session_token {
+                Some(session_token) => {
+                    let attempt = reconnector.get_or_insert_with(|| remote::Reconnector::new(server_url.to_string(), session_token));
+                    match attempt.try_resume()? {
+                        Some(joined) => {
+                            app.reconnected(joined.tx, joined.rx);
+                            reconnector = None;
+                        }
+                        None => app.connection_notice = Some(attempt.status_line()),
+                    }
                 }
-                None => app.connection_notice = Some(attempt.status_line()),
+                None => app.connection_notice = Some("Connection lost — spectate again to rejoin. Press q to quit.".to_string()),
             }
         }
         terminal.draw(|frame| draw_frame(frame, app, app.game_ended))?;
@@ -680,9 +690,12 @@ fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         GamePhase::GameOver(winner) => format!("Game over — {winner:?} wins"),
     };
     let text = format!(
-        "Turn {} | Phase: {phase_label} | You: {:?} | Corp: {}c {} AP:{}/{to_win} BP:{} | Runner: {}c {} Tags:{} MU:{} AP:{}/{to_win}",
+        "Turn {} | Phase: {phase_label} | You: {} | Corp: {}c {} AP:{}/{to_win} BP:{} | Runner: {}c {} Tags:{} MU:{} AP:{}/{to_win}",
         view.turn,
-        app.human_side(),
+        match app.viewer() {
+            Viewer::Player(side) => format!("{side:?}"),
+            Viewer::Spectator => "Spectator".to_string(),
+        },
         view.corp.credits,
         click_pool(view.corp.clicks, CORP_MAX_CLICKS),
         view.corp.agenda_points,

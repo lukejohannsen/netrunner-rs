@@ -130,14 +130,13 @@ struct SeatTicket {
 }
 
 /// A running match as `MatchList` reports it. Holds the session's
-/// `ReattachHandle` so a later spectator (Phase 4 §3) can reach the pump
-/// by match id; the seed is deliberately *not* here — with the fixed
-/// decklist it reproduces R&D's order, so it must never leave the host.
+/// `ReattachHandle` so a `Spectate { match_id }` can reach the pump; the
+/// seed is deliberately *not* here — with the fixed decklist it
+/// reproduces R&D's order, so it must never leave the host.
 struct MatchEntry {
     corp: String,
     runner: String,
     started_at: Instant,
-    #[allow(dead_code)]
     handle: ReattachHandle,
 }
 
@@ -301,6 +300,7 @@ impl Server {
 enum Handshake {
     Connect { player_name: String, preferred_side: Option<Side>, room: Option<String> },
     Resume { session_token: Uuid },
+    Spectate { match_id: Uuid },
 }
 
 async fn handle_connection(stream: TcpStream, shared: Shared) -> Result<(), Box<dyn std::error::Error>> {
@@ -313,6 +313,7 @@ async fn handle_connection(stream: TcpStream, shared: Shared) -> Result<(), Box<
                     break Handshake::Connect { player_name, preferred_side, room };
                 }
                 Ok(ClientMessage::Resume { session_token }) => break Handshake::Resume { session_token },
+                Ok(ClientMessage::Spectate { match_id }) => break Handshake::Spectate { match_id },
                 Ok(ClientMessage::ListMatches) => {
                     ws_stream.send(WsMessage::Text(serde_json::to_string(&shared.match_list())?)).await?;
                 }
@@ -390,6 +391,33 @@ async fn handle_connection(stream: TcpStream, shared: Shared) -> Result<(), Box<
                     let _ = ws_stream.send(WsMessage::Text(serde_json::to_string(&refusal)?)).await;
                     let _ = ws_stream.close(None).await;
                 }
+            }
+        }
+        Handshake::Spectate { match_id } => {
+            let handle = shared.lock().matches.get(&match_id).map(|entry| entry.handle.clone());
+            let Some(handle) = handle.filter(ReattachHandle::is_live) else {
+                tracing::info!(%match_id, "spectate refused: no such match");
+                let refusal = ServerMessage::ConnectRejected { reason: "no live match has that id".into() };
+                let _ = ws_stream.send(WsMessage::Text(serde_json::to_string(&refusal)?)).await;
+                let _ = ws_stream.close(None).await;
+                return Ok(());
+            };
+            tracing::info!(%match_id, "spectator joined");
+            let (session_tx, bridge_rx) = mpsc::unbounded_channel::<ServerMessage>();
+            let (bridge_tx, mut session_rx) = mpsc::unbounded_channel::<ClientMessage>();
+            tokio::spawn(net::bridge_websocket(ws_stream, bridge_tx, bridge_rx));
+            // The session never reads a spectator's messages, but the
+            // receiving half must stay open: the bridge's recv task ends
+            // when its send into a dropped receiver fails, and the select
+            // in `bridge_websocket` then closes the socket — so a dropped
+            // `rx` would kick the spectator on its first keypress. Drain
+            // and discard instead.
+            tokio::spawn(async move { while session_rx.recv().await.is_some() {} });
+            // `Spectating` before the control message, so it precedes the
+            // `StateUpdate` the session answers with.
+            let _ = session_tx.send(ServerMessage::Spectating { match_id });
+            if handle.add_spectator(session_tx.clone()).is_err() {
+                let _ = session_tx.send(ServerMessage::ConnectRejected { reason: "the match ended".into() });
             }
         }
     }

@@ -26,7 +26,7 @@ use tokio::time::Instant;
 
 use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{GameState, Side};
+use netrunner_core::rules::{GameState, Side, Viewer};
 use netrunner_core::view::build_client_view;
 use netrunner_session::{Seat, Session, SessionStep};
 
@@ -97,21 +97,24 @@ impl PlayerSlot {
     }
 }
 
-/// A fresh pair of channel halves for one seat, queued by a
-/// `ReattachHandle` and applied by the running session.
-struct Reattach {
-    side: Side,
-    tx: mpsc::UnboundedSender<ServerMessage>,
-    rx: mpsc::UnboundedReceiver<ClientMessage>,
+/// What the transport can do to a running match from outside: hand a seat
+/// a fresh pair of channel halves, or add a spectator's sink. One control
+/// channel for both, because `await_seat`'s `select!` is the only place
+/// the session listens between decisions and a second channel would be a
+/// second arm doing the same thing.
+enum SeatControl {
+    Reattach { side: Side, tx: mpsc::UnboundedSender<ServerMessage>, rx: mpsc::UnboundedReceiver<ClientMessage> },
+    AddSpectator { tx: mpsc::UnboundedSender<ServerMessage> },
 }
 
 /// Lets whoever holds the sockets — `serve` — give a seat a new channel
-/// pair while the match runs. Cloneable, so one handle per seat can sit in
-/// a token registry; addressed by `Side` because that is all the session
-/// knows a seat by. Tokens, match ids and who is allowed to present them
-/// are the transport's business, not this pump's.
+/// pair, or add a spectator, while the match runs. Cloneable, so one
+/// handle per seat can sit in a token registry; a seat is addressed by
+/// `Side` because that is all the session knows a seat by. Tokens, match
+/// ids and who is allowed to present them are the transport's business,
+/// not this pump's.
 #[derive(Clone)]
-pub struct ReattachHandle(mpsc::UnboundedSender<Reattach>);
+pub struct ReattachHandle(mpsc::UnboundedSender<SeatControl>);
 
 /// The session behind a `ReattachHandle` has finished — by result,
 /// surrender, stall, or the grace period on this very seat running out —
@@ -142,7 +145,16 @@ impl ReattachHandle {
         tx: mpsc::UnboundedSender<ServerMessage>,
         rx: mpsc::UnboundedReceiver<ClientMessage>,
     ) -> Result<(), MatchOver> {
-        self.0.send(Reattach { side, tx, rx }).map_err(|_| MatchOver)
+        self.0.send(SeatControl::Reattach { side, tx, rx }).map_err(|_| MatchOver)
+    }
+
+    /// Adds a sink that receives the spectator's copy of everything the
+    /// seats get, starting with a `StateUpdate` of the current position.
+    /// Spectators hold no seat and no token: nothing they send reaches the
+    /// session, and a spectator that drops is simply pruned on the next
+    /// send.
+    pub fn add_spectator(&self, tx: mpsc::UnboundedSender<ServerMessage>) -> Result<(), MatchOver> {
+        self.0.send(SeatControl::AddSpectator { tx }).map_err(|_| MatchOver)
     }
 
     /// Whether the session is still running. A `false` is final; a `true`
@@ -157,8 +169,12 @@ pub struct MatchSession {
     session: Session,
     corp: Option<ChannelSeat>,
     runner: Option<ChannelSeat>,
-    reattach_tx: mpsc::UnboundedSender<Reattach>,
-    reattach_rx: mpsc::UnboundedReceiver<Reattach>,
+    reattach_tx: mpsc::UnboundedSender<SeatControl>,
+    reattach_rx: mpsc::UnboundedReceiver<SeatControl>,
+    /// Every spectator's sink. One spectator view is built per broadcast
+    /// however many there are, and a closed sink is dropped at the send
+    /// that finds it closed.
+    spectators: Vec<mpsc::UnboundedSender<ServerMessage>>,
     reconnect_grace: Duration,
     turn_timeout: TurnTimeout,
     /// When the decision currently awaited runs out, if a clock is on.
@@ -188,6 +204,7 @@ impl MatchSession {
             runner: runner_channel,
             reattach_tx,
             reattach_rx,
+            spectators: Vec::new(),
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             turn_timeout: None,
             decision_deadline: None,
@@ -278,7 +295,10 @@ impl MatchSession {
                         // Handshake messages belong to the transport; one
                         // that reaches the session is a client repeating
                         // itself and is ignored.
-                        ClientMessage::Connect { .. } | ClientMessage::Resume { .. } | ClientMessage::ListMatches => continue,
+                        ClientMessage::Connect { .. }
+                        | ClientMessage::Resume { .. }
+                        | ClientMessage::ListMatches
+                        | ClientMessage::Spectate { .. } => continue,
                     }
                 }
                 SessionStep::Ended { winner, reason } => {
@@ -308,7 +328,7 @@ impl MatchSession {
         }
         let decision_deadline = self.decision_deadline;
         loop {
-            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, .. } = self;
+            let MatchSession { session, corp, runner, reattach_rx, reconnect_grace, spectators, .. } = self;
             let seat = match side {
                 Side::Corp => corp.as_mut(),
                 Side::Runner => runner.as_mut(),
@@ -324,27 +344,37 @@ impl MatchSession {
                 // Reattachments first: a queued one must beat a deadline
                 // that expired while the pump was busy elsewhere.
                 biased;
-                reattach = reattach_rx.recv() => {
-                    let Reattach { side: reattached, tx, rx } = reattach.expect("the session holds a sender");
-                    let slot = match reattached {
-                        Side::Corp => corp.as_mut(),
-                        Side::Runner => runner.as_mut(),
-                    };
-                    // A bot seat has no channel to replace; the halves
-                    // drop here and the presenting client's socket closes.
-                    if let Some(slot) = slot {
-                        *slot = ChannelSeat { tx, rx, detached: false };
-                        let view = build_client_view(session.state(), session.registry(), reattached);
-                        slot.send(ServerMessage::StateUpdate(Box::new(view)));
-                        if let Some(decision_deadline) = decision_deadline {
-                            let remaining = decision_deadline.saturating_duration_since(Instant::now());
-                            slot.send(ServerMessage::DecisionClock { side, remaining });
-                        }
-                        if reattached == side {
-                            deadline = None;
+                control = reattach_rx.recv() => match control.expect("the session holds a sender") {
+                    SeatControl::Reattach { side: reattached, tx, rx } => {
+                        let slot = match reattached {
+                            Side::Corp => corp.as_mut(),
+                            Side::Runner => runner.as_mut(),
+                        };
+                        // A bot seat has no channel to replace; the halves
+                        // drop here and the presenting client's socket closes.
+                        if let Some(slot) = slot {
+                            *slot = ChannelSeat { tx, rx, detached: false };
+                            let view = build_client_view(session.state(), session.registry(), reattached);
+                            slot.send(ServerMessage::StateUpdate(Box::new(view)));
+                            if let Some(decision_deadline) = decision_deadline {
+                                let remaining = decision_deadline.saturating_duration_since(Instant::now());
+                                slot.send(ServerMessage::DecisionClock { side, remaining });
+                            }
+                            if reattached == side {
+                                deadline = None;
+                            }
                         }
                     }
-                }
+                    SeatControl::AddSpectator { tx } => {
+                        let view = build_client_view(session.state(), session.registry(), Viewer::Spectator);
+                        let _ = tx.send(ServerMessage::StateUpdate(Box::new(view)));
+                        if let Some(decision_deadline) = decision_deadline {
+                            let remaining = decision_deadline.saturating_duration_since(Instant::now());
+                            let _ = tx.send(ServerMessage::DecisionClock { side, remaining });
+                        }
+                        spectators.push(tx);
+                    }
+                },
                 message = Self::recv_attached(seat) => match message {
                     Some(message) => return SeatEvent::Message(message),
                     None => {
@@ -388,6 +418,18 @@ impl MatchSession {
                 self.send_to(side, ServerMessage::ActionLog(Box::new(entry)));
             }
         }
+        if !self.spectators.is_empty()
+            && let Some(entry) = self.session.last_entry_for(Viewer::Spectator)
+        {
+            self.send_to_spectators(ServerMessage::ActionLog(Box::new(entry)));
+        }
+    }
+
+    /// One message to every spectator, pruning the ones that have gone.
+    /// Cloned per sink like `broadcast` — a spectator is rare enough that
+    /// sharing one `Arc` would buy nothing measurable.
+    fn send_to_spectators(&mut self, message: ServerMessage) {
+        self.spectators.retain(|tx| tx.send(message.clone()).is_ok());
     }
 
     fn send_to(&mut self, side: Side, message: ServerMessage) {
@@ -400,16 +442,23 @@ impl MatchSession {
         }
     }
 
+    /// Both seats and every spectator: `GameEnded` and `DecisionClock`
+    /// carry nothing a spectator may not see.
     fn broadcast(&mut self, message: ServerMessage) {
         for side in [Side::Corp, Side::Runner] {
             self.send_to(side, message.clone());
         }
+        self.send_to_spectators(message);
     }
 
     fn broadcast_state_updates(&mut self) {
         for side in [Side::Corp, Side::Runner] {
             let view = build_client_view(self.session.state(), self.session.registry(), side);
             self.send_to(side, ServerMessage::StateUpdate(Box::new(view)));
+        }
+        if !self.spectators.is_empty() {
+            let view = build_client_view(self.session.state(), self.session.registry(), Viewer::Spectator);
+            self.send_to_spectators(ServerMessage::StateUpdate(Box::new(view)));
         }
     }
 
@@ -538,6 +587,62 @@ mod tests {
     /// Before this the same `HistoryEntry` went to both seats, so the
     /// Runner's log read "Install Palisade into Remote(0)" for a card its
     /// own `StateUpdate` had just rendered as `card: None`.
+    /// The spectator's copy of a Corp install is the Runner's copy: the
+    /// install's shape, no card, no `CardInstalled` — the intersection
+    /// again, at the log.
+    #[tokio::test]
+    async fn a_spectators_log_entry_conceals_both_sides() {
+        let registry = fixtures::kate_vs_hb_registry();
+        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let (mut state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 5).expect("legal decks set up cleanly");
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+
+        let (corp_tx, mut corp_rx) = mpsc::unbounded_channel();
+        let (corp_client_tx, corp_client_rx) = mpsc::unbounded_channel();
+        let (runner_tx, mut runner_rx) = mpsc::unbounded_channel();
+        let (_runner_client_tx, runner_client_rx) = mpsc::unbounded_channel();
+        let session = MatchSession::new(
+            state,
+            registry,
+            PlayerSlot::Channel { tx: corp_tx, rx: corp_client_rx },
+            PlayerSlot::Channel { tx: runner_tx, rx: runner_client_rx },
+        );
+        let reattach = session.reattach_handle();
+        let handle = tokio::spawn(session.run());
+
+        let install = match corp_rx.recv().await.unwrap() {
+            ServerMessage::StateUpdate(view) => view
+                .legal_actions
+                .iter()
+                .find(|action| matches!(action, PlayerAction::InstallCard { .. }))
+                .cloned()
+                .expect("a Corp with three clicks and an opening hand can install something"),
+            other => panic!("expected the initial StateUpdate, got {other:?}"),
+        };
+        assert!(matches!(runner_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+        let (spectator_tx, mut spectator_rx) = mpsc::unbounded_channel();
+        reattach.add_spectator(spectator_tx).unwrap();
+        assert!(matches!(spectator_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+
+        corp_client_tx.send(ClientMessage::SubmitAction(install.clone())).unwrap();
+        assert!(matches!(runner_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+        let runner_entry = match runner_rx.recv().await.unwrap() {
+            ServerMessage::ActionLog(entry) => entry,
+            other => panic!("expected the Runner's ActionLog, got {other:?}"),
+        };
+        assert!(matches!(spectator_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+        match spectator_rx.recv().await.unwrap() {
+            ServerMessage::ActionLog(entry) => {
+                assert!(matches!(entry.action, PublicAction::Concealed(ConcealedAction::InstallCard { .. })));
+                assert!(!entry.events.iter().any(|event| matches!(event, GameEvent::CardInstalled { .. })));
+                assert_eq!(*entry, *runner_entry, "for a Corp install, the spectator's copy is the Runner's copy");
+            }
+            other => panic!("expected the spectator's ActionLog, got {other:?}"),
+        }
+        handle.abort();
+    }
+
     #[tokio::test]
     async fn the_action_log_never_names_the_other_sides_hidden_cards() {
         let registry = fixtures::kate_vs_hb_registry();
@@ -920,6 +1025,70 @@ mod reattach_tests {
 
         assert_eq!(expect_game_ended(runner_rx.recv().await), (Side::Runner, GameEndReason::Disconnected));
         run.await.unwrap();
+    }
+
+    // ----- spectators -----
+
+    fn spectator_sink() -> (mpsc::UnboundedSender<ServerMessage>, mpsc::UnboundedReceiver<ServerMessage>) {
+        mpsc::unbounded_channel()
+    }
+
+    #[tokio::test]
+    async fn a_spectator_gets_the_current_view_on_join_and_every_update_after() {
+        let (state, registry) = state(47);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (_runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot);
+        let handle = session.reattach_handle();
+        let run = tokio::spawn(session.run());
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+
+        let (tx, mut spectator_rx) = spectator_sink();
+        handle.add_spectator(tx).expect("the match is running");
+        let view = match spectator_rx.recv().await {
+            Some(ServerMessage::StateUpdate(view)) => *view,
+            other => panic!("expected the spectator's first StateUpdate, got {other:?}"),
+        };
+        assert_eq!(view.viewer, Viewer::Spectator);
+        assert_eq!(view.corp.hq_cards, None);
+        assert_eq!(view.runner.grip_cards, None);
+        assert!(view.legal_actions.is_empty());
+
+        corp_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut spectator_rx).await;
+        assert!(matches!(spectator_rx.recv().await, Some(ServerMessage::ActionLog(_))));
+
+        run.abort();
+    }
+
+    #[tokio::test]
+    async fn a_spectator_that_drops_is_pruned_without_disturbing_play() {
+        let (state, registry) = state(53);
+        let (corp_tx, mut corp_rx, corp_slot) = channel_slot();
+        let (runner_tx, mut runner_rx, runner_slot) = channel_slot();
+        let session = MatchSession::new(state, registry, corp_slot, runner_slot);
+        let handle = session.reattach_handle();
+        let run = tokio::spawn(session.run());
+        expect_state_update(&mut corp_rx).await;
+        expect_state_update(&mut runner_rx).await;
+
+        let (tx, mut spectator_rx) = spectator_sink();
+        handle.add_spectator(tx).unwrap();
+        expect_state_update(&mut spectator_rx).await;
+        drop(spectator_rx);
+
+        corp_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        expect_state_update(&mut corp_rx).await;
+        assert!(matches!(corp_rx.recv().await, Some(ServerMessage::ActionLog(_))));
+        expect_state_update(&mut runner_rx).await;
+        assert!(matches!(runner_rx.recv().await, Some(ServerMessage::ActionLog(_))));
+        runner_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
+        expect_state_update(&mut runner_rx).await;
+        assert!(handle.is_live(), "the match carried on past the dropped spectator");
+
+        run.abort();
     }
 
     /// Off by default, and silent when off: a clock-less match's message

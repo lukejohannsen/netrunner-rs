@@ -15,14 +15,15 @@ use crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{ConcealedAction, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, Side};
+use netrunner_core::rules::{ConcealedAction, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, Side, Viewer};
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
 use netrunner_server::{ClientMessage, PublicHistoryEntry, ServerMessage};
 
 pub struct App {
     pub registry: CardRegistry,
-    pub human_side: Side,
+    /// The perspective this client was given: a seat, or a spectator's.
+    pub viewer: Viewer,
     tx: mpsc::UnboundedSender<ClientMessage>,
     rx: mpsc::UnboundedReceiver<ServerMessage>,
     /// `None` until the first `StateUpdate` arrives from the match session
@@ -75,13 +76,13 @@ pub fn push_log_line(log: &mut Vec<String>, entry: &PublicHistoryEntry, registry
 impl App {
     pub fn new(
         registry: CardRegistry,
-        human_side: Side,
+        viewer: impl Into<Viewer>,
         tx: mpsc::UnboundedSender<ClientMessage>,
         rx: mpsc::UnboundedReceiver<ServerMessage>,
     ) -> Self {
         let mut app = App {
             registry,
-            human_side,
+            viewer: viewer.into(),
             tx,
             rx,
             view: None,
@@ -149,6 +150,7 @@ impl App {
                 // Handshake replies, consumed in `remote` before the
                 // channel pair ever reaches `App`.
                 ServerMessage::MatchJoined { .. }
+                | ServerMessage::Spectating { .. }
                 | ServerMessage::Queued { .. }
                 | ServerMessage::ConnectRejected { .. }
                 | ServerMessage::MatchList { .. }
@@ -208,7 +210,8 @@ impl App {
 /// so both share the same rendering code instead of duplicating it.
 pub trait RenderableView {
     fn registry(&self) -> &CardRegistry;
-    fn human_side(&self) -> Side;
+    /// Whose eyes the board is drawn through — a seat's, or a spectator's.
+    fn viewer(&self) -> Viewer;
     fn view(&self) -> Option<&ClientView>;
     fn selected(&self) -> usize;
     /// Labels for the actions on offer, in the order they are listed.
@@ -296,8 +299,8 @@ impl RenderableView for App {
         &self.registry
     }
 
-    fn human_side(&self) -> Side {
-        self.human_side
+    fn viewer(&self) -> Viewer {
+        self.viewer
     }
 
     fn view(&self) -> Option<&ClientView> {
@@ -717,7 +720,7 @@ mod tests {
 
         let (initial_phase, initial_credits) = {
             let view = app.view.as_ref().expect("initial view delivered");
-            assert_eq!(view.side, Side::Corp);
+            assert_eq!(view.viewer.side(), Some(Side::Corp));
             (view.phase, view.corp.credits)
         };
         assert!(!app.legal_actions().is_empty());

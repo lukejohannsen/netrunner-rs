@@ -120,6 +120,12 @@ pub struct Config {
     #[arg(long)]
     pub room: Option<String>,
 
+    /// (remote mode) Watch a running match instead of playing: an id from
+    /// `netrunner_cli matches`. A spectator sees what both players can
+    /// see and nothing either keeps hidden, and has nothing to submit.
+    #[arg(long)]
+    pub spectate: Option<uuid::Uuid>,
+
     /// Path to the trained ONNX policy driving `--corp onnx`/`--runner onnx`
     /// and `puct-onnx` — the artifact `scripts/run_iteration_loop.py`
     /// promotes each iteration. Ignored unless a side is set to one of
@@ -217,6 +223,10 @@ pub enum Mode {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// List the matches the `netrunner_server --serve` daemon at
+    /// `--server` is hosting, with the ids `--spectate` takes.
+    Matches,
+
     /// List or fetch NetrunnerDB card sets into the local cache.
     Cards {
         #[command(subcommand)]

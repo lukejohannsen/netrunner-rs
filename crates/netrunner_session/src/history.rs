@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{
     mask_action_for_player, mask_event_for_player, Deck, DeckOrder, GameEvent, GameState, MatchRules, PlayerAction,
-    PublicAction, RulesError, Side,
+    PublicAction, RulesError, Side, Viewer,
 };
 
 /// One resolved action: which turn it happened during (see
@@ -45,7 +45,8 @@ impl HistoryEntry {
     /// caller that has that state to hand; there is deliberately no batch
     /// form over older entries, since masking one against a later state is
     /// exactly the mistake that would reveal a card trashed since.
-    pub fn for_viewer(&self, state: &GameState, viewer: Side) -> PublicHistoryEntry {
+    pub fn for_viewer(&self, state: &GameState, viewer: impl Into<Viewer>) -> PublicHistoryEntry {
+        let viewer = viewer.into();
         PublicHistoryEntry {
             turn_number: self.turn_number,
             side: self.side,

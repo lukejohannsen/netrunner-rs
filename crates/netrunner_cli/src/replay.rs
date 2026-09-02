@@ -16,7 +16,7 @@
 use std::path::Path;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{apply_action, GameEvent, GameState, PlayerAction, RulesError, Side};
+use netrunner_core::rules::{apply_action, GameEvent, GameState, PlayerAction, RulesError, Side, Viewer};
 use netrunner_core::view::{build_client_view, ClientView};
 use netrunner_session::{HistoryEntry, MatchHistory, MatchRecordHeader};
 
@@ -191,8 +191,8 @@ impl RenderableView for Replay {
         &self.registry
     }
 
-    fn human_side(&self) -> Side {
-        self.side
+    fn viewer(&self) -> Viewer {
+        Viewer::Player(self.side)
     }
 
     fn view(&self) -> Option<&ClientView> {

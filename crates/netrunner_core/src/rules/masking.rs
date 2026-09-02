@@ -262,12 +262,58 @@ pub struct PublicGameState {
     pub pending_decision: Option<crate::rules::state::PendingDecision>,
 }
 
-pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState {
+/// Who a masked projection is for.
+///
+/// **A spectator sees the intersection of what the two players see.**
+/// Every gate in this module has the shape "visible iff the viewer owns
+/// it, or it is public" — `mask_zone`, `mask_installed_card`,
+/// `mask_archived_card`, `mask_run_state`, the event and action maskers —
+/// and is phrased as `viewer.is(owner)`, so a spectator, who owns neither
+/// side, takes the hidden branch at all of them and there is no third code
+/// path to keep honest. Rejected: an omniscient "caster" perspective.
+/// Anyone may spectate a match, including a player of that very match, so
+/// a union view would be a fog-of-war bypass; a *delayed* omniscient
+/// stream is a different feature with its own gate.
+///
+/// Every masking entry point takes `impl Into<Viewer>`, so the many
+/// callers that mask for a `Side` (every bot, the RL encoder, both TUIs)
+/// pass it unchanged; wrapping each in `Viewer::Player` would have
+/// documented nothing. A parallel `build_spectator_view` was rejected
+/// too: two entry points into one masking policy is how they drift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Viewer {
+    Player(Side),
+    Spectator,
+}
+
+impl From<Side> for Viewer {
+    fn from(side: Side) -> Self {
+        Viewer::Player(side)
+    }
+}
+
+impl Viewer {
+    /// Whether this viewer *is* `side` — the owner test every gate asks.
+    pub fn is(self, side: Side) -> bool {
+        self == Viewer::Player(side)
+    }
+
+    /// The seat this viewer sits in, if any.
+    pub fn side(self) -> Option<Side> {
+        match self {
+            Viewer::Player(side) => Some(side),
+            Viewer::Spectator => None,
+        }
+    }
+}
+
+pub fn mask_state_for_player(state: &GameState, viewer: impl Into<Viewer>) -> PublicGameState {
+    let viewer = viewer.into();
     PublicGameState {
-        corp: mask_corp_state(&state.corp, player == Side::Corp),
-        runner: mask_runner_state(&state.runner, player == Side::Runner),
+        corp: mask_corp_state(&state.corp, viewer.is(Side::Corp)),
+        runner: mask_runner_state(&state.runner, viewer.is(Side::Runner)),
         phase: state.phase,
-        active_run: state.active_run.as_ref().map(|run| mask_run_state(run, player)),
+        active_run: state.active_run.as_ref().map(|run| mask_run_state(run, viewer)),
         paid_ability_window: state.paid_ability_window.clone(),
         active_trace: state.active_trace.clone(),
         pending_prevention: state.pending_prevention.clone(),
@@ -329,8 +375,8 @@ pub enum ConcealedAction {
 /// card-bearing variant must be classified here before it compiles — the
 /// `explain_action` discipline, and the opposite of the `_ =>` decode arms
 /// the Rules Audit removed.
-pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: Side) -> PublicAction {
-    if actor == viewer {
+pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl Into<Viewer>) -> PublicAction {
+    if viewer.into().is(actor) {
         return PublicAction::Visible(action.clone());
     }
     match action {
@@ -412,8 +458,9 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: Side) 
 ///
 /// Exhaustive over `GameEvent` with no catch-all arm, for the same reason
 /// as `mask_action_for_player`.
-pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: Side) -> Option<GameEvent> {
-    let concealed = |card: &CardId| viewer == Side::Runner && corp_card_concealed_from_runner(state, card);
+pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl Into<Viewer>) -> Option<GameEvent> {
+    let viewer = viewer.into();
+    let concealed = |card: &CardId| !viewer.is(Side::Corp) && corp_card_concealed_from_runner(state, card);
     let visible = || Some(event.clone());
 
     match event {
@@ -421,7 +468,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: Side)
         // `rez_ice`, and `turn::discard_to_pile` sends an HQ discard
         // facedown because the Runner never saw it.
         GameEvent::CardInstalled { side: Side::Corp, .. } | GameEvent::CardDiscarded { side: Side::Corp, .. } => {
-            (viewer == Side::Corp).then(visible).flatten()
+            viewer.is(Side::Corp).then(visible).flatten()
         }
         GameEvent::CardInstalled { .. } | GameEvent::CardDiscarded { .. } => visible(),
         // A Corp trash lands faceup only if the Runner had seen the card
@@ -453,16 +500,16 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: Side)
         // `OpponentInstalled`), where the pending decision offered them
         // positions, not identities.
         GameEvent::CardsSelected { side, cards, revealed } => {
-            let chooser_may_see = viewer == *side && !cards.iter().any(concealed);
+            let chooser_may_see = viewer.is(*side) && !cards.iter().any(concealed);
             (*revealed || chooser_may_see).then(visible).flatten()
         }
         // The same line `mask_run_state` draws: the Runner sees what they
         // access; the Corp learns which of its cards that was only in
         // Archives, where everything is faceup after an access.
         GameEvent::CardAccessed { server, .. } => {
-            (viewer == Side::Runner || *server == ServerId::Archives).then(visible).flatten()
+            (viewer.is(Side::Runner) || *server == ServerId::Archives).then(visible).flatten()
         }
-        GameEvent::AccessPassed { .. } => (viewer == Side::Runner).then(visible).flatten(),
+        GameEvent::AccessPassed { .. } => viewer.is(Side::Runner).then(visible).flatten(),
         // A prevention window naming an unrezzed Corp install. No card in
         // the pool opens one today (`PreventTrash` is unused); the rule is
         // here so the day one does, it is not a leak.
@@ -623,15 +670,15 @@ fn mask_access_state(access: &AccessState, card_visible: bool) -> PublicAccessSt
     }
 }
 
-fn mask_run_state(run: &RunState, player: Side) -> PublicRunState {
-    // The Corp only ever sees accessed-card identities once the accessed
-    // server is Archives (an always-public zone) — otherwise the Runner
-    // alone knows what they hit until it lands in a public zone.
-    let card_visible = player == Side::Runner || run.server == ServerId::Archives;
+fn mask_run_state(run: &RunState, viewer: Viewer) -> PublicRunState {
+    // Only the Runner sees accessed-card identities before the accessed
+    // server is Archives (an always-public zone) — the Corp, and a
+    // spectator, learn what was hit when it lands in a public zone.
+    let card_visible = viewer.is(Side::Runner) || run.server == ServerId::Archives;
     PublicRunState {
         server: run.server,
         phase: run.phase,
-        ice: run.ice.iter().map(|ice| mask_run_ice(ice, player == Side::Corp)).collect(),
+        ice: run.ice.iter().map(|ice| mask_run_ice(ice, viewer.is(Side::Corp))).collect(),
         position: run.position,
         access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible)),
         jack_out_permitted: run.jack_out_permitted,
@@ -1470,5 +1517,77 @@ mod tests {
                 assert_eq!(mask_event_for_player(&event, &state, viewer), Some(event.clone()));
             }
         }
+    }
+
+    // ----- `Viewer::Spectator`: the intersection of the two seats -----
+
+    #[test]
+    fn a_spectator_sees_neither_hand_nor_deck_and_each_board_as_the_opponent_does() {
+        let state = game_state_with_runner(runner_state_with_cards());
+        let spectator = mask_state_for_player(&state, Viewer::Spectator);
+        assert!(matches!(spectator.corp.hq, MaskedZone::Hidden { count: 1 }));
+        assert!(matches!(spectator.corp.r_and_d, MaskedZone::Hidden { count: 2 }));
+        assert!(matches!(spectator.runner.grip, MaskedZone::Hidden { count: 1 }));
+        assert!(matches!(spectator.runner.stack, MaskedZone::Hidden { count: 2 }));
+        assert_eq!(spectator.corp.archives[0].card, None, "a facedown Archives card stays facedown");
+        assert_eq!(spectator.corp, mask_state_for_player(&state, Side::Runner).corp, "the Corp's board as the Runner sees it");
+        assert_eq!(spectator.runner, mask_state_for_player(&state, Side::Corp).runner, "the Runner's board as the Corp sees it");
+    }
+
+    #[test]
+    fn a_spectator_sees_unrezzed_run_ice_as_the_runner_does_and_accessed_cards_as_the_corp_does() {
+        let access = AccessState {
+            unaccessed_cards: vec![CardId("agenda".to_string())],
+            phase: AccessPhase::PendingChoice {
+                card_id: CardId("hedge_fund".to_string()),
+                trash_cost: None,
+                mandatory_steal: false,
+                steal_cost: None,
+            },
+            ..Default::default()
+        };
+        let run = run_state(ServerId::Hq, vec![run_ice("ice_wall", false)], Some(access));
+        let state = state_with_run(run);
+
+        let spectator = mask_state_for_player(&state, Viewer::Spectator).active_run.unwrap();
+        let for_runner = mask_state_for_player(&state, Side::Runner).active_run.unwrap();
+        let for_corp = mask_state_for_player(&state, Side::Corp).active_run.unwrap();
+        assert_eq!(spectator.ice[0].identity, None);
+        assert_eq!(spectator.ice, for_runner.ice, "unrezzed ICE is the Corp's secret");
+        assert_eq!(spectator.access_state, for_corp.access_state, "the accessed HQ card is the Runner's secret");
+    }
+
+    #[test]
+    fn a_spectators_log_conceals_both_sides_card_naming_actions() {
+        let corp_install = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice };
+        assert_eq!(
+            mask_action_for_player(&corp_install, Side::Corp, Viewer::Spectator),
+            mask_action_for_player(&corp_install, Side::Corp, Side::Runner)
+        );
+        let runner_access = PlayerAction::SelectCardToAccess { card_id: id("hedge_fund") };
+        assert_eq!(
+            mask_action_for_player(&runner_access, Side::Runner, Viewer::Spectator),
+            mask_action_for_player(&runner_access, Side::Runner, Side::Corp)
+        );
+        // Neither seat's own-action exemption applies to someone who sits in neither.
+        assert!(matches!(mask_action_for_player(&corp_install, Side::Corp, Viewer::Spectator), PublicAction::Concealed(_)));
+        assert!(matches!(mask_action_for_player(&runner_access, Side::Runner, Viewer::Spectator), PublicAction::Concealed(_)));
+    }
+
+    #[test]
+    fn a_spectator_gets_every_event_the_more_restricted_seat_gets_and_no_other() {
+        let state = game_state(corp_state_with_cards());
+        let corp_secret = GameEvent::CardInstalled { side: Side::Corp, card: id("ice_wall"), server: ServerId::Hq };
+        let runner_secret = GameEvent::AccessPassed { card: id("hedge_fund") };
+        let public = GameEvent::CardAccessed { card: id("cyberdex_trial"), server: ServerId::Archives, install: None };
+        assert_eq!(mask_event_for_player(&corp_secret, &state, Viewer::Spectator), None);
+        assert_eq!(mask_event_for_player(&runner_secret, &state, Viewer::Spectator), None);
+        assert_eq!(mask_event_for_player(&public, &state, Viewer::Spectator), Some(public.clone()));
+        // Struck out in place, as for the Runner.
+        let trace = GameEvent::TraceInitiated { base: 2, initiating_card: Some(id("ice_wall")) };
+        assert_eq!(
+            mask_event_for_player(&trace, &state, Viewer::Spectator),
+            mask_event_for_player(&trace, &state, Side::Runner)
+        );
     }
 }
