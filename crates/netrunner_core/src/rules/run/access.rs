@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, Cost};
+use crate::dsl::{CardId, Cost, HostedCreditUse};
 use crate::rules::ability;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
@@ -701,6 +701,13 @@ fn remove_from_corp_zone(
 /// Root-slot Corp install) and pushes it onto Archives — unless it was
 /// already being accessed *from* Archives, in which case it's already
 /// there and this is a no-op.
+///
+/// "From Archives" means a card in the pile, not an upgrade installed in
+/// Archives' root: that one is pinned by `install` and has to leave the
+/// table like any other root install. It used to be skipped with the pile
+/// — the trash cost was paid and `CardTrashedFromAccess` emitted while the
+/// upgrade stayed installed, unrezzed, which the spectator fog gate caught
+/// at *Elevation* Stage 1 (the log named a card the view still concealed).
 fn move_to_archives(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -708,7 +715,7 @@ fn move_to_archives(
     server: ServerId,
     install: Option<InstallId>,
 ) {
-    if server == ServerId::Archives {
+    if server == ServerId::Archives && install.is_none() {
         return;
     }
     if let RemovedFrom::Installed { slot: InstallSlot::Root } = remove_from_corp_zone(state, card_id, server, install) {
@@ -773,12 +780,32 @@ pub fn resolve_trash(
     let pending = require_pending(state, card_id)?;
     let cost = pending.trash_cost.ok_or(RulesError::NotInAccessPhase)?;
 
-    let available = state.runner.resources.credits.0;
+    // Hosted credits a card lets the Runner spend on trash costs (Azimat's
+    // `hosted_credits_usable_for: TrashCosts`) count towards affordability
+    // and are drained first, rig order, before the wallet — the same
+    // "pool before wallet" precedent `ability::pay_cost` applies to bad
+    // publicity and bonus run credits. Drained here rather than inside
+    // `pay_cost` because that waterfall is purpose-blind and these pools
+    // are not; this is the one site that knows the purpose is a trash
+    // cost. See `CardDefinition::hosted_credits_usable_for`.
+    let hosted = trash_cost_credit_pools(state, registry);
+    let available = state.runner.resources.credits.0.saturating_add(hosted.iter().map(|(_, c)| c).sum());
     if available < cost {
         return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available, requested: cost });
     }
 
-    let mut events = ability::pay_cost(state, Side::Runner, &Cost::Credits(cost), Some(card_id))?;
+    let mut events = Vec::new();
+    let mut remaining = cost;
+    for (install, credits) in hosted {
+        if remaining == 0 {
+            break;
+        }
+        let spend = credits.min(remaining);
+        let ctx = ability::ResolutionContext::for_parked(Some(install), None);
+        events.extend(ability::spend_hosted_credits(state, &ctx, spend)?);
+        remaining -= spend;
+    }
+    events.extend(ability::pay_cost(state, Side::Runner, &Cost::Credits(remaining), Some(card_id))?);
     move_to_archives(state, registry, card_id, pending.server, pending.install);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost };
     events.push(trashed_event.clone());
@@ -786,6 +813,24 @@ pub fn resolve_trash(
 
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
+}
+
+/// Every rig card whose hosted credits may pay a trash cost, with what it
+/// holds, in rig order — the pools `resolve_trash` drains before the
+/// wallet. Empty for every rig without such a card.
+fn trash_cost_credit_pools(state: &GameState, registry: &CardRegistry) -> Vec<(InstallId, u32)> {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter(|card| card.counters > 0)
+        .filter(|card| {
+            registry
+                .get(&card.card)
+                .is_some_and(|def| def.hosted_credits_usable_for == Some(HostedCreditUse::TrashCosts))
+        })
+        .map(|card| (card.install_id, card.counters))
+        .collect()
 }
 
 /// Resolves `PlayerAction::PassAccessedCard`. See its doc comment for the

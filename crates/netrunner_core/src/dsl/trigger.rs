@@ -48,8 +48,10 @@ pub enum Trigger {
     ///   e.g. Red Team/Telework Contract's own "when you install this
     ///   resource, load N credits onto it."
     ///
-    /// `InstallHardware`/`InstallProgram` don't dispatch this trigger at
-    /// all yet (no Hardware/Program in the current set needs it).
+    /// `ProgramInstalled`/`HardwareInstalled` reach the just-installed card
+    /// the same way (Botulus's counter; GAMEDRAGON™ Pro's "when you install
+    /// this hardware ... you may host it"). Hardware was the last type
+    /// widened — no System Gateway hardware reacted to its own install.
     OnInstall,
     /// Fires against the Runner's identity card specifically when a run on
     /// HQ succeeds (`GameEvent::RunSucceeded { server: ServerId::Hq }`) —

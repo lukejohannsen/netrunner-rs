@@ -215,6 +215,12 @@ pub(crate) fn finish_end_turn(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
+    // A new Runner discard phase starts with an empty record whether or
+    // not anything will be discarded in it — see
+    // `RunnerState::discarded_this_discard_phase`.
+    if side == Side::Runner {
+        state.runner.discarded_this_discard_phase.clear();
+    }
     let over_by = cards_over_hand_limit(state, side);
     if over_by > 0 {
         state.phase = GamePhase::Discard { side, required: over_by };
@@ -244,6 +250,9 @@ pub fn discard_card(
     let mut next = state.clone();
     take_from_hand(&mut next, side, &card_id)?;
     discard_to_pile(&mut next, side, card_id.clone());
+    if side == Side::Runner {
+        next.runner.discarded_this_discard_phase.push(card_id.clone());
+    }
     let mut events = vec![GameEvent::CardDiscarded { side, card: card_id }];
 
     // Re-derived from the post-discard state, not decremented from the

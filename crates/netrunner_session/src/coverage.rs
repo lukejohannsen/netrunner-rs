@@ -30,13 +30,14 @@
 //! events), so a new variant is counted the day it is added. The keys are
 //! all `BTreeMap<String, _>` so the JSON is sorted and diffable.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 
 use netrunner_core::cards::CardRegistry;
+use netrunner_core::decks::{DeckCategory, DeckFile};
 use netrunner_core::dsl::{CardId, CardType, Effect, Trigger};
-use netrunner_core::rules::{GameEvent, PlayerAction, ServerId};
+use netrunner_core::rules::{GameEvent, PlayerAction, ServerId, Side};
 
 use crate::history::{HistoryEntry, MatchHistory};
 use crate::session::{SessionStep, StallReason};
@@ -444,12 +445,73 @@ pub const LOAD_BEARING_EVENTS: &[&str] = &[
 ];
 
 /// Every non-identity card the sample decks (`decks::matchups()`) contain,
-/// deduplicated and sorted — the universe the card gate checks.
+/// deduplicated and sorted — the universe the headless report describes
+/// and the deep sweep demands in full.
 pub fn sample_pool_card_ids(registry: &CardRegistry) -> Vec<CardId> {
-    let mut ids: Vec<CardId> = netrunner_core::decks::matchups()
-        .into_iter()
-        .flat_map(|(corp, runner)| corp.cards.into_iter().chain(runner.cards))
-        .map(|entry| entry.card)
+    let sample = |side| -> Vec<DeckFile> {
+        netrunner_core::decks::for_side(side).into_iter().filter(|deck| deck.category == DeckCategory::Sample).collect()
+    };
+    let decks: Vec<DeckFile> = sample(Side::Corp).into_iter().chain(sample(Side::Runner)).collect();
+    pool_card_ids(registry, decks.iter())
+}
+
+/// The decks the sweeps play at seed `seed`: the `seed`th Corp deck and
+/// the `seed`th Runner deck of the sample pool, each modulo its own list
+/// (sorted by id, as `decks::for_side` returns them). Every deck is
+/// played within `max(C, R)` seeds, and every deck at least
+/// `seeds / max(C, R)` times — so the default 32-seed run reaches the
+/// whole pool and the 256-seed run plays each deck many times over.
+/// Rotating `seed` over the full `matchups()` cross product instead would
+/// spend the default run on the first few Corp decks once the pool is
+/// 16 × 12. The cross product stays what self-play, `bench`, the gym and
+/// `--all-matchups` rotate: they want the pairing distribution and play
+/// thousands of games.
+pub fn sweep_decks_for_seed(seed: u64) -> (DeckFile, DeckFile) {
+    let sample = |side| -> Vec<DeckFile> {
+        netrunner_core::decks::for_side(side).into_iter().filter(|deck| deck.category == DeckCategory::Sample).collect()
+    };
+    let corps = sample(Side::Corp);
+    let runners = sample(Side::Runner);
+    assert!(!corps.is_empty() && !runners.is_empty(), "the embedded sample decks should yield at least one matchup");
+    let corp = corps[(seed % corps.len() as u64) as usize].clone();
+    let runner = runners[(seed % runners.len() as u64) as usize].clone();
+    (corp, runner)
+}
+
+/// The card universe the sweep's card gate demands at `seed_count` seeds:
+/// every non-identity card of every deck `sweep_decks_for_seed` plays in
+/// at least `MIN_GAMES_FOR_CARD_GATE` games across the sweep (three
+/// seatings per seed). At 32 seeds over the twelve System Gateway
+/// matchups every deck qualifies, which is the density the gate has been
+/// passing at; at 256 seeds every deck qualifies whatever the pool, so
+/// the deep run demands every card exactly as before. A card in a deck
+/// the sweep played once or never is not a finding, so it is not asked
+/// for — raising the default seed count with the pool would have grown
+/// the inner loop 16× by the end of *Elevation*.
+pub fn played_pool_card_ids(registry: &CardRegistry, seed_count: u64) -> Vec<CardId> {
+    let mut games: HashMap<String, (DeckFile, u64)> = HashMap::new();
+    for seed in 0..seed_count {
+        let (corp, runner) = sweep_decks_for_seed(seed);
+        for deck in [corp, runner] {
+            games.entry(deck.id.clone()).or_insert((deck, 0)).1 += SEATINGS_PER_SEED;
+        }
+    }
+    let played: Vec<DeckFile> =
+        games.into_values().filter(|(_, n)| *n >= MIN_GAMES_FOR_CARD_GATE).map(|(deck, _)| deck).collect();
+    pool_card_ids(registry, played.iter())
+}
+
+/// Seatings each sweep plays per seed (random-vs-random plus the two
+/// heuristic pairings) — see `Seating::ALL` in the sweeps.
+const SEATINGS_PER_SEED: u64 = 3;
+
+/// Games a deck must have been played in before the sweep's card gate
+/// demands every card of it: two seeds' worth. See `played_pool_card_ids`.
+const MIN_GAMES_FOR_CARD_GATE: u64 = 2 * SEATINGS_PER_SEED;
+
+fn pool_card_ids<'d>(registry: &CardRegistry, decks: impl Iterator<Item = &'d DeckFile>) -> Vec<CardId> {
+    let mut ids: Vec<CardId> = decks
+        .flat_map(|deck| deck.cards.iter().map(|entry| entry.card.clone()))
         .filter(|id| registry.get(id).is_none_or(|def| def.card_type != CardType::Identity))
         .collect();
     ids.sort_by(|a, b| a.0.cmp(&b.0));

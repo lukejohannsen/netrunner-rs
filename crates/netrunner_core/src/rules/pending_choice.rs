@@ -163,10 +163,31 @@ fn instance_matches_filter(
         // and the resolution can never disagree. Grip cards only; the
         // definition-level type half already ran in `card_matches_filter`.
         CardFilter::InstallableRunnerCard => {
-            matches!(zone, CardZoneRef::OwnGrip)
-                && state.runner.grip.get(position).is_some_and(|card| {
-                    crate::rules::engine::can_install_runner_card_from_grip(state, registry, card)
-                })
+            use crate::rules::engine::{can_install_runner_card_from_zone, RunnerCardSource};
+            match zone {
+                CardZoneRef::OwnGrip => state.runner.grip.get(position).is_some_and(|card| {
+                    can_install_runner_card_from_zone(state, registry, card, RunnerCardSource::Grip)
+                }),
+                CardZoneRef::OwnHeap => state.runner.heap.get(position).is_some_and(|card| {
+                    can_install_runner_card_from_zone(state, registry, card, RunnerCardSource::Heap)
+                }),
+                _ => false,
+            }
+        }
+        // Only a heap card can have been discarded; the list is the
+        // Runner's own, so `chooser` must be the Runner for `OwnHeap` to
+        // be the heap at all.
+        CardFilter::DiscardedThisDiscardPhase => {
+            matches!(zone, CardZoneRef::OwnHeap)
+                && chooser == Side::Runner
+                && state
+                    .runner
+                    .heap
+                    .get(position)
+                    .is_some_and(|card| state.runner.discarded_this_discard_phase.contains(card))
+        }
+        CardFilter::All(filters) => {
+            filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter))
         }
         _ => true,
     }
@@ -228,7 +249,7 @@ fn is_corp_archives(chooser: Side, zone: &CardZoneRef) -> bool {
 /// cascade_trash_hosted_programs`), exactly as `trash_card` does — this was
 /// the one removal site that did not, leaving a hosted Botulus/Tranquilizer
 /// in the rig pointing at ICE that no longer existed.
-fn remove_installed_card(
+pub(crate) fn remove_installed_card(
     state: &mut GameState,
     chooser: Side,
     zone: &CardZoneRef,
@@ -247,7 +268,9 @@ fn remove_installed_card(
         }
         Side::Runner => {
             let pos = state.runner.rig.iter().position(|c| c.install_id == install_id)?;
-            Some((state.runner.rig.remove(pos).card, true, Vec::new()))
+            let removed = state.runner.rig.remove(pos);
+            let cascade = ability::cascade_trash_hosted_on_rig_card(state, removed.install_id);
+            Some((removed.card, true, cascade))
         }
     }
 }
@@ -652,6 +675,12 @@ pub(crate) fn resolve_confirm_card_selection(
         let effect = match (*effect, selected.as_slice(), selected_installs.as_slice()) {
             (Effect::RezInstalledIgnoringCost(_), _, [chosen, ..]) => Some(Effect::RezInstalledIgnoringCost(*chosen)),
             (Effect::SwapInstalledIce(_, _), _, [a, b, ..]) => Some(Effect::SwapInstalledIce(*a, *b)),
+            // The parking card hosts *itself* on the install it chose —
+            // GAMEDRAGON™ Pro picking an icebreaker. Both placeholders are
+            // substituted here, since only this site knows both installs.
+            (Effect::HostRigCardOnInstall { .. }, _, [chosen, ..]) => {
+                source_install.map(|card| Effect::HostRigCardOnInstall { card, host: *chosen })
+            }
             (Effect::InstallFromZoneIgnoringCost { origin_zone, slot, insert_after, .. }, [chosen, ..], _) => {
                 host.map(|(host_install, into)| Effect::InstallFromZoneIgnoringCost {
                     card_id: chosen.clone(),

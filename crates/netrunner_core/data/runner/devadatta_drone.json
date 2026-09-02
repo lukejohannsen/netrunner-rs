@@ -1,0 +1,43 @@
+{
+  "id": "devadatta_drone",
+  "title": "Devadatta Drone",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "AddCounters": 2
+        }
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRunOnRnD",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "AddAdditionalAccess": {
+                "server": "RnD",
+                "count": 1
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "counter_kind": "Power",
+  "numeric_id": 35031,
+  "is_playable": true
+}

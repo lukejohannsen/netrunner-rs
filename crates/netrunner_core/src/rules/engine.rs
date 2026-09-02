@@ -608,7 +608,9 @@ fn trash_earlier_unique_copy(next: &mut GameState, registry: &CardRegistry, side
             let Some(pos) = next.runner.rig.iter().position(|c| &c.card == card_id) else { return Vec::new() };
             let earlier = next.runner.rig.remove(pos);
             next.runner.heap.push(earlier.card.clone());
-            vec![GameEvent::CardTrashed { side, card: earlier.card }]
+            let mut events = vec![GameEvent::CardTrashed { side, card: earlier.card }];
+            events.extend(ability::cascade_trash_hosted_on_rig_card(next, earlier.install_id));
+            events
         }
     }
 }
@@ -853,6 +855,13 @@ fn play_event(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
+    // A Double's extra click (or any other printed additional cost) is
+    // part of paying to play, so it lands here with the credits — before
+    // `OnPlay` — and an unaffordable one fails the play before anything
+    // resolves, which is what makes `legal_actions`' probe drop it.
+    if let Some(additional) = &card_def.additional_play_cost {
+        events.extend(ability::pay_cost(&mut next, side, additional, Some(&card_id))?);
+    }
     let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
     events.push(played_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &played_event)?);
@@ -936,6 +945,7 @@ fn seed_rig_card(
         turn_strength_buff: 0,
         counters: 0,
         hosted_on_ice: None,
+        hosted_on_program: None,
     })
 }
 
@@ -1021,12 +1031,34 @@ pub(crate) fn preview_runner_install_cost(
     if !state.runner.first_install_discount_used_this_turn {
         cost = cost.saturating_sub(applicable_first_install_discount(state, registry, kind));
     }
+    cost.saturating_sub(per_card_install_discount(state, registry, card_def))
+}
+
+/// The card's own printed install discount, re-evaluated fresh every time
+/// it is priced: the conditional fixed amount (`install_cost_discount_if`
+/// — Carmen's "-2 if you made a successful run this turn") plus the
+/// scaling amount (`install_cost_discount_amount` — Principia's "-1 for
+/// each other installed icebreaker"). Stacks independently on top of the
+/// once-per-turn identity/rig-card discount, with no shared consumption
+/// flag. One function because three pricing paths (the click install, the
+/// effect install, the read-only preview) used to restate the conditional
+/// half and would have restated the scaling half too.
+fn per_card_install_discount(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_def: &crate::dsl::CardDefinition,
+) -> u32 {
+    let ctx = ability::ResolutionContext::for_card(Some(&card_def.id));
+    let mut discount = 0;
     if let Some((requirement, amount)) = &card_def.install_cost_discount_if
-        && ability::check_requirement(state, requirement, Side::Runner, &ability::ResolutionContext::for_card(Some(&card_def.id)), registry).is_ok()
+        && ability::check_requirement(state, requirement, Side::Runner, &ctx, registry).is_ok()
     {
-        cost = cost.saturating_sub(*amount);
+        discount += *amount;
     }
-    cost
+    if let Some(amount) = &card_def.install_cost_discount_amount {
+        discount += ability::resolve_amount(amount, &ctx, state, registry);
+    }
+    discount
 }
 
 /// Whether `card_id` could be installed out of the grip by an effect right
@@ -1042,7 +1074,37 @@ pub(crate) fn can_install_runner_card_from_grip(
     registry: &CardRegistry,
     card_id: &CardId,
 ) -> bool {
-    if !state.runner.grip.contains(card_id) {
+    can_install_runner_card_from_zone(state, registry, card_id, RunnerCardSource::Grip)
+}
+
+/// Where an effect-driven Runner install takes its card from. The grip
+/// (Pantograph, Mutual Favor) and the heap (Scrounge, Magdalene
+/// Keino-Chemutai) are the only two zones a Runner card is ever installed
+/// out of by card text; pricing, budgets and the console rule are the same
+/// for both, only the removal differs.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RunnerCardSource {
+    Grip,
+    Heap,
+}
+
+impl RunnerCardSource {
+    fn zone(self, state: &GameState) -> &Vec<CardId> {
+        match self {
+            RunnerCardSource::Grip => &state.runner.grip,
+            RunnerCardSource::Heap => &state.runner.heap,
+        }
+    }
+}
+
+/// `can_install_runner_card_from_grip`, generalised over the source zone.
+pub(crate) fn can_install_runner_card_from_zone(
+    state: &GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+    source: RunnerCardSource,
+) -> bool {
+    if !source.zone(state).contains(card_id) {
         return false;
     }
     let Some(card_def) = registry.get(card_id) else { return false };
@@ -1085,8 +1147,30 @@ pub(crate) fn install_runner_card_from_grip_paying_cost(
     registry: &CardRegistry,
     card_id: CardId,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    install_runner_card_from_zone_paying_cost(next, registry, card_id, RunnerCardSource::Grip)
+}
+
+/// `install_runner_card_from_grip_paying_cost`, generalised over the
+/// source zone — see `RunnerCardSource`.
+pub(crate) fn install_runner_card_from_zone_paying_cost(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+    source: RunnerCardSource,
+) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Runner;
-    take_from_grip(next, side, &card_id)?;
+    match source {
+        RunnerCardSource::Grip => take_from_grip(next, side, &card_id)?,
+        RunnerCardSource::Heap => {
+            let position = next
+                .runner
+                .heap
+                .iter()
+                .position(|c| c == &card_id)
+                .ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
+            next.runner.heap.remove(position);
+        }
+    }
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?
@@ -1096,12 +1180,8 @@ pub(crate) fn install_runner_card_from_grip_paying_cost(
         CardType::Program => {
             let memory_cost = card_def.memory_cost.unwrap_or(0);
             require_memory_for(next, registry, memory_cost)?;
-            let mut cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Program);
-            if let Some((requirement, amount)) = &card_def.install_cost_discount_if
-                && ability::check_requirement(next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok()
-            {
-                cost = cost.saturating_sub(*amount);
-            }
+            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Program)
+                .saturating_sub(per_card_install_discount(next, registry, &card_def));
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
@@ -1119,7 +1199,9 @@ pub(crate) fn install_runner_card_from_grip_paying_cost(
             if let Some(bonus) = card_def.max_hand_size_bonus {
                 next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
             }
-            events.push(GameEvent::HardwareInstalled { side, card: card_id });
+            let installed_event = GameEvent::HardwareInstalled { side, card: card_id };
+            events.push(installed_event.clone());
+            events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
         }
         CardType::Resource => {
             let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Resource);
@@ -1187,7 +1269,12 @@ fn install_hardware(
     if let Some(bonus) = card_def.max_hand_size_bonus {
         next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
     }
-    events.push(GameEvent::HardwareInstalled { side, card: card_id });
+    // Dispatched like a Program or Resource install — a piece of hardware
+    // can react to its own install (GAMEDRAGON™ Pro). Nothing did before,
+    // so this used to be a bare push.
+    let installed_event = GameEvent::HardwareInstalled { side, card: card_id };
+    events.push(installed_event.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
     Ok((next, events))
 }
@@ -1241,16 +1328,10 @@ fn install_program(
     let memory_cost = card_def.memory_cost.unwrap_or(0);
     require_memory_for(&next, registry, memory_cost)?;
 
-    let mut cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Program);
-    // A conditional per-card discount (e.g. Carmen: "-2 to install if you
-    // made a successful run this turn") stacks independently on top of the
-    // once-per-turn identity/rig-card discount above — no shared
-    // consumption flag, since it's re-evaluated fresh every time.
-    if let Some((requirement, amount)) = &card_def.install_cost_discount_if
-        && ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry).is_ok()
-    {
-        cost = cost.saturating_sub(*amount);
-    }
+    // The card's own discount (see `per_card_install_discount`) stacks
+    // independently on top of the once-per-turn discount above.
+    let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Program)
+        .saturating_sub(per_card_install_discount(&next, registry, card_def));
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
@@ -1748,6 +1829,7 @@ fn trash_resource(
     let removed = next.runner.rig.remove(position);
     next.runner.heap.push(removed.card);
     events.push(GameEvent::CardTrashed { side: Side::Runner, card: card_id });
+    events.extend(ability::cascade_trash_hosted_on_rig_card(&mut next, removed.install_id));
 
     Ok((next, events))
 }

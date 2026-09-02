@@ -72,6 +72,11 @@ pub enum GameEvent {
     /// `Trigger::OnDiscardPhaseEnd`.
     DiscardPhaseEnded { side: Side },
     CardDiscarded { side: Side, card: CardId },
+    /// `Effect::AddToBottomOfStack` moved `card` under the Runner's stack.
+    CardAddedToBottomOfStack { card: CardId },
+    /// `Effect::HostRigCardOnInstall` hosted the rig card `card` on the rig
+    /// card `host` (GAMEDRAGON™ Pro on an icebreaker).
+    CardHosted { card: CardId, host: CardId },
     AgendaStolen { card: CardId, agenda_points: u32 },
     DamageTaken { damage_type: DamageType, amount: usize },
     RunnerFlatlined,

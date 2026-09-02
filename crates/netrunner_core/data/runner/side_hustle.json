@@ -1,0 +1,74 @@
+{
+  "id": "side_hustle",
+  "title": "Side Hustle",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "AddCounters": 1
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtLeast": 6
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "TakeAllCountersAsCredits": "Runner"
+                },
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "DrawCards": [
+                    "Runner",
+                    1
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnRunStart",
+      "effects": [
+        {
+          "AddCounters": 1
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtLeast": 6
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "TakeAllCountersAsCredits": "Runner"
+                },
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "DrawCards": [
+                    "Runner",
+                    1
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "counter_kind": "Credit",
+  "numeric_id": 35034,
+  "is_playable": true
+}

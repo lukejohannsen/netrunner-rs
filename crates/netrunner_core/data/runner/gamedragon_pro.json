@@ -1,0 +1,80 @@
+{
+  "id": "gamedragon_pro",
+  "title": "GAMEDRAGON™ Pro",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 2,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnInstalled",
+                  "filter": "Icebreaker",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "HostRigCardOnInstall": {
+                      "card": 0,
+                      "host": 0
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnInstalled",
+                  "filter": "Icebreaker",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "HostRigCardOnInstall": {
+                      "card": 0,
+                      "host": 0
+                    }
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "hosted_breaker_bonus": {
+    "strength": 1,
+    "boosts_last_the_run": true
+  },
+  "numeric_id": 35027,
+  "is_playable": true
+}

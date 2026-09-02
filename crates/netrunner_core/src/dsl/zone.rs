@@ -91,6 +91,19 @@ pub enum CardFilter {
     /// other action. Excluding rezzed ice here restores that guard: with no
     /// unrezzed ice the effect correctly no-ops instead of parking.
     UnrezzedIce,
+    /// A card in the Runner's heap that was discarded during the Runner's
+    /// most recent discard phase (`rules::state::RunnerState::
+    /// discarded_this_discard_phase`) — Magdalene Keino-Chemutai's "from
+    /// among those cards". Instance-level, decided in `eligible_cards`;
+    /// matches by card, so with two copies of one card in the heap either
+    /// copy is offered — they are the same card in the same zone.
+    DiscardedThisDiscardPhase,
+    /// Every listed filter must match — the composition primitive that
+    /// keeps the variants above orthogonal: Magdalene needs "a Program or
+    /// Hardware" *and* "discarded this phase" *and* "installable right
+    /// now", and a fused variant for each such conjunction would grow this
+    /// enum per card rather than per property. Both halves recurse.
+    All(Vec<CardFilter>),
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -122,6 +135,9 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // The definition-level half: it must be ice at all. The
         // "not rezzed" half is instance-level, applied by `eligible_cards`.
         CardFilter::UnrezzedIce => matches!(card.card_type, CardType::Ice(_)),
+        // Purely instance-level; the definition says nothing about it.
+        CardFilter::DiscardedThisDiscardPhase => true,
+        CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.
         CardFilter::NotInstalledThisTurn => true,

@@ -431,6 +431,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             // search's reach entirely.
             counters: card.counters,
             hosted_on_ice: card.hosted_on_ice,
+            hosted_on_program: card.hosted_on_program,
         })
         .collect();
 
@@ -452,6 +453,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         link_strength: view.runner.link_strength,
         first_hq_run_used_this_turn: false,
         first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
+        discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
     };
 
     let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
@@ -593,7 +595,7 @@ mod tests {
                 heap: Vec::new(),
                 link_strength: 0,
                 first_hq_run_used_this_turn: false,
-                first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: Vec::new(),
+                first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(),
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,

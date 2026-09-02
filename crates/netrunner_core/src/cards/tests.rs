@@ -5618,4 +5618,369 @@ mod system_gateway {
             assert_eq!(rigged.counters, 0, "{} still holds virus counters after a purge", rigged.card.0);
         }
     }
+
+    // ----- Elevation, Stage 1: Flow and Ebb / Sabbatical (ROADMAP Phase 1 §8) -----
+
+    /// Two Corp turns' worth of mandatory draws, so a Runner-turn-start
+    /// test can cycle turns without decking the Corp.
+    fn corp_rd_filler(state: &mut GameState) {
+        state.corp.r_and_d = (0..4).map(|i| CardId(format!("filler_{i}"))).collect();
+        state.corp.resources.clicks = Clicks(3);
+    }
+
+    #[test]
+    fn ritual_draws_one_card_per_click_remaining_after_it_is_played() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![CardId("ritual".to_string())];
+        state.runner.stack = (0..5).map(|i| CardId(format!("stack_{i}"))).collect();
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: CardId("ritual".to_string()) }).expect("play ritual");
+        assert_eq!(state.runner.resources.clicks, Clicks(3), "the click that played it is gone first");
+        assert_eq!(state.runner.grip.len(), 3, "one card per remaining click");
+        assert_eq!(state.runner.stack.len(), 2);
+    }
+
+    #[test]
+    fn side_hustle_loads_a_credit_on_install_and_on_every_run_and_cashes_out_at_six() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(2);
+        state.runner.grip = vec![CardId("side_hustle".to_string())];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("side_hustle".to_string()) })
+                .expect("install side hustle");
+        assert_eq!(state.runner.rig[0].counters, 1, "when you install this resource, place 1 credit on it");
+        assert_eq!(state.runner.resources.credits, Credits(0));
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        assert_eq!(state.runner.rig[0].counters, 2, "whenever a run begins, place 1 credit on it");
+
+        // At the threshold: the sixth credit cashes the card out.
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(0);
+        state.runner.rig = vec![rig_card_with_counters("side_hustle", 5)];
+        state.runner.stack = vec![CardId("stack_0".to_string())];
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("initiate run");
+        assert_eq!(state.runner.resources.credits, Credits(6), "take all credits from this resource");
+        assert!(state.runner.rig.is_empty(), "trash it");
+        assert_eq!(state.runner.heap, vec![CardId("side_hustle".to_string())]);
+        assert_eq!(state.runner.grip, vec![CardId("stack_0".to_string())], "and draw 1 card");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 6 })));
+    }
+
+    #[test]
+    fn principia_costs_one_less_to_install_for_each_other_installed_icebreaker() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("principia".to_string())];
+
+        let (alone, _) =
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("principia".to_string()) })
+                .expect("install principia into an empty rig");
+        assert_eq!(alone.runner.resources.credits, Credits(6), "10 - 4: no other icebreaker, no discount");
+
+        state.runner.rig = vec![rig_card_with_counters("cleaver", 0), rig_card_with_counters("unity", 0)];
+        let (discounted, _) =
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("principia".to_string()) })
+                .expect("install principia beside two icebreakers");
+        assert_eq!(discounted.runner.resources.credits, Credits(8), "10 - (4 - 2): one less per other icebreaker");
+        assert_eq!(discounted.runner.rig.len(), 3);
+    }
+
+    #[test]
+    fn chromatophores_lets_a_fracter_break_the_sentry_it_is_hosted_on() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard {
+            card: CardId("cleaver".to_string()),
+            base_strength: 3,
+            ..Default::default()
+        }];
+        state.runner.grip = vec![CardId("chromatophores".to_string())];
+        state.corp.installed = vec![corp_ice("tithe", ServerId::Hq)];
+
+        // Without the trojan a fracter cannot touch a sentry.
+        let bare = enter_encounter_with(state.clone(), &registry, ServerId::Hq);
+        let refused = apply_action(
+            &bare,
+            &registry,
+            PlayerAction::ActivateAbility { target: install_of(&bare, "cleaver"), ability_index: 0 },
+        );
+        assert!(matches!(refused, Err(RulesError::InvalidBreakerSubtype { .. })), "{refused:?}");
+
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::InstallProgramOnIce { card_id: CardId("chromatophores".to_string()), host: install_of(&state, "tithe") },
+        )
+        .expect("host chromatophores on tithe");
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let (state, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { target: install_of(&state, "cleaver"), ability_index: 0 },
+        )
+        .expect("host ice gains barrier: the fracter breaks it");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::SubroutineBroken { .. })));
+        assert!(state.active_run.as_ref().unwrap().ice[0]
+            .subroutines
+            .iter()
+            .all(|s| s.status == crate::rules::SubroutineStatus::Broken));
+    }
+
+    #[test]
+    fn gamedragon_pro_hosts_on_an_icebreaker_for_a_strength_and_run_long_boosts_and_goes_with_it() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard {
+            card: CardId("cleaver".to_string()),
+            install_id: InstallId(1),
+            base_strength: 3,
+            ..Default::default()
+        }];
+        state.next_install_id = 2;
+        state.runner.grip = vec![CardId("gamedragon_pro".to_string())];
+        state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq)];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("gamedragon_pro".to_string()) })
+                .expect("install gamedragon");
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            "when you install this hardware, you may host it"
+        );
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose to host");
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 0 })), "cleaver is offered");
+        assert!(!offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 1 })), "the hardware itself is not");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("pick cleaver");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("host on it");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardHosted { .. })));
+        assert_eq!(state.runner.rig[1].hosted_on_program, Some(InstallId(1)));
+        assert_eq!(
+            crate::rules::computed_runner_strength(&state.runner.rig[0], &state, &registry),
+            4,
+            "host icebreaker gets +1 strength"
+        );
+
+        // An encounter-long pump on the host now lasts the run.
+        let state = enter_encounter_with(state, &registry, ServerId::Hq);
+        let (state, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { target: InstallId(1), ability_index: 1 },
+        )
+        .expect("pump cleaver");
+        assert!(events.iter().any(|e| matches!(
+            e,
+            crate::rules::GameEvent::StrengthBoosted { duration: crate::dsl::BoostDuration::Run, .. }
+        )));
+        assert_eq!(state.runner.rig[0].run_strength_buff, 1);
+        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
+
+        // The host leaving the rig takes the hardware with it.
+        let mut state = state;
+        let removed = crate::rules::pending_choice::remove_installed_card(&mut state, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, InstallId(1))
+            .expect("cleaver was installed");
+        assert_eq!(removed.0, CardId("cleaver".to_string()));
+        assert!(removed.2.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card } if card.0 == "gamedragon_pro")));
+        assert!(state.runner.rig.is_empty(), "nothing left to host on");
+    }
+
+    #[test]
+    fn azimat_refills_to_two_credits_each_turn_and_they_pay_trash_costs() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("azimat".to_string())];
+        corp_rd_filler(&mut state);
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("azimat".to_string()) })
+            .expect("install azimat");
+        assert_eq!(state.runner.rig[0].counters, 2, "when you install this program, refill to 2");
+
+        let mut state = state;
+        state.runner.rig[0].counters = 0;
+        let (state, _) = end_turn_and_settle(state, &registry); // Runner ends -> Corp's turn.
+        let (state, _) = end_turn_and_settle(state, &registry); // Corp ends -> Runner's turn: refill.
+        assert_eq!(state.runner.rig[0].counters, 2, "before your turn begins, refill to 2");
+
+        // The hosted credits pay a trash cost before the wallet does.
+        let mut state = state;
+        state.runner.resources.credits = Credits(3);
+        state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0))];
+        let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        let state = act(state, &registry, PlayerAction::ContinueRun);
+        let state = act(state, &registry, PlayerAction::CompleteRun);
+        assert!(
+            crate::rules::legal_actions(&state, &registry)
+                .contains(&PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) }),
+            "3[c] in the wallet plus 2 hosted afford the 4[c] trash cost"
+        );
+        let state = act(state, &registry, PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) });
+        assert_eq!(state.runner.rig[0].counters, 0, "hosted credits are spent first");
+        assert_eq!(state.runner.resources.credits, Credits(1), "3 - (4 - 2)");
+        assert_eq!(state.corp.archives, vec![ArchivedCard::faceup(CardId("pad_campaign".to_string()))]);
+    }
+
+    #[test]
+    fn devadatta_drone_installs_with_two_power_counters_and_spends_one_for_an_extra_rnd_access() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("devadatta_drone".to_string())];
+        state.corp.r_and_d = (0..3).map(|i| CardId(format!("rd_card_{i}"))).collect();
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("devadatta_drone".to_string()) })
+                .expect("install devadatta drone");
+        assert_eq!(state.runner.rig[0].counters, 2);
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("initiate run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::CompleteRun).expect("the run succeeds");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::PendingPaidChoiceOffered { side: Side::Runner })));
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
+                .expect("remove 1 hosted power counter");
+        assert_eq!(state.runner.rig[0].counters, 1);
+        assert_eq!(state.active_run.as_ref().unwrap().additional_rd_access, 1, "access 1 additional card");
+    }
+
+    #[test]
+    fn scrounge_costs_a_second_click_installs_a_program_from_the_heap_and_may_bury_another() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("scrounge".to_string())];
+        state.runner.heap = vec![CardId("cleaver".to_string()), CardId("corroder".to_string()), CardId("sure_gamble".to_string())];
+        state.runner.stack = vec![CardId("stack_top".to_string())];
+
+        // A Double: with a single click left it cannot be played at all.
+        let mut single = state.clone();
+        single.runner.resources.clicks = Clicks(1);
+        let play = PlayerAction::PlayEvent { card_id: CardId("scrounge".to_string()) };
+        assert!(matches!(apply_action(&single, &registry, play.clone()), Err(RulesError::NotEnoughClicks { .. })));
+        assert!(!crate::rules::legal_actions(&single, &registry).contains(&play));
+
+        let (state, _) = apply_action(&state, &registry, play).expect("play scrounge");
+        assert_eq!(state.runner.resources.clicks, Clicks(2), "4 - 1 (play) - 1 (additional cost)");
+        assert_eq!(state.runner.resources.credits, Credits(9));
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 0 })), "cleaver");
+        assert!(offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 1 })), "corroder");
+        assert!(!offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 2 })), "sure gamble is an event");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("pick cleaver");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("install it from the heap");
+        assert!(state.runner.rig.iter().any(|c| c.card.0 == "cleaver"));
+        assert_eq!(state.runner.resources.credits, Credits(6), "9 - 3: paying its install cost");
+
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            "you may add 1 program from your heap to the bottom of your stack"
+        );
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose to");
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert!(offered.iter().any(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 0 })), "corroder is the only program left");
+        assert_eq!(offered.iter().filter(|a| matches!(a, PlayerAction::ToggleCardSelection { .. })).count(), 1);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("pick corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("bury it");
+        assert_eq!(state.runner.stack, vec![CardId("corroder".to_string()), CardId("stack_top".to_string())], "bottom, not top");
+        assert_eq!(state.runner.heap, vec![CardId("sure_gamble".to_string()), CardId("scrounge".to_string())]);
+    }
+
+    #[test]
+    fn magdalene_may_install_a_program_she_discarded_to_hand_size_and_the_turn_still_hands_over() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(CardId("magdalene_keino_chemutai".to_string()));
+        state.runner.resources.clicks = Clicks(0);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![
+            CardId("corroder".to_string()),
+            CardId("sure_gamble".to_string()),
+            CardId("grip_2".to_string()),
+            CardId("grip_3".to_string()),
+            CardId("grip_4".to_string()),
+            CardId("grip_5".to_string()),
+        ];
+        corp_rd_filler(&mut state);
+
+        let state = act(state, &registry, PlayerAction::EndTurn);
+        assert_eq!(state.phase, GamePhase::Discard { side: Side::Runner, required: 1 });
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::DiscardCard { card_id: CardId("corroder".to_string()) }).expect("discard");
+        assert_eq!(state.runner.discarded_this_discard_phase, vec![CardId("corroder".to_string())]);
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })),
+            "you may install 1 program or piece of hardware from among those cards"
+        );
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("choose to");
+        let offered = crate::rules::legal_actions(&state, &registry);
+        assert_eq!(offered.iter().filter(|a| matches!(a, PlayerAction::ToggleCardSelection { .. })).count(), 1, "only the discard");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("pick corroder");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("install it");
+        assert!(state.runner.rig.iter().any(|c| c.card.0 == "corroder"));
+        assert_eq!(state.runner.resources.credits, Credits(3), "paying its cost");
+
+        // The decision resolved during the Corp's start-of-turn window; the
+        // game goes on with the Corp to act and nobody stuck.
+        let (state, _) = close_all_windows(state, &registry);
+        assert_eq!(state.phase, GamePhase::Action(Side::Corp));
+        assert!(!crate::rules::legal_actions(&state, &registry).is_empty());
+    }
+
+    /// An upgrade in the root of Archives is accessed with the pile and
+    /// trashed like any other root install — it must leave the table, not
+    /// merely be paid for. See `run::access::move_to_archives`.
+    #[test]
+    fn trashing_an_upgrade_installed_in_the_root_of_archives_removes_it_from_the_table() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        let mut vault = corp_root("malapert_data_vault", ServerId::Archives);
+        vault.rezzed = false;
+        state.corp.installed = vec![vault];
+
+        let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives });
+        let state = act(state, &registry, PlayerAction::ContinueRun);
+        let state = act(state, &registry, PlayerAction::CompleteRun);
+        let trash = PlayerAction::TrashAccessedCard { card_id: CardId("malapert_data_vault".to_string()) };
+        assert!(crate::rules::legal_actions(&state, &registry).contains(&trash), "the root upgrade is accessed with the pile");
+        let state = act(state, &registry, trash);
+
+        assert!(state.corp.installed.is_empty(), "the trashed upgrade has left the table");
+        assert_eq!(state.corp.archives, vec![ArchivedCard::faceup(CardId("malapert_data_vault".to_string()))]);
+    }
 }

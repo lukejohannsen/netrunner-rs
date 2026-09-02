@@ -45,7 +45,8 @@ fn headless_kind(kind: BotKind) -> BotKind {
 
 /// The decks game `index` plays: either the fixed `--corp-deck` /
 /// `--runner-deck` pair, or — under `--all-matchups` — the sample matchup
-/// at `index % 12`, the same rotation the sweeps and self-play use.
+/// at `index % matchups.len()`, the cross-product rotation self-play and
+/// `bench` use (the sweeps play the deck-covering schedule instead).
 fn deck_pair(config: &Config, registry: &CardRegistry, index: u32) -> Result<(String, Deck, Deck), String> {
     if config.all_matchups {
         let matchups = core_decks::matchups();

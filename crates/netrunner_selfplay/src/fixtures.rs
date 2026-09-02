@@ -8,8 +8,8 @@
 //! ended in a Corp loss. A constant outcome teaches a value head nothing,
 //! and no System Gateway card appeared in a single game.
 //!
-//! Decks now come from `netrunner_core::decks` — Null Signal Games' seven
-//! published System Gateway sample decklists, giving twelve real matchups
+//! Decks now come from `netrunner_core::decks` — Null Signal Games'
+//! published sample decklists, every Corp deck against every Runner deck,
 //! over the whole implemented card set.
 
 use netrunner_core::cards::{self, CardRegistry};
@@ -63,7 +63,8 @@ mod tests {
     fn every_matchup_is_legal_and_sets_up() {
         let registry = registry();
         let matchups = matchups();
-        assert_eq!(matchups.len(), 12);
+        assert_eq!(matchups.len(), netrunner_core::decks::matchups().len(), "the whole sample cross product");
+        assert!(matchups.len() >= 12, "never fewer than the twelve System Gateway pairings");
 
         for matchup in matchups {
             let (corp_deck, runner_deck) = matchup.decks();

@@ -1,0 +1,22 @@
+{
+  "id": "ritual",
+  "title": "Ritual",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "DrawCardsAmount": [
+            "Runner",
+            "ClicksRemaining"
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35026,
+  "is_playable": true
+}

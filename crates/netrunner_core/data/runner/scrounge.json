@@ -1,0 +1,66 @@
+{
+  "id": "scrounge",
+  "title": "Scrounge",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 1,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Runner",
+            "source": "OwnHeap",
+            "filter": {
+              "All": [
+                {
+                  "CardType": "Program"
+                },
+                "InstallableRunnerCard"
+              ]
+            },
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Sequence": [
+                "InstallRunnerCardFromHeap",
+                {
+                  "PresentChoice": {
+                    "chooser": "Runner",
+                    "options": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Runner",
+                          "source": "OwnHeap",
+                          "filter": {
+                            "CardType": "Program"
+                          },
+                          "min": 1,
+                          "max": 1,
+                          "reveal": false,
+                          "shuffle_after": false,
+                          "then": "AddToBottomOfStack"
+                        }
+                      },
+                      {
+                        "Sequence": []
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35004,
+  "is_playable": true
+}

@@ -1,0 +1,43 @@
+{
+  "id": "principia",
+  "title": "Principia",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 4,
+  "strength": 2,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "Barrier"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 2
+      },
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "memory_cost": 1,
+  "install_cost_discount_amount": "InstalledIcebreakerCount",
+  "numeric_id": 35032,
+  "is_playable": true
+}

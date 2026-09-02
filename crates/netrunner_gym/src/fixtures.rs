@@ -19,7 +19,7 @@ pub fn registry() -> CardRegistry {
 
 /// The `(corp, runner)` decks for an episode with this seed.
 ///
-/// Rotates through all twelve sample-deck pairings rather than pinning one,
+/// Rotates through every sample-deck pairing rather than pinning one,
 /// so an agent trained here generalizes across the card pool instead of
 /// overfitting a single matchup. Deterministic in `seed`, so an episode
 /// replays identically.
@@ -37,8 +37,8 @@ mod tests {
     #[test]
     fn every_seeded_pairing_is_legal_and_sets_up() {
         let registry = registry();
-        // 12 pairings, so 12 consecutive seeds cover all of them.
-        for seed in 0..12u64 {
+        // One seed per pairing covers all of them.
+        for seed in 0..decks::matchups().len() as u64 {
             let (corp_deck, runner_deck) = decks_for_seed(seed);
             assert_eq!(validate_deck(&corp_deck, Side::Corp, &registry), Ok(()), "seed {seed}");
             assert_eq!(validate_deck(&runner_deck, Side::Runner, &registry), Ok(()), "seed {seed}");
@@ -48,13 +48,19 @@ mod tests {
 
     #[test]
     fn seeds_rotate_through_every_pairing() {
-        let distinct: std::collections::HashSet<Vec<String>> = (0..12u64)
+        // Keyed by deck, not identity: two published lists can share an
+        // identity (Planning Ahead and Flow and Ebb are both Tāo Salonga).
+        let pairings = decks::matchups().len();
+        let distinct: std::collections::HashSet<Vec<String>> = (0..pairings as u64)
             .map(|seed| {
-                let (corp, runner) = decks_for_seed(seed);
-                vec![corp.identity.0, runner.identity.0]
+                let (corp, runner) = decks::matchups()[(seed % pairings as u64) as usize].clone();
+                vec![corp.id, runner.id]
             })
             .collect();
-        // 4 Corp identities x 3 Runner identities.
-        assert_eq!(distinct.len(), 12);
+        assert_eq!(distinct.len(), pairings, "every Corp deck x every Runner deck");
+        // And `decks_for_seed` walks the same list.
+        let (corp, runner) = decks_for_seed(pairings as u64);
+        let (first_corp, first_runner) = &decks::matchups()[0];
+        assert_eq!((corp.identity, runner.identity), (first_corp.to_deck().identity, first_runner.to_deck().identity));
     }
 }

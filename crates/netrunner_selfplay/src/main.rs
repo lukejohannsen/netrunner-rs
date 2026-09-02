@@ -2,7 +2,7 @@
 //! System Gateway sample decks (`fixtures`) and writes one JSONL trajectory
 //! file per game into `--output-dir` for the training pipeline to consume.
 //!
-//! Games rotate through all twelve Corp/Runner pairings by default so a
+//! Games rotate through every Corp/Runner pairing by default so a
 //! training set covers the whole implemented card pool rather than one
 //! matchup's slice of it; `--matchup` pins a single pairing.
 //!
@@ -62,7 +62,7 @@ struct Cli {
     temp_plies: usize,
     /// Which sample-deck pairing to play, as `<corp_deck>_vs_<runner_deck>`
     /// (e.g. `discretion_advised_vs_stolen_goods`). Omit to rotate through
-    /// all twelve pairings, which is what a general training set wants.
+    /// every pairing, which is what a general training set wants.
     #[arg(long = "matchup")]
     matchup: Option<String>,
     /// Added to every self-play game's index to form its seed, so that
@@ -268,7 +268,7 @@ fn policy_target_for(state: &GameState, actions: &[ActionStat]) -> Vec<f32> {
 }
 
 /// The matchup this game plays: the one `--matchup` names, or the
-/// `game_index`th of the twelve pairings so a run spreads evenly over all of
+/// `game_index`th of the sample pairings so a run spreads evenly over all of
 /// them regardless of `--num-games`.
 fn matchup_for(game_index: usize, cli: &Cli) -> Result<fixtures::Matchup, SelfPlayError> {
     let all = fixtures::matchups();

@@ -175,6 +175,11 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         memory_bonus: None,
         max_hand_size_bonus: None,
         install_cost_discount_if: None,
+        install_cost_discount_amount: None,
+        additional_play_cost: None,
+        host_ice_gains_subtypes: Vec::new(),
+        hosted_breaker_bonus: None,
+        hosted_credits_usable_for: None,
         installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false,
         is_playable: false,
     })
