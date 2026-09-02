@@ -39,5 +39,8 @@
   "memory_cost": 1,
   "install_cost_discount_amount": "InstalledIcebreakerCount",
   "numeric_id": 35032,
-  "is_playable": true
+  "is_playable": true,
+  "subtypes": [
+    "Fracter"
+  ]
 }

@@ -1,0 +1,93 @@
+{
+  "id": "enthusiasm",
+  "name": "Enthusiasm",
+  "side": "Runner",
+  "category": "Sample",
+  "identity": "dewi_subrotoputri",
+  "cards": [
+    {
+      "card": "creative_commission",
+      "count": 3
+    },
+    {
+      "card": "illumination",
+      "count": 2
+    },
+    {
+      "card": "ritual",
+      "count": 3
+    },
+    {
+      "card": "scrounge",
+      "count": 1
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 2
+    },
+    {
+      "card": "gamedragon_pro",
+      "count": 1
+    },
+    {
+      "card": "madani",
+      "count": 2
+    },
+    {
+      "card": "knickknack_obrian",
+      "count": 3
+    },
+    {
+      "card": "open_market",
+      "count": 2
+    },
+    {
+      "card": "red_team",
+      "count": 2
+    },
+    {
+      "card": "side_hustle",
+      "count": 3
+    },
+    {
+      "card": "telework_contract",
+      "count": 3
+    },
+    {
+      "card": "echelon",
+      "count": 1
+    },
+    {
+      "card": "mayfly",
+      "count": 3
+    },
+    {
+      "card": "principia",
+      "count": 1
+    },
+    {
+      "card": "unity",
+      "count": 1
+    },
+    {
+      "card": "azimat",
+      "count": 1
+    },
+    {
+      "card": "chromatophores",
+      "count": 2
+    },
+    {
+      "card": "devadatta_drone",
+      "count": 3
+    },
+    {
+      "card": "fermenter",
+      "count": 3
+    }
+  ]
+}

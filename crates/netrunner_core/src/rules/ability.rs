@@ -471,6 +471,36 @@ pub fn evaluate_effect(
             install_runner_card_from_zone_paying_cost(state, registry, card_id, RunnerCardSource::Heap)
         }
 
+        Effect::InstallRunnerCardFromGripWithDiscount(discount) => {
+            use crate::rules::engine::{can_install_runner_card_from_zone_with_discount, install_runner_card_from_zone_with_discount, RunnerCardSource};
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            if !can_install_runner_card_from_zone_with_discount(state, registry, &card_id, RunnerCardSource::Grip, *discount) {
+                return Ok(Vec::new());
+            }
+            install_runner_card_from_zone_with_discount(state, registry, card_id, RunnerCardSource::Grip, *discount)
+        }
+
+        Effect::InstallRunnerCardFromHost => {
+            use crate::rules::engine::{can_install_runner_card_from_zone, install_runner_card_from_zone_paying_cost, RunnerCardSource};
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            let host = ctx.acting_install.ok_or(RulesError::MissingActingCardContext)?;
+            if !can_install_runner_card_from_zone(state, registry, &card_id, RunnerCardSource::Hosted(host)) {
+                return Ok(Vec::new());
+            }
+            install_runner_card_from_zone_paying_cost(state, registry, card_id, RunnerCardSource::Hosted(host))
+        }
+
+        Effect::RedirectRunOnApproach(target) => {
+            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            run.redirect_on_approach = Some(*target);
+            Ok(Vec::new())
+        }
+
+        Effect::FlipIdentity => {
+            state.runner.identity_flipped = !state.runner.identity_flipped;
+            Ok(vec![GameEvent::IdentityFlipped { side: Side::Runner }])
+        }
+
         Effect::AddToBottomOfStack => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             let zones = [&mut state.runner.heap, &mut state.runner.grip];
@@ -786,7 +816,7 @@ pub fn evaluate_effect(
         }
 
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
-            let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter);
+            let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install);
             if available.len() < *min as usize {
                 // Nothing to do — same "silently no-op" leniency
                 // `DrawCards`/`TrashCard`'s "already gone" case establish.
@@ -1375,9 +1405,9 @@ pub(crate) fn trash_card(
                 .position(|c| &c.card == card)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: card.clone() })?;
             let removed = state.runner.rig.remove(position);
-            state.runner.heap.push(removed.card);
+            state.runner.heap.push(removed.card.clone());
             let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone() }];
-            events.extend(cascade_trash_hosted_on_rig_card(state, removed.install_id));
+            events.extend(cascade_trash_hosted_on_rig_card(state, &removed));
             Ok(events)
         }
 
@@ -1428,8 +1458,16 @@ pub(crate) fn trash_card(
 /// — GAMEDRAGON™ Pro goes with the icebreaker it sits on. Called from
 /// every site that removes a rig card. A no-op for the overwhelming
 /// majority of rig cards, which host nothing.
-pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
+pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, removed: &InstalledRunnerCard) -> Vec<GameEvent> {
+    let host = removed.install_id;
     let mut events = Vec::new();
+    // Cards hosted *uninstalled* on the host (Madani's programs) are
+    // trashed with it too — they were in no other zone, and they left the
+    // rig inside `removed`, which is why this takes the card and not its id.
+    for hosted in &removed.hosted_cards {
+        state.runner.heap.push(hosted.clone());
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: hosted.clone() });
+    }
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_program == Some(host)) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
@@ -1516,9 +1554,9 @@ fn trash_this_card(state: &mut GameState, ctx: &ResolutionContext<'_>) -> Result
     }
     if let Some(position) = acting_rig_position(state, ctx) {
         let removed = state.runner.rig.remove(position);
-        state.runner.heap.push(removed.card);
+        state.runner.heap.push(removed.card.clone());
         let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() }];
-        events.extend(cascade_trash_hosted_on_rig_card(state, removed.install_id));
+        events.extend(cascade_trash_hosted_on_rig_card(state, &removed));
         return Ok(events);
     }
     // An install that has already left play is gone: its hand/deck
@@ -1753,6 +1791,12 @@ pub fn check_requirement(
             }
             Ok(())
         }
+        EffectRequirement::IdentityFlipped => {
+            if state.runner.identity_flipped { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::MemoryFull => {
+            if crate::rules::memory::available_memory(state, registry) == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::FirstInstallThisTurn => {
             if state.corp.first_install_used_this_turn {
                 return Err(RulesError::RequirementNotMet);
@@ -1788,7 +1832,7 @@ pub fn check_requirement(
             Ok(())
         }
         EffectRequirement::ZoneHasAtLeast { zone, count } => {
-            if crate::rules::pending_choice::zone_card_ids(state, side, zone).len() < *count as usize {
+            if crate::rules::pending_choice::zone_card_ids(state, side, zone, ctx.acting_install).len() < *count as usize {
                 return Err(RulesError::RequirementNotMet);
             }
             Ok(())
@@ -1967,6 +2011,15 @@ pub(crate) fn computed_runner_strength(card: &InstalledRunnerCard, state: &GameS
         .and_then(|def| def.strength_modifier)
         .map(|modifier| match modifier {
             StrengthModifier::PerInstalledIcebreaker(per) => per * installed_icebreaker_count(state, registry) as i32,
+            // Rising Tide: one per fracter in the heap, live.
+            StrengthModifier::PerFracterInHeap(per) => {
+                per * state
+                    .runner
+                    .heap
+                    .iter()
+                    .filter(|id| registry.get(id).is_some_and(|def| def.subtypes.contains(&crate::dsl::CardSubtype::Fracter)))
+                    .count() as i32
+            }
             // The three Corp-ICE modifiers never apply to a rig card.
             StrengthModifier::WhileProtectingRemote(_)
             | StrengthModifier::WhileHostedAdvancementsAtLeast { .. }
@@ -2008,6 +2061,49 @@ fn ice_gains_subtype_from_hosted(state: &GameState, registry: &CardRegistry, ice
         .any(|def| def.host_ice_gains_subtypes.contains(&subtype))
 }
 
+/// Drains up to `amount` credits from the hosted-credit pools whose card
+/// `usable` accepts, rig order, trashing a pool that empties when its card
+/// says so (`CardDefinition::trash_when_empty` — Open Market). Returns the
+/// events and how much was drained; the caller pays the remainder from the
+/// wallet. The one drain every purpose-restricted pool goes through — see
+/// `CardDefinition::hosted_credits_usable_for` for why it is not in
+/// `pay_cost`.
+pub(crate) fn drain_hosted_credit_pools(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    amount: u32,
+    usable: impl Fn(&crate::dsl::CardDefinition) -> bool,
+) -> Result<(Vec<GameEvent>, u32), RulesError> {
+    let pools: Vec<(InstallId, u32, bool)> = state
+        .runner
+        .rig
+        .iter()
+        .filter(|card| card.counters > 0)
+        .filter_map(|card| registry.get(&card.card).map(|def| (card, def)))
+        .filter(|(_, def)| usable(def))
+        .map(|(card, def)| (card.install_id, card.counters, def.trash_when_empty))
+        .collect();
+    let mut events = Vec::new();
+    let mut remaining = amount;
+    for (install, credits, trash_when_empty) in pools {
+        if remaining == 0 {
+            break;
+        }
+        let spend = credits.min(remaining);
+        let ctx = ResolutionContext::for_parked(Some(install), None);
+        events.extend(spend_hosted_credits(state, &ctx, spend)?);
+        remaining -= spend;
+        if trash_when_empty && spend == credits {
+            let card_id = state.runner.rig.iter().find(|c| c.install_id == install).map(|c| c.card.clone());
+            if let Some(card_id) = card_id {
+                let ctx = ResolutionContext::for_parked(Some(install), Some(&card_id));
+                events.extend(trash_this_card(state, &ctx)?);
+            }
+        }
+    }
+    Ok((events, amount - remaining))
+}
+
 /// Spends `amount` of the acting rig card's hosted credits (its generic
 /// counters) towards a cost the card's text lets them pay — the
 /// purpose-restricted pool drain `run::access::resolve_trash` uses for
@@ -2033,6 +2129,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
             crate::rules::GamePhase::Action(side) => state.resources(side).clicks.0,
             _ => 0,
         },
+        Amount::PrintedInstallCost => ctx.acting_card.and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::Fixed(n) => *n,
         Amount::AgendaPointsScoredThisTurn => state.corp.agenda_points_scored_this_turn,
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
@@ -2072,6 +2169,8 @@ pub(crate) fn consume_requirement(
             consume_requirement(state, b, side, ctx);
         }
         EffectRequirement::RunnerCreditsAtMost(_)
+        | EffectRequirement::IdentityFlipped
+        | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)
         | EffectRequirement::ZoneHasAtLeast { .. }
         | EffectRequirement::Not(_)

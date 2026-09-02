@@ -1,0 +1,89 @@
+{
+  "id": "tickets_please",
+  "name": "Tickets, please",
+  "side": "Runner",
+  "category": "Sample",
+  "identity": "zahya_sadeghi",
+  "cards": [
+    {
+      "card": "clean_getaway",
+      "count": 3
+    },
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "lie_low",
+      "count": 3
+    },
+    {
+      "card": "maintenance_access",
+      "count": 2
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "ritual",
+      "count": 1
+    },
+    {
+      "card": "scrounge",
+      "count": 1
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 2
+    },
+    {
+      "card": "docklands_pass",
+      "count": 2
+    },
+    {
+      "card": "gamedragon_pro",
+      "count": 1
+    },
+    {
+      "card": "pennyshaver",
+      "count": 2
+    },
+    {
+      "card": "open_market",
+      "count": 3
+    },
+    {
+      "card": "side_hustle",
+      "count": 3
+    },
+    {
+      "card": "carmen",
+      "count": 1
+    },
+    {
+      "card": "marjanah",
+      "count": 3
+    },
+    {
+      "card": "rising_tide",
+      "count": 1
+    },
+    {
+      "card": "unity",
+      "count": 1
+    },
+    {
+      "card": "conduit",
+      "count": 1
+    },
+    {
+      "card": "leech",
+      "count": 2
+    }
+  ]
+}

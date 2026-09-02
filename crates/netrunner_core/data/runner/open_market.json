@@ -1,0 +1,56 @@
+{
+  "id": "open_market",
+  "title": "Open Market",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "subtypes": [
+    "Job"
+  ],
+  "counter_kind": "Credit",
+  "hosted_credits_usable_for": {
+    "ResourceInstalls": {
+      "subtypes": [
+        "Connection",
+        "Job"
+      ]
+    }
+  },
+  "trash_when_empty": true,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "AddCounters": 6
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": 1
+        },
+        {
+          "GainCredits": [
+            "Runner",
+            1
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35022,
+  "is_playable": true
+}

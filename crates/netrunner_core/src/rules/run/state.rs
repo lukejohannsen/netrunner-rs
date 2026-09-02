@@ -274,6 +274,13 @@ pub struct RunState {
     /// lifecycle as `additional_rd_access`.
     #[serde(default)]
     pub cards_accessed_count: u32,
+    /// Where the run goes instead when it would approach its server after
+    /// passing every piece of ice — `Effect::RedirectRunOnApproach`
+    /// (Maintenance Access). Taken by `run::engine::apply_approach_redirect`
+    /// the moment `ServerApproached` would fire. `None` for every ordinary
+    /// run.
+    #[serde(default)]
+    pub redirect_on_approach: Option<ServerId>,
     /// A per-credit-cost delta applied to the Corp's rez cost for every
     /// piece of ICE rezzed while this run is active (see `engine::rez_ice`'s
     /// cost computation) — e.g. Tread Lightly's "+3 credits" for the
@@ -365,6 +372,7 @@ impl Default for RunState {
             additional_hq_access: 0,
             access_replacement: None,
             cards_accessed_count: 0,
+            redirect_on_approach: None,
             ice_rez_cost_modifier: 0,
             bonus_run_credits: 0,
             runner_cannot_steal_or_trash: false,

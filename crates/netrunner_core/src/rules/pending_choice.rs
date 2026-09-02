@@ -59,9 +59,12 @@ fn owning_side(chooser: Side, zone: &CardZoneRef) -> Side {
 /// apply a filter with — see that module's own doc comment on this exact
 /// "encode potential positions, defer correctness to the `legal_actions`
 /// probe" convention), and as `eligible_cards`'s unfiltered base.
-pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef) -> Vec<CardId> {
+pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef, source: Option<InstallId>) -> Vec<CardId> {
     let owner = owning_side(chooser, zone);
     match zone {
+        // The parking card's own hosted cards (Madani). No parking install
+        // means no such zone — an empty list, never a panic.
+        CardZoneRef::HostedOnSource => hosted_cards_of(state, source).cloned().unwrap_or_default(),
         CardZoneRef::OwnHq => state.corp.hq.clone(),
         CardZoneRef::OwnArchives => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
         CardZoneRef::OwnRAndD => state.corp.r_and_d.clone(),
@@ -96,6 +99,17 @@ pub(crate) fn zone_install_ids(state: &GameState, chooser: Side, zone: &CardZone
     }
 }
 
+/// The cards hosted on the Runner rig install `source`, if it is one.
+fn hosted_cards_of(state: &GameState, source: Option<InstallId>) -> Option<&Vec<CardId>> {
+    let source = source?;
+    state.runner.rig.iter().find(|c| c.install_id == source).map(|c| &c.hosted_cards)
+}
+
+fn hosted_cards_of_mut(state: &mut GameState, source: Option<InstallId>) -> Option<&mut Vec<CardId>> {
+    let source = source?;
+    state.runner.rig.iter_mut().find(|c| c.install_id == source).map(|c| &mut c.hosted_cards)
+}
+
 /// The **positions** within `zone_card_ids(chooser, zone)` currently
 /// eligible under `filter`. Used both to validate `ToggleCardSelection`
 /// and to silently no-op `Effect::PromptChooseCards` when fewer than `min`
@@ -113,12 +127,13 @@ pub(crate) fn eligible_positions(
     chooser: Side,
     zone: &CardZoneRef,
     filter: &CardFilter,
+    source: Option<InstallId>,
 ) -> Vec<usize> {
-    zone_card_ids(state, chooser, zone)
+    zone_card_ids(state, chooser, zone, source)
         .into_iter()
         .enumerate()
         .filter(|(_, id)| registry.get(id).is_some_and(|card| card_matches_filter(card, filter)))
-        .filter(|(position, _)| instance_matches_filter(state, registry, chooser, zone, *position, filter))
+        .filter(|(position, _)| instance_matches_filter(state, registry, chooser, zone, *position, filter, source))
         .map(|(position, _)| position)
         .collect()
 }
@@ -140,6 +155,7 @@ fn instance_matches_filter(
     zone: &CardZoneRef,
     position: usize,
     filter: &CardFilter,
+    source: Option<InstallId>,
 ) -> bool {
     // Both filters below read per-install state, so `position` may only be
     // used to index an install list. For any other zone it is a position
@@ -163,16 +179,26 @@ fn instance_matches_filter(
         // and the resolution can never disagree. Grip cards only; the
         // definition-level type half already ran in `card_matches_filter`.
         CardFilter::InstallableRunnerCard => {
-            use crate::rules::engine::{can_install_runner_card_from_zone, RunnerCardSource};
-            match zone {
-                CardZoneRef::OwnGrip => state.runner.grip.get(position).is_some_and(|card| {
-                    can_install_runner_card_from_zone(state, registry, card, RunnerCardSource::Grip)
-                }),
-                CardZoneRef::OwnHeap => state.runner.heap.get(position).is_some_and(|card| {
-                    can_install_runner_card_from_zone(state, registry, card, RunnerCardSource::Heap)
-                }),
-                _ => false,
-            }
+            instance_matches_filter(state, registry, chooser, zone, position, &CardFilter::InstallableRunnerCardWithDiscount(0), source)
+        }
+        CardFilter::InstallableRunnerCardWithDiscount(discount) => {
+            use crate::rules::engine::{can_install_runner_card_from_zone_with_discount, RunnerCardSource};
+            let from = match zone {
+                CardZoneRef::OwnGrip => Some(RunnerCardSource::Grip),
+                CardZoneRef::OwnHeap => Some(RunnerCardSource::Heap),
+                CardZoneRef::HostedOnSource => source.map(RunnerCardSource::Hosted),
+                _ => None,
+            };
+            from.is_some_and(|from| {
+                zone_card_ids(state, chooser, zone, source).get(position).is_some_and(|card| {
+                    can_install_runner_card_from_zone_with_discount(state, registry, card, from, *discount)
+                })
+            })
+        }
+        // The parking card is never "one of your other cards": compared by
+        // install, so a second copy of the same card stays eligible.
+        CardFilter::NotSourceCard => {
+            zone_install_ids(state, chooser, zone).and_then(|ids| ids.get(position).copied()) != source || source.is_none()
         }
         // Only a heap card can have been discarded; the list is the
         // Runner's own, so `chooser` must be the Runner for `OwnHeap` to
@@ -187,7 +213,7 @@ fn instance_matches_filter(
                     .is_some_and(|card| state.runner.discarded_this_discard_phase.contains(card))
         }
         CardFilter::All(filters) => {
-            filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter))
+            filters.iter().all(|filter| instance_matches_filter(state, registry, chooser, zone, position, filter, source))
         }
         _ => true,
     }
@@ -200,9 +226,10 @@ fn instance_matches_filter(
 /// `archives_push` handle that zone instead. Used by
 /// `ConfirmCardSelection`'s resolution to remove a selected card from
 /// `source` and/or push it into `destination`.
-fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRef) -> Option<&'a mut Vec<CardId>> {
+fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRef, source: Option<InstallId>) -> Option<&'a mut Vec<CardId>> {
     let owner = owning_side(chooser, zone);
     match zone {
+        CardZoneRef::HostedOnSource => hosted_cards_of_mut(state, source),
         CardZoneRef::OwnHq => Some(&mut state.corp.hq),
         CardZoneRef::OwnArchives => None,
         CardZoneRef::OwnRAndD => Some(&mut state.corp.r_and_d),
@@ -269,7 +296,7 @@ pub(crate) fn remove_installed_card(
         Side::Runner => {
             let pos = state.runner.rig.iter().position(|c| c.install_id == install_id)?;
             let removed = state.runner.rig.remove(pos);
-            let cascade = ability::cascade_trash_hosted_on_rig_card(state, removed.install_id);
+            let cascade = ability::cascade_trash_hosted_on_rig_card(state, &removed);
             Some((removed.card, true, cascade))
         }
     }
@@ -288,7 +315,9 @@ fn is_discard_pile(zone: &CardZoneRef) -> bool {
 /// twice at once.
 fn shuffle_zone(state: &mut GameState, chooser: Side, zone: &CardZoneRef) {
     let archives = is_corp_archives(chooser, zone);
-    let len = if archives { state.corp.archives.len() } else { plain_zone_mut(state, chooser, zone).map_or(0, |z| z.len()) };
+    // `None`: no card shuffles a hosted zone, and `HostedOnSource` is the
+    // only zone that needs the parking install to resolve.
+    let len = if archives { state.corp.archives.len() } else { plain_zone_mut(state, chooser, zone, None).map_or(0, |z| z.len()) };
     if len < 2 {
         return;
     }
@@ -298,7 +327,7 @@ fn shuffle_zone(state: &mut GameState, chooser: Side, zone: &CardZoneRef) {
         for (i, j) in rolls {
             state.corp.archives.swap(i, j);
         }
-    } else if let Some(zone) = plain_zone_mut(state, chooser, zone) {
+    } else if let Some(zone) = plain_zone_mut(state, chooser, zone, None) {
         for (i, j) in rolls {
             zone.swap(i, j);
         }
@@ -418,9 +447,18 @@ pub(crate) fn resolve_choice(
 /// fires it with no further decision. That's what stops a run of N
 /// simultaneous triggers from costing N decisions instead of N-1.
 ///
-/// Firing the chosen trigger may itself park something; the remainder is
-/// queued *before* firing so it survives that, and the drain picks it up
-/// once the new blockage clears.
+/// Firing the chosen trigger may itself park something — Devadatta
+/// Drone's "you may remove 1 hosted power counter" is a paid choice. The
+/// remainder is placed *after* firing, and if the chosen trigger left a
+/// decision or paid choice parked it goes onto `deferred_triggers` rather
+/// than back onto `pending_decision`: two parked decisions block each
+/// other's resolving actions (`ActionBlockedByPendingDecision` against
+/// `ActionBlockedByPendingPaidChoice`), which is the deadlock the
+/// *Elevation* Stage 2 deep sweep found at three simultaneous Runner
+/// triggers (Dewi Subrotoputri plus two Drones on one R&D breach). The
+/// price is that the order of the deferred remainder is no longer the
+/// player's to choose; it was queued before firing until then, which
+/// re-parked the order decision beside the new blockage.
 pub(crate) fn resolve_choose_trigger_to_resolve(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -440,16 +478,18 @@ pub(crate) fn resolve_choose_trigger_to_resolve(
     let mut remaining = pending;
     let chosen = remaining.remove(index);
 
-    // Queue the remainder before firing, so a parking `chosen` can't strand
-    // it: either it re-parks as a decision (2+ left) or the drain takes it.
-    if remaining.len() >= 2 {
+    let mut events = vec![GameEvent::TriggerOrderChosen { chooser, card: chosen.card.clone(), trigger: chosen.trigger }];
+    events.extend(crate::rules::dispatcher::fire_deferred(state, registry, &chosen)?);
+
+    // The remainder: a fresh order decision while 2+ are left and nothing
+    // else is parked; otherwise the drain takes it (`engine::apply_action`
+    // drains once the blockage clears). An `Err` above discards the whole
+    // cloned state, so nothing is stranded either way.
+    if remaining.len() >= 2 && !state.is_resolution_blocked() {
         state.pending_decision = Some(PendingDecision::ChooseTriggerOrder { chooser, pending: remaining, resume });
     } else {
         state.deferred_triggers.splice(0..0, remaining);
     }
-
-    let mut events = vec![GameEvent::TriggerOrderChosen { chooser, card: chosen.card.clone(), trigger: chosen.trigger }];
-    events.extend(crate::rules::dispatcher::fire_deferred(state, registry, &chosen)?);
 
     if resume == PendingChoiceResume::ResumeSubroutines && !state.resolution_halted() {
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
@@ -463,15 +503,15 @@ pub(crate) fn resolve_toggle_card_selection(
     registry: &CardRegistry,
     position: usize,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let Some(PendingDecision::ChooseCards { side, source, filter, .. }) = state.pending_decision.as_ref() else {
+    let Some(PendingDecision::ChooseCards { side, source, filter, source_install, .. }) = state.pending_decision.as_ref() else {
         return Err(RulesError::NoPendingDecision);
     };
     // Cloned out so the immutable borrow of `state.pending_decision` ends
     // here — `eligible_positions` needs `state` immutably too, and the
     // subsequent mutation needs it mutably.
-    let (side, source, filter) = (*side, source.clone(), filter.clone());
+    let (side, source, filter, source_install) = (*side, source.clone(), filter.clone(), *source_install);
 
-    if !eligible_positions(state, registry, side, &source, &filter).contains(&position) {
+    if !eligible_positions(state, registry, side, &source, &filter, source_install).contains(&position) {
         return Err(RulesError::CardNotEligibleForSelection(position));
     }
 
@@ -547,7 +587,7 @@ pub(crate) fn resolve_confirm_card_selection(
     // Positions are resolved to concrete cards **once, before any
     // mutation**: every branch below removes cards from `source`, which
     // would shift the positions still to be resolved.
-    let zone = zone_card_ids(state, side, &source);
+    let zone = zone_card_ids(state, side, &source, source_install);
     let zone_installs = zone_install_ids(state, side, &source);
     let positions = selected;
     let selected: Vec<CardId> = positions
@@ -583,7 +623,7 @@ pub(crate) fn resolve_confirm_card_selection(
                     pos.map(|pos| !state.corp.archives.remove(pos).facedown)
                 }
                 _ => {
-                    if let Some(zone) = plain_zone_mut(state, side, &source)
+                    if let Some(zone) = plain_zone_mut(state, side, &source, source_install)
                         && let Some(pos) = zone.iter().position(|c| c == card_id)
                     {
                         zone.remove(pos);
@@ -604,7 +644,7 @@ pub(crate) fn resolve_confirm_card_selection(
                     } else {
                         ArchivedCard::facedown(card_id.clone())
                     });
-                } else if let Some(zone) = plain_zone_mut(state, side, dest) {
+                } else if let Some(zone) = plain_zone_mut(state, side, dest, source_install) {
                     zone.push(card_id.clone());
                 }
                 // A card moved into a discard pile was trashed, and says so

@@ -337,6 +337,7 @@ fn determinize_run(
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         runner_cannot_steal_or_trash: run.runner_cannot_steal_or_trash,
+        redirect_on_approach: run.redirect_on_approach,
         additional_rd_access: 0,
         additional_hq_access: 0,
         access_replacement: None, cards_accessed_count: 0, ice_rez_cost_modifier: 0,
@@ -432,6 +433,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             counters: card.counters,
             hosted_on_ice: card.hosted_on_ice,
             hosted_on_program: card.hosted_on_program,
+            hosted_cards: card.hosted_cards.clone(),
         })
         .collect();
 
@@ -454,6 +456,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         first_hq_run_used_this_turn: false,
         first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
+        identity_flipped: view.runner.identity_flipped,
     };
 
     let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
@@ -595,7 +598,7 @@ mod tests {
                 heap: Vec::new(),
                 link_strength: 0,
                 first_hq_run_used_this_turn: false,
-                first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(),
+                first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,

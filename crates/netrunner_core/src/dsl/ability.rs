@@ -166,6 +166,14 @@ pub enum EffectRequirement {
     /// `ThisCardCountersAtMost` (0 counters, so never satisfied for
     /// `amount >= 1`).
     ThisCardCountersAtLeast(u32),
+    /// The Runner's identity is on its flip side (`RunnerState::
+    /// identity_flipped`) — the gate on a flip identity's back-side
+    /// trigger (Dewi Subrotoputri). Its front-side twin is `Not(IdentityFlipped)`.
+    IdentityFlipped,
+    /// The Runner has no unused memory (`memory::available_memory == 0`)
+    /// — Dewi Subrotoputri's "if your [mu] is full"; "at least 1 unused
+    /// [mu]" is `Not(MemoryFull)`.
+    MemoryFull,
     /// `acting_card` is a Trojan Program (`dsl::CardDefinition::
     /// installs_on_ice`, `state::InstalledRunnerCard::hosted_on_ice`)
     /// currently hosted on the ICE the active run is encountering right

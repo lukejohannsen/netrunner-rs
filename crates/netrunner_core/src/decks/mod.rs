@@ -318,6 +318,7 @@ mod tests {
         // id, side, cards, influence, agenda points
         ("advanced_yomi", Side::Corp, 44, 15, 18),
         ("discretion_advised", Side::Corp, 44, 15, 18),
+        ("enthusiasm", Side::Runner, 45, 15, 0),
         ("flow_and_ebb", Side::Runner, 40, 15, 0),
         ("hyper_velocity", Side::Corp, 44, 15, 18),
         ("party_hard", Side::Runner, 40, 14, 0),
@@ -325,6 +326,7 @@ mod tests {
         ("quick_and_dirty", Side::Corp, 44, 15, 18),
         ("sabbatical", Side::Runner, 45, 15, 0),
         ("stolen_goods", Side::Runner, 40, 14, 0),
+        ("tickets_please", Side::Runner, 40, 15, 0),
     ];
 
     /// See `PUBLISHED`. Also the guard that the pool is exactly the

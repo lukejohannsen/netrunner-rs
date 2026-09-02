@@ -509,6 +509,32 @@ pub enum Effect {
     /// (`engine::can_install_runner_card_from_zone`). Same Trojan exclusion
     /// and same silent no-op when the pick is no longer installable.
     InstallRunnerCardFromHeap,
+    /// `InstallRunnerCardFromGrip` paying `u32` less — Illumination's
+    /// "install up to 3 cards from your grip, paying 1[c] less for each".
+    /// Paired with `CardFilter::InstallableRunnerCardWithDiscount` so the
+    /// offer and the price agree. A discount parameter rather than a
+    /// separate pricing effect: nothing composable subtracts from a cost.
+    InstallRunnerCardFromGripWithDiscount(u32),
+    /// Installs the resolving card from the cards **hosted on the acting
+    /// install** (`InstalledRunnerCard::hosted_cards`, the parking card's
+    /// own — `ResolutionContext::acting_install`), paying its cost —
+    /// Madani's "Install 1 hosted program". Same eligibility as the grip
+    /// variant, over `CardZoneRef::HostedOnSource`.
+    InstallRunnerCardFromHost,
+    /// Marks the active run so that, when it would approach its server
+    /// after passing every piece of ice, it approaches `ServerId` instead
+    /// (`RunState::redirect_on_approach`) — Maintenance Access's "instead
+    /// change the attacked server to HQ and approach HQ". The new server's
+    /// ice is not encountered: the rules say *approach* HQ, and the run's
+    /// ice list becomes HQ's, all passed. `RulesError::NoActiveRun` if no
+    /// run is active. A run-state flag rather than an immediate change
+    /// because the redirect happens at a later step of the same run.
+    RedirectRunOnApproach(ServerId),
+    /// Flips the Runner's identity to its other side
+    /// (`RunnerState::identity_flipped`) — Dewi Subrotoputri. A flag rather
+    /// than swapping the identity card: one card, two sides, and every
+    /// side's text gated by `EffectRequirement::IdentityFlipped`.
+    FlipIdentity,
     /// Moves `acting_card` — a card in the Runner's grip or heap — to the
     /// **bottom** of the stack: Scrounge's "You may add 1 program from your
     /// heap to the bottom of your stack." `PromptChooseCards::destination`
@@ -609,6 +635,11 @@ pub enum Amount {
     /// 1 card for each click you have remaining", counted *after* the click
     /// that played it was spent. Resolves to 0 outside an action phase.
     ClicksRemaining,
+    /// The printed install cost of `acting_card` — "Knickknack" O'Brian's
+    /// "gain credits equal to its printed install cost", where the acting
+    /// card is the one the prompt selected. Read from the registry, so a
+    /// discount the card was installed with does not count.
+    PrintedInstallCost,
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -706,6 +737,10 @@ impl Effect {
             | Effect::PromptInstallCorpCard { .. }
             | Effect::InstallRunnerCardFromGrip
             | Effect::InstallRunnerCardFromHeap
+            | Effect::InstallRunnerCardFromGripWithDiscount(..)
+            | Effect::InstallRunnerCardFromHost
+            | Effect::RedirectRunOnApproach(..)
+            | Effect::FlipIdentity
             | Effect::AddToBottomOfStack
             | Effect::HostRigCardOnInstall { .. }
             | Effect::RefillCountersTo(..)

@@ -38,5 +38,8 @@
   ],
   "memory_cost": 1,
   "numeric_id": 30006,
-  "is_playable": true
+  "is_playable": true,
+  "subtypes": [
+    "Fracter"
+  ]
 }

@@ -1,22 +1,24 @@
 {
-  "id": "marjanah",
-  "title": "Marjanah",
+  "id": "rising_tide",
+  "title": "Rising Tide",
   "side": "Runner",
   "card_type": "Program",
-  "cost": 0,
+  "cost": 1,
   "strength": 1,
   "memory_cost": 1,
+  "subtypes": [
+    "Fracter"
+  ],
+  "strength_modifier": {
+    "PerFracterInHeap": 1
+  },
   "triggers": [],
   "abilities": [
     {
       "trigger": "Paid",
       "cost": {
-        "Credits": 2
+        "Credits": 1
       },
-      "cost_discount_if": [
-        "MadeSuccessfulRunThisTurn",
-        1
-      ],
       "effect": {
         "BreakSubroutines": {
           "count": {
@@ -41,9 +43,6 @@
       "requirement": "DuringEncounter"
     }
   ],
-  "numeric_id": 30016,
-  "is_playable": true,
-  "subtypes": [
-    "Fracter"
-  ]
+  "numeric_id": 35009,
+  "is_playable": true
 }

@@ -155,7 +155,7 @@ const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// file cannot land without deleting its entry (the count assertion fails
 /// the other way), and the set cannot be called complete while an entry
 /// remains. Started at 73 of 82 when Stage 1 (Flow and Ebb, Sabbatical)
-/// landed its nine.
+/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please).
 #[cfg(test)]
 const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
     (35001, "Ryo \"Phoenix\" Ono: Out of the Ashes — stage 3: Bowel Movements / Dashing Mad"),
@@ -165,24 +165,15 @@ const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
     (35006, "Bling — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35007, "Gourmand — stage 3: Bowel Movements / Dashing Mad"),
     (35008, "Hantu — stage 3: Bowel Movements / Dashing Mad"),
-    (35009, "Rising Tide — stage 2: Enthusiasm / Tickets, please"),
     (35010, "Cacophony — stage 3: Bowel Movements / Dashing Mad"),
     (35011, "Rent Rioters — stage 3: Bowel Movements / Dashing Mad"),
     (35012, "Barry \"Baz\" Wong: Tri-Maf Veteran — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35013, "MuslihaT: Multifarious Marketeer — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35014, "Clean Getaway — stage 2: Enthusiasm / Tickets, please"),
-    (35015, "Lie Low — stage 2: Enthusiasm / Tickets, please"),
-    (35016, "Maintenance Access — stage 2: Enthusiasm / Tickets, please"),
     (35017, "Transfer of Wealth — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35018, "Detente — stage 3: Bowel Movements / Dashing Mad"),
     (35019, "Maglectric Rapid (748 Mod) — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35020, "Sang Kancil — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35021, "Fransofia Ward — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35022, "Open Market — stage 2: Enthusiasm / Tickets, please"),
-    (35023, "Dewi Subrotoputri: Pedagogical Dhalang — stage 2: Enthusiasm / Tickets, please"),
-    (35025, "Illumination — stage 2: Enthusiasm / Tickets, please"),
-    (35028, "Madani — stage 2: Enthusiasm / Tickets, please"),
-    (35033, "\"Knickknack\" O'Brian — stage 2: Enthusiasm / Tickets, please"),
     (35035, "LEO Construction: Labor Solutions — stage 6: Brutal Efficiency / Agency"),
     (35036, "Poetri Luxury Brands: All the Rage — stage 7: Fashion Lab / Pork Chops"),
     (35037, "Aggressive Trendsetting — stage 7: Fashion Lab / Pork Chops"),

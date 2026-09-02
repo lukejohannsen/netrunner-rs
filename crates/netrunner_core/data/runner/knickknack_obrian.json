@@ -1,0 +1,63 @@
+{
+  "id": "knickknack_obrian",
+  "title": "“Knickknack” O’Brian",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "unique": true,
+  "subtypes": [
+    "Connection"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnRunStart",
+      "requirement": {
+        "OncePerTurn": "knickknack_obrian"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnInstalled",
+                  "filter": "NotSourceCard",
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "Sequence": [
+                      {
+                        "GainCreditsAmount": [
+                          "Runner",
+                          "PrintedInstallCost"
+                        ]
+                      },
+                      {
+                        "TrashCard": "ThisCard"
+                      },
+                      {
+                        "DrawCards": [
+                          "Runner",
+                          1
+                        ]
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35033,
+  "is_playable": true
+}
