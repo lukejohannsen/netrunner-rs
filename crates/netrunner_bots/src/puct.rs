@@ -595,7 +595,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Remote(0),
             phase: RunPhase::AccessingCard,
-            access_state: Some(AccessState {
+            access_state: Some(AccessState { pending_install: None, resolved_installs: Vec::new(),
                 server: ServerId::Remote(0),
                 phase: AccessPhase::PendingInteractiveTrigger {
                     card_id: CardId("snare".to_string()),

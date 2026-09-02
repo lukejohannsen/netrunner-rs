@@ -3290,7 +3290,8 @@ mod tests {
                 GameEvent::PaidAbilityWindowClosed,
                 GameEvent::CardAccessed {
                     card: CardId("hedge_fund".to_string()),
-                    server: ServerId::Hq
+                    server: ServerId::Hq,
+                    install: None,
                 },
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
@@ -3300,7 +3301,7 @@ mod tests {
             next.active_run,
             Some(RunState {
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState {
+                access_state: Some(run::AccessState { pending_install: None, resolved_installs: Vec::new(),
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),
@@ -5832,7 +5833,7 @@ mod tests {
         RunState {
             server,
             phase: RunPhase::AccessingCard,
-            access_state: Some(run::AccessState {
+            access_state: Some(run::AccessState { pending_install: None, resolved_installs: Vec::new(),
                 server,
                 phase,
                 ..Default::default()
@@ -6134,7 +6135,7 @@ mod tests {
         assert_eq!(
             events,
             vec![
-                GameEvent::CardAccessed { card: card_a.clone(), server: ServerId::Archives },
+                GameEvent::CardAccessed { card: card_a.clone(), server: ServerId::Archives, install: None },
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
         );
@@ -6153,7 +6154,7 @@ mod tests {
             events,
             vec![
                 GameEvent::AccessPassed { card: card_a },
-                GameEvent::CardAccessed { card: card_b.clone(), server: ServerId::Archives },
+                GameEvent::CardAccessed { card: card_b.clone(), server: ServerId::Archives, install: None },
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
         );

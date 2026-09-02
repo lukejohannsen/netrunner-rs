@@ -174,6 +174,8 @@ mod run_precondition_tests {
 
 pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerId) -> Result<(), RulesError> {
     check_run_may_begin(state)?;
+    // Every run, however it was started — see `RunnerState::servers_run_this_turn`.
+    state.runner.servers_run_this_turn.push(server);
 
     // `corp.installed`'s Vec order is install order (oldest first); installs
     // only ever `.push()`, so oldest install = outermost ICE = index 0,

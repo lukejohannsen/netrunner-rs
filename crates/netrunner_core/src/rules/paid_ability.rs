@@ -755,7 +755,7 @@ mod tests {
             vec![
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
-                GameEvent::CardAccessed { card: CardId("hedge_fund".to_string()), server: ServerId::Hq },
+                GameEvent::CardAccessed { card: CardId("hedge_fund".to_string()), server: ServerId::Hq, install: None },
                 GameEvent::PaidAbilityWindowOpened { side: Side::Runner },
             ]
         );

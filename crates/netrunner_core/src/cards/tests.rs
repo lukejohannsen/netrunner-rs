@@ -2706,8 +2706,13 @@ mod system_gateway {
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
 
         // Three more successful runs (9 -> 6 -> 3 -> 0) should trash it on
-        // the last one.
+        // the last one. This test compresses four turns into one (see the
+        // click count above), so the per-turn record behind "a central
+        // server you have not run this turn" is reset by hand between them
+        // — `red_team_offers_only_centrals_not_yet_run_this_turn` is the
+        // test of that rule.
         for _ in 0..3 {
+            state.runner.servers_run_this_turn.clear();
             let (next, _) = apply_action(
                 &state,
                 &registry,
@@ -2778,6 +2783,127 @@ mod system_gateway {
             .collect();
         assert!(offered.contains(&ServerId::Hq) && offered.contains(&ServerId::RnD) && offered.contains(&ServerId::Archives), "{offered:?}");
         assert!(!offered.iter().any(|s| matches!(s, ServerId::Remote(_))), "no remote: {offered:?}");
+    }
+
+    fn red_team_state() -> GameState {
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.rig = vec![rig_card_with_counters("red_team", 12)];
+        state.corp.installed = vec![installed_with_counters("nico_campaign", ServerId::Remote(0), 0)];
+        state
+    }
+
+    /// Runs the run out to completion and drains the closing window, so
+    /// the next action of the turn is a plain action-phase one.
+    fn finish_run(state: GameState, registry: &CardRegistry) -> GameState {
+        let (state, _) = apply_action(&state, registry, PlayerAction::ContinueRun).expect("no ice: straight to the server");
+        let (state, _) = apply_action(&state, registry, PlayerAction::CompleteRun).expect("complete run");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner pass");
+        let (state, _) = apply_action(&state, registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp pass");
+        state
+    }
+
+    fn offered_servers(state: &GameState, registry: &CardRegistry) -> Vec<ServerId> {
+        crate::rules::legal_actions_for(state, registry, Side::Runner)
+            .into_iter()
+            .filter_map(|a| match a {
+                PlayerAction::ChooseServerForPendingDecision { server } => Some(server),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// "Run a central server **you have not run this turn**": a central run
+    /// by click earlier in the turn is not offered, and a run Red Team
+    /// itself started counts too.
+    #[test]
+    fn red_team_offers_only_centrals_not_yet_run_this_turn() {
+        let registry = sg_registry();
+        let state = red_team_state();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("click run on hq");
+        assert_eq!(state.runner.servers_run_this_turn, vec![ServerId::Hq]);
+        let state = finish_run(state, &registry);
+
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ActivateAbility { target: install_of(&state, "red_team"), ability_index: 0 },
+        )
+        .expect("click red team");
+        let offered = offered_servers(&state, &registry);
+        assert_eq!(offered, vec![ServerId::RnD, ServerId::Archives], "HQ was run this turn");
+        assert!(
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).is_err(),
+            "a directly submitted HQ is refused too"
+        );
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD })
+            .expect("choose r&d");
+        assert_eq!(state.runner.servers_run_this_turn, vec![ServerId::Hq, ServerId::RnD], "Red Team's own run is recorded");
+    }
+
+    /// Once every central has been run this turn the click is not offered
+    /// at all — the effect refuses before parking, so no click is sunk into
+    /// a decision nothing can resolve.
+    #[test]
+    fn red_teams_click_is_not_offered_once_every_central_was_run_this_turn() {
+        let registry = sg_registry();
+        let mut state = red_team_state();
+        state.runner.resources.clicks = Clicks(6);
+        for server in [ServerId::Hq, ServerId::RnD, ServerId::Archives] {
+            let (next, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server }).expect("click run");
+            state = finish_run(next, &registry);
+        }
+        let red_team = install_of(&state, "red_team");
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(
+            !legal.contains(&PlayerAction::ActivateAbility { target: red_team, ability_index: 0 }),
+            "Red Team must not be offered: {legal:?}"
+        );
+        assert!(matches!(
+            apply_action(&state, &registry, PlayerAction::ActivateAbility { target: red_team, ability_index: 0 }),
+            Err(crate::rules::RulesError::NoServerLeftToRun)
+        ));
+        assert!(state.pending_decision.is_none(), "nothing parked");
+    }
+
+    /// The record is per turn: it survives the rest of the turn and clears
+    /// when the Runner's next turn starts.
+    #[test]
+    fn servers_run_this_turn_resets_at_the_runners_next_turn() {
+        let registry = sg_registry();
+        let state = red_team_state();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
+        let state = finish_run(state, &registry);
+        assert_eq!(state.runner.servers_run_this_turn, vec![ServerId::Archives]);
+
+        // Drive through the end-of-turn window, the Corp's whole turn and
+        // its window, passing and ending turns as they come up, until the
+        // Runner's next turn has started (`turn` advanced twice). The Corp
+        // needs something to draw, or its turn never starts.
+        let runner_turn = state.turn;
+        let mut state = state;
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 3];
+        let mut seen_corp_turn = false;
+        while state.turn < runner_turn + 2 {
+            let actor = crate::rules::current_actor(&state).expect("someone always has a decision");
+            if state.turn == runner_turn + 1 && !seen_corp_turn {
+                seen_corp_turn = true;
+                assert_eq!(state.runner.servers_run_this_turn, vec![ServerId::Archives], "still recorded on the Corp's turn");
+            }
+            let legal = crate::rules::legal_actions_for(&state, &registry, actor);
+            let action = legal
+                .iter()
+                .find(|a| matches!(a, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|a| matches!(a, PlayerAction::EndTurn { .. })))
+                .or_else(|| legal.first())
+                .cloned()
+                .expect("a legal action");
+            state = apply_action(&state, &registry, action).expect("drive to the Runner's next turn").0;
+        }
+        assert!(seen_corp_turn);
+        assert!(state.runner.servers_run_this_turn.is_empty(), "cleared when the Runner's turn began");
     }
 
     #[test]
@@ -4454,7 +4580,7 @@ mod system_gateway {
         state.active_run = Some(crate::rules::RunState {
             server: ServerId::Hq,
             phase: crate::rules::RunPhase::AccessingCard,
-            access_state: Some(crate::rules::AccessState {
+            access_state: Some(crate::rules::AccessState { pending_install: None, resolved_installs: Vec::new(),
                 server: ServerId::Hq,
                 phase: crate::rules::AccessPhase::PendingChoice {
                     card_id: CardId("hedge_fund".to_string()),
