@@ -388,10 +388,10 @@ pub fn evaluate_effect(
             state.corp.installed[pos_a].slot = slot_b;
             state.corp.installed[pos_b].server = server_a;
             state.corp.installed[pos_b].slot = slot_a;
-            // The event names the cards, not the installs: it feeds the
-            // match log and `Trigger` dispatch, neither of which reaches a
-            // client today (see ROADMAP Phase 4 §1 — events are not yet
-            // sent, let alone masked). Revisit when they are.
+            // The event names the cards, not the installs, because
+            // `Trigger` dispatch is keyed by `CardId`. A client sees it
+            // only through `masking::mask_event_for_player`, which drops
+            // it for the Runner while either card is unrezzed.
             Ok(vec![GameEvent::IceSwapped { a: card_a, b: card_b }])
         }
 

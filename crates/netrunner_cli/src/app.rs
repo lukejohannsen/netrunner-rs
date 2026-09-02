@@ -13,10 +13,10 @@ use crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{InstallId, InstallSlot, PendingDecision, PlayerAction, Side};
+use netrunner_core::rules::{ConcealedAction, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, Side};
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
-use netrunner_server::{ClientMessage, HistoryEntry, ServerMessage};
+use netrunner_server::{ClientMessage, PublicHistoryEntry, ServerMessage};
 
 pub struct App {
     pub registry: CardRegistry,
@@ -42,14 +42,17 @@ pub const MAX_LOG_LINES: usize = 200;
 
 /// Appends one resolved action to a capped log. Shared by the remote path
 /// (`App`, fed by `ServerMessage::ActionLog`) and the local one
-/// (`tui::LocalUiState`, fed straight off `Session`'s history) so the two
-/// render identically.
-pub fn push_log_line(log: &mut Vec<String>, entry: &HistoryEntry, registry: &CardRegistry, view: Option<&ClientView>) {
+/// (`tui::LocalUiState`, fed by `Session::last_entry_for`) so the two
+/// render identically — and both take the *public* entry, so neither path
+/// can name a card the viewer's own board conceals. The local path used to
+/// read the raw history and printed the bot Corp's facedown installs by
+/// title to a human Runner.
+pub fn push_log_line(log: &mut Vec<String>, entry: &PublicHistoryEntry, registry: &CardRegistry, view: Option<&ClientView>) {
     log.push(format!(
         "[turn {}] {:?}: {}",
         entry.turn_number,
         entry.side,
-        describe_action(&entry.action, registry, view)
+        describe_public_action(&entry.action, registry, view)
     ));
     if log.len() > MAX_LOG_LINES {
         let excess = log.len() - MAX_LOG_LINES;
@@ -270,8 +273,9 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
     //   exact leak `InstallId` exists to close;
     // - no view, or an install no longer on the table (a scored agenda) →
     //   the bare id. Only the action log hits this, and only for a card
-    //   that has already left; a log line naming it would need the
-    //   recorded `GameEvent`s rather than the action alone.
+    //   that has already left; a log line naming it would need
+    //   `PublicHistoryEntry::events` rather than the action alone, which
+    //   nothing renders yet.
     let install_label = |id: &InstallId| -> String {
         let Some(view) = view else { return format!("install #{}", id.0) };
         for server in &view.corp.servers {
@@ -368,6 +372,24 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
     }
 }
 
+/// `describe_action` for what the viewer is entitled to see of it: the
+/// opponent's card-naming actions arrive as their public shape, and are
+/// labelled by what the viewer could see happen — the card landed in a
+/// server, a card was discarded, a card was accessed — never by title.
+pub fn describe_public_action(action: &PublicAction, registry: &CardRegistry, view: Option<&ClientView>) -> String {
+    match action {
+        PublicAction::Visible(action) => describe_action(action, registry, view),
+        PublicAction::Concealed(ConcealedAction::InstallCard { zone, slot }) => {
+            format!("Install a card into {zone:?} ({slot:?})")
+        }
+        PublicAction::Concealed(ConcealedAction::DiscardCard) => "Discard a card".to_string(),
+        PublicAction::Concealed(ConcealedAction::SelectCardToAccess) => "Access a card".to_string(),
+        PublicAction::Concealed(ConcealedAction::PassAccessedCard) => "Pass on the accessed card".to_string(),
+        PublicAction::Concealed(ConcealedAction::PayAccessTrigger) => "Pay to avoid the accessed card's trigger".to_string(),
+        PublicAction::Concealed(ConcealedAction::DeclineAccessTrigger) => "Decline the accessed card's trigger".to_string(),
+    }
+}
+
 /// One sentence on what an action *does* and what it costs — the
 /// pedagogical sibling of `describe_action`, which only labels. Shown in a
 /// lesson's coaching panel for whichever action the highlight sits on, so a
@@ -459,6 +481,29 @@ mod tests {
     use netrunner_bots::RandomAgent;
     use netrunner_core::dsl::CardId;
     use netrunner_core::rules::ServerId;
+
+    /// A concealed action's label is built from its public shape alone —
+    /// there is no card to name, and the registry is not consulted.
+    #[test]
+    fn a_concealed_action_is_described_without_naming_any_card() {
+        let registry = CardRegistry::new();
+        let concealed = [
+            ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Root },
+            ConcealedAction::DiscardCard,
+            ConcealedAction::SelectCardToAccess,
+            ConcealedAction::PassAccessedCard,
+            ConcealedAction::PayAccessTrigger,
+            ConcealedAction::DeclineAccessTrigger,
+        ];
+        for action in concealed {
+            let label = describe_public_action(&PublicAction::Concealed(action.clone()), &registry, None);
+            assert!(label.contains("card"), "{action:?} → {label}");
+        }
+        assert_eq!(
+            describe_public_action(&PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice }), &registry, None),
+            "Install a card into Remote(0) (Ice)"
+        );
+    }
 
     /// One instance per variant, mirroring `PlayerAction::VARIANT_NAMES`'
     /// own test: an explanation is required for every action a lesson can

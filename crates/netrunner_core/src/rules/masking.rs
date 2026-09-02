@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardId, Cost, IceType};
+use crate::dsl::{CardId, CardTarget, Cost, IceType};
+use crate::rules::action::{PlayerAction, TargetZone};
+use crate::rules::event::GameEvent;
 use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
 use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
     PendingPrevention, PlayerResources, RunnerState, Side, TraceState,
@@ -272,6 +274,309 @@ pub fn mask_state_for_player(state: &GameState, player: Side) -> PublicGameState
         pending_paid_choice: state.pending_paid_choice.clone(),
         pending_decision: state.pending_decision.clone(),
     }
+}
+
+/// A resolved `PlayerAction` as one particular viewer is entitled to see
+/// it. The per-action log a seat receives (`netrunner_server`'s
+/// `ActionLog`, the TUI's match log) carries the *opponent's* actions too,
+/// and several of those name a card the viewer's `ClientView` conceals:
+/// the Corp's `InstallCard { card_id }` is the facedown card it just put
+/// on the table, its `DiscardCard` is a card going facedown to Archives,
+/// and the Runner's `SelectCardToAccess`/`PassAccessedCard`/`Pay…`/
+/// `Decline…` tell the Corp which HQ or R&D card was looked at. A viewer
+/// always sees their own actions whole — they chose them.
+///
+/// `Concealed` keeps the shape and drops the identity, mirroring
+/// `PublicInstalledCard { card: None }`: "the Corp installed a card into
+/// Remote 0" is information the Runner *must* have, so the action is not
+/// simply omitted. The alternative — `Option<CardId>` on `PlayerAction`
+/// itself — was rejected: the engine would carry a view concern on a type
+/// with an `ActionSpace` layout and forty-one-arm exhaustive matches.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PublicAction {
+    Visible(PlayerAction),
+    Concealed(ConcealedAction),
+}
+
+/// The public residue of an action whose card the viewer may not learn.
+/// Exactly the variants of `PlayerAction` that can name a concealed card;
+/// `mask_action_for_player`'s exhaustive match is what keeps this list
+/// honest when an action is added.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ConcealedAction {
+    /// A Corp install. Where it went and into which slot is public — both
+    /// players watch the card land — only *what* landed is not.
+    InstallCard { zone: TargetZone, slot: InstallSlot },
+    /// A Corp discard, which goes facedown to Archives.
+    DiscardCard,
+    /// The Runner's access of a card in HQ or R&D, from the Corp's chair:
+    /// the Corp does not learn which of its cards was looked at unless the
+    /// access reveals it (a steal or trash lands the card in a public zone,
+    /// and those actions stay `Visible`). Archives is under-disclosed by
+    /// the same rule — everything there is faceup to both sides after an
+    /// access — which is the accepted direction of error.
+    SelectCardToAccess,
+    PassAccessedCard,
+    PayAccessTrigger,
+    DeclineAccessTrigger,
+}
+
+/// Masks `actor`'s `action` for `viewer`. State-free on purpose: every
+/// concealment here follows from the variant and who is looking, never
+/// from what the card turned out to be.
+///
+/// Exhaustive over `PlayerAction` with no catch-all arm, so a new
+/// card-bearing variant must be classified here before it compiles — the
+/// `explain_action` discipline, and the opposite of the `_ =>` decode arms
+/// the Rules Audit removed.
+pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: Side) -> PublicAction {
+    if actor == viewer {
+        return PublicAction::Visible(action.clone());
+    }
+    match action {
+        PlayerAction::InstallCard { zone, slot, .. } => {
+            PublicAction::Concealed(ConcealedAction::InstallCard { zone: *zone, slot: *slot })
+        }
+        PlayerAction::DiscardCard { .. } if actor == Side::Corp => PublicAction::Concealed(ConcealedAction::DiscardCard),
+        // A Runner discard goes to the heap, which is never masked.
+        PlayerAction::DiscardCard { .. } => PublicAction::Visible(action.clone()),
+        PlayerAction::SelectCardToAccess { .. } => PublicAction::Concealed(ConcealedAction::SelectCardToAccess),
+        PlayerAction::PassAccessedCard { .. } => PublicAction::Concealed(ConcealedAction::PassAccessedCard),
+        PlayerAction::PayAccessTrigger { .. } => PublicAction::Concealed(ConcealedAction::PayAccessTrigger),
+        PlayerAction::DeclineAccessTrigger { .. } => PublicAction::Concealed(ConcealedAction::DeclineAccessTrigger),
+        // Faceup plays and Runner installs; steals and access-trashes,
+        // which land the card in a public zone; a click-break, which only
+        // a rezzed piece of ICE can be the target of; and everything that
+        // names an `InstallId` or a position rather than a card.
+        PlayerAction::GainCreditClick { .. }
+        | PlayerAction::DrawCardClick { .. }
+        | PlayerAction::RezIce { .. }
+        | PlayerAction::InitiateRun { .. }
+        | PlayerAction::ContinueRun
+        | PlayerAction::JackOut
+        | PlayerAction::CompleteRun
+        | PlayerAction::PlayEvent { .. }
+        | PlayerAction::PlayOperation { .. }
+        | PlayerAction::InstallHardware { .. }
+        | PlayerAction::InstallProgram { .. }
+        | PlayerAction::InstallResource { .. }
+        | PlayerAction::InstallProgramOnIce { .. }
+        | PlayerAction::BreakSubroutineWithClick { .. }
+        | PlayerAction::EndTurn
+        | PlayerAction::KeepHand
+        | PlayerAction::TakeMulligan
+        | PlayerAction::ActivateAbility { .. }
+        | PlayerAction::AdvanceCard { .. }
+        | PlayerAction::ScoreAgenda { .. }
+        | PlayerAction::RemoveTag
+        | PlayerAction::PurgeVirusCounters
+        | PlayerAction::ChooseTriggerToResolve { .. }
+        | PlayerAction::TrashResource { .. }
+        | PlayerAction::StealAgenda { .. }
+        | PlayerAction::TrashAccessedCard { .. }
+        | PlayerAction::PassPriority { .. }
+        | PlayerAction::SubmitCorpTraceBid { .. }
+        | PlayerAction::SubmitRunnerTraceBid { .. }
+        | PlayerAction::AcceptPendingPaidChoice { .. }
+        | PlayerAction::DeclinePendingPaidChoice
+        | PlayerAction::ResolvePendingChoice { .. }
+        | PlayerAction::ToggleCardSelection { .. }
+        | PlayerAction::ConfirmCardSelection
+        | PlayerAction::ChooseServerForPendingDecision { .. } => PublicAction::Visible(action.clone()),
+    }
+}
+
+/// Masks one `GameEvent` for `viewer`: `Some` if the viewer may see it as
+/// emitted (or, for `TraceInitiated`/`VirusCountersPurged`, with the
+/// concealed card struck out), `None` if the event's information *is* the
+/// identity of a card the viewer may not know. A dropped event costs
+/// nothing a client renders today — the `ClientView` snapshot sent just
+/// before it already carries the structural change — while a `GameEvent`
+/// with an `Option<CardId>` would put a view concern on the type every
+/// trigger in `dispatcher` matches on.
+///
+/// **Concealment is decided from `state`, the position the event's action
+/// produced, and conservatively.** The one predicate,
+/// `corp_card_concealed_from_runner`: a Corp card is off-limits to the
+/// Runner while any installed copy is unrezzed or any Archives copy is
+/// facedown. That reads the same facts `mask_installed_card` and
+/// `mask_archived_card` read, so the log cannot disagree with the view;
+/// and it errs toward hiding — a rezzed Nico Campaign's counters are
+/// concealed while a second Nico sits unrezzed elsewhere — because the
+/// engine does not record whether *this* copy was seen, and reconstructing
+/// it from Archives order would be exactly the first-match-by-`CardId`
+/// shape the Rules Audit spent six branches removing. Callers therefore
+/// mask each entry against its own post-action state
+/// (`netrunner_session::Session::last_entry_for`), never a batch against
+/// a later one.
+///
+/// Exhaustive over `GameEvent` with no catch-all arm, for the same reason
+/// as `mask_action_for_player`.
+pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: Side) -> Option<GameEvent> {
+    let concealed = |card: &CardId| viewer == Side::Runner && corp_card_concealed_from_runner(state, card);
+    let visible = || Some(event.clone());
+
+    match event {
+        // Always facedown by construction: a Corp install is unrezzed until
+        // `rez_ice`, and `turn::discard_to_pile` sends an HQ discard
+        // facedown because the Runner never saw it.
+        GameEvent::CardInstalled { side: Side::Corp, .. } | GameEvent::CardDiscarded { side: Side::Corp, .. } => {
+            (viewer == Side::Corp).then(visible).flatten()
+        }
+        GameEvent::CardInstalled { .. } | GameEvent::CardDiscarded { .. } => visible(),
+        // A Corp trash lands faceup only if the Runner had seen the card
+        // (`ability::orient`); a facedown copy now in Archives means this
+        // may have been it. Spin Doctor's self-removal is the only
+        // `CardRemovedFromGame` and comes off a rezzed card, but
+        // `removed_from_game` is projected into no view, so the same rule.
+        GameEvent::CardTrashed { side: Side::Corp, card } | GameEvent::CardRemovedFromGame { side: Side::Corp, card } => {
+            (!concealed(card)).then(visible).flatten()
+        }
+        GameEvent::CardTrashed { .. } | GameEvent::CardRemovedFromGame { .. } => visible(),
+        // Advancement tokens are public on an unrezzed card; its identity
+        // and its counters are not (`PublicInstalledCard`). Rig cards and
+        // identities never match the predicate and pass through.
+        // `CardDerezzed` is here too, although the Runner *saw* the card
+        // while it was rezzed: the view has no notion of "seen before" and
+        // renders the derezzed install as `card: None`, and the log's rule
+        // is never to name what the view conceals. The StateUpdate still
+        // shows which install flipped.
+        GameEvent::CardAdvanced { card, .. }
+        | GameEvent::CountersAdded { card, .. }
+        | GameEvent::CountersRemoved { card, .. }
+        | GameEvent::CardDerezzed { card } => (!concealed(card)).then(visible).flatten(),
+        // Tāo Salonga swaps ICE the Runner may not be able to identify —
+        // the emit site's comment deferred masking to here.
+        GameEvent::IceSwapped { a, b } => (!concealed(a) && !concealed(b)).then(visible).flatten(),
+        // The chooser saw what they picked — unless the selection was the
+        // Runner's over the Corp's *installed* cards (Tāo's
+        // `OpponentInstalled`), where the pending decision offered them
+        // positions, not identities.
+        GameEvent::CardsSelected { side, cards, revealed } => {
+            let chooser_may_see = viewer == *side && !cards.iter().any(concealed);
+            (*revealed || chooser_may_see).then(visible).flatten()
+        }
+        // The same line `mask_run_state` draws: the Runner sees what they
+        // access; the Corp learns which of its cards that was only in
+        // Archives, where everything is faceup after an access.
+        GameEvent::CardAccessed { server, .. } => {
+            (viewer == Side::Runner || *server == ServerId::Archives).then(visible).flatten()
+        }
+        GameEvent::AccessPassed { .. } => (viewer == Side::Runner).then(visible).flatten(),
+        // A prevention window naming an unrezzed Corp install. No card in
+        // the pool opens one today (`PreventTrash` is unused); the rule is
+        // here so the day one does, it is not a leak.
+        GameEvent::TrashAboutToResolve { target: CardTarget::CorpInstalled { card, .. } }
+        | GameEvent::TrashPrevented { target: CardTarget::CorpInstalled { card, .. } } => {
+            (!concealed(card)).then(visible).flatten()
+        }
+        GameEvent::TrashAboutToResolve { .. } | GameEvent::TrashPrevented { .. } => visible(),
+        // The one card-bearing field that can be struck out in place.
+        GameEvent::TraceInitiated { base, initiating_card: Some(card) } if concealed(card) => {
+            Some(GameEvent::TraceInitiated { base: *base, initiating_card: None })
+        }
+        GameEvent::TraceInitiated { .. } => visible(),
+        // Every virus host today is a public rig card; this is the strip
+        // the variant's doc comment promised for the day a Corp card holds
+        // virus counters.
+        GameEvent::VirusCountersPurged { cards } if cards.iter().any(concealed) => Some(GameEvent::VirusCountersPurged {
+            cards: cards.iter().filter(|card| !concealed(card)).cloned().collect(),
+        }),
+        GameEvent::VirusCountersPurged { .. } => visible(),
+        // Public by construction. Encounter events only ever name rezzed
+        // ICE (`run::engine` passes unrezzed ICE without emitting them);
+        // plays and Runner installs are faceup; `IceRezzed`, `AgendaScored`,
+        // `AgendaStolen` and `CardTrashedFromAccess` land the card in a
+        // public zone; `dispatcher` builds trigger plans from rezzed installs
+        // only, and an ambush firing from HQ or a remote fires while the
+        // Runner is accessing it; `SubroutineFired`'s `Effect` is the
+        // printed text of rezzed ICE; and the rest carry no card at all.
+        GameEvent::ClickSpent { .. }
+        | GameEvent::CreditsGained { .. }
+        | GameEvent::CardDrawn { .. }
+        | GameEvent::IceApproached { .. }
+        | GameEvent::IceEncountered { .. }
+        | GameEvent::SubroutineBroken { .. }
+        | GameEvent::SubroutineFired { .. }
+        | GameEvent::IceStrengthModified { .. }
+        | GameEvent::IcePassed { .. }
+        | GameEvent::ServerApproached { .. }
+        | GameEvent::RunSucceeded { .. }
+        | GameEvent::RunJackedOut { .. }
+        | GameEvent::RunCompleted { .. }
+        | GameEvent::IceRezzed { .. }
+        | GameEvent::RunInitiated { .. }
+        | GameEvent::EventPlayed { .. }
+        | GameEvent::OperationPlayed { .. }
+        | GameEvent::HardwareInstalled { .. }
+        | GameEvent::ProgramInstalled { .. }
+        | GameEvent::ResourceInstalled { .. }
+        | GameEvent::TurnEnded { .. }
+        | GameEvent::TurnStarted { .. }
+        | GameEvent::DiscardPending { .. }
+        | GameEvent::DiscardPhaseEnded { .. }
+        | GameEvent::AgendaStolen { .. }
+        | GameEvent::DamageTaken { .. }
+        | GameEvent::RunnerFlatlined
+        | GameEvent::CreditsSpent { .. }
+        | GameEvent::TagsGiven { .. }
+        | GameEvent::TagsCleared { .. }
+        | GameEvent::RunEndedByEffect { .. }
+        | GameEvent::GameOver { .. }
+        | GameEvent::AbilityActivated { .. }
+        | GameEvent::CardTrashedFromAccess { .. }
+        | GameEvent::PaidAbilityWindowOpened { .. }
+        | GameEvent::PriorityPassed { .. }
+        | GameEvent::PaidAbilityWindowClosed
+        | GameEvent::StrengthBoosted { .. }
+        | GameEvent::TraceCorpBidSubmitted { .. }
+        | GameEvent::TraceRunnerBidSubmitted { .. }
+        | GameEvent::TraceAvoided { .. }
+        | GameEvent::TraceSuccessful { .. }
+        | GameEvent::TagRemoved { .. }
+        | GameEvent::TagsRemoved { .. }
+        | GameEvent::TriggerOrderPending { .. }
+        | GameEvent::TriggerOrderChosen { .. }
+        | GameEvent::TriggerFired { .. }
+        | GameEvent::BadPublicityCreditsSpent { .. }
+        | GameEvent::BonusRunCreditsSpent { .. }
+        | GameEvent::PendingCardSelectionOffered { .. }
+        | GameEvent::MemoryLimitExceeded { .. }
+        | GameEvent::PendingServerChoiceOffered { .. }
+        | GameEvent::BadPublicityGiven { .. }
+        | GameEvent::BadPublicityRemoved { .. }
+        | GameEvent::HandKept { .. }
+        | GameEvent::MulliganTaken { .. }
+        | GameEvent::AdditionalAccessGranted { .. }
+        | GameEvent::AccessReplacementSet { .. }
+        | GameEvent::AccessReplaced { .. }
+        | GameEvent::CreditsLost { .. }
+        | GameEvent::ClicksLost { .. }
+        | GameEvent::ClicksGained { .. }
+        | GameEvent::RecurringCreditsSpent { .. }
+        | GameEvent::AgendaScored { .. }
+        | GameEvent::DamageAboutToResolve { .. }
+        | GameEvent::DamagePrevented { .. }
+        | GameEvent::MaxHandSizeGained { .. }
+        | GameEvent::BasicDrawActionTaken { .. }
+        | GameEvent::PendingChoicePresented { .. }
+        | GameEvent::PendingChoiceResolved { .. }
+        | GameEvent::PendingPaidChoiceOffered { .. }
+        | GameEvent::PendingPaidChoiceAccepted { .. }
+        | GameEvent::PendingPaidChoiceDeclined { .. } => visible(),
+    }
+}
+
+/// Whether the Runner may not currently be told that a Corp card named
+/// `card` was involved in something: true while any installed copy is
+/// unrezzed or any Archives copy is facedown — the two places the Runner's
+/// view hides a Corp card's identity while still showing that a card is
+/// there. HQ and R&D are deliberately *not* consulted: three copies of a
+/// card in a deck would then conceal every event about the rezzed one on
+/// the table, and the Runner's log would go dark on the Corp entirely.
+fn corp_card_concealed_from_runner(state: &GameState, card: &CardId) -> bool {
+    state.corp.installed.iter().any(|installed| installed.card == *card && !installed.rezzed)
+        || state.corp.archives.iter().any(|archived| archived.card == *card && archived.facedown)
 }
 
 fn mask_run_ice(ice: &RunIce, owner_view: bool) -> PublicRunIce {
@@ -981,6 +1286,189 @@ mod tests {
                 &access.phase,
                 PublicAccessPhase::PendingChoice { card: Some(id), .. } if *id == CardId("cyberdex_trial".to_string())
             ));
+        }
+    }
+    // ---- per-viewer action and event masking ----
+
+    fn id(s: &str) -> CardId {
+        CardId(s.to_string())
+    }
+
+    #[test]
+    fn a_corp_install_action_is_concealed_from_the_runner_but_not_the_corp() {
+        let action = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice };
+        assert_eq!(
+            mask_action_for_player(&action, Side::Corp, Side::Runner),
+            PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice })
+        );
+        assert_eq!(mask_action_for_player(&action, Side::Corp, Side::Corp), PublicAction::Visible(action.clone()));
+    }
+
+    #[test]
+    fn a_corp_discard_is_concealed_but_a_runner_discard_is_not() {
+        let action = PlayerAction::DiscardCard { card_id: id("hedge_fund") };
+        assert_eq!(
+            mask_action_for_player(&action, Side::Corp, Side::Runner),
+            PublicAction::Concealed(ConcealedAction::DiscardCard)
+        );
+        assert_eq!(mask_action_for_player(&action, Side::Runner, Side::Corp), PublicAction::Visible(action.clone()));
+    }
+
+    #[test]
+    fn the_runners_access_actions_are_concealed_from_the_corp_unless_the_card_leaves_the_zone() {
+        let concealed = [
+            (PlayerAction::SelectCardToAccess { card_id: id("hedge_fund") }, ConcealedAction::SelectCardToAccess),
+            (PlayerAction::PassAccessedCard { card_id: id("hedge_fund") }, ConcealedAction::PassAccessedCard),
+            (PlayerAction::PayAccessTrigger { card_id: id("hedge_fund") }, ConcealedAction::PayAccessTrigger),
+            (PlayerAction::DeclineAccessTrigger { card_id: id("hedge_fund") }, ConcealedAction::DeclineAccessTrigger),
+        ];
+        for (action, expected) in concealed {
+            assert_eq!(mask_action_for_player(&action, Side::Runner, Side::Corp), PublicAction::Concealed(expected));
+            assert_eq!(mask_action_for_player(&action, Side::Runner, Side::Runner), PublicAction::Visible(action.clone()));
+        }
+        for action in [
+            PlayerAction::StealAgenda { card_id: id("hostile_takeover") },
+            PlayerAction::TrashAccessedCard { card_id: id("nico_campaign") },
+        ] {
+            assert_eq!(mask_action_for_player(&action, Side::Runner, Side::Corp), PublicAction::Visible(action.clone()));
+        }
+    }
+
+    #[test]
+    fn a_corp_install_or_discard_event_is_dropped_for_the_runner_only() {
+        let state = game_state(corp_state_with_cards());
+        for event in [
+            GameEvent::CardInstalled { side: Side::Corp, card: id("ice_wall"), server: ServerId::Hq },
+            GameEvent::CardDiscarded { side: Side::Corp, card: id("hedge_fund") },
+        ] {
+            assert_eq!(mask_event_for_player(&event, &state, Side::Runner), None);
+            assert_eq!(mask_event_for_player(&event, &state, Side::Corp), Some(event.clone()));
+        }
+        let runner_discard = GameEvent::CardDiscarded { side: Side::Runner, card: id("sure_gamble") };
+        assert_eq!(mask_event_for_player(&runner_discard, &state, Side::Corp), Some(runner_discard.clone()));
+    }
+
+    #[test]
+    fn advancing_or_counting_an_unrezzed_card_drops_the_event_for_the_runner() {
+        // `ice_wall` is installed unrezzed; `enigma` is rezzed.
+        let state = game_state(corp_state_with_cards());
+        for (hidden, shown) in [
+            (
+                GameEvent::CardAdvanced { card: id("ice_wall"), advancement_tokens: 1 },
+                GameEvent::CardAdvanced { card: id("enigma"), advancement_tokens: 3 },
+            ),
+            (
+                GameEvent::CountersAdded { card: id("ice_wall"), amount: 2 },
+                GameEvent::CountersAdded { card: id("enigma"), amount: 2 },
+            ),
+            (
+                GameEvent::CountersRemoved { card: id("ice_wall"), amount: 1 },
+                GameEvent::CountersRemoved { card: id("enigma"), amount: 1 },
+            ),
+            // Tranquilizer derezzed it: the Runner saw it rezzed, but the
+            // view now conceals it, and the log follows the view.
+            (GameEvent::CardDerezzed { card: id("ice_wall") }, GameEvent::CardDerezzed { card: id("enigma") }),
+        ] {
+            assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
+            assert_eq!(mask_event_for_player(&hidden, &state, Side::Corp), Some(hidden.clone()));
+            assert_eq!(mask_event_for_player(&shown, &state, Side::Runner), Some(shown.clone()));
+        }
+    }
+
+    #[test]
+    fn a_facedown_copy_in_archives_conceals_a_corp_trash() {
+        // `cyberdex_trial` sits facedown in Archives; nothing hides `hostile_takeover`.
+        let state = game_state(corp_state_with_cards());
+        let hidden = GameEvent::CardTrashed { side: Side::Corp, card: id("cyberdex_trial") };
+        let shown = GameEvent::CardTrashed { side: Side::Corp, card: id("hostile_takeover") };
+        assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
+        assert_eq!(mask_event_for_player(&hidden, &state, Side::Corp), Some(hidden.clone()));
+        assert_eq!(mask_event_for_player(&shown, &state, Side::Runner), Some(shown.clone()));
+
+        let runner_trash = GameEvent::CardTrashed { side: Side::Runner, card: id("cyberdex_trial") };
+        assert_eq!(mask_event_for_player(&runner_trash, &state, Side::Runner), Some(runner_trash.clone()));
+    }
+
+    #[test]
+    fn a_swap_naming_an_unrezzed_ice_is_dropped_for_the_runner() {
+        let state = game_state(corp_state_with_cards());
+        let hidden = GameEvent::IceSwapped { a: id("ice_wall"), b: id("enigma") };
+        let shown = GameEvent::IceSwapped { a: id("enigma"), b: id("enigma") };
+        assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
+        assert_eq!(mask_event_for_player(&hidden, &state, Side::Corp), Some(hidden.clone()));
+        assert_eq!(mask_event_for_player(&shown, &state, Side::Runner), Some(shown.clone()));
+    }
+
+    #[test]
+    fn an_unrevealed_selection_is_seen_only_by_a_chooser_who_could_see_the_cards() {
+        let state = game_state(corp_state_with_cards());
+        let corp_picks_from_hq = GameEvent::CardsSelected { side: Side::Corp, cards: vec![id("hedge_fund")], revealed: false };
+        assert_eq!(mask_event_for_player(&corp_picks_from_hq, &state, Side::Corp), Some(corp_picks_from_hq.clone()));
+        assert_eq!(mask_event_for_player(&corp_picks_from_hq, &state, Side::Runner), None);
+
+        // Tāo Salonga: the Runner selected over the Corp's installed cards
+        // by position and must not learn what they picked.
+        let runner_picks_unrezzed_ice = GameEvent::CardsSelected { side: Side::Runner, cards: vec![id("ice_wall")], revealed: false };
+        assert_eq!(mask_event_for_player(&runner_picks_unrezzed_ice, &state, Side::Runner), None);
+
+        let revealed = GameEvent::CardsSelected { side: Side::Corp, cards: vec![id("hedge_fund")], revealed: true };
+        assert_eq!(mask_event_for_player(&revealed, &state, Side::Runner), Some(revealed.clone()));
+    }
+
+    #[test]
+    fn an_hq_access_event_is_hidden_from_the_corp_but_an_archives_access_is_not() {
+        let state = game_state(corp_state_with_cards());
+        let hq = GameEvent::CardAccessed { card: id("hedge_fund"), server: ServerId::Hq, install: None };
+        let archives = GameEvent::CardAccessed { card: id("cyberdex_trial"), server: ServerId::Archives, install: None };
+        assert_eq!(mask_event_for_player(&hq, &state, Side::Corp), None);
+        assert_eq!(mask_event_for_player(&hq, &state, Side::Runner), Some(hq.clone()));
+        assert_eq!(mask_event_for_player(&archives, &state, Side::Corp), Some(archives.clone()));
+
+        let passed = GameEvent::AccessPassed { card: id("hedge_fund") };
+        assert_eq!(mask_event_for_player(&passed, &state, Side::Corp), None);
+        assert_eq!(mask_event_for_player(&passed, &state, Side::Runner), Some(passed.clone()));
+    }
+
+    #[test]
+    fn a_trace_from_a_concealed_card_is_struck_out_rather_than_dropped() {
+        let state = game_state(corp_state_with_cards());
+        let event = GameEvent::TraceInitiated { base: 3, initiating_card: Some(id("ice_wall")) };
+        assert_eq!(
+            mask_event_for_player(&event, &state, Side::Runner),
+            Some(GameEvent::TraceInitiated { base: 3, initiating_card: None })
+        );
+        assert_eq!(mask_event_for_player(&event, &state, Side::Corp), Some(event.clone()));
+
+        let purge = GameEvent::VirusCountersPurged { cards: vec![id("botulus"), id("ice_wall")] };
+        assert_eq!(
+            mask_event_for_player(&purge, &state, Side::Runner),
+            Some(GameEvent::VirusCountersPurged { cards: vec![id("botulus")] })
+        );
+    }
+
+    #[test]
+    fn a_prevention_window_on_an_unrezzed_install_is_dropped_for_the_runner() {
+        let state = game_state(corp_state_with_cards());
+        let hidden = GameEvent::TrashAboutToResolve {
+            target: CardTarget::CorpInstalled { card: id("ice_wall"), server: ServerId::Hq },
+        };
+        let rig = GameEvent::TrashPrevented { target: CardTarget::RunnerRig(id("botulus")) };
+        assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
+        assert_eq!(mask_event_for_player(&rig, &state, Side::Runner), Some(rig.clone()));
+    }
+
+    #[test]
+    fn public_events_pass_through_unchanged_for_both_sides() {
+        let state = game_state(corp_state_with_cards());
+        for event in [
+            GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+            GameEvent::IceRezzed { card: id("ice_wall"), server: ServerId::Hq, install: InstallId(1069) },
+            GameEvent::AgendaScored { card: id("hostile_takeover"), agenda_points: 1, server: ServerId::Remote(0) },
+            GameEvent::CardTrashedFromAccess { card: id("nico_campaign"), cost_paid: 3 },
+        ] {
+            for viewer in [Side::Corp, Side::Runner] {
+                assert_eq!(mask_event_for_player(&event, &state, viewer), Some(event.clone()));
+            }
         }
     }
 }

@@ -24,6 +24,7 @@ use netrunner_core::tutorial::{Lesson, LessonProgress, TutorialError};
 use netrunner_core::view::ClientView;
 
 use crate::outcome::GameEndReason;
+use crate::history::PublicHistoryEntry;
 use crate::session::{Seat, Session, SessionStep, StallReason, SubmitError};
 
 /// Why a lesson could not start or run — every case an authoring bug.
@@ -63,6 +64,13 @@ pub struct LessonSession {
     absorbed: usize,
     /// Counts the opening actions submitted, for `OpeningRejected`.
     opening_index: usize,
+    /// The learner's copy of every action resolved since `drain_log`,
+    /// each masked against its own post-action state at the moment it
+    /// resolved. Kept here rather than diffed by the TUI afterwards because
+    /// `step` pumps the opening and the scripted opponent through several
+    /// actions before it returns, and `Session::last_entry_for` is only
+    /// right for the entry just applied.
+    log: Vec<PublicHistoryEntry>,
     /// Set when the learner is first handed a decision. Nothing before that
     /// — the opening's own events, the opponent's turns leading up to it —
     /// counts toward a step: an opening that advances an agenda must not
@@ -90,6 +98,7 @@ impl LessonSession {
             learner,
             absorbed: 0,
             opening_index: 0,
+            log: Vec::new(),
             handed_over: false,
         })
     }
@@ -110,6 +119,9 @@ impl LessonSession {
     pub fn step(&mut self) -> Result<LessonStep, LessonError> {
         loop {
             let step = self.session.step();
+            if matches!(step, SessionStep::Applied { .. }) {
+                self.log_last();
+            }
             self.absorb();
             if self.progress.is_complete() {
                 return Ok(LessonStep::Complete { view: Box::new(self.session.view_for(self.learner)) });
@@ -127,6 +139,7 @@ impl LessonSession {
                             && let Some(pass) = pass
                         {
                             self.session.submit(pass).expect("passing priority is legal: it was in legal_actions");
+                            self.log_last();
                             continue;
                         }
                         let action = self.opening.pop_front().expect("front was Some");
@@ -135,6 +148,7 @@ impl LessonSession {
                         self.session
                             .submit(action.clone())
                             .map_err(|error| LessonError::OpeningRejected { index, action, error })?;
+                        self.log_last();
                         continue;
                     }
                     let allowed: Vec<PlayerAction> = self.progress.allowed(&view).into_iter().cloned().collect();
@@ -142,6 +156,7 @@ impl LessonSession {
                         && (view.legal_actions.len() == 1 || allowed.is_empty())
                     {
                         self.session.submit(pass).expect("passing priority is legal: it was in legal_actions");
+                        self.log_last();
                         continue;
                     }
                     self.handed_over = true;
@@ -163,7 +178,22 @@ impl LessonSession {
     /// by `legal_actions`: the client chose from a list it was shown, and
     /// the engine's guards are the only authority.
     pub fn submit(&mut self, action: PlayerAction) -> Result<(), SubmitError> {
-        self.session.submit(action)
+        self.session.submit(action)?;
+        self.log_last();
+        Ok(())
+    }
+
+    fn log_last(&mut self) {
+        if let Some(entry) = self.session.last_entry_for(self.learner) {
+            self.log.push(entry);
+        }
+    }
+
+    /// Every action resolved since the last call, as the learner may see
+    /// it. The TUI drains this after each `step` and `submit` for its
+    /// match log.
+    pub fn drain_log(&mut self) -> Vec<PublicHistoryEntry> {
+        std::mem::take(&mut self.log)
     }
 
     /// Feeds every recorded action since the last call into the lesson —

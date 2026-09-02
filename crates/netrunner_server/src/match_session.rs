@@ -132,11 +132,19 @@ impl MatchSession {
     }
 
     /// Everything a channel seat needs after an action resolves: the new
-    /// board, then the log line describing how it got there.
+    /// board, then the log line describing how it got there — each seat's
+    /// own copy of both. The log used to be one `broadcast` of the raw
+    /// `HistoryEntry`, which handed the Runner the Corp's facedown install
+    /// by name; it is masked here, right after the action, because
+    /// `last_entry_for` reads concealment off the state this action left.
     fn broadcast_applied(&self) {
         self.broadcast_state_updates();
-        if let Some(entry) = self.session.last_entry() {
-            self.broadcast(ServerMessage::ActionLog(Box::new(entry.clone())));
+        for side in [Side::Corp, Side::Runner] {
+            if let Some(seat) = self.channel(side)
+                && let Some(entry) = self.session.last_entry_for(side)
+            {
+                let _ = seat.tx.send(ServerMessage::ActionLog(Box::new(entry)));
+            }
         }
     }
 
@@ -180,7 +188,7 @@ impl MatchSession {
 mod tests {
     use super::*;
     use netrunner_bots::RandomAgent;
-    use netrunner_core::rules::{GamePhase, GameState as CoreGameState, PlayerAction};
+    use netrunner_core::rules::{Clicks, ConcealedAction, GameEvent, GamePhase, GameState as CoreGameState, PlayerAction, PublicAction};
 
     use crate::fixtures;
 
@@ -282,10 +290,72 @@ mod tests {
         match corp_rx.recv().await.unwrap() {
             ServerMessage::ActionLog(entry) => {
                 assert_eq!(entry.side, Side::Corp);
-                assert_eq!(entry.action, PlayerAction::KeepHand);
+                assert_eq!(entry.action, PublicAction::Visible(PlayerAction::KeepHand), "a seat sees its own action whole");
                 assert_eq!(entry.turn_number, 0, "mulligan actions are turn 0");
             }
             other => panic!("expected an ActionLog after the StateUpdate, got {other:?}"),
+        }
+
+        drop(corp_client_tx);
+        handle.abort();
+    }
+
+    /// The log is masked per seat at the engine boundary, like the view.
+    /// Before this the same `HistoryEntry` went to both seats, so the
+    /// Runner's log read "Install Palisade into Remote(0)" for a card its
+    /// own `StateUpdate` had just rendered as `card: None`.
+    #[tokio::test]
+    async fn the_action_log_never_names_the_other_sides_hidden_cards() {
+        let registry = fixtures::kate_vs_hb_registry();
+        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let (mut state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 5).expect("legal decks set up cleanly");
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+
+        let (corp_tx, mut corp_rx) = mpsc::unbounded_channel();
+        let (corp_client_tx, corp_client_rx) = mpsc::unbounded_channel();
+        let (runner_tx, mut runner_rx) = mpsc::unbounded_channel();
+        let (_runner_client_tx, runner_client_rx) = mpsc::unbounded_channel();
+        let session = MatchSession::new(
+            state,
+            registry,
+            PlayerSlot::Channel { tx: corp_tx, rx: corp_client_rx },
+            PlayerSlot::Channel { tx: runner_tx, rx: runner_client_rx },
+        );
+        let handle = tokio::spawn(session.run());
+
+        let install = match corp_rx.recv().await.unwrap() {
+            ServerMessage::StateUpdate(view) => view
+                .legal_actions
+                .iter()
+                .find(|action| matches!(action, PlayerAction::InstallCard { .. }))
+                .cloned()
+                .expect("a Corp with three clicks and an opening hand can install something"),
+            other => panic!("expected the initial StateUpdate, got {other:?}"),
+        };
+        assert!(matches!(runner_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+        corp_client_tx.send(ClientMessage::SubmitAction(install.clone())).unwrap();
+
+        assert!(matches!(corp_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+        match corp_rx.recv().await.unwrap() {
+            ServerMessage::ActionLog(entry) => assert_eq!(entry.action, PublicAction::Visible(install.clone())),
+            other => panic!("expected the Corp's ActionLog, got {other:?}"),
+        }
+
+        assert!(matches!(runner_rx.recv().await.unwrap(), ServerMessage::StateUpdate(_)));
+        match runner_rx.recv().await.unwrap() {
+            ServerMessage::ActionLog(entry) => {
+                assert!(
+                    matches!(entry.action, PublicAction::Concealed(ConcealedAction::InstallCard { .. })),
+                    "the Runner's copy names the install's shape, not its card: {:?}",
+                    entry.action
+                );
+                assert!(!entry.events.iter().any(|event| matches!(event, GameEvent::CardInstalled { .. })));
+                let PlayerAction::InstallCard { card_id, .. } = &install else { unreachable!() };
+                let rendered = format!("{entry:?}");
+                assert!(!rendered.contains(&format!("\"{}\"", card_id.0)), "{rendered}");
+            }
+            other => panic!("expected the Runner's ActionLog, got {other:?}"),
         }
 
         drop(corp_client_tx);
