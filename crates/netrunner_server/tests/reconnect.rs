@@ -19,7 +19,7 @@ use netrunner_server::{ClientMessage, ServerMessage};
 type Socket = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 async fn start_server(grace: Duration) -> String {
-    let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), reconnect_grace: grace };
+    let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), reconnect_grace: grace, ..ServeOptions::default() };
     let server = Server::bind("127.0.0.1:0", options).await.expect("an ephemeral port binds");
     let addr = server.local_addr().unwrap();
     tokio::spawn(server.run());
@@ -59,7 +59,7 @@ fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
 async fn a_dropped_client_resumes_its_seat_with_the_session_token() {
     let url = start_server(Duration::from_secs(30)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp) }).await;
+    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None }).await;
     let (match_id, side, token) = joined(next(&mut first).await);
     assert_eq!(side, Side::Corp);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
@@ -91,7 +91,7 @@ async fn a_token_nobody_issued_is_refused() {
 async fn a_seat_forfeited_for_staying_away_cannot_resume() {
     let url = start_server(Duration::from_millis(200)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp) }).await;
+    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None }).await;
     let (_, _, token) = joined(next(&mut first).await);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
     first.close(None).await.unwrap();
@@ -109,7 +109,7 @@ async fn a_seat_forfeited_for_staying_away_cannot_resume() {
 async fn the_newest_connection_wins_the_seat() {
     let url = start_server(Duration::from_secs(30)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp) }).await;
+    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None }).await;
     let (_, _, token) = joined(next(&mut first).await);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
 

@@ -8,8 +8,8 @@
 //! comment) — `ClientMessage`/`ServerMessage` are plain serializable data
 //! with no transport assumptions baked in. `net` carries the same types
 //! over a real WebSocket for `--serve` mode's remote clients, and `serve`
-//! is that mode: the accept loop, the lobby, and the seat-token registry
-//! that lets a dropped client resume.
+//! is that mode: the accept loop, the lobby queue, and the one registry of
+//! running matches and seat tokens that lets a dropped client resume.
 
 pub mod fixtures;
 pub mod match_session;
@@ -18,7 +18,7 @@ pub mod protocol;
 pub mod serve;
 
 pub use match_session::{MatchOver, MatchSession, PlayerSlot, ReattachHandle, DEFAULT_RECONNECT_GRACE};
-pub use protocol::{ClientMessage, GameEndReason, HistoryEntry, PublicHistoryEntry, ServerMessage};
+pub use protocol::{ClientMessage, GameEndReason, HistoryEntry, MatchSummary, PublicHistoryEntry, ServerMessage};
 
 /// Re-exported so existing `netrunner_server::classify_end_reason` callers
 /// keep working; it now lives in `netrunner_session::outcome`. A caller

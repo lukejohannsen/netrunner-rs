@@ -234,7 +234,7 @@ impl MatchSession {
                         // Handshake messages belong to the transport; one
                         // that reaches the session is a client repeating
                         // itself and is ignored.
-                        ClientMessage::Connect { .. } | ClientMessage::Resume { .. } => continue,
+                        ClientMessage::Connect { .. } | ClientMessage::Resume { .. } | ClientMessage::ListMatches => continue,
                     }
                 }
                 SessionStep::Ended { winner, reason } => {

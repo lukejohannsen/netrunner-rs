@@ -115,6 +115,11 @@ pub struct Config {
     #[arg(long, value_enum)]
     pub side: Option<SideArg>,
 
+    /// (remote mode, human-vs-human daemon) Only pair with a player who
+    /// named the same room. Omitted: the public queue.
+    #[arg(long)]
+    pub room: Option<String>,
+
     /// Path to the trained ONNX policy driving `--corp onnx`/`--runner onnx`
     /// and `puct-onnx` — the artifact `scripts/run_iteration_loop.py`
     /// promotes each iteration. Ignored unless a side is set to one of
