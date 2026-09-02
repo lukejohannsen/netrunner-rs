@@ -11,6 +11,8 @@ env/
 # live corpus, and any stale one moved aside under another name)
 /data/
 /checkpoints/
+/checkpoints_*/
 
 # Local Claude Code state (per-machine agent settings and permissions)
 .claude/
+__pycache__/

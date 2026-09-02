@@ -70,6 +70,9 @@ cargo run -p netrunner_cli -- --mode remote
 # Generate self-play training trajectories
 cargo run -p netrunner_selfplay -- -n 10 -s 100 -o data/selfplay
 
+# The self-play / train / arena loop (needs the Python venv under scripts/)
+scripts/venv/bin/python3 scripts/run_iteration_loop.py -g 2400 -s 64 --window 4
+
 # The gate for any change
 cargo test --workspace
 cargo clippy --workspace --all-targets
