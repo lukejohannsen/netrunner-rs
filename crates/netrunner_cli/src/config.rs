@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use netrunner_bots::Personality;
 use clap::{Parser, Subcommand, ValueEnum};
 
 use netrunner_core::format::NsgFormat;
@@ -95,6 +96,21 @@ pub struct Config {
     /// `corp`'s doc comment for the `Human`/headless-mode caveats.
     #[arg(long, value_enum, default_value_t = BotKind::Human)]
     pub runner: BotKind,
+
+    /// The Corp bot's personality: `balanced`, or a Corp archetype —
+    /// `rush` (score early, protect late), `glacier` (build the fort
+    /// first), `trap` (wants the Runner's grip thin). A bias on the
+    /// evaluator `heuristic`, `mcts` and `puct` share; `random` and a
+    /// network-backed `puct-onnx` ignore it.
+    #[arg(long, default_value_t = Personality::Balanced)]
+    pub corp_personality: Personality,
+
+    /// The Runner bot's personality: `balanced`, or a Runner archetype —
+    /// `aggressive` (runs are worth double, tags and subroutines cost
+    /// less) or `cautious` (a full rig before a run). See
+    /// `--corp-personality`.
+    #[arg(long, default_value_t = Personality::Balanced)]
+    pub runner_personality: Personality,
 
     /// `Local` runs the match in this process: interactive play on a
     /// `netrunner_session::Session` (`tui::run_local`), `--headless` on
@@ -215,6 +231,30 @@ pub enum BotKind {
     Onnx,
 }
 
+/// A bot for the benchmark: a kind and the personality it plays with,
+/// spelled `kind` or `kind:personality` on the command line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BotSpec {
+    pub kind: BotKind,
+    pub personality: Personality,
+}
+
+impl std::str::FromStr for BotSpec {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (kind, personality) = match s.split_once(':') {
+            Some((kind, personality)) => (kind, personality.parse::<Personality>()?),
+            None => (s, Personality::Balanced),
+        };
+        let kind = BotKind::from_str(kind, true).map_err(|_| {
+            let names: Vec<&str> = BotKind::value_variants().iter().filter_map(|k| k.to_possible_value()).map(|v| v.get_name().to_string()).collect::<Vec<_>>().leak().iter().map(String::as_str).collect();
+            format!("unknown bot kind {kind:?}; one of {}", names.join(", "))
+        })?;
+        Ok(BotSpec { kind, personality })
+    }
+}
+
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Local,
@@ -229,12 +269,14 @@ pub enum Command {
     /// the harness for comparing a trained policy against the search it
     /// replaced.
     Bench {
-        /// Bot kinds to seat, comma-separated. Every ordered pair plays,
-        /// a kind against itself included — that pairing is what says
-        /// whether the Corp or the Runner chair is the stronger one for
-        /// a given bot. `human` and `onnx` cannot be seated here.
+        /// Bots to seat, comma-separated, each a kind with an optional
+        /// personality after a colon: `heuristic`, `heuristic:rush`,
+        /// `puct:aggressive`. Every ordered pair plays, a bot against
+        /// itself included — that pairing is what says whether the Corp
+        /// or the Runner chair is the stronger one for a given bot.
+        /// `human` and `onnx` cannot be seated here.
         #[arg(long, value_delimiter = ',', default_value = "random,heuristic")]
-        bots: Vec<BotKind>,
+        bots: Vec<BotSpec>,
         /// Games per ordered pairing, rotating through the sample-deck
         /// matchups the way `--headless --all-matchups` does.
         #[arg(long, default_value_t = 12)]
@@ -398,6 +440,16 @@ pub enum CardsAction {
 pub enum SideArg {
     Corp,
     Runner,
+}
+
+impl Config {
+    /// The personality the bot in `side`'s chair plays with.
+    pub fn personality_for(&self, side: Side) -> Personality {
+        match side {
+            Side::Corp => self.corp_personality,
+            Side::Runner => self.runner_personality,
+        }
+    }
 }
 
 impl From<SideArg> for Side {

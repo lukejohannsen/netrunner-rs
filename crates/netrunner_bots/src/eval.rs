@@ -182,6 +182,95 @@ const HQ_FLOOR: usize = 3;
 /// reads nothing the Corp's `ClientView` does not show.
 const RD_DRAW_RESERVE: usize = 5;
 
+/// Every tunable term of `evaluate_state`, as one value. `Default` is the
+/// constants above, so `evaluate_state` is `evaluate_state_with(..,
+/// &Weights::default())` and every existing caller scores exactly as it
+/// did; a `Personality` is a `Weights` that differs from the default in a
+/// few documented places. The constants keep the reasoning — each one's
+/// doc comment records the measurement that set it — and the struct
+/// carries the numbers, so a profile can move one without restating the
+/// rest. Two terms exist only for profiles and default to zero, so the
+/// balanced evaluator is unchanged by their existence:
+/// `opponent_grip_weight` (a Corp that wants the Runner's hand thin) and
+/// `installed_agenda_weight` (a Corp that wants the agenda on the table
+/// before the ICE in front of it).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Weights {
+    pub agenda_point_weight: f64,
+    pub own_credit_weight: f64,
+    pub opponent_credit_weight: f64,
+    pub bad_publicity_weight: f64,
+    pub tag_weight: f64,
+    pub board_presence_weight: f64,
+    pub memory_weight: f64,
+    pub rezzed_ice_weight: f64,
+    pub rezzed_asset_weight: f64,
+    pub unrezzed_install_weight: f64,
+    pub advancement_weight: f64,
+    pub agenda_protection_weight: f64,
+    pub agenda_protection_cap: usize,
+    pub breaker_coverage_weight: f64,
+    pub active_run_weight: f64,
+    pub pending_subroutine_weight: f64,
+    pub unresolved_decision_weight: f64,
+    pub strength_shortfall_weight: f64,
+    pub savings_shortfall_weight: f64,
+    pub grip_shortfall_weight: f64,
+    pub grip_floor: usize,
+    pub hq_shortfall_weight: f64,
+    pub hq_floor: usize,
+    pub rd_draw_reserve: usize,
+    /// Corp only: each card in the Runner's grip, subtracted. Zero by
+    /// default — the balanced Corp does not play for the flatline — and
+    /// positive for a `Personality::Trap`, for whom every point of net
+    /// damage dealt is worth this much and an empty grip is a kill.
+    pub opponent_grip_weight: f64,
+    /// Corp only: each installed, unscored agenda, added. Zero by default
+    /// — every unrezzed install is worth the same flat
+    /// `unrezzed_install_weight`, which is why the balanced Corp has no
+    /// preference between putting down the agenda and the ICE — and
+    /// positive for a `Personality::Rush`, for whom the agenda comes
+    /// first and the ICE if there is time. Measured before it existed:
+    /// a rush profile built from the other terms alone advanced *less*
+    /// than balanced (1,045 → 1,032 `CardAdvanced` in 96 games), because
+    /// the one-ply Corp already advances every agenda it has installed
+    /// and the profile had no way to say "install it".
+    pub installed_agenda_weight: f64,
+}
+
+impl Default for Weights {
+    fn default() -> Self {
+        Weights {
+            agenda_point_weight: AGENDA_POINT_WEIGHT,
+            own_credit_weight: OWN_CREDIT_WEIGHT,
+            opponent_credit_weight: OPPONENT_CREDIT_WEIGHT,
+            bad_publicity_weight: BAD_PUBLICITY_WEIGHT,
+            tag_weight: TAG_WEIGHT,
+            board_presence_weight: BOARD_PRESENCE_WEIGHT,
+            memory_weight: MEMORY_WEIGHT,
+            rezzed_ice_weight: REZZED_ICE_WEIGHT,
+            rezzed_asset_weight: REZZED_ASSET_WEIGHT,
+            unrezzed_install_weight: UNREZZED_INSTALL_WEIGHT,
+            advancement_weight: ADVANCEMENT_WEIGHT,
+            agenda_protection_weight: AGENDA_PROTECTION_WEIGHT,
+            agenda_protection_cap: AGENDA_PROTECTION_CAP,
+            breaker_coverage_weight: BREAKER_COVERAGE_WEIGHT,
+            active_run_weight: ACTIVE_RUN_WEIGHT,
+            pending_subroutine_weight: PENDING_SUBROUTINE_WEIGHT,
+            unresolved_decision_weight: UNRESOLVED_DECISION_WEIGHT,
+            strength_shortfall_weight: STRENGTH_SHORTFALL_WEIGHT,
+            savings_shortfall_weight: SAVINGS_SHORTFALL_WEIGHT,
+            grip_shortfall_weight: GRIP_SHORTFALL_WEIGHT,
+            grip_floor: GRIP_FLOOR,
+            hq_shortfall_weight: HQ_SHORTFALL_WEIGHT,
+            hq_floor: HQ_FLOOR,
+            rd_draw_reserve: RD_DRAW_RESERVE,
+            opponent_grip_weight: 0.0,
+            installed_agenda_weight: 0.0,
+        }
+    }
+}
+
 /// A rough static evaluation of `state` from `side`'s perspective: positive
 /// favors `side`, negative favors the opponent. Shared by `HeuristicAgent`'s
 /// one-ply scoring, `MctsAgent`'s rollout/leaf evaluation, the uniform
@@ -194,43 +283,53 @@ const RD_DRAW_RESERVE: usize = 5;
 /// can say — which installs are ICE, how far an agenda is from scoring,
 /// which rig cards break which ICE.
 pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) -> f64 {
+    evaluate_state_with(state, side, registry, &Weights::default())
+}
+
+/// `evaluate_state` under a particular `Weights` — what a `Personality`
+/// gives the heuristic, MCTS and the uniform PUCT evaluator.
+pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistry, w: &Weights) -> f64 {
     if let GamePhase::GameOver(winner) = state.phase {
         return if winner == side { WIN_SCORE } else { -WIN_SCORE };
     }
 
     let own = state.resources(side);
     let opponent = state.resources(side.other());
-    let mut score = (own.agenda_points.0 as f64 - opponent.agenda_points.0 as f64) * AGENDA_POINT_WEIGHT;
+    let mut score = (own.agenda_points.0 as f64 - opponent.agenda_points.0 as f64) * w.agenda_point_weight;
     if state.is_resolution_blocked() && current_actor(state) == Some(side) {
-        score -= UNRESOLVED_DECISION_WEIGHT;
+        score -= w.unresolved_decision_weight;
     }
-    score += own.credits.0 as f64 * OWN_CREDIT_WEIGHT;
-    score -= opponent.credits.0 as f64 * OPPONENT_CREDIT_WEIGHT;
+    score += own.credits.0 as f64 * w.own_credit_weight;
+    score -= opponent.credits.0 as f64 * w.opponent_credit_weight;
 
     match side {
         Side::Corp => {
-            score -= state.corp.bad_publicity as f64 * BAD_PUBLICITY_WEIGHT;
+            score -= state.corp.bad_publicity as f64 * w.bad_publicity_weight;
             for installed in &state.corp.installed {
-                score += corp_install_value(installed, registry);
+                score += corp_install_value(installed, registry, w);
             }
-            score += protected_agenda_ice(state, registry) as f64 * AGENDA_PROTECTION_WEIGHT;
-            if state.corp.r_and_d.len() >= RD_DRAW_RESERVE {
-                score -= HQ_FLOOR.saturating_sub(state.corp.hq.len()) as f64 * HQ_SHORTFALL_WEIGHT;
+            score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
+            if w.installed_agenda_weight != 0.0 {
+                score += installed_agendas(state, registry) as f64 * w.installed_agenda_weight;
             }
+            if state.corp.r_and_d.len() >= w.rd_draw_reserve {
+                score -= w.hq_floor.saturating_sub(state.corp.hq.len()) as f64 * w.hq_shortfall_weight;
+            }
+            score -= state.runner.grip.len() as f64 * w.opponent_grip_weight;
         }
         Side::Runner => {
-            score -= state.runner.tags as f64 * TAG_WEIGHT;
-            score += state.runner.rig.len() as f64 * BOARD_PRESENCE_WEIGHT;
-            score += state.runner.memory_units.0 as f64 * MEMORY_WEIGHT;
-            score += breaker_coverage(state, registry) as f64 * BREAKER_COVERAGE_WEIGHT;
-            score -= breaker_savings_shortfall(state, registry) as f64 * SAVINGS_SHORTFALL_WEIGHT;
-            score -= GRIP_FLOOR.saturating_sub(state.runner.grip.len()) as f64 * GRIP_SHORTFALL_WEIGHT;
+            score -= state.runner.tags as f64 * w.tag_weight;
+            score += state.runner.rig.len() as f64 * w.board_presence_weight;
+            score += state.runner.memory_units.0 as f64 * w.memory_weight;
+            score += breaker_coverage(state, registry) as f64 * w.breaker_coverage_weight;
+            score -= breaker_savings_shortfall(state, registry) as f64 * w.savings_shortfall_weight;
+            score -= w.grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.grip_shortfall_weight;
             if let Some(run) = &state.active_run {
                 if run_is_breakable(state, run, registry) {
-                    score += ACTIVE_RUN_WEIGHT;
+                    score += w.active_run_weight;
                 }
-                score -= pending_subroutines(run) as f64 * PENDING_SUBROUTINE_WEIGHT;
-                score -= strength_shortfall(state, run, registry) as f64 * STRENGTH_SHORTFALL_WEIGHT;
+                score -= pending_subroutines(run) as f64 * w.pending_subroutine_weight;
+                score -= strength_shortfall(state, run, registry) as f64 * w.strength_shortfall_weight;
             }
         }
     }
@@ -354,23 +453,35 @@ fn pending_subroutines(run: &RunState) -> usize {
     run.ice.get(run.position).map_or(0, |ice| pending_on(ice) as usize)
 }
 
-fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry) -> f64 {
+fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights) -> f64 {
     let def = registry.get(&installed.card);
     let is_ice = def.is_some_and(|d| matches!(d.card_type, CardType::Ice(_)));
     let mut value = if installed.rezzed {
-        BOARD_PRESENCE_WEIGHT + if is_ice { REZZED_ICE_WEIGHT } else { REZZED_ASSET_WEIGHT }
+        w.board_presence_weight + if is_ice { w.rezzed_ice_weight } else { w.rezzed_asset_weight }
     } else {
-        UNREZZED_INSTALL_WEIGHT
+        w.unrezzed_install_weight
     };
     if let Some(required) = def.and_then(|d| d.advancement_requirement) {
-        value += installed.advancement_tokens.min(required) as f64 * ADVANCEMENT_WEIGHT;
+        value += installed.advancement_tokens.min(required) as f64 * w.advancement_weight;
     }
     value
 }
 
+/// Installed, unscored agendas — what `installed_agenda_weight` counts.
+fn installed_agendas(state: &GameState, registry: &CardRegistry) -> usize {
+    use netrunner_core::rules::InstallSlot;
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.slot == InstallSlot::Root)
+        .filter(|card| registry.get(&card.card).is_some_and(|def| def.card_type == CardType::Agenda))
+        .count()
+}
+
 /// ICE in front of each installed, unscored agenda, each server's count
-/// capped at `AGENDA_PROTECTION_CAP`, summed over agendas.
-fn protected_agenda_ice(state: &GameState, registry: &CardRegistry) -> usize {
+/// capped at `cap` (`Weights::agenda_protection_cap`), summed over agendas.
+fn protected_agenda_ice(state: &GameState, registry: &CardRegistry, cap: usize) -> usize {
     use netrunner_core::rules::InstallSlot;
     state
         .corp
@@ -385,7 +496,7 @@ fn protected_agenda_ice(state: &GameState, registry: &CardRegistry) -> usize {
                 .iter()
                 .filter(|ice| ice.slot == InstallSlot::Ice && ice.server == agenda.server)
                 .count()
-                .min(AGENDA_PROTECTION_CAP)
+                .min(cap)
         })
         .sum()
 }
@@ -1156,5 +1267,61 @@ mod tests {
         assert!((per_ice("offworld_office", AGENDA_PROTECTION_CAP) - AGENDA_PROTECTION_WEIGHT).abs() < 1e-9);
         assert!(per_ice("offworld_office", AGENDA_PROTECTION_CAP + 1).abs() < 1e-9, "past the cap an ICE is just an ICE");
         assert!(per_ice("nico_campaign", 1).abs() < 1e-9, "an asset is not protected by this term");
+    }
+
+    // ----- `Weights`: the terms only a personality moves -----
+
+    #[test]
+    fn the_default_weights_are_the_constants_and_score_identically() {
+        let mut state = GameState::new(0);
+        state.corp.resources.agenda_points = AgendaPoints(2);
+        state.runner.grip = corp_cards("g", 4);
+        for side in [Side::Corp, Side::Runner] {
+            assert_eq!(evaluate_state(&state, side, &empty()), evaluate_state_with(&state, side, &empty(), &Weights::default()));
+        }
+        assert_eq!(Weights::default().opponent_grip_weight, 0.0, "the balanced Corp does not play for the flatline");
+        assert_eq!(Weights::default().installed_agenda_weight, 0.0, "the balanced Corp has no install preference by type");
+    }
+
+    #[test]
+    fn an_installed_agenda_weight_prefers_the_agenda_on_the_table_to_the_ice() {
+        let mut agenda = ice("agenda", 0);
+        agenda.card_type = CardType::Agenda;
+        agenda.advancement_requirement = Some(3);
+        let registry = CardRegistry::from_cards(vec![agenda, ice("wall", 0)]);
+        let install = |id: &str, slot: netrunner_core::rules::InstallSlot| {
+            let mut state = GameState::new(0);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId(id.to_string()),
+                install_id: InstallId(1),
+                slot,
+                server: netrunner_core::rules::ServerId::Remote(0),
+                ..Default::default()
+            }];
+            state
+        };
+        let with_agenda = install("agenda", netrunner_core::rules::InstallSlot::Root);
+        let with_ice = install("wall", netrunner_core::rules::InstallSlot::Ice);
+        let balanced = Weights::default();
+        assert_eq!(
+            evaluate_state_with(&with_agenda, Side::Corp, &registry, &balanced),
+            evaluate_state_with(&with_ice, Side::Corp, &registry, &balanced),
+            "balanced: an unrezzed install is an unrezzed install"
+        );
+        let rush = Weights { installed_agenda_weight: 1.0, ..balanced };
+        assert!(evaluate_state_with(&with_agenda, Side::Corp, &registry, &rush) > evaluate_state_with(&with_ice, Side::Corp, &registry, &rush));
+    }
+
+    #[test]
+    fn a_positive_opponent_grip_weight_makes_the_corp_want_the_runners_hand_thin() {
+        let mut full = GameState::new(0);
+        full.runner.grip = corp_cards("g", 5);
+        let mut thin = full.clone();
+        thin.runner.grip.truncate(1);
+        let balanced = Weights::default();
+        assert_eq!(evaluate_state_with(&full, Side::Corp, &empty(), &balanced), evaluate_state_with(&thin, Side::Corp, &empty(), &balanced));
+        let trap = Weights { opponent_grip_weight: 0.5, ..balanced };
+        let delta = evaluate_state_with(&thin, Side::Corp, &empty(), &trap) - evaluate_state_with(&full, Side::Corp, &empty(), &trap);
+        assert!((delta - 2.0).abs() < 1e-9, "four cards of damage at 0.5 each");
     }
 }

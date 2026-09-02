@@ -32,6 +32,7 @@ pub mod onnx_fixture;
 #[cfg(feature = "onnx")]
 pub mod onnx_policy;
 pub mod observation;
+pub mod personality;
 pub mod policy;
 pub mod puct;
 pub mod random;
@@ -43,12 +44,13 @@ pub use agent::BotAgent;
 pub use agent_adapter::IndexedOnnxAgent;
 pub use agent_adapter::{Agent, BotAgentIndexAdapter, IndexedHeuristicAgent, IndexedRandomAgent};
 pub use determinize::determinize;
-pub use eval::evaluate_state;
+pub use eval::{evaluate_state, evaluate_state_with, Weights};
 pub use heuristic::HeuristicAgent;
 pub use mcts::MctsAgent;
 #[cfg(feature = "onnx")]
 pub use onnx_policy::{OnnxPolicyError, OnnxPolicyEvaluator};
 pub use observation::{encode_observation, to_observation_vector, OBS_SIZE};
+pub use personality::Personality;
 pub use policy::{PolicyEvaluator, UniformPolicyEvaluator};
 pub use puct::{pick_action, ActionStat, PuctAgent, PuctConfig, PuctSearchStats, MAX_GREEDY_REPEATS};
 pub use random::RandomAgent;

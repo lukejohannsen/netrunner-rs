@@ -89,17 +89,24 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
 
         let (history, outcome, steps) = if config.index_path {
-            let corp = bots::make_driver(corp_kind, Side::Corp, seed, config.simulations, &config.model)?;
-            let runner = bots::make_driver(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations, &config.model)?;
+            let corp = bots::make_driver(corp_kind, Side::Corp, seed, config.simulations, &config.model, config.corp_personality)?;
+            let runner =
+                bots::make_driver(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations, &config.model, config.runner_personality)?;
             let (_state, history, outcome) = SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
             let steps = history.len();
             (history, outcome, steps)
         } else {
-            let corp = bots::make_agent_with_model(corp_kind, Side::Corp, seed, config.simulations, &config.model)?
+            let corp = bots::make_agent_with_model(corp_kind, Side::Corp, seed, config.simulations, &config.model, config.corp_personality)?
                 .expect("headless_kind never resolves to a kind without a BotAgent form");
-            let runner =
-                bots::make_agent_with_model(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations, &config.model)?
-                    .expect("headless_kind never resolves to a kind without a BotAgent form");
+            let runner = bots::make_agent_with_model(
+                runner_kind,
+                Side::Runner,
+                seed.wrapping_add(1),
+                config.simulations,
+                &config.model,
+                config.runner_personality,
+            )?
+            .expect("headless_kind never resolves to a kind without a BotAgent form");
             let mut session = Session::new(state, registry.clone(), Seat::Agent(corp), Seat::Agent(runner));
             let outcome = session.run();
             let steps = session.steps() as usize;

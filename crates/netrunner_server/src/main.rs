@@ -52,6 +52,12 @@ struct Config {
     #[arg(long, value_enum, default_value_t = ServeBotKind::Heuristic)]
     bot_runner: ServeBotKind,
 
+    /// (serve mode) The bot's personality: `balanced`, or `rush`,
+    /// `glacier`, `trap` for a Corp bot and `aggressive`, `cautious` for
+    /// a Runner bot. See `netrunner_cli --corp-personality`.
+    #[arg(long, default_value_t = netrunner_bots::Personality::Balanced)]
+    bot_personality: netrunner_bots::Personality,
+
     /// (serve mode) How many matches may run at once. A client connecting
     /// at the limit is refused rather than queued. Unlimited if omitted.
     #[arg(long)]
@@ -140,6 +146,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let options = ServeOptions {
         bot_runner: config.bot_runner,
+        bot_personality: config.bot_personality,
         seed: config.seed,
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
         max_matches: config.max_matches,

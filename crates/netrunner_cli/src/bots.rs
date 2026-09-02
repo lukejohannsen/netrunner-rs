@@ -17,7 +17,7 @@
 //! has no `BotAgent` form to hand a `PlayerSlot::Bot`.
 
 use netrunner_bots::{
-    BotAgent, BotAgentIndexAdapter, HeuristicAgent, MctsAgent, PuctAgent, PuctConfig, RandomAgent,
+    BotAgent, BotAgentIndexAdapter, HeuristicAgent, MctsAgent, Personality, PuctAgent, PuctConfig, RandomAgent,
     UniformPolicyEvaluator,
 };
 use netrunner_core::rules::Side;
@@ -33,17 +33,19 @@ use crate::config::BotKind;
 /// the `None` as a human seat — [`make_driver`] is the supported route.
 ///
 /// `simulations` is the per-decision search budget for the two search
-/// agents (`Mcts`, `Puct`); the others ignore it.
-pub fn make_agent(kind: BotKind, side: Side, seed: u64, simulations: usize) -> Option<Box<dyn BotAgent>> {
+/// agents (`Mcts`, `Puct`); the others ignore it. `personality` biases
+/// the evaluator every kind but `Random` scores with (`Random` has no
+/// evaluator, and a network-backed `PuctOnnx` has its own value head).
+pub fn make_agent(kind: BotKind, side: Side, seed: u64, simulations: usize, personality: Personality) -> Option<Box<dyn BotAgent>> {
     match kind {
         BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
-        BotKind::Heuristic => Some(Box::new(HeuristicAgent::new(side, seed))),
-        BotKind::Mcts => Some(Box::new(MctsAgent::with_iterations(side, seed, simulations))),
+        BotKind::Heuristic => Some(Box::new(HeuristicAgent::with_personality(side, seed, personality))),
+        BotKind::Mcts => Some(Box::new(MctsAgent::with_iterations(side, seed, simulations).with_personality(personality))),
         BotKind::Puct => Some(Box::new(PuctAgent::with_config(
             side,
             seed,
-            UniformPolicyEvaluator::new(side),
+            UniformPolicyEvaluator::with_personality(side, personality),
             PuctConfig { iterations: simulations, ..PuctConfig::default() },
         ))),
     }
@@ -60,10 +62,11 @@ pub fn make_agent_with_model(
     seed: u64,
     simulations: usize,
     model_path: &str,
+    personality: Personality,
 ) -> Result<Option<Box<dyn BotAgent>>, String> {
     match kind {
         BotKind::PuctOnnx => make_puct_onnx_agent(side, seed, simulations, model_path).map(Some),
-        _ => Ok(make_agent(kind, side, seed, simulations)),
+        _ => Ok(make_agent(kind, side, seed, simulations, personality)),
     }
 }
 
@@ -106,12 +109,13 @@ pub fn make_driver(
     seed: u64,
     simulations: usize,
     model_path: &str,
+    personality: Personality,
 ) -> Result<Box<dyn Agent>, String> {
     match kind {
         BotKind::Human => Err("make_driver was asked for a bot driver for the human seat".to_string()),
         BotKind::Onnx => make_onnx_driver(side, model_path),
         _ => {
-            let agent = make_agent_with_model(kind, side, seed, simulations, model_path)?
+            let agent = make_agent_with_model(kind, side, seed, simulations, model_path, personality)?
                 .expect("every kind but Human and Onnx yields a BotAgent");
             Ok(Box::new(BotAgentIndexAdapter::new(agent, side)))
         }
@@ -137,9 +141,9 @@ mod tests {
 
     #[test]
     fn human_and_onnx_have_no_bot_agent_form() {
-        assert!(make_agent(BotKind::Human, Side::Corp, 0, 8).is_none());
-        assert!(make_agent(BotKind::Onnx, Side::Corp, 0, 8).is_none());
-        assert!(make_agent(BotKind::PuctOnnx, Side::Corp, 0, 8).is_none(), "needs a model path — see make_agent_with_model");
+        assert!(make_agent(BotKind::Human, Side::Corp, 0, 8, Personality::Balanced).is_none());
+        assert!(make_agent(BotKind::Onnx, Side::Corp, 0, 8, Personality::Balanced).is_none());
+        assert!(make_agent(BotKind::PuctOnnx, Side::Corp, 0, 8, Personality::Balanced).is_none(), "needs a model path — see make_agent_with_model");
     }
 
     /// `puct-onnx` is the one kind whose `BotAgent` form can fail to build,
@@ -147,11 +151,11 @@ mod tests {
     /// or off.
     #[test]
     fn puct_onnx_without_a_model_is_a_readable_error() {
-        let Err(error) = make_agent_with_model(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx") else {
+        let Err(error) = make_agent_with_model(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Personality::Balanced) else {
             panic!("a missing model cannot produce an agent");
         };
         assert!(!error.is_empty());
-        let Err(error) = make_driver(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx") else {
+        let Err(error) = make_driver(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Personality::Balanced) else {
             panic!("a missing model cannot produce a driver");
         };
         assert!(!error.is_empty());
@@ -160,20 +164,20 @@ mod tests {
     #[test]
     fn the_scripted_kinds_all_produce_drivers() {
         for kind in [BotKind::Random, BotKind::Heuristic, BotKind::Mcts, BotKind::Puct] {
-            assert!(make_driver(kind, Side::Corp, 7, 8, "unused.onnx").is_ok(), "{kind:?}");
+            assert!(make_driver(kind, Side::Corp, 7, 8, "unused.onnx", Personality::Balanced).is_ok(), "{kind:?}");
         }
     }
 
     #[test]
     fn asking_for_a_driver_for_the_human_seat_is_an_error() {
-        assert!(make_driver(BotKind::Human, Side::Corp, 0, 8, "unused.onnx").is_err());
+        assert!(make_driver(BotKind::Human, Side::Corp, 0, 8, "unused.onnx", Personality::Balanced).is_err());
     }
 
     /// Whether the feature is on or off, a missing model must surface as a
     /// readable message rather than a panic.
     #[test]
     fn a_missing_onnx_model_is_a_readable_error() {
-        let Err(error) = make_driver(BotKind::Onnx, Side::Corp, 0, 8, "/nonexistent/model.onnx") else {
+        let Err(error) = make_driver(BotKind::Onnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Personality::Balanced) else {
             panic!("a missing model cannot produce a driver");
         };
         assert!(!error.is_empty());

@@ -10,7 +10,8 @@ use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
 use crate::determinize::determinize;
-use crate::eval::evaluate_state;
+use crate::eval::{evaluate_state_with, Weights};
+use crate::personality::Personality;
 use crate::puct::{pick_action, ActionStat, ESCAPE_RNG_SALT, MAX_GREEDY_REPEATS};
 
 // Both `Node::new` (per expansion) and `rollout` (per rollout ply) call
@@ -55,6 +56,9 @@ pub struct MctsAgent {
     /// argmax over root visits re-picks a state-preserving action forever.
     last_action: Option<PlayerAction>,
     repeats: usize,
+    /// Leaf and rollout evaluation terms — `Weights::default()` unless a
+    /// `Personality` was asked for through `with_personality`.
+    weights: Weights,
 }
 
 impl MctsAgent {
@@ -80,7 +84,15 @@ impl MctsAgent {
             seed,
             last_action: None,
             repeats: 0,
+            weights: Weights::default(),
         }
+    }
+
+    /// The same search, scoring leaves and rollouts with
+    /// `personality.weights()`.
+    pub fn with_personality(mut self, personality: Personality) -> Self {
+        self.weights = personality.weights();
+        self
     }
 }
 
@@ -96,6 +108,7 @@ impl BotAgent for MctsAgent {
         let exploration = self.exploration;
         let trees = self.trees;
         let per_tree_iterations = (self.iterations / trees).max(1);
+        let weights = self.weights;
         let base_seed = self.seed;
         self.seed = self.seed.wrapping_add(trees as u64);
 
@@ -106,7 +119,7 @@ impl BotAgent for MctsAgent {
                 let sample = determinize(view, registry, &mut rng);
                 let mut root = Node::new_root(sample, view.legal_actions.clone());
                 for _ in 0..per_tree_iterations {
-                    simulate(&mut root, registry, side, max_depth, exploration, &mut rng);
+                    simulate(&mut root, registry, side, max_depth, exploration, &mut rng, &weights);
                 }
                 root.children.into_iter().map(|(action, child)| (action, child.visits, child.total_value)).collect()
             })
@@ -175,9 +188,9 @@ impl Node {
 /// `node` down. Returns the value backpropagated into `node` itself so the
 /// caller (a parent frame, or `select_action` for the true root) can fold
 /// it into its own running total.
-fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: usize, exploration: f64, rng: &mut StdRng) -> f64 {
+fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: usize, exploration: f64, rng: &mut StdRng, w: &Weights) -> f64 {
     if node.is_terminal() || depth_budget == 0 {
-        let value = evaluate_state(&node.state, side, registry);
+        let value = evaluate_state_with(&node.state, side, registry, w);
         node.visits += 1;
         node.total_value += value;
         return value;
@@ -187,7 +200,7 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
         let value = match apply_action(&node.state, registry, action.clone()) {
             Ok((next_state, _events)) => {
                 let child_depth_budget = depth_budget.saturating_sub(1);
-                let rollout_value = rollout(&next_state, registry, side, child_depth_budget, rng);
+                let rollout_value = rollout(&next_state, registry, side, child_depth_budget, rng, w);
                 let mut child = Node::new(next_state, registry);
                 child.visits = 1;
                 child.total_value = rollout_value;
@@ -198,7 +211,7 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
             // `view.legal_actions`), so this should never actually fail;
             // treat it as a dead branch rather than corrupting the tree
             // with an unresolved candidate.
-            Err(_) => evaluate_state(&node.state, side, registry),
+            Err(_) => evaluate_state_with(&node.state, side, registry, w),
         };
         node.visits += 1;
         node.total_value += value;
@@ -206,7 +219,7 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
     }
 
     if node.children.is_empty() {
-        let value = evaluate_state(&node.state, side, registry);
+        let value = evaluate_state_with(&node.state, side, registry, w);
         node.visits += 1;
         node.total_value += value;
         return value;
@@ -227,7 +240,7 @@ fn simulate(node: &mut Node, registry: &CardRegistry, side: Side, depth_budget: 
                 .unwrap_or(std::cmp::Ordering::Equal)
         })
         .expect("children is non-empty");
-    let value = simulate(&mut chosen.1, registry, side, depth_budget - 1, exploration, rng);
+    let value = simulate(&mut chosen.1, registry, side, depth_budget - 1, exploration, rng, w);
     node.visits += 1;
     node.total_value += value;
     value
@@ -253,7 +266,7 @@ fn pop_untried(untried: &mut Vec<PlayerAction>, rng: &mut StdRng) -> Option<Play
 /// evaluates the result. Deliberately cheaper than `HeuristicAgent`'s own
 /// one-ply lookahead (no per-step `apply_action`-and-evaluate over every
 /// candidate) since a rollout runs many times per expanded node.
-fn rollout(start: &GameState, registry: &CardRegistry, side: Side, mut depth_budget: usize, rng: &mut StdRng) -> f64 {
+fn rollout(start: &GameState, registry: &CardRegistry, side: Side, mut depth_budget: usize, rng: &mut StdRng, w: &Weights) -> f64 {
     let mut state = start.clone();
     while depth_budget > 0 && !matches!(state.phase, GamePhase::GameOver(_)) {
         let legal = engine_legal_actions(&state, registry);
@@ -267,7 +280,7 @@ fn rollout(start: &GameState, registry: &CardRegistry, side: Side, mut depth_bud
         }
         depth_budget -= 1;
     }
-    evaluate_state(&state, side, registry)
+    evaluate_state_with(&state, side, registry, w)
 }
 
 /// Rough priority weights biasing the rollout policy toward

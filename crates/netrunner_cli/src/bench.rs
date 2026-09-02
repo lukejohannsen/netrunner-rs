@@ -38,11 +38,11 @@ use netrunner_rating::{Outcome, RatingBook, Standing, Track};
 use netrunner_session::{GameEndReason, Seat, Session, SessionStep};
 
 use crate::bots;
-use crate::config::{BotKind, Config};
+use crate::config::{BotKind, BotSpec, Config};
 use crate::decks;
 
 pub struct BenchArgs {
-    pub bots: Vec<BotKind>,
+    pub bots: Vec<BotSpec>,
     pub games: u32,
     pub seed: Option<u64>,
     pub simulations: usize,
@@ -97,13 +97,18 @@ pub struct BenchReport {
 
 /// The participant id a bot rates under: the kind's name, the search
 /// budget for the kinds that have one (`puct@32` and `puct@200` are
-/// different players), and `--label` if given.
-pub fn participant_id(kind: BotKind, simulations: usize, label: Option<&str>) -> String {
-    let name = kind.to_possible_value().expect("every BotKind has a name").get_name().to_string();
-    let mut id = match kind {
+/// different players), the personality when it is not `balanced`
+/// (`heuristic:rush`), and `--label` if given.
+pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> String {
+    let name = bot.kind.to_possible_value().expect("every BotKind has a name").get_name().to_string();
+    let mut id = match bot.kind {
         BotKind::Mcts | BotKind::Puct | BotKind::PuctOnnx => format!("{name}@{simulations}"),
         _ => name,
     };
+    if bot.personality != netrunner_bots::Personality::Balanced {
+        id.push(':');
+        id.push_str(bot.personality.name());
+    }
     if let Some(label) = label {
         id.push('#');
         id.push_str(label);
@@ -114,14 +119,14 @@ pub fn participant_id(kind: BotKind, simulations: usize, label: Option<&str>) ->
 struct Job {
     index: u32,
     seed: u64,
-    corp: BotKind,
-    runner: BotKind,
+    corp: BotSpec,
+    runner: BotSpec,
 }
 
 pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    for kind in &args.bots {
-        if matches!(kind, BotKind::Human | BotKind::Onnx) {
-            return Err(format!("{:?} cannot be seated in a benchmark: it has no BotAgent form", kind).into());
+    for bot in &args.bots {
+        if matches!(bot.kind, BotKind::Human | BotKind::Onnx) {
+            return Err(format!("{:?} cannot be seated in a benchmark: it has no BotAgent form", bot.kind).into());
         }
     }
     if args.bots.is_empty() || args.games == 0 {
@@ -195,7 +200,7 @@ pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::
     }
     if let Some(path) = &args.report {
         let report = BenchReport {
-            bots: args.bots.iter().map(|kind| participant_id(*kind, args.simulations, args.label.as_deref())).collect(),
+            bots: args.bots.iter().map(|bot| participant_id(*bot, args.simulations, args.label.as_deref())).collect(),
             games_per_pairing: args.games,
             seed: base_seed,
             simulations: args.simulations,
@@ -219,10 +224,17 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[job.index as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, job.seed).map_err(|e| format!("{e:?}"))?;
-    let corp = bots::make_agent_with_model(job.corp, Side::Corp, job.seed, args.simulations, &config.model)?
+    let corp = bots::make_agent_with_model(job.corp.kind, Side::Corp, job.seed, args.simulations, &config.model, job.corp.personality)?
         .expect("kinds without a BotAgent form were rejected up front");
-    let runner = bots::make_agent_with_model(job.runner, Side::Runner, job.seed.wrapping_add(1), args.simulations, &config.model)?
-        .expect("kinds without a BotAgent form were rejected up front");
+    let runner = bots::make_agent_with_model(
+        job.runner.kind,
+        Side::Runner,
+        job.seed.wrapping_add(1),
+        args.simulations,
+        &config.model,
+        job.runner.personality,
+    )?
+    .expect("kinds without a BotAgent form were rejected up front");
     let mut session = Session::new(state, registry.clone(), Seat::Agent(corp), Seat::Agent(runner));
     let outcome = session.run();
     let (winner, reason) = match outcome {
@@ -363,10 +375,14 @@ mod tests {
     }
 
     #[test]
-    fn search_kinds_carry_their_budget_in_the_participant_id() {
-        assert_eq!(participant_id(BotKind::Puct, 64, None), "puct@64");
-        assert_eq!(participant_id(BotKind::Heuristic, 64, None), "heuristic");
-        assert_eq!(participant_id(BotKind::Mcts, 32, Some("abc123")), "mcts@32#abc123");
+    fn search_kinds_carry_their_budget_and_personalities_their_name_in_the_participant_id() {
+        let spec = |s: &str| s.parse::<BotSpec>().unwrap();
+        assert_eq!(participant_id(spec("puct"), 64, None), "puct@64");
+        assert_eq!(participant_id(spec("heuristic"), 64, None), "heuristic");
+        assert_eq!(participant_id(spec("heuristic:rush"), 64, None), "heuristic:rush");
+        assert_eq!(participant_id(spec("mcts:cautious"), 32, Some("abc123")), "mcts@32:cautious#abc123");
+        assert!("heuristic:berserk".parse::<BotSpec>().is_err());
+        assert!("android".parse::<BotSpec>().is_err());
     }
 
     #[test]
