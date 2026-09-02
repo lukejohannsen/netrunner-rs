@@ -9,6 +9,8 @@
 //! represent "both sides, simultaneously, from each one's own point of
 //! view," so this app doesn't try to.
 
+use std::time::{Duration, Instant};
+
 use crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
@@ -42,6 +44,9 @@ pub struct App {
     /// What the header shows while the connection is down, set by the
     /// render loop from `Reconnector::status_line`.
     pub connection_notice: Option<String>,
+    /// Whose decision is on the clock and when it runs out, from the last
+    /// `ServerMessage::DecisionClock`; `None` on a host without a clock.
+    pub decision_clock: Option<(Side, Instant)>,
 }
 
 /// Cap on retained log lines, shared by both TUI paths.
@@ -87,6 +92,7 @@ impl App {
             action_log: Vec::new(),
             connection_lost: false,
             connection_notice: None,
+            decision_clock: None,
         };
         app.drain_messages();
         app
@@ -135,7 +141,11 @@ impl App {
                     push_log_line(&mut self.action_log, &entry, &self.registry, self.view.as_ref())
                 }
                 ServerMessage::ActionRejected { reason } => self.last_rejection = Some(reason),
-                ServerMessage::GameEnded { winner, reason } => self.game_ended = Some((winner, reason)),
+                ServerMessage::GameEnded { winner, reason } => {
+                    self.game_ended = Some((winner, reason));
+                    self.decision_clock = None;
+                }
+                ServerMessage::DecisionClock { side, remaining } => self.decision_clock = Some((side, Instant::now() + remaining)),
                 // Handshake replies, consumed in `remote` before the
                 // channel pair ever reaches `App`.
                 ServerMessage::MatchJoined { .. }
@@ -227,6 +237,11 @@ pub trait RenderableView {
     fn connection_notice(&self) -> Option<&str> {
         None
     }
+    /// Whose decision is on the host's clock and how long is left, for the
+    /// header. `None` on the local path and on a host without a clock.
+    fn decision_clock(&self) -> Option<(Side, Duration)> {
+        None
+    }
     /// Lesson coaching to render beside the board; `None` outside a lesson,
     /// which is the only case the remote path ever has.
     fn coaching(&self) -> Option<&Coaching> {
@@ -310,6 +325,9 @@ impl RenderableView for App {
     }
     fn connection_notice(&self) -> Option<&str> {
         self.connection_notice.as_deref()
+    }
+    fn decision_clock(&self) -> Option<(Side, Duration)> {
+        self.decision_clock.map(|(side, deadline)| (side, deadline.saturating_duration_since(Instant::now())))
     }
 }
 

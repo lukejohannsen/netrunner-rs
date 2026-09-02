@@ -17,7 +17,7 @@ pub mod net;
 pub mod protocol;
 pub mod serve;
 
-pub use match_session::{MatchOver, MatchSession, PlayerSlot, ReattachHandle, DEFAULT_RECONNECT_GRACE};
+pub use match_session::{MatchOver, MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 pub use protocol::{ClientMessage, GameEndReason, HistoryEntry, MatchSummary, PublicHistoryEntry, ServerMessage};
 
 /// Re-exported so existing `netrunner_server::classify_end_reason` callers
