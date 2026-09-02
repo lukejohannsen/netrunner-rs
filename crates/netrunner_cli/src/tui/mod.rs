@@ -12,6 +12,7 @@ use ratatui::Frame;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::dsl::{CardId, CounterKind};
+use netrunner_bots::Personality;
 use netrunner_core::rules::Viewer;
 use netrunner_core::rules::{
     get_action_mask, ActionSpace, DeckOrder, GamePhase, GameState, PlayerAction, RunPhase, ServerId, Side,
@@ -96,7 +97,7 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 
     let bot_side = human_side.other();
     let bot_kind = if human_side == Side::Corp { config.runner } else { config.corp };
-    let (bot_seat, mut indexed_bot) = build_bot_seat(bot_kind, bot_side, seed.wrapping_add(1), &config.model)?;
+    let (bot_seat, mut indexed_bot) = build_bot_seat(bot_kind, bot_side, seed.wrapping_add(1), &config.model, config.personality_for(bot_side))?;
 
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, bot_seat),
@@ -197,7 +198,7 @@ pub fn run_starter_game(human_side: Side, corp: &DeckFile, runner: &DeckFile, co
     let seed = config.seed.unwrap_or_else(rand::random);
     let rules = corp.category.match_rules();
     let (state, _events) = GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled)?;
-    let bot = bots::make_agent(BotKind::Heuristic, human_side.other(), seed.wrapping_add(1), DEFAULT_SIMULATIONS)
+    let bot = bots::make_agent(BotKind::Heuristic, human_side.other(), seed.wrapping_add(1), DEFAULT_SIMULATIONS, config.personality_for(human_side.other()))
         .expect("the heuristic always has a BotAgent form");
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, Seat::Agent(bot)),
@@ -311,11 +312,12 @@ fn build_bot_seat(
     side: Side,
     seed: u64,
     model: &str,
+    personality: Personality,
 ) -> Result<(Seat, Option<Box<dyn netrunner_bots::Agent>>), String> {
     match kind {
-        crate::config::BotKind::Onnx => Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model)?))),
+        crate::config::BotKind::Onnx => Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, personality)?))),
         _ => {
-            let agent = bots::make_agent_with_model(kind, side, seed, DEFAULT_SIMULATIONS, model)?
+            let agent = bots::make_agent_with_model(kind, side, seed, DEFAULT_SIMULATIONS, model, personality)?
                 .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
             Ok((Seat::Agent(agent), None))
         }

@@ -7,7 +7,8 @@ use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
 use crate::determinize::determinize;
-use crate::eval::evaluate_state;
+use crate::eval::{evaluate_state_with, Weights};
+use crate::personality::Personality;
 
 /// Tiny random jitter added to each candidate's score, purely to break ties
 /// between otherwise-equal actions without always picking the first one in
@@ -23,11 +24,19 @@ const TIE_BREAK_JITTER: f64 = 1e-3;
 pub struct HeuristicAgent {
     side: Side,
     rng: StdRng,
+    /// The evaluator's terms — `Weights::default()` unless a
+    /// `Personality` was asked for.
+    weights: Weights,
 }
 
 impl HeuristicAgent {
     pub fn new(side: Side, seed: u64) -> Self {
-        Self { side, rng: StdRng::seed_from_u64(seed) }
+        Self::with_personality(side, seed, Personality::Balanced)
+    }
+
+    /// `new`, scoring with `personality.weights()`.
+    pub fn with_personality(side: Side, seed: u64, personality: Personality) -> Self {
+        Self { side, rng: StdRng::seed_from_u64(seed), weights: personality.weights() }
     }
 }
 
@@ -40,7 +49,7 @@ impl BotAgent for HeuristicAgent {
         let mut best: Option<(f64, usize)> = None;
         for (index, action) in view.legal_actions.iter().enumerate() {
             let Ok((next, _events)) = apply_action(&sample, registry, action.clone()) else { continue };
-            let score = evaluate_state(&next, self.side, registry) + self.rng.random::<f64>() * TIE_BREAK_JITTER;
+            let score = evaluate_state_with(&next, self.side, registry, &self.weights) + self.rng.random::<f64>() * TIE_BREAK_JITTER;
             if best.is_none_or(|(best_score, _)| score > best_score) {
                 best = Some((score, index));
             }
@@ -111,6 +120,48 @@ mod tests {
             ..Default::default()
         };
         state
+    }
+
+    /// The archetypes, on the same position: a naked installed agenda, an
+    /// ICE in HQ and the clicks to do either. Rush advances it; Glacier
+    /// puts the ICE in front of it first.
+    #[test]
+    fn a_rush_corp_advances_where_a_glacier_corp_installs_ice() {
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+        registry.insert(blank_card("wall", CardType::Ice(netrunner_core::dsl::IceType::Barrier)));
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp = CorpState {
+            resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            hq: vec![CardId("wall".to_string())],
+            installed: vec![InstalledCard {
+                card: CardId("agenda".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let advance = PlayerAction::AdvanceCard { target: InstallId(1) };
+        assert!(view.legal_actions.contains(&advance));
+        let ice_in_front = view
+            .legal_actions
+            .iter()
+            .find(|a| matches!(a, PlayerAction::InstallCard { zone: ServerId::Remote(0), .. }))
+            .cloned()
+            .expect("the ICE can be installed in front of the agenda");
+
+        let mut rush = HeuristicAgent::with_personality(Side::Corp, 1, Personality::Rush);
+        assert_eq!(rush.select_action(&view, &registry), advance);
+        let mut glacier = HeuristicAgent::with_personality(Side::Corp, 1, Personality::Glacier);
+        assert_eq!(glacier.select_action(&view, &registry), ice_in_front);
     }
 
     #[test]

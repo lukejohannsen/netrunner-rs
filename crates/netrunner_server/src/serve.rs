@@ -52,7 +52,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
-use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent};
+use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{GameState, Side};
 use netrunner_rating::{Outcome, RatingBook, Track};
@@ -105,6 +105,10 @@ pub struct ServeOptions {
     /// Bot opponent seated against every connecting client; `None` pairs
     /// humans instead.
     pub bot_runner: ServeBotKind,
+    /// The bot's `Personality`; part of its rating id when not balanced,
+    /// so a rush Corp and a glacier Corp are different opponents on the
+    /// human-vs-bot ladder.
+    pub bot_personality: Personality,
     /// Base seed every match's seed is derived from (`base + match
     /// index`, the headless driver's policy). `None` picks one at random.
     pub seed: Option<u64>,
@@ -132,6 +136,7 @@ impl Default for ServeOptions {
     fn default() -> Self {
         ServeOptions {
             bot_runner: ServeBotKind::Heuristic,
+            bot_personality: Personality::Balanced,
             seed: None,
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             max_matches: None,
@@ -141,10 +146,10 @@ impl Default for ServeOptions {
     }
 }
 
-fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64) -> Box<dyn BotAgent> {
+fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, personality: Personality) -> Box<dyn BotAgent> {
     match kind {
-        ServeBotKind::Heuristic => Box::new(HeuristicAgent::new(side, seed)),
-        ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed)),
+        ServeBotKind::Heuristic => Box::new(HeuristicAgent::with_personality(side, seed, personality)),
+        ServeBotKind::Mcts => Box::new(MctsAgent::new(side, seed).with_personality(personality)),
         ServeBotKind::None => unreachable!("caller only invokes this for a bot-backed ServeBotKind"),
     }
 }
@@ -527,9 +532,12 @@ fn seat_vs_bot(
     let human = SeatedPlayer { rating_id: player_name.clone(), name: player_name, token: Uuid::new_v4(), slot };
     let bot = SeatedPlayer {
         name: kind.seat_name().to_string(),
-        rating_id: kind.rating_id().to_string(),
+        rating_id: match shared.options.bot_personality {
+            Personality::Balanced => kind.rating_id().to_string(),
+            personality => format!("{}:{personality}", kind.rating_id()),
+        },
         token: Uuid::new_v4(),
-        slot: PlayerSlot::Bot(make_serve_agent(kind, human_side.other(), seed.wrapping_add(1))),
+        slot: PlayerSlot::Bot(make_serve_agent(kind, human_side.other(), seed.wrapping_add(1), shared.options.bot_personality)),
     };
     let (corp, runner) = match human_side {
         Side::Corp => (human, bot),
