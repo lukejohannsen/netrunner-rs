@@ -187,3 +187,17 @@ pub enum GameEvent {
     PendingPaidChoiceAccepted { side: Side },
     PendingPaidChoiceDeclined { side: Side },
 }
+
+impl GameEvent {
+    /// This event's variant name — `"AgendaScored"`, never the payload.
+    /// Read off the `Debug` rendering, exactly as `PlayerAction::
+    /// variant_name` does, so a new variant needs no arm here. There is no
+    /// `VARIANT_NAMES` table for events (ninety variants would be a large
+    /// list to keep honest by hand), which is why `tutorial` cannot validate
+    /// an `EventPredicate::Kind` by name and relies on the lesson gate
+    /// instead: a misspelt kind is a step that never advances.
+    pub fn variant_name(&self) -> String {
+        let rendered = format!("{self:?}");
+        rendered.split(['(', '{', ' ']).next().unwrap_or(&rendered).to_string()
+    }
+}

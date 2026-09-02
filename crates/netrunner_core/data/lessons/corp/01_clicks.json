@@ -1,0 +1,127 @@
+{
+  "id": "corp_01_clicks",
+  "side": "Corp",
+  "title": "Clicks and the mandatory draw",
+  "intro": "You are the Corp. Each turn you get 3 clicks — the actions you take — and you start every turn by drawing a card whether you like it or not (the mandatory draw). Your hand is HQ; your deck is R&D; your discard pile is Archives. The Runner cannot see what is in your hand, but they can run at any of those three servers to look.\n\nThis lesson: keep your opening hand, spend three clicks, and end your turn.",
+  "outro": "That is a whole Corp turn: draw, three clicks, end. Clicking for a credit and clicking to draw are the two basic actions you can always take. Next: playing an operation to make money faster than one credit a click.",
+  "corp_deck": "the_syndicate_starter",
+  "runner_deck": "the_catalyst_starter",
+  "order": {
+    "corp": [
+      "hedge_fund",
+      "palisade",
+      "offworld_office",
+      "nico_campaign",
+      "tithe",
+      "regolith_mining_license",
+      "urtica_cipher"
+    ],
+    "runner": [
+      "sure_gamble",
+      "cleaver",
+      "jailbreak",
+      "tread_lightly",
+      "telework_contract",
+      "carmen"
+    ]
+  },
+  "steps": [
+    {
+      "prose": "Both players start with 5 cards and 5 credits. You may mulligan — shuffle your hand back and draw 5 new cards — but this hand is fine. Keep it.",
+      "allow": {
+        "Kind": "KeepHand"
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "HandKept",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        "KeepHand"
+      ],
+      "hint": "Choose Keep hand."
+    },
+    {
+      "prose": "Your turn began with the mandatory draw, so HQ now holds 6 cards. You have 3 clicks. The simplest action: click for 1 credit.",
+      "allow": {
+        "Kind": "GainCreditClick"
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "CreditsGained",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Corp"
+          }
+        }
+      ],
+      "hint": "Choose Gain 1 credit."
+    },
+    {
+      "prose": "You can also spend a click to draw a card from R&D. Do that now.",
+      "allow": {
+        "Kind": "DrawCardClick"
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "BasicDrawActionTaken",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        {
+          "DrawCardClick": {
+            "side": "Corp"
+          }
+        }
+      ],
+      "hint": "Choose Draw a card."
+    },
+    {
+      "prose": "One click left. Take another credit, then end your turn. Your maximum hand size is 5, so with 7 cards in HQ you will discard 2 to Archives first — discard Tithe and Urtica Cipher.",
+      "allow": {
+        "AnyOf": [
+          {
+            "Kind": "GainCreditClick"
+          },
+          {
+            "Kind": "EndTurn"
+          },
+          {
+            "Kind": "DiscardCard"
+          }
+        ]
+      },
+      "advance_when": {
+        "Side": {
+          "kind": "TurnEnded",
+          "side": "Corp"
+        }
+      },
+      "solution": [
+        {
+          "GainCreditClick": {
+            "side": "Corp"
+          }
+        },
+        "EndTurn",
+        {
+          "DiscardCard": {
+            "card_id": "tithe"
+          }
+        },
+        {
+          "DiscardCard": {
+            "card_id": "urtica_cipher"
+          }
+        }
+      ],
+      "hint": "Gain 1 credit, End turn, then discard down to 5."
+    }
+  ]
+}

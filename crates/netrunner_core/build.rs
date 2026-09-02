@@ -1,7 +1,8 @@
 //! Concatenates the one-file-per-card DSL definitions in `data/corp` and
-//! `data/runner`, and the one-file-per-deck sample decklists in `data/decks`,
-//! into a single JSON array each, written to `OUT_DIR` for `include_str!` to
-//! embed at compile time.
+//! `data/runner`, the one-file-per-deck decklists in `data/decks`, and the
+//! one-file-per-lesson tutorials in `data/lessons/{corp,runner}`, into a
+//! single JSON array each, written to `OUT_DIR` for `include_str!` to embed
+//! at compile time.
 //!
 //! Cards and decks are authored one-per-file so diffs stay readable and two
 //! people adding entries don't collide; the concatenation is purely a build
@@ -46,4 +47,10 @@ fn main() {
         embed_dir(&manifest_dir, &out_dir, side, &format!("{side}_cards.json"));
     }
     embed_dir(&manifest_dir, &out_dir, "decks", "decks.json");
+    // Lessons are one directory per side because the track order is the
+    // sorted file order: `01_...json`, `02_...json` — numbering across two
+    // sides in one directory would interleave them.
+    for side in ["corp", "runner"] {
+        embed_dir(&manifest_dir, &out_dir, &format!("lessons/{side}"), &format!("{side}_lessons.json"));
+    }
 }

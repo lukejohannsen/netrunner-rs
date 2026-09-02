@@ -6,6 +6,7 @@ mod deck;
 mod deck_store;
 mod decks;
 mod headless;
+mod learn;
 mod remote;
 mod tui;
 
@@ -22,6 +23,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match config.command.take() {
         Some(Command::Cards { action }) => cards::run(action).await,
         Some(Command::Deck { action }) => deck::run(action, &config),
+        Some(Command::Learn { action }) => learn::run(action, &config),
         None => {
             if config.headless {
                 headless::run(&config)

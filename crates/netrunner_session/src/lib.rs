@@ -12,10 +12,12 @@
 
 pub mod coverage;
 pub mod history;
+pub mod lesson;
 pub mod outcome;
 pub mod session;
 
 pub use coverage::Coverage;
 pub use history::{HistoryEntry, MatchHistory};
+pub use lesson::{LessonError, LessonSession, LessonStep};
 pub use outcome::{classify_end_reason, GameEndReason};
 pub use session::{Seat, Session, SessionStep, StallReason, SubmitError, MAX_STEPS};

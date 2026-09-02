@@ -35,6 +35,7 @@ pub mod observation;
 pub mod policy;
 pub mod puct;
 pub mod random;
+pub mod scripted;
 
 pub use action_space::{legal_indices, step_index, IndexedActionError};
 pub use agent::BotAgent;
@@ -51,3 +52,4 @@ pub use observation::{encode_observation, to_observation_vector, OBS_SIZE};
 pub use policy::{PolicyEvaluator, UniformPolicyEvaluator};
 pub use puct::{ActionStat, PuctAgent, PuctConfig, PuctSearchStats};
 pub use random::RandomAgent;
+pub use scripted::ScriptedAgent;
