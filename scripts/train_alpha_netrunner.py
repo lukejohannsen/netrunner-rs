@@ -3,6 +3,7 @@ import argparse
 import glob
 import json
 import os
+import random
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,10 +41,22 @@ class AlphaNetrunnerNet(nn.Module):
 
 
 class NetrunnerTrajectoryDataset(Dataset):
+    """Every recorded decision, remembering which game each came from.
+
+    `game_of_sample[i]` is the index of the game sample `i` belongs to. The
+    train/validation split is made over games, never over steps: neighbouring
+    positions of one game are near-duplicates, so a split over steps puts a
+    game on both sides of it and the validation loss falls by memorising
+    games rather than judging positions — the loss that read 0.006 while the
+    network lost to the uniform search on both sides (ROADMAP Phase 2 §5).
+    """
+
     def __init__(self, data_dir: str):
         self.samples = []
-        filepaths = glob.glob(os.path.join(data_dir, "**", "*.jsonl"), recursive=True)
-        
+        self.game_of_sample = []
+        filepaths = sorted(glob.glob(os.path.join(data_dir, "**", "*.jsonl"), recursive=True))
+
+        game_index = 0
         for filepath in filepaths:
             with open(filepath, "r", encoding="utf-8") as f:
                 for line in f:
@@ -51,7 +64,8 @@ class NetrunnerTrajectoryDataset(Dataset):
                         continue
                     game = json.loads(line)
                     outcome_corp = game["outcome_corp"]
-                    
+                    game_index += 1
+
                     for step in game["steps"]:
                         obs = step["observation"]
                         pi = step["policy_target"]
@@ -63,6 +77,20 @@ class NetrunnerTrajectoryDataset(Dataset):
                             torch.tensor(pi, dtype=torch.float32),
                             torch.tensor(value_target, dtype=torch.float32)
                         ))
+                        self.game_of_sample.append(game_index)
+        self.game_count = game_index
+
+    def split_by_game(self, val_fraction: float, seed: int = 0):
+        """Indices of the training and validation samples, with every game
+        wholly on one side. At least one game goes to validation whenever
+        there are two or more games."""
+        games = list(range(1, self.game_count + 1))
+        random.Random(seed).shuffle(games)
+        val_count = min(len(games) - 1, max(1, round(len(games) * val_fraction))) if len(games) > 1 else 0
+        val_games = set(games[:val_count])
+        val_idx = [i for i, g in enumerate(self.game_of_sample) if g in val_games]
+        train_idx = [i for i, g in enumerate(self.game_of_sample) if g not in val_games]
+        return train_idx, val_idx
 
     def __len__(self):
         return len(self.samples)
@@ -102,9 +130,10 @@ def train(args):
 
     print(f"Successfully loaded {len(dataset)} total decision steps.")
 
-    train_size = int(0.9 * len(dataset))
-    val_size = len(dataset) - train_size
-    train_ds, val_ds = torch.utils.data.random_split(dataset, [train_size, val_size])
+    train_idx, val_idx = dataset.split_by_game(val_fraction=0.1)
+    print(f"Split by game: {dataset.game_count} games, {len(train_idx)} training steps, {len(val_idx)} validation steps.")
+    train_ds = torch.utils.data.Subset(dataset, train_idx)
+    val_ds = torch.utils.data.Subset(dataset, val_idx)
 
     train_loader = DataLoader(train_ds, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_ds, batch_size=args.batch_size, shuffle=False)
