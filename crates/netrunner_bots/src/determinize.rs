@@ -121,11 +121,37 @@ fn visible_card_ids(view: &ClientView) -> HashSet<CardId> {
     ids
 }
 
+/// Builds the per-side, per-type draw pools from the registry.
+///
+/// The candidates are **sorted by `CardId` before `Pool::new` shuffles
+/// them.** `CardRegistry::iter` is `HashMap::values()`, whose order differs
+/// from one process to the next, and a seeded shuffle only reproduces its
+/// output over an identical input — so without the sort the same seed
+/// sampled different hidden cards on every run, and every determinizing
+/// bot (heuristic, MCTS, PUCT) was nondeterministic run to run. That made
+/// heuristic-vs-heuristic useless as a before/after measurement (96 games
+/// at seed 1 differed from *themselves* in 262 report keys) and a seeded
+/// self-play or arena run unreproducible. Sorting here rather than making
+/// `CardRegistry::iter` ordered keeps the fix where the requirement lives;
+/// the registry's doc still promises no order, and nothing else relies on
+/// one.
+///
+/// Identities are excluded: an identity is never in a deck, so it can
+/// never be in a hidden zone, and a sample that put *The Syndicate* in HQ
+/// or on top of the stack was imagining a card the real game cannot hold
+/// there. The registry carries every side's identities alongside its
+/// playable cards, so the pool has to say so itself.
 fn build_pools(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) -> Pools {
     let visible = visible_card_ids(view);
-    let corp_cards: Vec<&netrunner_core::dsl::CardDefinition> = registry.iter().filter(|c| c.side == Side::Corp && !visible.contains(&c.id)).collect();
-    let runner_cards: Vec<CardId> =
-        registry.iter().filter(|c| c.side == Side::Runner && !visible.contains(&c.id)).map(|c| c.id.clone()).collect();
+    let could_be_hidden = |c: &&netrunner_core::dsl::CardDefinition| {
+        !matches!(c.card_type, CardType::Identity) && !visible.contains(&c.id)
+    };
+    let mut corp_cards: Vec<&netrunner_core::dsl::CardDefinition> =
+        registry.iter().filter(|c| c.side == Side::Corp).filter(could_be_hidden).collect();
+    corp_cards.sort_by(|a, b| a.id.cmp(&b.id));
+    let mut runner_cards: Vec<CardId> =
+        registry.iter().filter(|c| c.side == Side::Runner).filter(could_be_hidden).map(|c| c.id.clone()).collect();
+    runner_cards.sort();
 
     let corp_any: Vec<CardId> = corp_cards.iter().map(|c| c.id.clone()).collect();
     let corp_ice: Vec<CardId> = corp_cards.iter().filter(|c| matches!(c.card_type, CardType::Ice(_))).map(|c| c.id.clone()).collect();
@@ -611,6 +637,60 @@ mod tests {
         let sample_b = determinize(&view, &registry, &mut rng_b);
 
         assert_ne!(sample_a.corp.hq, sample_b.corp.hq);
+    }
+
+    /// The pools are drawn from a `HashMap`, so two registries holding the
+    /// same cards can enumerate them in different orders. The sample must
+    /// not depend on that order: a seeded shuffle over an unordered input
+    /// is exactly the nondeterminism that made every determinizing bot
+    /// differ from itself run to run.
+    #[test]
+    fn the_same_seed_samples_the_same_hidden_cards_whatever_the_registry_order() {
+        let forward = registry();
+        let mut cards: Vec<CardDefinition> = forward.iter().cloned().collect();
+        cards.sort_by(|a, b| a.id.cmp(&b.id));
+        let ascending = CardRegistry::from_cards(cards.clone());
+        cards.reverse();
+        let descending = CardRegistry::from_cards(cards);
+
+        let state = state_with_hidden_zones();
+        let view = build_client_view(&state, &forward, Side::Runner);
+        let sample_a = determinize(&view, &ascending, &mut StdRng::seed_from_u64(7));
+        let sample_b = determinize(&view, &descending, &mut StdRng::seed_from_u64(7));
+
+        assert_eq!(sample_a.corp.hq, sample_b.corp.hq);
+        assert_eq!(sample_a.corp.r_and_d, sample_b.corp.r_and_d);
+        assert_eq!(sample_a.runner.stack, sample_b.runner.stack);
+        assert_eq!(sample_a.corp.installed, sample_b.corp.installed);
+    }
+
+    /// An identity is never in a deck, so it can never be sampled into a
+    /// hidden zone — whatever seed is used and however many draws it takes
+    /// to cycle the whole pool.
+    #[test]
+    fn identities_are_never_sampled_into_a_hidden_zone() {
+        let mut registry = registry();
+        registry.insert(blank_card("corp_identity", Side::Corp, CardType::Identity));
+        registry.insert(blank_card("runner_identity", Side::Runner, CardType::Identity));
+        let state = state_with_hidden_zones();
+        let view = build_client_view(&state, &registry, Side::Runner);
+
+        for seed in 0..64 {
+            let sample = determinize(&view, &registry, &mut StdRng::seed_from_u64(seed));
+            let hidden = sample
+                .corp
+                .hq
+                .iter()
+                .chain(&sample.corp.r_and_d)
+                .chain(&sample.runner.stack)
+                .chain(sample.corp.installed.iter().map(|c| &c.card));
+            for card in hidden {
+                assert!(
+                    !matches!(registry.get(card).unwrap().card_type, CardType::Identity),
+                    "seed {seed} sampled identity {card:?} into a hidden zone"
+                );
+            }
+        }
     }
 
     #[test]
