@@ -23,13 +23,33 @@ pub use netrunner_session::{GameEndReason, HistoryEntry, PublicHistoryEntry};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ClientMessage {
     Connect { player_name: String, preferred_side: Option<Side> },
+    /// Take a seat back after the socket that held it dropped. The token is
+    /// the one `MatchJoined` issued for that seat, and it is the *only*
+    /// credential: a seat is worth exactly what a WebSocket connection was
+    /// worth before, so a 122-bit random identifier that only ever crossed
+    /// this one connection is the same trust the original `Connect` had.
+    /// The reply is `MatchJoined` again (same token, same side) followed by
+    /// a fresh `StateUpdate`, or `ResumeRejected`.
+    Resume { session_token: Uuid },
     SubmitAction(PlayerAction),
     Surrender,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
-    MatchJoined { match_id: Uuid, assigned_side: Side },
+    /// The seat is taken. `session_token` is what `ClientMessage::Resume`
+    /// presents to take it back after a dropped connection; it is per
+    /// *seat*, not per match, so one player's token never reseats the
+    /// other. Sent again, unchanged, on a successful resume.
+    MatchJoined { match_id: Uuid, assigned_side: Side, session_token: Uuid },
+    /// `ClientMessage::Resume` named a token the host does not hold: never
+    /// issued, or its match already over — including a match that ended
+    /// *because* this seat's grace period ran out. A client that missed
+    /// the `GameEnded` learns it this way; the host keeps no record of
+    /// finished matches, so it cannot say who won. Its own variant rather
+    /// than `ActionRejected` because a resuming client is waiting for
+    /// `MatchJoined` and nothing else — it has no action to have rejected.
+    ResumeRejected { reason: String },
     /// Boxed — `ClientView` is by far the largest variant here, and this
     /// enum is passed around/cloned as a whole regardless of which variant
     /// is active.

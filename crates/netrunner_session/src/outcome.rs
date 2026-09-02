@@ -22,6 +22,12 @@ pub enum GameEndReason {
     Flatline,
     Deckout,
     Surrender,
+    /// The side that had to act dropped its connection and did not come
+    /// back within the host's grace period. Like `Surrender`, a transport
+    /// outcome the engine never produces: `netrunner_server::MatchSession`
+    /// is the only thing that can observe it, and it reports the *other*
+    /// side as the winner.
+    Disconnected,
 }
 
 /// Best-effort classification — see `GameEndReason`'s doc comment. A
@@ -31,8 +37,9 @@ pub enum GameEndReason {
 /// `turn::enter_start_of_turn`'s doc comment); anything else defaults to
 /// the ordinary agenda-point threshold.
 ///
-/// `Surrender` is never produced here: it isn't a rules outcome at all, so
-/// only the transport that received the concession can report it.
+/// `Surrender` and `Disconnected` are never produced here: neither is a
+/// rules outcome at all, so only the transport that received the concession
+/// (or lost the client) can report them.
 pub fn classify_end_reason(events: &[GameEvent], winner: Side, state: &GameState) -> GameEndReason {
     if events.iter().any(|event| matches!(event, GameEvent::RunnerFlatlined)) {
         return GameEndReason::Flatline;

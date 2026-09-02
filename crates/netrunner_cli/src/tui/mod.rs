@@ -17,7 +17,6 @@ use netrunner_core::rules::{
 };
 use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
-use netrunner_server::ServerMessage;
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, StallReason, SubmitError};
 
 use crate::app::{describe_action, explain_action, push_log_line, App, Coaching, Modal, RenderableView};
@@ -48,20 +47,12 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     // fixed Kate-vs-HB matchup out of band, so the remote client just
     // builds the identical registry locally to resolve card titles.
     let registry = decks::kate_vs_hb_registry();
-    let (tx, mut rx) = remote::connect_remote(&config.server, config.side.map(Into::into)).await?;
-
-    let human_side = loop {
-        match rx.recv().await {
-            Some(ServerMessage::MatchJoined { assigned_side, .. }) => break assigned_side,
-            Some(_) => continue,
-            None => return Err("server closed the connection before assigning a seat".into()),
-        }
-    };
-
-    let mut app = App::new(registry, human_side, tx, rx);
+    let joined = remote::connect_remote(&config.server, config.side.map(Into::into)).await?;
+    let session_token = joined.session_token;
+    let mut app = App::new(registry, joined.side, joined.tx, joined.rx);
 
     let mut terminal = ratatui::init();
-    let result = run_event_loop(&mut terminal, &mut app);
+    let result = run_event_loop(&mut terminal, &mut app, &config.server, session_token);
     ratatui::restore();
     result
 }
@@ -617,9 +608,31 @@ impl RenderableView for LocalUiState {
     }
 }
 
-fn run_event_loop(terminal: &mut ratatui::DefaultTerminal, app: &mut App) -> Result<(), Box<dyn std::error::Error>> {
+/// The remote render loop. A lost connection is handled *here*, between
+/// frames, rather than inside `App` or `remote`: the board keeps drawing
+/// with the last view and the reconnect notice, and `q` still quits, while
+/// `Reconnector` makes one bounded attempt per tick. A game that has
+/// already ended is not resumed — the `GameEnded` is on screen and the
+/// server has dropped the seat's ticket anyway.
+fn run_event_loop(
+    terminal: &mut ratatui::DefaultTerminal,
+    app: &mut App,
+    server_url: &str,
+    session_token: uuid::Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut reconnector: Option<remote::Reconnector> = None;
     while !app.should_quit {
         app.drain_messages();
+        if app.connection_lost && !app.is_game_over() {
+            let attempt = reconnector.get_or_insert_with(|| remote::Reconnector::new(server_url.to_string(), session_token));
+            match attempt.try_resume()? {
+                Some(joined) => {
+                    app.reconnected(joined.tx, joined.rx);
+                    reconnector = None;
+                }
+                None => app.connection_notice = Some(attempt.status_line()),
+            }
+        }
         terminal.draw(|frame| draw_frame(frame, app, app.game_ended))?;
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
@@ -651,6 +664,10 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
 }
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
+    if let Some(notice) = app.connection_notice() {
+        frame.render_widget(Paragraph::new(notice.to_string()).style(Style::default().fg(Color::Red)), area);
+        return;
+    }
     let Some(view) = app.view() else {
         frame.render_widget(Paragraph::new("Connecting..."), area);
         return;
