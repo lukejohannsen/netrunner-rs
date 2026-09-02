@@ -136,9 +136,13 @@ impl App {
                 }
                 ServerMessage::ActionRejected { reason } => self.last_rejection = Some(reason),
                 ServerMessage::GameEnded { winner, reason } => self.game_ended = Some((winner, reason)),
-                // Both are handshake replies, consumed in `remote` before
-                // the channel pair ever reaches `App`.
-                ServerMessage::MatchJoined { .. } | ServerMessage::ResumeRejected { .. } => {}
+                // Handshake replies, consumed in `remote` before the
+                // channel pair ever reaches `App`.
+                ServerMessage::MatchJoined { .. }
+                | ServerMessage::Queued { .. }
+                | ServerMessage::ConnectRejected { .. }
+                | ServerMessage::MatchList { .. }
+                | ServerMessage::ResumeRejected { .. } => {}
             }
         }
     }

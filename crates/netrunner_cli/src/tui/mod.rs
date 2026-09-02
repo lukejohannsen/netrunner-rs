@@ -47,7 +47,7 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     // fixed Kate-vs-HB matchup out of band, so the remote client just
     // builds the identical registry locally to resolve card titles.
     let registry = decks::kate_vs_hb_registry();
-    let joined = remote::connect_remote(&config.server, config.side.map(Into::into)).await?;
+    let joined = remote::connect_remote(&config.server, config.side.map(Into::into), config.room.clone()).await?;
     let session_token = joined.session_token;
     let mut app = App::new(registry, joined.side, joined.tx, joined.rx);
 

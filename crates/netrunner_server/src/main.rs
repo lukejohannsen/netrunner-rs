@@ -31,8 +31,9 @@ struct Config {
     #[arg(long, default_value_t = 1)]
     games: u32,
 
-    /// Deterministic RNG seed. Headless mode derives each game's seed from
-    /// it; serve mode derives each accepted match's seed from it.
+    /// Deterministic RNG seed. Both modes derive the n-th game's seed as
+    /// `seed + n`, so a `--seed` daemon plays the same opening for its
+    /// n-th match every time it is started.
     #[arg(long)]
     seed: Option<u64>,
 
@@ -44,11 +45,17 @@ struct Config {
     #[arg(long, default_value_t = 8080)]
     port: u16,
 
-    /// (serve mode) Bot opponent seated against every connecting client.
-    /// `none` instead queues connecting clients and pairs the first two
-    /// together as a human-vs-human match.
+    /// (serve mode) Bot opponent seated against every connecting client
+    /// (on whichever side the client did not ask for). `none` instead
+    /// queues connecting clients and pairs each with the first waiter in
+    /// its room as a human-vs-human match.
     #[arg(long, value_enum, default_value_t = ServeBotKind::Heuristic)]
     bot_runner: ServeBotKind,
+
+    /// (serve mode) How many matches may run at once. A client connecting
+    /// at the limit is refused rather than queued. Unlimited if omitted.
+    #[arg(long)]
+    max_matches: Option<usize>,
 
     /// (serve mode) How many seconds a match waits for a disconnected
     /// player whose action it needs before awarding the game to the other
@@ -120,6 +127,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         bot_runner: config.bot_runner,
         seed: config.seed,
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
+        max_matches: config.max_matches,
     };
     let server = Server::bind(&format!("{}:{}", config.host, config.port), options).await?;
     server.run().await?;

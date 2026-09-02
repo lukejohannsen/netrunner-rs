@@ -45,18 +45,24 @@ pub enum RemoteError {
     Transport(Box<tokio_tungstenite::tungstenite::Error>),
     #[error("server closed the connection before assigning a seat")]
     ClosedBeforeSeat,
-    /// The server refused `ClientMessage::Resume`: the match is over
+    /// The server refused `ClientMessage::Resume` — the match is over
     /// (possibly forfeited by this very seat's absence) or the token is
-    /// not one it issued. Final — no retry will change the answer.
+    /// not one it issued — or refused `Connect` outright (at its match
+    /// limit). Final — no retry will change the answer.
     #[error("the server refused to resume the seat: {0}")]
     Rejected(String),
     #[error("could not reconnect within {0:?}")]
     GaveUp(Duration),
 }
 
-/// First connection: asks for a seat and waits for `MatchJoined`.
-pub async fn connect_remote(url: &str, preferred_side: Option<Side>) -> Result<Joined, RemoteError> {
-    open(url, ClientMessage::Connect { player_name: "CLI Player".into(), preferred_side }).await
+/// First connection: asks for a seat and waits for `MatchJoined`. Under a
+/// human-vs-human daemon that can mean waiting in the lobby; `Queued` is
+/// reported on stderr, which is fine because the TUI has not started yet
+/// — `run_remote` connects before `ratatui::init`. Resuming a *lobby*
+/// place after a drop is not attempted here: the token arrives before
+/// `MatchJoined`, and the retry loop keys on a seat. Still open.
+pub async fn connect_remote(url: &str, preferred_side: Option<Side>, room: Option<String>) -> Result<Joined, RemoteError> {
+    open(url, ClientMessage::Connect { player_name: "CLI Player".into(), preferred_side, room }).await
 }
 
 /// Reconnection: presents the seat's token and waits for `MatchJoined`.
@@ -106,7 +112,12 @@ async fn open(url: &str, hello: ClientMessage) -> Result<Joined, RemoteError> {
             Some(ServerMessage::MatchJoined { assigned_side, session_token, .. }) => {
                 return Ok(Joined { side: assigned_side, session_token, tx: tx_to_server, rx: rx_from_server });
             }
-            Some(ServerMessage::ResumeRejected { reason }) => return Err(RemoteError::Rejected(reason)),
+            Some(ServerMessage::ResumeRejected { reason } | ServerMessage::ConnectRejected { reason }) => {
+                return Err(RemoteError::Rejected(reason));
+            }
+            Some(ServerMessage::Queued { position, .. }) => {
+                eprintln!("Waiting in the lobby for another player ({position} waiting)...");
+            }
             Some(_) => continue,
             None => return Err(RemoteError::ClosedBeforeSeat),
         }
@@ -191,7 +202,7 @@ mod tests {
     use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 
     async fn start_server() -> String {
-        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), reconnect_grace: Duration::from_secs(30) };
+        let options = ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() };
         let server = Server::bind("127.0.0.1:0", options).await.unwrap();
         let addr = server.local_addr().unwrap();
         tokio::spawn(server.run());
@@ -212,7 +223,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_reconnector_takes_the_seat_back_after_the_socket_drops() {
         let url = start_server().await;
-        let joined = connect_remote(&url, Some(Side::Corp)).await.unwrap();
+        let joined = connect_remote(&url, Some(Side::Corp), None).await.unwrap();
         assert_eq!(joined.side, Side::Corp);
         let Joined { session_token, tx, mut rx, .. } = joined;
         first_state_update(&mut rx).await;
