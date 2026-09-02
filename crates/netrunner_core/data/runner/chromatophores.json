@@ -1,0 +1,17 @@
+{
+  "id": "chromatophores",
+  "title": "Chromatophores",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 1,
+  "installs_on_ice": true,
+  "host_ice_gains_subtypes": [
+    "Barrier",
+    "CodeGate",
+    "Sentry"
+  ],
+  "triggers": [],
+  "numeric_id": 35030,
+  "is_playable": true
+}

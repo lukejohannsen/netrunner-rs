@@ -221,11 +221,25 @@ fn the_anoetic_void_then_skunkworks_position_plays_out() {
 /// local play, so a matchup that cannot finish is a matchup that produces
 /// unusable training data and an unplayable game. The mechanic-coverage
 /// sweep above does not catch this: it plays one fixed deck pair, while
-/// these are twelve real pairings whose card interactions differ.
+/// these are real pairings whose card interactions differ.
+///
+/// Plays `sweep_decks_for_seed`'s schedule — every deck within
+/// `max(C, R)` seeds — four seeds deep, rather than four seeds of every
+/// pairing in the cross product: at the twelve System Gateway matchups the
+/// two are the same 48 games, and at *Elevation*'s 192 pairings the cross
+/// product would be 768 debug-mode games for a test whose question is
+/// "does every deck finish", not "does every pairing".
 #[test]
 fn every_sample_deck_matchup_finishes() {
     let mut coverage = Coverage::default();
-    for (index, (corp_deck, runner_deck)) in netrunner_core::decks::matchups().into_iter().enumerate() {
+    let sample = |side| netrunner_core::decks::for_side(side)
+        .into_iter()
+        .filter(|deck| deck.category == netrunner_core::decks::DeckCategory::Sample)
+        .count();
+    let schedule_period = sample(Side::Corp).max(sample(Side::Runner)) as u64;
+    let expected_games = 4 * schedule_period;
+    for index in 0..schedule_period {
+        let (corp_deck, runner_deck) = netrunner_session::sweep_decks_for_seed(index);
         for seed in 0..4u64 {
             let registry = sg_registry();
             let label = format!("{}_vs_{} seed {seed}", corp_deck.id, runner_deck.id);
@@ -243,6 +257,9 @@ fn every_sample_deck_matchup_finishes() {
                 (_, true) => Seating::RandomCorpHeuristicRunner,
                 (_, false) => Seating::HeuristicCorpRandomRunner,
             };
+            // Seeds repeat per deck pair; offset by the pair's index so two
+            // pairs never replay the same RNG path.
+            let seed = seed + 4 * index;
             let (corp, runner) = seating.drivers(seed);
             let (final_state, history, outcome) =
                 SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
@@ -264,7 +281,7 @@ fn every_sample_deck_matchup_finishes() {
     // view-path sweep (`netrunner_session`) and both 256-seed deep runs;
     // the index path's own gate — every action variant, through the
     // `ActionSpace` round trip — is `no_panics_or_deadlocks_across_many_seeds_system_gateway`.
-    assert!(coverage.games == 48, "four seeds across twelve matchups");
+    assert_eq!(coverage.games, expected_games, "four seeds across the deck-covering schedule");
 }
 
 /// The post-action paid-ability window must not become *constant* —

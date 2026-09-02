@@ -20,9 +20,9 @@
 
 use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
-use netrunner_core::decks;
+use netrunner_core::decks::{self, DeckFile};
 use netrunner_core::rules::{Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side, Viewer};
-use netrunner_session::coverage::sample_pool_card_ids;
+use netrunner_session::coverage::played_pool_card_ids;
 use netrunner_session::{Coverage, PublicHistoryEntry, Seat, Session, SessionStep, StallReason};
 
 /// How many seeds the sweep walks, default 32 — sized for the inner loop,
@@ -34,6 +34,16 @@ use netrunner_session::{Coverage, PublicHistoryEntry, Seat, Session, SessionStep
 /// ```
 fn sweep_seed_count() -> u64 {
     std::env::var("NETRUNNER_SWEEP_SEEDS").ok().and_then(|value| value.parse().ok()).unwrap_or(32)
+}
+
+/// The decks seed `seed` plays: the `seed`th Corp deck and the `seed`th
+/// Runner deck, each modulo its own list — `netrunner_session::
+/// sweep_decks_for_seed`. Every deck is played within `max(C, R)` seeds,
+/// so the default run reaches all of them; rotating over the full
+/// `matchups()` cross product instead would, once the pool is 16 × 12,
+/// spend 32 seeds on the first three Corp decks.
+fn sweep_decks_for_seed(seed: u64) -> (DeckFile, DeckFile) {
+    netrunner_session::sweep_decks_for_seed(seed)
 }
 
 /// Which agents sit where. Three seatings, each for a reason:
@@ -91,15 +101,10 @@ impl Seating {
 /// on the same games, for free.
 #[test]
 fn view_based_agents_never_reach_a_state_with_no_legal_action() {
-    let matchups = decks::matchups();
-    assert!(!matchups.is_empty(), "the embedded sample decks should yield at least one matchup");
     let mut coverage = Coverage::default();
 
     for seed in 0..sweep_seed_count() {
-        // Rotating by seed rather than nesting a second loop keeps the
-        // default run's cost in line with the existing sweep while still
-        // covering all twelve pairings as the seed count rises.
-        let (corp_deck, runner_deck) = &matchups[seed as usize % matchups.len()];
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
         let matchup = format!("{} vs {}", corp_deck.id, runner_deck.id);
 
         for seating in Seating::ALL {
@@ -130,7 +135,7 @@ fn view_based_agents_never_reach_a_state_with_no_legal_action() {
 
     let mut registry = CardRegistry::new();
     register_playable_cards(&mut registry);
-    let failures = coverage.gate_failures(&sample_pool_card_ids(&registry));
+    let failures = coverage.gate_failures(&played_pool_card_ids(&registry, sweep_seed_count()));
     assert!(
         failures.is_empty(),
         "rules never reached across {} view-path games (rerun with NETRUNNER_SWEEP_SEEDS=256 before \
@@ -217,10 +222,8 @@ fn the_flatline_during_an_encounter_window_position_plays_out() {
 /// strictly stronger one.
 #[test]
 fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
-    let matchups = decks::matchups();
-
     for seed in 0..sweep_seed_count() {
-        let (corp_deck, runner_deck) = &matchups[seed as usize % matchups.len()];
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
         let matchup = format!("{} vs {}", corp_deck.id, runner_deck.id);
 
         let mut registry = CardRegistry::new();

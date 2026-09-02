@@ -92,6 +92,13 @@ pub fn dispatch_event(
             Ok(events)
         }
 
+        // The just-installed Hardware reacts to its own install, the same
+        // widening `ProgramInstalled`/`ResourceInstalled` got — GAMEDRAGON™
+        // Pro's "when you install this hardware ... you may host it".
+        GameEvent::HardwareInstalled { card, .. } => {
+            fire_direct(state, registry, card, newest_rig_install(state, card), Trigger::OnInstall, event)
+        }
+
         GameEvent::CardInstalled { side, .. } => {
             let identity = match side {
                 Side::Corp => state.corp.identity.clone(),
@@ -201,10 +208,18 @@ pub fn dispatch_event(
             fire_each(state, registry, &candidates, Trigger::OnTurnStart, event)
         }
 
-        GameEvent::RunInitiated { .. } => match state.runner.identity.clone() {
-            Some(identity) => fire_direct(state, registry, &identity, None, Trigger::OnRunStart, event),
-            None => Ok(Vec::new()),
-        },
+        // "Whenever a run begins": the Runner's identity and every rig card
+        // — Side Hustle loads a credit on each run. Used to reach the
+        // identity alone; no System Gateway rig card reacted to a run
+        // starting.
+        GameEvent::RunInitiated { .. } => {
+            let mut candidates: Vec<(Option<InstallId>, CardId)> = Vec::new();
+            if let Some(identity) = state.runner.identity.clone() {
+                candidates.push((None, identity));
+            }
+            candidates.extend(state.runner.rig.iter().map(|card| (Some(card.install_id), card.card.clone())));
+            fire_each(state, registry, &candidates, Trigger::OnRunStart, event)
+        }
 
         GameEvent::IceEncountered { card_id, .. } => {
             fire_direct(state, registry, card_id, encountered_install(state), Trigger::OnEncounter, event)
@@ -865,6 +880,9 @@ mod tests {
 
         let mut state = empty_state();
         state.runner.identity = Some(CardId("runner_id".to_string()));
+        // `RunInitiated` is run-scoped (`still_applies`): the engine emits
+        // it with the run already in `active_run`, so the fixture must too.
+        state.active_run = Some(crate::rules::RunState { server: ServerId::Hq, ..Default::default() });
 
         let events = dispatch_event(&mut state, &registry, &GameEvent::RunInitiated { server: ServerId::Hq }).unwrap();
 

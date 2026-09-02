@@ -114,6 +114,10 @@ pub struct PublicInstalledRunnerCard {
     /// other reference to a Corp install in the view; the client resolves
     /// it against the server's `ice` list.
     pub hosted_on_ice: Option<InstallId>,
+    /// Which rig card this card is hosted on (GAMEDRAGON™ Pro on an
+    /// icebreaker). Public for the same reason as `hosted_on_ice`.
+    #[serde(default)]
+    pub hosted_on_program: Option<InstallId>,
     /// Generic counters (see `dsl::card::CounterKind`) — a bare `u32`, not
     /// the `Option` its Corp counterpart carries. The asymmetry is not an
     /// oversight: a rig card is always face-up (see `PublicRunnerState::
@@ -149,6 +153,13 @@ pub struct PublicRunnerState {
     /// where the engine will.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
+    /// `RunnerState::discarded_this_discard_phase`, public like the heap it
+    /// indexes into: a discard to hand size is made on the table. Carried
+    /// so a parked Magdalene Keino-Chemutai choice can be re-evaluated from
+    /// the view (`CardFilter::DiscardedThisDiscardPhase`) — a determinized
+    /// search must see the same candidates the engine offers.
+    #[serde(default)]
+    pub discarded_this_discard_phase: Vec<CardId>,
 }
 
 /// A run's ICE as seen by a particular viewer: `rezzed` is always public,
@@ -562,6 +573,10 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::TurnStarted { .. }
         | GameEvent::DiscardPending { .. }
         | GameEvent::DiscardPhaseEnded { .. }
+        // Both name Runner cards only: a rig card and a card that was in
+        // the heap or grip a moment ago — never a concealed Corp card.
+        | GameEvent::CardAddedToBottomOfStack { .. }
+        | GameEvent::CardHosted { .. }
         | GameEvent::AgendaStolen { .. }
         | GameEvent::DamageTaken { .. }
         | GameEvent::RunnerFlatlined
@@ -772,6 +787,7 @@ fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunn
         install_id: card.install_id,
         current_strength: card.effective_strength(),
         hosted_on_ice: card.hosted_on_ice,
+        hosted_on_program: card.hosted_on_program,
         counters: card.counters,
     }
 }
@@ -789,6 +805,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         scored_agendas: runner.scored_agendas.clone(),
         link_strength: runner.link_strength,
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
+        discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
     }
 }
 
@@ -1145,6 +1162,7 @@ mod tests {
             install_id: InstallId::PLACEHOLDER,
             current_strength: 3,
             hosted_on_ice: None,
+            hosted_on_program: None,
             counters: 0,
         }];
         assert_eq!(masked_for_corp.runner.rig, expected);

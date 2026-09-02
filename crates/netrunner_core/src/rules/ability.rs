@@ -1,7 +1,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{
-    card_matches_filter, Amount, BoostDuration, CardFilter, CardId, CardTarget, Cost, Effect, EffectRequirement, StackZone,
-    StrengthModifier, SubroutineBreakCount, Trigger,
+    card_matches_filter, Amount, BoostDuration, CardFilter, CardId, CardTarget, Cost, Effect, EffectRequirement, IceType,
+    StackZone, StrengthModifier, SubroutineBreakCount, Trigger,
 };
 use crate::rules::damage;
 use crate::rules::dispatcher;
@@ -134,10 +134,6 @@ fn acting_corp_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Optio
 /// [`acting_corp_install`].
 fn acting_rig_card<'s>(state: &'s GameState, ctx: &ResolutionContext<'_>) -> Option<&'s InstalledRunnerCard> {
     acting_rig_position(state, ctx).map(|position| &state.runner.rig[position])
-}
-
-fn acting_rig_card_mut<'s>(state: &'s mut GameState, ctx: &ResolutionContext<'_>) -> Option<&'s mut InstalledRunnerCard> {
-    acting_rig_position(state, ctx).map(|position| &mut state.runner.rig[position])
 }
 
 fn acting_rig_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
@@ -450,6 +446,65 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::CardInstalled { side: Side::Corp, card: card_id.clone(), server: *into }])
         }
 
+        Effect::DrawCardsAmount(side, amount) => {
+            let resolved = resolve_amount(amount, ctx, state, registry);
+            evaluate_effect(state, &Effect::DrawCards(*side, resolved), ctx, registry)
+        }
+
+        Effect::RefillCountersTo(target) => {
+            let current = counters_of(state, ctx)
+                .ok_or_else(|| RulesError::CardNotEligibleForCounters(acting_card.cloned().unwrap_or(CardId(String::new()))))?;
+            if current >= *target {
+                return Ok(Vec::new());
+            }
+            modify_counters(state, ctx, i64::from(*target - current))
+        }
+
+        Effect::InstallRunnerCardFromHeap => {
+            use crate::rules::engine::{can_install_runner_card_from_zone, install_runner_card_from_zone_paying_cost, RunnerCardSource};
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            // Same leniency as the grip variant: an uninstallable pick stays
+            // where it is.
+            if !can_install_runner_card_from_zone(state, registry, &card_id, RunnerCardSource::Heap) {
+                return Ok(Vec::new());
+            }
+            install_runner_card_from_zone_paying_cost(state, registry, card_id, RunnerCardSource::Heap)
+        }
+
+        Effect::AddToBottomOfStack => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            let zones = [&mut state.runner.heap, &mut state.runner.grip];
+            for zone in zones {
+                if let Some(position) = zone.iter().position(|c| c == &card_id) {
+                    zone.remove(position);
+                    // The stack draws from the end of the `Vec`, so index 0
+                    // is its bottom.
+                    state.runner.stack.insert(0, card_id.clone());
+                    return Ok(vec![GameEvent::CardAddedToBottomOfStack { card: card_id }]);
+                }
+            }
+            Ok(Vec::new())
+        }
+
+        Effect::HostRigCardOnInstall { card, host } => {
+            if card == host {
+                return Err(RulesError::InstallNotFound(*host));
+            }
+            if !state.runner.rig.iter().any(|c| c.install_id == *host) {
+                return Err(RulesError::InstallNotFound(*host));
+            }
+            let hosted = state
+                .runner
+                .rig
+                .iter_mut()
+                .find(|c| c.install_id == *card)
+                .ok_or(RulesError::InstallNotFound(*card))?;
+            hosted.hosted_on_program = Some(*host);
+            let hosted_card = hosted.card.clone();
+            let host_card = state.runner.rig.iter().find(|c| c.install_id == *host).map(|c| c.card.clone()).unwrap();
+            Ok(vec![GameEvent::CardHosted { card: hosted_card, host: host_card }])
+        }
+
         Effect::InstallRunnerCardFromGrip => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // Eligibility may have shifted since the selection was offered
@@ -489,8 +544,19 @@ pub fn evaluate_effect(
         Effect::BoostStrength { amount, duration } => {
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             require_encounter(state)?;
-            let card = acting_rig_card_mut(state, ctx)
+            let position = acting_rig_position(state, ctx)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
+            // A hosted card can lengthen the boost (GAMEDRAGON™ Pro:
+            // "abilities that increase its strength last for the remainder
+            // of the run"). Only ever a lengthening — see
+            // `HostedBreakerBonus::boosts_last_the_run`.
+            let host_install = state.runner.rig[position].install_id;
+            let lasts_the_run = hosted_breaker_bonuses(state, registry, host_install).any(|bonus| bonus.boosts_last_the_run);
+            let duration = match duration {
+                BoostDuration::Encounter if lasts_the_run => BoostDuration::Run,
+                other => *other,
+            };
+            let card = &mut state.runner.rig[position];
             match duration {
                 BoostDuration::Encounter => card.encounter_strength_buff += *amount as i32,
                 BoostDuration::Run => card.run_strength_buff += *amount as i32,
@@ -501,7 +567,7 @@ pub fn evaluate_effect(
                 card_id: acting.clone(),
                 new_strength,
                 delta: *amount as i32,
-                duration: *duration,
+                duration,
             }])
         }
 
@@ -518,10 +584,11 @@ pub fn evaluate_effect(
 
             let run = state.active_run.as_ref().unwrap();
             let ice = &run.ice[run.position];
-            let (ice_card_id, ice_strength, ice_type) =
-                (ice.card_id.clone(), ice.current_strength, ice.ice_type);
+            let (ice_card_id, ice_strength, ice_type, ice_install) =
+                (ice.card_id.clone(), ice.current_strength, ice.ice_type, ice.install_id);
             if let Some(expected) = restrict_to
                 && *expected != ice_type
+                && !ice_gains_subtype_from_hosted(state, registry, ice_install, *expected)
             {
                 return Err(RulesError::InvalidBreakerSubtype {
                     breaker: acting.clone(),
@@ -1309,7 +1376,9 @@ pub(crate) fn trash_card(
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: card.clone() })?;
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card);
-            Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone() }])
+            let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone() }];
+            events.extend(cascade_trash_hosted_on_rig_card(state, removed.install_id));
+            Ok(events)
         }
 
         CardTarget::TopOfStack { side, zone } => {
@@ -1353,6 +1422,22 @@ pub(crate) fn trash_card(
 /// Keyed by the host's `InstallId`, so with two copies of one ICE installed
 /// only the trojans on the copy that left go — `hosted_on_ice` used to be a
 /// `CardId` and both copies' trojans went together.
+/// The rig-side twin of `cascade_trash_hosted_programs`: when the rig card
+/// `host` leaves the rig, every card hosted on it
+/// (`InstalledRunnerCard::hosted_on_program == Some(host)`) is trashed too
+/// — GAMEDRAGON™ Pro goes with the icebreaker it sits on. Called from
+/// every site that removes a rig card. A no-op for the overwhelming
+/// majority of rig cards, which host nothing.
+pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
+    let mut events = Vec::new();
+    while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_program == Some(host)) {
+        let removed = state.runner.rig.remove(position);
+        state.runner.heap.push(removed.card.clone());
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: removed.card });
+    }
+    events
+}
+
 pub(crate) fn cascade_trash_hosted_programs(state: &mut GameState, host: InstallId) -> Vec<GameEvent> {
     let mut events = Vec::new();
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_ice == Some(host)) {
@@ -1432,7 +1517,9 @@ fn trash_this_card(state: &mut GameState, ctx: &ResolutionContext<'_>) -> Result
     if let Some(position) = acting_rig_position(state, ctx) {
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card);
-        return Ok(vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() }]);
+        let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() }];
+        events.extend(cascade_trash_hosted_on_rig_card(state, removed.install_id));
+        return Ok(events);
     }
     // An install that has already left play is gone: its hand/deck
     // namesakes are other cards, and trashing one of them would be exactly
@@ -1886,11 +1973,66 @@ pub(crate) fn computed_runner_strength(card: &InstalledRunnerCard, state: &GameS
             | StrengthModifier::PerHostedAdvancement(_) => 0,
         })
         .unwrap_or(0);
-    card.effective_strength() + bonus
+    let hosted: i32 = hosted_breaker_bonuses(state, registry, card.install_id).map(|bonus| bonus.strength).sum();
+    card.effective_strength() + bonus + hosted
 }
 
-fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> u32 {
+/// The `HostedBreakerBonus` of every rig card hosted on `host`
+/// (`InstalledRunnerCard::hosted_on_program == Some(host)`) — GAMEDRAGON™
+/// Pro on an icebreaker. Live, like `StrengthModifier`: read at every
+/// strength query and at every boost, never baked into the host.
+fn hosted_breaker_bonuses<'s>(
+    state: &'s GameState,
+    registry: &'s CardRegistry,
+    host: InstallId,
+) -> impl Iterator<Item = crate::dsl::HostedBreakerBonus> + 's {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter(move |card| card.hosted_on_program == Some(host))
+        .filter_map(move |card| registry.get(&card.card).and_then(|def| def.hosted_breaker_bonus))
+}
+
+/// Whether a Trojan hosted on the ICE install `ice` grants it `subtype`
+/// (`CardDefinition::host_ice_gains_subtypes` — Chromatophores). The ICE's
+/// effective subtypes are its printed `IceType` plus these grants; only
+/// `Effect::BreakSubroutines`' `restrict_to` check consults them today.
+fn ice_gains_subtype_from_hosted(state: &GameState, registry: &CardRegistry, ice: InstallId, subtype: IceType) -> bool {
+    state
+        .runner
+        .rig
+        .iter()
+        .filter(|card| card.hosted_on_ice == Some(ice))
+        .filter_map(|card| registry.get(&card.card))
+        .any(|def| def.host_ice_gains_subtypes.contains(&subtype))
+}
+
+/// Spends `amount` of the acting rig card's hosted credits (its generic
+/// counters) towards a cost the card's text lets them pay — the
+/// purpose-restricted pool drain `run::access::resolve_trash` uses for
+/// `HostedCreditUse::TrashCosts`. The counters go through the same path
+/// `Cost::RemoveCounters` uses, so the event stream reads the same.
+pub(crate) fn spend_hosted_credits(
+    state: &mut GameState,
+    ctx: &ResolutionContext<'_>,
+    amount: u32,
+) -> Result<Vec<GameEvent>, RulesError> {
+    if amount == 0 {
+        return Ok(Vec::new());
+    }
+    let position = acting_rig_position(state, ctx).ok_or(RulesError::MissingActingCardContext)?;
+    let card_id = state.runner.rig[position].card.clone();
+    let ctx = ResolutionContext::for_parked(Some(state.runner.rig[position].install_id), Some(&card_id));
+    modify_counters(state, &ctx, -i64::from(amount))
+}
+
+pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state: &GameState, registry: &CardRegistry) -> u32 {
     match amount {
+        Amount::ClicksRemaining => match state.phase {
+            crate::rules::GamePhase::Action(side) => state.resources(side).clicks.0,
+            _ => 0,
+        },
         Amount::Fixed(n) => *n,
         Amount::AgendaPointsScoredThisTurn => state.corp.agenda_points_scored_this_turn,
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),

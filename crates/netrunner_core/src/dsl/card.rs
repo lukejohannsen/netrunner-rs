@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dsl::ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 use crate::dsl::cost::Cost;
-use crate::dsl::effect::Effect;
+use crate::dsl::effect::{Amount, Effect};
 use crate::dsl::trigger::Trigger;
 use crate::rules::Side;
 
@@ -208,6 +208,18 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub play_requirement: Option<EffectRequirement>,
 
+    /// A cost paid *in addition to* the click and `cost` credits every
+    /// Event/Operation play spends — a **Double**'s "As an additional cost
+    /// to play this event, spend [click]" (Scrounge), authored as
+    /// `Cost::Clicks(1)`. Paid by `engine::play_event` right after the
+    /// play's own click, before `OnPlay` resolves; `legal_actions`' probe
+    /// therefore drops the play when the extra cost cannot be met. A
+    /// `Cost` rather than a click count so the same field carries the next
+    /// printed additional cost without a second field. `None` for the
+    /// common case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub additional_play_cost: Option<Cost>,
+
     /// Recurring-credit pool size for an identity, refilled to this amount
     /// at the start of every Corp turn (`turn::enter_start_of_turn`) and
     /// spendable on Corp trace bids before the Corp's own wallet — e.g. NBN:
@@ -269,6 +281,20 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub install_cost_discount_if: Option<(EffectRequirement, u32)>,
 
+    /// A *scaling* discount off this Program's install cost, resolved by
+    /// `rules::ability::resolve_amount` at pricing time — Principia's "costs
+    /// 1[c] less to install for each other installed icebreaker". A sibling
+    /// of `install_cost_discount_if` rather than a generalisation of it:
+    /// that field is a fixed amount behind a condition, this one is an
+    /// amount with no condition, and the two stack (neither card has both).
+    /// Priced before the card enters the rig, so an `Amount` that counts
+    /// the rig — `InstalledIcebreakerCount` — already excludes the card
+    /// itself, which is what "each *other* installed icebreaker" means.
+    /// `None` for the common case. `Some` only meaningful on
+    /// `CardType::Program`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub install_cost_discount_amount: Option<Amount>,
+
     /// Marks a Trojan Program that must be installed onto a piece of ICE
     /// (`PlayerAction::InstallProgramOnIce`) rather than into the normal
     /// Rig-install flow — e.g. Botulus, Tranquilizer. `false` for the
@@ -278,6 +304,40 @@ pub struct CardDefinition {
     /// installed ICE.
     #[serde(default)]
     pub installs_on_ice: bool,
+
+    /// ICE subtypes this Trojan grants its host while hosted — Chromatophores'
+    /// "Host ice gains barrier, code gate, and sentry." Read where a
+    /// breaker's `restrict_to` is matched against the encountered ICE
+    /// (`Effect::BreakSubroutines`): the ICE's effective subtypes are its
+    /// printed `IceType` plus every subtype granted by a rig card hosted on
+    /// it. A per-card list rather than a flag because the rules concept is
+    /// "gains these subtypes", and a later card may grant one. Empty for
+    /// every non-Trojan card, and for every Trojan that grants nothing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub host_ice_gains_subtypes: Vec<IceType>,
+
+    /// What this Hardware does for the icebreaker it is hosted on
+    /// (`state::InstalledRunnerCard::hosted_on_program`) — GAMEDRAGON™ Pro.
+    /// `None` for every card that is not hosted on a program. Hosting
+    /// itself is a relation the card's own triggers establish with
+    /// `Effect::HostRigCardOnInstall`; this field is only what the relation
+    /// *means* while it holds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_breaker_bonus: Option<HostedBreakerBonus>,
+
+    /// What this card's hosted credits (`counters`, with `counter_kind:
+    /// Credit`) may be spent on, beyond the card's own abilities — Azimat's
+    /// "You can spend hosted credits to pay trash costs." The restriction
+    /// vocabulary this engine deferred until a card needed it (ROADMAP
+    /// Phase 1 §4): real recurring credits are purpose-restricted, so the
+    /// pool cannot live in `ability::pay_cost`'s purpose-blind waterfall.
+    /// Instead the site that knows the purpose drains matching pools first
+    /// — `run::access::resolve_trash` for `TrashCosts`. One value today,
+    /// built against one card; extend when the next card names a purpose.
+    /// `None` for the common case (hosted credits spendable only by the
+    /// card's own text).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hosted_credits_usable_for: Option<HostedCreditUse>,
 
     /// Marks Bioroid-style ICE the Runner may break a subroutine on by
     /// losing a click instead of matching it with an icebreaker
@@ -396,6 +456,39 @@ pub enum CounterKind {
     Credit,
 }
 
+/// See `CardDefinition::hosted_breaker_bonus`. What a Hardware hosted on an
+/// icebreaker does for its host — GAMEDRAGON™ Pro's "Host icebreaker gets +1
+/// strength. Abilities that increase its strength last for the remainder of
+/// the run (instead of any shorter duration)."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HostedBreakerBonus {
+    /// Added to the host's live strength by `rules::ability::
+    /// computed_runner_strength` for as long as the hosting holds — a live
+    /// term like `StrengthModifier`, never baked into the host's
+    /// `base_strength`, so unhosting (or the hardware leaving play) drops
+    /// it with nothing to unwind.
+    #[serde(default)]
+    pub strength: i32,
+    /// When true, an `Effect::BoostStrength` the host resolves with
+    /// `BoostDuration::Encounter` is recorded as `Run` instead — the boost
+    /// outlives the encounter it was bought in. Only a lengthening: a
+    /// `Turn` boost is already longer and stays `Turn`.
+    #[serde(default)]
+    pub boosts_last_the_run: bool,
+}
+
+/// See `CardDefinition::hosted_credits_usable_for` — the purpose a card's
+/// hosted credits may be spent on. Deliberately a closed enum with one
+/// value: each purpose names the one engine site that drains the pool, and
+/// a value nothing drains would be a dead restriction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HostedCreditUse {
+    /// The trash cost of a card the Runner is accessing
+    /// (`PlayerAction::TrashAccessedCard`) — Azimat.
+    TrashCosts,
+}
+
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
 /// own (e.g. "an `Agenda` shouldn't have `subroutines`"). Not wired into
 /// `CardRegistry::insert`/`from_cards`/`from_json` — several existing test
@@ -455,6 +548,11 @@ impl Default for CardDefinition {
             max_hand_size_bonus: None,
             install_cost_discount_if: None,
             installs_on_ice: false,
+            host_ice_gains_subtypes: Vec::new(),
+            hosted_breaker_bonus: None,
+            hosted_credits_usable_for: None,
+            additional_play_cost: None,
+            install_cost_discount_amount: None,
             click_breakable: false,
             strength_modifier: None,
             counter_kind: None,

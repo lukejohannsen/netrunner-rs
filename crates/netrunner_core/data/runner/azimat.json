@@ -1,0 +1,30 @@
+{
+  "id": "azimat",
+  "title": "Azimat",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 1,
+  "memory_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnInstall",
+      "effects": [
+        {
+          "RefillCountersTo": 2
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RefillCountersTo": 2
+        }
+      ]
+    }
+  ],
+  "counter_kind": "Credit",
+  "hosted_credits_usable_for": "TrashCosts",
+  "numeric_id": 35029,
+  "is_playable": true
+}

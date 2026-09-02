@@ -69,6 +69,10 @@ pub enum Effect {
     ModifyStrength(i32),
     /// `Side`-explicit for the same reason as `GainCredits`.
     DrawCards(Side, u32),
+    /// `DrawCards` with a computed amount — Ritual's "Draw 1 card for each
+    /// click you have remaining." Same shape and same reason as
+    /// `GainCreditsAmount`: nothing composable multiplies.
+    DrawCardsAmount(Side, Amount),
     /// Ends whatever run is in `GameState::active_run`. No payload — there
     /// is exactly one active run at a time.
     EndTheRun,
@@ -219,6 +223,14 @@ pub enum Effect {
     /// Saturating-removes `amount` generic counters from `acting_card`. Same
     /// target/error rules as `AddCounters`.
     RemoveCounters(u32),
+    /// Raises `acting_card`'s generic counters *to* `u32` if they are below
+    /// it, and leaves them alone otherwise — a **recurring credit** pool's
+    /// "refill to N" (Azimat: "when you install this program and before
+    /// your turn begins, refill to 2 hosted credits"). Not composable from
+    /// `AddCounters`, which adds: reaching "refill to 2" that way needs one
+    /// `EffectIf` per possible starting count. Same target/error rules as
+    /// `AddCounters`.
+    RefillCountersTo(u32),
     /// Evaluates `effect` only if `condition` holds; otherwise silently
     /// no-ops (`Ok(Vec::new())`) — the same soft-gate convention
     /// `dsl::card::TriggeredEffect::requirement` already uses, but usable
@@ -488,6 +500,35 @@ pub enum Effect {
     /// `InstallFromZoneIgnoringCost`, the Corp-side subroutine install
     /// that pays nothing.
     InstallRunnerCardFromGrip,
+    /// `InstallRunnerCardFromGrip` for a card sitting in the **heap** —
+    /// Scrounge's "Install 1 program from your heap", Magdalene
+    /// Keino-Chemutai's install from among the cards just discarded. A
+    /// sibling rather than a zone parameter on the grip variant so every
+    /// existing card JSON keeps its bare `"InstallRunnerCardFromGrip"`
+    /// string; both share one pricing and eligibility path
+    /// (`engine::can_install_runner_card_from_zone`). Same Trojan exclusion
+    /// and same silent no-op when the pick is no longer installable.
+    InstallRunnerCardFromHeap,
+    /// Moves `acting_card` — a card in the Runner's grip or heap — to the
+    /// **bottom** of the stack: Scrounge's "You may add 1 program from your
+    /// heap to the bottom of your stack." `PromptChooseCards::destination`
+    /// cannot express it: a destination zone receives cards at its *top*
+    /// (the end of the `Vec` a draw pops from), and no existing primitive
+    /// addresses the bottom of a deck. A no-op when the card is in neither
+    /// zone, per the `TrashCard` "already gone" precedent.
+    AddToBottomOfStack,
+    /// Hosts the rig card `card` on the rig card `host` —
+    /// `state::InstalledRunnerCard::hosted_on_program` — GAMEDRAGON™ Pro's
+    /// "you may host this hardware on an installed non-AI icebreaker". A
+    /// relation between two installs, which nothing composable can name:
+    /// both are authored as `InstallId::PLACEHOLDER` and substituted when
+    /// the parking `PromptChooseCards` resolves, the way `SwapInstalledIce`
+    /// is — `card` becomes the parking card's own install, `host` the
+    /// selected one. `RulesError::InstallNotFound` if either has left the
+    /// rig, `RulesError::HostIsNotIce`-style rejection is not needed:
+    /// eligibility is the prompt's `CardFilter::Icebreaker`. Re-hosting an
+    /// already-hosted card simply moves it.
+    HostRigCardOnInstall { card: crate::rules::InstallId, host: crate::rules::InstallId },
     /// Sets `RunState::runner_cannot_steal_or_trash`, blocking `PlayerAction::
     /// StealAgenda`/`TrashAccessedCard` for the remainder of the current
     /// run — e.g. Ansel 1.0's third subroutine. `RulesError::NoActiveRun`
@@ -564,6 +605,10 @@ pub enum Amount {
     /// `GainCreditsAmount`s of this — composition instead of a multiplier
     /// field no second card needs.
     CreditsLostThisResolution,
+    /// Clicks the side whose action phase it is still has — Ritual's "Draw
+    /// 1 card for each click you have remaining", counted *after* the click
+    /// that played it was spent. Resolves to 0 outside an action phase.
+    ClicksRemaining,
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -660,6 +705,11 @@ impl Effect {
             | Effect::InstallFromZoneIgnoringCost { .. }
             | Effect::PromptInstallCorpCard { .. }
             | Effect::InstallRunnerCardFromGrip
+            | Effect::InstallRunnerCardFromHeap
+            | Effect::AddToBottomOfStack
+            | Effect::HostRigCardOnInstall { .. }
+            | Effect::RefillCountersTo(..)
+            | Effect::DrawCardsAmount(..)
             | Effect::PreventStealAndTrashForRemainderOfRun
             | Effect::PreventScoringForRemainderOfTurn
             | Effect::AddAdvancementTokens(..)

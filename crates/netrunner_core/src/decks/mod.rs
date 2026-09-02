@@ -27,16 +27,15 @@
 //! The embedded decks are Null Signal Games' seven System Gateway-only
 //! decklists, published at
 //! <https://nullsignal.games/players/getting-started-sample-decklists/> —
-//! three Runner, four Corp, giving twelve legal matchups. They exist so
-//! every consumer needing a real, playable pair of decks (self-play
-//! training, the gym environment, the single-player CLI) draws from one
-//! source of truth instead of hand-rolling a fixture. Authored
-//! one-file-per-deck under `data/decks/`, concatenated by `build.rs` and
-//! baked in via `include_str!`, mirroring `cards::embedded` exactly.
-//!
-//! The remaining decks on that page (numbers 8-28) combine System Gateway
-//! with *Elevation*, which is embedded as catalog-only metadata with no DSL
-//! implementations, so they are not representable here.
+//! the seven System Gateway-only lists plus every System Gateway +
+//! *Elevation* list whose cards are implemented (ROADMAP Phase 1 §8 lands
+//! those one or two decks at a time; `cards::embedded::ELEV_UNIMPLEMENTED`
+//! names what is still missing). They exist so every consumer needing a
+//! real, playable pair of decks (self-play training, the gym environment,
+//! the single-player CLI) draws from one source of truth instead of
+//! hand-rolling a fixture. Authored one-file-per-deck under `data/decks/`,
+//! concatenated by `build.rs` and baked in via `include_str!`, mirroring
+//! `cards::embedded` exactly.
 
 use std::collections::HashMap;
 
@@ -259,9 +258,11 @@ pub fn for_side(side: Side) -> Vec<DeckFile> {
 /// Every legal `(corp, runner)` pairing of *sample* decks, ordered
 /// deterministically.
 ///
-/// Four Corp decks against three Runner decks — twelve matchups, which is
-/// the pool self-play samples from so training sees the whole card set
-/// rather than one fixed matchup's slice of it.
+/// Every `Sample` Corp deck against every `Sample` Runner deck — the full
+/// cross product (4 × 3 = 12 at the System Gateway pool, growing as
+/// *Elevation* decks land), which is the pool self-play samples from so
+/// training sees the whole card set rather than one fixed matchup's slice
+/// of it.
 ///
 /// **Filtered to `DeckCategory::Sample`, and that filter is load-bearing.**
 /// Every consumer of this function feeds a training or verification harness
@@ -304,47 +305,52 @@ mod tests {
         }
     }
 
-    /// The published decks spend 14-15 of their 15 influence, so the
-    /// influence model is pinned tightly enough that an error in it would
-    /// show up as an over-budget deck rather than passing unnoticed.
-    #[test]
-    fn sample_decks_spend_their_influence_budget() {
-        let registry = registry();
-        for deck in embedded_decks().into_iter().filter(|deck| deck.category == DeckCategory::Sample) {
-            let report = deck.validate(&registry, NsgFormat::Startup).expect("published decks are legal");
-            assert!(
-                (14..=15).contains(&report.influence_spent),
-                "{} spends {} influence; published NSG decks sit at 14-15 of 15",
-                deck.id,
-                report.influence_spent
-            );
-        }
-    }
+    /// Every published sample decklist this crate embeds, pinned to what
+    /// Null Signal Games printed: id, side, card count, influence spent
+    /// and (for a Corp deck) agenda points. One table, extended a stage at
+    /// a time as *Elevation* lands (ROADMAP Phase 1 §8), so a card-data
+    /// edit that changes an agenda's points, an identity's minimum deck
+    /// size or a card's influence fails here against the real list rather
+    /// than silently breaking it. The seven System Gateway-only decks
+    /// spend 14-15 of 15 influence; the Elevation-era lists are pinned to
+    /// the influence they actually spend.
+    const PUBLISHED: &[(&str, Side, u32, u32, u32)] = &[
+        // id, side, cards, influence, agenda points
+        ("advanced_yomi", Side::Corp, 44, 15, 18),
+        ("discretion_advised", Side::Corp, 44, 15, 18),
+        ("flow_and_ebb", Side::Runner, 40, 15, 0),
+        ("hyper_velocity", Side::Corp, 44, 15, 18),
+        ("party_hard", Side::Runner, 40, 14, 0),
+        ("planning_ahead", Side::Runner, 40, 15, 0),
+        ("quick_and_dirty", Side::Corp, 44, 15, 18),
+        ("sabbatical", Side::Runner, 45, 15, 0),
+        ("stolen_goods", Side::Runner, 40, 14, 0),
+    ];
 
-    /// Pins the published sizes and agenda points. A card-data edit that
-    /// changes an agenda's point value or an identity's minimum deck size
-    /// would otherwise silently break a real decklist; this fails instead.
+    /// See `PUBLISHED`. Also the guard that the pool is exactly the
+    /// published lists: a `Sample` deck this table does not name fails.
     #[test]
     fn sample_decks_match_the_published_lists() {
-        let decks: Vec<DeckFile> = embedded_decks().into_iter().filter(|deck| deck.category == DeckCategory::Sample).collect();
-        assert_eq!(decks.len(), 7, "seven System Gateway-only sample decks are published");
+        let registry = registry();
+        let mut decks: Vec<DeckFile> =
+            embedded_decks().into_iter().filter(|deck| deck.category == DeckCategory::Sample).collect();
+        decks.sort_by(|a, b| a.id.cmp(&b.id));
+        let ids: Vec<&str> = decks.iter().map(|deck| deck.id.as_str()).collect();
+        let expected: Vec<&str> = PUBLISHED.iter().map(|(id, ..)| *id).collect();
+        assert_eq!(ids, expected, "the Sample pool must be exactly the published lists this table pins");
 
-        let mut sizes: Vec<(String, Side, u32)> =
-            decks.iter().map(|deck| (deck.id.clone(), deck.side, deck.size())).collect();
-        sizes.sort_by(|a, b| a.0.cmp(&b.0));
-
-        assert_eq!(
-            sizes,
-            vec![
-                ("advanced_yomi".to_string(), Side::Corp, 44),
-                ("discretion_advised".to_string(), Side::Corp, 44),
-                ("hyper_velocity".to_string(), Side::Corp, 44),
-                ("party_hard".to_string(), Side::Runner, 40),
-                ("planning_ahead".to_string(), Side::Runner, 40),
-                ("quick_and_dirty".to_string(), Side::Corp, 44),
-                ("stolen_goods".to_string(), Side::Runner, 40),
-            ]
-        );
+        for (deck, (id, side, cards, influence, agenda_points)) in decks.iter().zip(PUBLISHED) {
+            assert_eq!(deck.side, *side, "{id}");
+            assert_eq!(deck.size(), *cards, "{id} card count");
+            let report = deck.validate(&registry, NsgFormat::Startup).expect("published decks are legal");
+            assert_eq!(report.influence_spent, *influence, "{id} influence spent");
+            let points: u32 = deck
+                .cards
+                .iter()
+                .map(|entry| registry.get(&entry.card).expect("deck card is registered").agenda_points.unwrap_or(0) * entry.count)
+                .sum();
+            assert_eq!(points, *agenda_points, "{id} agenda points");
+        }
     }
 
     /// The *Learn to Play* lists, pinned the same way: sizes, categories and
@@ -382,25 +388,11 @@ mod tests {
     }
 
     #[test]
-    fn every_corp_deck_carries_eighteen_agenda_points() {
-        let registry = registry();
-        for deck in for_side(Side::Corp).into_iter().filter(|deck| deck.category == DeckCategory::Sample) {
-            let points: u32 = deck
-                .cards
-                .iter()
-                .map(|entry| {
-                    let card = registry.get(&entry.card).expect("deck card is registered");
-                    card.agenda_points.unwrap_or(0) * entry.count
-                })
-                .sum();
-            assert_eq!(points, 18, "{} should carry 18 agenda points", deck.id);
-        }
-    }
-
-    #[test]
     fn matchups_cover_every_corp_runner_pairing() {
+        let sample = |side| for_side(side).into_iter().filter(|deck| deck.category == DeckCategory::Sample).count();
+        let (corps, runners) = (sample(Side::Corp), sample(Side::Runner));
         let matchups = matchups();
-        assert_eq!(matchups.len(), 12, "4 Corp decks x 3 Runner decks");
+        assert_eq!(matchups.len(), corps * runners, "{corps} Corp decks x {runners} Runner decks");
         for (corp, runner) in &matchups {
             assert_eq!(corp.side, Side::Corp);
             assert_eq!(runner.side, Side::Runner);

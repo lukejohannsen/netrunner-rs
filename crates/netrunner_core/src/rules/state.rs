@@ -386,6 +386,15 @@ pub struct InstalledRunnerCard {
     /// so trashing either took the trojans of both, and *Botulus* could
     /// break on the wrong copy (ROADMAP Rules Audit §4).
     pub hosted_on_ice: Option<InstallId>,
+    /// The rig card this card is hosted on, for Hardware that lives on an
+    /// icebreaker (GAMEDRAGON™ Pro) — the Runner-side sibling of
+    /// `hosted_on_ice`, keyed by install for the same two-copies reason.
+    /// `None` for every card installed in the rig on its own. The host
+    /// leaving the rig takes the hosted card with it
+    /// (`ability::cascade_trash_hosted_on_rig_card`), exactly as ICE
+    /// leaving play takes its Trojans.
+    #[serde(default)]
+    pub hosted_on_program: Option<InstallId>,
 }
 
 impl InstalledRunnerCard {
@@ -410,6 +419,7 @@ impl Default for InstalledRunnerCard {
             turn_strength_buff: 0,
             counters: 0,
             hosted_on_ice: None,
+            hosted_on_program: None,
         }
     }
 }
@@ -492,6 +502,17 @@ pub struct RunnerState {
     /// discounts like Carmen's.
     #[serde(default)]
     pub made_successful_run_this_turn: bool,
+    /// The cards the Runner discarded to hand size in their most recent
+    /// discard phase, in discard order — Magdalene Keino-Chemutai's "from
+    /// among those cards". On `GameState`, not the resolution context,
+    /// because it has to survive several `PlayerAction`s: each
+    /// `DiscardCard` is its own action, and the identity's "you may
+    /// install" parks a decision that resolves one action later still.
+    /// Written by `turn::discard_card`, cleared when the Runner's next
+    /// discard phase begins (`turn::finish_end_turn`), so between the two
+    /// it is exactly the last phase's discards and nothing else.
+    #[serde(default)]
+    pub discarded_this_discard_phase: Vec<CardId>,
     /// Every server the Runner has initiated a run against this turn, in
     /// order, reset when the Runner's turn starts. Backs Red Team's "Run a
     /// central server you have not run this turn" — a restriction on which

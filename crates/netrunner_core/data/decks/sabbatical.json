@@ -1,0 +1,89 @@
+{
+  "id": "sabbatical",
+  "name": "Sabbatical",
+  "side": "Runner",
+  "category": "Sample",
+  "identity": "magdalene_keino_chemutai",
+  "cards": [
+    {
+      "card": "creative_commission",
+      "count": 3
+    },
+    {
+      "card": "overclock",
+      "count": 1
+    },
+    {
+      "card": "ritual",
+      "count": 3
+    },
+    {
+      "card": "scrounge",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 3
+    },
+    {
+      "card": "vrcation",
+      "count": 3
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 2
+    },
+    {
+      "card": "gamedragon_pro",
+      "count": 1
+    },
+    {
+      "card": "pantograph",
+      "count": 2
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "telework_contract",
+      "count": 3
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 2
+    },
+    {
+      "card": "echelon",
+      "count": 2
+    },
+    {
+      "card": "principia",
+      "count": 2
+    },
+    {
+      "card": "unity",
+      "count": 2
+    },
+    {
+      "card": "azimat",
+      "count": 1
+    },
+    {
+      "card": "botulus",
+      "count": 2
+    },
+    {
+      "card": "devadatta_drone",
+      "count": 3
+    },
+    {
+      "card": "fermenter",
+      "count": 2
+    }
+  ]
+}

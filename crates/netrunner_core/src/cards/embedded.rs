@@ -148,6 +148,91 @@ mod tests {
 #[cfg(test)]
 const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 
+/// *Elevation* cards with no DSL implementation yet — the same gate as
+/// `SG_UNIMPLEMENTED`, for the set being implemented deck by deck (ROADMAP
+/// Phase 1 §8). Each entry names the stage and the published decklist(s)
+/// that first need the card, and **the list only ever shrinks**: a card
+/// file cannot land without deleting its entry (the count assertion fails
+/// the other way), and the set cannot be called complete while an entry
+/// remains. Started at 73 of 82 when Stage 1 (Flow and Ebb, Sabbatical)
+/// landed its nine.
+#[cfg(test)]
+const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
+    (35001, "Ryo \"Phoenix\" Ono: Out of the Ashes — stage 3: Bowel Movements / Dashing Mad"),
+    (35002, "Topan: Ormas Leader — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
+    (35003, "Charm Offensive — stage 3: Bowel Movements / Dashing Mad"),
+    (35005, "Shred — stage 3: Bowel Movements / Dashing Mad"),
+    (35006, "Bling — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
+    (35007, "Gourmand — stage 3: Bowel Movements / Dashing Mad"),
+    (35008, "Hantu — stage 3: Bowel Movements / Dashing Mad"),
+    (35009, "Rising Tide — stage 2: Enthusiasm / Tickets, please"),
+    (35010, "Cacophony — stage 3: Bowel Movements / Dashing Mad"),
+    (35011, "Rent Rioters — stage 3: Bowel Movements / Dashing Mad"),
+    (35012, "Barry \"Baz\" Wong: Tri-Maf Veteran — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
+    (35013, "MuslihaT: Multifarious Marketeer — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
+    (35014, "Clean Getaway — stage 2: Enthusiasm / Tickets, please"),
+    (35015, "Lie Low — stage 2: Enthusiasm / Tickets, please"),
+    (35016, "Maintenance Access — stage 2: Enthusiasm / Tickets, please"),
+    (35017, "Transfer of Wealth — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
+    (35018, "Detente — stage 3: Bowel Movements / Dashing Mad"),
+    (35019, "Maglectric Rapid (748 Mod) — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
+    (35020, "Sang Kancil — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
+    (35021, "Fransofia Ward — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
+    (35022, "Open Market — stage 2: Enthusiasm / Tickets, please"),
+    (35023, "Dewi Subrotoputri: Pedagogical Dhalang — stage 2: Enthusiasm / Tickets, please"),
+    (35025, "Illumination — stage 2: Enthusiasm / Tickets, please"),
+    (35028, "Madani — stage 2: Enthusiasm / Tickets, please"),
+    (35033, "\"Knickknack\" O'Brian — stage 2: Enthusiasm / Tickets, please"),
+    (35035, "LEO Construction: Labor Solutions — stage 6: Brutal Efficiency / Agency"),
+    (35036, "Poetri Luxury Brands: All the Rage — stage 7: Fashion Lab / Pork Chops"),
+    (35037, "Aggressive Trendsetting — stage 7: Fashion Lab / Pork Chops"),
+    (35038, "Project Ingatan — stage 6: Brutal Efficiency / Agency"),
+    (35039, "Humanoid Resources — stage 6: Brutal Efficiency / Agency"),
+    (35040, "Otto Campaign — stage 6: Brutal Efficiency / Agency"),
+    (35041, "Bumi 1.0 — stage 5: Brick Stack"),
+    (35042, "Scatter Field — stage 6: Brutal Efficiency / Agency"),
+    (35043, "Nanomanagement — stage 6: Brutal Efficiency / Agency"),
+    (35044, "Top-Down Solutions — stage 7: Fashion Lab / Pork Chops"),
+    (35045, "Mercia B4LL4RD — stage 6: Brutal Efficiency / Agency"),
+    (35046, "AU Co.: The Gold Standard in Clones — stage 8: Quick Returns / Glyph of Warding"),
+    (35047, "PT Untaian: Life's Building Blocks — stage 9: Hidden Funds / Peculiarity"),
+    (35048, "Proprionegation — stage 9: Hidden Funds / Peculiarity"),
+    (35049, "Sericulture Expansion — stage 8: Quick Returns / Glyph of Warding"),
+    (35050, "Byte! — stage 7: Fashion Lab / Pork Chops"),
+    (35051, "Phat Gioan Baotixita — stage 8: Quick Returns / Glyph of Warding"),
+    (35052, "Empiricist — stage 8: Quick Returns / Glyph of Warding"),
+    (35053, "Mycoweb — stage 7: Fashion Lab / Pork Chops"),
+    (35054, "Semak-samun — stage 6: Brutal Efficiency / Agency"),
+    (35055, "Peer Review — stage 8: Quick Returns / Glyph of Warding"),
+    (35056, "Mitra Aman — stage 9: Hidden Funds / Peculiarity"),
+    (35057, "Nebula Talent Management: Making Stars — stage 10: Fine Print / Gimbatul / Not so subtle"),
+    (35058, "Synapse Global: Faster than Thought — stage 10: Fine Print / Gimbatul / Not so subtle"),
+    (35059, "Embedded Reporting — stage 10: Fine Print / Gimbatul / Not so subtle"),
+    (35060, "Next Big Thing — stage 10: Fine Print / Gimbatul / Not so subtle"),
+    (35061, "Idiosyncresis — stage 5: Brick Stack"),
+    (35062, "Public Access Plaza — stage 10: Fine Print / Gimbatul / Not so subtle"),
+    (35063, "Doomscroll — stage 9: Hidden Funds / Peculiarity"),
+    (35064, "N-Pot — stage 10: Fine Print / Gimbatul / Not so subtle"),
+    (35065, "Bigger Picture — stage 10: Fine Print / Gimbatul / Not so subtle"),
+    (35066, "IP Enforcement — stage 10: Fine Print / Gimbatul / Not so subtle"),
+    (35067, "Touch-ups — stage 7: Fashion Lab / Pork Chops"),
+    (35068, "BANGUN: When Disaster Strikes — stage 7: Fashion Lab / Pork Chops"),
+    (35069, "The Zwicky Group: Invisible Hands — stage 8: Quick Returns / Glyph of Warding"),
+    (35070, "Greenmail — stage 8: Quick Returns / Glyph of Warding"),
+    (35071, "Off the Books — stage 5: Brick Stack"),
+    (35072, "Anthill Excavation Contract — stage 7: Fashion Lab / Pork Chops"),
+    (35073, "Plutus — stage 8: Quick Returns / Glyph of Warding"),
+    (35074, "Biawak — stage 7: Fashion Lab / Pork Chops"),
+    (35075, "Kessleroid — stage 5: Brick Stack"),
+    (35076, "Syailendra — stage 5: Brick Stack"),
+    (35077, "Key Performance Indicators — stage 5: Brick Stack"),
+    (35078, "Measured Response — stage 7: Fashion Lab / Pork Chops"),
+    (35079, "Flyswatter — stage 5: Brick Stack"),
+    (35080, "Lamplighter — stage 8: Quick Returns / Glyph of Warding"),
+    (35081, "Petty Cash — stage 5: Brick Stack"),
+    (35082, "Mahkota Langit Grid — stage 6: Brutal Efficiency / Agency"),
+];
+
 #[cfg(test)]
 mod catalog_join_tests {
     use super::*;
@@ -228,36 +313,62 @@ mod catalog_join_tests {
         assert_eq!(flagged, expected);
     }
 
-    #[test]
-    fn every_system_gateway_card_is_implemented_or_explicitly_excluded() {
+    /// The completeness gate for one set: every printed card is either
+    /// implemented or carries a stated exception, and the implemented
+    /// count is exactly the printed count minus the exceptions — so an
+    /// exception left behind after its card landed fails too. One helper
+    /// for every set, because "the gate for calling any future set
+    /// complete" (ROADMAP Phase 1 §7) has to be the same gate.
+    fn assert_set_accounted_for(
+        set_code: &str,
+        set_name: &str,
+        printed: usize,
+        codes: std::ops::RangeInclusive<u32>,
+        exceptions: &[(u32, &str)],
+    ) {
         let catalog = crate::cards::load_embedded_netrunnerdb_sets().expect("catalog should parse");
         let implemented: std::collections::HashSet<_> =
             embedded_playable_cards().iter().filter_map(|card| card.numeric_id).collect();
-        let excluded: std::collections::HashSet<u32> = SG_UNIMPLEMENTED.iter().map(|(code, _)| *code).collect();
+        let excluded: std::collections::HashSet<u32> = exceptions.iter().map(|(code, _)| *code).collect();
 
         let mut unaccounted: Vec<String> = Vec::new();
-        let mut sg_total = 0;
+        let mut total = 0;
         for entry in catalog.iter() {
-            if entry.set_code.as_deref() != Some("sg") {
+            if entry.set_code.as_deref() != Some(set_code) {
                 continue;
             }
-            sg_total += 1;
+            total += 1;
             let Some(numeric_id) = entry.numeric_id else { continue };
             if !implemented.contains(&numeric_id) && !excluded.contains(&numeric_id.0) {
                 unaccounted.push(format!("{} ({})", entry.title, numeric_id.0));
             }
         }
 
-        assert!(
-            unaccounted.is_empty(),
-            "System Gateway cards with neither an implementation nor an SG_UNIMPLEMENTED entry: {unaccounted:#?}"
-        );
-        assert_eq!(sg_total, 77, "System Gateway should have 77 printed cards");
+        assert!(unaccounted.is_empty(), "{set_name} cards with neither an implementation nor an exception entry: {unaccounted:#?}");
+        assert_eq!(total, printed, "{set_name} should have {printed} printed cards");
+        let stale: Vec<&str> = exceptions
+            .iter()
+            .filter(|(code, _)| implemented.contains(&crate::card::CardId(*code)))
+            .map(|(_, reason)| *reason)
+            .collect();
+        assert!(stale.is_empty(), "{set_name} exception entries whose card is now implemented: {stale:#?}");
         assert_eq!(
-            sg_total - SG_UNIMPLEMENTED.len(),
-            implemented.iter().filter(|id| (30001..=30077).contains(&id.0)).count(),
-            "implemented-card count should be the printed set minus the documented exceptions"
+            total - exceptions.len(),
+            implemented.iter().filter(|id| codes.contains(&id.0)).count(),
+            "{set_name}: implemented-card count should be the printed set minus the documented exceptions"
         );
+    }
+
+    #[test]
+    fn every_system_gateway_card_is_implemented_or_explicitly_excluded() {
+        assert_set_accounted_for("sg", "System Gateway", 77, 30001..=30077, SG_UNIMPLEMENTED);
+    }
+
+    /// The same gate for *Elevation*, whose exception list shrinks one
+    /// stage at a time — see `ELEV_UNIMPLEMENTED`.
+    #[test]
+    fn every_elevation_card_is_implemented_or_explicitly_excluded() {
+        assert_set_accounted_for("elev", "Elevation", 82, 35001..=35082, ELEV_UNIMPLEMENTED);
     }
 
     /// Card files no longer restate what the catalog owns; the join is what

@@ -16,7 +16,7 @@ pub mod lesson;
 pub mod outcome;
 pub mod session;
 
-pub use coverage::Coverage;
+pub use coverage::{played_pool_card_ids, sweep_decks_for_seed, Coverage};
 pub use history::{HistoryEntry, HistoryReadError, MatchHistory, MatchRecordHeader, PublicHistoryEntry};
 pub use lesson::{LessonError, LessonSession, LessonStep};
 pub use outcome::{classify_end_reason, GameEndReason};

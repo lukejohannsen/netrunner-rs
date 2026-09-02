@@ -1,0 +1,50 @@
+{
+  "id": "magdalene_keino_chemutai",
+  "title": "Magdalene Keino-Chemutai: Cryptarchitect",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              {
+                "PromptChooseCards": {
+                  "side": "Runner",
+                  "source": "OwnHeap",
+                  "filter": {
+                    "All": [
+                      {
+                        "CardTypeOneOf": [
+                          "Program",
+                          "Hardware"
+                        ]
+                      },
+                      "DiscardedThisDiscardPhase",
+                      "InstallableRunnerCard"
+                    ]
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": "InstallRunnerCardFromHeap"
+                }
+              },
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35024,
+  "is_playable": true
+}
