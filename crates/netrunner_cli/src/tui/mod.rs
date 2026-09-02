@@ -129,7 +129,7 @@ fn build_bot_seat(
     match kind {
         crate::config::BotKind::Onnx => Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model)?))),
         _ => {
-            let agent = bots::make_agent(kind, side, seed, DEFAULT_SIMULATIONS)
+            let agent = bots::make_agent_with_model(kind, side, seed, DEFAULT_SIMULATIONS, model)?
                 .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
             Ok((Seat::Agent(agent), None))
         }

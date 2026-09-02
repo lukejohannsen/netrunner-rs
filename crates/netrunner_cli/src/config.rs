@@ -106,8 +106,9 @@ pub struct Config {
     pub side: Option<SideArg>,
 
     /// Path to the trained ONNX policy driving `--corp onnx`/`--runner onnx`
-    /// — the artifact `scripts/run_iteration_loop.py` promotes each
-    /// iteration. Ignored unless a side is set to `onnx`.
+    /// and `puct-onnx` — the artifact `scripts/run_iteration_loop.py`
+    /// promotes each iteration. Ignored unless a side is set to one of
+    /// those kinds.
     #[arg(long, default_value = "checkpoints/latest_policy.onnx")]
     pub model: String,
 
@@ -173,6 +174,14 @@ pub enum BotKind {
     /// coverage report should include, since it is the one that generates
     /// training data.
     Puct,
+    /// `netrunner_bots::PuctAgent` over the policy/value network at
+    /// `--model` — the search *with* the network it was trained for, which
+    /// is what `netrunner_selfplay` runs and therefore the seating that
+    /// says whether a training run helped. Distinct from `Onnx` below,
+    /// which is the bare policy head with no search. Has a `BotAgent` form
+    /// (it is a `PuctAgent`), so it seats anywhere `puct` does, including
+    /// `--headless`. Requires building with `--features onnx`.
+    PuctOnnx,
     /// A policy network trained by `scripts/run_iteration_loop.py`, loaded
     /// from `--model`. Requires building with `--features onnx`, and is
     /// supported only in local interactive play — not because it sees too

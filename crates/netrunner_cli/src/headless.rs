@@ -59,7 +59,9 @@ fn deck_pair(config: &Config, registry: &CardRegistry, index: u32) -> Result<(St
 pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     // `OnnxPolicyEvaluator` has no `BotAgent` form and the index path here
     // is for the scripted kinds; reject it explicitly rather than let
-    // `make_agent`'s `None` become a panic below.
+    // `make_agent`'s `None` become a panic below. `puct-onnx` is fine: it
+    // is a `PuctAgent`, searching over the network instead of the uniform
+    // evaluator, and seats like `puct`.
     for (side, kind) in [("--corp", config.corp), ("--runner", config.runner)] {
         if matches!(kind, BotKind::Onnx) {
             return Err(format!(
@@ -88,10 +90,11 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
             let steps = history.len();
             (history, outcome, steps)
         } else {
-            let corp = bots::make_agent(corp_kind, Side::Corp, seed, config.simulations)
+            let corp = bots::make_agent_with_model(corp_kind, Side::Corp, seed, config.simulations, &config.model)?
                 .expect("headless_kind never resolves to a kind without a BotAgent form");
-            let runner = bots::make_agent(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations)
-                .expect("headless_kind never resolves to a kind without a BotAgent form");
+            let runner =
+                bots::make_agent_with_model(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations, &config.model)?
+                    .expect("headless_kind never resolves to a kind without a BotAgent form");
             let mut session = Session::new(state, registry.clone(), Seat::Agent(corp), Seat::Agent(runner));
             let outcome = session.run();
             let steps = session.steps() as usize;
