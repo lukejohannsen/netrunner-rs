@@ -369,18 +369,17 @@ async fn human_matches_are_rated_on_their_own_track_and_the_book_survives_a_rest
         joined(next(&mut ann).await);
         state_update(next(&mut ann).await);
         state_update(next(&mut bo).await);
-        // The Corp is the awaited seat on its mulligan, so its surrender
-        // is read at once (a non-acting seat's is read when it is next
-        // awaited — see the ROADMAP entry).
-        send(&mut ann, ClientMessage::Surrender).await;
-        assert!(matches!(next(&mut bo).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
+        // The Corp's mulligan is awaited; the Runner concedes anyway — a
+        // player may surrender at any moment, not only when asked.
+        send(&mut bo, ClientMessage::Surrender).await;
+        assert!(matches!(next(&mut ann).await, ServerMessage::GameEnded { winner: Side::Corp, .. }));
         let book = wait_for_book(&path, |book| {
-            book.standing(Track::HumanVsHuman, "ann").is_some_and(|standing| standing.corp.losses == round)
+            book.standing(Track::HumanVsHuman, "ann").is_some_and(|standing| standing.corp.wins == round)
         })
         .await;
         let bo_standing = book.standing(Track::HumanVsHuman, "bo").unwrap();
-        assert_eq!(bo_standing.runner.wins, round);
-        assert!(bo_standing.runner.rating.rating > 1500.0);
+        assert_eq!(bo_standing.runner.losses, round);
+        assert!(bo_standing.runner.rating.rating < 1500.0);
         assert!(book.standing(Track::HumanVsBot, "ann").is_none());
     }
     let _ = std::fs::remove_dir_all(&dir);
