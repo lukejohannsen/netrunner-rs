@@ -967,11 +967,14 @@ dependencies = [
  "netrunner_bots",
  "netrunner_card_sync",
  "netrunner_core",
+ "netrunner_rating",
  "netrunner_server",
  "netrunner_session",
  "netrunner_single_player",
  "rand 0.9.5",
  "ratatui",
+ "rayon",
+ "serde",
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
@@ -1002,6 +1005,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "netrunner_rating"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "netrunner_selfplay"
 version = "0.1.0"
 dependencies = [
@@ -1024,6 +1035,7 @@ dependencies = [
  "futures-util",
  "netrunner_bots",
  "netrunner_core",
+ "netrunner_rating",
  "netrunner_session",
  "rand 0.9.5",
  "serde",

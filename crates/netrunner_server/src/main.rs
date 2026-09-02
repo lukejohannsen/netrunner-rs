@@ -69,6 +69,14 @@ struct Config {
     /// No clock if omitted.
     #[arg(long)]
     turn_timeout_secs: Option<u64>,
+
+    /// (serve mode) Rate every finished match — surrenders, disconnects
+    /// and timeouts count as losses; stalls are unrated — into the
+    /// Glicko-2 rating book at this path, on the human-vs-bot track under
+    /// a bot opponent and the human-vs-human track under `--bot-runner
+    /// none`, a rating per side. Nothing is rated without it.
+    #[arg(long)]
+    ratings_file: Option<std::path::PathBuf>,
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug)]
@@ -136,6 +144,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
         max_matches: config.max_matches,
         turn_timeout: config.turn_timeout_secs.map(Duration::from_secs),
+        ratings_file: config.ratings_file.clone(),
     };
     let server = Server::bind(&format!("{}:{}", config.host, config.port), options).await?;
     server.run().await?;

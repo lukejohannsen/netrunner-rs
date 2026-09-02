@@ -12,6 +12,7 @@ netrunner_server = { path = "../netrunner_server" }
 netrunner_session = { path = "../netrunner_session" }
 netrunner_single_player = { path = "../netrunner_single_player" }
 netrunner_card_sync = { path = "../netrunner_card_sync" }
+netrunner_rating = { path = "../netrunner_rating" }
 ratatui = "0.29"
 crossterm = "0.28"
 clap = { version = "4", features = ["derive"] }
@@ -25,8 +26,12 @@ tokio-tungstenite = "0.24"
 futures-util = "0.3"
 # Only the type: the session token `ServerMessage::MatchJoined` issues.
 uuid = "1"
+serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+# The benchmark suite's worker pool; the same crate self-play and the
+# search agents already use, so one pool implementation in the tree.
+rayon = "1"
 
 [features]
 # Enables `--corp onnx` / `--runner onnx`: playing against a policy network
