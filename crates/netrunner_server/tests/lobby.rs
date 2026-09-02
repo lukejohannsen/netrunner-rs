@@ -12,7 +12,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
-use netrunner_core::rules::Side;
+use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{ClientMessage, MatchSummary, ServerMessage};
@@ -267,4 +267,37 @@ async fn rooms_only_pair_within_themselves() {
     let (_, waiting) = list_matches(&url).await;
     assert_eq!(waiting, 1, "the public-queue player is still waiting");
     let _ = stranger.close(None).await;
+}
+
+#[tokio::test]
+async fn a_spectator_joins_a_running_match_by_id() {
+    let url = start_server(ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() }).await;
+
+    let mut corp = open(&url, connect("corp", Some(Side::Corp))).await;
+    let (match_id, _, _) = joined(next(&mut corp).await);
+    state_update(next(&mut corp).await);
+    let (matches, _) = list_matches(&url).await;
+    assert_eq!(matches[0].match_id, match_id);
+
+    let mut spectator = open(&url, ClientMessage::Spectate { match_id }).await;
+    assert!(matches!(next(&mut spectator).await, ServerMessage::Spectating { match_id: seen } if seen == match_id));
+    let view = state_update(next(&mut spectator).await);
+    assert_eq!(view.viewer, Viewer::Spectator);
+    assert_eq!(view.corp.hq_cards, None);
+    assert!(view.legal_actions.is_empty());
+
+    // A spectator holds no seat: what it sends is ignored, and does not
+    // cost it the socket.
+    send(&mut spectator, ClientMessage::Surrender).await;
+    send(&mut corp, ClientMessage::SubmitAction(PlayerAction::KeepHand)).await;
+    state_update(next(&mut spectator).await);
+    assert!(matches!(next(&mut spectator).await, ServerMessage::ActionLog(_)));
+}
+
+#[tokio::test]
+async fn spectating_an_unknown_match_is_refused() {
+    let url = human_daemon().await;
+    let mut socket = open(&url, ClientMessage::Spectate { match_id: Uuid::new_v4() }).await;
+    assert!(matches!(next(&mut socket).await, ServerMessage::ConnectRejected { .. }));
+    assert!(closed_by_server(&mut socket).await);
 }

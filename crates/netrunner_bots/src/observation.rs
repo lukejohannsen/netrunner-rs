@@ -195,7 +195,10 @@ pub fn to_observation_vector(state: &GameState, registry: &CardRegistry, side: S
 }
 
 fn encode_view(view: &ClientView) -> Vec<f32> {
-    let (self_credits, self_clicks, self_agenda_points, opp_credits, opp_clicks, opp_agenda_points) = match view.side {
+    // Observations are per seat: the encoding is "self" against "opponent",
+    // which a spectator's view has no way to orient.
+    let side = view.viewer.side().expect("observations are encoded from a player's view, never a spectator's");
+    let (self_credits, self_clicks, self_agenda_points, opp_credits, opp_clicks, opp_agenda_points) = match side {
         Side::Corp => (
             view.corp.credits,
             view.corp.clicks,
@@ -219,7 +222,7 @@ fn encode_view(view: &ClientView) -> Vec<f32> {
     let remote_server_count = view.corp.servers.iter().filter(|server| matches!(server.server, ServerId::Remote(_))).count();
 
     let mut features = Vec::with_capacity(OBS_SIZE);
-    features.push(if view.side == Side::Corp { 1.0 } else { 0.0 });
+    features.push(if side == Side::Corp { 1.0 } else { 0.0 });
     features.extend(phase_one_hot(view.phase));
     features.push(norm(self_credits as f32, MAX_CREDITS));
     features.push(norm(self_clicks as f32, MAX_CLICKS));
@@ -274,13 +277,14 @@ const OPP_DISCARD: usize = 4;
 /// `Option`s below are precisely where the engine withheld an identity, and
 /// skipping a `None` is what keeps a hidden card out of the encoding.
 fn encode_card_planes(view: &ClientView) -> Vec<f32> {
+    let side = view.viewer.side().expect("observations are encoded from a player's view, never a spectator's");
     let mut planes = vec![0.0f32; PLANE_COUNT * CARD_VOCAB];
     let mut count = |plane: usize, card: &CardId| {
         planes[plane * CARD_VOCAB + slot_of(card)] += 1.0;
     };
 
     // Hand: `Some` only for its owner, so at most one of these fires.
-    let own_hand = match view.side {
+    let own_hand = match side {
         Side::Corp => view.corp.hq_cards.as_ref(),
         Side::Runner => view.runner.grip_cards.as_ref(),
     };
@@ -290,7 +294,7 @@ fn encode_card_planes(view: &ClientView) -> Vec<f32> {
 
     // Corp installed: `card` is `None` for an unrezzed card seen by the
     // Runner, so only rezzed ice/upgrades reach the Runner's planes.
-    let corp_installed_plane = if view.side == Side::Corp { OWN_INSTALLED } else { OPP_INSTALLED };
+    let corp_installed_plane = if side == Side::Corp { OWN_INSTALLED } else { OPP_INSTALLED };
     for server in &view.corp.servers {
         for installed in server.ice.iter().chain(server.root.iter()) {
             if let Some(card) = &installed.card {
@@ -300,20 +304,20 @@ fn encode_card_planes(view: &ClientView) -> Vec<f32> {
     }
 
     // The rig is public to both sides.
-    let rig_plane = if view.side == Side::Runner { OWN_INSTALLED } else { OPP_INSTALLED };
+    let rig_plane = if side == Side::Runner { OWN_INSTALLED } else { OPP_INSTALLED };
     for installed in &view.runner.rig {
         count(rig_plane, &installed.card);
     }
 
     // Archives: a facedown card's identity is `None` for the Runner.
-    let archives_plane = if view.side == Side::Corp { OWN_DISCARD } else { OPP_DISCARD };
+    let archives_plane = if side == Side::Corp { OWN_DISCARD } else { OPP_DISCARD };
     for archived in &view.corp.archives {
         if let Some(card) = &archived.card {
             count(archives_plane, card);
         }
     }
 
-    let heap_plane = if view.side == Side::Runner { OWN_DISCARD } else { OPP_DISCARD };
+    let heap_plane = if side == Side::Runner { OWN_DISCARD } else { OPP_DISCARD };
     for card in &view.runner.heap {
         count(heap_plane, card);
     }

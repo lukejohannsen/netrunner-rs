@@ -22,6 +22,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // arms can still borrow the global flags (`--decks-dir`, `--format`)
     // alongside their own action.
     match config.command.take() {
+        Some(Command::Matches) => remote::print_matches(&config.server).await,
         Some(Command::Cards { action }) => cards::run(action).await,
         Some(Command::Deck { action }) => deck::run(action, &config),
         Some(Command::Learn { action }) => learn::run(action, &config),

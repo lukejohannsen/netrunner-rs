@@ -24,7 +24,7 @@
 use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{
-    apply_action, current_actor, GamePhase, GameState, PlayerAction, RulesError, Side,
+    apply_action, current_actor, GamePhase, GameState, PlayerAction, RulesError, Side, Viewer,
 };
 use netrunner_core::view::{build_client_view, ClientView};
 
@@ -335,14 +335,14 @@ impl Session {
     /// current state, which is that action's post-state and nobody else's.
     /// A pump that lets several actions resolve before reading the log
     /// (the TUI's bot turns) must therefore `step` and read after each.
-    pub fn last_entry_for(&self, viewer: Side) -> Option<PublicHistoryEntry> {
+    pub fn last_entry_for(&self, viewer: impl Into<Viewer>) -> Option<PublicHistoryEntry> {
         self.last_entry().map(|entry| entry.for_viewer(&self.state, viewer))
     }
 
-    /// The masked view `side` is entitled to. The only way any caller
-    /// should be rendering this match.
-    pub fn view_for(&self, side: Side) -> ClientView {
-        build_client_view(&self.state, &self.registry, side)
+    /// The masked view `viewer` is entitled to — a seat's, or a
+    /// spectator's. The only way any caller should be rendering this match.
+    pub fn view_for(&self, viewer: impl Into<Viewer>) -> ClientView {
+        build_client_view(&self.state, &self.registry, viewer)
     }
 
     /// How many actions have been applied, against the step budget.

@@ -21,7 +21,7 @@
 use netrunner_bots::{BotAgent, HeuristicAgent, RandomAgent};
 use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks;
-use netrunner_core::rules::{Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side};
+use netrunner_core::rules::{Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side, Viewer};
 use netrunner_session::coverage::sample_pool_card_ids;
 use netrunner_session::{Coverage, PublicHistoryEntry, Seat, Session, SessionStep, StallReason};
 
@@ -210,6 +210,11 @@ fn the_flatline_during_an_encounter_window_position_plays_out() {
 /// Driven through `Seat::External` on both sides, so every action is chosen
 /// from a real per-seat `ClientView` — the same slice a networked client
 /// gets, and the only shape in which this property is even observable.
+///
+/// **The spectator is checked at every step too**, against the *union* of
+/// what either seat conceals: a `Viewer::Spectator` owns no hidden zone,
+/// so the own-zone limit above does not apply to it and its check is the
+/// strictly stronger one.
 #[test]
 fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
     let matchups = decks::matchups();
@@ -236,7 +241,10 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
         loop {
             match session.step() {
                 SessionStep::Awaiting { side, view } => {
-                    assert_no_concealed_card_is_named(&view, session.state(), seed, &matchup, side);
+                    assert_no_concealed_card_is_named(&view, session.state(), seed, &matchup, side.into());
+                    let spectator = session.view_for(Viewer::Spectator);
+                    assert!(spectator.corp.hq_cards.is_none() && spectator.runner.grip_cards.is_none() && spectator.legal_actions.is_empty());
+                    assert_no_concealed_card_is_named(&spectator, session.state(), seed, &matchup, Viewer::Spectator);
                     assert_cards_are_conserved(session.state(), &corp_deck.to_deck(), &runner_deck.to_deck(), seed, &matchup);
 
                     assert!(
@@ -252,7 +260,7 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
                     });
                     // Right after the action, against its own post-state —
                     // the contract `last_entry_for` documents.
-                    for viewer in [Side::Corp, Side::Runner] {
+                    for viewer in [Viewer::Player(Side::Corp), Viewer::Player(Side::Runner), Viewer::Spectator] {
                         let entry = session.last_entry_for(viewer).expect("the session records history");
                         let view = session.view_for(viewer);
                         assert_no_concealed_card_is_named_in_log(&entry, &view, session.state(), seed, &matchup, viewer);
@@ -330,7 +338,7 @@ fn assert_no_concealed_card_is_named(
     state: &GameState,
     seed: u64,
     matchup: &str,
-    side: Side,
+    side: Viewer,
 ) {
     let visible = visible_card_ids(view);
     let masked = masked_install_ids(view, state, &visible);
@@ -373,7 +381,7 @@ fn assert_no_concealed_card_is_named_in_log(
     state: &GameState,
     seed: u64,
     matchup: &str,
-    side: Side,
+    side: Viewer,
 ) {
     let mut visible = visible_card_ids(view);
     for event in &entry.events {
@@ -383,18 +391,17 @@ fn assert_no_concealed_card_is_named_in_log(
     }
 
     let mut concealed = masked_install_ids(view, state, &visible);
+    let corp_hidden = || {
+        state.corp.hq.iter().chain(&state.corp.r_and_d).chain(state.corp.archives.iter().filter(|a| a.facedown).map(|a| &a.card))
+    };
+    let runner_hidden = || state.runner.grip.iter().chain(&state.runner.stack);
     let opponent_hidden: Vec<&netrunner_core::dsl::CardId> = match side {
-        Side::Runner => state
-            .corp
-            .hq
-            .iter()
-            .chain(&state.corp.r_and_d)
-            .chain(state.corp.archives.iter().filter(|a| a.facedown).map(|a| &a.card))
-            .collect(),
-        Side::Corp => state.runner.grip.iter().chain(&state.runner.stack).collect(),
+        Viewer::Player(Side::Runner) => corp_hidden().collect(),
+        Viewer::Player(Side::Corp) => runner_hidden().collect(),
+        Viewer::Spectator => corp_hidden().chain(runner_hidden()).collect(),
     };
     concealed.extend(opponent_hidden.into_iter().map(|c| c.0.as_str()).filter(|id| !visible.contains(id)));
-    if entry.side == side {
+    if side.is(entry.side) {
         let own_action = format!("{:?}", entry.action);
         concealed.retain(|id| !own_action.contains(&format!("\"{id}\"")));
     }

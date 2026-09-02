@@ -1,5 +1,8 @@
-//! `ClientView` — everything one player is entitled to know about a
-//! `GameState`, plus the legal actions they specifically may submit.
+//! `ClientView` — everything one viewer is entitled to know about a
+//! `GameState`, plus the legal actions they specifically may submit: a
+//! player's own hand and the actions on offer, or for a
+//! `Viewer::Spectator` neither hand, no deck, no unrezzed identity and an
+//! empty action list (see `masking::Viewer`).
 //!
 //! This is a thin adapter over `rules::masking`'s existing zone-masking
 //! primitives (`mask_state_for_player`, `MaskedZone`, `PublicInstalledCard`,
@@ -19,7 +22,7 @@ use crate::dsl::CardId;
 use crate::rules::{
     legal_actions_for, mask_state_for_player, GamePhase, GameState, InstallSlot, MaskedZone, PaidAbilityWindow,
     PendingPrevention, PlayerAction, PublicArchivedCard, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunState, ServerId, Side,
-    TraceState,
+    TraceState, Viewer,
 };
 
 /// Installed cards on one server, split by slot — generalizes the grouping
@@ -82,7 +85,9 @@ pub struct RunnerClientView {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientView {
-    pub side: Side,
+    /// Who this projection is for. Was `side: Side` until spectators
+    /// existed; a client that needs a seat reads `viewer.side()`.
+    pub viewer: Viewer,
     /// Whose turn this nominally is — total and phase-derived (`Action`/
     /// `Discard`/`Mulligan`'s side, or `GameOver`'s winner), distinct from
     /// `rules::current_actor` (which can momentarily differ mid-window,
@@ -106,7 +111,8 @@ pub struct ClientView {
     pub pending_paid_choice: Option<crate::rules::PendingPaidChoice>,
     pub pending_decision: Option<crate::rules::PendingDecision>,
     /// `legal_actions_for(state, registry, side)` — only the actions this
-    /// viewer may actually submit.
+    /// viewer may actually submit. Empty for a spectator, who may submit
+    /// nothing.
     pub legal_actions: Vec<PlayerAction>,
 }
 
@@ -160,8 +166,9 @@ fn active_player(phase: GamePhase) -> Side {
     }
 }
 
-pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side) -> ClientView {
-    let public = mask_state_for_player(state, side);
+pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: impl Into<Viewer>) -> ClientView {
+    let viewer = viewer.into();
+    let public = mask_state_for_player(state, viewer);
 
     let corp = CorpClientView {
         credits: public.corp.resources.credits.0,
@@ -196,7 +203,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
     };
 
     ClientView {
-        side,
+        viewer,
         active_player: active_player(state.phase),
         turn: state.turn,
         rules: state.rules,
@@ -209,7 +216,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, side: Side)
         pending_prevention: public.pending_prevention,
         pending_paid_choice: public.pending_paid_choice,
         pending_decision: public.pending_decision,
-        legal_actions: legal_actions_for(state, registry, side),
+        legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),
     }
 }
 
@@ -396,6 +403,24 @@ mod tests {
         registry.insert(blank_card("hedge_fund", Side::Corp, CardType::Operation));
         let state = base_state();
         let view = build_client_view(&state, &registry, Side::Corp);
-        assert_eq!(view.side, Side::Corp);
+        assert_eq!(view.viewer, Viewer::Player(Side::Corp));
+    }
+
+    /// The intersection: a spectator gets the Runner's view of the Corp
+    /// and the Corp's view of the Runner, and nothing to submit.
+    #[test]
+    fn a_spectator_sees_neither_hand_and_has_no_legal_actions() {
+        let mut registry = CardRegistry::new();
+        registry.insert(blank_card("hedge_fund", Side::Corp, CardType::Operation));
+        let state = base_state();
+        let view = build_client_view(&state, &registry, Viewer::Spectator);
+        assert_eq!(view.viewer, Viewer::Spectator);
+        assert_eq!(view.corp.hq_cards, None);
+        assert_eq!(view.runner.grip_cards, None);
+        assert!(view.legal_actions.is_empty());
+        let corp_sees = build_client_view(&state, &registry, Side::Corp);
+        let runner_sees = build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(view.corp, runner_sees.corp, "the Corp's board as the Runner sees it");
+        assert_eq!(view.runner, corp_sees.runner, "the Runner's board as the Corp sees it");
     }
 }

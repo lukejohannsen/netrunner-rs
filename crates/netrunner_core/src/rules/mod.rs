@@ -40,7 +40,7 @@ pub use masking::{
     mask_action_for_player, mask_event_for_player, mask_state_for_player, ConcealedAction, MaskedZone, PublicAction, PublicAccessPhase, PublicAccessState, PublicArchivedCard, PublicCorpState,
     PublicGameState,
     PublicInstalledCard, PublicInstalledRunnerCard, PublicRunIce, PublicRunIceIdentity, PublicRunState,
-    PublicRunnerState,
+    PublicRunnerState, Viewer,
 };
 pub use run::{
     access_server, advance_run, resolve_pass, resolve_select_card, resolve_steal, resolve_trash,

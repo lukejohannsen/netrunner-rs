@@ -48,6 +48,14 @@ pub enum ClientMessage {
     /// seat is taken, and the socket stays open for a `Connect` after.
     /// Sent once seated it is ignored, like a repeated `Connect`.
     ListMatches,
+    /// Watch a running match (an id from `MatchList`) from the
+    /// `Viewer::Spectator` perspective: the intersection of what the two
+    /// players see, and nothing to submit. Answered with `Spectating` and
+    /// then every `StateUpdate`/`ActionLog`/`DecisionClock`/`GameEnded`
+    /// the seats get, masked for a spectator; or `ConnectRejected` when no
+    /// live match has that id. Anything a spectator sends afterwards is
+    /// ignored — it holds no seat.
+    Spectate { match_id: Uuid },
     SubmitAction(PlayerAction),
     Surrender,
 }
@@ -70,6 +78,13 @@ pub enum ServerMessage {
     /// *seat*, not per match, so one player's token never reseats the
     /// other. Sent again, unchanged, on a successful resume.
     MatchJoined { match_id: Uuid, assigned_side: Side, session_token: Uuid },
+    /// The reply to `Spectate`, before the first spectator `StateUpdate`.
+    /// Its own variant rather than a `MatchJoined` with no side: that
+    /// message's `assigned_side` and `session_token` are pinned by every
+    /// reconnect test and the CLI's `Reconnector`, and a spectator has
+    /// neither. There is no token because there is nothing to resume —
+    /// `Spectate` again is the whole of reconnecting.
+    Spectating { match_id: Uuid },
     /// Parked in the lobby until another human arrives: `position` is how
     /// many are waiting, this player included. The token is the seat's
     /// credential *already* — `MatchJoined` will carry the same one — so

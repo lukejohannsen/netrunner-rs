@@ -25,14 +25,16 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
-use netrunner_core::rules::Side;
-use netrunner_server::{ClientMessage, ServerMessage};
+use netrunner_core::rules::{Side, Viewer};
+use netrunner_server::{ClientMessage, MatchSummary, ServerMessage};
 
-/// A seat on the server: the side it was assigned, the token that takes
-/// it back after a drop, and the channel pair to play it through.
+/// A place at a match on the server: the perspective it was given, the
+/// token that takes a *seat* back after a drop (`None` for a spectator,
+/// who reconnects by asking to spectate again), and the channel pair to
+/// watch or play it through.
 pub struct Joined {
-    pub side: Side,
-    pub session_token: Uuid,
+    pub viewer: Viewer,
+    pub session_token: Option<Uuid>,
     pub tx: mpsc::UnboundedSender<ClientMessage>,
     pub rx: mpsc::UnboundedReceiver<ServerMessage>,
 }
@@ -68,6 +70,45 @@ pub async fn connect_remote(url: &str, preferred_side: Option<Side>, room: Optio
 /// Reconnection: presents the seat's token and waits for `MatchJoined`.
 pub async fn resume_remote(url: &str, session_token: Uuid) -> Result<Joined, RemoteError> {
     open(url, ClientMessage::Resume { session_token }).await
+}
+
+/// Watching: asks for a match by id and waits for `Spectating`.
+pub async fn spectate_remote(url: &str, match_id: Uuid) -> Result<Joined, RemoteError> {
+    open(url, ClientMessage::Spectate { match_id }).await
+}
+
+/// One `ListMatches` round trip on its own socket, closed afterwards.
+pub async fn list_matches(url: &str) -> Result<(Vec<MatchSummary>, usize, Option<usize>), RemoteError> {
+    let (mut socket, _) = tokio_tungstenite::connect_async(url).await.map_err(|error| RemoteError::Transport(Box::new(error)))?;
+    let hello = serde_json::to_string(&ClientMessage::ListMatches).expect("a ClientMessage serializes");
+    socket.send(WsMessage::Text(hello)).await.map_err(|error| RemoteError::Transport(Box::new(error)))?;
+    let reply = loop {
+        match socket.next().await {
+            Some(Ok(WsMessage::Text(text))) => {
+                if let Ok(ServerMessage::MatchList { matches, waiting_in_lobby, max_matches }) = serde_json::from_str(&text) {
+                    break (matches, waiting_in_lobby, max_matches);
+                }
+            }
+            Some(Ok(_)) => continue,
+            Some(Err(error)) => return Err(RemoteError::Transport(Box::new(error))),
+            None => return Err(RemoteError::ClosedBeforeSeat),
+        }
+    };
+    let _ = socket.close(None).await;
+    Ok(reply)
+}
+
+/// `netrunner_cli matches`: what the daemon is hosting, one line each.
+pub async fn print_matches(url: &str) -> Result<(), Box<dyn std::error::Error>> {
+    let (matches, waiting, cap) = list_matches(url).await?;
+    match cap {
+        Some(cap) => println!("{} of {cap} matches running, {waiting} waiting in the lobby", matches.len()),
+        None => println!("{} matches running, {waiting} waiting in the lobby", matches.len()),
+    }
+    for summary in matches {
+        println!("{}  {} (Corp) vs {} (Runner), started {}s ago", summary.match_id, summary.corp, summary.runner, summary.started_secs_ago);
+    }
+    Ok(())
 }
 
 async fn open(url: &str, hello: ClientMessage) -> Result<Joined, RemoteError> {
@@ -110,7 +151,15 @@ async fn open(url: &str, hello: ClientMessage) -> Result<Joined, RemoteError> {
     loop {
         match rx_from_server.recv().await {
             Some(ServerMessage::MatchJoined { assigned_side, session_token, .. }) => {
-                return Ok(Joined { side: assigned_side, session_token, tx: tx_to_server, rx: rx_from_server });
+                return Ok(Joined {
+                    viewer: Viewer::Player(assigned_side),
+                    session_token: Some(session_token),
+                    tx: tx_to_server,
+                    rx: rx_from_server,
+                });
+            }
+            Some(ServerMessage::Spectating { .. }) => {
+                return Ok(Joined { viewer: Viewer::Spectator, session_token: None, tx: tx_to_server, rx: rx_from_server });
             }
             Some(ServerMessage::ResumeRejected { reason } | ServerMessage::ConnectRejected { reason }) => {
                 return Err(RemoteError::Rejected(reason));
@@ -224,8 +273,9 @@ mod tests {
     async fn the_reconnector_takes_the_seat_back_after_the_socket_drops() {
         let url = start_server().await;
         let joined = connect_remote(&url, Some(Side::Corp), None).await.unwrap();
-        assert_eq!(joined.side, Side::Corp);
+        assert_eq!(joined.viewer, Viewer::Player(Side::Corp));
         let Joined { session_token, tx, mut rx, .. } = joined;
+        let session_token = session_token.expect("a seat has a token");
         first_state_update(&mut rx).await;
         // The socket drops: the bridge tasks end when their channel ends.
         drop(tx);
@@ -238,8 +288,8 @@ mod tests {
                 None => tokio::time::sleep(Duration::from_millis(50)).await,
             }
         };
-        assert_eq!(resumed.side, Side::Corp);
-        assert_eq!(resumed.session_token, session_token, "the same token keeps working");
+        assert_eq!(resumed.viewer, Viewer::Player(Side::Corp));
+        assert_eq!(resumed.session_token, Some(session_token), "the same token keeps working");
         let Joined { tx, mut rx, .. } = resumed;
         first_state_update(&mut rx).await;
         tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
