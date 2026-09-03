@@ -1,0 +1,101 @@
+{
+  "id": "fashion_lab",
+  "name": "Fashion Lab",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "poetri_luxury_brands_all_the_rage",
+  "cards": [
+    {
+      "card": "aggressive_trendsetting",
+      "count": 3
+    },
+    {
+      "card": "luminal_transubstantiation",
+      "count": 1
+    },
+    {
+      "card": "project_ingatan",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 3
+    },
+    {
+      "card": "anthill_excavation_contract",
+      "count": 3
+    },
+    {
+      "card": "humanoid_resources",
+      "count": 3
+    },
+    {
+      "card": "nico_campaign",
+      "count": 3
+    },
+    {
+      "card": "otto_campaign",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 2
+    },
+    {
+      "card": "nanomanagement",
+      "count": 2
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 1
+    },
+    {
+      "card": "seamless_launch",
+      "count": 1
+    },
+    {
+      "card": "top_down_solutions",
+      "count": 1
+    },
+    {
+      "card": "mahkota_langit_grid",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 1
+    },
+    {
+      "card": "mercia_b4ll4rd",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 1
+    },
+    {
+      "card": "kessleroid",
+      "count": 3
+    },
+    {
+      "card": "mycoweb",
+      "count": 1
+    },
+    {
+      "card": "scatter_field",
+      "count": 3
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "bumi_1_0",
+      "count": 3
+    }
+  ]
+}

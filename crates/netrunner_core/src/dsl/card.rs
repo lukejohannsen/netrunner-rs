@@ -555,6 +555,31 @@ pub struct CardDefinition {
     /// cost and an upgrade's is not named.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub root_asset_trash_cost_bonus: u32,
+
+    /// This identity lets its Corp install agendas faceup — BANGUN: When
+    /// Disaster Strikes. Modelled as permission to *rez* an installed
+    /// agenda (`engine::rez_ice` rejects an agenda otherwise), because rez
+    /// is already the engine's one "flip a Corp install faceup" action and
+    /// it is already optional, where an install-time flag would have to be
+    /// carried on `PlayerAction::InstallCard` and widen the `ActionSpace`
+    /// install segment for one identity. The difference is timing only:
+    /// this Corp may wait and flip the agenda later. An agenda's printed
+    /// `cost` is 0, so nothing is paid either way, and the reminder text's
+    /// "this does not make their abilities active" holds because no agenda
+    /// in the pool declares an installed-and-rezzed ability.
+    #[serde(default)]
+    pub may_install_agendas_faceup: bool,
+
+    /// The Corp may forfeit 1 agenda as it rezzes this card, paying this
+    /// many credits less — Biawak's "you can forfeit 1 agenda as you rez
+    /// this ice to pay for 10[c] of its rez cost". `engine::rez_ice` turns
+    /// it into an `Effect::OfferPaidChoice` over `Cost::ForfeitAgenda`
+    /// whose branches both rez, rather than a second rez action: the
+    /// choice is the Corp's, and a paid choice is how every other optional
+    /// payment in this engine is put to a player. `None` for every other
+    /// card.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rez_forfeit_discount: Option<u32>,
 }
 
 fn is_zero(value: &u32) -> bool {
@@ -684,6 +709,8 @@ impl Default for CardDefinition {
             hosted_breaker_bonus: None,
             hosted_credits_usable_for: None,
             trash_when_empty: false,
+            may_install_agendas_faceup: false,
+            rez_forfeit_discount: None,
             influence_limit: None,
             additional_play_cost: None,
             install_cost_discount_amount: None,

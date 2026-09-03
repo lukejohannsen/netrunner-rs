@@ -1117,6 +1117,12 @@ pub fn evaluate_effect(
                 crate::dsl::CardZoneRef::OwnArchives => {
                     state.corp.archives.iter().position(|a| a.card == card_id)
                 }
+                // Poétrï Luxury Brands installs one of the top 3 cards of
+                // R&D — the selection narrowed the offer to the top three
+                // (`CardFilter::TopOfZone`), but the card is taken from
+                // R&D as a whole, so this is a first-match lookup like
+                // HQ's.
+                crate::dsl::CardZoneRef::OwnRAndD => state.corp.r_and_d.iter().position(|c| c == &card_id),
                 _ => return Err(RulesError::UnresolvedCardTarget),
             };
             // Card gone from the zone, an uninstallable type, or (for ICE)
@@ -1174,30 +1180,71 @@ pub fn evaluate_effect(
             crate::rules::engine::play_operation_card(state, registry, card_id)
         }
 
-        Effect::RezInstalledIgnoringCost(install) => {
-            let (card_id, server) = {
-                let installed = state
+        Effect::RezInstalled { install, pay_cost, discount } => {
+            // Shares `engine::rez_install` with `PlayerAction::RezIce`, so a
+            // discounted rez pays through the same waterfall (a region's
+            // hosted rez credits before the wallet) and fires `OnRez`
+            // identically. Unaffordable is a no-op, not an error: Mycoweb's
+            // "you may rez ... paying 2[c] less" and both branches of
+            // Biawak's forfeit choice must resolve to *something*, and a
+            // failing effect would leave the decision that parked them
+            // unresolvable. `AlreadyRezzed`/`InstallNotFound` still error —
+            // those mean the card was named wrongly, not priced wrongly.
+            match crate::rules::engine::rez_install(state, registry, *install, *pay_cost, *discount) {
+                Err(RulesError::NotEnoughCredits { .. }) => Ok(Vec::new()),
+                other => other,
+            }
+        }
+
+        Effect::ResolveSubroutineOfSelectedIce => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
+            let Some(card_def) = registry.get(card_id) else { return Ok(Vec::new()) };
+            let options: Vec<Effect> = card_def.subroutines.iter().map(|sub| sub.effect.clone()).collect();
+            // A rezzed piece of ice with no subroutines resolves nothing
+            // rather than parking an empty choice — the same leniency an
+            // empty `PromptChooseCards` offer takes.
+            if options.is_empty() {
+                return Ok(Vec::new());
+            }
+            // One subroutine is not a choice; resolve it directly rather
+            // than asking the Corp to confirm the only option.
+            if let [only] = options.as_slice() {
+                let only = only.clone();
+                return evaluate_effect(state, &only, ctx, registry);
+            }
+            evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Corp, options }, ctx, registry)
+        }
+
+        Effect::GainClicksNextTurn(side, amount) => {
+            // Runner-side is authored nowhere and banked nowhere: the
+            // Runner's allotment has no field of its own to add to, and no
+            // card prints it. Recorded as a no-op rather than a panic.
+            if *side == Side::Corp {
+                state.corp.extra_clicks_next_turn = state.corp.extra_clicks_next_turn.saturating_add(*amount);
+            }
+            Ok(Vec::new())
+        }
+
+        Effect::ForfeitAgendas(count) => {
+            let mut events = Vec::new();
+            for _ in 0..*count {
+                // Lowest printed points first, ties to the fewest agenda
+                // counters — see the variant's doc comment for why the
+                // Corp is not asked which.
+                let chosen = state
                     .corp
-                    .installed
-                    .iter_mut()
-                    .find(|c| c.install_id == *install)
-                    .ok_or(RulesError::InstallNotFound(*install))?;
-                if installed.rezzed {
-                    return Err(RulesError::AlreadyRezzed { card: installed.card.clone() });
-                }
-                installed.rezzed = true;
-                (installed.card.clone(), installed.server)
-            };
-            let card_id = &card_id;
-            // No `run.ice` bookkeeping here: `run::reconcile_ice` re-reads
-            // `rezzed` from the install before the run next steps. The flip
-            // that used to sit here matched `run.ice[run.position]` by
-            // `CardId` — wrong with two copies of one ICE — and was
-            // unreachable besides: Send a Message, the only user, fires with
-            // no run (scored) or mid-access (stolen).
-            let rezzed_event = GameEvent::IceRezzed { card: card_id.clone(), server, install: *install };
-            let mut events = vec![rezzed_event.clone()];
-            events.extend(dispatcher::dispatch_event(state, registry, &rezzed_event)?);
+                    .scored_agendas
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, scored)| {
+                        (crate::rules::win::agenda_value(&scored.card, registry).unwrap_or(0), scored.agenda_counters)
+                    })
+                    .map(|(index, _)| index);
+                let Some(index) = chosen else { break };
+                let forfeited = state.corp.scored_agendas.remove(index);
+                state.corp.removed_from_game.push(forfeited.card.clone());
+                events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card });
+            }
             Ok(events)
         }
 
@@ -1273,7 +1320,7 @@ pub fn resolve_unbroken_subroutines(
 
         // Immutable read only — ends before any mutation below, so it
         // never overlaps with the `&mut state` passed to transition_subroutine/evaluate_effect.
-        let Some(index) = state.active_run.as_ref().and_then(|run| {
+        let Some((index, install)) = state.active_run.as_ref().and_then(|run| {
             // A subroutine fired above may have removed this ICE from play
             // (or `run::reconcile_ice` moved the run for another reason):
             // the run then stands on the *next* ICE, in `ApproachIce`, with
@@ -1285,7 +1332,8 @@ pub fn resolve_unbroken_subroutines(
                 return None;
             }
             let ice = run.ice.get(run.position)?;
-            ice.subroutines.iter().position(|s| s.status == SubroutineStatus::Pending)
+            let index = ice.subroutines.iter().position(|s| s.status == SubroutineStatus::Pending)?;
+            Some((index, ice.install_id))
         }) else {
             break;
         };
@@ -1302,7 +1350,13 @@ pub fn resolve_unbroken_subroutines(
         if let Some(run) = state.active_run.as_mut() {
             run.subroutine_resolved = true;
         }
-        let fired_events = evaluate_effect(state, &effect, &mut ResolutionContext::for_card(Some(&card_id)), registry)?;
+        // The *install* too, not just the card: Mycoweb's "another rezzed
+        // code gate" (`CardFilter::NotSourceCard`) has to know which copy
+        // is asking, and "this card" lookups inside a subroutine resolve
+        // against the encountered ice rather than the first install
+        // sharing its name — the same per-install exactness the Rules
+        // Audit gave activated abilities.
+        let fired_events = evaluate_effect(state, &effect, &mut ResolutionContext::for_install(install, &card_id), registry)?;
         events.push(GameEvent::SubroutineFired { card_id, index, effect });
         events.extend(fired_events);
 
@@ -2301,6 +2355,24 @@ pub fn check_requirement(
         EffectRequirement::NoActionTakenThisTurn => {
             if state.actions_taken_this_turn == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::CurrentlyAccessingInstalledCard { rezzed_only } => {
+            // `AccessState::pending_install` is set when the card being
+            // accessed is a root install, and is still set while its
+            // `OnAccessed` and `OnTrashedFromAccess` triggers dispatch —
+            // which is what lets Aggressive Trendsetting tell "trashed an
+            // installed card" from "trashed a card found in HQ".
+            let install = state
+                .active_run
+                .as_ref()
+                .and_then(|run| run.access_state.as_ref())
+                .and_then(|access| access.pending_install);
+            let ok = match install {
+                None => false,
+                Some(install) if *rezzed_only => state.find_corp_install(install).is_some_and(|c| c.rezzed),
+                Some(_) => true,
+            };
+            if ok { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::PlayedFromArchives => {
             if matches!(ctx.triggering_event, Some(GameEvent::OperationPlayed { from_archives: true, .. })) {
                 Ok(())
@@ -2557,6 +2629,16 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
         Amount::FacedownCardsInArchives => state.corp.archives.iter().filter(|a| a.facedown).count() as u32,
         Amount::CreditsLostThisResolution => ctx.credits_lost,
+        // The greater of the two scores, in agenda points — Null Signal
+        // Games' *Elevation* threat-level rule. Read off the score areas
+        // through the registry, the same way `win::check_for_winner` does,
+        // rather than a running counter that a forfeit would have to
+        // decrement.
+        Amount::ThreatLevel => {
+            let corp: u32 = state.corp.scored_agendas.iter().filter_map(|s| crate::rules::win::agenda_value(&s.card, registry)).sum();
+            let runner: u32 = state.runner.scored_agendas.iter().filter_map(|c| crate::rules::win::agenda_value(c, registry)).sum();
+            corp.max(runner)
+        }
     }
 }
 
@@ -2591,6 +2673,7 @@ pub(crate) fn consume_requirement(
         EffectRequirement::RunnerCreditsAtMost(_)
         | EffectRequirement::IdentityFlipped
         | EffectRequirement::CurrentlyAccessingNonAgenda
+        | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::SubroutineResolvedThisRun
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)

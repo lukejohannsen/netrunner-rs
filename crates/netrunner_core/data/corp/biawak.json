@@ -1,0 +1,136 @@
+{
+  "id": "biawak",
+  "title": "Biawak",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 14,
+  "strength": 6,
+  "rez_forfeit_discount": 10,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Trash 1 installed program or end the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "ZoneHasAtLeast": {
+                  "zone": "OpponentInstalled",
+                  "count": 1,
+                  "filter": {
+                    "CardType": "Program"
+                  }
+                }
+              },
+              "effect": {
+                "PresentChoice": {
+                  "chooser": "Corp",
+                  "options": [
+                    {
+                      "PromptChooseCards": {
+                        "side": "Corp",
+                        "source": "OpponentInstalled",
+                        "filter": {
+                          "CardType": "Program"
+                        },
+                        "min": 1,
+                        "max": 1,
+                        "reveal": false,
+                        "shuffle_after": false,
+                        "destination": "OpponentDiscard"
+                      }
+                    },
+                    "EndTheRun"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "ZoneHasAtLeast": {
+                    "zone": "OpponentInstalled",
+                    "count": 1,
+                    "filter": {
+                      "CardType": "Program"
+                    }
+                  }
+                }
+              },
+              "effect": "EndTheRun"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Trash 1 installed resource or end the run.",
+      "effect": {
+        "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "ZoneHasAtLeast": {
+                  "zone": "OpponentInstalled",
+                  "count": 1,
+                  "filter": {
+                    "CardType": "Resource"
+                  }
+                }
+              },
+              "effect": {
+                "PresentChoice": {
+                  "chooser": "Corp",
+                  "options": [
+                    {
+                      "PromptChooseCards": {
+                        "side": "Corp",
+                        "source": "OpponentInstalled",
+                        "filter": {
+                          "CardType": "Resource"
+                        },
+                        "min": 1,
+                        "max": 1,
+                        "reveal": false,
+                        "shuffle_after": false,
+                        "destination": "OpponentDiscard"
+                      }
+                    },
+                    "EndTheRun"
+                  ]
+                }
+              }
+            }
+          },
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "ZoneHasAtLeast": {
+                    "zone": "OpponentInstalled",
+                    "count": 1,
+                    "filter": {
+                      "CardType": "Resource"
+                    }
+                  }
+                }
+              },
+              "effect": "EndTheRun"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 35074,
+  "is_playable": true
+}

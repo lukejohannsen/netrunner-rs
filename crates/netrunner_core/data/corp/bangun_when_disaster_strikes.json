@@ -1,0 +1,39 @@
+{
+  "id": "bangun_when_disaster_strikes",
+  "title": "BANGUN: When Disaster Strikes",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "may_install_agendas_faceup": true,
+  "triggers": [
+    {
+      "trigger": "OnAccessed",
+      "requirement": {
+        "And": [
+          {
+            "Not": "CurrentlyAccessingNonAgenda"
+          },
+          {
+            "CurrentlyAccessingInstalledCard": {
+              "rezzed_only": true
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "DealDamage": [
+            "Meat",
+            2
+          ]
+        },
+        {
+          "GiveTags": 1
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35068,
+  "is_playable": true
+}

@@ -276,6 +276,22 @@ pub enum EffectRequirement {
     /// than HQ — Petty Cash's "if you played this operation from anywhere
     /// except HQ, gain [click]". Fails with no triggering event.
     PlayedFromArchives,
+    /// The card the Runner is currently accessing is an *installed* card
+    /// (`run::AccessState::pending_install`), rather than one found in HQ,
+    /// R&D or Archives — with `rezzed_only`, an installed card that is
+    /// also faceup.
+    ///
+    /// Two cards read it from opposite ends of one access: BANGUN's
+    /// "whenever the Runner accesses a faceup installed agenda"
+    /// (`rezzed_only: true`, and `Not(CurrentlyAccessingNonAgenda)` for the
+    /// agenda half — the two compose, so neither needs a fused variant),
+    /// and Aggressive Trendsetting's "the first time the Runner trashes an
+    /// installed Corp card", checked from `Trigger::OnTrashedFromAccess`
+    /// while the access that trashed it is still the pending one.
+    CurrentlyAccessingInstalledCard {
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        rezzed_only: bool,
+    },
 }
 
 /// Who decides an `InteractiveOnAccess`, and what paying its cost does.

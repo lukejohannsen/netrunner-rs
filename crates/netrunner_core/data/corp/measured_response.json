@@ -1,0 +1,45 @@
+{
+  "id": "measured_response",
+  "title": "Measured Response",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 5,
+  "trash_cost": 3,
+  "play_requirement": {
+    "And": [
+      {
+        "AmountAtLeast": [
+          "ThreatLevel",
+          4
+        ]
+      },
+      "RunnerMadeSuccessfulRunLastTurn"
+    ]
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Credits": 8
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "DealDamage": [
+                "Meat",
+                4
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35078,
+  "is_playable": true
+}

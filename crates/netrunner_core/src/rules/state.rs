@@ -289,6 +289,15 @@ pub struct CorpState {
     /// the start of every Corp turn (`turn::enter_start_of_turn`).
     #[serde(default)]
     pub agenda_points_scored_this_turn: u32,
+    /// Clicks banked onto the Corp's *next* turn allotment by
+    /// `Effect::GainClicksNextTurn` (Aggressive Trendsetting), added to
+    /// the printed three by `turn::enter_start_of_turn` and zeroed as it
+    /// is spent. On `GameState` rather than `ability::ResolutionContext`
+    /// because it must outlive the resolution that banked it by a whole
+    /// turn — AGENTS.md's State Hygiene test, the same one
+    /// `last_completed_run` passes.
+    #[serde(default)]
+    pub extra_clicks_next_turn: u32,
     /// Tags consumed by `EffectRequirement::OncePerTurn(tag)` gates the Corp
     /// has already fired this turn — the generalized replacement for adding
     /// another bespoke per-effect bool alongside `first_install_used_this_turn`.

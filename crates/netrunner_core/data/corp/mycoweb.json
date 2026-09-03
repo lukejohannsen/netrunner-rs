@@ -1,0 +1,105 @@
+{
+  "id": "mycoweb",
+  "title": "Mycoweb",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 8,
+  "strength": 5,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "You may install 1 piece of ice from Archives, ignoring all costs.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnArchives",
+          "filter": {
+            "CardType": {
+              "Ice": "Barrier"
+            }
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PromptInstallCorpCard": {
+              "origin_zone": "OwnArchives",
+              "ignore_costs": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "You may rez 1 installed piece of ice, paying 2[c] less.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "UnrezzedIce",
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "RezInstalled": {
+              "install": 0,
+              "pay_cost": true,
+              "discount": 2
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "Resolve 1 subroutine on a rezzed sentry.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "Rezzed",
+              {
+                "IceOfType": "Sentry"
+              }
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "ResolveSubroutineOfSelectedIce"
+        }
+      }
+    },
+    {
+      "text": "Resolve 1 subroutine on another rezzed code gate.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": {
+            "All": [
+              "Rezzed",
+              {
+                "IceOfType": "CodeGate"
+              },
+              "NotSourceCard"
+            ]
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": "ResolveSubroutineOfSelectedIce"
+        }
+      }
+    }
+  ],
+  "numeric_id": 35053,
+  "is_playable": true
+}

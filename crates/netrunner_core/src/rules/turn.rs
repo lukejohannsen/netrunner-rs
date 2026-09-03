@@ -317,7 +317,16 @@ pub(crate) fn enter_start_of_turn(
     // nowhere else.
     next.turn += 1;
 
-    let clicks = clicks_for(next_side);
+    // Aggressive Trendsetting's "+1 allotted [click] for your next turn",
+    // banked during the Runner's turn and spent here — part of the
+    // allotment, so it is inside the `TurnStarted` event's `clicks` count
+    // and any `OnTurnStart` ability that adds clicks (Otto Campaign) stacks
+    // on top of it.
+    let banked = match next_side {
+        Side::Corp => std::mem::take(&mut next.corp.extra_clicks_next_turn),
+        Side::Runner => 0,
+    };
+    let clicks = clicks_for(next_side) + banked;
     next.resources_mut(next_side).clicks = Clicks(clicks);
     let turn_started_event = GameEvent::TurnStarted { side: next_side, clicks };
     events.push(turn_started_event.clone());

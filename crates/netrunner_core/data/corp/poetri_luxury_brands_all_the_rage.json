@@ -1,0 +1,77 @@
+{
+  "id": "poetri_luxury_brands_all_the_rage",
+  "title": "Poétrï Luxury Brands: All the Rage",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnRAndD",
+            "filter": {
+              "All": [
+                {
+                  "CardTypeOneOf": [
+                    {
+                      "Ice": "Barrier"
+                    },
+                    "Asset",
+                    "Upgrade"
+                  ]
+                },
+                {
+                  "TopOfZone": 3
+                }
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnRAndD"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "CardTypeOneOf": [
+                {
+                  "Ice": "Barrier"
+                },
+                "Asset",
+                "Upgrade"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35036,
+  "is_playable": true
+}

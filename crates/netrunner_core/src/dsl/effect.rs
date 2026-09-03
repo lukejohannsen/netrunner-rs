@@ -214,6 +214,16 @@ pub enum Effect {
     /// [click][click][click]" on score. Takes a `Side` (unlike
     /// `LoseClicks`) because the only card needing it is Corp-side.
     GainClicks(Side, u32),
+    /// Adds to `side`'s click allotment for their *next* turn, not the
+    /// current one — Aggressive Trendsetting's "you get +1 allotted
+    /// [click] for your next turn", which resolves during the Runner's
+    /// turn and so has no Corp click pool to add to (`turn::
+    /// enter_start_of_turn` *assigns* the allotment, overwriting anything
+    /// `GainClicks` had put there). Banked on `CorpState::
+    /// extra_clicks_next_turn` and spent by that assignment. Corp-side
+    /// only today, but takes a `Side` like `GainClicks` rather than
+    /// hard-coding one.
+    GainClicksNextTurn(Side, u32),
     /// Initiates a run on `server`, exactly like `PlayerAction::InitiateRun`
     /// (same `RunState` shape, `RulesError::RunAlreadyInProgress` guard) but
     /// without spending a click — the enclosing `PlayEvent`/`PlayOperation`
@@ -306,7 +316,7 @@ pub enum Effect {
     /// R&D", Mutual Favor's "search your stack for 1 icebreaker", Above the
     /// Law's "you may trash 1 installed resource", Send a Message's "rez 1
     /// installed ICE, ignoring costs" (`destination: None`, `then: Some(
-    /// RezInstalledIgnoringCost(..))` — the placeholder `CardId` inside
+    /// RezInstalled { .. })` — the placeholder install inside
     /// `then` is ignored; `ConfirmCardSelection`'s resolution substitutes
     /// the actual selected card via `acting_card`, the same substitution
     /// convention `Effect::TrashCard(CardTarget::ThisCard)` already uses).
@@ -365,7 +375,7 @@ pub enum Effect {
         /// `AddAdditionalAccess` inside it has its `server` treated as an
         /// ignored placeholder and rewritten to the server actually chosen,
         /// the same substitution convention `PromptChooseCards::then` uses
-        /// for `RezInstalledIgnoringCost`. `RunSucceeded` fires before
+        /// for `RezInstalled`. `RunSucceeded` fires before
         /// access is computed, so an access bonus granted here still
         /// applies to that same breach.
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -389,23 +399,45 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         exclude_servers_run_this_turn: bool,
     },
-    /// Rezzes `card_id`, an already-installed Corp card, skipping the
-    /// credit-cost payment `PlayerAction::RezIce` would otherwise require —
-    /// e.g. Send a Message's "rez 1 installed ICE, ignoring all costs".
-    /// Mirrors `engine::rez_ice`'s state transition (flips `InstalledCard::
-    /// rezzed`, syncs the matching `RunIce::rezzed` if mid-`ApproachIce`,
-    /// dispatches `Trigger::OnRez`) minus the payment step —
-    /// `RulesError::CardNotInstalled`/`RulesError::AlreadyRezzed` under the
-    /// same conditions `rez_ice` itself would reject. Deliberately
-    /// duplicates (rather than shares) `rez_ice`'s state-mutation lines: the
-    /// two live in different modules (`ability`/`engine`) and the paid path
-    /// additionally needs `paid_ability::note_window_action`, which this
-    /// free variant has no priority-window context to call.
+    /// Rezzes an already-installed Corp card, paying the same way
+    /// `PlayerAction::RezIce` does but without its "ice only while it is
+    /// being approached" restriction — Send a Message's "rez 1 installed
+    /// piece of ice, ignoring all costs" (`pay_cost: false`), Mycoweb's
+    /// "you may rez 1 installed piece of ice, paying 2[c] less"
+    /// (`pay_cost: true, discount: 2`), and both branches of the forfeit
+    /// choice `CardDefinition::rez_forfeit_discount` offers.
+    ///
+    /// It calls `engine::rez_install`, the routine `rez_ice` itself uses,
+    /// rather than restating the state transition: this variant used to be
+    /// `RezInstalledIgnoringCost` and hand-rolled the flip and the `OnRez`
+    /// dispatch, under a comment saying the duplication was deliberate
+    /// because only the paid path needed the payment and the priority
+    /// window. Mycoweb prints a *discounted* rez, which needs the payment
+    /// waterfall (including a region's hosted rez credits), so the two
+    /// paths had to converge; a second variant beside the first would have
+    /// left three copies of one transition.
+    ///
+    /// Lenient about affordability: a `pay_cost` rez the Corp cannot afford
+    /// resolves to nothing rather than erroring, the same "silently no-op"
+    /// convention `PromptChooseCards` uses for an empty offer. That is what
+    /// keeps declining the forfeit choice from failing (and so deadlocking)
+    /// when the undiscounted cost is out of reach.
     ///
     /// An `InstallId` for the same reason as `SwapInstalledIce`: *Send a
-    /// Message* rezzes the installed ICE the Corp chose, which with two
-    /// unrezzed copies of one card a `CardId` could not name.
-    RezInstalledIgnoringCost(InstallId),
+    /// Message* rezzes the installed ice the Corp chose, which with two
+    /// unrezzed copies of one card a `CardId` could not name. Authored as
+    /// the placeholder `0` and substituted at `ConfirmCardSelection`.
+    RezInstalled {
+        install: InstallId,
+        /// Whether the rez cost is paid at all. `false` is "ignoring all
+        /// costs"; `true` pays the printed cost less `discount`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        pay_cost: bool,
+        /// Credits knocked off the rez cost when `pay_cost`. Never a
+        /// refund — a discount larger than the cost makes the rez free.
+        #[serde(default, skip_serializing_if = "is_zero_u32")]
+        discount: u32,
+    },
     /// Removes *every* counter currently on `acting_card` and grants `side`
     /// that many credits — e.g. Pennyshaver's "place 1 credit on this
     /// hardware, then take all credits from it." A narrowly-scoped one-off
@@ -458,7 +490,7 @@ pub enum Effect {
     /// targets aren't known until the Runner picks them) and substituted
     /// at `PendingDecision::ChooseCards` resolution time, the same
     /// "acting-context substitution" convention `Effect::
-    /// RezInstalledIgnoringCost` already established for a single target —
+    /// RezInstalled` already established for a single target —
     /// extended here to two. `RulesError::CardNotInstalled` if either
     /// doesn't resolve to a currently-installed ICE. Legal mid-run: the
     /// run's `RunState::ice` follows `CorpState::installed` through
@@ -727,6 +759,37 @@ pub enum Effect {
     /// pick has become unplayable since it was offered, the
     /// `InstallRunnerCardFromGrip` precedent.
     PlayOperationFromHq,
+    /// Presents the acting card's own subroutines as a choice and resolves
+    /// the one picked, as that card — Mycoweb's "resolve 1 subroutine on a
+    /// rezzed sentry", where the enclosing `PromptChooseCards` has already
+    /// made the chosen ice the acting card. Composition gets close but not
+    /// there: `PresentChoice` needs its options written out in the JSON,
+    /// and the options here are whatever the *other* card prints.
+    ///
+    /// Resolving as the chosen ice (not as Mycoweb) is what makes "trash 1
+    /// installed program" trash through the sentry's own targeting; a
+    /// subroutine whose effect is pinned to the ice *being encountered*
+    /// (Ansel 1.0's install-inward) finds no host and no-ops, since the
+    /// encountered ice is Mycoweb.
+    ResolveSubroutineOfSelectedIce,
+    /// The Corp forfeits `u32` agendas from its score area — Biawak's "you
+    /// can forfeit 1 agenda as you rez this ice to pay for 10[c] of its
+    /// rez cost", where `engine::rez_ice` offers this and a plain rez as a
+    /// `PresentChoice`. A forfeited agenda leaves the game rather than
+    /// going to Archives (it was never on the table), taking its agenda
+    /// counters with it, and the Corp's score drops accordingly.
+    ///
+    /// An `Effect` and not a `Cost`, though the printed text is a cost:
+    /// **which** agenda goes has to be decided, and only an effect has the
+    /// `CardRegistry` needed to compare their point values —
+    /// `ability::pay_cost` deliberately has none, across forty call sites.
+    /// The lowest-scoring agenda goes, ties broken by the fewest agenda
+    /// counters. That is the dominant choice in every position this pool
+    /// can produce (points decide the game; the only other thing a scored
+    /// agenda carries here is Dividends counters), so the Corp is not
+    /// asked a second question — it is asked whether to forfeit at all,
+    /// which is the decision the card is about.
+    ForfeitAgendas(u32),
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -784,6 +847,13 @@ pub enum Amount {
     /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
     /// of `u32`, resolved in the HQ selection's `then`. Saturating.
     RemainingAfterSelection(u32),
+    /// The threat level: the greater of the two players' scores, in agenda
+    /// points (Null Signal Games' *Elevation* rule — "the threat level is
+    /// equal to the greatest score of any player"). Read through
+    /// `EffectRequirement::AmountAtLeast` for Measured Response's "play
+    /// only if the threat level is 4 or greater"; *N-Pot* and *Public
+    /// Access Plaza* print the same clause at Stage 10.
+    ThreatLevel,
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run whose
@@ -889,7 +959,7 @@ impl Effect {
             | Effect::AddCounters(..)
             | Effect::RemoveCounters(..)
             | Effect::GainCreditsPerCardAccessedThisRun(..)
-            | Effect::RezInstalledIgnoringCost(..)
+            | Effect::RezInstalled { .. }
             | Effect::TakeAllCountersAsCredits(..)
             | Effect::GainMaxHandSize(..)
             | Effect::TrashCurrentlyAccessedCard
@@ -924,6 +994,9 @@ impl Effect {
             | Effect::BoostStrengthAmount { .. }
             | Effect::MoveThisCardToRoot(..)
             | Effect::PlayOperationFromHq
+            | Effect::ResolveSubroutineOfSelectedIce
+            | Effect::ForfeitAgendas(..)
+            | Effect::GainClicksNextTurn(..)
             | Effect::GainCreditsAmount(..) => {}
         }
     }
