@@ -76,6 +76,17 @@ struct Config {
     #[arg(long)]
     turn_timeout_secs: Option<u64>,
 
+    /// (serve mode) Pin the Corp's published decklist by id (e.g.
+    /// `fine_print`) instead of rotating the sample pool with each
+    /// match's seed. Each side is pinned independently.
+    #[arg(long)]
+    corp_deck: Option<String>,
+
+    /// (serve mode) Pin the Runner's published decklist by id (e.g.
+    /// `sabbatical`). See `--corp-deck`.
+    #[arg(long)]
+    runner_deck: Option<String>,
+
     /// (serve mode) Rate every finished match — surrenders, disconnects
     /// and timeouts count as losses; stalls are unrated — into the
     /// Glicko-2 rating book at this path, on the human-vs-bot track under
@@ -115,8 +126,7 @@ async fn run_headless(config: &Config) -> Result<(), Box<dyn std::error::Error>>
     let corp_kind = config.corp.ok_or("--headless requires --corp")?;
     let runner_kind = config.runner.ok_or("--headless requires --runner")?;
 
-    let registry = fixtures::kate_vs_hb_registry();
-    let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+    let registry = fixtures::sample_registry();
     let base_seed = config.seed.unwrap_or_else(rand::random);
 
     let mut corp_wins = 0u32;
@@ -124,7 +134,11 @@ async fn run_headless(config: &Config) -> Result<(), Box<dyn std::error::Error>>
 
     for game_index in 0..config.games {
         let seed = base_seed.wrapping_add(u64::from(game_index));
-        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
+        // The matchup rotates with the seed, as it does in `--serve` and
+        // in `netrunner_cli --all-matchups`: a driver that plays one fixed
+        // pairing measures that pairing, not the pool.
+        let dealt = fixtures::sample_decks_for_seed(seed);
+        let (state, _events) = GameState::setup(&dealt.corp, &dealt.runner, &registry, seed)?;
 
         let corp_slot = PlayerSlot::Bot(make_agent(corp_kind, Side::Corp, seed));
         let runner_slot = PlayerSlot::Bot(make_agent(runner_kind, Side::Runner, seed.wrapping_add(1)));
@@ -151,6 +165,8 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
         max_matches: config.max_matches,
         turn_timeout: config.turn_timeout_secs.map(Duration::from_secs),
+        corp_deck: config.corp_deck.clone(),
+        runner_deck: config.runner_deck.clone(),
         ratings_file: config.ratings_file.clone(),
     };
     let server = Server::bind(&format!("{}:{}", config.host, config.port), options).await?;

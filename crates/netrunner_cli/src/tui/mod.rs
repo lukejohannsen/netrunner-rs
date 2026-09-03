@@ -44,11 +44,13 @@ pub async fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 }
 
 async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    // The wire protocol never transmits a `CardRegistry` — every entry
-    // point in this repo (headless, local TUI) already agrees on this one
-    // fixed Kate-vs-HB matchup out of band, so the remote client just
-    // builds the identical registry locally to resolve card titles.
-    let registry = decks::kate_vs_hb_registry();
+    // The wire protocol never transmits a `CardRegistry`, so the client
+    // builds one locally to resolve card titles. It needs no agreement
+    // with the host beyond the embedded pool: the daemon deals published
+    // sample decks, whose cards are exactly `register_playable_cards`.
+    // While it dealt a filler-padded fixture, this had to be a hand-kept
+    // copy of the host's synthetic card ids.
+    let registry = decks::sample_deck_registry();
     let joined = match config.spectate {
         Some(match_id) => remote::spectate_remote(&config.server, match_id).await?,
         None => remote::connect_remote(&config.server, config.side.map(Into::into), config.room.clone()).await?,

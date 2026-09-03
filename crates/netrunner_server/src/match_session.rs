@@ -578,8 +578,8 @@ mod tests {
     use crate::fixtures;
 
     fn bot_vs_bot() -> MatchSession {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::sample_registry();
+        let (corp_deck, runner_deck) = fixtures::sample_decks();
         let (state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 1).expect("legal decks set up cleanly");
         MatchSession::new(
             state,
@@ -598,8 +598,8 @@ mod tests {
 
     #[tokio::test]
     async fn channel_side_receives_an_initial_view_before_submitting_anything() {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::sample_registry();
+        let (corp_deck, runner_deck) = fixtures::sample_decks();
         let (state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 7).expect("legal decks set up cleanly");
 
         let (corp_tx, mut corp_rx) = mpsc::unbounded_channel();
@@ -621,8 +621,8 @@ mod tests {
 
     #[tokio::test]
     async fn channel_side_rejects_a_bad_action_and_keeps_running() {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::sample_registry();
+        let (corp_deck, runner_deck) = fixtures::sample_decks();
         let (state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 3).expect("legal decks set up cleanly");
 
         let (corp_tx, mut corp_rx) = mpsc::unbounded_channel();
@@ -656,8 +656,8 @@ mod tests {
     /// and each action's events were dropped after classifying the ending.
     #[tokio::test]
     async fn channel_side_receives_a_log_entry_for_every_resolved_action() {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::sample_registry();
+        let (corp_deck, runner_deck) = fixtures::sample_decks();
         let (state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 3).expect("legal decks set up cleanly");
 
         let (corp_tx, mut corp_rx) = mpsc::unbounded_channel();
@@ -694,8 +694,8 @@ mod tests {
     /// again, at the log.
     #[tokio::test]
     async fn a_spectators_log_entry_conceals_both_sides() {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::sample_registry();
+        let (corp_deck, runner_deck) = fixtures::sample_decks();
         let (mut state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 5).expect("legal decks set up cleanly");
         state.phase = GamePhase::Action(Side::Corp);
         state.corp.resources.clicks = Clicks(3);
@@ -747,8 +747,8 @@ mod tests {
 
     #[tokio::test]
     async fn the_action_log_never_names_the_other_sides_hidden_cards() {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::sample_registry();
+        let (corp_deck, runner_deck) = fixtures::sample_decks();
         let (mut state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 5).expect("legal decks set up cleanly");
         state.phase = GamePhase::Action(Side::Corp);
         state.corp.resources.clicks = Clicks(3);
@@ -805,8 +805,8 @@ mod tests {
 
     #[tokio::test]
     async fn state_updates_never_leak_the_other_sides_hidden_cards() {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::sample_registry();
+        let (corp_deck, runner_deck) = fixtures::sample_decks();
         let (mut state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, 5).expect("legal decks set up cleanly");
         state.phase = GamePhase::Action(Side::Corp);
 
@@ -845,8 +845,8 @@ mod reattach_tests {
     }
 
     fn state(seed: u64) -> (CoreGameState, CardRegistry) {
-        let registry = fixtures::kate_vs_hb_registry();
-        let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
+        let registry = fixtures::sample_registry();
+        let (corp_deck, runner_deck) = fixtures::sample_decks();
         let (state, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &registry, seed).expect("legal decks set up cleanly");
         (state, registry)
     }

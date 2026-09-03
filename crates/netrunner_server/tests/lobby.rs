@@ -12,6 +12,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
+use netrunner_core::decks;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
@@ -77,8 +78,15 @@ fn connect_in_room(name: &str, room: &str) -> ClientMessage {
 }
 
 fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
+    let (match_id, assigned_side, session_token, _, _) = joined_with_decks(message);
+    (match_id, assigned_side, session_token)
+}
+
+fn joined_with_decks(message: ServerMessage) -> (Uuid, Side, Uuid, String, String) {
     match message {
-        ServerMessage::MatchJoined { match_id, assigned_side, session_token } => (match_id, assigned_side, session_token),
+        ServerMessage::MatchJoined { match_id, assigned_side, session_token, corp_deck, runner_deck } => {
+            (match_id, assigned_side, session_token, corp_deck, runner_deck)
+        }
         other => panic!("expected MatchJoined, got {other:?}"),
     }
 }
@@ -230,6 +238,68 @@ async fn the_seed_policy_is_deterministic_and_per_match() {
     joined(next(&mut a2).await);
     let opening_a2 = state_update(next(&mut a2).await);
     assert_ne!(opening_a1.corp.hq_cards, opening_a2.corp.hq_cards, "the second match on a daemon is a different deal");
+}
+
+/// The daemon deals published decklists, and a different matchup per
+/// match — the property that puts its rated games on the same pool every
+/// bot in the workspace is measured on. It used to seat every match on
+/// one synthetic Kate-vs-HB pair whose filler cards had no text.
+#[tokio::test]
+async fn each_match_is_dealt_a_published_matchup_and_the_pool_rotates() {
+    let url = start_server(ServeOptions {
+        bot_runner: ServeBotKind::Heuristic,
+        seed: Some(1),
+        ..ServeOptions::default()
+    })
+    .await;
+    let published: Vec<(String, String)> =
+        decks::matchups().into_iter().map(|(corp, runner)| (corp.id, runner.id)).collect();
+
+    let mut first = open(&url, connect("first", Some(Side::Corp))).await;
+    let (_, _, _, first_corp, first_runner) = joined_with_decks(next(&mut first).await);
+    let mut second = open(&url, connect("second", Some(Side::Corp))).await;
+    let (_, _, _, second_corp, second_runner) = joined_with_decks(next(&mut second).await);
+
+    for pair in [(first_corp.clone(), first_runner.clone()), (second_corp.clone(), second_runner.clone())] {
+        assert!(published.contains(&pair), "{pair:?} is not one of the published sample matchups");
+    }
+    assert_ne!((first_corp, first_runner), (second_corp, second_runner), "consecutive matches rotate the pool");
+}
+
+/// Pinning a side stops the rotation for that side only, and a name that
+/// is not a deck refuses to start rather than refusing every client.
+#[tokio::test]
+async fn a_pinned_deck_is_dealt_to_every_match_and_a_bad_id_fails_to_bind() {
+    let url = start_server(ServeOptions {
+        bot_runner: ServeBotKind::Heuristic,
+        seed: Some(1),
+        corp_deck: Some("discretion_advised".into()),
+        ..ServeOptions::default()
+    })
+    .await;
+
+    let mut first = open(&url, connect("first", Some(Side::Runner))).await;
+    let (_, _, _, corp, first_runner) = joined_with_decks(next(&mut first).await);
+    let mut second = open(&url, connect("second", Some(Side::Runner))).await;
+    let (_, _, _, second_corp, second_runner) = joined_with_decks(next(&mut second).await);
+    assert_eq!((corp.as_str(), second_corp.as_str()), ("discretion_advised", "discretion_advised"));
+    assert_ne!(first_runner, second_runner, "the unpinned side still rotates");
+
+    let refuses = |corp_deck: &str| {
+        let corp_deck = corp_deck.to_string();
+        async move {
+            match Server::bind("127.0.0.1:0", ServeOptions { corp_deck: Some(corp_deck), ..ServeOptions::default() })
+                .await
+            {
+                Ok(_) => panic!("binding should have been refused"),
+                Err(error) => error.to_string(),
+            }
+        }
+    };
+    let refused = refuses("not_a_deck").await;
+    assert!(refused.contains("not_a_deck"), "{refused}");
+    let wrong_side = refuses("stolen_goods").await;
+    assert!(wrong_side.contains("not Corp"), "{wrong_side}");
 }
 
 #[tokio::test]

@@ -106,7 +106,19 @@ pub async fn print_matches(url: &str) -> Result<(), Box<dyn std::error::Error>> 
         None => println!("{} matches running, {waiting} waiting in the lobby", matches.len()),
     }
     for summary in matches {
-        println!("{}  {} (Corp) vs {} (Runner), started {}s ago", summary.match_id, summary.corp, summary.runner, summary.started_secs_ago);
+        // The decklists are named because the daemon rotates the sample
+        // pool: two running matches are no longer the same game with
+        // different people in it. A host built before the ids were on the
+        // wire sends empty strings, so they are omitted rather than shown
+        // as blanks.
+        let decks = match (summary.corp_deck.as_str(), summary.runner_deck.as_str()) {
+            ("", "") => String::new(),
+            (corp, runner) => format!(" [{corp} vs {runner}]"),
+        };
+        println!(
+            "{}  {} (Corp) vs {} (Runner){decks}, started {}s ago",
+            summary.match_id, summary.corp, summary.runner, summary.started_secs_ago
+        );
     }
     Ok(())
 }

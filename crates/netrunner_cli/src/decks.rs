@@ -1,105 +1,30 @@
 //! The card pools and decks a local match is played with.
 //!
-//! [`sample_deck_registry`] + [`decks_for_match`] is the real path: every
-//! implemented card, and Null Signal Games' published sample decks (or a
-//! saved/custom deck) validated before play. [`kate_vs_hb_registry`] is a
-//! legacy registry kept only for `--mode remote`, whose wire protocol never
-//! transmits a registry and so must agree with `netrunner_server::fixtures`
-//! out of band on the synthetic filler cards that fixture adds; the
-//! headless simulator stopped using its decks when it moved onto the sample
-//! pool (see `headless`).
+//! [`sample_deck_registry`] + [`decks_for_match`] is the whole of it:
+//! every implemented card, and Null Signal Games' published sample decks
+//! (or a saved/custom deck) validated before play. There used to be a
+//! second registry here, `kate_vs_hb_registry`, kept only for `--mode
+//! remote`: the wire protocol transmits no `CardRegistry`, so the remote
+//! client builds its own to resolve card titles, and while the daemon
+//! dealt a filler-padded fixture this module had to mirror
+//! `netrunner_server::fixtures`' synthetic card ids constant for
+//! constant. The daemon now deals sample decks, so every card it can
+//! deal is in `register_playable_cards` and the two sides agree without
+//! anything to keep in step.
 
 use std::path::Path;
 
 use netrunner_core::cards::{self, CardRegistry};
-use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Deck, Side};
 
 use crate::deck_store;
 
-// The filler card counts must match `netrunner_server::fixtures` exactly —
-// the remote client resolves card titles against this registry for a match
-// the server set up from its own copy of the same fixture.
-const FILLER_AGENDA_COUNT: u32 = 6;
-const FILLER_ASSET_COUNT: u32 = 2;
-const FILLER_EVENT_COUNT: u32 = 9;
-
-fn blank_card(id: String, side: Side, card_type: CardType) -> CardDefinition {
-    CardDefinition {
-        title: id.clone(),
-        id: CardId(id),
-        side,
-        card_type,
-        cost: 0,
-        triggers: Vec::new(),
-        abilities: Vec::new(),
-        trash_cost: None,
-        steal_cost: None,
-        advancement_requirement: None,
-        agenda_points: None,
-        min_deck_size: None,
-        strength: None,
-        subroutines: Vec::new(),
-        interactive_on_access: None,
-        subtypes: Vec::new(),
-        play_requirement: None,
-        recurring_credits: None,
-        first_install_discount: None,
-        memory_cost: None,
-        counter_kind: None, numeric_id: None, faction: None, type_line: None, keywords: Vec::new(), set_code: None, influence_cost: None, deck_limit: None, unlimited_influence: false, artist: None, image_url: None, memory_bonus: None, max_hand_size_bonus: None, install_cost_discount_if: None,
-        install_cost_discount_amount: None,
-        additional_play_cost: None,
-        host_ice_gains_subtypes: Vec::new(),
-        hosted_breaker_bonus: None,
-        hosted_credits_usable_for: None,
-        trash_when_empty: false,
-        may_install_agendas_faceup: false,
-        rez_alternatives: Vec::new(),
-        influence_limit: None, installs_on_ice: false, hosted_cards_playable_from_grip: false, ice_rez_cost_modifier: 0, dividends: None, playable_from_archives: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, root_asset_trash_cost_bonus: 0, unique: false, base_link: None, is_playable: true,
-    }
-}
-
-fn filler_agenda_id(index: u32) -> String {
-    format!("filler_agenda_{index}")
-}
-
-fn filler_asset_id(index: u32) -> String {
-    format!("filler_asset_{index}")
-}
-
-fn filler_event_id(index: u32) -> String {
-    format!("filler_event_{index}")
-}
-
-/// Every implemented card plus the synthetic filler cards
-/// `netrunner_server::fixtures` deals into its Kate-vs-HB matchup. Used by
-/// `--mode remote` only — see the module doc.
-pub fn kate_vs_hb_registry() -> CardRegistry {
-    let mut registry = CardRegistry::new();
-    cards::register_playable_cards(&mut registry);
-
-    for index in 0..FILLER_AGENDA_COUNT {
-        let mut agenda = blank_card(filler_agenda_id(index), Side::Corp, CardType::Agenda);
-        agenda.advancement_requirement = Some(3);
-        agenda.agenda_points = Some(1);
-        registry.insert(agenda);
-    }
-    for index in 0..FILLER_ASSET_COUNT {
-        registry.insert(blank_card(filler_asset_id(index), Side::Corp, CardType::Asset));
-    }
-    for index in 0..FILLER_EVENT_COUNT {
-        registry.insert(blank_card(filler_event_id(index), Side::Runner, CardType::Event));
-    }
-
-    registry
-}
-
-/// The card pool for local play against the published sample decks: every
-/// implemented card, with no synthetic filler.
+/// The card pool for every match this client plays, local or remote.
 ///
-/// Unlike [`kate_vs_hb_registry`], this needs no filler at all — the
-/// System Gateway pool is large enough to build real, legal decks from.
+/// No synthetic filler: the published pool is large enough to build real,
+/// legal decks from, which is why the registry the remote client needs
+/// and the registry local play needs are now the same one.
 pub fn sample_deck_registry() -> CardRegistry {
     let mut registry = CardRegistry::new();
     cards::register_playable_cards(&mut registry);
@@ -139,6 +64,7 @@ pub fn decks_for_match(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use netrunner_core::dsl::CardId;
     use netrunner_core::rules::{validate_deck, GameState};
 
     /// An empty directory that does not exist, so these tests resolve only
