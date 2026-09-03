@@ -1,0 +1,85 @@
+{
+  "id": "bowel_movements",
+  "name": "Bowel Movements",
+  "side": "Runner",
+  "category": "Sample",
+  "identity": "rene_loup_arcemont",
+  "cards": [
+    {
+      "card": "maintenance_access",
+      "count": 2
+    },
+    {
+      "card": "ritual",
+      "count": 2
+    },
+    {
+      "card": "scrounge",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "carnivore",
+      "count": 3
+    },
+    {
+      "card": "docklands_pass",
+      "count": 1
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 1
+    },
+    {
+      "card": "cacophony",
+      "count": 3
+    },
+    {
+      "card": "cookbook",
+      "count": 2
+    },
+    {
+      "card": "rent_rioters",
+      "count": 2
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 2
+    },
+    {
+      "card": "buzzsaw",
+      "count": 1
+    },
+    {
+      "card": "hantu",
+      "count": 1
+    },
+    {
+      "card": "rising_tide",
+      "count": 3
+    },
+    {
+      "card": "azimat",
+      "count": 1
+    },
+    {
+      "card": "botulus",
+      "count": 2
+    },
+    {
+      "card": "fermenter",
+      "count": 3
+    },
+    {
+      "card": "gourmand",
+      "count": 3
+    },
+    {
+      "card": "leech",
+      "count": 2
+    }
+  ]
+}

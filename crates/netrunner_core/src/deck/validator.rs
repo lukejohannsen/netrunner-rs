@@ -152,10 +152,11 @@ pub fn validate_deck(
     }
 
     // The starter identities have no influence budget (`unlimited_influence`,
-    // the catalog's `influence_limit: null`); every other identity gets the
-    // flat default.
-    if !identity.unlimited_influence && influence_spent > DEFAULT_INFLUENCE_LIMIT {
-        return Err(DeckValidationError::InfluenceExceeded { spent: influence_spent, limit: DEFAULT_INFLUENCE_LIMIT });
+    // the catalog's `influence_limit: null`); every other identity gets its
+    // printed budget, or the flat default when it prints none.
+    let limit = identity.influence_limit.unwrap_or(DEFAULT_INFLUENCE_LIMIT);
+    if !identity.unlimited_influence && influence_spent > limit {
+        return Err(DeckValidationError::InfluenceExceeded { spent: influence_spent, limit });
     }
 
     let agenda_points_report = if identity.side == Side::Corp {

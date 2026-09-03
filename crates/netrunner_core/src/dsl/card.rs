@@ -427,6 +427,13 @@ pub struct CardDefinition {
     /// validator constants.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub deck_limit: Option<u32>,
+    /// An identity's printed influence budget, joined from the catalog —
+    /// Ryō "Phoenix" Ōno prints 17 where every System Gateway identity
+    /// prints 15. `None` means `format::DEFAULT_INFLUENCE_LIMIT` (a
+    /// hand-authored identity, or a catalog `null` — see
+    /// `unlimited_influence`, which is the flag that means "no budget").
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub influence_limit: Option<u32>,
     /// The catalog's `influence_limit: null` — an identity with no
     /// influence budget at all. True only for the *Learn to Play* starter
     /// identities, whose preset decks mix every faction; the deckbuilding
@@ -578,6 +585,7 @@ impl Default for CardDefinition {
             hosted_breaker_bonus: None,
             hosted_credits_usable_for: None,
             trash_when_empty: false,
+            influence_limit: None,
             additional_play_cost: None,
             install_cost_discount_amount: None,
             click_breakable: false,

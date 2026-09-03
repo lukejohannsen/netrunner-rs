@@ -1,0 +1,34 @@
+{
+  "id": "rent_rioters",
+  "title": "Rent Rioters",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 2,
+  "subtypes": [
+    "Connection"
+  ],
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 3
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Runner",
+              9
+            ]
+          },
+          {
+            "TrashCard": "ThisCard"
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 35011,
+  "is_playable": true
+}

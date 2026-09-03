@@ -169,6 +169,7 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         set_code: Some(dto.pack_code),
         influence_cost: non_negative("faction_cost", dto.faction_cost)?,
         unlimited_influence: false,
+        influence_limit: dto.influence_limit.and_then(|limit| u32::try_from(limit).ok()),
         deck_limit: non_negative("deck_limit", dto.deck_limit)?,
         artist: dto.illustrator,
         image_url: None,
@@ -272,6 +273,7 @@ mod tests {
             uniqueness: Some(false),
             illustrator: Some("Some Artist".to_string()),
             deck_limit: Some(3),
+            influence_limit: None,
         }
     }
 
@@ -384,6 +386,7 @@ mod tests {
             uniqueness: None,
             illustrator: None,
             deck_limit: None,
+            influence_limit: None,
         };
         let mut unmodeled_faction = good.clone();
         unmodeled_faction.code = "2".to_string();

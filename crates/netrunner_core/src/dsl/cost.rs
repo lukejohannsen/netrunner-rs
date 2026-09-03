@@ -51,4 +51,12 @@ pub enum Cost {
     /// `RulesError::MissingActingCardContext` without an acting card, and
     /// `RulesError::CardNotInstalled` if it isn't a Corp install.
     RemoveSelfFromGame,
+    /// The Corp reveals and trashes `u32` cards from HQ at random — Shred's
+    /// "unless the Corp reveals and trashes X cards from HQ at random",
+    /// built by the engine into the `OfferPaidChoice` it parks (X is the
+    /// attacked server's root count, known only then). Affordable only
+    /// with at least that many cards in HQ; the cards land faceup, being
+    /// revealed. Drawn with the state's own PRNG, so a replay trashes the
+    /// same cards.
+    TrashRandomFromHq(u32),
 }

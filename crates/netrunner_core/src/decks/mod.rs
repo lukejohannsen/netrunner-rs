@@ -317,6 +317,8 @@ mod tests {
     const PUBLISHED: &[(&str, Side, u32, u32, u32)] = &[
         // id, side, cards, influence, agenda points
         ("advanced_yomi", Side::Corp, 44, 15, 18),
+        ("bowel_movements", Side::Runner, 40, 15, 0),
+        ("dashing_mad", Side::Runner, 45, 17, 0),
         ("discretion_advised", Side::Corp, 44, 15, 18),
         ("enthusiasm", Side::Runner, 45, 15, 0),
         ("flow_and_ebb", Side::Runner, 40, 15, 0),

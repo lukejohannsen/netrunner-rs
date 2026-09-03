@@ -1,0 +1,57 @@
+{
+  "id": "cacophony",
+  "title": "Cacophony",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "requirement": {
+        "OncePerTurn": "cacophony"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "requirement": {
+        "OncePerTurn": "cacophony"
+      },
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnActionPhaseEnd",
+      "requirement": {
+        "ThisCardCountersAtLeast": 2
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "RemoveCounters": 2
+            },
+            "if_paid": {
+              "Sabotage": 3
+            },
+            "if_declined": {
+              "Sequence": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35010,
+  "is_playable": true
+}

@@ -311,6 +311,23 @@ pub struct RunState {
     pub on_success_card: Option<CardId>,
     #[serde(default)]
     pub on_success_install: Option<InstallId>,
+    /// `Effect::SetRunEndedEffect` — resolved as `on_end_card`/
+    /// `on_end_install` when this run ends, carried over into
+    /// `CompletedRun` for the `OnRunEnded` dispatch to take. Charm Offensive.
+    #[serde(default)]
+    pub on_end_effect: Option<Box<Effect>>,
+    #[serde(default)]
+    pub on_end_card: Option<CardId>,
+    #[serde(default)]
+    pub on_end_install: Option<InstallId>,
+    /// `Effect::ArmRunEndPrevention` — consumed by the first
+    /// `Effect::EndTheRun` of this run. Shred.
+    #[serde(default)]
+    pub end_run_prevention: Option<crate::dsl::EndRunPrevention>,
+    /// Whether any subroutine has resolved during this run
+    /// (`EffectRequirement::SubroutineResolvedThisRun`) — Ryō "Phoenix" Ōno.
+    #[serde(default)]
+    pub subroutine_resolved: bool,
     /// A temporary Runner credit pool for this run only, set once at run
     /// start by whatever initiated it (e.g. Overclock's "place 5 credits on
     /// this event, then run any server — you can spend hosted credits
@@ -379,6 +396,11 @@ impl Default for RunState {
             agendas_stolen_this_run: 0,
             persistent_trashed_upgrades: Vec::new(),
             on_success_effect: None,
+            on_end_effect: None,
+            on_end_card: None,
+            on_end_install: None,
+            end_run_prevention: None,
+            subroutine_resolved: false,
             on_success_card: None,
             on_success_install: None,
         }

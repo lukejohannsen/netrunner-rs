@@ -195,6 +195,13 @@ fn instance_matches_filter(
                 })
             })
         }
+        CardFilter::Rezzed => corp_install.is_some_and(|c| c.rezzed),
+        CardFilter::AccessedDuringLastRun => {
+            let card = zone_card_ids(state, chooser, zone, source).get(position).cloned();
+            card.is_some_and(|card| {
+                state.last_completed_run.as_ref().is_some_and(|completed| completed.accessed_cards.contains(&card))
+            })
+        }
         // The parking card is never "one of your other cards": compared by
         // install, so a second copy of the same card stays eligible.
         CardFilter::NotSourceCard => {
@@ -733,7 +740,9 @@ pub(crate) fn resolve_confirm_card_selection(
             (other, _, _) => Some(other),
         };
         if let Some(effect) = effect {
-            events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_parked(acting_install, acting), registry)?);
+            let mut ctx = ability::ResolutionContext::for_parked(acting_install, acting);
+            ctx.selected_count = selected.len() as u32;
+            events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
         }
     }
 
@@ -776,7 +785,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, install, source_card, source_install, resume, .. } =
+    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, source_card, source_install, resume, .. } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -832,12 +841,19 @@ pub(crate) fn resolve_choose_server(
         run.on_success_effect = on_success.map(|effect| Box::new(substitute_chosen_server(*effect, server)));
         // The rider resolves as the card that offered the choice (Red Team
         // takes credits from *itself*), so carry its identity onto the run.
-        run.on_success_card = source_card;
+        run.on_success_card = source_card.clone();
         run.on_success_install = source_install;
+    }
+    // The run's start rider (Shred arming itself), as the parking card.
+    let mut start_events = Vec::new();
+    if let Some(effect) = on_start {
+        let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+        start_events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
     }
 
     let run_initiated_event = GameEvent::RunInitiated { server };
-    let mut events = vec![run_initiated_event.clone()];
+    let mut events = start_events;
+    events.push(run_initiated_event.clone());
     events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &run_initiated_event)?);
 
     if resume == PendingChoiceResume::ResumeSubroutines {

@@ -590,6 +590,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::CardHosted { .. }
         | GameEvent::IdentityFlipped { .. }
         | GameEvent::RunRedirected { .. }
+        | GameEvent::ActionPhaseEnded { .. }
+        | GameEvent::RunEndPrevented { .. }
         | GameEvent::AgendaStolen { .. }
         | GameEvent::DamageTaken { .. }
         | GameEvent::RunnerFlatlined

@@ -944,6 +944,9 @@ pub enum PendingDecision {
         /// `None` means any server; otherwise only these are offered — see
         /// `Effect::PromptChooseServer::allowed_servers`.
         allowed_servers: Option<Vec<ServerId>>,
+        /// See `Effect::PromptChooseServer::on_start`.
+        #[serde(default)]
+        on_start: Option<Box<Effect>>,
         /// `Some` turns the resolution from "start a run against the chosen
         /// server" into "install this card into it" — Ansel 1.0's "You may
         /// install 1 card from HQ or Archives", where the Corp picks the
@@ -985,6 +988,19 @@ pub struct CompletedRun {
     /// fire them even though they are no longer in `CorpState::installed` —
     /// that outliving-its-own-trash behavior is the entire point.
     pub persistent_trashed_upgrades: Vec<CardId>,
+    /// The cards the Runner accessed during the run, in access order —
+    /// `CardFilter::AccessedDuringLastRun` (Charm Offensive).
+    #[serde(default)]
+    pub accessed_cards: Vec<CardId>,
+    /// `RunState::on_end_effect` and the card it resolves as, carried here
+    /// because the run has already left `active_run` when `OnRunEnded`
+    /// is dispatched; the dispatch takes it, so it fires once.
+    #[serde(default)]
+    pub on_end_effect: Option<Box<Effect>>,
+    #[serde(default)]
+    pub on_end_card: Option<CardId>,
+    #[serde(default)]
+    pub on_end_install: Option<InstallId>,
 }
 
 impl CompletedRun {
@@ -998,6 +1014,10 @@ impl CompletedRun {
             cards_accessed: run.cards_accessed_count,
             agendas_stolen: run.agendas_stolen_this_run,
             persistent_trashed_upgrades: run.persistent_trashed_upgrades.clone(),
+            accessed_cards: run.access_state.as_ref().map(|access| access.resolved_cards.clone()).unwrap_or_default(),
+            on_end_effect: run.on_end_effect.clone(),
+            on_end_card: run.on_end_card.clone(),
+            on_end_install: run.on_end_install,
         }
     }
 }

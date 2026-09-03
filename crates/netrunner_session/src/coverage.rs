@@ -482,9 +482,14 @@ pub fn sweep_decks_for_seed(seed: u64) -> (DeckFile, DeckFile) {
 /// every non-identity card of every deck `sweep_decks_for_seed` plays in
 /// at least `MIN_GAMES_FOR_CARD_GATE` games across the sweep (three
 /// seatings per seed). At 32 seeds over the twelve System Gateway
-/// matchups every deck qualifies, which is the density the gate has been
-/// passing at; at 256 seeds every deck qualifies whatever the pool, so
-/// the deep run demands every card exactly as before. A card in a deck
+/// matchups every deck qualifies; at 256 seeds every deck qualifies
+/// whatever the pool, so the deep run demands every card exactly as
+/// before. In between, a deck the default run reaches for fewer seeds is
+/// left to the deep run: at *Elevation* Stage 3 (nine Runner decks, four
+/// seeds each) *Wildcat Strike* went unplayed in Party Hard's twelve
+/// games, which is sampling, not a finding — the gate was only ever
+/// validated at the System Gateway density of eight or more seeds per
+/// deck, and that is the density it keeps. A card in a deck
 /// the sweep played once or never is not a finding, so it is not asked
 /// for — raising the default seed count with the pool would have grown
 /// the inner loop 16× by the end of *Elevation*.
@@ -506,8 +511,11 @@ pub fn played_pool_card_ids(registry: &CardRegistry, seed_count: u64) -> Vec<Car
 const SEATINGS_PER_SEED: u64 = 3;
 
 /// Games a deck must have been played in before the sweep's card gate
-/// demands every card of it: two seeds' worth. See `played_pool_card_ids`.
-const MIN_GAMES_FOR_CARD_GATE: u64 = 2 * SEATINGS_PER_SEED;
+/// demands every card of it: eight seeds' worth — the density every
+/// System Gateway deck had at 32 seeds over twelve matchups, at which the
+/// gate has never flagged a card for sampling alone. See
+/// `played_pool_card_ids`.
+const MIN_GAMES_FOR_CARD_GATE: u64 = 8 * SEATINGS_PER_SEED;
 
 fn pool_card_ids<'d>(registry: &CardRegistry, decks: impl Iterator<Item = &'d DeckFile>) -> Vec<CardId> {
     let mut ids: Vec<CardId> = decks

@@ -79,6 +79,12 @@ pub enum GameEvent {
     CardHosted { card: CardId, host: CardId },
     /// `Effect::FlipIdentity` turned `side`'s identity over.
     IdentityFlipped { side: Side },
+    /// `side`'s action phase ended (`turn::end_turn`) — drives
+    /// `Trigger::OnActionPhaseEnd`.
+    ActionPhaseEnded { side: Side },
+    /// An armed `RunState::end_run_prevention` intercepted an
+    /// `Effect::EndTheRun`; the Corp's paid choice decides the run's fate.
+    RunEndPrevented { server: ServerId },
     /// A run that would have approached `from` was redirected to `to`
     /// (`Effect::RedirectRunOnApproach`).
     RunRedirected { from: ServerId, to: ServerId },

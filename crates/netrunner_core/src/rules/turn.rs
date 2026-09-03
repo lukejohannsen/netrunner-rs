@@ -146,7 +146,7 @@ fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
 /// lost when *this* turn ends, which is strictly earlier than when the
 /// opponent's begins — and the gap between the two is exactly the
 /// `EndOfTurn` window where they were spendable.
-pub fn end_turn(state: &GameState, _registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = require_action_phase(state)?;
     if state.active_run.is_some() {
         return Err(RulesError::CannotEndTurnWhileRunActive);
@@ -160,6 +160,11 @@ pub fn end_turn(state: &GameState, _registry: &CardRegistry) -> Result<(GameStat
 
     let mut next = state.clone();
     let mut events = vec![GameEvent::TurnEnded { side }];
+    // "When your action phase ends" (Cacophony) — before the end-of-turn
+    // window, which is the next step of the turn.
+    let action_phase_ended = GameEvent::ActionPhaseEnded { side };
+    events.push(action_phase_ended.clone());
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &action_phase_ended)?);
 
     // Before the window opens, so the window itself can't spend them —
     // it is part of the turn ending, not more action phase. See this
@@ -631,7 +636,14 @@ mod tests {
         assert_eq!(window.checkpoint, WindowCheckpoint::EndOfTurn { side: Side::Corp });
         assert_eq!(window.active_priority, Side::Corp);
         assert_eq!(window.consecutive_passes, 0);
-        assert_eq!(events, vec![GameEvent::TurnEnded { side: Side::Corp }, GameEvent::PaidAbilityWindowOpened { side: Side::Corp }]);
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::TurnEnded { side: Side::Corp },
+                GameEvent::ActionPhaseEnded { side: Side::Corp },
+                GameEvent::PaidAbilityWindowOpened { side: Side::Corp }
+            ]
+        );
         // Control hasn't actually passed yet — this is still the ending side's turn.
         assert_eq!(next.phase, GamePhase::Action(Side::Corp));
     }

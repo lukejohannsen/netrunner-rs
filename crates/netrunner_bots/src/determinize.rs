@@ -338,6 +338,16 @@ fn determinize_run(
         bonus_run_credits: run.bonus_run_credits,
         runner_cannot_steal_or_trash: run.runner_cannot_steal_or_trash,
         redirect_on_approach: run.redirect_on_approach,
+        // Not in the view: a run's end rider, Shred's armed prevention and
+        // whether a subroutine resolved are known to the seat that set
+        // them, not carried. The determinized run neither fires a Charm
+        // Offensive rider nor prevents its own end — a search-quality
+        // limit, recorded in ROADMAP Phase 1 §8 Stage 3.
+        on_end_effect: None,
+        on_end_card: None,
+        on_end_install: None,
+        end_run_prevention: None,
+        subroutine_resolved: false,
         additional_rd_access: 0,
         additional_hq_access: 0,
         access_replacement: None, cards_accessed_count: 0, ice_rez_cost_modifier: 0,
