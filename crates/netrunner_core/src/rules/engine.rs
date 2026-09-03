@@ -1911,8 +1911,18 @@ fn activate_ability(
     // An identity is always active and has no install of its own — see
     // `InstallId::CORP_IDENTITY`/`RUNNER_IDENTITY`.
     let corp_install = state.find_corp_install(target);
-    let corp_card = if target == InstallId::CORP_IDENTITY { state.corp.identity.clone() } else { corp_install.map(|c| c.card.clone()) };
-    let corp_active = corp_install.is_some_and(|c| c.rezzed) || (target == InstallId::CORP_IDENTITY && corp_card.is_some());
+    // …or a scored agenda, whose abilities are used from the score area:
+    // Proprionegation's "hosted agenda counter: the Runner moves to the
+    // outermost position of Archives". A scored agenda is always active —
+    // it is faceup in front of its owner, with no rez state to check.
+    let scored = state.corp.find_scored(target);
+    let corp_card = if target == InstallId::CORP_IDENTITY {
+        state.corp.identity.clone()
+    } else {
+        corp_install.map(|c| c.card.clone()).or_else(|| scored.map(|s| s.card.clone()))
+    };
+    let corp_active =
+        corp_install.is_some_and(|c| c.rezzed) || scored.is_some() || (target == InstallId::CORP_IDENTITY && corp_card.is_some());
     let runner_card =
         if target == InstallId::RUNNER_IDENTITY { state.runner.identity.clone() } else { state.find_rig_install(target).map(|c| c.card.clone()) };
     let runner_active = runner_card.is_some();

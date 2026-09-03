@@ -137,6 +137,11 @@ pub enum CardFilter {
     /// An installed Corp card that is rezzed — Charm Offensive's "1 rezzed
     /// copy". Instance-level, like `UnrezzedIce`, and any card type.
     Rezzed,
+    /// The twin of `Rezzed`: an installed Corp card that is *not* faceup —
+    /// PT Untaian: Life's Building Blocks' "an unrezzed card you can
+    /// advance", which is an agenda or an asset as often as it is ice.
+    /// `UnrezzedIce` cannot serve: its definition half insists on ice.
+    Unrezzed,
     /// A copy of a card the Runner accessed during the run that just
     /// ended (`CompletedRun::accessed_cards`) — Charm Offensive. By card,
     /// as the printed text says "a copy of a card you accessed".
@@ -220,6 +225,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::DiscardedThisDiscardPhase => true,
         CardFilter::NotSourceCard => true,
         CardFilter::Rezzed => true,
+        CardFilter::Unrezzed => true,
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),

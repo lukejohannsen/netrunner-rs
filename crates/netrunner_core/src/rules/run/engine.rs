@@ -322,8 +322,16 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
     let mut rebuilt = Vec::new();
     for installed in state.corp.installed.iter().filter(|c| c.server == run.server && c.slot == InstallSlot::Ice) {
         match run.ice.iter().find(|ice| ice.install_id == installed.install_id) {
-            Some(existing) => rebuilt.push(RunIce { rezzed: installed.rezzed, ..existing.clone() }),
-            None => rebuilt.extend(build_run_ice(state, installed, registry)?),
+            // Same install *and* same card: keep what the run knows (broken
+            // subroutines, boosted strength) and refresh only the rez flag.
+            // The card check is not redundant — Mitra Aman swaps a
+            // different card into an install that keeps its handle, and
+            // without this the run went on approaching the ice that had
+            // just left the table.
+            Some(existing) if existing.card_id == installed.card => {
+                rebuilt.push(RunIce { rezzed: installed.rezzed, ..existing.clone() })
+            }
+            _ => rebuilt.extend(build_run_ice(state, installed, registry)?),
         }
     }
     if rebuilt == run.ice {
@@ -381,8 +389,11 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
             state.paid_ability_window = None;
         }
         apply_approach_redirect(state, registry, &mut events)?;
-        let approached: Vec<GameEvent> =
-            events.iter().filter(|e| matches!(e, GameEvent::ServerApproached { .. })).cloned().collect();
+        let approached: Vec<GameEvent> = events
+            .iter()
+            .filter(|e| matches!(e, GameEvent::ServerApproached { .. } | GameEvent::IceApproached { .. }))
+            .cloned()
+            .collect();
         for event in approached {
             events.extend(dispatcher::dispatch_event(state, registry, &event)?);
         }
@@ -435,7 +446,7 @@ pub fn advance_run(
     // `PlayerAction::ContinueRun` handler, and `paid_ability::close_window`'s
     // window-mediated auto-continue alike), so `Trigger::OnEncounter`/
     // `OnSuccessfulRun`/`OnSuccessfulRunOnHq` fire identically regardless of
-    // which path reached this transition. Filtered to exactly these two
+    // which path reached this transition. Filtered to exactly these three
     // variants (not a blanket dispatch of every event returned above) so a
     // subroutine effect that happens to emit some other dispatch-relevant
     // event (e.g. `Effect::InitiateRun`'s own `RunInitiated`, which already
@@ -443,7 +454,12 @@ pub fn advance_run(
     apply_approach_redirect(state, registry, &mut events)?;
     let reactive: Vec<GameEvent> = events
         .iter()
-        .filter(|event| matches!(event, GameEvent::IceEncountered { .. } | GameEvent::ServerApproached { .. }))
+        .filter(|event| {
+            matches!(
+                event,
+                GameEvent::IceEncountered { .. } | GameEvent::ServerApproached { .. } | GameEvent::IceApproached { .. }
+            )
+        })
         .cloned()
         .collect();
     for event in reactive {
@@ -514,6 +530,127 @@ fn apply_approach_redirect(
     events.insert(approach, GameEvent::RunRedirected { from, to: target });
     state.runner.servers_run_this_turn.push(target);
     Ok(())
+}
+
+/// Moves the run to `target`'s **outermost** position, rebuilding its ice
+/// list with nothing passed — Proprionegation's "the Runner moves to the
+/// outermost position of Archives".
+///
+/// Shares its shape with `apply_approach_redirect` (Maintenance Access)
+/// and differs in exactly one thing, which is the point of the card:
+/// that one lands at the server having passed every piece of ice, this
+/// one lands in front of them. With no ice on the target the Runner is at
+/// the server approach instead, so `ServerApproached` is emitted and
+/// dispatched — that server's own root reactions must still fire.
+///
+/// A no-op outside a run, and outside the phases a move makes sense in:
+/// once the Runner is accessing, the run is past moving.
+pub(crate) fn move_run_to_outermost(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    target: ServerId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    if matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) {
+        return Ok(Vec::new());
+    }
+    let from = run.server;
+    let ice: Vec<RunIce> = state
+        .corp
+        .installed
+        .iter()
+        .filter(|installed| installed.server == target && installed.slot == InstallSlot::Ice)
+        .map(|installed| build_run_ice(state, installed, registry))
+        .collect::<Result<Vec<Option<RunIce>>, _>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+    let phase = phase_for_position(&ice, 0);
+    let run = state.active_run.as_mut().expect("checked above");
+    run.server = target;
+    run.position = 0;
+    run.ice = ice;
+    run.phase = phase;
+    // Rule 3 opens the jack-out window at the server approach and rule 1
+    // keeps it shut while ice is being approached — the same two cases
+    // `continue_run` sets from `Initiation`.
+    run.jack_out_permitted = phase == RunPhase::Success;
+    let mut events = vec![GameEvent::RunRedirected { from, to: target }];
+    if !state.runner.servers_run_this_turn.contains(&target) {
+        state.runner.servers_run_this_turn.push(target);
+    }
+    if phase == RunPhase::Success {
+        let approached = GameEvent::ServerApproached { server: target };
+        events.push(approached.clone());
+        events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &approached)?);
+    }
+    Ok(events)
+}
+
+/// Swaps the ice the Runner is approaching with `card_id`, a piece of ice
+/// in `origin` (HQ or Archives) — Mitra Aman. The install keeps its
+/// position and handle and takes the new card **unrezzed** (it arrives
+/// from a hidden zone); the displaced ice goes back to `origin`, faceup in
+/// Archives if the Runner had seen it rezzed.
+///
+/// Silently does nothing if the run has moved on, the card is no longer
+/// there, or it is not ice — the "you may" leniency every offered effect
+/// takes.
+pub(crate) fn swap_approached_ice_with_card(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+    origin: &crate::dsl::CardZoneRef,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    if run.phase != RunPhase::ApproachIce {
+        return Ok(Vec::new());
+    }
+    let Some(approached) = run.ice.get(run.position).map(|ice| ice.install_id) else { return Ok(Vec::new()) };
+    if !registry.get(card_id).is_some_and(|def| matches!(def.card_type, crate::dsl::CardType::Ice(_))) {
+        return Ok(Vec::new());
+    }
+    // Take the incoming card out of its zone first: if it is not there any
+    // more the swap does not happen at all.
+    let taken = match origin {
+        crate::dsl::CardZoneRef::OwnHq => {
+            state.corp.hq.iter().position(|c| c == card_id).map(|position| state.corp.hq.remove(position))
+        }
+        crate::dsl::CardZoneRef::OwnArchives => state
+            .corp
+            .archives
+            .iter()
+            .position(|a| &a.card == card_id)
+            .map(|position| state.corp.archives.remove(position).card),
+        _ => None,
+    };
+    if taken.is_none() {
+        return Ok(Vec::new());
+    }
+    let Some(installed) = state.corp.installed.iter_mut().find(|c| c.install_id == approached) else {
+        return Ok(Vec::new());
+    };
+    let displaced = std::mem::replace(&mut installed.card, card_id.clone());
+    let was_rezzed = installed.rezzed;
+    installed.rezzed = false;
+    installed.advancement_tokens = 0;
+    installed.counters = 0;
+    match origin {
+        crate::dsl::CardZoneRef::OwnHq => state.corp.hq.push(displaced.clone()),
+        _ => state.corp.archives.push(if was_rezzed {
+            crate::rules::state::ArchivedCard::faceup(displaced.clone())
+        } else {
+            crate::rules::state::ArchivedCard::facedown(displaced.clone())
+        }),
+    }
+    // `IceSwapped` says two pieces of ice exchanged places, which is what
+    // happened — one of them simply was not on the table.
+    let mut events = vec![GameEvent::IceSwapped { a: displaced, b: card_id.clone() }];
+    // The run's own copy of the ice is stale now; rebuilding it here rather
+    // than waiting for the next step keeps the approach pointed at the card
+    // that is actually there.
+    events.extend(reconcile_ice(state, registry)?);
+    Ok(events)
 }
 
 fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {

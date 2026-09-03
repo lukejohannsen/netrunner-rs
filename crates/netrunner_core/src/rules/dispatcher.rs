@@ -169,7 +169,13 @@ pub fn dispatch_event(
         }
 
         GameEvent::AgendaScored { card, .. } => {
-            let mut events = fire_direct(state, registry, card, None, Trigger::OnAgendaScored, event)?;
+            // The agenda reacts *from the score area*, so it is named by the
+            // install handle it kept there — without it a "place a counter
+            // on this agenda" reaction (Proprionegation) has nothing to
+            // place onto, since the card has left the table. The last
+            // matching entry is the one just scored: scoring pushes.
+            let scored = state.corp.scored_agendas.iter().rposition(|scored| &scored.card == card).map(|position| state.corp.scored_agendas[position].install_id);
+            let mut events = fire_direct(state, registry, card, scored, Trigger::OnAgendaScored, event)?;
             if let Some(identity) = state.corp.identity.clone() {
                 events.extend(fire_direct(state, registry, &identity, None, Trigger::OnAgendaScored, event)?);
             }
@@ -346,6 +352,23 @@ pub fn dispatch_event(
         // the ICE and not the identity — Manegarm Skunkworks, Anoetic Void.
         // Used to be fired from `RunSucceeded`; see that event's doc for why
         // the order matters.
+        // "Whenever the Runner approaches a piece of ice protecting this
+        // server" — the same audience as the server approach one step
+        // later, and Mitra Aman is the one card that wants the earlier
+        // moment.
+        GameEvent::IceApproached { server, .. } => {
+            let root_installs: Vec<(Option<InstallId>, CardId)> = state
+                .corp
+                .installed
+                .iter()
+                .filter(|installed| {
+                    installed.rezzed && installed.server == *server && installed.slot == InstallSlot::Root
+                })
+                .map(|installed| (Some(installed.install_id), installed.card.clone()))
+                .collect();
+            fire_each(state, registry, &root_installs, Trigger::OnIceApproached, event)
+        }
+
         GameEvent::ServerApproached { server } => {
             let root_installs: Vec<(Option<InstallId>, CardId)> = state
                 .corp

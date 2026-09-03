@@ -1,0 +1,49 @@
+{
+  "id": "doomscroll",
+  "title": "Doomscroll",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 3,
+  "strength": 3,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag.",
+      "effect": {
+        "GiveTags": 1
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    },
+    {
+      "text": "Do 2 net damage if the Runner has at least 2 tags.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "AmountAtLeast": [
+              "RunnerTags",
+              2
+            ]
+          },
+          "effect": {
+            "DealDamage": [
+              "Net",
+              2
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "numeric_id": 35063,
+  "is_playable": true
+}

@@ -8076,4 +8076,139 @@ mod system_gateway {
         assert!(state.corp.archives.iter().any(|a| a.card.0 == "lamplighter"));
     }
 
+
+    // ---- Elevation Stage 9: Hidden Funds, Peculiarity ----
+
+    #[test]
+    fn pt_untaian_pays_one_to_advance_an_unrezzed_card_when_hq_is_down_to_three() {
+        let registry = sg_registry();
+        let base = || {
+            let mut state = base_state();
+            state.corp.identity = Some(CardId("pt_untaian_lifes_building_blocks".to_string()));
+            state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 4];
+            state.corp.resources.credits = Credits(1);
+            state.corp.installed = vec![
+                corp_root("offworld_office", ServerId::Remote(0)),
+                corp_root("pad_campaign", ServerId::Remote(1)),
+                corp_root("nico_campaign", ServerId::Remote(2)),
+            ];
+            state.corp.installed[0].rezzed = false;
+            state.corp.installed[1].rezzed = false;
+            state
+        };
+
+        // Four cards in HQ closes the offer.
+        let mut full = base();
+        full.corp.hq = vec![CardId("hedge_fund".to_string()); 4];
+        let (full, _) = apply_action(&full, &registry, PlayerAction::EndTurn).expect("end the corp turn");
+        let full = advance_until_choice(full, &registry);
+        assert!(full.pending_paid_choice.is_none(), "four in HQ is too many");
+
+        // Three opens it.
+        let mut state = base();
+        state.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the corp turn");
+        let state = advance_until_choice(state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "three or fewer opens it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 1");
+        assert_eq!(state.corp.resources.credits, Credits(0));
+        // A rezzed asset is not "an unrezzed card you can advance", and
+        // neither is an unrezzed one with no advancement requirement.
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "nico_campaign") }).is_err(), "rezzed");
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "pad_campaign") }).is_err(), "not advanceable");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "offworld_office") }).expect("the agenda");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("advance it");
+        let agenda = state.corp.installed.iter().find(|c| c.card.0 == "offworld_office").expect("still there");
+        assert_eq!(agenda.advancement_tokens, 1);
+    }
+
+    #[test]
+    fn proprionegation_scores_with_a_counter_that_sends_the_runner_back_to_archives() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.installed = vec![corp_root("proprionegation", ServerId::Remote(0))];
+        state.corp.installed[0].rezzed = false;
+        state.corp.installed[0].advancement_tokens = 4;
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "proprionegation") }).expect("score");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 1, "a counter on scoring");
+        let ability = PlayerAction::ActivateAbility { target: state.corp.scored_agendas[0].install_id, ability_index: 0 };
+        // Outside a run there is nothing to move, so it is never offered.
+        let (state, _) = close_all_windows(state, &registry);
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&ability));
+
+        // Mid-run it moves the Runner to the outermost position of Archives.
+        let mut state = state;
+        state.phase = crate::rules::GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.corp.installed = vec![
+            ice_installed("ice_wall", ServerId::Hq, true),
+            ice_installed("enigma", ServerId::Archives, false),
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach Ice Wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes first");
+        let (state, events) = apply_action(&state, &registry, ability).expect("spend the counter");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::RunRedirected { to: ServerId::Archives, .. })));
+        let run = state.active_run.as_ref().expect("still running");
+        assert_eq!((run.server, run.position, run.ice.len()), (ServerId::Archives, 0, 1), "outermost, nothing passed");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 0);
+        // And only once: the counter is gone.
+        let again = PlayerAction::ActivateAbility { target: state.corp.scored_agendas[0].install_id, ability_index: 0 };
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&again));
+    }
+
+    #[test]
+    fn mitra_aman_trashes_itself_on_an_approach_to_pay_three_and_swap_the_ice_being_approached() {
+        let registry = sg_registry();
+        let mut state = runner_turn(5, 4);
+        state.corp.resources.credits = Credits(0);
+        state.corp.hq = vec![CardId("enigma".to_string()), CardId("hedge_fund".to_string())];
+        state.corp.installed = vec![
+            ice_installed("ice_wall", ServerId::Remote(0), false),
+            corp_root("mitra_aman", ServerId::Remote(0)),
+        ];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach the ice");
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "Mitra asks");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("trash it");
+        assert_eq!(state.corp.resources.credits, Credits(3));
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "mitra_aman"), "trashed itself");
+        // Then the zone to swap from, and the card.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("from HQ");
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") }).is_err(), "not ice");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "enigma") }).expect("pick Enigma");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("swap");
+        let ice = state.corp.installed.iter().find(|c| c.slot == InstallSlot::Ice).expect("still one piece of ice");
+        assert_eq!((ice.card.0.as_str(), ice.rezzed), ("enigma", false), "Enigma took the position, unrezzed");
+        assert!(state.corp.hq.contains(&CardId("ice_wall".to_string())), "Ice Wall went back to HQ");
+        let run = state.active_run.as_ref().expect("still running");
+        assert_eq!(run.ice[run.position].card_id.0, "enigma", "the approach follows the swap");
+    }
+
+    #[test]
+    fn doomscroll_tags_damages_and_damages_again_only_at_two_tags() {
+        let registry = sg_registry();
+        let run_into_doomscroll = |tags: u32| {
+            let mut state = runner_turn(5, 4);
+            state.runner.tags = tags;
+            state.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
+            state.corp.installed = vec![ice_installed("doomscroll", ServerId::Hq, true)];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+            pass_until_settled(state, &registry).0
+        };
+
+        // From one tag: the first subroutine makes it two, so the third fires.
+        let state = run_into_doomscroll(1);
+        assert_eq!(state.runner.tags, 2);
+        assert_eq!(state.runner.grip.len(), 3, "1 net then 2 more");
+
+        // From none: one tag is not two, and the third subroutine does nothing.
+        let state = run_into_doomscroll(0);
+        assert_eq!(state.runner.tags, 1);
+        assert_eq!(state.runner.grip.len(), 5, "1 net only");
+    }
+
 }

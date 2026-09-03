@@ -1272,6 +1272,15 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
+        Effect::MoveRunToOutermost(server) => {
+            crate::rules::run::move_run_to_outermost(state, registry, *server)
+        }
+
+        Effect::SwapApproachedIceWithCard { origin } => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            crate::rules::run::swap_approached_ice_with_card(state, registry, &card_id, origin)
+        }
+
         Effect::DealDamageAmount(damage_type, amount) => {
             let resolved = resolve_amount(amount, ctx, state, registry);
             evaluate_effect(state, &Effect::DealDamage(*damage_type, resolved as usize), ctx, registry)
@@ -2367,6 +2376,16 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::DuringRun => {
+            // Not merely `active_run.is_some()`: once the Runner is
+            // accessing, or the run has ended but not been cleared, there
+            // is nothing left to move.
+            let running = state
+                .active_run
+                .as_ref()
+                .is_some_and(|run| !matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended));
+            if running { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::DuringEncounter => {
             let encountering =
                 state.active_run.as_ref().is_some_and(|run| run.phase == RunPhase::EncounterIce);
@@ -2729,6 +2748,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // through the registry, the same way `win::check_for_winner` does,
         // rather than a running counter that a forfeit would have to
         // decrement.
+        Amount::RunnerTags => state.runner.tags,
         Amount::ThreatLevel => {
             let corp: u32 = state.corp.scored_agendas.iter().filter_map(|s| crate::rules::win::agenda_value(&s.card, registry)).sum();
             let runner: u32 = state.runner.scored_agendas.iter().filter_map(|c| crate::rules::win::agenda_value(c, registry)).sum();
@@ -2791,6 +2811,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::DuringEncounter
+        | EffectRequirement::DuringRun
         | EffectRequirement::WasFirstAdvancementThisCard
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive

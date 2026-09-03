@@ -210,6 +210,7 @@ fn instance_matches_filter(
             })
         }
         CardFilter::Rezzed => corp_install.is_some_and(|c| c.rezzed),
+        CardFilter::Unrezzed => corp_install.is_some_and(|c| !c.rezzed),
         // The top of R&D and of the stack is the *end* of the `Vec` (both
         // draw by popping), so the top `count` cards are the last `count`
         // positions — Poétrï looking at the top 3 of R&D.

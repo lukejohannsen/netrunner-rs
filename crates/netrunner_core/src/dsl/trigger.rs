@@ -200,4 +200,11 @@ pub enum Trigger {
     /// itself as it leaves the score area (`GameEvent::AgendaForfeited`).
     /// Greenmail pays 4[c] for being spent this way.
     OnForfeit,
+    /// "Whenever the Runner approaches a piece of ice protecting this
+    /// server" — fired against that server's rezzed root installs when
+    /// `GameEvent::IceApproached` is emitted, the same audience
+    /// `OnApproachServer` uses one step later. Mitra Aman swaps the ice
+    /// being approached out. Distinct from `OnEncounter`, which needs the
+    /// ice rezzed and the Runner committed to it.
+    OnIceApproached,
 }
