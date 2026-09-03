@@ -30,7 +30,8 @@
             ]
           }
         }
-      ]
+      ],
+      "requirement": "AgendaCameFromThisCardsServer"
     }
   ],
   "trash_cost": 4,

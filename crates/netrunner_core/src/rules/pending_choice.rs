@@ -8,6 +8,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{card_matches_filter, CardFilter, CardId, CardZoneRef, Cost, Effect};
 use crate::rules::ability;
+use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
@@ -220,10 +221,19 @@ fn instance_matches_filter(
         CardFilter::InAttackedServer => {
             corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.server == c.server))
         }
+        // Either zone an operation can be played from: HQ (Humanoid
+        // Resources) or Archives (Plutus). The zone the selection reads
+        // decides which, and `can_play_operation` is told, because playing
+        // from Archives removes the card from the game afterwards.
         CardFilter::PlayableOperation => {
-            matches!(zone, CardZoneRef::OwnHq)
-                && chooser == Side::Corp
-                && state.corp.hq.get(position).is_some_and(|card| crate::rules::engine::can_play_operation_from_hq(state, registry, card))
+            let from_archives = matches!(zone, CardZoneRef::OwnArchives);
+            let card = match zone {
+                CardZoneRef::OwnHq => state.corp.hq.get(position).cloned(),
+                CardZoneRef::OwnArchives => state.corp.archives.get(position).map(|a| a.card.clone()),
+                _ => None,
+            };
+            chooser == Side::Corp
+                && card.is_some_and(|card| crate::rules::engine::can_play_operation(state, registry, &card, from_archives))
         }
         CardFilter::AccessedDuringLastRun => {
             let card = zone_card_ids(state, chooser, zone, source).get(position).cloned();
@@ -646,6 +656,10 @@ pub(crate) fn resolve_confirm_card_selection(
         .unwrap_or_default();
 
     let mut events = vec![GameEvent::CardsSelected { side, cards: selected.clone(), revealed: reveal }];
+    // Cards the Corp trashes out of HQ, counted for one batch event —
+    // AU Co.'s "trash 1 or more cards from HQ" (Hansei Review is what
+    // does it in its deck).
+    let mut trashed_from_hq = 0u32;
 
     if let Some(dest) = &destination {
         for (index, card_id) in selected.iter().enumerate() {
@@ -712,12 +726,20 @@ pub(crate) fn resolve_confirm_card_selection(
                 if is_discard_pile(dest) {
                     events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone() });
                 }
+                if matches!(source, CardZoneRef::OwnHq) && side == Side::Corp && is_discard_pile(dest) {
+                    trashed_from_hq += 1;
+                }
                 events.extend(cascade);
             }
         }
         if shuffle_after {
             shuffle_zone(state, side, dest);
         }
+    }
+    if trashed_from_hq > 0 {
+        let batch = GameEvent::CardsTrashedFromHq { count: trashed_from_hq };
+        events.push(batch.clone());
+        events.extend(dispatcher::dispatch_event(state, registry, &batch)?);
     }
 
     if let Some(effect) = then {

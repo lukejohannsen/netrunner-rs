@@ -574,6 +574,13 @@ pub enum Effect {
         /// as the *selected* card and knows nothing of the server chosen.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         then: Option<Box<Effect>>,
+        /// Offer remote servers only — Peer Review's "install 1 card from
+        /// HQ **in the root of a remote server**". Agendas and assets are
+        /// remote-only anyway; this is what keeps an *upgrade* out of a
+        /// central's root, which the printed text forbids and
+        /// `engine::corp_install_destinations` otherwise allows.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        remote_only: bool,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -748,17 +755,21 @@ pub enum Effect {
     /// acting install is not a root-slot Corp card any more (it was
     /// trashed while the decision was parked), or is already there.
     MoveThisCardToRoot(ServerId),
-    /// Plays `acting_card` — an operation sitting in HQ — paying its cost
-    /// but no click: Humanoid Resources' "You may play 1 operation from
-    /// HQ", authored as the `then` of a `PromptChooseCards` over
-    /// `CardFilter::PlayableOperation`. No existing effect plays a card,
-    /// and the play action itself spends a click. Shares
-    /// `engine::play_operation_from_hq` with the click action, so the
-    /// operation's `OnPlay`, its Transaction reaction and its
-    /// `play_requirement` are honoured identically; silently no-ops if the
-    /// pick has become unplayable since it was offered, the
-    /// `InstallRunnerCardFromGrip` precedent.
-    PlayOperationFromHq,
+    /// Plays the acting card as an operation out of `from`, spending no
+    /// click — Humanoid Resources' "you may play 1 operation from HQ"
+    /// (`OwnHq`) and Plutus's "you may play 1 transaction operation from
+    /// Archives" (`OwnArchives`). Shares `engine::play_operation_card`
+    /// with the click action, so `OnPlay`, the Transaction reaction, the
+    /// `play_requirement` and the filing all resolve identically.
+    ///
+    /// The zone is declared rather than detected: an operation played from
+    /// Archives is removed from the game afterwards, and *which* cards may
+    /// be played from there differs by who is asking — Petty Cash prints
+    /// its own permission (`CardDefinition::playable_from_archives`, the
+    /// click action's rule), where Plutus grants it to any transaction.
+    PlayOperation {
+        from: CardZoneRef,
+    },
     /// Presents the acting card's own subroutines as a choice and resolves
     /// the one picked, as that card — Mycoweb's "resolve 1 subroutine on a
     /// rezzed sentry", where the enclosing `PromptChooseCards` has already
@@ -993,7 +1004,7 @@ impl Effect {
             | Effect::AddAdditionalAccessAmount { .. }
             | Effect::BoostStrengthAmount { .. }
             | Effect::MoveThisCardToRoot(..)
-            | Effect::PlayOperationFromHq
+            | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::ForfeitAgendas(..)
             | Effect::GainClicksNextTurn(..)

@@ -183,7 +183,7 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         hosted_credits_usable_for: None,
         trash_when_empty: false,
         may_install_agendas_faceup: false,
-        rez_forfeit_discount: None,
+        rez_alternatives: Vec::new(),
         installs_on_ice: false, hosted_cards_playable_from_grip: false, ice_rez_cost_modifier: 0, dividends: None, playable_from_archives: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, root_asset_trash_cost_bonus: 0,
         is_playable: false,
     })

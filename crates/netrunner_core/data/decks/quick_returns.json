@@ -1,0 +1,89 @@
+{
+  "id": "quick_returns",
+  "name": "Quick Returns",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "the_zwicky_group_invisible_hands",
+  "cards": [
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "greenmail",
+      "count": 3
+    },
+    {
+      "card": "off_the_books",
+      "count": 3
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 1
+    },
+    {
+      "card": "plutus",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "government_subsidy",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "key_performance_indicators",
+      "count": 3
+    },
+    {
+      "card": "peer_review",
+      "count": 2
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "seamless_launch",
+      "count": 1
+    },
+    {
+      "card": "malapert_data_vault",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 3
+    },
+    {
+      "card": "kessleroid",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 2
+    },
+    {
+      "card": "syailendra",
+      "count": 3
+    },
+    {
+      "card": "biawak",
+      "count": 2
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    }
+  ]
+}

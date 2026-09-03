@@ -139,6 +139,22 @@ pub enum GameEvent {
     /// Doctor's `Cost::RemoveSelfFromGame`. Distinct from `CardTrashed`
     /// so a listener can tell "in Archives" from "gone".
     CardRemovedFromGame { side: Side, card: CardId },
+    /// One or more cards left HQ for Archives in a single selection —
+    /// emitted once per batch by `pending_choice::resolve_confirm_card_selection`,
+    /// beside the per-card `CardTrashed`. AU Co.'s "trash 1 or more cards
+    /// from HQ" reads the batch, and `CardTrashed` cannot answer it: it
+    /// names no zone, and fires for every Corp card trashed anywhere.
+    CardsTrashedFromHq { count: u32 },
+    /// An agenda left the Corp's score area as a forfeit (Biawak's rez,
+    /// Plutus's). Paired with `CardRemovedFromGame`, which says where it
+    /// went; this one says *why*, which is what `Trigger::OnForfeit` keys
+    /// off.
+    AgendaForfeited { card: CardId },
+    /// Credits gained by a resolving card's ability, naming the card —
+    /// emitted with `CreditsGained` whenever the resolution has an acting
+    /// card. The Zwicky Group: Invisible Hands draws off it. Carries no
+    /// amount: no reader needs one, and `CreditsGained` has it.
+    AbilityGainedCredits { side: Side, card: CardId },
     RunEndedByEffect { server: ServerId },
     GameOver { winner: Side },
     AbilityActivated { side: Side, card_id: CardId, ability_index: usize },

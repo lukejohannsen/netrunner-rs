@@ -288,6 +288,17 @@ pub enum EffectRequirement {
     /// and Aggressive Trendsetting's "the first time the Runner trashes an
     /// installed Corp card", checked from `Trigger::OnTrashedFromAccess`
     /// while the access that trashed it is still the pending one.
+    /// The Corp's score area holds at least this many agendas — the gate
+    /// on every forfeit alternative (`dsl::card::RezAlternative`), since a
+    /// forfeit with nothing to give up is not a way to pay. A count of
+    /// agendas, not of points: what a forfeit consumes is a card.
+    ScoreAreaHasAtLeast(u32),
+    /// The agenda whose scoring or theft is being reacted to came from the
+    /// server this card sits on or protects — Lamplighter's "when an
+    /// agenda is scored or stolen from this server or its root, trash this
+    /// ice". Every rezzed install hears the event (Phật Gioan Baotixita
+    /// reacts from anywhere), so the narrowing is the card's to declare.
+    AgendaCameFromThisCardsServer,
     CurrentlyAccessingInstalledCard {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         rezzed_only: bool,

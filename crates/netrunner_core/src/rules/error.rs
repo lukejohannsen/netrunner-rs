@@ -345,4 +345,11 @@ pub enum RulesError {
 
     #[error("piece of ice {0:?} cannot be broken by spending a click (not click-breakable)")]
     IceNotClickBreakable(CardId),
+
+    /// Every way the card prints of paying for its own rez is unavailable
+    /// — Plutus with no agenda to forfeit and fewer than three cards in
+    /// HQ. Distinct from `NotEnoughCredits`: the credits are not the
+    /// problem, and no amount of them would help.
+    #[error("{card:?} cannot be rezzed: none of its additional rez costs can be paid")]
+    NoAvailableRezAlternative { card: CardId },
 }

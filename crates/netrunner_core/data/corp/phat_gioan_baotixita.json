@@ -1,0 +1,106 @@
+{
+  "id": "phat_gioan_baotixita",
+  "title": "Phật Gioan Baotixita",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 3,
+  "unique": true,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaScored",
+      "requirement": {
+        "OncePerTurn": "phat_gioan_baotixita"
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "OfferPaidChoice": {
+                "side": "Corp",
+                "cost": {
+                  "RemoveCounters": 1
+                },
+                "if_paid": {
+                  "DealDamage": [
+                    "Net",
+                    3
+                  ]
+                },
+                "if_declined": {
+                  "DealDamage": [
+                    "Net",
+                    2
+                  ]
+                }
+              }
+            },
+            "if_declined": {
+              "DealDamage": [
+                "Net",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "requirement": {
+        "OncePerTurn": "phat_gioan_baotixita"
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "OfferPaidChoice": {
+                "side": "Corp",
+                "cost": {
+                  "RemoveCounters": 1
+                },
+                "if_paid": {
+                  "DealDamage": [
+                    "Net",
+                    3
+                  ]
+                },
+                "if_declined": {
+                  "DealDamage": [
+                    "Net",
+                    2
+                  ]
+                }
+              }
+            },
+            "if_declined": {
+              "DealDamage": [
+                "Net",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35051,
+  "is_playable": true
+}

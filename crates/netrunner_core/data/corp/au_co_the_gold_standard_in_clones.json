@@ -1,0 +1,76 @@
+{
+  "id": "au_co_the_gold_standard_in_clones",
+  "title": "AU Co.: The Gold Standard in Clones",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "counter_kind": "Power",
+  "triggers": [
+    {
+      "trigger": "OnDamageDealt",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnCardsTrashedFromHq",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "requirement": {
+        "ThisCardCountersAtLeast": 2
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveCounters": 2
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnRAndD",
+                "filter": {
+                  "TopOfZone": 3
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "destination": "OwnArchives",
+                "then": {
+                  "PromptChooseCards": {
+                    "side": "Corp",
+                    "source": "OwnRAndD",
+                    "filter": {
+                      "TopOfZone": 2
+                    },
+                    "min": 2,
+                    "max": 2,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "destination": "OwnHq"
+                  }
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35046,
+  "is_playable": true
+}

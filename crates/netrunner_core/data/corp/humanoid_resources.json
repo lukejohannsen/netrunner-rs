@@ -89,7 +89,11 @@
               "max": 1,
               "reveal": false,
               "shuffle_after": false,
-              "then": "PlayOperationFromHq"
+              "then": {
+                "PlayOperation": {
+                  "from": "OwnHq"
+                }
+              }
             }
           }
         ]

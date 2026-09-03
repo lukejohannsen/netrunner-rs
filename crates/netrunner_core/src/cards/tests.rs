@@ -7696,33 +7696,55 @@ mod system_gateway {
     #[test]
     fn biawak_may_forfeit_the_cheapest_agenda_to_rez_ten_credits_cheaper() {
         let registry = sg_registry();
-        let mut state = runner_turn(5, 4);
-        state.corp.resources.credits = Credits(4);
-        state.corp.scored_agendas = vec![
-            crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string())),
-            crate::rules::ScoredAgenda::plain(CardId("aggressive_trendsetting".to_string())),
-        ];
-        state.corp.installed = vec![ice_installed("biawak", ServerId::Hq, false)];
-        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "biawak") }).expect("rez, if it can");
+        let approach_biawak = |corp_credits: u32, agendas: Vec<&str>| {
+            let mut state = runner_turn(5, 4);
+            state.corp.resources.credits = Credits(corp_credits);
+            state.corp.scored_agendas =
+                agendas.iter().map(|id| crate::rules::ScoredAgenda::plain(CardId((*id).to_string()))).collect();
+            state.corp.installed = vec![ice_installed("biawak", ServerId::Hq, false)];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+            apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach").0
+        };
+        let rez = |state: &GameState| PlayerAction::RezIce { ice: install_of(state, "biawak") };
+
+        // Rich enough to pay outright, so both ways are on the table.
+        let state = approach_biawak(14, vec!["offworld_office", "aggressive_trendsetting"]);
+        let (state, _) = apply_action(&state, &registry, rez(&state)).expect("rez, one way or the other");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "forfeit or not");
 
         // Forfeiting takes the 1-pointer, not the 2-pointer, and pays the rest.
-        let (forfeited, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("forfeit");
-        assert_eq!(forfeited.corp.resources.credits, Credits(0), "14 less the 10 the agenda paid");
+        let (forfeited, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("forfeit");
+        assert_eq!(forfeited.corp.resources.credits, Credits(10), "14 less the 4 left after the agenda paid 10");
         assert!(forfeited.corp.installed[0].rezzed);
         assert_eq!(forfeited.corp.scored_agendas.len(), 1);
         assert_eq!(forfeited.corp.scored_agendas[0].card.0, "offworld_office", "the cheaper agenda went");
         assert!(forfeited.corp.removed_from_game.contains(&CardId("aggressive_trendsetting".to_string())));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::AgendaForfeited { .. })));
 
-        // Declining leaves 14[c] unpayable, so nothing is rezzed and nothing errors.
-        let (declined, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("decline");
-        assert!(!declined.corp.installed[0].rezzed);
-        assert_eq!(declined.corp.scored_agendas.len(), 2);
+        // Or pay the whole 14 and keep both agendas.
+        let (paid, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("pay in full");
+        assert_eq!(paid.corp.resources.credits, Credits(0));
+        assert!(paid.corp.installed[0].rezzed);
+        assert_eq!(paid.corp.scored_agendas.len(), 2);
+
+        // With only 4 credits the forfeit is the one way to rez, so the Corp
+        // is not asked a question with a single answer.
+        let state = approach_biawak(4, vec!["offworld_office"]);
+        let (state, _) = apply_action(&state, &registry, rez(&state)).expect("the only way");
+        assert!(state.pending_decision.is_none());
+        assert!(state.corp.installed[0].rezzed);
+        assert!(state.corp.scored_agendas.is_empty());
+
+        // With nothing to forfeit and 4 credits, 14 is 14: the rez is
+        // refused rather than quietly doing nothing, which is what kept a
+        // random Corp from re-rezzing it forever.
+        let broke = approach_biawak(4, Vec::new());
+        let err = apply_action(&broke, &registry, rez(&broke)).expect_err("cannot pay");
+        assert!(matches!(err, RulesError::NotEnoughCredits { requested: 14, .. }), "{err:?}");
+        assert!(!crate::rules::legal_actions(&broke, &registry).contains(&rez(&broke)));
 
         // With nothing installed to trash, the first subroutine ends the run.
-        let (state, _) = pass_until_settled(forfeited, &registry);
+        let (state, _) = pass_until_settled(state, &registry);
         assert!(state.active_run.is_none(), "subroutine 1 ended the run");
     }
 
@@ -7753,6 +7775,305 @@ mod system_gateway {
         assert_eq!(paid.runner.grip.len(), 5, "no damage");
         let (hit, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("refuse");
         assert_eq!(hit.runner.grip.len(), 1, "four meat damage");
+    }
+
+
+    // ---- Elevation Stage 8: Quick Returns, Glyph of Warding ----
+
+    #[test]
+    fn au_co_counts_damage_and_hq_trashes_then_spends_two_counters_to_dig_three_deep() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".to_string()));
+        state.corp.hq = vec![CardId("hansei_review".to_string()), CardId("ice_wall".to_string())];
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 6];
+
+        // Trashing from HQ is one counter for the batch, however many go.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hansei_review".to_string()) }).expect("play");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).expect("pick one");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert_eq!(state.corp.identity_counters, 1, "one per batch out of HQ");
+
+        // Damage is another, wherever it comes from.
+        let mut damaged = runner_turn(5, 4);
+        damaged.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".to_string()));
+        damaged.runner.grip = vec![CardId("sure_gamble".to_string()); 4];
+        damaged.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
+        let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::ContinueRun).expect("approach");
+        let damaged = advance_until_choice(damaged, &registry);
+        let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take 3 net");
+        assert_eq!(damaged.corp.identity_counters, 1, "one for the damage");
+
+        // Two counters buy a look at the top 3 of R&D at the turn's start.
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".to_string()));
+        state.corp.identity_counters = 2;
+        state.corp.r_and_d = vec![
+            CardId("tithe".to_string()),
+            CardId("pad_campaign".to_string()),
+            CardId("enigma".to_string()),
+            CardId("ice_wall".to_string()),
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end the corp turn");
+        let (state, _) = pass_until_settled(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends");
+        let state = advance_until_choice(state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "AU Co. offers the dig");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend two");
+        assert_eq!(state.corp.identity_counters, 0);
+        // The mandatory draw took Ice Wall; the top 3 are now Enigma, Pad
+        // Campaign and Tithe.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "pad_campaign") }).expect("trash one");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm the trash");
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "pad_campaign" && a.facedown), "trashed unseen");
+        // …and the other two go to HQ, both of them.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "enigma") }).expect("one");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "tithe") }).expect("two");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("into HQ");
+        assert!(state.corp.r_and_d.is_empty(), "the top 3 are all gone");
+        assert!(state.corp.hq.iter().any(|c| c.0 == "enigma") && state.corp.hq.iter().any(|c| c.0 == "tithe"));
+    }
+
+    #[test]
+    fn sericulture_expansion_spends_a_dividend_at_the_end_of_the_turn_to_place_two_advancements() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.installed = vec![
+            corp_root("sericulture_expansion", ServerId::Remote(0)),
+            corp_root("offworld_office", ServerId::Remote(1)),
+        ];
+        state.corp.installed[0].rezzed = false;
+        state.corp.installed[0].advancement_tokens = 4;
+        state.corp.installed[1].rezzed = false;
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "sericulture_expansion") }).expect("score");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 1, "Dividends 1");
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let state = advance_until_choice(state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "the discard-phase offer");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend the counter");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "offworld_office") }).expect("pick it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("advance");
+        let advanced = state.corp.installed.iter().find(|c| c.card.0 == "offworld_office").expect("still there");
+        assert_eq!(advanced.advancement_tokens, 2);
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 0);
+    }
+
+    #[test]
+    fn phat_gioan_baotixita_loads_at_end_of_turn_and_spends_counters_for_net_damage_once_a_turn() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.installed = vec![
+            installed_with_counters("phat_gioan_baotixita", ServerId::Remote(0), 0),
+            corp_root("offworld_office", ServerId::Remote(1)),
+        ];
+        state.corp.installed[1].rezzed = false;
+        state.corp.installed[1].advancement_tokens = 4;
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
+
+        // Scoring with no counters is 1 net damage and nothing to spend.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") }).expect("score");
+        let state = advance_until_choice(state, &registry);
+        assert!(state.pending_paid_choice.is_some(), "asked whether to spend a counter");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("nothing to spend");
+        assert_eq!(state.runner.grip.len(), 5, "1 net damage");
+
+        // The discard phase loads one.
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.corp.installed[0].counters, 1, "a counter when the discard phase ends");
+    }
+
+    #[test]
+    fn empiricist_draws_and_buries_a_card_then_damages_and_tags() {
+        let registry = sg_registry();
+        let mut state = runner_turn(5, 4);
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 6];
+        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        state.corp.r_and_d = vec![CardId("ice_wall".to_string())];
+        state.corp.installed = vec![ice_installed("empiricist", ServerId::Hq, true)];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let state = advance_until_choice(state, &registry);
+        assert_eq!(state.corp.hq.len(), 2, "drew Ice Wall");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") }).expect("pick one");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("onto R&D");
+        assert_eq!(state.corp.r_and_d.last(), Some(&CardId("hedge_fund".to_string())), "on top of R&D");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.tags, 1, "subroutine 2");
+        assert_eq!(state.runner.grip.len(), 3, "1 net then 2 net");
+    }
+
+    #[test]
+    fn peer_review_gains_seven_and_installs_into_a_remote_only() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.hq = vec![CardId("peer_review".to_string()), CardId("malapert_data_vault".to_string())];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("peer_review".to_string()) }).expect("play");
+        assert_eq!(state.corp.resources.credits, Credits(13), "10 - 4 + 7");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "malapert_data_vault") }).expect("pick the upgrade");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        // An upgrade could normally root on a central; "in the root of a
+        // remote server" is what keeps R&D off the offer.
+        let onto_rd = PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD };
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&onto_rd));
+        assert!(apply_action(&state, &registry, onto_rd).is_err());
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("into a remote");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "malapert_data_vault" && c.server == ServerId::Remote(0)));
+    }
+
+    #[test]
+    fn the_zwicky_group_draws_once_a_turn_when_an_agenda_or_operation_pays_out() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("the_zwicky_group_invisible_hands".to_string()));
+        state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("hedge_fund".to_string())];
+        state.corp.r_and_d = vec![CardId("ice_wall".to_string()); 4];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play");
+        assert_eq!(state.corp.hq.len(), 2, "one Hedge Fund left, plus the card it drew");
+        // Once per turn: the second operation pays out but draws nothing.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play again");
+        assert_eq!(state.corp.hq.len(), 1, "no second draw");
+
+        // An asset's credits are not an agenda's or an operation's.
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("the_zwicky_group_invisible_hands".to_string()));
+        state.corp.r_and_d = vec![CardId("ice_wall".to_string()); 4];
+        state.corp.installed = vec![installed_with_counters("regolith_mining_license", ServerId::Remote(0), 15)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "regolith_mining_license"), ability_index: 0 }).expect("mine");
+        assert_eq!(state.corp.resources.credits, Credits(13));
+        assert!(state.corp.hq.is_empty(), "an asset does not trigger it");
+    }
+
+    #[test]
+    fn greenmail_pays_two_when_scored_and_four_more_when_forfeited() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.installed = vec![corp_root("greenmail", ServerId::Remote(0))];
+        state.corp.installed[0].rezzed = false;
+        state.corp.installed[0].advancement_tokens = 2;
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "greenmail") }).expect("score");
+        assert_eq!(state.corp.resources.credits, Credits(2), "2 on score");
+
+        // Forfeited through Biawak's rez: 4 more, and the agenda leaves the game.
+        let mut state = runner_turn(5, 4);
+        state.corp.resources.credits = Credits(4);
+        state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("greenmail".to_string()))];
+        state.corp.installed = vec![ice_installed("biawak", ServerId::Hq, false)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (state, events) = apply_action(&state, &registry, PlayerAction::RezIce { ice: install_of(&state, "biawak") }).expect("forfeit and rez");
+        assert!(state.corp.installed[0].rezzed);
+        assert!(state.corp.scored_agendas.is_empty());
+        assert_eq!(state.corp.resources.credits, Credits(4), "4 paid for the rez, 4 back from Greenmail");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::AgendaForfeited { .. })));
+    }
+
+    #[test]
+    fn plutus_is_rezzed_by_forfeiting_or_trashing_three_and_replays_a_transaction_from_archives() {
+        let registry = sg_registry();
+        let plutus = |state: &GameState| PlayerAction::RezIce { ice: install_of(state, "plutus") };
+        let mut base = base_state();
+        base.corp.installed = vec![corp_root("plutus", ServerId::Remote(0))];
+        base.corp.installed[0].rezzed = false;
+
+        // Neither cost is payable: the rez is refused outright, and never offered.
+        let bare = base.clone();
+        let err = apply_action(&bare, &registry, plutus(&bare)).expect_err("nothing to pay with");
+        assert!(matches!(err, RulesError::NoAvailableRezAlternative { .. }), "{err:?}");
+        assert!(!crate::rules::legal_actions(&bare, &registry).contains(&plutus(&bare)));
+
+        // Three cards in HQ is one way, and the only one here.
+        let mut hq = base.clone();
+        hq.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string()), CardId("enigma".to_string())];
+        let (hq, _) = apply_action(&hq, &registry, plutus(&hq)).expect("trash three");
+        assert!(matches!(hq.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { min: 3, max: 3, .. })));
+        let (hq, _) = apply_action(&hq, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("one");
+        let (hq, _) = apply_action(&hq, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("two");
+        let (hq, _) = apply_action(&hq, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("three");
+        let (hq, _) = apply_action(&hq, &registry, PlayerAction::ConfirmCardSelection).expect("pay");
+        assert!(hq.corp.hq.is_empty());
+        assert!(hq.corp.installed[0].rezzed, "the rez follows the payment");
+
+        // With an agenda too, the Corp picks which cost to pay.
+        let mut both = base.clone();
+        both.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
+        both.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string()))];
+        let (both, _) = apply_action(&both, &registry, plutus(&both)).expect("two ways to pay");
+        assert!(matches!(both.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })));
+        let (forfeited, _) = apply_action(&both, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("forfeit instead");
+        assert!(forfeited.corp.scored_agendas.is_empty());
+        assert_eq!(forfeited.corp.hq.len(), 3, "HQ untouched");
+        assert!(forfeited.corp.installed[0].rezzed);
+
+        // Its turn-start ability replays a transaction out of Archives and
+        // removes it from the game.
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.r_and_d = vec![CardId("ice_wall".to_string()); 3];
+        state.corp.installed = vec![corp_root("plutus", ServerId::Remote(0))];
+        state.corp.archives = vec![
+            ArchivedCard::faceup(CardId("hedge_fund".to_string())),
+            ArchivedCard::faceup(CardId("seamless_launch".to_string())),
+        ];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let (state, _) = pass_until_settled(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends");
+        let state = advance_until_choice(state, &registry);
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })), "offered a transaction");
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "seamless_launch") }).is_err(), "not a transaction");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") }).expect("pick it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("play it");
+        assert_eq!(state.corp.resources.credits, Credits(9), "5 - 5 + 9");
+        assert!(state.corp.removed_from_game.contains(&CardId("hedge_fund".to_string())), "gone after it resolves");
+        assert!(!state.corp.archives.iter().any(|a| a.card.0 == "hedge_fund"));
+    }
+
+    #[test]
+    fn lamplighter_taxes_a_tag_or_three_credits_and_burns_out_when_its_server_gives_up_an_agenda() {
+        let registry = sg_registry();
+        let mut state = runner_turn(5, 4);
+        state.corp.installed = vec![
+            ice_installed("lamplighter", ServerId::Remote(0), true),
+            corp_root("offworld_office", ServerId::Remote(0)),
+        ];
+        state.corp.installed[1].rezzed = false;
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let state = advance_until_choice(state, &registry);
+        assert!(matches!(state.pending_paid_choice.as_ref().map(|p| p.side), Some(Side::Runner)), "pay 3 or take the tag");
+
+        // Paying keeps the Runner clean, and the second subroutine then
+        // finds them untagged and lets the run continue.
+        let (paid, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 3");
+        assert_eq!(paid.runner.resources.credits, Credits(2), "5 less the 3 it cost to dodge the tag");
+        assert_eq!(paid.runner.tags, 0);
+        let (paid, _) = pass_until_settled(paid, &registry);
+        assert!(paid.active_run.is_some(), "an untagged Runner walks past subroutine 2");
+
+        // Refusing takes the tag, and then the run ends.
+        let (tagged, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("refuse");
+        assert_eq!(tagged.runner.tags, 1);
+        let (tagged, _) = pass_until_settled(tagged, &registry);
+        assert!(tagged.active_run.is_none(), "end the run if the Runner is tagged");
+
+        // Stealing an agenda from the server it protects burns it out.
+        let (state, _) = pass_until_settled(paid, &registry);
+        let state = advance_until_choice(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::StealAgenda { card_id: CardId("offworld_office".to_string()) }).expect("steal");
+        assert!(!state.corp.installed.iter().any(|c| c.card.0 == "lamplighter"), "trashed itself");
+        assert!(state.corp.archives.iter().any(|a| a.card.0 == "lamplighter"));
     }
 
 }

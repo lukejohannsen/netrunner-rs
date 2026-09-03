@@ -1,0 +1,35 @@
+{
+  "id": "greenmail",
+  "title": "Greenmail",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 2,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": "OnForfeit",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            4
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35070,
+  "is_playable": true
+}

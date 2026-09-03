@@ -1,0 +1,60 @@
+{
+  "id": "lamplighter",
+  "title": "Lamplighter",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 2,
+  "strength": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "requirement": "AgendaCameFromThisCardsServer"
+    },
+    {
+      "trigger": "OnAgendaStolen",
+      "effects": [
+        {
+          "TrashCard": "ThisCard"
+        }
+      ],
+      "requirement": "AgendaCameFromThisCardsServer"
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "Give the Runner 1 tag unless they pay 3[c].",
+      "effect": {
+        "OfferPaidChoice": {
+          "side": "Runner",
+          "cost": {
+            "Credits": 3
+          },
+          "if_paid": {
+            "Sequence": []
+          },
+          "if_declined": {
+            "GiveTags": 1
+          }
+        }
+      }
+    },
+    {
+      "text": "End the run if the Runner is tagged.",
+      "effect": {
+        "EffectIf": {
+          "condition": "IsTagged",
+          "effect": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "numeric_id": 35080,
+  "is_playable": true
+}

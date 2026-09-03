@@ -570,16 +570,45 @@ pub struct CardDefinition {
     #[serde(default)]
     pub may_install_agendas_faceup: bool,
 
-    /// The Corp may forfeit 1 agenda as it rezzes this card, paying this
-    /// many credits less — Biawak's "you can forfeit 1 agenda as you rez
-    /// this ice to pay for 10[c] of its rez cost". `engine::rez_ice` turns
-    /// it into an `Effect::OfferPaidChoice` over `Cost::ForfeitAgenda`
-    /// whose branches both rez, rather than a second rez action: the
-    /// choice is the Corp's, and a paid choice is how every other optional
-    /// payment in this engine is put to a player. `None` for every other
-    /// card.
+    /// Ways this card may be rezzed beyond simply paying for it — Biawak's
+    /// "you can forfeit 1 agenda as you rez this ice to pay for 10[c] of
+    /// its rez cost" and Plutus's "as an additional cost to rez this asset,
+    /// forfeit 1 agenda or reveal and trash 3 cards from HQ".
+    ///
+    /// `engine::rez_ice` keeps the alternatives whose `requirement` holds
+    /// **and whose resulting price the Corp can meet** (see
+    /// `engine::rez_price` for why the second half is not optional),
+    /// resolves the only one directly, and offers a `PresentChoice` when
+    /// more than one survives. An empty list is the ordinary rez; a
+    /// non-empty list with nothing available refuses the rez
+    /// (`RulesError::NoAvailableRezAlternative`), which is how Plutus's
+    /// *additional* cost differs from Biawak's *optional* discount: Biawak
+    /// lists a plain no-op alternative alongside its forfeit, and Plutus
+    /// does not.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rez_alternatives: Vec<RezAlternative>,
+}
+
+/// One way of paying to rez a card — see
+/// [`CardDefinition::rez_alternatives`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RezAlternative {
+    /// Gate on the board: Biawak's and Plutus's forfeits need an agenda in
+    /// the score area, Plutus's other half needs three cards in HQ.
+    /// Unavailable alternatives are never offered, so a player cannot pick
+    /// one that would resolve to nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub rez_forfeit_discount: Option<u32>,
+    pub requirement: Option<crate::dsl::EffectRequirement>,
+    /// Paid before the rez, as the card being rezzed. May park a decision
+    /// of its own (Plutus's "trash 3 cards from HQ" is a selection): the
+    /// rez is the tail of a `Sequence`, which resumes after each parked
+    /// step.
+    pub pay: crate::dsl::Effect,
+    /// Credits knocked off the rez cost by taking this alternative —
+    /// Biawak's 10. `0` for an additional cost that buys no discount.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub discount: u32,
 }
 
 fn is_zero(value: &u32) -> bool {
@@ -710,7 +739,7 @@ impl Default for CardDefinition {
             hosted_credits_usable_for: None,
             trash_when_empty: false,
             may_install_agendas_faceup: false,
-            rez_forfeit_discount: None,
+            rez_alternatives: Vec::new(),
             influence_limit: None,
             additional_play_cost: None,
             install_cost_discount_amount: None,
