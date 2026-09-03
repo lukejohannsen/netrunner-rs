@@ -47,7 +47,10 @@ pub(crate) fn mark_pending_decision_resume_subroutines(state: &mut GameState) {
 /// (relative to whom "Own"/"Opponent" are resolved).
 fn owning_side(chooser: Side, zone: &CardZoneRef) -> Side {
     match zone {
-        CardZoneRef::OpponentInstalled | CardZoneRef::OpponentDiscard => chooser.other(),
+        CardZoneRef::OpponentInstalled
+        | CardZoneRef::OpponentDiscard
+        | CardZoneRef::OpponentHand
+        | CardZoneRef::OpponentDeck => chooser.other(),
         _ => chooser,
     }
 }
@@ -77,6 +80,14 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
             Side::Corp => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
             Side::Runner => state.runner.heap.clone(),
         },
+        CardZoneRef::OpponentHand => match owner {
+            Side::Corp => state.corp.hq.clone(),
+            Side::Runner => state.runner.grip.clone(),
+        },
+        CardZoneRef::OpponentDeck => match owner {
+            Side::Corp => state.corp.r_and_d.clone(),
+            Side::Runner => state.runner.stack.clone(),
+        },
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => match owner {
             Side::Corp => state.corp.installed.iter().map(|c| c.card.clone()).collect(),
             Side::Runner => state.runner.rig.iter().map(|c| c.card.clone()).collect(),
@@ -88,7 +99,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
 /// or `None` for a zone that holds no installs.
 ///
 /// Exists so `ConfirmCardSelection` can hand an install-addressing `then`
-/// effect (`SwapInstalledIce`, `RezInstalledIgnoringCost`) the *install*
+/// effect (`SwapInstalledIce`, `RezInstalled`) the *install*
 /// the chooser picked, rather than re-deriving one from its `CardId` —
 /// which cannot tell two copies of a card apart.
 pub(crate) fn zone_install_ids(state: &GameState, chooser: Side, zone: &CardZoneRef) -> Option<Vec<InstallId>> {
@@ -198,6 +209,13 @@ fn instance_matches_filter(
             })
         }
         CardFilter::Rezzed => corp_install.is_some_and(|c| c.rezzed),
+        // The top of R&D and of the stack is the *end* of the `Vec` (both
+        // draw by popping), so the top `count` cards are the last `count`
+        // positions — Poétrï looking at the top 3 of R&D.
+        CardFilter::TopOfZone(count) => {
+            let len = zone_card_ids(state, chooser, zone, source).len();
+            position >= len.saturating_sub(*count as usize)
+        }
         // Root or ice, any rez state — the filter's caller says which.
         CardFilter::InAttackedServer => {
             corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.server == c.server))
@@ -257,6 +275,14 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OpponentDiscard => match owner {
             Side::Corp => None,
             Side::Runner => Some(&mut state.runner.heap),
+        },
+        CardZoneRef::OpponentHand => match owner {
+            Side::Corp => Some(&mut state.corp.hq),
+            Side::Runner => Some(&mut state.runner.grip),
+        },
+        CardZoneRef::OpponentDeck => match owner {
+            Side::Corp => Some(&mut state.corp.r_and_d),
+            Side::Runner => Some(&mut state.runner.stack),
         },
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => None,
     }
@@ -702,7 +728,7 @@ pub(crate) fn resolve_confirm_card_selection(
         // parking card's own. Without it every `then` fell back to the
         // first copy of the card.
         let acting_install = selected_installs.first().copied().or(source_install);
-        // `RezInstalledIgnoringCost`'s own embedded `CardId` is authored as
+        // `RezInstalled`'s own embedded install is authored as
         // an unused placeholder in JSON (the real target isn't known until
         // resolution) — substitute the actual selected card here, the same
         // "acting-context substitution" convention `Effect::TrashCard(
@@ -737,7 +763,9 @@ pub(crate) fn resolve_confirm_card_selection(
         // selected, two identical `CardId`s named the same install twice —
         // `SwapInstalledIce` swapped a card with itself and no-opped.
         let effect = match (*effect, selected.as_slice(), selected_installs.as_slice()) {
-            (Effect::RezInstalledIgnoringCost(_), _, [chosen, ..]) => Some(Effect::RezInstalledIgnoringCost(*chosen)),
+            (Effect::RezInstalled { pay_cost, discount, .. }, _, [chosen, ..]) => {
+                Some(Effect::RezInstalled { install: *chosen, pay_cost, discount })
+            }
             (Effect::SwapInstalledIce(_, _), _, [a, b, ..]) => Some(Effect::SwapInstalledIce(*a, *b)),
             // The parking card hosts *itself* on the install it chose —
             // GAMEDRAGON™ Pro picking an icebreaker. Both placeholders are
@@ -781,7 +809,7 @@ pub(crate) fn resolve_confirm_card_selection(
 /// authored `server` is an ignored placeholder, since the real target isn't
 /// known until resolution. Same "placeholder substituted at resolution
 /// time" convention `PromptChooseCards::then` uses for
-/// `RezInstalledIgnoringCost`. Recurses through `Sequence`/`EffectIf` so a
+/// `RezInstalled`. Recurses through `Sequence`/`EffectIf` so a
 /// composed on-success list (e.g. Jailbreak's draw-then-access) is covered.
 fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId) -> Effect {
     match effect {
@@ -830,6 +858,8 @@ pub(crate) fn resolve_choose_server(
                 .then(|| state.corp.hq.remove(pending_install.position)),
             crate::dsl::CardZoneRef::OwnArchives => (pending_install.position < state.corp.archives.len())
                 .then(|| state.corp.archives.remove(pending_install.position).card),
+            crate::dsl::CardZoneRef::OwnRAndD => (pending_install.position < state.corp.r_and_d.len())
+                .then(|| state.corp.r_and_d.remove(pending_install.position)),
             _ => None,
         }
         .ok_or(RulesError::UnresolvedCardTarget)?;

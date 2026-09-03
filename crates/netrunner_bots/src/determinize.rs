@@ -404,6 +404,9 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         recurring_credits: view.corp.recurring_credits,
         recurring_credits_max: view.corp.recurring_credits_max,
         agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, once_per_turn_used: std::collections::HashSet::new(),
+        // Not carried by `ClientView`, and a rollout re-derives it from its
+        // own play-out — the same approximation as `installed_this_turn`.
+        extra_clicks_next_turn: 0,
         removed_from_game: view.corp.removed_from_game.clone(),
         scored_agendas: view.corp.scored_agendas.clone(),
         // The engine seeds this from the decklist; the registry-wide list
@@ -590,6 +593,7 @@ mod tests {
         CoreGameState {
             corp: CS {
                 identity: None,
+                extra_clicks_next_turn: 0,
                 bad_publicity: 0,
                 first_install_used_this_turn: false,
                 recurring_credits: 0,

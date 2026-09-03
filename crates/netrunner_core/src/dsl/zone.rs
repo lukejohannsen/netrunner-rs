@@ -49,6 +49,16 @@ pub enum CardZoneRef {
     /// one-card zone falls out of each of them for free, where a "top N"
     /// field would have had to be threaded through all three.
     TopOfOwnStack,
+    /// The opposing side's hand — the Runner's grip when the chooser is
+    /// the Corp (Touch-ups' "reveal the grip. Choose up to 2 revealed
+    /// cards of that type"). The Corp side is unused: no Runner card
+    /// selects out of HQ.
+    OpponentHand,
+    /// The opposing side's deck — the Runner's stack when the chooser is
+    /// the Corp. A *destination* only, and the one Touch-ups shuffles the
+    /// cards it took back into; `PromptChooseCards::shuffle_after` does
+    /// the shuffling, as it does for R&D.
+    OpponentDeck,
 }
 
 /// Which cards within a `CardZoneRef` are eligible to be selected.
@@ -159,6 +169,21 @@ pub enum CardFilter {
     /// operation from HQ"). Instance-level: affordability is state. The
     /// effect re-checks, so the offer and the resolution cannot disagree.
     PlayableOperation,
+    /// One of the top `u32` cards of the zone being selected from —
+    /// Poétrï Luxury Brands' "look at the top 3 cards of R&D". Instance-
+    /// level, and a *filter* rather than a `CardZoneRef` of its own so it
+    /// composes with the type filter through `All` and leaves the
+    /// selection's zone (and therefore the position a `then` install
+    /// re-finds the card by) the whole of R&D. The top of R&D and of the
+    /// stack is the *end* of the `Vec` — see `zone_card_ids`.
+    TopOfZone(u32),
+    /// Ice of exactly this subtype — Mycoweb's "a rezzed **sentry**" and
+    /// "another rezzed **code gate**". `CardType(Ice(_))`'s payload is
+    /// explicitly a don't-care (see this module's `card_matches_filter`
+    /// doc), so it cannot express this, and `HasSubtype` reads
+    /// `CardSubtype`, which is the printed-tag vocabulary rather than the
+    /// ice-type one.
+    IceOfType(crate::dsl::IceType),
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -204,6 +229,9 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // The definition-level half; affordability and the play
         // requirement are instance-level.
         CardFilter::PlayableOperation => card.card_type == CardType::Operation,
+        // Purely instance-level: where the card sits in its zone.
+        CardFilter::TopOfZone(_) => true,
+        CardFilter::IceOfType(ice_type) => matches!(&card.card_type, CardType::Ice(t) if t == ice_type),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.

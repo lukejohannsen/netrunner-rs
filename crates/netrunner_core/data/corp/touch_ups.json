@@ -1,0 +1,100 @@
+{
+  "id": "touch_ups",
+  "title": "Touch-ups",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 2,
+  "additional_play_cost": {
+    "Clicks": 1
+  },
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 1,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "Sequence": [
+                {
+                  "AddAdvancementTokens": 2
+                },
+                {
+                  "PresentChoice": {
+                    "chooser": "Corp",
+                    "options": [
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OpponentHand",
+                          "filter": {
+                            "CardType": "Program"
+                          },
+                          "min": 0,
+                          "max": 2,
+                          "reveal": true,
+                          "shuffle_after": true,
+                          "destination": "OpponentDeck"
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OpponentHand",
+                          "filter": {
+                            "CardType": "Hardware"
+                          },
+                          "min": 0,
+                          "max": 2,
+                          "reveal": true,
+                          "shuffle_after": true,
+                          "destination": "OpponentDeck"
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OpponentHand",
+                          "filter": {
+                            "CardType": "Resource"
+                          },
+                          "min": 0,
+                          "max": 2,
+                          "reveal": true,
+                          "shuffle_after": true,
+                          "destination": "OpponentDeck"
+                        }
+                      },
+                      {
+                        "PromptChooseCards": {
+                          "side": "Corp",
+                          "source": "OpponentHand",
+                          "filter": {
+                            "CardType": "Event"
+                          },
+                          "min": 0,
+                          "max": 2,
+                          "reveal": true,
+                          "shuffle_after": true,
+                          "destination": "OpponentDeck"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35067,
+  "is_playable": true
+}

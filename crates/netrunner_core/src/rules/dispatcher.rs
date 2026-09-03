@@ -134,7 +134,17 @@ pub fn dispatch_event(
             // The access pinned the instance; the by-`CardId` lookup is the
             // fallback for an event that carries none.
             let install = install.or_else(|| root_install_of(state, card, *server));
-            fire_direct(state, registry, card, install, Trigger::OnAccessed, event)
+            let mut events = fire_direct(state, registry, card, install, Trigger::OnAccessed, event)?;
+            // …and the Corp's identity, which reacts to what the Runner is
+            // looking at: BANGUN's "whenever the Runner accesses a faceup
+            // installed agenda, do 2 meat damage and give the Runner 1
+            // tag". The same "also fire the owning identity" widening
+            // `AgendaScored` and `CardTrashedFromAccess` already make; the
+            // audience is the identity only until a card needs more.
+            if let Some(identity) = state.corp.identity.clone() {
+                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnAccessed, event)?);
+            }
+            Ok(events)
         }
 
         GameEvent::CardTrashedFromAccess { card, .. } => {
@@ -147,6 +157,14 @@ pub fn dispatch_event(
             // The identity and, since Cacophony, the rig too.
             let mut events = fire_direct(state, registry, card, None, Trigger::OnTrashedFromAccess, event)?;
             events.extend(fire_runner_side(state, registry, Trigger::OnTrashedFromAccess, event)?);
+            // …and the Corp's score area, where Aggressive Trendsetting
+            // watches for "the first time the Runner trashes an installed
+            // Corp card during each of their turns". Pinned to the install
+            // handle each scored copy kept, exactly as `DiscardPhaseEnded`
+            // does for Off the Books.
+            let scored: Vec<(Option<InstallId>, CardId)> =
+                state.corp.scored_agendas.iter().map(|scored| (Some(scored.install_id), scored.card.clone())).collect();
+            events.extend(fire_each(state, registry, &scored, Trigger::OnTrashedFromAccess, event)?);
             Ok(events)
         }
 

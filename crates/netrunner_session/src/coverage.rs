@@ -387,8 +387,6 @@ impl Coverage {
 pub const ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS: &[(&str, &str)] = &[
     ("SubmitCorpTraceBid", "no System Gateway card carries a Trace, so no trace is ever initiated"),
     ("SubmitRunnerTraceBid", "no System Gateway card carries a Trace, so no trace is ever initiated"),
-    ("PayAccessTrigger", "Snare! is the only interactive-on-access card and is in no sample deck"),
-    ("DeclineAccessTrigger", "Snare! is the only interactive-on-access card and is in no sample deck"),
 ];
 
 /// `PlayerAction` variants that real play on the sample decks reaches, but
@@ -412,6 +410,13 @@ pub const ACTIONS_RARE_WITH_SAMPLE_DECKS: &[(&str, &str, u64)] = &[
     // to the hundreds once T1 is deleted; re-measure then.
     ("BreakSubroutineWithClick", "needs an encounter with a rezzed Ansel 1.0 or Brân 1.0", 1024),
     ("RemoveTag", "needs a tag the Runner still has on their own turn, with 2 credits", 128),
+    // *Byte!* (Pork Chops, Elevation Stage 7) is the pool's first
+    // interactive-on-access card, so both halves of that decision left
+    // `ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS` — the view-path sweep
+    // reached the decline within its default 32 seeds. Paying is the
+    // rarer half: it needs the Corp holding 4[c] at the moment the Runner
+    // accesses a 2-of in a 49-card deck, one deck in eight.
+    ("PayAccessTrigger", "needs the Corp holding 4 credits as the Runner accesses Byte!", 512),
 ];
 
 /// Cards in the sample decks that the sweep is permitted never to see in
@@ -539,9 +544,28 @@ impl Coverage {
     /// zero at the default seed count, rerun at `NETRUNNER_SWEEP_SEEDS=256`:
     /// seen there means raise the default, not silence the gate.
     pub fn gate_failures(&self, card_universe: &[CardId]) -> Vec<String> {
+        self.gate_failures_excluding(card_universe, &[])
+    }
+
+    /// `gate_failures` for a sweep whose decks are narrower than the sample
+    /// pool: `absent_from_these_decks` names actions the cards it played
+    /// cannot produce at all, and they are neither demanded nor reported as
+    /// wrongly-listed.
+    ///
+    /// One caller, and one reason. The index-path sweep plays a fixed pair
+    /// of System Gateway fixture decks rather than the pool (its own card
+    /// universe says so), and no System Gateway card carries an
+    /// `interactive_on_access` trigger — so the pay/decline pair is
+    /// unreachable *there* while the view-path sweep, which plays the real
+    /// pool, reaches it through *Byte!*. Without this the two sweeps could
+    /// not both be right: whichever list satisfied one failed the other.
+    pub fn gate_failures_excluding(&self, card_universe: &[CardId], absent_from_these_decks: &[&str]) -> Vec<String> {
         let mut failures = Vec::new();
 
         for name in PlayerAction::VARIANT_NAMES {
+            if absent_from_these_decks.contains(name) {
+                continue;
+            }
             let unreachable = ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS.iter().any(|(n, _)| n == name);
             let too_rare_to_demand = ACTIONS_RARE_WITH_SAMPLE_DECKS
                 .iter()
@@ -551,6 +575,9 @@ impl Coverage {
             }
         }
         for (name, _) in ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS {
+            if absent_from_these_decks.contains(name) {
+                continue;
+            }
             if self.actions.get(*name).copied().unwrap_or(0) > 0 {
                 failures.push(format!(
                     "PlayerAction::{name} is listed as unreachable but was applied — remove it from \

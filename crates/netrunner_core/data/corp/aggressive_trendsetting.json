@@ -1,0 +1,45 @@
+{
+  "id": "aggressive_trendsetting",
+  "title": "Aggressive Trendsetting",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 1,
+  "triggers": [
+    {
+      "trigger": "OnTrashedFromAccess",
+      "requirement": {
+        "And": [
+          {
+            "OncePerTurn": "aggressive_trendsetting"
+          },
+          {
+            "CurrentlyAccessingInstalledCard": {}
+          }
+        ]
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": {
+              "Clicks": 1
+            },
+            "if_paid": {
+              "Sequence": []
+            },
+            "if_declined": {
+              "GainClicksNextTurn": [
+                "Corp",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35037,
+  "is_playable": true
+}

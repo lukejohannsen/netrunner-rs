@@ -1,0 +1,101 @@
+{
+  "id": "pork_chops",
+  "name": "Pork Chops",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "bangun_when_disaster_strikes",
+  "cards": [
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 3
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 3
+    },
+    {
+      "card": "anthill_excavation_contract",
+      "count": 3
+    },
+    {
+      "card": "byte",
+      "count": 2
+    },
+    {
+      "card": "clearinghouse",
+      "count": 1
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "government_subsidy",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "measured_response",
+      "count": 3
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "retribution",
+      "count": 1
+    },
+    {
+      "card": "touch_ups",
+      "count": 1
+    },
+    {
+      "card": "mahkota_langit_grid",
+      "count": 2
+    },
+    {
+      "card": "pharos",
+      "count": 2
+    },
+    {
+      "card": "semak_samun",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 1
+    },
+    {
+      "card": "syailendra",
+      "count": 3
+    },
+    {
+      "card": "biawak",
+      "count": 1
+    },
+    {
+      "card": "bumi_1_0",
+      "count": 2
+    },
+    {
+      "card": "tithe",
+      "count": 2
+    }
+  ]
+}

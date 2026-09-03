@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{HostedCreditUse, CardId, CardSubtype, CardType, Cost, CounterKind, Trigger};
+use crate::dsl::{HostedCreditUse, CardId, CardSubtype, CardType, Cost, CounterKind, Effect, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
@@ -685,7 +685,7 @@ fn rez_ice(
     if installed.rezzed {
         return Err(RulesError::AlreadyRezzed { card: installed.card.clone() });
     }
-    let (ice_id, server) = (installed.card.clone(), installed.server);
+    let ice_id = installed.card.clone();
     let card_def = registry
         .get(&ice_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
@@ -707,9 +707,97 @@ fn rez_ice(
     } else if state.paid_ability_window.is_none() {
         require_phase(state, GamePhase::Action(side))?;
     }
+    // An agenda is never flipped faceup on the table — except under
+    // BANGUN: When Disaster Strikes, whose "you may install agendas
+    // faceup" is modelled as permission to rez one (see
+    // `CardDefinition::may_install_agendas_faceup`). Nothing rejected this
+    // before, so *any* Corp could turn an installed agenda faceup for
+    // nothing: an agenda's printed `cost` is 0, and the branch above lets
+    // a non-ice card rez in the Corp's own action phase.
+    if card_def.card_type == CardType::Agenda && !corp_may_install_agendas_faceup(state, registry) {
+        return Err(RulesError::CardTypeMismatch { card: ice_id, expected: "rezzable" });
+    }
 
     let mut next = state.clone();
-    next.corp.installed.iter_mut().find(|c| c.install_id == ice).expect("resolved above").rezzed = true;
+    // Biawak's "you can forfeit 1 agenda as you rez this ice to pay for
+    // 10[c] of its rez cost": the Corp is asked, and both answers rez —
+    // one having forfeited, for the discount, one not. Parked as a choice
+    // rather than decided here because it is the Corp's, and offered only
+    // when there is an agenda to forfeit. Either branch may find the rez
+    // unaffordable, which is why `Effect::RezInstalled` is lenient.
+    if let Some(discount) = card_def.rez_forfeit_discount
+        && !next.corp.scored_agendas.is_empty()
+    {
+        let events = ability::evaluate_effect(
+            &mut next,
+            &Effect::PresentChoice {
+                chooser: side,
+                options: vec![
+                    Effect::Sequence(vec![
+                        Effect::ForfeitAgendas(1),
+                        Effect::RezInstalled { install: ice, pay_cost: true, discount },
+                    ]),
+                    Effect::RezInstalled { install: ice, pay_cost: true, discount: 0 },
+                ],
+            },
+            &mut ability::ResolutionContext::for_card(Some(&ice_id)),
+            registry,
+        )?;
+        paid_ability::note_window_action(&mut next, side);
+        return Ok((next, events));
+    }
+
+    let events = rez_install(&mut next, registry, ice, true, 0)?;
+    // Rez stays priority-independent (either side can act regardless of
+    // whose priority it currently is), but still gives the other side a
+    // fresh chance to respond if a window is open — Netrunner/Null Signal
+    // Games priority rule 4.
+    paid_ability::note_window_action(&mut next, side);
+    Ok((next, events))
+}
+
+/// Whether the Corp's identity permits rezzing an installed agenda —
+/// BANGUN's "you may install agendas faceup".
+fn corp_may_install_agendas_faceup(state: &GameState, registry: &CardRegistry) -> bool {
+    state
+        .corp
+        .identity
+        .as_ref()
+        .and_then(|id| registry.get(id))
+        .is_some_and(|def| def.may_install_agendas_faceup)
+}
+
+/// Flips an installed Corp card faceup and pays for it — the half of
+/// `rez_ice` that is not about *when* a rez is allowed, shared with
+/// `Effect::RezInstalled` (Send a Message rezzing for free, Mycoweb
+/// rezzing 2[c] cheaper, Biawak's two forfeit branches). The timing rules
+/// stay in the action handler: a card effect rezzes ice the Runner is not
+/// approaching, which is exactly what `rez_ice` must refuse.
+///
+/// `pay_cost: false` waives the cost entirely; otherwise the printed cost,
+/// plus the run's and the rig's rez-cost modifiers, less `discount`, is
+/// paid — from a region's hosted rez credits first (Mahkota Langit Grid),
+/// then the wallet, and `RulesError::NotEnoughCredits` if that is not
+/// enough. `Effect::RezInstalled` is the caller that *swallows* that error
+/// (a card offering an unaffordable rez must resolve, not fail and strand
+/// the decision that parked it); the click action reports it.
+pub(crate) fn rez_install(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    ice: InstallId,
+    pay_cost: bool,
+    discount: u32,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Corp;
+    let installed = next.corp.installed.iter().find(|c| c.install_id == ice).ok_or(RulesError::InstallNotFound(ice))?;
+    if installed.rezzed {
+        return Err(RulesError::AlreadyRezzed { card: installed.card.clone() });
+    }
+    let (ice_id, server) = (installed.card.clone(), installed.server);
+    let card_def = registry
+        .get(&ice_id)
+        .ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+
     // Tread Lightly-style "+3 credits to rez cost during this run" modifier,
     // if this ICE's server is the one being run — applied to the printed
     // cost before paying, never allowed to go negative.
@@ -726,7 +814,11 @@ fn rez_ice(
     } else {
         0
     };
-    let rez_cost = (card_def.cost as i32 + rez_cost_modifier + rig_modifier).max(0) as u32;
+    let rez_cost = if pay_cost {
+        (card_def.cost as i32 + rez_cost_modifier + rig_modifier).max(0).saturating_sub(discount as i32).max(0) as u32
+    } else {
+        0
+    };
     // Hosted credits a rezzed root upgrade lets the Corp spend on rezzing
     // in its own server (Mahkota Langit Grid's `hosted_credits_usable_for:
     // RezInThisServer`) count towards affordability and are drained first
@@ -756,12 +848,13 @@ fn rez_ice(
     if available < rez_cost {
         return Err(RulesError::NotEnoughCredits { side, available, requested: rez_cost });
     }
-    let (mut events, from_pools) = if pool_eligible {
-        ability::drain_corp_hosted_credit_pools(&mut next, registry, rez_cost, pays_here)?
+    next.corp.installed.iter_mut().find(|c| c.install_id == ice).expect("resolved above").rezzed = true;
+    let (mut events, from_pools) = if pool_eligible && rez_cost > 0 {
+        ability::drain_corp_hosted_credit_pools(next, registry, rez_cost, pays_here)?
     } else {
         (Vec::new(), 0)
     };
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(rez_cost - from_pools), Some(&ice_id))?);
+    events.extend(ability::pay_cost(next, side, &Cost::Credits(rez_cost - from_pools), Some(&ice_id))?);
 
     // The run's own view of this ICE (`RunIce::rezzed`) is not touched
     // here: `run::reconcile_ice` re-reads it from the install at the
@@ -769,16 +862,10 @@ fn rez_ice(
     // would encounter it. A hand-rolled flip used to sit here; nothing
     // reads `run.ice` between this point and that reconcile.
 
-    // Rez stays priority-independent (either side can act regardless of
-    // whose priority it currently is), but still gives the other side a
-    // fresh chance to respond if a window is open — Netrunner/Null Signal
-    // Games priority rule 4.
-    paid_ability::note_window_action(&mut next, side);
-
     let rezzed_event = GameEvent::IceRezzed { card: ice_id, server, install: ice };
     events.push(rezzed_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &rezzed_event)?);
-    Ok((next, events))
+    events.extend(dispatcher::dispatch_event(next, registry, &rezzed_event)?);
+    Ok(events)
 }
 
 fn initiate_run(
@@ -1037,6 +1124,13 @@ pub(crate) fn can_play_operation_from_hq(state: &GameState, registry: &CardRegis
     state.corp.hq.contains(card_id)
         && card_def.card_type == CardType::Operation
         && state.corp.resources.credits.0 >= card_def.cost
+        // Touch-ups' additional click, which the Corp must still have
+        // after the one this play costs — `Effect::PlayOperationFromHq`
+        // spends no click, so what is checked is simply that the cost is
+        // payable now.
+        && card_def.additional_play_cost.as_ref().is_none_or(|cost| {
+            ability::cost_is_affordable(state, Side::Corp, cost, &ability::ResolutionContext::for_card(Some(card_id)))
+        })
         && card_def.play_requirement.as_ref().is_none_or(|requirement| {
             ability::check_requirement(state, requirement, Side::Corp, &ability::ResolutionContext::for_card(Some(card_id)), registry).is_ok()
         })
@@ -1067,6 +1161,14 @@ pub(crate) fn play_operation_card(
     }
 
     let mut events = ability::pay_cost(next, side, &Cost::Credits(card_def.cost), Some(&card_id))?;
+    // A Double's extra click (or any other printed additional cost) is
+    // part of paying to play, so it lands with the credits and before
+    // `OnPlay` — the same placement `play_event` gives it. Touch-ups is
+    // the Corp's first Double; an unaffordable one fails the play, which
+    // is what makes `legal_actions`' probe drop it.
+    if let Some(additional) = &card_def.additional_play_cost {
+        events.extend(ability::pay_cost(next, side, additional, Some(&card_id))?);
+    }
     // A played Operation resolved in the open, so the Runner has seen it.
     // One played out of Archives leaves the game instead (Petty Cash's
     // "after it resolves, remove it from the game") — placed now rather

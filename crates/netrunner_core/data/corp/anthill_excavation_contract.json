@@ -1,0 +1,51 @@
+{
+  "id": "anthill_excavation_contract",
+  "title": "Anthill Excavation Contract",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 3,
+  "trash_cost": 1,
+  "counter_kind": "Credit",
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "effects": [
+        {
+          "AddCounters": 8
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": 4
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            4
+          ]
+        },
+        {
+          "DrawCards": [
+            "Corp",
+            1
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "TrashCard": "ThisCard"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35072,
+  "is_playable": true
+}

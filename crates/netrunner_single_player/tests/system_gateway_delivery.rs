@@ -181,7 +181,12 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
     let (corp_deck, runner_deck) = sg_decks();
     let mut universe: Vec<CardId> = corp_deck.cards.iter().chain(&runner_deck.cards).map(|(id, _)| id.clone()).collect();
     universe.sort_by(|a, b| a.0.cmp(&b.0));
-    let failures = coverage.gate_failures(&universe);
+    // The two fixture decks are System Gateway only, and no System Gateway
+    // card carries an `interactive_on_access` trigger, so neither half of
+    // that decision can arise here. It is not an exclusion on the *pool* —
+    // the view-path sweep reaches both through *Byte!* — so it is declared
+    // at this call rather than added to the shared allowlist.
+    let failures = coverage.gate_failures_excluding(&universe, &["PayAccessTrigger", "DeclineAccessTrigger"]);
     assert!(
         failures.is_empty(),
         "rules never reached across {} index-path games (rerun with NETRUNNER_SWEEP_SEEDS=256 before \

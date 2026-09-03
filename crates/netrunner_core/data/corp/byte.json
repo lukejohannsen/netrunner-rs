@@ -1,0 +1,31 @@
+{
+  "id": "byte",
+  "title": "Byte!",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 0,
+  "trash_cost": 0,
+  "triggers": [],
+  "interactive_on_access": {
+    "cost": {
+      "Credits": 4
+    },
+    "interaction": "CorpPaysToApply",
+    "requirement": {
+      "Not": "AccessingArchives"
+    },
+    "effects": [
+      {
+        "GiveTags": 1
+      },
+      {
+        "DealDamage": [
+          "Net",
+          3
+        ]
+      }
+    ]
+  },
+  "numeric_id": 35050,
+  "is_playable": true
+}
