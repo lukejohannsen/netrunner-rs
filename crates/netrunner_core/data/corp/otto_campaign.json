@@ -1,0 +1,54 @@
+{
+  "id": "otto_campaign",
+  "title": "Otto Campaign",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "effects": [
+        {
+          "AddCounters": 6
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RemoveCounters": 2
+        },
+        {
+          "GainCredits": [
+            "Corp",
+            2
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": {
+              "ThisCardCountersAtMost": 0
+            },
+            "effect": {
+              "Sequence": [
+                {
+                  "TrashCard": "ThisCard"
+                },
+                {
+                  "GainClicks": [
+                    "Corp",
+                    2
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "trash_cost": 2,
+  "numeric_id": 35040,
+  "is_playable": true
+}

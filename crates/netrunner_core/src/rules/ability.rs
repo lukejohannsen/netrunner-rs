@@ -762,13 +762,19 @@ pub fn evaluate_effect(
 
             // Collected/owned before any &mut state borrow below, so the
             // immutable `run`/`ice` reads above never overlap with
-            // transition_subroutine's &mut state.
+            // transition_subroutine's &mut state. A subroutine only a
+            // printed subtype may break (Semak-samun) stays pending for a
+            // breaker without it.
+            let breaker_def = registry.get(acting);
             let pending: Vec<usize> = ice
                 .subroutines
                 .iter()
-                .filter(|s| s.status == SubroutineStatus::Pending)
+                .filter(|s| s.status == SubroutineStatus::Pending && subroutine_breakable_by(s, breaker_def))
                 .map(|s| s.id)
                 .collect();
+            if pending.is_empty() {
+                return Err(RulesError::NoBreakableSubroutine { ice: ice_card_id });
+            }
 
             let take = match count {
                 SubroutineBreakCount::All => pending.len(),
@@ -788,8 +794,16 @@ pub fn evaluate_effect(
                 return Err(RulesError::NotInEncounter);
             }
             let ice = &run.ice[run.position];
-            let pending: Vec<usize> =
-                ice.subroutines.iter().filter(|s| s.status == SubroutineStatus::Pending).map(|s| s.id).collect();
+            let breaker_def = acting_card.and_then(|card| registry.get(card));
+            let pending: Vec<usize> = ice
+                .subroutines
+                .iter()
+                .filter(|s| s.status == SubroutineStatus::Pending && subroutine_breakable_by(s, breaker_def))
+                .map(|s| s.id)
+                .collect();
+            if pending.is_empty() {
+                return Err(RulesError::NoBreakableSubroutine { ice: ice.card_id.clone() });
+            }
             let take = match count {
                 SubroutineBreakCount::All => pending.len(),
                 SubroutineBreakCount::Fixed(n) => (*n as usize).min(pending.len()),
@@ -1093,7 +1107,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: *chooser }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // First match by position: two copies of one card in HQ are
             // indistinguishable and interchangeable, so "the copy the Corp
@@ -1112,7 +1126,7 @@ pub fn evaluate_effect(
             // that cannot be installed at all.
             let Some(position) = position else { return Ok(Vec::new()) };
             let Some(card_def) = registry.get(&card_id) else { return Ok(Vec::new()) };
-            let allowed = crate::rules::engine::corp_install_destinations(state, card_def, *ignore_costs);
+            let allowed = crate::rules::engine::corp_install_destinations(state, registry, card_def, *ignore_costs);
             if allowed.is_empty() {
                 return Ok(Vec::new());
             }
@@ -1127,6 +1141,8 @@ pub fn evaluate_effect(
                     origin: origin_zone.clone(),
                     position,
                     pay_cost: !ignore_costs,
+                    discount: *discount,
+                    then: then.clone(),
                 }),
                 // Deliberately NOT the chosen card: `source_card` passes
                 // through the masked view, and the pick out of HQ is
@@ -1137,6 +1153,25 @@ pub fn evaluate_effect(
                 resume: PendingChoiceResume::None,
             });
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: Side::Corp }])
+        }
+
+        Effect::MoveThisCardToRoot(server) => {
+            let Some(position) = acting_corp_position(state, ctx) else { return Ok(Vec::new()) };
+            let installed = &state.corp.installed[position];
+            if installed.slot != crate::rules::state::InstallSlot::Root || installed.server == *server {
+                return Ok(Vec::new());
+            }
+            let (card, from) = (installed.card.clone(), installed.server);
+            state.corp.installed[position].server = *server;
+            Ok(vec![GameEvent::CardMoved { card, from, to: *server }])
+        }
+
+        Effect::PlayOperationFromHq => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            if !crate::rules::engine::can_play_operation_from_hq(state, registry, &card_id) {
+                return Ok(Vec::new());
+            }
+            crate::rules::engine::play_operation_card(state, registry, card_id)
         }
 
         Effect::RezInstalledIgnoringCost(install) => {
@@ -1832,6 +1867,10 @@ pub(crate) fn cost_is_affordable(
         Cost::RemoveCounters(amount) => counters_of(state, ctx).is_some_and(|counters| counters >= *amount),
         // Any one alternative being payable is enough — the payer picks.
         Cost::AnyOf(options) => options.iter().any(|option| cost_is_affordable(state, side, option, ctx)),
+        // Every part must be payable — read against the same state, which
+        // is exact for the shapes in the pool (clicks plus a self-trash
+        // draw on different resources).
+        Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, side, part, ctx)),
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
     }
@@ -1992,6 +2031,19 @@ pub fn pay_cost_ctx(
         // the only production caller that can encounter one) — reaching
         // here means something handed `pay_cost` a raw, unresolved `AnyOf`.
         Cost::AnyOf(_) => Err(RulesError::CostRequiresChoice),
+
+        // Paid part by part, in authored order. `cost_is_affordable` has
+        // already vouched for every part where a probe precedes payment;
+        // a direct submission that can pay the first part but not a later
+        // one errors there, and `apply_action`'s clone-on-write discards
+        // the partial payment.
+        Cost::AllOf(parts) => {
+            let mut events = Vec::new();
+            for part in parts {
+                events.extend(pay_cost_ctx(state, side, part, ctx)?);
+            }
+            Ok(events)
+        }
 
         Cost::RemoveCounters(amount) => {
             let card_id = acting_card.ok_or(RulesError::MissingActingCardContext)?;
@@ -2345,6 +2397,7 @@ pub(crate) fn computed_runner_strength(card: &InstalledRunnerCard, state: &GameS
             }
             // The three Corp-ICE modifiers never apply to a rig card.
             StrengthModifier::WhileProtectingRemote(_)
+            | StrengthModifier::WhileOnlyIceProtectingServer(_)
             | StrengthModifier::WhileHostedAdvancementsAtLeast { .. }
             | StrengthModifier::PerHostedAdvancement(_) => 0,
         })
@@ -2425,6 +2478,49 @@ pub(crate) fn drain_hosted_credit_pools(
         }
     }
     Ok((events, amount - remaining))
+}
+
+/// `drain_hosted_credit_pools` for the Corp's table — Mahkota Langit
+/// Grid's rez credits, drained by `engine::rez_ice`. `usable` sees the
+/// install as well as the definition, because a Corp pool's purpose is
+/// tied to *where* the card sits (its own server). Rezzed installs only:
+/// an unrezzed upgrade's text is not active. Table order, like the rig.
+pub(crate) fn drain_corp_hosted_credit_pools(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    amount: u32,
+    usable: impl Fn(&InstalledCard, &crate::dsl::CardDefinition) -> bool,
+) -> Result<(Vec<GameEvent>, u32), RulesError> {
+    let pools: Vec<(InstallId, u32)> = state
+        .corp
+        .installed
+        .iter()
+        .filter(|card| card.rezzed && card.counters > 0)
+        .filter(|card| registry.get(&card.card).is_some_and(|def| usable(card, def)))
+        .map(|card| (card.install_id, card.counters))
+        .collect();
+    let mut events = Vec::new();
+    let mut remaining = amount;
+    for (install, credits) in pools {
+        if remaining == 0 {
+            break;
+        }
+        let spend = credits.min(remaining);
+        let card_id = state.corp.installed.iter().find(|c| c.install_id == install).map(|c| c.card.clone());
+        let ctx = ResolutionContext::for_parked(Some(install), card_id.as_ref());
+        events.extend(modify_counters(state, &ctx, -i64::from(spend))?);
+        remaining -= spend;
+    }
+    Ok((events, amount - remaining))
+}
+
+/// Whether `breaker` (its definition, if it has one — a click has none)
+/// may break `subroutine` under `SubroutineDef::only_breakable_by`.
+fn subroutine_breakable_by(subroutine: &crate::rules::run::EncounteredSubroutine, breaker: Option<&crate::dsl::CardDefinition>) -> bool {
+    match subroutine.definition.only_breakable_by {
+        None => true,
+        Some(subtype) => breaker.is_some_and(|def| def.subtypes.contains(&subtype)),
+    }
 }
 
 /// Spends `amount` of the acting rig card's hosted credits (its generic
@@ -3028,6 +3124,7 @@ mod tests {
                     definition: SubroutineDef {
                         text: format!("Subroutine {id}"),
                         effect: Effect::EndTheRun,
+                        only_breakable_by: None,
                     },
                     status: SubroutineStatus::Pending,
                 })

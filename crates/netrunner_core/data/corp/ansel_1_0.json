@@ -6,6 +6,9 @@
     "Ice": "Sentry"
   },
   "cost": 6,
+  "subtypes": [
+    "Bioroid"
+  ],
   "strength": 4,
   "click_breakable": true,
   "triggers": [],

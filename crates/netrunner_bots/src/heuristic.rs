@@ -187,7 +187,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut wall = blank_card("wall", CardType::Ice(IceType::Barrier));
         wall.strength = Some(1);
-        wall.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun }];
+        wall.subroutines = vec![SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None }];
         registry.insert(wall);
 
         let state_with_ice = |rezzed| {

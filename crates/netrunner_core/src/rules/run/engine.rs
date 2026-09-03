@@ -25,7 +25,7 @@ use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side
 /// a hand-built state cannot make the run encounter an agenda as a
 /// 0-strength barrier — which is what the `_ => IceType::Barrier` arm that
 /// stood here did.
-fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<Option<RunIce>, RulesError> {
+fn build_run_ice(state: &GameState, installed: &InstalledCard, registry: &CardRegistry) -> Result<Option<RunIce>, RulesError> {
     let card_def = registry
         .get(&installed.card)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(installed.card.clone()))?;
@@ -42,6 +42,12 @@ fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<O
     // correctly on top, since they mutate this same `current_strength` field.
     let modifier_bonus = match card_def.strength_modifier {
         Some(StrengthModifier::WhileProtectingRemote(bonus)) if matches!(installed.server, ServerId::Remote(_)) => bonus,
+        // Scatter Field: alone on its server.
+        Some(StrengthModifier::WhileOnlyIceProtectingServer(bonus))
+            if state.corp.installed.iter().filter(|c| c.server == installed.server && c.slot == InstallSlot::Ice).count() == 1 =>
+        {
+            bonus
+        }
         Some(StrengthModifier::WhileHostedAdvancementsAtLeast { threshold, bonus })
             if installed.advancement_tokens >= threshold =>
         {
@@ -185,7 +191,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .installed
         .iter()
         .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
-        .map(|installed| build_run_ice(installed, registry))
+        .map(|installed| build_run_ice(state, installed, registry))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .flatten()
@@ -317,7 +323,7 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
     for installed in state.corp.installed.iter().filter(|c| c.server == run.server && c.slot == InstallSlot::Ice) {
         match run.ice.iter().find(|ice| ice.install_id == installed.install_id) {
             Some(existing) => rebuilt.push(RunIce { rezzed: installed.rezzed, ..existing.clone() }),
-            None => rebuilt.extend(build_run_ice(installed, registry)?),
+            None => rebuilt.extend(build_run_ice(state, installed, registry)?),
         }
     }
     if rebuilt == run.ice {
@@ -486,7 +492,7 @@ fn apply_approach_redirect(
         .installed
         .iter()
         .filter(|installed| installed.server == target && installed.slot == InstallSlot::Ice)
-        .map(|installed| build_run_ice(installed, registry))
+        .map(|installed| build_run_ice(state, installed, registry))
         .collect::<Result<Vec<Option<RunIce>>, _>>()?
         .into_iter()
         .flatten()
@@ -764,6 +770,7 @@ mod tests {
                     definition: SubroutineDef {
                         text: format!("Subroutine {id}"),
                         effect: Effect::EndTheRun,
+                        only_breakable_by: None,
                     },
                     status: SubroutineStatus::Pending,
                 })

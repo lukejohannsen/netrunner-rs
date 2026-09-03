@@ -915,7 +915,7 @@ mod tests {
                 ice_type: IceType::Barrier,
                 subroutines: vec![EncounteredSubroutine {
                     id: 0,
-                    definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun },
+                    definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
                     status: SubroutineStatus::Pending,
                 }],
                 rezzed: true,

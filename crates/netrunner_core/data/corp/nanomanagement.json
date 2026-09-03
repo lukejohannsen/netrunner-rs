@@ -1,0 +1,22 @@
+{
+  "id": "nanomanagement",
+  "title": "Nanomanagement",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 4,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "GainClicks": [
+            "Corp",
+            2
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35043,
+  "is_playable": true
+}

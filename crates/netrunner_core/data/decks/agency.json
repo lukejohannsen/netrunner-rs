@@ -1,0 +1,97 @@
+{
+  "id": "agency",
+  "name": "Agency",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "leo_construction_labor_solutions",
+  "cards": [
+    {
+      "card": "luminal_transubstantiation",
+      "count": 1
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "project_ingatan",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "otto_campaign",
+      "count": 3
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 1
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "nanomanagement",
+      "count": 1
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "seamless_launch",
+      "count": 1
+    },
+    {
+      "card": "sprint",
+      "count": 1
+    },
+    {
+      "card": "mahkota_langit_grid",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 3
+    },
+    {
+      "card": "mercia_b4ll4rd",
+      "count": 3
+    },
+    {
+      "card": "bran_1_0",
+      "count": 3
+    },
+    {
+      "card": "semak_samun",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 1
+    },
+    {
+      "card": "scatter_field",
+      "count": 1
+    },
+    {
+      "card": "syailendra",
+      "count": 3
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 2
+    },
+    {
+      "card": "bumi_1_0",
+      "count": 3
+    }
+  ]
+}

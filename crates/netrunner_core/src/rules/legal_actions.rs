@@ -502,7 +502,7 @@ fn break_subroutine_with_click_candidates(state: &GameState, registry: &CardRegi
     }
     ice.subroutines
         .iter()
-        .filter(|s| s.status == SubroutineStatus::Pending)
+        .filter(|s| s.status == SubroutineStatus::Pending && s.definition.only_breakable_by.is_none())
         .map(|s| PlayerAction::BreakSubroutineWithClick { ice_id: ice.card_id.clone(), subroutine_index: s.id })
         .collect()
 }
@@ -925,7 +925,7 @@ mod tests {
                 ice_type: IceType::Barrier,
                 subroutines: vec![EncounteredSubroutine {
                     id: 0,
-                    definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun },
+                    definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
                     status: SubroutineStatus::Pending,
                 }],
                 rezzed: true,

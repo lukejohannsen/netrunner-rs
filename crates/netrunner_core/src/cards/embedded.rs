@@ -156,19 +156,12 @@ const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// file cannot land without deleting its entry (the count assertion fails
 /// the other way), and the set cannot be called complete while an entry
 /// remains. Started at 73 of 82 when Stage 1 (Flow and Ebb, Sabbatical)
-/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad); 48 after Stage 4 (Prick Thyself, Shootin' 'n' Lootin', Professional Opportunities); 40 after Stage 5 (Brick Stack, the first Corp deck).
+/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad); 48 after Stage 4 (Prick Thyself, Shootin' 'n' Lootin', Professional Opportunities); 40 after Stage 5 (Brick Stack, the first Corp deck); 31 after Stage 6 (Brutal Efficiency, Agency).
 #[cfg(test)]
 const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (35035, "LEO Construction: Labor Solutions — stage 6: Brutal Efficiency / Agency"),
     (35036, "Poetri Luxury Brands: All the Rage — stage 7: Fashion Lab / Pork Chops"),
     (35037, "Aggressive Trendsetting — stage 7: Fashion Lab / Pork Chops"),
-    (35038, "Project Ingatan — stage 6: Brutal Efficiency / Agency"),
-    (35039, "Humanoid Resources — stage 6: Brutal Efficiency / Agency"),
-    (35040, "Otto Campaign — stage 6: Brutal Efficiency / Agency"),
-    (35042, "Scatter Field — stage 6: Brutal Efficiency / Agency"),
-    (35043, "Nanomanagement — stage 6: Brutal Efficiency / Agency"),
     (35044, "Top-Down Solutions — stage 7: Fashion Lab / Pork Chops"),
-    (35045, "Mercia B4LL4RD — stage 6: Brutal Efficiency / Agency"),
     (35046, "AU Co.: The Gold Standard in Clones — stage 8: Quick Returns / Glyph of Warding"),
     (35047, "PT Untaian: Life's Building Blocks — stage 9: Hidden Funds / Peculiarity"),
     (35048, "Proprionegation — stage 9: Hidden Funds / Peculiarity"),
@@ -177,7 +170,6 @@ const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
     (35051, "Phat Gioan Baotixita — stage 8: Quick Returns / Glyph of Warding"),
     (35052, "Empiricist — stage 8: Quick Returns / Glyph of Warding"),
     (35053, "Mycoweb — stage 7: Fashion Lab / Pork Chops"),
-    (35054, "Semak-samun — stage 6: Brutal Efficiency / Agency"),
     (35055, "Peer Review — stage 8: Quick Returns / Glyph of Warding"),
     (35056, "Mitra Aman — stage 9: Hidden Funds / Peculiarity"),
     (35057, "Nebula Talent Management: Making Stars — stage 10: Fine Print / Gimbatul / Not so subtle"),
@@ -198,7 +190,6 @@ const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
     (35074, "Biawak — stage 7: Fashion Lab / Pork Chops"),
     (35078, "Measured Response — stage 7: Fashion Lab / Pork Chops"),
     (35080, "Lamplighter — stage 8: Quick Returns / Glyph of Warding"),
-    (35082, "Mahkota Langit Grid — stage 6: Brutal Efficiency / Agency"),
 ];
 
 #[cfg(test)]

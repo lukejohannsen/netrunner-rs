@@ -1,0 +1,35 @@
+{
+  "id": "mahkota_langit_grid",
+  "title": "Mahkota Langit Grid",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "subtypes": [
+    "Region"
+  ],
+  "counter_kind": "Credit",
+  "hosted_credits_usable_for": "RezInThisServer",
+  "root_asset_trash_cost_bonus": 2,
+  "persistent_after_trash": true,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "effects": [
+        {
+          "RefillCountersTo": 2
+        }
+      ]
+    },
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "RefillCountersTo": 2
+        }
+      ]
+    }
+  ],
+  "trash_cost": 2,
+  "numeric_id": 35082,
+  "is_playable": true
+}

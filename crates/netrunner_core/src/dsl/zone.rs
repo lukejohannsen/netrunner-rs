@@ -146,6 +146,19 @@ pub enum CardFilter {
     /// Indicators' "place 1 advancement counter on an installed card you
     /// can advance".
     Advanceable,
+    /// An installed Corp card in the root of, or a piece of ice
+    /// protecting, the server the current run is against — LEO
+    /// Construction: Labor Solutions' "in the root of or protecting the
+    /// attacked server". Instance-level; matches nothing outside a run,
+    /// which is what makes the identity's ability legal only during one
+    /// without a separate "during a run" requirement.
+    InAttackedServer,
+    /// An operation in HQ the Corp could play right now — its cost
+    /// affordable and its `play_requirement` met — the offer half of
+    /// `Effect::PlayOperationFromHq` (Humanoid Resources' "You may play 1
+    /// operation from HQ"). Instance-level: affordability is state. The
+    /// effect re-checks, so the offer and the resolution cannot disagree.
+    PlayableOperation,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -186,6 +199,11 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),
         CardFilter::HasSubtype(subtype) => card.subtypes.contains(subtype),
         CardFilter::Advanceable => card.advancement_requirement.is_some(),
+        // Instance-level: where the card sits is state.
+        CardFilter::InAttackedServer => true,
+        // The definition-level half; affordability and the play
+        // requirement are instance-level.
+        CardFilter::PlayableOperation => card.card_type == CardType::Operation,
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.

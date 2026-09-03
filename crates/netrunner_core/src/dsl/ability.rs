@@ -361,6 +361,17 @@ pub struct InteractiveOnAccess {
 pub struct SubroutineDef {
     pub text: String,
     pub effect: Effect,
+    /// The subroutine can only be broken by an icebreaker printed with
+    /// this subtype — Semak-samun's "The Runner cannot break the printed
+    /// subroutine on this ice except using a fracter." Consulted by every
+    /// break path (`Effect::BreakSubroutines`, `BreakSubroutinesUnconditionally`
+    /// and the bioroid click break), each of which leaves such a
+    /// subroutine pending for a breaker without the subtype. Per
+    /// subroutine rather than per card because the printed text says
+    /// "the printed subroutine": a subroutine a later effect adds to the
+    /// ice would not carry it. `None` for the common case.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub only_breakable_by: Option<crate::dsl::CardSubtype>,
 }
 
 #[cfg(test)]
@@ -429,6 +440,7 @@ mod tests {
             SubroutineDef {
                 text: "Trash a program.".to_string(),
                 effect: Effect::TrashCard(CardTarget::RunnerRig(CardId("gordian_blade".to_string()))),
+                only_breakable_by: None,
             }
         );
 

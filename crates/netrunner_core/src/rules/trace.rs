@@ -230,12 +230,13 @@ mod tests {
                         definition: crate::dsl::SubroutineDef {
                             text: "trace".to_string(),
                             effect: Effect::Trace { base: 2, on_success: Box::new(on_success) },
+                            only_breakable_by: None,
                         },
                         status: SubroutineStatus::Resolved,
                     },
                     EncounteredSubroutine {
                         id: 1,
-                        definition: crate::dsl::SubroutineDef { text: "remaining".to_string(), effect: remaining_effect },
+                        definition: crate::dsl::SubroutineDef { text: "remaining".to_string(), effect: remaining_effect, only_breakable_by: None },
                         status: SubroutineStatus::Pending,
                     },
                 ],

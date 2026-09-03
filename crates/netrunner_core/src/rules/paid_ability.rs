@@ -471,7 +471,7 @@ mod tests {
     fn pending_subroutine() -> EncounteredSubroutine {
         EncounteredSubroutine {
             id: 0,
-            definition: SubroutineDef { text: "give a tag".to_string(), effect: Effect::GiveTags(1) },
+            definition: SubroutineDef { text: "give a tag".to_string(), effect: Effect::GiveTags(1), only_breakable_by: None },
             status: SubroutineStatus::Pending,
         }
     }
@@ -534,7 +534,7 @@ mod tests {
 
         let lethal = EncounteredSubroutine {
             id: 0,
-            definition: SubroutineDef { text: "do 1 net damage".to_string(), effect: Effect::DealDamage(DamageType::Net, 1) },
+            definition: SubroutineDef { text: "do 1 net damage".to_string(), effect: Effect::DealDamage(DamageType::Net, 1), only_breakable_by: None },
             status: SubroutineStatus::Pending,
         };
         let behind_it = EncounteredSubroutine { id: 1, ..pending_subroutine() };
@@ -833,7 +833,7 @@ mod tests {
         let mut state = base_state();
         let end_the_run_subroutine = EncounteredSubroutine {
             id: 0,
-            definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun },
+            definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
             status: SubroutineStatus::Pending,
         };
         state.active_run = Some(RunState {
@@ -907,12 +907,12 @@ mod tests {
                 subroutines: vec![
                     EncounteredSubroutine {
                         id: 0,
-                        definition: SubroutineDef { text: "damage".to_string(), effect: Effect::DealDamage(DamageType::Net, 1) },
+                        definition: SubroutineDef { text: "damage".to_string(), effect: Effect::DealDamage(DamageType::Net, 1), only_breakable_by: None },
                         status: SubroutineStatus::Resolved,
                     },
                     EncounteredSubroutine {
                         id: 1,
-                        definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun },
+                        definition: SubroutineDef { text: "end the run".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
                         status: SubroutineStatus::Pending,
                     },
                 ],
