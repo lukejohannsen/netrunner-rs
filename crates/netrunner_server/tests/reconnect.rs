@@ -54,7 +54,7 @@ async fn next(socket: &mut Socket) -> ServerMessage {
 
 fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
     match message {
-        ServerMessage::MatchJoined { match_id, assigned_side, session_token } => (match_id, assigned_side, session_token),
+        ServerMessage::MatchJoined { match_id, assigned_side, session_token, .. } => (match_id, assigned_side, session_token),
         other => panic!("expected MatchJoined, got {other:?}"),
     }
 }

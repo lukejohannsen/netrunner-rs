@@ -60,14 +60,23 @@ pub enum ClientMessage {
     Surrender,
 }
 
-/// One running match as `ListMatches` reports it. Names only: the seed is
-/// never on the wire, because with the fixed decklist it reproduces the
-/// order of R&D.
+/// One running match as `ListMatches` reports it. Player names and the
+/// two published decklist ids; the seed is never on the wire, because it
+/// reproduces the order of R&D.
+///
+/// The deck ids are `#[serde(default)]` so a client built before they
+/// existed still parses a summary — and they are here at all because
+/// without them a lobby cannot say what any match is: the daemon deals a
+/// different matchup out of `decks::matchups()` for every match it seats.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MatchSummary {
     pub match_id: Uuid,
     pub corp: String,
     pub runner: String,
+    #[serde(default)]
+    pub corp_deck: String,
+    #[serde(default)]
+    pub runner_deck: String,
     pub started_secs_ago: u64,
 }
 
@@ -77,7 +86,21 @@ pub enum ServerMessage {
     /// presents to take it back after a dropped connection; it is per
     /// *seat*, not per match, so one player's token never reseats the
     /// other. Sent again, unchanged, on a successful resume.
-    MatchJoined { match_id: Uuid, assigned_side: Side, session_token: Uuid },
+    ///
+    /// `corp_deck`/`runner_deck` name the published decklists the host
+    /// dealt (`decks::DeckFile::id`), so a player can tell what they are
+    /// holding — the daemon rotates the pool rather than seating one
+    /// fixed pair. `#[serde(default)]` so an older client still parses
+    /// the message and simply shows nothing.
+    MatchJoined {
+        match_id: Uuid,
+        assigned_side: Side,
+        session_token: Uuid,
+        #[serde(default)]
+        corp_deck: String,
+        #[serde(default)]
+        runner_deck: String,
+    },
     /// The reply to `Spectate`, before the first spectator `StateUpdate`.
     /// Its own variant rather than a `MatchJoined` with no side: that
     /// message's `assigned_side` and `session_token` are pinned by every

@@ -54,11 +54,13 @@ use uuid::Uuid;
 
 use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent, Personality};
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{GameState, Side};
+use netrunner_core::decks::{self, DeckCategory};
+use netrunner_core::rules::{Deck, GameState, Side};
 use netrunner_rating::{Outcome, RatingBook, Track};
 
 use crate::match_session::{MatchSession, PlayerSlot, ReattachHandle, TurnTimeout, DEFAULT_RECONNECT_GRACE};
 use crate::protocol::{ClientMessage, MatchSummary, ServerMessage};
+use crate::fixtures::DealtMatchup;
 use crate::{fixtures, net};
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
@@ -124,6 +126,14 @@ pub struct ServeOptions {
     pub max_matches: Option<usize>,
     /// See `MatchSession::with_turn_timeout`; `None` runs without a clock.
     pub turn_timeout: TurnTimeout,
+    /// Pin the matchup instead of rotating: a published decklist id per
+    /// side (`decks::by_id`), resolved once at `bind` so a bad name is a
+    /// startup error rather than a per-connection `ConnectRejected`.
+    /// `None` on a side leaves that side rotating with the match seed, so
+    /// pinning one and rotating the other is a legal — and occasionally
+    /// useful — configuration.
+    pub corp_deck: Option<String>,
+    pub runner_deck: Option<String>,
     /// Where the daemon keeps its `netrunner_rating::RatingBook`. Loaded
     /// at bind, rewritten after every rated match (temp file plus
     /// rename, like the deck store and the card cache), and the only
@@ -141,9 +151,42 @@ impl Default for ServeOptions {
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             max_matches: None,
             turn_timeout: None,
+            corp_deck: None,
+            runner_deck: None,
             ratings_file: None,
         }
     }
+}
+
+/// A pinned decklist per side, each `None` if that side rotates.
+#[derive(Clone, Default)]
+struct PinnedDecks {
+    corp: Option<(String, Deck)>,
+    runner: Option<(String, Deck)>,
+}
+
+/// Resolves one `--corp-deck`/`--runner-deck` id against the embedded
+/// pool, refusing a deck of the wrong side. The error lists what is
+/// available, matching the convention the CLI's deck flags already set —
+/// a daemon operator naming a deck that does not exist should not have to
+/// go and read `data/decks/`.
+fn pin_deck(name: Option<&str>, side: Side) -> std::io::Result<Option<(String, Deck)>> {
+    let Some(name) = name else { return Ok(None) };
+    let available = || {
+        decks::for_side(side)
+            .into_iter()
+            .filter(|deck| deck.category == DeckCategory::Sample)
+            .map(|deck| deck.id)
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let Some(deck) = decks::by_id(name) else {
+        return Err(std::io::Error::other(format!("no deck named {name:?}; available {side:?} decks: {}", available())));
+    };
+    if deck.side != side {
+        return Err(std::io::Error::other(format!("deck {name:?} is a {:?} deck, not {side:?}", deck.side)));
+    }
+    Ok(Some((deck.id.clone(), deck.to_deck())))
 }
 
 fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, personality: Personality) -> Box<dyn BotAgent> {
@@ -155,20 +198,31 @@ fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, personality: Pers
 }
 
 /// One seat's reattach credentials, held for as long as its match runs.
+///
+/// Carries the two decklist ids so a `Resume` can send the same
+/// `MatchJoined` the seat first received — a reconnecting client must not
+/// have to remember what it was dealt, and reading them back off
+/// `MatchEntry` would mean holding two lookups under one lock for two
+/// short strings.
 #[derive(Clone)]
 struct SeatTicket {
     match_id: Uuid,
     side: Side,
+    corp_deck: String,
+    runner_deck: String,
     handle: ReattachHandle,
 }
 
 /// A running match as `MatchList` reports it. Holds the session's
 /// `ReattachHandle` so a `Spectate { match_id }` can reach the pump; the
-/// seed is deliberately *not* here — with the fixed decklist it
-/// reproduces R&D's order, so it must never leave the host.
+/// seed is deliberately *not* here — it reproduces R&D's order, so it
+/// must never leave the host. The decklist ids may: they are printed on
+/// the published page, and both players can see the identities anyway.
 struct MatchEntry {
     corp: String,
     runner: String,
+    corp_deck: String,
+    runner_deck: String,
     started_at: Instant,
     handle: ReattachHandle,
 }
@@ -260,6 +314,8 @@ impl Registry {
                     match_id: *match_id,
                     corp: entry.corp.clone(),
                     runner: entry.runner.clone(),
+                    corp_deck: entry.corp_deck.clone(),
+                    runner_deck: entry.runner_deck.clone(),
                     started_secs_ago: now.saturating_duration_since(entry.started_at).as_secs(),
                 })
                 .collect(),
@@ -276,11 +332,36 @@ struct Shared {
     registry: Arc<StdMutex<Registry>>,
     options: ServeOptions,
     base_seed: u64,
+    /// `--corp-deck`/`--runner-deck`, resolved and validated once at
+    /// `bind` rather than per match: a misspelled id is a daemon that
+    /// refuses to start, not one that refuses every client.
+    pinned: PinnedDecks,
 }
 
 impl Shared {
     fn lock(&self) -> MutexGuard<'_, Registry> {
         self.registry.lock().expect("daemon registry poisoned")
+    }
+
+    /// The decklists match `seed` is played with: whatever was pinned,
+    /// and `fixtures::sample_decks_for_seed` for each side that was not.
+    ///
+    /// Rotating is the default because the daemon is the workspace's one
+    /// remaining source of *rated* games, and a rating means less if the
+    /// games behind it all came from one pairing. `--seed` still makes the
+    /// sequence reproducible — it now fixes which matchups are dealt as
+    /// well as how each shuffles.
+    fn decks_for(&self, seed: u64) -> DealtMatchup {
+        let mut dealt = fixtures::sample_decks_for_seed(seed);
+        if let Some((id, deck)) = self.pinned.corp.clone() {
+            dealt.corp_id = id;
+            dealt.corp = deck;
+        }
+        if let Some((id, deck)) = self.pinned.runner.clone() {
+            dealt.runner_id = id;
+            dealt.runner = deck;
+        }
+        dealt
     }
 
     /// Sweeps first so `waiting_in_lobby` counts players who can actually
@@ -344,11 +425,16 @@ impl Server {
             Some(path) => load_ratings(path)?,
             None => RatingBook::default(),
         };
+        let pinned = PinnedDecks {
+            corp: pin_deck(options.corp_deck.as_deref(), Side::Corp)?,
+            runner: pin_deck(options.runner_deck.as_deref(), Side::Runner)?,
+        };
         let shared = Shared {
-            cards: fixtures::kate_vs_hb_registry(),
+            cards: fixtures::sample_registry(),
             registry: Arc::new(StdMutex::new(Registry { ratings, ..Registry::default() })),
             options,
             base_seed,
+            pinned,
         };
         Ok(Server { listener, shared })
     }
@@ -429,6 +515,8 @@ async fn handle_connection(stream: TcpStream, shared: Shared) -> Result<(), Box<
                     match_id: ticket.match_id,
                     assigned_side: ticket.side,
                     session_token,
+                    corp_deck: ticket.corp_deck.clone(),
+                    runner_deck: ticket.runner_deck.clone(),
                 });
                 if ticket.handle.reattach(ticket.side, session_tx.clone(), session_rx).is_err() {
                     // Lost the race with the match ending between the
@@ -590,8 +678,9 @@ fn enqueue_or_pair(
 /// the caller's registry lock so the cap it was admitted under still
 /// holds when the entry lands.
 fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, corp: SeatedPlayer, runner: SeatedPlayer) {
-    let (corp_deck, runner_deck) = fixtures::kate_vs_hb_decks();
-    let state = match GameState::setup(&corp_deck, &runner_deck, &shared.cards, seed) {
+    let dealt = shared.decks_for(seed);
+    let (corp_deck_id, runner_deck_id) = (dealt.corp_id, dealt.runner_id);
+    let state = match GameState::setup(&dealt.corp, &dealt.runner, &shared.cards, seed) {
         Ok((state, _events)) => state,
         Err(error) => {
             let reason = format!("match setup failed: {error:?}");
@@ -615,12 +704,35 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
         .with_reconnect_grace(shared.options.reconnect_grace)
         .with_turn_timeout(shared.options.turn_timeout);
     let handle = session.reattach_handle();
-    registry.matches.insert(match_id, MatchEntry { corp: corp_name, runner: runner_name, started_at: Instant::now(), handle: handle.clone() });
+    registry.matches.insert(
+        match_id,
+        MatchEntry {
+            corp: corp_name,
+            runner: runner_name,
+            corp_deck: corp_deck_id.clone(),
+            runner_deck: runner_deck_id.clone(),
+            started_at: Instant::now(),
+            handle: handle.clone(),
+        },
+    );
 
     let mut tokens = Vec::with_capacity(seats.len());
     for (side, session_token, tx) in seats {
-        registry.seats.insert(session_token, SeatTicket { match_id, side, handle: handle.clone() });
-        let _ = tx.send(ServerMessage::MatchJoined { match_id, assigned_side: side, session_token });
+        let ticket = SeatTicket {
+            match_id,
+            side,
+            corp_deck: corp_deck_id.clone(),
+            runner_deck: runner_deck_id.clone(),
+            handle: handle.clone(),
+        };
+        registry.seats.insert(session_token, ticket);
+        let _ = tx.send(ServerMessage::MatchJoined {
+            match_id,
+            assigned_side: side,
+            session_token,
+            corp_deck: corp_deck_id.clone(),
+            runner_deck: runner_deck_id.clone(),
+        });
         tokens.push(session_token);
     }
 

@@ -748,14 +748,14 @@ mod connection_tests {
     use netrunner_core::view::build_client_view;
 
     fn app_with_channels() -> (App, mpsc::UnboundedSender<ServerMessage>, mpsc::UnboundedReceiver<ClientMessage>) {
-        let registry = crate::decks::kate_vs_hb_registry();
+        let registry = crate::decks::sample_deck_registry();
         let (server_tx, rx) = mpsc::unbounded_channel();
         let (tx, client_rx) = mpsc::unbounded_channel();
         (App::new(registry, Side::Corp, tx, rx), server_tx, client_rx)
     }
 
     fn a_view(registry: &CardRegistry) -> ClientView {
-        let (corp_deck, runner_deck) = netrunner_server::fixtures::kate_vs_hb_decks();
+        let (corp_deck, runner_deck) = netrunner_server::fixtures::sample_decks();
         let (mut state, _) = GameState::setup(&corp_deck, &runner_deck, registry, 1).unwrap();
         state.phase = GamePhase::Action(Side::Corp);
         build_client_view(&state, registry, Side::Corp)
