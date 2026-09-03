@@ -1,0 +1,38 @@
+{
+  "id": "petty_cash",
+  "title": "Petty Cash",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 3,
+  "subtypes": [
+    "Transaction"
+  ],
+  "play_requirement": "NoActionTakenThisTurn",
+  "playable_from_archives": true,
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            5
+          ]
+        },
+        {
+          "EffectIf": {
+            "condition": "PlayedFromArchives",
+            "effect": {
+              "GainClicks": [
+                "Corp",
+                1
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35081,
+  "is_playable": true
+}

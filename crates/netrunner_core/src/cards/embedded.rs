@@ -156,7 +156,7 @@ const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// file cannot land without deleting its entry (the count assertion fails
 /// the other way), and the set cannot be called complete while an entry
 /// remains. Started at 73 of 82 when Stage 1 (Flow and Ebb, Sabbatical)
-/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad); 48 after Stage 4 (Prick Thyself, Shootin' 'n' Lootin', Professional Opportunities).
+/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad); 48 after Stage 4 (Prick Thyself, Shootin' 'n' Lootin', Professional Opportunities); 40 after Stage 5 (Brick Stack, the first Corp deck).
 #[cfg(test)]
 const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
     (35035, "LEO Construction: Labor Solutions — stage 6: Brutal Efficiency / Agency"),
@@ -165,7 +165,6 @@ const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
     (35038, "Project Ingatan — stage 6: Brutal Efficiency / Agency"),
     (35039, "Humanoid Resources — stage 6: Brutal Efficiency / Agency"),
     (35040, "Otto Campaign — stage 6: Brutal Efficiency / Agency"),
-    (35041, "Bumi 1.0 — stage 5: Brick Stack"),
     (35042, "Scatter Field — stage 6: Brutal Efficiency / Agency"),
     (35043, "Nanomanagement — stage 6: Brutal Efficiency / Agency"),
     (35044, "Top-Down Solutions — stage 7: Fashion Lab / Pork Chops"),
@@ -185,7 +184,6 @@ const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
     (35058, "Synapse Global: Faster than Thought — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35059, "Embedded Reporting — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35060, "Next Big Thing — stage 10: Fine Print / Gimbatul / Not so subtle"),
-    (35061, "Idiosyncresis — stage 5: Brick Stack"),
     (35062, "Public Access Plaza — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35063, "Doomscroll — stage 9: Hidden Funds / Peculiarity"),
     (35064, "N-Pot — stage 10: Fine Print / Gimbatul / Not so subtle"),
@@ -195,17 +193,11 @@ const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
     (35068, "BANGUN: When Disaster Strikes — stage 7: Fashion Lab / Pork Chops"),
     (35069, "The Zwicky Group: Invisible Hands — stage 8: Quick Returns / Glyph of Warding"),
     (35070, "Greenmail — stage 8: Quick Returns / Glyph of Warding"),
-    (35071, "Off the Books — stage 5: Brick Stack"),
     (35072, "Anthill Excavation Contract — stage 7: Fashion Lab / Pork Chops"),
     (35073, "Plutus — stage 8: Quick Returns / Glyph of Warding"),
     (35074, "Biawak — stage 7: Fashion Lab / Pork Chops"),
-    (35075, "Kessleroid — stage 5: Brick Stack"),
-    (35076, "Syailendra — stage 5: Brick Stack"),
-    (35077, "Key Performance Indicators — stage 5: Brick Stack"),
     (35078, "Measured Response — stage 7: Fashion Lab / Pork Chops"),
-    (35079, "Flyswatter — stage 5: Brick Stack"),
     (35080, "Lamplighter — stage 8: Quick Returns / Glyph of Warding"),
-    (35081, "Petty Cash — stage 5: Brick Stack"),
     (35082, "Mahkota Langit Grid — stage 6: Brutal Efficiency / Agency"),
 ];
 

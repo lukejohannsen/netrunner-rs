@@ -251,7 +251,13 @@ pub struct CorpState {
     /// masked, same treatment as `archives`. `win::check_win_conditions`
     /// sums each entry's registry-defined `agenda_points` to determine
     /// whether the Corp has won, rather than reading a running counter.
-    pub scored_agendas: Vec<CardId>,
+    /// A struct rather than a bare `CardId` since *Elevation*: Off the
+    /// Books keeps agenda counters (Dividends) in the score area and
+    /// reacts from there when the discard phase ends, so a scored agenda
+    /// needs the same per-instance state and stable handle an install has.
+    /// The Runner's stolen agendas stay `CardId`s — nothing acts from
+    /// there yet.
+    pub scored_agendas: Vec<ScoredAgenda>,
     /// Corp's persistent Bad Publicity counter. Public information — never
     /// masked, same treatment as `scored_agendas`. Seeds the Runner's
     /// temporary per-run credit pool (`run::RunState::bad_publicity_credits`)
@@ -317,9 +323,68 @@ pub struct CorpState {
     /// only, since nothing in this card pool ever reads a card back out.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// Ids of the cards in this deck that can be *played from Archives*
+    /// (`CardDefinition::playable_from_archives` — Petty Cash's "[click]:
+    /// Play this operation from Archives"). Seeded once by
+    /// `GameState::setup` from the registry and never mutated: it is the
+    /// same "duplicate the registry flag onto state because the action
+    /// mask has no registry" pattern as `InstalledRunnerCard::
+    /// hosted_cards_playable`, but there is no single seam where a card
+    /// enters Archives (forty-odd sites push an `ArchivedCard`), so the
+    /// deck-wide list is seeded at setup instead of per entry.
+    #[serde(default)]
+    pub playable_from_archives: Vec<CardId>,
+}
+
+/// One agenda in the Corp's score area — see `CorpState::scored_agendas`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ScoredAgenda {
+    pub card: CardId,
+    /// The handle the agenda had while installed, carried into the score
+    /// area so a trigger pinned to it (`DeferredTrigger::install`) and a
+    /// counter cost (`Cost::RemoveCounters`) keep resolving against this
+    /// copy after scoring — two scored Off the Books must each spend their
+    /// own counters.
+    #[serde(default)]
+    pub install_id: InstallId,
+    /// Agenda counters hosted here — placed by Dividends at scoring
+    /// (`CardDefinition::dividends`) and spent by the agenda's own
+    /// abilities. Public, like everything else in the score area.
+    #[serde(default)]
+    pub agenda_counters: u32,
+}
+
+impl ScoredAgenda {
+    /// A scored agenda with no counters and no install handle — the shape
+    /// tests and fixtures want when only the card's identity matters.
+    pub fn plain(card: CardId) -> Self {
+        ScoredAgenda { card, install_id: InstallId::PLACEHOLDER, agenda_counters: 0 }
+    }
 }
 
 impl CorpState {
+    /// The cards the Corp may *play* right now: HQ, then every card in
+    /// Archives whose definition allows playing it from there (Petty
+    /// Cash). The single list `legal_actions`, `engine::take_from_grip`
+    /// and the action mask all read, so the three cannot disagree —
+    /// the Corp twin of `RunnerState::playable_hand`. Hand-size discards
+    /// still read HQ alone; only *playing* reaches into Archives.
+    pub fn playable_hand(&self) -> Vec<CardId> {
+        let mut hand = self.hq.clone();
+        hand.extend(
+            self.archives
+                .iter()
+                .filter(|archived| self.playable_from_archives.contains(&archived.card))
+                .map(|archived| archived.card.clone()),
+        );
+        hand
+    }
+
+    /// Whether any agenda in the score area was scored under `install`.
+    pub fn find_scored(&self, install: InstallId) -> Option<&ScoredAgenda> {
+        self.scored_agendas.iter().find(|scored| scored.install_id == install)
+    }
+
     /// Whether `card_id` is in Archives at all, regardless of orientation.
     pub fn archives_contains(&self, card_id: &CardId) -> bool {
         self.archives.iter().any(|a| &a.card == card_id)
@@ -1102,6 +1167,14 @@ pub struct DeferredTrigger {
     /// event.
     #[serde(default)]
     pub event: Option<GameEvent>,
+    /// `Some`: this entry is not a trigger to look up but an effect to
+    /// resolve as `card`/`install` — the rest of an `Effect::Sequence`
+    /// whose earlier effect parked a decision (Key Performance Indicators'
+    /// second pick after a first that prompted). Queued here rather than
+    /// on a queue of its own so it drains in order with the triggers
+    /// parked around it. `trigger` is not read when this is set.
+    #[serde(default)]
+    pub continuation: Option<crate::dsl::Effect>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1160,6 +1233,17 @@ pub struct GameState {
     ///   already cleared when `OnRunEnded` dispatches.
     #[serde(default)]
     pub last_completed_run: Option<CompletedRun>,
+    /// Actions the active side has *finished* this turn — every basic
+    /// click action and run, not scoring (which is not an action) and not
+    /// a click spent as a paid-ability cost. Reset when a turn begins.
+    /// Backs `EffectRequirement::NoActionTakenThisTurn` (Petty Cash's
+    /// "play only if you have not finished an action yet this turn").
+    /// On `GameState` rather than derived from clicks: Petty Cash itself
+    /// refunds the click it cost when played from Archives, so "clicks
+    /// still at the turn's starting value" would wrongly let a second copy
+    /// follow the first.
+    #[serde(default)]
+    pub actions_taken_this_turn: u32,
     /// Triggers owed but not yet fired, because an earlier trigger in the
     /// same dispatch parked something blocking. Drained by
     /// `dispatcher::drain_deferred_triggers` from `engine::apply_action`,
@@ -1250,6 +1334,7 @@ impl Default for GameState {
             pending_paid_choice: None,
             pending_decision: None,
             last_completed_run: None,
+            actions_taken_this_turn: 0,
             deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,

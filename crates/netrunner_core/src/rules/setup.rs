@@ -55,6 +55,14 @@ impl GameState {
 
         state.corp.identity = Some(corp_deck.identity.clone());
         state.runner.identity = Some(runner_deck.identity.clone());
+        // See `CorpState::playable_from_archives` for why this is seeded
+        // here rather than as each card enters Archives.
+        state.corp.playable_from_archives = corp_deck
+            .cards
+            .iter()
+            .map(|(card, _)| card.clone())
+            .filter(|card| registry.get(card).is_some_and(|def| def.playable_from_archives))
+            .collect();
 
         state.corp.resources.credits = Credits(STARTING_CREDITS);
         state.runner.resources.credits = Credits(STARTING_CREDITS);

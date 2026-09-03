@@ -127,6 +127,14 @@ fn acting_corp_install_mut<'s>(state: &'s mut GameState, ctx: &ResolutionContext
     acting_corp_position(state, ctx).map(|position| &mut state.corp.installed[position])
 }
 
+/// The scored agenda `ctx` is acting as — by `acting_install` only, since
+/// a score area can hold two copies of one agenda and only the install
+/// handle tells them apart (Off the Books spending its own counters).
+fn acting_scored_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
+    let install = ctx.acting_install?;
+    state.corp.scored_agendas.iter().position(|scored| scored.install_id == install)
+}
+
 fn acting_corp_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
     match ctx.acting_install {
         Some(install) => state.corp.installed.iter().position(|c| c.install_id == install),
@@ -833,19 +841,34 @@ pub fn evaluate_effect(
 
         Effect::Sequence(effects) => {
             let mut events = Vec::new();
-            for inner in effects {
+            for (index, inner) in effects.iter().enumerate() {
                 events.extend(evaluate_effect(state, inner, ctx, registry)?);
-                // Stop if that effect parked something spanning future
-                // `PlayerAction`s — see `Effect::Sequence`'s doc comment.
-                //
-                // Unlike the trigger dispatch loops, a `Sequence` has no
-                // continuation: the remaining effects are simply never
-                // reached. That limitation is documented on `Effect::
-                // Sequence` itself and is unchanged by the deferred-trigger
-                // queue, which is trigger-level only. Also stops at
-                // `GameOver`: Clearinghouse's `[DealDamage, TrashCard(ThisCard)]`
-                // used to run its trash against a finished game.
-                if state.resolution_halted() {
+                // Stops at `GameOver`: Clearinghouse's `[DealDamage,
+                // TrashCard(ThisCard)]` used to run its trash against a
+                // finished game.
+                if state.is_over() {
+                    break;
+                }
+                // That effect parked something spanning future
+                // `PlayerAction`s: the rest of the sequence is queued as a
+                // continuation on the deferred-trigger queue, pinned to the
+                // acting card, and drains once the decision resolves — see
+                // `Effect::Sequence`'s doc comment. Only a resolution with an
+                // acting card can be pinned; a bare effect evaluation stops
+                // here as it always did.
+                if state.is_resolution_blocked() {
+                    let rest = &effects[index + 1..];
+                    if let (Some(card), false) = (ctx.acting_card, rest.is_empty()) {
+                        state.deferred_triggers.push(crate::rules::state::DeferredTrigger {
+                            card: card.clone(),
+                            trigger: Trigger::OnPlay,
+                            target: None,
+                            install: ctx.acting_install,
+                            target_install: None,
+                            event: ctx.triggering_event.cloned(),
+                            continuation: Some(Effect::Sequence(rest.to_vec())),
+                        });
+                    }
                     break;
                 }
             }
@@ -868,6 +891,34 @@ pub fn evaluate_effect(
             state.resources_mut(*side).credits = Credits(before - lost);
             ctx.credits_lost = lost;
             Ok(vec![GameEvent::CreditsLost { side: *side, amount: lost }])
+        }
+
+        Effect::LoseCreditsAmount(side, amount) => {
+            let amount = resolve_amount(amount, ctx, state, registry);
+            evaluate_effect(state, &Effect::LoseCredits(*side, amount), ctx, registry)
+        }
+
+        Effect::PurgeVirusCounters => Ok(vec![crate::rules::engine::purge_all_virus_counters(state, registry)]),
+
+        // Rewritten into the `PresentChoice` it is shorthand for: each option
+        // followed by the same offer over the rest, one fewer to resolve.
+        Effect::ResolveSomeOf { chooser, count, options } => {
+            if *count == 0 || options.is_empty() {
+                return Ok(Vec::new());
+            }
+            let expanded: Vec<Effect> = options
+                .iter()
+                .enumerate()
+                .map(|(index, option)| {
+                    let remaining: Vec<Effect> =
+                        options.iter().enumerate().filter(|(other, _)| *other != index).map(|(_, e)| e.clone()).collect();
+                    Effect::Sequence(vec![
+                        option.clone(),
+                        Effect::ResolveSomeOf { chooser: *chooser, count: count - 1, options: remaining },
+                    ])
+                })
+                .collect();
+            evaluate_effect(state, &Effect::PresentChoice { chooser: *chooser, options: expanded }, ctx, registry)
         }
 
         Effect::LoseClicks(amount) => {
@@ -937,10 +988,14 @@ pub fn evaluate_effect(
 
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
             let available = crate::rules::pending_choice::eligible_positions(state, registry, *side, source, filter, ctx.acting_install);
-            if available.len() < *min as usize {
+            if available.is_empty() || available.len() < *min as usize {
                 // Nothing to do — same "silently no-op" leniency
                 // `DrawCards`/`TrashCard`'s "already gone" case establish.
                 // e.g. Hansei Review's "if there are any cards in HQ".
+                // Nothing eligible at all is the same case even for a
+                // `min: 0` offer (Bumi 1.0 with no trojan in the rig):
+                // parking a choice whose only resolution is an empty
+                // confirmation costs the player a decision for nothing.
                 return Ok(Vec::new());
             }
             state.pending_decision = Some(PendingDecision::ChooseCards {
@@ -1038,7 +1093,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: *chooser }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // First match by position: two copies of one card in HQ are
             // indistinguishable and interchangeable, so "the copy the Corp
@@ -1057,7 +1112,7 @@ pub fn evaluate_effect(
             // that cannot be installed at all.
             let Some(position) = position else { return Ok(Vec::new()) };
             let Some(card_def) = registry.get(&card_id) else { return Ok(Vec::new()) };
-            let allowed = crate::rules::engine::corp_install_destinations(state, card_def);
+            let allowed = crate::rules::engine::corp_install_destinations(state, card_def, *ignore_costs);
             if allowed.is_empty() {
                 return Ok(Vec::new());
             }
@@ -1071,7 +1126,7 @@ pub fn evaluate_effect(
                 install: Some(crate::rules::state::PendingInstallFromZone {
                     origin: origin_zone.clone(),
                     position,
-                    pay_cost: true,
+                    pay_cost: !ignore_costs,
                 }),
                 // Deliberately NOT the chosen card: `source_card` passes
                 // through the masked view, and the pick out of HQ is
@@ -1261,6 +1316,7 @@ pub fn process_card_triggers(
         install: None,
         target_install: None,
         event: triggering_event.cloned(),
+        continuation: None,
     };
     fire_card_triggers(state, registry, &due, false)
 }
@@ -1487,6 +1543,8 @@ fn modify_counters(
         &mut state.corp.installed[position].counters
     } else if let Some(position) = acting_rig_position(state, ctx) {
         &mut state.runner.rig[position].counters
+    } else if let Some(position) = acting_scored_position(state, ctx) {
+        &mut state.corp.scored_agendas[position].agenda_counters
     } else {
         return Err(RulesError::CardNotEligibleForCounters(card_id));
     };
@@ -2185,6 +2243,19 @@ pub fn check_requirement(
                 .is_some_and(|def| crate::dsl::card_matches_filter(def, filter));
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::AmountAtLeast(amount, min) => {
+            if resolve_amount(amount, ctx, state, registry) >= *min { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::NoActionTakenThisTurn => {
+            if state.actions_taken_this_turn == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::PlayedFromArchives => {
+            if matches!(ctx.triggering_event, Some(GameEvent::OperationPlayed { from_archives: true, .. })) {
+                Ok(())
+            } else {
+                Err(RulesError::RequirementNotMet)
+            }
+        }
     }
 }
 
@@ -2212,7 +2283,10 @@ fn triggering_card(event: &GameEvent) -> Option<&CardId> {
 /// resolvable), mirroring `modify_counters`'s "try Corp installed, then
 /// Runner rig" search order but read-only.
 fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
-    acting_corp_install(state, ctx).map(|c| c.counters).or_else(|| acting_rig_card(state, ctx).map(|c| c.counters))
+    acting_corp_install(state, ctx)
+        .map(|c| c.counters)
+        .or_else(|| acting_rig_card(state, ctx).map(|c| c.counters))
+        .or_else(|| acting_scored_position(state, ctx).map(|position| state.corp.scored_agendas[position].agenda_counters))
 }
 
 /// `acting_card`'s current advancement token total, if it's a Corp
@@ -2445,7 +2519,10 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive
         | EffectRequirement::InstalledWithoutSpendingCredits
-        | EffectRequirement::TriggeringCardMatches(_) => {}
+        | EffectRequirement::TriggeringCardMatches(_)
+        | EffectRequirement::AmountAtLeast(..)
+        | EffectRequirement::NoActionTakenThisTurn
+        | EffectRequirement::PlayedFromArchives => {}
     }
 }
 

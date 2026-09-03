@@ -1,0 +1,85 @@
+{
+  "id": "brick_stack",
+  "name": "Brick Stack",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "weyland_consortium_built_to_last",
+  "cards": [
+    {
+      "card": "above_the_law",
+      "count": 1
+    },
+    {
+      "card": "off_the_books",
+      "count": 2
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "idiosyncresis",
+      "count": 2
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "government_subsidy",
+      "count": 2
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "key_performance_indicators",
+      "count": 3
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "sprint",
+      "count": 1
+    },
+    {
+      "card": "anoetic_void",
+      "count": 1
+    },
+    {
+      "card": "kessleroid",
+      "count": 3
+    },
+    {
+      "card": "pharos",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 2
+    },
+    {
+      "card": "syailendra",
+      "count": 3
+    },
+    {
+      "card": "ballista",
+      "count": 2
+    },
+    {
+      "card": "bumi_1_0",
+      "count": 3
+    }
+  ]
+}

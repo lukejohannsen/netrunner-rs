@@ -1,0 +1,77 @@
+{
+  "id": "syailendra",
+  "title": "Syailendra",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 5,
+  "advancement_requirement": 0,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "requirement": {
+        "AmountAtLeast": [
+          "HostedAdvancementTokens",
+          3
+        ]
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnInstalled",
+            "filter": "Advanceable",
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "AddAdvancementTokens": 1
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "You may place 1 advancement counter on an installed card you can advance.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnInstalled",
+          "filter": "Advanceable",
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "AddAdvancementTokens": 1
+          }
+        }
+      }
+    },
+    {
+      "text": "The Runner loses 2 credits.",
+      "effect": {
+        "LoseCredits": [
+          "Runner",
+          2
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          1
+        ]
+      }
+    }
+  ],
+  "numeric_id": 35076,
+  "is_playable": true
+}

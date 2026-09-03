@@ -21,7 +21,7 @@ use crate::cards::CardRegistry;
 use crate::dsl::CardId;
 use crate::rules::{
     legal_actions_for, mask_state_for_player, GamePhase, GameState, InstallSlot, MaskedZone, PaidAbilityWindow,
-    PendingPrevention, PlayerAction, PublicArchivedCard, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunState, ServerId, Side,
+    PendingPrevention, PlayerAction, PublicArchivedCard, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunState, ScoredAgenda, ServerId, Side,
     TraceState, Viewer,
 };
 
@@ -56,7 +56,10 @@ pub struct CorpClientView {
     /// `masking::PublicArchivedCard`.
     pub archives: Vec<PublicArchivedCard>,
     pub servers: Vec<ServerView>,
-    pub scored_agendas: Vec<CardId>,
+    pub scored_agendas: Vec<ScoredAgenda>,
+    /// Public — see `PublicCorpState::removed_from_game`.
+    #[serde(default)]
+    pub removed_from_game: Vec<CardId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -105,6 +108,12 @@ pub struct ClientView {
     /// `GameState::turn` verbatim — public information, and counted per
     /// side's turn rather than per round (see that field's doc comment).
     pub turn: u32,
+    /// `GameState::actions_taken_this_turn` verbatim — public, like
+    /// `turn`: both players watched every action. Carried so a
+    /// determinized search state agrees with the real one about Petty
+    /// Cash's play condition.
+    #[serde(default)]
+    pub actions_taken_this_turn: u32,
     /// `GameState::rules` verbatim — a client has to be able to say how
     /// many agenda points win this match.
     #[serde(default)]
@@ -190,6 +199,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         archives: public.corp.archives,
         servers: group_by_server(&public.corp.installed),
         scored_agendas: public.corp.scored_agendas,
+        removed_from_game: public.corp.removed_from_game,
     };
 
     let runner = RunnerClientView {
@@ -215,6 +225,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         viewer,
         active_player: active_player(state.phase),
         turn: state.turn,
+        actions_taken_this_turn: state.actions_taken_this_turn,
         rules: state.rules,
         phase: public.phase,
         corp,

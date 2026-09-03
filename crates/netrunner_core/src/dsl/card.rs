@@ -77,6 +77,12 @@ pub enum CardSubtype {
     /// "an icebreaker or a run event"). Authored on every run event, the
     /// way `Fracter` is on every fracter.
     Run,
+    /// A Trojan program — one that installs hosted on a piece of ice
+    /// (`CardDefinition::installs_on_ice` is the mechanic; this is the
+    /// printed tag). Bumi 1.0's "trash 1 installed trojan program" reads it
+    /// through `CardFilter::HasSubtype`. Authored on every trojan (Botulus,
+    /// Chromatophores, Tranquilizer).
+    Trojan,
     /// A singleton restriction, not a trigger-dispatch tag like the other
     /// two variants: `engine::install_hardware` rejects installing a second
     /// `Console`-subtyped Hardware while one is already in the Runner's rig
@@ -340,6 +346,25 @@ pub struct CardDefinition {
     /// same modifier with a run's lifetime instead of an install's.
     #[serde(default, skip_serializing_if = "is_zero_i32")]
     pub ice_rez_cost_modifier: i32,
+    /// Dividends N — "when you score this agenda, place N agenda counters
+    /// on it for each excess advancement counter" (Off the Books). Read
+    /// once, by `engine::score_agenda`, which puts the counters on the
+    /// `ScoredAgenda` it creates. A card field rather than an
+    /// `OnAgendaScored` effect because the excess is known only at the
+    /// moment of scoring, before the installed copy (and its tokens) is
+    /// gone.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dividends: Option<u32>,
+    /// This operation may be played from Archives, and is removed from the
+    /// game after it resolves when it was — Petty Cash's "[click]: Play
+    /// this operation from Archives. After it resolves, remove it from the
+    /// game." Playing from Archives is the ordinary `PlayOperation` action
+    /// over `CorpState::playable_hand`, so it costs the click any play
+    /// costs; the card's own text refunds it. Not a paid ability: an
+    /// ability needs an install to target, and a card in Archives has
+    /// none.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub playable_from_archives: bool,
 
     /// ICE subtypes this Trojan grants its host while hosted — Chromatophores'
     /// "Host ice gains barrier, code gate, and sentry." Read where a
@@ -606,6 +631,8 @@ impl Default for CardDefinition {
             installs_on_ice: false,
             hosted_cards_playable_from_grip: false,
             ice_rez_cost_modifier: 0,
+            dividends: None,
+            playable_from_archives: false,
             host_ice_gains_subtypes: Vec::new(),
             hosted_breaker_bonus: None,
             hosted_credits_usable_for: None,

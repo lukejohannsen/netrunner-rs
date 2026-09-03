@@ -182,7 +182,7 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         hosted_breaker_bonus: None,
         hosted_credits_usable_for: None,
         trash_when_empty: false,
-        installs_on_ice: false, hosted_cards_playable_from_grip: false, ice_rez_cost_modifier: 0, click_breakable: false, strength_modifier: None, persistent_after_trash: false,
+        installs_on_ice: false, hosted_cards_playable_from_grip: false, ice_rez_cost_modifier: 0, dividends: None, playable_from_archives: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false,
         is_playable: false,
     })
 }

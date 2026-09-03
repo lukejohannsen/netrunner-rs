@@ -315,7 +315,7 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .chain(&corp.r_and_d)
             .chain(corp.archives.iter().map(|a| &a.card))
             .chain(corp.installed.iter().map(|c| &c.card))
-            .chain(&corp.scored_agendas)
+            .chain(corp.scored_agendas.iter().map(|s| &s.card))
             .chain(&state.runner.scored_agendas)
             .chain(&corp.removed_from_game)
             .chain(hosted_corp),
@@ -448,7 +448,8 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
         }
     }
     visible.extend(view.corp.archives.iter().filter_map(|a| a.card.as_ref()).map(|c| c.0.as_str()));
-    visible.extend(view.corp.scored_agendas.iter().map(|c| c.0.as_str()));
+    visible.extend(view.corp.scored_agendas.iter().map(|c| c.card.0.as_str()));
+    visible.extend(view.corp.removed_from_game.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.scored_agendas.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.heap.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));

@@ -444,7 +444,8 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
             | CardType::Upgrade => {}
         }
     }
-    for card_id in &state.corp.hq {
+    // HQ plus any card playable from Archives (Petty Cash).
+    for card_id in &state.corp.playable_hand() {
         if registry.get(card_id).is_some_and(|c| c.card_type == CardType::Operation) {
             candidates.push(PlayerAction::PlayOperation { card_id: card_id.clone() });
         }

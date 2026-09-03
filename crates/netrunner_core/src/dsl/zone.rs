@@ -138,6 +138,14 @@ pub enum CardFilter {
     /// for MuslihaT's "an icebreaker *or* a run event". Both halves
     /// recurse, as `All` does.
     AnyOf(Vec<CardFilter>),
+    /// An installed Corp card that can be advanced — anything whose
+    /// definition carries an `advancement_requirement` (agendas, and the
+    /// "you can advance this" assets and ice such as Clearinghouse and
+    /// Syailendra). Definition-level; the same test `legal_actions` uses
+    /// to offer `AdvanceCard`. Syailendra's and Key Performance
+    /// Indicators' "place 1 advancement counter on an installed card you
+    /// can advance".
+    Advanceable,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -177,6 +185,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),
         CardFilter::HasSubtype(subtype) => card.subtypes.contains(subtype),
+        CardFilter::Advanceable => card.advancement_requirement.is_some(),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.

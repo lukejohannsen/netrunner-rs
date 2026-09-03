@@ -54,8 +54,8 @@ pub(crate) fn agenda_value(card_id: &CardId, registry: &CardRegistry) -> Option<
 /// should always resolve to `Some`, but `filter_map` treats a hypothetical
 /// unregistered/non-Agenda entry as a 0-point contribution rather than
 /// panicking.
-fn total_agenda_points(scored_agendas: &[CardId], registry: &CardRegistry) -> u32 {
-    scored_agendas.iter().filter_map(|id| agenda_value(id, registry)).sum()
+fn total_agenda_points<'a>(scored_agendas: impl IntoIterator<Item = &'a CardId>, registry: &CardRegistry) -> u32 {
+    scored_agendas.into_iter().filter_map(|id| agenda_value(id, registry)).sum()
 }
 
 /// Checks whether either side's score area has reached the winning
@@ -85,7 +85,7 @@ pub fn check_win_conditions(state: &mut GameState, registry: &CardRegistry) -> V
     // The threshold is a match rule (7 in Standard, 6 in the starter game),
     // read off the state rather than a const — see `MatchRules`.
     let winning = state.rules.winning_agenda_points;
-    if total_agenda_points(&state.corp.scored_agendas, registry) >= winning {
+    if total_agenda_points(state.corp.scored_agendas.iter().map(|scored| &scored.card), registry) >= winning {
         end_game(state, Side::Corp)
     } else if total_agenda_points(&state.runner.scored_agendas, registry) >= winning {
         end_game(state, Side::Runner)
@@ -99,7 +99,7 @@ mod tests {
     use super::*;
     use crate::dsl::{CardDefinition, CardType};
     use crate::rules::state::{
-        AgendaPoints, Clicks, CorpState, Credits, MemoryUnits, PlayerResources, RunnerState,
+        AgendaPoints, Clicks, CorpState, Credits, MemoryUnits, PlayerResources, RunnerState, ScoredAgenda,
     };
 
     /// A minimal Agenda `CardDefinition` worth `points` — everything besides id, side,
@@ -125,7 +125,7 @@ mod tests {
                     clicks: Clicks(0),
                     agenda_points: AgendaPoints(0),
                 },
-                scored_agendas: corp_scored,
+                scored_agendas: corp_scored.into_iter().map(ScoredAgenda::plain).collect(),
                 ..Default::default()
             },
             runner: RunnerState {
@@ -214,7 +214,7 @@ mod tests {
         assert_eq!(state.phase, GamePhase::Action(Side::Corp));
 
         // Scoring the third agenda pushes the total to 7.
-        state.corp.scored_agendas.push(CardId("hostile_takeover".to_string()));
+        state.corp.scored_agendas.push(ScoredAgenda::plain(CardId("hostile_takeover".to_string())));
         check_win_conditions(&mut state, &registry);
         assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
     }
