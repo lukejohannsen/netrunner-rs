@@ -8,7 +8,7 @@ mod zone;
 pub use ability::{AbilityDef, AccessInteraction, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 pub use card::{
     CardDefinition, CardId, CardSubtype, CardType, CardValidationError, CounterKind, HostedBreakerBonus, HostedCreditUse, IceType,
-    StrengthModifier, TriggeredEffect,
+    StrengthModifier, TriggeredEffect, RezAlternative,
 };
 pub use cost::Cost;
 pub use effect::{Amount, BoostDuration, CardTarget, DamageType, Effect, EndRunPrevention, HostedCardOrigin, StackZone, SubroutineBreakCount};

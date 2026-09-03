@@ -1,0 +1,48 @@
+{
+  "id": "peer_review",
+  "title": "Peer Review",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 4,
+  "subtypes": [
+    "Transaction"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            7
+          ]
+        },
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "CardTypeOneOf": [
+                "Agenda",
+                "Asset",
+                "Upgrade"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "remote_only": true
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35055,
+  "is_playable": true
+}

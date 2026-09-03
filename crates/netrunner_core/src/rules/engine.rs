@@ -719,30 +719,56 @@ fn rez_ice(
     }
 
     let mut next = state.clone();
-    // Biawak's "you can forfeit 1 agenda as you rez this ice to pay for
-    // 10[c] of its rez cost": the Corp is asked, and both answers rez —
-    // one having forfeited, for the discount, one not. Parked as a choice
-    // rather than decided here because it is the Corp's, and offered only
-    // when there is an agenda to forfeit. Either branch may find the rez
-    // unaffordable, which is why `Effect::RezInstalled` is lenient.
-    if let Some(discount) = card_def.rez_forfeit_discount
-        && !next.corp.scored_agendas.is_empty()
-    {
-        let events = ability::evaluate_effect(
-            &mut next,
-            &Effect::PresentChoice {
-                chooser: side,
-                options: vec![
-                    Effect::Sequence(vec![
-                        Effect::ForfeitAgendas(1),
-                        Effect::RezInstalled { install: ice, pay_cost: true, discount },
-                    ]),
-                    Effect::RezInstalled { install: ice, pay_cost: true, discount: 0 },
-                ],
-            },
-            &mut ability::ResolutionContext::for_card(Some(&ice_id)),
-            registry,
-        )?;
+    // Cards that print another way to pay for their own rez — Biawak's
+    // "you can forfeit 1 agenda ... to pay for 10[c] of its rez cost" and
+    // Plutus's "as an additional cost to rez this asset, forfeit 1 agenda
+    // or reveal and trash 3 cards from HQ". Each available alternative
+    // becomes "pay, then rez", the Corp picks when more than one is
+    // available, and a card whose alternatives are all unavailable cannot
+    // be rezzed at all. Biawak lists a no-op alternative beside its
+    // forfeit, which is exactly the difference between an optional
+    // discount and an additional cost.
+    if !card_def.rez_alternatives.is_empty() {
+        let ctx = ability::ResolutionContext::for_card(Some(&ice_id));
+        let mut cheapest = u32::MAX;
+        let mut wallet = 0;
+        let options: Vec<Effect> = card_def
+            .rez_alternatives
+            .iter()
+            .filter(|alternative| {
+                alternative.requirement.as_ref().is_none_or(|requirement| {
+                    ability::check_requirement(&next, requirement, side, &ctx, registry).is_ok()
+                })
+            })
+            // …and priced: an alternative the Corp cannot finish paying is
+            // not offered. See `rez_price`.
+            .filter(|alternative| {
+                let (cost, available, _) = rez_price(&next, registry, ice, true, alternative.discount);
+                if cost < cheapest {
+                    cheapest = cost;
+                    wallet = available;
+                }
+                available >= cost
+            })
+            .map(|alternative| {
+                Effect::Sequence(vec![
+                    alternative.pay.clone(),
+                    Effect::RezInstalled { install: ice, pay_cost: true, discount: alternative.discount },
+                ])
+            })
+            .collect();
+        let effect = match options.len() {
+            // Nothing available at all is the card's own restriction;
+            // something available but unaffordable is the ordinary
+            // "cannot pay", reported as such so the two read differently.
+            0 if cheapest == u32::MAX => return Err(RulesError::NoAvailableRezAlternative { card: ice_id }),
+            0 => return Err(RulesError::NotEnoughCredits { side, available: wallet, requested: cheapest }),
+            // One way to pay is not a choice; resolve it rather than ask.
+            1 => options.into_iter().next().expect("length checked"),
+            _ => Effect::PresentChoice { chooser: side, options },
+        };
+        let mut ctx = ability::ResolutionContext::for_card(Some(&ice_id));
+        let events = ability::evaluate_effect(&mut next, &effect, &mut ctx, registry)?;
         paid_ability::note_window_action(&mut next, side);
         return Ok((next, events));
     }
@@ -765,6 +791,72 @@ fn corp_may_install_agendas_faceup(state: &GameState, registry: &CardRegistry) -
         .as_ref()
         .and_then(|id| registry.get(id))
         .is_some_and(|def| def.may_install_agendas_faceup)
+}
+
+/// What rezzing `ice` would cost right now and what the Corp could put
+/// towards it: `(cost, available, whether a region's hosted credits count)`.
+///
+/// Split out of `rez_install` because `rez_ice` has to price each of a
+/// card's `rez_alternatives` *before* offering it. Offering one the Corp
+/// cannot complete is not a harmless dead end: `Effect::RezInstalled` is
+/// lenient, so the rez would quietly not happen while the action counted
+/// as applied — a random Corp then re-rezzes the same ice forever. The
+/// view-path sweep found exactly that at seed 19 (Pork Chops, Biawak with
+/// nothing to forfeit) as `BudgetExhausted` after 10,000 actions. It also
+/// stops the Corp from forfeiting an agenda for a rez it then cannot pay
+/// the rest of.
+fn rez_price(
+    state: &GameState,
+    registry: &CardRegistry,
+    ice: InstallId,
+    pay_cost: bool,
+    discount: u32,
+) -> (u32, u32, bool) {
+    let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == ice) else { return (0, 0, false) };
+    let server = installed.server;
+    let Some(card_def) = registry.get(&installed.card) else { return (0, 0, false) };
+    // Tread Lightly-style "+3 credits to rez cost during this run" modifier,
+    // if this ICE's server is the one being run — applied to the printed
+    // cost before paying, never allowed to go negative.
+    let rez_cost_modifier =
+        state.active_run.as_ref().filter(|run| run.server == server).map_or(0, |run| run.ice_rez_cost_modifier);
+    // The install-scoped sibling (Fransofia Ward's "+1[c] to rez each piece
+    // of ice"), summed over the rig; ice only, where the run modifier
+    // above applies to whatever is rezzed during the run.
+    let rig_modifier: i32 = if matches!(card_def.card_type, CardType::Ice(_)) {
+        state.runner.rig.iter().filter_map(|c| registry.get(&c.card)).map(|c| c.ice_rez_cost_modifier).sum()
+    } else {
+        0
+    };
+    let rez_cost = if pay_cost {
+        (card_def.cost as i32 + rez_cost_modifier + rig_modifier).max(0).saturating_sub(discount as i32).max(0) as u32
+    } else {
+        0
+    };
+    // Hosted credits a rezzed root upgrade lets the Corp spend on rezzing
+    // in its own server (Mahkota Langit Grid's `hosted_credits_usable_for:
+    // RezInThisServer`) count towards affordability and are drained first
+    // — the Corp-side twin of `run::access::resolve_trash`'s Azimat drain,
+    // and for the same reason it is not inside `pay_cost`: that waterfall
+    // is purpose-blind and these pools are not. Assets in the root and
+    // ice protecting the server, as printed; an upgrade being rezzed pays
+    // from the wallet alone.
+    let pool_eligible = matches!(card_def.card_type, CardType::Ice(_) | CardType::Asset);
+    let hosted: u32 = if pool_eligible {
+        state
+            .corp
+            .installed
+            .iter()
+            .filter(|c| c.rezzed && c.server == server && c.slot == InstallSlot::Root)
+            .filter(|c| {
+                registry.get(&c.card).is_some_and(|def| def.hosted_credits_usable_for == Some(HostedCreditUse::RezInThisServer))
+            })
+            .map(|c| c.counters)
+            .sum()
+    } else {
+        0
+    };
+    (rez_cost, state.corp.resources.credits.0.saturating_add(hosted), pool_eligible)
 }
 
 /// Flips an installed Corp card faceup and pays for it — the half of
@@ -794,57 +886,16 @@ pub(crate) fn rez_install(
         return Err(RulesError::AlreadyRezzed { card: installed.card.clone() });
     }
     let (ice_id, server) = (installed.card.clone(), installed.server);
-    let card_def = registry
-        .get(&ice_id)
-        .ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
+    // The lookup stays a hard error even though the price comes from
+    // `rez_price`: a card the engine cannot describe is not rezzable.
+    registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
 
-    // Tread Lightly-style "+3 credits to rez cost during this run" modifier,
-    // if this ICE's server is the one being run — applied to the printed
-    // cost before paying, never allowed to go negative.
-    let rez_cost_modifier = next
-        .active_run
-        .as_ref()
-        .filter(|run| run.server == server)
-        .map_or(0, |run| run.ice_rez_cost_modifier);
-    // The install-scoped sibling (Fransofia Ward's "+1[c] to rez each piece
-    // of ice"), summed over the rig; ice only, where the run modifier
-    // above applies to whatever is rezzed during the run.
-    let rig_modifier: i32 = if matches!(card_def.card_type, CardType::Ice(_)) {
-        next.runner.rig.iter().filter_map(|c| registry.get(&c.card)).map(|c| c.ice_rez_cost_modifier).sum()
-    } else {
-        0
-    };
-    let rez_cost = if pay_cost {
-        (card_def.cost as i32 + rez_cost_modifier + rig_modifier).max(0).saturating_sub(discount as i32).max(0) as u32
-    } else {
-        0
-    };
-    // Hosted credits a rezzed root upgrade lets the Corp spend on rezzing
-    // in its own server (Mahkota Langit Grid's `hosted_credits_usable_for:
-    // RezInThisServer`) count towards affordability and are drained first
-    // — the Corp-side twin of `run::access::resolve_trash`'s Azimat drain,
-    // and for the same reason it is not inside `pay_cost`: that waterfall
-    // is purpose-blind and these pools are not. Assets in the root and
-    // ice protecting the server, as printed; an upgrade being rezzed pays
-    // from the wallet alone.
+    let (rez_cost, available, pool_eligible) = rez_price(next, registry, ice, pay_cost, discount);
     let pays_here = |installed: &InstalledCard, def: &crate::dsl::CardDefinition| {
         installed.server == server
             && installed.slot == InstallSlot::Root
             && def.hosted_credits_usable_for == Some(HostedCreditUse::RezInThisServer)
     };
-    let pool_eligible = matches!(card_def.card_type, CardType::Ice(_) | CardType::Asset);
-    let hosted: u32 = if pool_eligible {
-        next.corp
-            .installed
-            .iter()
-            .filter(|c| c.rezzed)
-            .filter(|c| registry.get(&c.card).is_some_and(|def| pays_here(c, def)))
-            .map(|c| c.counters)
-            .sum()
-    } else {
-        0
-    };
-    let available = next.corp.resources.credits.0.saturating_add(hosted);
     if available < rez_cost {
         return Err(RulesError::NotEnoughCredits { side, available, requested: rez_cost });
     }
@@ -1031,16 +1082,14 @@ fn operation_comes_from_archives(state: &GameState, card_id: &CardId) -> Option<
 /// Petty Cash played from Archives. Kept apart from `take_from_grip` so
 /// the discard, install and every other HQ-only path cannot reach into
 /// Archives by accident.
-fn take_operation(state: &mut GameState, card_id: &CardId) -> Result<bool, RulesError> {
-    let from_archives = operation_comes_from_archives(state, card_id)
-        .ok_or_else(|| RulesError::CardNotInHand { side: Side::Corp, card: card_id.clone() })?;
+fn take_operation(state: &mut GameState, card_id: &CardId, from_archives: bool) -> Result<(), RulesError> {
     if from_archives {
         let position = state.corp.archives.iter().position(|a| &a.card == card_id).ok_or_else(|| RulesError::CardNotInHand { side: Side::Corp, card: card_id.clone() })?;
         state.corp.archives.remove(position);
     } else {
         take_from_grip(state, Side::Corp, card_id)?;
     }
-    Ok(from_archives)
+    Ok(())
 }
 
 fn play_event(
@@ -1107,21 +1156,31 @@ fn play_operation(
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
+    // Which zone the click action may play from is Petty Cash's own rule
+    // (`CardDefinition::playable_from_archives`); a card effect declares
+    // its zone instead — see `Effect::PlayOperation`.
+    let from_archives = operation_comes_from_archives(state, &card_id)
+        .ok_or_else(|| RulesError::CardNotInHand { side, card: card_id.clone() })?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(play_operation_card(&mut next, registry, card_id)?);
+    events.extend(play_operation_card(&mut next, registry, card_id, from_archives)?);
     Ok((next, events))
 }
 
-/// Whether the Corp could play `card_id` out of HQ right now, click aside:
-/// it is an operation in HQ, its `play_requirement` holds and its cost is
+/// Whether the Corp could play `card_id` out of HQ (or, with
+/// `from_archives`, out of Archives) right now, click aside: it is an
+/// operation, it is there, its `play_requirement` holds and its cost is
 /// affordable — the offer half of `CardFilter::PlayableOperation`, paired
 /// with `play_operation_card`'s own guards the way `can_install_runner_
-/// card_from_grip` pairs with its install.
-pub(crate) fn can_play_operation_from_hq(state: &GameState, registry: &CardRegistry, card_id: &CardId) -> bool {
+/// card_from_grip` pairs with its install. It does **not** ask whether the
+/// card carries Petty Cash's own permission to be played from Archives:
+/// that is the click action's rule, and Plutus grants the permission
+/// itself.
+pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, card_id: &CardId, from_archives: bool) -> bool {
     let Some(card_def) = registry.get(card_id) else { return false };
-    state.corp.hq.contains(card_id)
+    let present = if from_archives { state.corp.archives_contains(card_id) } else { state.corp.hq.contains(card_id) };
+    present
         && card_def.card_type == CardType::Operation
         && state.corp.resources.credits.0 >= card_def.cost
         // Touch-ups' additional click, which the Corp must still have
@@ -1146,9 +1205,10 @@ pub(crate) fn play_operation_card(
     next: &mut GameState,
     registry: &CardRegistry,
     card_id: CardId,
+    from_archives: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
-    let from_archives = take_operation(next, &card_id)?;
+    take_operation(next, &card_id, from_archives)?;
 
     let card_def = registry
         .get(&card_id)
@@ -3956,6 +4016,7 @@ mod tests {
                 GameEvent::EventPlayed { side: Side::Runner, card: card_id },
                 GameEvent::TriggerFired { card: CardId("sure_gamble".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 9 },
+                GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("sure_gamble".to_string()) },
             ]
         );
     }
@@ -4055,6 +4116,7 @@ mod tests {
                 GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false },
                 GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
+                GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("hedge_fund".to_string()) },
             ]
         );
 
@@ -4803,8 +4865,9 @@ mod tests {
             events,
             vec![
                 GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() },
-                GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0 },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 5 },
+                GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },
             ]
         );
     }
@@ -6257,8 +6320,9 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 1 },
-                GameEvent::AbilityActivated { side: Side::Runner, card_id, ability_index: 0 },
+                GameEvent::AbilityActivated { side: Side::Runner, card_id: card_id.clone(), ability_index: 0 },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 3 },
+                GameEvent::AbilityGainedCredits { side: Side::Runner, card: card_id },
             ]
         );
     }

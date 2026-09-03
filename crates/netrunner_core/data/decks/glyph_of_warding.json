@@ -1,0 +1,85 @@
+{
+  "id": "glyph_of_warding",
+  "name": "Glyph of Warding",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "au_co_the_gold_standard_in_clones",
+  "cards": [
+    {
+      "card": "longevity_serum",
+      "count": 1
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 3
+    },
+    {
+      "card": "sericulture_expansion",
+      "count": 3
+    },
+    {
+      "card": "byte",
+      "count": 2
+    },
+    {
+      "card": "phat_gioan_baotixita",
+      "count": 3
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "hansei_review",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "measured_response",
+      "count": 3
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "anoetic_void",
+      "count": 2
+    },
+    {
+      "card": "semak_samun",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 1
+    },
+    {
+      "card": "whitespace",
+      "count": 2
+    },
+    {
+      "card": "empiricist",
+      "count": 2
+    },
+    {
+      "card": "lamplighter",
+      "count": 3
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    }
+  ]
+}

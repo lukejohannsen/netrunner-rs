@@ -168,27 +168,25 @@ pub fn dispatch_event(
             Ok(events)
         }
 
-        GameEvent::AgendaScored { card, server, .. } => {
+        GameEvent::AgendaScored { card, .. } => {
             let mut events = fire_direct(state, registry, card, None, Trigger::OnAgendaScored, event)?;
             if let Some(identity) = state.corp.identity.clone() {
                 events.extend(fire_direct(state, registry, &identity, None, Trigger::OnAgendaScored, event)?);
             }
-            // Every other rezzed Root-slot install on the scored agenda's
-            // own server also gets a chance to react — e.g. Malapert Data
-            // Vault's "whenever you score an agenda from the root of this
-            // server." Same audience-computation shape as `OnApproachServer`
-            // above (rezzed Root installs on a given server), reused here
-            // rather than a bespoke `EffectRequirement`.
-            let root_installs: Vec<(Option<InstallId>, CardId)> = state
+            // The whole rezzed table hears it: Phật Gioan Baotixita reacts
+            // to any agenda changing hands, wherever it sits, and
+            // Lamplighter narrows itself back to its own server with
+            // `EffectRequirement::AgendaCameFromThisCardsServer`. This
+            // used to be the scored server's root only, which was
+            // Malapert Data Vault's rule read as everyone's.
+            let rezzed: Vec<(Option<InstallId>, CardId)> = state
                 .corp
                 .installed
                 .iter()
-                .filter(|installed| {
-                    installed.rezzed && installed.server == *server && installed.slot == InstallSlot::Root
-                })
+                .filter(|installed| installed.rezzed)
                 .map(|installed| (Some(installed.install_id), installed.card.clone()))
                 .collect();
-            events.extend(fire_each(state, registry, &root_installs, Trigger::OnAgendaScored, event)?);
+            events.extend(fire_each(state, registry, &rezzed, Trigger::OnAgendaScored, event)?);
             // Runner-side widening (M5): the Runner's own identity and rig
             // also get a chance to react to a Corp agenda score — e.g.
             // Pantograph's "whenever an agenda is scored or stolen, gain 1
@@ -213,6 +211,17 @@ pub fn dispatch_event(
             // Magician, Pantograph's "whenever an agenda is scored or
             // stolen, gain 1 credit."
             events.extend(fire_runner_side(state, registry, Trigger::OnAgendaStolen, event)?);
+            // And the rezzed table, the same audience `AgendaScored` uses
+            // — Phật Gioan Baotixita reacts to a steal from anywhere, and
+            // Lamplighter checks the server itself.
+            let rezzed: Vec<(Option<InstallId>, CardId)> = state
+                .corp
+                .installed
+                .iter()
+                .filter(|installed| installed.rezzed)
+                .map(|installed| (Some(installed.install_id), installed.card.clone()))
+                .collect();
+            events.extend(fire_each(state, registry, &rezzed, Trigger::OnAgendaStolen, event)?);
             Ok(events)
         }
 
@@ -460,6 +469,19 @@ pub fn dispatch_event(
             let mut candidates: Vec<(Option<InstallId>, CardId)> =
                 state.corp.identity.iter().cloned().map(|id| (None, id)).collect();
             candidates.extend(state.corp.scored_agendas.iter().map(|scored| (Some(scored.install_id), scored.card.clone())));
+            // …and the rezzed table, which this used to leave out under a
+            // comment saying the Corp side stayed identity-only until a
+            // card needed more: Phật Gioan Baotixita loads a counter when
+            // the discard phase ends, and Sericulture Expansion spends one
+            // from the score area in the same window.
+            candidates.extend(
+                state
+                    .corp
+                    .installed
+                    .iter()
+                    .filter(|installed| installed.rezzed)
+                    .map(|installed| (Some(installed.install_id), installed.card.clone())),
+            );
             fire_each(state, registry, &candidates, Trigger::OnDiscardPhaseEnd, event)
         }
 
@@ -469,6 +491,39 @@ pub fn dispatch_event(
         // event after the choice's own effect — which may itself have
         // parked something. `fire_plan`'s blocked-resolution guard then
         // queues the reaction instead of firing it under the parked state.
+        // "Whenever you do damage": the dealing side is the damaged side's
+        // opponent, and only the Corp deals damage in this pool. The
+        // identity only — AU Co. is the one reader.
+        GameEvent::DamageTaken { .. } => match state.corp.identity.clone() {
+            Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnDamageDealt, event),
+            None => Ok(Vec::new()),
+        },
+
+        // One firing per batch, not per card — "trash 1 **or more** cards
+        // from HQ".
+        GameEvent::CardsTrashedFromHq { .. } => match state.corp.identity.clone() {
+            Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnCardsTrashedFromHq, event),
+            None => Ok(Vec::new()),
+        },
+
+        // The gaining side's own identity — The Zwicky Group narrows it to
+        // an agenda or operation with `TriggeringCardMatches`, reading the
+        // card off this event.
+        GameEvent::AbilityGainedCredits { side, .. } => {
+            let identity = match side {
+                Side::Corp => state.corp.identity.clone(),
+                Side::Runner => state.runner.identity.clone(),
+            };
+            match identity {
+                Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnAbilityGainedCredits, event),
+                None => Ok(Vec::new()),
+            }
+        }
+
+        // The forfeited agenda itself, as it leaves the score area
+        // (Greenmail). No install: it is already gone from there.
+        GameEvent::AgendaForfeited { card } => fire_direct(state, registry, card, None, Trigger::OnForfeit, event),
+
         GameEvent::TagsGiven { side: Side::Runner, .. } => match state.corp.identity.clone() {
             Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnTagsGiven, event),
             None => Ok(Vec::new()),
@@ -953,7 +1008,7 @@ mod tests {
         let events = dispatch_event(&mut state, &registry, &GameEvent::TurnStarted { side: Side::Runner, clicks: 4 }).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(6));
-        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("reacts".to_string()), trigger: Trigger::OnTurnStart }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("reacts".to_string()), trigger: Trigger::OnTurnStart }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }, GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("reacts".to_string()) }]);
     }
 
     /// A plan stops at `GameOver`: the rest of the reacting cards neither
@@ -1011,7 +1066,7 @@ mod tests {
         let events = dispatch_event(&mut state, &registry, &GameEvent::RunInitiated { server: ServerId::Hq }).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(7));
-        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("runner_id".to_string()), trigger: Trigger::OnRunStart }, GameEvent::CreditsGained { side: Side::Runner, amount: 2 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("runner_id".to_string()), trigger: Trigger::OnRunStart }, GameEvent::CreditsGained { side: Side::Runner, amount: 2 }, GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("runner_id".to_string()) }]);
     }
 
     #[test]
@@ -1028,7 +1083,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.corp.resources.credits, Credits(8));
-        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("ice_wall".to_string()), trigger: Trigger::OnEncounter }, GameEvent::CreditsGained { side: Side::Corp, amount: 3 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("ice_wall".to_string()), trigger: Trigger::OnEncounter }, GameEvent::CreditsGained { side: Side::Corp, amount: 3 }, GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("ice_wall".to_string()) }]);
     }
 
     #[test]
@@ -1043,7 +1098,7 @@ mod tests {
         let events = dispatch_event(&mut state, &registry, &GameEvent::RunSucceeded { server: ServerId::RnD }).unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(6));
-        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("desperado".to_string()), trigger: Trigger::OnSuccessfulRun }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("desperado".to_string()), trigger: Trigger::OnSuccessfulRun }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }, GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("desperado".to_string()) }]);
     }
 
     #[test]
@@ -1107,7 +1162,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(6));
-        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("interface".to_string()), trigger: Trigger::OnDamageAboutToResolve }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("interface".to_string()), trigger: Trigger::OnDamageAboutToResolve }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }, GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("interface".to_string()) }]);
     }
 
     /// `DamageAboutToResolve`/`TrashAboutToResolve` are the only dispatches
@@ -1154,8 +1209,10 @@ mod tests {
             vec![
                 GameEvent::TriggerFired { card: CardId("runner_reactor".to_string()), trigger: crate::dsl::Trigger::OnDamageAboutToResolve },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("runner_reactor".to_string()) },
                 GameEvent::TriggerFired { card: CardId("corp_reactor".to_string()), trigger: crate::dsl::Trigger::OnDamageAboutToResolve },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+                GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("corp_reactor".to_string()) },
             ],
             "on the Runner's turn the Runner's reaction resolves first"
         );
@@ -1169,8 +1226,10 @@ mod tests {
             vec![
                 GameEvent::TriggerFired { card: CardId("corp_reactor".to_string()), trigger: Trigger::OnDamageAboutToResolve },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+                GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("corp_reactor".to_string()) },
                 GameEvent::TriggerFired { card: CardId("runner_reactor".to_string()), trigger: Trigger::OnDamageAboutToResolve },
                 GameEvent::CreditsGained { side: Side::Runner, amount: 1 },
+                GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("runner_reactor".to_string()) },
             ],
             "on the Corp's turn the Corp's reaction resolves first"
         );
@@ -1351,7 +1410,7 @@ mod tests {
         let events = drain_deferred_triggers(&mut state, &registry).unwrap();
 
         assert_eq!(state.corp.resources.credits, credits_before.gain(1));
-        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("pad_campaign".to_string()), trigger: Trigger::OnTurnStart }, GameEvent::CreditsGained { side: Side::Corp, amount: 1 }]);
+        assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("pad_campaign".to_string()), trigger: Trigger::OnTurnStart }, GameEvent::CreditsGained { side: Side::Corp, amount: 1 }, GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("pad_campaign".to_string()) }]);
         assert!(state.deferred_triggers.is_empty(), "a fully drained queue is left empty");
     }
 

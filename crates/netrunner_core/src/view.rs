@@ -60,6 +60,10 @@ pub struct CorpClientView {
     /// Public — see `PublicCorpState::removed_from_game`.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// Power counters on the Corp's identity (AU Co.) — public, and
+    /// carried so a determinized sample can pay a cost that spends them.
+    #[serde(default)]
+    pub identity_counters: u32,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -192,6 +196,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         agenda_points: public.corp.resources.agenda_points.0,
         bad_publicity: public.corp.bad_publicity,
         recurring_credits: public.corp.recurring_credits,
+        identity_counters: public.corp.identity_counters,
         recurring_credits_max: public.corp.recurring_credits_max,
         hq_count: zone_count(&public.corp.hq),
         hq_cards: zone_cards(&public.corp.hq),

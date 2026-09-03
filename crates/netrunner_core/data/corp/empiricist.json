@@ -1,0 +1,65 @@
+{
+  "id": "empiricist",
+  "title": "Empiricist",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "Sentry"
+  },
+  "cost": 7,
+  "strength": 5,
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "Draw 1 card. You may add 1 card from HQ to the top of R&D.",
+      "effect": {
+        "Sequence": [
+          {
+            "DrawCards": [
+              "Corp",
+              1
+            ]
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": "Any",
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "destination": "OwnRAndD"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "text": "Do 1 net damage. Give the Runner 1 tag.",
+      "effect": {
+        "Sequence": [
+          {
+            "DealDamage": [
+              "Net",
+              1
+            ]
+          },
+          {
+            "GiveTags": 1
+          }
+        ]
+      }
+    },
+    {
+      "text": "Do 2 net damage.",
+      "effect": {
+        "DealDamage": [
+          "Net",
+          2
+        ]
+      }
+    }
+  ],
+  "numeric_id": 35052,
+  "is_playable": true
+}

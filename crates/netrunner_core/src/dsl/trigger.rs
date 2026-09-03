@@ -174,4 +174,30 @@ pub enum Trigger {
     /// the identity) and could not be widened without every "when you
     /// install this" card firing on every install. Bling.
     OnCardInstalled,
+    /// "Whenever you do damage" — fired against the *dealing* side's
+    /// identity when `GameEvent::DamageTaken` resolves. Only the Corp deals
+    /// damage in this pool, so the dealer is the damaged side's opponent.
+    /// AU Co.: The Gold Standard in Clones counts it. Distinct from
+    /// `OnDamageAboutToResolve`, which is the prevention window and fires
+    /// before the damage lands.
+    OnDamageDealt,
+    /// "Whenever you trash 1 or more cards from HQ" — fired against the
+    /// Corp's identity once per batch (`GameEvent::CardsTrashedFromHq`),
+    /// not once per card, which is what "1 or more" asks for. AU Co.
+    /// again; Hansei Review is what trashes from HQ in its deck.
+    OnCardsTrashedFromHq,
+    /// "Whenever you gain credits through an ability on a card" — fired
+    /// against the gaining side's identity from
+    /// `GameEvent::AbilityGainedCredits`, which the credit-gaining effects
+    /// emit alongside `CreditsGained` when a card is resolving. The Zwicky
+    /// Group: Invisible Hands narrows it to "an agenda or operation" with
+    /// `EffectRequirement::TriggeringCardMatches`. A separate event rather
+    /// than a field on `CreditsGained`: the field would have had to be
+    /// threaded through twenty-six construction sites, most of which have
+    /// no card to name (a click for credits, a trace payout).
+    OnAbilityGainedCredits,
+    /// "When you forfeit this agenda" — fired against the forfeited agenda
+    /// itself as it leaves the score area (`GameEvent::AgendaForfeited`).
+    /// Greenmail pays 4[c] for being spent this way.
+    OnForfeit,
 }

@@ -163,9 +163,10 @@ pub enum CardFilter {
     /// which is what makes the identity's ability legal only during one
     /// without a separate "during a run" requirement.
     InAttackedServer,
-    /// An operation in HQ the Corp could play right now — its cost
-    /// affordable and its `play_requirement` met — the offer half of
-    /// `Effect::PlayOperationFromHq` (Humanoid Resources' "You may play 1
+    /// An operation in the zone being selected from — HQ, or Archives for
+    /// Plutus — that the Corp could play right now: its cost affordable
+    /// and its `play_requirement` met. The offer half of
+    /// `Effect::PlayOperation` (Humanoid Resources' "You may play 1
     /// operation from HQ"). Instance-level: affordability is state. The
     /// effect re-checks, so the offer and the resolution cannot disagree.
     PlayableOperation,

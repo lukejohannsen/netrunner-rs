@@ -273,6 +273,7 @@ fn close_prevention_window(state: &mut GameState, registry: &CardRegistry) -> Re
             // in practice — a parked `DealDamage` breaks its `Sequence`, so
             // the requirement was never reached down this path.
             let (damage_events, _discarded) = damage::apply_damage(state, damage_type, amount.saturating_sub(prevented));
+            events.extend(ability::dispatch_damage_taken(state, registry, &damage_events)?);
             events.extend(damage_events);
             events
         }

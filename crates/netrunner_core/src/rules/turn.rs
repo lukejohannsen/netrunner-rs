@@ -342,7 +342,15 @@ pub(crate) fn enter_start_of_turn(
 
         next.corp.first_install_used_this_turn = false;
         next.corp.recurring_credits = next.corp.recurring_credits_max;
+        // Both sides, at every turn start — "once per turn" means once per
+        // *turn*, and a Corp ability used on the Corp's own turn must be
+        // usable again during the Runner's. Clearing only the starting
+        // side's set made a Corp gate span its own turn and the Runner's
+        // as one window, which Phật Gioan Baotixita ("the first time each
+        // turn an agenda is scored or stolen" — either player's turn)
+        // reads from both sides of.
         next.corp.once_per_turn_used.clear();
+        next.runner.once_per_turn_used.clear();
         next.corp.agenda_points_scored_this_turn = 0;
         next.corp.cannot_score_agendas_this_turn = false;
         // Everything still installed was necessarily installed on an earlier
@@ -353,7 +361,9 @@ pub(crate) fn enter_start_of_turn(
     } else {
         next.runner.first_hq_run_used_this_turn = false;
         next.runner.first_install_discount_used_this_turn = false;
+        // Both sides — see the Corp branch above.
         next.runner.once_per_turn_used.clear();
+        next.corp.once_per_turn_used.clear();
         next.runner.made_successful_run_this_turn = false;
         next.runner.servers_run_this_turn.clear();
     }

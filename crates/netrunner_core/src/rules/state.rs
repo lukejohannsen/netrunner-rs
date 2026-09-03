@@ -298,6 +298,16 @@ pub struct CorpState {
     /// `last_completed_run` passes.
     #[serde(default)]
     pub extra_clicks_next_turn: u32,
+    /// Power counters hosted on the Corp's *identity* — AU Co.: The Gold
+    /// Standard in Clones, the first card in the pool to put counters
+    /// somewhere that is not an install, a rig card or a scored agenda.
+    /// `ability::modify_counters` and `counters_of` fall through to this
+    /// when the resolving card is the Corp's identity, so `AddCounters`,
+    /// `RemoveCounters`, `Cost::RemoveCounters` and
+    /// `ThisCardCountersAtLeast` all read it with no card-side change.
+    /// Public information, like everything else about an identity.
+    #[serde(default)]
+    pub identity_counters: u32,
     /// Tags consumed by `EffectRequirement::OncePerTurn(tag)` gates the Corp
     /// has already fired this turn — the generalized replacement for adding
     /// another bespoke per-effect bool alongside `first_install_used_this_turn`.
@@ -970,6 +980,10 @@ pub struct PendingInstallFromZone {
     /// before the field existed.
     #[serde(default)]
     pub discount: u32,
+    /// Peer Review's "in the root of a remote server" — carried so the
+    /// resolution offers the same servers the park did.
+    #[serde(default)]
+    pub remote_only: bool,
     /// `Effect::PromptInstallCorpCard::then` — evaluated after the install
     /// lands, with the chosen server substituted in. See that field.
     #[serde(default, skip_serializing_if = "Option::is_none")]

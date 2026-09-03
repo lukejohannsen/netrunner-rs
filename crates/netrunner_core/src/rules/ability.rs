@@ -135,6 +135,14 @@ fn acting_scored_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Opt
     state.corp.scored_agendas.iter().position(|scored| scored.install_id == install)
 }
 
+/// Whether `ctx` is resolving as the Corp's identity — which has no
+/// install, so every "this card" lookup that walks the table misses it.
+/// The counter helpers fall through to `CorpState::identity_counters`
+/// on this (AU Co.).
+fn acting_is_corp_identity(state: &GameState, ctx: &ResolutionContext<'_>) -> bool {
+    ctx.acting_install.is_none() && ctx.acting_card.is_some() && ctx.acting_card == state.corp.identity.as_ref()
+}
+
 fn acting_corp_position(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<usize> {
     match ctx.acting_install {
         Some(install) => state.corp.installed.iter().position(|c| c.install_id == install),
@@ -180,11 +188,7 @@ pub fn evaluate_effect(
 ) -> Result<Vec<GameEvent>, RulesError> {
     let acting_card = ctx.acting_card;
     match effect {
-        Effect::GainCredits(side, amount) => {
-            // Mirrors engine::gain_credit_click's existing pattern.
-            state.resources_mut(*side).credits = state.resources(*side).credits.gain(*amount);
-            Ok(vec![GameEvent::CreditsGained { side: *side, amount: *amount }])
-        }
+        Effect::GainCredits(side, amount) => gain_credits_from_ability(state, registry, *side, *amount, ctx),
 
         Effect::DealDamage(damage_type, amount) => {
             // Only parks a `PendingPrevention`/opens a window if some
@@ -196,12 +200,13 @@ pub fn evaluate_effect(
             if has_matching_paid_ability(state, registry, |e| matches!(e, Effect::PreventDamage(_))) {
                 park_damage_prevention(state, registry, *damage_type, *amount, ctx)
             } else {
-                let (events, discarded) = damage::apply_damage(state, *damage_type, *amount);
+                let (mut events, discarded) = damage::apply_damage(state, *damage_type, *amount);
                 // Overwrite rather than append: the requirement reading this
                 // (`LastDamageTrashedOddCostCard`) asks about the *most
                 // recent* damage, so a second `DealDamage` in the same
                 // `Sequence` must not be answered from the first's discards.
                 ctx.damage_discarded = discarded;
+                events.extend(dispatch_damage_taken(state, registry, &events)?);
                 Ok(events)
             }
         }
@@ -253,8 +258,15 @@ pub fn evaluate_effect(
         }
 
         Effect::EndTheRun => {
+            // Ending a run that has already ended is a no-op, not an
+            // error: a card's own text can reach here twice (Biawak's
+            // second subroutine after its first ended the run), and an
+            // `Err` there fails the whole action that got here — which,
+            // when that action is the confirmation of a parked selection,
+            // leaves a decision nothing can resolve. The view-path sweep
+            // found exactly that at seed 19 as 10,000 fruitless toggles.
             let Some(run) = state.active_run.as_mut() else {
-                return Err(RulesError::NoActiveRun);
+                return Ok(Vec::new());
             };
             // Shred: the first Corp attempt to end the run is intercepted
             // and turned into the Corp's paid choice — see
@@ -373,8 +385,7 @@ pub fn evaluate_effect(
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let current = counters_of(state, ctx).ok_or_else(|| RulesError::CardNotEligibleForCounters(card_id.clone()))?;
             let mut events = modify_counters(state, ctx, -i64::from(current))?;
-            state.resources_mut(*side).credits = state.resources(*side).credits.gain(current);
-            events.push(GameEvent::CreditsGained { side: *side, amount: current });
+            events.extend(gain_credits_from_ability(state, registry, *side, current, ctx)?);
             Ok(events)
         }
 
@@ -406,8 +417,7 @@ pub fn evaluate_effect(
             acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let current = counters_of(state, ctx).unwrap_or(0);
             let amount = current.saturating_mul(*credits_per_counter);
-            state.resources_mut(*side).credits = state.resources(*side).credits.gain(amount);
-            Ok(vec![GameEvent::CreditsGained { side: *side, amount }])
+            gain_credits_from_ability(state, registry, *side, amount, ctx)
         }
 
         Effect::SwapInstalledIce(a, b) => {
@@ -891,8 +901,7 @@ pub fn evaluate_effect(
 
         Effect::GainCreditsAmount(side, amount) => {
             let amount = resolve_amount(amount, ctx, state, registry);
-            state.resources_mut(*side).credits = state.resources(*side).credits.gain(amount);
-            Ok(vec![GameEvent::CreditsGained { side: *side, amount }])
+            gain_credits_from_ability(state, registry, *side, amount, ctx)
         }
 
         Effect::LoseCredits(side, amount) => {
@@ -996,8 +1005,7 @@ pub fn evaluate_effect(
 
         Effect::GainCreditsPerCardAccessedThisRun(side) => {
             let amount = state.last_completed_run.as_ref().map_or(0, |run| run.cards_accessed);
-            state.resources_mut(*side).credits = state.resources(*side).credits.gain(amount);
-            Ok(vec![GameEvent::CreditsGained { side: *side, amount }])
+            gain_credits_from_ability(state, registry, *side, amount, ctx)
         }
 
         Effect::PromptChooseCards { side, source, filter, min, max, reveal, shuffle_after, destination, then } => {
@@ -1107,7 +1115,7 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingServerChoiceOffered { chooser: *chooser }])
         }
 
-        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then } => {
+        Effect::PromptInstallCorpCard { origin_zone, ignore_costs, discount, then, remote_only } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             // First match by position: two copies of one card in HQ are
             // indistinguishable and interchangeable, so "the copy the Corp
@@ -1132,7 +1140,10 @@ pub fn evaluate_effect(
             // that cannot be installed at all.
             let Some(position) = position else { return Ok(Vec::new()) };
             let Some(card_def) = registry.get(&card_id) else { return Ok(Vec::new()) };
-            let allowed = crate::rules::engine::corp_install_destinations(state, registry, card_def, *ignore_costs);
+            let mut allowed = crate::rules::engine::corp_install_destinations(state, registry, card_def, *ignore_costs);
+            if *remote_only {
+                allowed.retain(|server| matches!(server, crate::rules::run::ServerId::Remote(_)));
+            }
             if allowed.is_empty() {
                 return Ok(Vec::new());
             }
@@ -1148,6 +1159,7 @@ pub fn evaluate_effect(
                     position,
                     pay_cost: !ignore_costs,
                     discount: *discount,
+                    remote_only: *remote_only,
                     then: then.clone(),
                 }),
                 // Deliberately NOT the chosen card: `source_card` passes
@@ -1172,12 +1184,17 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::CardMoved { card, from, to: *server }])
         }
 
-        Effect::PlayOperationFromHq => {
+        Effect::PlayOperation { from } => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            if !crate::rules::engine::can_play_operation_from_hq(state, registry, &card_id) {
+            let from_archives = matches!(from, crate::dsl::CardZoneRef::OwnArchives);
+            // Lenient, like every other "you may" here: an operation whose
+            // cost or `play_requirement` has stopped holding since the
+            // offer resolves to nothing rather than failing the action
+            // that got here.
+            if !crate::rules::engine::can_play_operation(state, registry, &card_id, from_archives) {
                 return Ok(Vec::new());
             }
-            crate::rules::engine::play_operation_card(state, registry, card_id)
+            crate::rules::engine::play_operation_card(state, registry, card_id, from_archives)
         }
 
         Effect::RezInstalled { install, pay_cost, discount } => {
@@ -1243,7 +1260,14 @@ pub fn evaluate_effect(
                 let Some(index) = chosen else { break };
                 let forfeited = state.corp.scored_agendas.remove(index);
                 state.corp.removed_from_game.push(forfeited.card.clone());
-                events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card });
+                // The agenda's own "when you forfeit this" reaction
+                // (Greenmail) fires as the card, with no install: it has
+                // already left the score area, and a `Some` install that
+                // is gone resolves to nothing.
+                let forfeited_event = GameEvent::AgendaForfeited { card: forfeited.card.clone() };
+                events.push(forfeited_event.clone());
+                events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card.clone() });
+                events.extend(dispatcher::dispatch_event(state, registry, &forfeited_event)?);
             }
             Ok(events)
         }
@@ -1615,12 +1639,63 @@ fn resolve_corp_installed_target(
     }
 }
 
+/// Fires `Trigger::OnDamageDealt` for each `DamageTaken` among `events` —
+/// the hook AU Co.: The Gold Standard in Clones counts damage with.
+///
+/// Called where the damage actually lands rather than from
+/// `dispatch_event`'s own table, because `DamageTaken` is produced deep
+/// inside `damage::apply_damage` and returned, never dispatched: only
+/// `DamageAboutToResolve` (the prevention window) goes through the
+/// dispatcher. Nothing fires once the damage has ended the game.
+pub(crate) fn dispatch_damage_taken(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    events: &[GameEvent],
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut fired = Vec::new();
+    for event in events {
+        if matches!(event, GameEvent::DamageTaken { .. }) && !state.is_over() {
+            fired.extend(dispatcher::dispatch_event(state, registry, event)?);
+        }
+    }
+    Ok(fired)
+}
+
 /// `Effect::AddCounters`/`RemoveCounters`'s shared implementation:
 /// saturating-applies `delta` (negative to remove) to `acting_card`'s
 /// `counters` field, wherever it's currently installed/rigged. Mirrors
 /// `trash_this_card`'s "try Corp installed, then Runner rig" search order,
 /// but doesn't need `trash_this_card`'s hand/deck arms — counters only ever
 /// live on an installed/rigged card, never in a hand or deck zone.
+/// Credits gained by a resolving card, as opposed to by a click or a
+/// trace payout: pays them, emits `CreditsGained`, and — when there is an
+/// acting card to name — `GameEvent::AbilityGainedCredits` with its
+/// dispatch, which is what The Zwicky Group: Invisible Hands draws off.
+///
+/// Every credit-gaining `Effect` goes through here, so a card that gains
+/// through a counter (Regolith Mining License) or a formula (Ritual)
+/// counts the same as a flat `GainCredits`. The dispatch is re-entrant in
+/// principle — a reaction that itself gained credits would come back
+/// round — and safe in practice because the one reader is gated
+/// `OncePerTurn`; a second reader that gains credits must carry the same
+/// gate.
+fn gain_credits_from_ability(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    side: Side,
+    amount: u32,
+    ctx: &ResolutionContext<'_>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    state.resources_mut(side).credits = state.resources(side).credits.gain(amount);
+    let mut events = vec![GameEvent::CreditsGained { side, amount }];
+    if let Some(card) = ctx.acting_card {
+        let gained = GameEvent::AbilityGainedCredits { side, card: card.clone() };
+        events.push(gained.clone());
+        events.extend(dispatcher::dispatch_event(state, registry, &gained)?);
+    }
+    Ok(events)
+}
+
 fn modify_counters(
     state: &mut GameState,
     ctx: &ResolutionContext<'_>,
@@ -1634,6 +1709,8 @@ fn modify_counters(
         &mut state.runner.rig[position].counters
     } else if let Some(position) = acting_scored_position(state, ctx) {
         &mut state.corp.scored_agendas[position].agenda_counters
+    } else if acting_is_corp_identity(state, ctx) {
+        &mut state.corp.identity_counters
     } else {
         return Err(RulesError::CardNotEligibleForCounters(card_id));
     };
@@ -2355,6 +2432,20 @@ pub fn check_requirement(
         EffectRequirement::NoActionTakenThisTurn => {
             if state.actions_taken_this_turn == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::AgendaCameFromThisCardsServer => {
+            // `AgendaScored` names the server; a steal names none, so it
+            // comes off the run the steal necessarily happened during.
+            let from = match ctx.triggering_event {
+                Some(GameEvent::AgendaScored { server, .. }) => Some(*server),
+                Some(GameEvent::AgendaStolen { .. }) => state.active_run.as_ref().map(|run| run.server),
+                _ => None,
+            };
+            let here = acting_corp_install(state, ctx).map(|installed| installed.server);
+            if from.is_some() && from == here { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::ScoreAreaHasAtLeast(count) => {
+            if state.corp.scored_agendas.len() as u32 >= *count { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::CurrentlyAccessingInstalledCard { rezzed_only } => {
             // `AccessState::pending_install` is set when the card being
             // accessed is a root install, and is still set while its
@@ -2397,7 +2488,10 @@ fn triggering_card(event: &GameEvent) -> Option<&CardId> {
         | GameEvent::EventPlayed { card, .. }
         | GameEvent::OperationPlayed { card, .. }
         | GameEvent::CardTrashed { card, .. }
-        | GameEvent::CardDerezzed { card } => Some(card),
+        | GameEvent::CardDerezzed { card }
+        // The card whose ability paid out — The Zwicky Group asks whether
+        // it was an agenda or an operation.
+        | GameEvent::AbilityGainedCredits { card, .. } => Some(card),
         _ => None,
     }
 }
@@ -2411,6 +2505,7 @@ fn counters_of(state: &GameState, ctx: &ResolutionContext<'_>) -> Option<u32> {
         .map(|c| c.counters)
         .or_else(|| acting_rig_card(state, ctx).map(|c| c.counters))
         .or_else(|| acting_scored_position(state, ctx).map(|position| state.corp.scored_agendas[position].agenda_counters))
+        .or_else(|| acting_is_corp_identity(state, ctx).then_some(state.corp.identity_counters))
 }
 
 /// `acting_card`'s current advancement token total, if it's a Corp
@@ -2674,6 +2769,8 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::IdentityFlipped
         | EffectRequirement::CurrentlyAccessingNonAgenda
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
+        | EffectRequirement::ScoreAreaHasAtLeast(_)
+        | EffectRequirement::AgendaCameFromThisCardsServer
         | EffectRequirement::SubroutineResolvedThisRun
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)
@@ -2956,10 +3053,16 @@ mod tests {
         assert_eq!(events, vec![GameEvent::RunEndedByEffect { server: ServerId::Hq }]);
     }
 
+    /// Ending a run that is already over does nothing rather than
+    /// erroring: this used to be `Err(NoActiveRun)`, which made *Biawak*'s
+    /// second subroutine fail the whole action after its first had ended
+    /// the run — and, when that action was a parked selection's
+    /// confirmation, left a decision nothing could resolve (the view-path
+    /// sweep's seed-19 stall).
     #[test]
-    fn end_the_run_with_no_active_run_errors() {
+    fn end_the_run_with_no_active_run_does_nothing() {
         let mut state = game_state();
-        assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun, &mut ResolutionContext::for_card(None), &CardRegistry::new()), Err(RulesError::NoActiveRun));
+        assert_eq!(evaluate_effect(&mut state, &Effect::EndTheRun, &mut ResolutionContext::for_card(None), &CardRegistry::new()), Ok(Vec::new()));
     }
 
     fn active_run_state() -> RunState {
@@ -3253,6 +3356,7 @@ mod tests {
                     effect: Effect::GainCredits(Side::Corp, 3),
                 },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 3 },
+                GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("ice_wall".to_string()) },
             ]
         );
     }
@@ -3678,6 +3782,7 @@ mod tests {
             vec![
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 2 },
+                GameEvent::AbilityGainedCredits { side: Side::Corp, card: CardId("snare".to_string()) },
             ]
         );
     }

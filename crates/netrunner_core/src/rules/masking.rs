@@ -95,6 +95,12 @@ pub struct PublicCorpState {
     /// leak whenever a second copy sat hidden in HQ or R&D.
     #[serde(default)]
     pub removed_from_game: Vec<CardId>,
+    /// `CorpState::identity_counters` — power counters on the Corp's
+    /// identity (AU Co.). Never masked: an identity is faceup, and its
+    /// counters are tokens on the table, the same rule
+    /// `PublicInstalledCard::counters` applies to a *rezzed* install.
+    #[serde(default)]
+    pub identity_counters: u32,
     /// Recurring credits still unspent this turn, and the pool they refill
     /// to. Never masked: recurring credits sit as visible tokens on the
     /// card that grants them, so both players can always count them.
@@ -617,6 +623,13 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::GameOver { .. }
         | GameEvent::AbilityActivated { .. }
         | GameEvent::CardTrashedFromAccess { .. }
+        // A count, not a card: what left HQ stays hidden until it is seen
+        // in Archives, which `mask_corp_state` already decides per card.
+        | GameEvent::CardsTrashedFromHq { .. }
+        // Both name cards that were public where they were: an agenda in
+        // the score area, and a card resolving faceup.
+        | GameEvent::AgendaForfeited { .. }
+        | GameEvent::AbilityGainedCredits { .. }
         | GameEvent::PaidAbilityWindowOpened { .. }
         | GameEvent::PriorityPassed { .. }
         | GameEvent::PaidAbilityWindowClosed
@@ -818,6 +831,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
         scored_agendas: corp.scored_agendas.clone(),
         bad_publicity: corp.bad_publicity,
         removed_from_game: corp.removed_from_game.clone(),
+        identity_counters: corp.identity_counters,
         recurring_credits: corp.recurring_credits,
         recurring_credits_max: corp.recurring_credits_max,
     }

@@ -407,6 +407,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // Not carried by `ClientView`, and a rollout re-derives it from its
         // own play-out — the same approximation as `installed_this_turn`.
         extra_clicks_next_turn: 0,
+        // Public on the identity, and carried straight off the view.
+        identity_counters: view.corp.identity_counters,
         removed_from_game: view.corp.removed_from_game.clone(),
         scored_agendas: view.corp.scored_agendas.clone(),
         // The engine seeds this from the decklist; the registry-wide list
@@ -594,6 +596,7 @@ mod tests {
             corp: CS {
                 identity: None,
                 extra_clicks_next_turn: 0,
+                identity_counters: 0,
                 bad_publicity: 0,
                 first_install_used_this_turn: false,
                 recurring_credits: 0,

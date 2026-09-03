@@ -7,13 +7,28 @@
   },
   "cost": 14,
   "strength": 6,
-  "rez_forfeit_discount": 10,
   "triggers": [],
   "subroutines": [
     {
       "text": "Trash 1 installed program or end the run.",
       "effect": {
         "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "ZoneHasAtLeast": {
+                    "zone": "OpponentInstalled",
+                    "count": 1,
+                    "filter": {
+                      "CardType": "Program"
+                    }
+                  }
+                }
+              },
+              "effect": "EndTheRun"
+            }
+          },
           {
             "EffectIf": {
               "condition": {
@@ -48,22 +63,6 @@
                 }
               }
             }
-          },
-          {
-            "EffectIf": {
-              "condition": {
-                "Not": {
-                  "ZoneHasAtLeast": {
-                    "zone": "OpponentInstalled",
-                    "count": 1,
-                    "filter": {
-                      "CardType": "Program"
-                    }
-                  }
-                }
-              },
-              "effect": "EndTheRun"
-            }
           }
         ]
       }
@@ -72,6 +71,22 @@
       "text": "Trash 1 installed resource or end the run.",
       "effect": {
         "Sequence": [
+          {
+            "EffectIf": {
+              "condition": {
+                "Not": {
+                  "ZoneHasAtLeast": {
+                    "zone": "OpponentInstalled",
+                    "count": 1,
+                    "filter": {
+                      "CardType": "Resource"
+                    }
+                  }
+                }
+              },
+              "effect": "EndTheRun"
+            }
+          },
           {
             "EffectIf": {
               "condition": {
@@ -106,22 +121,6 @@
                 }
               }
             }
-          },
-          {
-            "EffectIf": {
-              "condition": {
-                "Not": {
-                  "ZoneHasAtLeast": {
-                    "zone": "OpponentInstalled",
-                    "count": 1,
-                    "filter": {
-                      "CardType": "Resource"
-                    }
-                  }
-                }
-              },
-              "effect": "EndTheRun"
-            }
           }
         ]
       }
@@ -132,5 +131,21 @@
     }
   ],
   "numeric_id": 35074,
-  "is_playable": true
+  "is_playable": true,
+  "rez_alternatives": [
+    {
+      "requirement": {
+        "ScoreAreaHasAtLeast": 1
+      },
+      "pay": {
+        "ForfeitAgendas": 1
+      },
+      "discount": 10
+    },
+    {
+      "pay": {
+        "Sequence": []
+      }
+    }
+  ]
 }

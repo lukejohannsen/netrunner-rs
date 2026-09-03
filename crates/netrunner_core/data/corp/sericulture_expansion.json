@@ -1,0 +1,47 @@
+{
+  "id": "sericulture_expansion",
+  "title": "Sericulture Expansion",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 3,
+  "agenda_points": 2,
+  "dividends": 1,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "ThisCardCountersAtLeast": 1
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "RemoveCounters": 1
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": "Advanceable",
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "AddAdvancementTokens": 2
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35049,
+  "is_playable": true
+}

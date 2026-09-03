@@ -1,0 +1,38 @@
+{
+  "id": "the_zwicky_group_invisible_hands",
+  "title": "The Zwicky Group: Invisible Hands",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnAbilityGainedCredits",
+      "requirement": {
+        "And": [
+          {
+            "OncePerTurn": "the_zwicky_group_invisible_hands"
+          },
+          {
+            "TriggeringCardMatches": {
+              "CardTypeOneOf": [
+                "Agenda",
+                "Operation"
+              ]
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "DrawCards": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35069,
+  "is_playable": true
+}
