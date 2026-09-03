@@ -1,27 +1,26 @@
 {
-  "id": "detente",
-  "title": "Detente",
+  "id": "bling",
+  "title": "Bling",
   "side": "Runner",
   "card_type": "Hardware",
-  "cost": 3,
+  "cost": 2,
   "unique": true,
   "subtypes": [
     "Console"
   ],
   "memory_bonus": 1,
+  "hosted_cards_playable_from_grip": true,
   "triggers": [
     {
-      "trigger": "OnSuccessfulRunOnHq",
-      "requirement": {
-        "OncePerTurn": "detente"
-      },
+      "trigger": "OnCardInstalled",
+      "requirement": "InstalledWithoutSpendingCredits",
       "effects": [
         {
           "PresentChoice": {
             "chooser": "Runner",
             "options": [
               {
-                "HostCardOnThisCard": "RandomFromHq"
+                "HostCardOnThisCard": "TopOfStack"
               },
               {
                 "Sequence": []
@@ -30,8 +29,16 @@
           }
         }
       ]
+    },
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "effects": [
+        {
+          "TrashCard": "HostedOnThisCard"
+        }
+      ]
     }
   ],
-  "numeric_id": 35018,
+  "numeric_id": 35006,
   "is_playable": true
 }

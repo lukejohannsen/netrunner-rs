@@ -1,0 +1,51 @@
+{
+  "id": "maglectric_rapid",
+  "title": "Maglectric Rapid (748 Mod)",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 1,
+  "unique": true,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRunOnHq",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OpponentInstalled",
+                "count": 1,
+                "filter": "Rezzed"
+              }
+            },
+            "effect": {
+              "OfferPaidChoice": {
+                "side": "Runner",
+                "cost": "TrashSelf",
+                "if_paid": {
+                  "PromptChooseCards": {
+                    "side": "Runner",
+                    "source": "OpponentInstalled",
+                    "filter": "Rezzed",
+                    "min": 1,
+                    "max": 1,
+                    "reveal": false,
+                    "shuffle_after": false,
+                    "then": {
+                      "DerezCard": "ThisCard"
+                    }
+                  }
+                },
+                "if_declined": {
+                  "Sequence": []
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35019,
+  "is_playable": true
+}

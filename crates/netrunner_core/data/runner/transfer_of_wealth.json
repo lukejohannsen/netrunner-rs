@@ -1,0 +1,54 @@
+{
+  "id": "transfer_of_wealth",
+  "title": "Transfer of Wealth",
+  "side": "Runner",
+  "card_type": "Event",
+  "cost": 0,
+  "subtypes": [
+    "Run"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PromptChooseServer": {
+            "chooser": "Runner",
+            "rez_cost_delta": 0,
+            "bonus_run_credits": 0,
+            "allowed_servers": [
+              "Hq"
+            ],
+            "on_success": {
+              "Sequence": [
+                {
+                  "GiveTags": 1
+                },
+                {
+                  "LoseCredits": [
+                    "Corp",
+                    3
+                  ]
+                },
+                {
+                  "GainCreditsAmount": [
+                    "Runner",
+                    "CreditsLostThisResolution"
+                  ]
+                },
+                {
+                  "GainCreditsAmount": [
+                    "Runner",
+                    "CreditsLostThisResolution"
+                  ]
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35017,
+  "is_playable": true
+}

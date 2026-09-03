@@ -156,17 +156,9 @@ const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// file cannot land without deleting its entry (the count assertion fails
 /// the other way), and the set cannot be called complete while an entry
 /// remains. Started at 73 of 82 when Stage 1 (Flow and Ebb, Sabbatical)
-/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad).
+/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad); 48 after Stage 4 (Prick Thyself, Shootin' 'n' Lootin', Professional Opportunities).
 #[cfg(test)]
 const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (35002, "Topan: Ormas Leader — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35006, "Bling — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35012, "Barry \"Baz\" Wong: Tri-Maf Veteran — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35013, "MuslihaT: Multifarious Marketeer — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35017, "Transfer of Wealth — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35019, "Maglectric Rapid (748 Mod) — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35020, "Sang Kancil — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35021, "Fransofia Ward — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35035, "LEO Construction: Labor Solutions — stage 6: Brutal Efficiency / Agency"),
     (35036, "Poetri Luxury Brands: All the Rage — stage 7: Fashion Lab / Pork Chops"),
     (35037, "Aggressive Trendsetting — stage 7: Fashion Lab / Pork Chops"),

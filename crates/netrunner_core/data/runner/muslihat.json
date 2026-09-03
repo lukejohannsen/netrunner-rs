@@ -1,0 +1,68 @@
+{
+  "id": "muslihat",
+  "title": "MuslihaT: Multifarious Marketeer",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "TopOfOwnStack",
+                "count": 1,
+                "filter": {
+                  "AnyOf": [
+                    "Icebreaker",
+                    {
+                      "All": [
+                        {
+                          "CardType": "Event"
+                        },
+                        {
+                          "HasSubtype": "Run"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PromptChooseCards": {
+                "side": "Runner",
+                "source": "TopOfOwnStack",
+                "filter": {
+                  "AnyOf": [
+                    "Icebreaker",
+                    {
+                      "All": [
+                        {
+                          "CardType": "Event"
+                        },
+                        {
+                          "HasSubtype": "Run"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                "min": 0,
+                "max": 1,
+                "reveal": true,
+                "shuffle_after": false,
+                "destination": "OwnGrip"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35013,
+  "is_playable": true
+}

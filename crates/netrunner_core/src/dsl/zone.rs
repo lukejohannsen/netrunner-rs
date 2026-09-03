@@ -42,6 +42,13 @@ pub enum CardZoneRef {
     /// *destination* it hosts the selection there; as a *source* it offers
     /// them. Only meaningful with a Runner rig card as the parking card.
     HostedOnSource,
+    /// The single top card of the Runner's stack — MuslihaT's "look at the
+    /// top card of your stack ... you may reveal it and add it to your
+    /// grip". A zone rather than a `PromptChooseCards` field: the prompt's
+    /// eligibility, view and confirm paths all key off the zone, and a
+    /// one-card zone falls out of each of them for free, where a "top N"
+    /// field would have had to be threaded through all three.
+    TopOfOwnStack,
 }
 
 /// Which cards within a `CardZoneRef` are eligible to be selected.
@@ -124,6 +131,13 @@ pub enum CardFilter {
     /// ended (`CompletedRun::accessed_cards`) — Charm Offensive. By card,
     /// as the printed text says "a copy of a card you accessed".
     AccessedDuringLastRun,
+    /// A card printed with this subtype — MuslihaT's "a run event".
+    /// Definition-level.
+    HasSubtype(crate::dsl::CardSubtype),
+    /// At least one listed filter must match — `All`'s disjunctive twin,
+    /// for MuslihaT's "an icebreaker *or* a run event". Both halves
+    /// recurse, as `All` does.
+    AnyOf(Vec<CardFilter>),
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -161,6 +175,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::Rezzed => true,
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
+        CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),
+        CardFilter::HasSubtype(subtype) => card.subtypes.contains(subtype),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc
         // comment. `eligible_cards` applies the real check.

@@ -325,8 +325,11 @@ mod tests {
         ("hyper_velocity", Side::Corp, 44, 15, 18),
         ("party_hard", Side::Runner, 40, 14, 0),
         ("planning_ahead", Side::Runner, 40, 15, 0),
+        ("prick_thyself", Side::Runner, 45, 15, 0),
+        ("professional_opportunities", Side::Runner, 45, 15, 0),
         ("quick_and_dirty", Side::Corp, 44, 15, 18),
         ("sabbatical", Side::Runner, 45, 15, 0),
+        ("shootin_n_lootin", Side::Runner, 45, 15, 0),
         ("stolen_goods", Side::Runner, 40, 14, 0),
         ("tickets_please", Side::Runner, 40, 15, 0),
     ];

@@ -1,0 +1,89 @@
+{
+  "id": "professional_opportunities",
+  "name": "Professional Opportunities",
+  "side": "Runner",
+  "category": "Sample",
+  "identity": "barry_baz_wong",
+  "cards": [
+    {
+      "card": "clean_getaway",
+      "count": 3
+    },
+    {
+      "card": "lie_low",
+      "count": 3
+    },
+    {
+      "card": "mutual_favor",
+      "count": 2
+    },
+    {
+      "card": "overclock",
+      "count": 3
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "docklands_pass",
+      "count": 1
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 1
+    },
+    {
+      "card": "madani",
+      "count": 2
+    },
+    {
+      "card": "maglectric_rapid",
+      "count": 3
+    },
+    {
+      "card": "fransofia_ward",
+      "count": 2
+    },
+    {
+      "card": "open_market",
+      "count": 3
+    },
+    {
+      "card": "red_team",
+      "count": 3
+    },
+    {
+      "card": "side_hustle",
+      "count": 3
+    },
+    {
+      "card": "carmen",
+      "count": 2
+    },
+    {
+      "card": "marjanah",
+      "count": 3
+    },
+    {
+      "card": "rising_tide",
+      "count": 1
+    },
+    {
+      "card": "sang_kancil",
+      "count": 2
+    },
+    {
+      "card": "chromatophores",
+      "count": 2
+    },
+    {
+      "card": "leech",
+      "count": 1
+    },
+    {
+      "card": "tranquilizer",
+      "count": 2
+    }
+  ]
+}

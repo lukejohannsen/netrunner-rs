@@ -69,6 +69,8 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OwnArchives => state.corp.archives.iter().map(|a| a.card.clone()).collect(),
         CardZoneRef::OwnRAndD => state.corp.r_and_d.clone(),
         CardZoneRef::OwnStack => state.runner.stack.clone(),
+        // The stack draws from the end of the `Vec`, so its top is `last`.
+        CardZoneRef::TopOfOwnStack => state.runner.stack.last().cloned().into_iter().collect(),
         CardZoneRef::OwnGrip => state.runner.grip.clone(),
         CardZoneRef::OwnHeap => state.runner.heap.clone(),
         CardZoneRef::OpponentDiscard => match owner {
@@ -240,7 +242,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         CardZoneRef::OwnHq => Some(&mut state.corp.hq),
         CardZoneRef::OwnArchives => None,
         CardZoneRef::OwnRAndD => Some(&mut state.corp.r_and_d),
-        CardZoneRef::OwnStack => Some(&mut state.runner.stack),
+        CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack => Some(&mut state.runner.stack),
         CardZoneRef::OwnGrip => Some(&mut state.runner.grip),
         CardZoneRef::OwnHeap => Some(&mut state.runner.heap),
         CardZoneRef::OpponentDiscard => match owner {
@@ -630,8 +632,14 @@ pub(crate) fn resolve_confirm_card_selection(
                     pos.map(|pos| !state.corp.archives.remove(pos).facedown)
                 }
                 _ => {
+                    // The top of the stack is its *last* element, and the
+                    // one-card zone must take that copy — the first match
+                    // would lift a duplicate from lower down and leave the
+                    // looked-at card on top for the next draw.
+                    let from_top = matches!(source, CardZoneRef::TopOfOwnStack);
                     if let Some(zone) = plain_zone_mut(state, side, &source, source_install)
-                        && let Some(pos) = zone.iter().position(|c| c == card_id)
+                        && let Some(pos) =
+                            if from_top { zone.iter().rposition(|c| c == card_id) } else { zone.iter().position(|c| c == card_id) }
                     {
                         zone.remove(pos);
                         Some(false)
@@ -843,6 +851,7 @@ pub(crate) fn resolve_choose_server(
         // takes credits from *itself*), so carry its identity onto the run.
         run.on_success_card = source_card.clone();
         run.on_success_install = source_install;
+        run.initiated_by = source_card.clone();
     }
     // The run's start rider (Shred arming itself), as the parking card.
     let mut start_events = Vec::new();

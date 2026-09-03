@@ -1,0 +1,89 @@
+{
+  "id": "prick_thyself",
+  "name": "Prick Thyself",
+  "side": "Runner",
+  "category": "Sample",
+  "identity": "topan",
+  "cards": [
+    {
+      "card": "charm_offensive",
+      "count": 1
+    },
+    {
+      "card": "illumination",
+      "count": 1
+    },
+    {
+      "card": "scrounge",
+      "count": 3
+    },
+    {
+      "card": "shred",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 1
+    },
+    {
+      "card": "vrcation",
+      "count": 3
+    },
+    {
+      "card": "bling",
+      "count": 3
+    },
+    {
+      "card": "dzmz_optimizer",
+      "count": 1
+    },
+    {
+      "card": "rent_rioters",
+      "count": 3
+    },
+    {
+      "card": "side_hustle",
+      "count": 3
+    },
+    {
+      "card": "smartware_distributor",
+      "count": 3
+    },
+    {
+      "card": "verbal_plasticity",
+      "count": 3
+    },
+    {
+      "card": "echelon",
+      "count": 1
+    },
+    {
+      "card": "rising_tide",
+      "count": 3
+    },
+    {
+      "card": "unity",
+      "count": 1
+    },
+    {
+      "card": "botulus",
+      "count": 3
+    },
+    {
+      "card": "fermenter",
+      "count": 3
+    },
+    {
+      "card": "gourmand",
+      "count": 2
+    },
+    {
+      "card": "leech",
+      "count": 2
+    }
+  ]
+}

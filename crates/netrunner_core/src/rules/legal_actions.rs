@@ -174,9 +174,9 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         // `current_actor` can't resolve this; ownership is a card-location
         // lookup instead.
         PlayerAction::ActivateAbility { target, .. } => {
-            if state.find_corp_install(*target).is_some() {
+            if *target == InstallId::CORP_IDENTITY || state.find_corp_install(*target).is_some() {
                 Side::Corp
-            } else if state.find_rig_install(*target).is_some() {
+            } else if *target == InstallId::RUNNER_IDENTITY || state.find_rig_install(*target).is_some() {
                 Side::Runner
             } else {
                 unreachable!("ActivateAbility({target:?}) passed legal_actions but owns no matching installed/rig card")
@@ -407,7 +407,8 @@ fn initiate_run_candidates(state: &GameState) -> Vec<PlayerAction> {
 /// `CardType`.
 fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let mut candidates = Vec::new();
-    for card_id in &state.runner.grip {
+    // The grip plus any card hosted "as if it were in your grip" (Bling).
+    for card_id in &state.runner.playable_hand() {
         let Some(card) = registry.get(card_id) else { continue };
         match card.card_type {
             CardType::Event => candidates.push(PlayerAction::PlayEvent { card_id: card_id.clone() }),
@@ -468,7 +469,7 @@ fn install_program_on_ice_candidates(state: &GameState, registry: &CardRegistry)
         .map(|c| c.install_id)
         .collect();
     let mut candidates = Vec::new();
-    for card_id in &state.runner.grip {
+    for card_id in &state.runner.playable_hand() {
         let Some(card) = registry.get(card_id) else { continue };
         if card.card_type == CardType::Program && card.installs_on_ice {
             for host in &host_ice {
@@ -527,6 +528,13 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
     }
     for rig_card in &state.runner.rig {
         candidates.extend(paid_ability_candidates(&rig_card.card, rig_card.install_id, registry));
+    }
+    // Identities are always active — Topan's click ability.
+    if let Some(identity) = &state.corp.identity {
+        candidates.extend(paid_ability_candidates(identity, InstallId::CORP_IDENTITY, registry));
+    }
+    if let Some(identity) = &state.runner.identity {
+        candidates.extend(paid_ability_candidates(identity, InstallId::RUNNER_IDENTITY, registry));
     }
     candidates
 }

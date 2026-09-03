@@ -1,0 +1,34 @@
+{
+  "id": "fransofia_ward",
+  "title": "Fransofia Ward",
+  "side": "Runner",
+  "card_type": "Resource",
+  "cost": 3,
+  "unique": true,
+  "subtypes": [
+    "Connection"
+  ],
+  "ice_rez_cost_modifier": 1,
+  "triggers": [
+    {
+      "trigger": "OnEncounter",
+      "requirement": {
+        "CorpCreditsAtLeast": 15
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Runner",
+            "cost": "TrashSelf",
+            "if_paid": "BypassEncounteredIce",
+            "if_declined": {
+              "Sequence": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35021,
+  "is_playable": true
+}

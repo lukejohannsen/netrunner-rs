@@ -107,6 +107,15 @@ impl InstallId {
     /// Two fixtures that both take the placeholder are therefore
     /// indistinguishable by id; any test that cares must set it.
     pub const PLACEHOLDER: InstallId = InstallId(0);
+    /// The two identities, which are never installed and so never
+    /// allocated an id, but do print paid abilities (Topan's "[click]:
+    /// install 1 card, paying 2[c] less"). `PlayerAction::ActivateAbility`
+    /// names them with these so the action keeps its one `InstallId`
+    /// shape; `allocate_install_id` counts up from `1` and can never reach
+    /// them. `engine::activate_ability` resolves them to the identity card
+    /// with no acting install, and `action_mask` gives each its own slot.
+    pub const CORP_IDENTITY: InstallId = InstallId(u32::MAX - 1);
+    pub const RUNNER_IDENTITY: InstallId = InstallId(u32::MAX);
 }
 
 impl Default for InstallId {
@@ -402,6 +411,14 @@ pub struct InstalledRunnerCard {
     /// installed out of here by `Effect::InstallRunnerCardFromHost`.
     #[serde(default)]
     pub hosted_cards: Vec<CardId>,
+    /// Whether `hosted_cards` may be played or installed through the
+    /// ordinary grip actions — Bling. Seeded from
+    /// `CardDefinition::hosted_cards_playable_from_grip` at install, and
+    /// duplicated here on purpose: `action_mask` has no registry, and the
+    /// action space must be able to number a hosted card's play the way it
+    /// numbers a grip card's. See `RunnerState::playable_hand`.
+    #[serde(default)]
+    pub hosted_cards_playable: bool,
 }
 
 impl InstalledRunnerCard {
@@ -428,6 +445,7 @@ impl Default for InstalledRunnerCard {
             hosted_on_ice: None,
             hosted_on_program: None,
             hosted_cards: Vec::new(),
+            hosted_cards_playable: false,
         }
     }
 }
@@ -560,6 +578,22 @@ pub struct RunnerState {
 }
 
 impl RunnerState {
+    /// The cards the Runner may play or install with a basic action: the
+    /// grip, followed by every card hosted on a rig card that makes its
+    /// hosted cards playable "as if they were in your grip" (Bling). The
+    /// grip comes first so a hosted card only ever *extends* the grip's
+    /// positional numbering in `action_mask`, and every consumer —
+    /// `engine::take_from_hand`, `legal_actions`, the action space — reads
+    /// this one list rather than each deciding what counts as the hand.
+    /// Hand-size discards read the grip alone: hosted cards are not in it.
+    pub fn playable_hand(&self) -> Vec<CardId> {
+        let mut hand = self.grip.clone();
+        for card in self.rig.iter().filter(|c| c.hosted_cards_playable) {
+            hand.extend(card.hosted_cards.iter().cloned());
+        }
+        hand
+    }
+
     /// Clears every rig card's `Encounter`-duration strength buff. Called
     /// when the current ICE encounter ends (see
     /// `run::engine::continue_run`).
