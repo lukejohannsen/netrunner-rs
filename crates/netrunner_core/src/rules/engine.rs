@@ -10,7 +10,7 @@ use crate::rules::paid_ability;
 use crate::rules::pending_choice;
 use crate::rules::run::{self, RunAction, RunPhase, ServerId};
 use crate::rules::setup;
-use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, Side, WindowCheckpoint};
+use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ScoredAgenda, Side, WindowCheckpoint};
 use crate::rules::trace;
 use crate::rules::turn;
 use crate::rules::win;
@@ -80,6 +80,7 @@ pub fn apply_action(
     // Classified before the match consumes `action` — read by the run guard
     // immediately below as well as by `open_post_action_window` at the end.
     let action_kind = classify_action(&action);
+    let finishes_action = counts_as_turn_action(&action);
     // A run is itself an action in progress: no basic action may begin until
     // it resolves. Neither of the per-handler guards catches this — `phase`
     // stays `Action(Runner)` for the whole run, so `require_phase` never
@@ -178,6 +179,12 @@ pub fn apply_action(
     // A no-op in the overwhelmingly common case: the queue is empty unless
     // a trigger actually parked something.
     let (mut next, mut events) = resolved;
+    // The action is finished once its handler returned — what Petty Cash's
+    // "have not finished an action yet this turn" counts. Before the drain:
+    // a deferred trigger is part of the same action, not a new one.
+    if finishes_action {
+        next.actions_taken_this_turn = next.actions_taken_this_turn.saturating_add(1);
+    }
     events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
 
     // The run's ICE list follows the board (`run::reconcile_ice`): a
@@ -265,6 +272,18 @@ fn open_post_action_window(
 enum ActionKind {
     BasicClickAction,
     Other,
+}
+
+/// Whether `action` is an *action* in the rules' sense — one of the things
+/// a player spends their turn on — for `GameState::actions_taken_this_turn`.
+/// Every basic click action, and a run; not scoring, which `classify_action`
+/// groups with the click actions only for its window and run guards.
+fn counts_as_turn_action(action: &PlayerAction) -> bool {
+    match action {
+        PlayerAction::ScoreAgenda { .. } => false,
+        PlayerAction::InitiateRun { .. } => true,
+        other => matches!(classify_action(other), ActionKind::BasicClickAction),
+    }
 }
 
 fn classify_action(action: &PlayerAction) -> ActionKind {
@@ -560,7 +579,7 @@ pub(crate) fn place_corp_card(
 /// empty for an installable type. Computed at park time and safe to trust
 /// at resolution: a parked decision blocks every other action, so nothing
 /// can change in between.
-pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl::CardDefinition) -> Vec<ServerId> {
+pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl::CardDefinition, ignore_costs: bool) -> Vec<ServerId> {
     let existing = super::legal_actions::existing_remote_ids(state);
     let mut remotes: Vec<ServerId> = existing.iter().copied().map(ServerId::Remote).collect();
     remotes.push(ServerId::Remote(super::legal_actions::fresh_remote_id(&existing)));
@@ -574,7 +593,9 @@ pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl
         CardType::Ice(_) => {
             let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             zones.extend(remotes);
-            zones.retain(|zone| ice_protecting(state, *zone) <= state.corp.resources.credits.0);
+            if !ignore_costs {
+                zones.retain(|zone| ice_protecting(state, *zone) <= state.corp.resources.credits.0);
+            }
             zones
         }
         _ => Vec::new(),
@@ -842,6 +863,35 @@ fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result
     Err(RulesError::CardNotInHand { side, card: card_id.clone() })
 }
 
+/// Where a `PlayOperation` takes its card from: HQ first, then Archives
+/// for a card playable from there (`CorpState::playable_hand`'s order).
+/// `Some(true)` means the copy would come out of Archives.
+fn operation_comes_from_archives(state: &GameState, card_id: &CardId) -> Option<bool> {
+    if state.corp.hq.contains(card_id) {
+        Some(false)
+    } else if state.corp.playable_from_archives.contains(card_id) && state.corp.archives_contains(card_id) {
+        Some(true)
+    } else {
+        None
+    }
+}
+
+/// `take_from_grip` for the Corp with Archives as the fallback zone —
+/// Petty Cash played from Archives. Kept apart from `take_from_grip` so
+/// the discard, install and every other HQ-only path cannot reach into
+/// Archives by accident.
+fn take_operation(state: &mut GameState, card_id: &CardId) -> Result<bool, RulesError> {
+    let from_archives = operation_comes_from_archives(state, card_id)
+        .ok_or_else(|| RulesError::CardNotInHand { side: Side::Corp, card: card_id.clone() })?;
+    if from_archives {
+        let position = state.corp.archives.iter().position(|a| &a.card == card_id).ok_or_else(|| RulesError::CardNotInHand { side: Side::Corp, card: card_id.clone() })?;
+        state.corp.archives.remove(position);
+    } else {
+        take_from_grip(state, Side::Corp, card_id)?;
+    }
+    Ok(from_archives)
+}
+
 fn play_event(
     state: &GameState,
     registry: &CardRegistry,
@@ -908,7 +958,7 @@ fn play_operation(
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
-    take_from_grip(&mut next, side, &card_id)?;
+    let from_archives = take_operation(&mut next, &card_id)?;
 
     let card_def = registry
         .get(&card_id)
@@ -923,12 +973,22 @@ fn play_operation(
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
     // A played Operation resolved in the open, so the Runner has seen it.
-    next.corp.archives.push(ArchivedCard::faceup(card_id.clone()));
+    // One played out of Archives leaves the game instead (Petty Cash's
+    // "after it resolves, remove it from the game") — placed now rather
+    // than after the dispatch so an `OnPlay` that parks a decision still
+    // sees the card where it will end up; nothing reads it back either
+    // way.
+    if from_archives {
+        next.corp.removed_from_game.push(card_id.clone());
+        events.push(GameEvent::CardRemovedFromGame { side, card: card_id.clone() });
+    } else {
+        next.corp.archives.push(ArchivedCard::faceup(card_id.clone()));
+    }
     // `dispatch_event` resolves both `OnPlay` and, for Transaction-subtype
     // Operations, the Weyland Consortium: Building a Better World-style
     // identity reaction (unconditional — no per-turn gate, unlike
     // `OnSuccessfulRunOnHq`/`OnInstall` above) from this one event.
-    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone() };
+    let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives };
     events.push(played_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &played_event)?);
 
@@ -1782,14 +1842,20 @@ fn score_agenda(
     // turn's last click could not be scored until the next turn (ROADMAP
     // Rules Audit T6).
     let mut next = state.clone();
-    next.corp.installed.remove(position);
-    next.corp.scored_agendas.push(card_id.clone());
+    let install_id = next.corp.installed.remove(position).install_id;
+    // Dividends: every advancement counter past the requirement becomes
+    // `dividends` agenda counters on the scored copy (Off the Books).
+    let agenda_counters = card_def.dividends.unwrap_or(0).saturating_mul(advancement_tokens - required);
+    next.corp.scored_agendas.push(ScoredAgenda { card: card_id.clone(), install_id, agenda_counters });
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
     next.corp.agenda_points_scored_this_turn =
         next.corp.agenda_points_scored_this_turn.saturating_add(agenda_points);
 
     let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server };
     let mut events = vec![scored_event.clone()];
+    if agenda_counters > 0 {
+        events.push(GameEvent::CountersAdded { card: card_id.clone(), amount: agenda_counters });
+    }
     // `dispatch_event` fires the agenda's own "on score" text (e.g. Hostile
     // Takeover), then the Corp identity's reactive ability if one is set
     // (e.g. Jinteki: Personal Evolution) — unconditional dispatch, no
@@ -1845,23 +1911,29 @@ fn purge_virus_counters(
 
     let mut next = state.clone();
     let mut events = ability::pay_cost(&mut next, side, &Cost::Clicks(3), None)?;
+    events.push(purge_all_virus_counters(&mut next, registry));
 
+    Ok((next, events))
+}
+
+/// The purge itself, shared by the basic action and
+/// `Effect::PurgeVirusCounters` (Flyswatter): zeroes the counters of every
+/// installed or rigged card whose registry `counter_kind` is `Virus` and
+/// reports which cards were swept.
+pub(crate) fn purge_all_virus_counters(state: &mut GameState, registry: &CardRegistry) -> GameEvent {
     let holds_virus_counters =
         |card_id: &CardId| registry.get(card_id).and_then(|c| c.counter_kind) == Some(CounterKind::Virus);
 
     let mut purged = Vec::new();
-    for installed in next.corp.installed.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
+    for installed in state.corp.installed.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
         installed.counters = 0;
         purged.push(installed.card.clone());
     }
-    for rigged in next.runner.rig.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
+    for rigged in state.runner.rig.iter_mut().filter(|c| holds_virus_counters(&c.card)) {
         rigged.counters = 0;
         purged.push(rigged.card.clone());
     }
-
-    events.push(GameEvent::VirusCountersPurged { cards: purged });
-
-    Ok((next, events))
+    GameEvent::VirusCountersPurged { cards: purged }
 }
 
 /// Resolves `PlayerAction::TrashResource`, per its doc comment. Corp-only.
@@ -3776,7 +3848,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 5 },
-                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone() },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false },
                 GameEvent::TriggerFired { card: CardId("hedge_fund".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::CreditsGained { side: Side::Corp, amount: 9 },
             ]
@@ -3912,7 +3984,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 0 },
-                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone() },
+                GameEvent::OperationPlayed { side: Side::Corp, card: card_id.clone(), from_archives: false },
                 GameEvent::TriggerFired { card: CardId("sea_source".to_string()), trigger: crate::dsl::Trigger::OnPlay },
                 GameEvent::TraceInitiated { base: 2, initiating_card: Some(card_id) },
             ]
@@ -5339,6 +5411,7 @@ mod tests {
             card: CardId("pad_campaign".to_string()),
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
+            continuation: None,
         }];
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
             chooser: Side::Corp,
@@ -5396,11 +5469,13 @@ mod tests {
                     card: CardId("pad_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
+                    continuation: None,
                 },
                 crate::rules::state::DeferredTrigger { install: None, target_install: None,
                     card: CardId("nico_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
+                    continuation: None,
                 },
             ],
             resume: crate::rules::state::PendingChoiceResume::None,
@@ -5474,6 +5549,7 @@ mod tests {
             trigger: Trigger::OnTurnStart,
             target: None,
             event: Some(GameEvent::TurnStarted { side: Side::Corp, clicks }),
+            continuation: None,
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
@@ -5546,6 +5622,7 @@ mod tests {
             trigger,
             target: None,
             event: None,
+            continuation: None,
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,

@@ -53,7 +53,15 @@ pub enum GameEvent {
     IceSwapped { a: CardId, b: CardId },
     RunInitiated { server: ServerId },
     EventPlayed { side: Side, card: CardId },
-    OperationPlayed { side: Side, card: CardId },
+    /// `from_archives`: the card was played out of Archives rather than
+    /// HQ (`CardDefinition::playable_from_archives`, Petty Cash) — read by
+    /// `EffectRequirement::PlayedFromArchives` off the triggering event.
+    OperationPlayed {
+        side: Side,
+        card: CardId,
+        #[serde(default)]
+        from_archives: bool,
+    },
     /// `credits_paid` is what the install actually cost after every
     /// discount — Bling's "whenever you install a card without spending
     /// credits" reads it through

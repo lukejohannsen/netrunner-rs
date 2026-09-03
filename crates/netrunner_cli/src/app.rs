@@ -674,6 +674,7 @@ mod tests {
             trigger,
             target: None,
             event: None,
+            continuation: None,
         };
         state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,

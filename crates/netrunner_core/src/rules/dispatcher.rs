@@ -85,6 +85,7 @@ pub fn dispatch_event(
                         target: Some(card.clone()),
                         target_install: installed,
                         event: Some(event.clone()),
+                        continuation: None,
                     })
                     .collect();
                 events.extend(fire_plan(state, registry, &plan)?);
@@ -295,6 +296,7 @@ pub fn dispatch_event(
                     target: None,
                     target_install: None,
                     event: Some(event.clone()),
+                    continuation: None,
                 };
                 plan.push(due(Trigger::OnSuccessfulRun));
                 if *server == ServerId::Hq {
@@ -433,10 +435,15 @@ pub fn dispatch_event(
         // console. The Corp side stays identity-only until a card needs
         // more.
         GameEvent::DiscardPhaseEnded { side: Side::Runner } => fire_runner_side(state, registry, Trigger::OnDiscardPhaseEnd, event),
-        GameEvent::DiscardPhaseEnded { side: Side::Corp } => match state.corp.identity.clone() {
-            Some(identity) => fire_direct(state, registry, &identity, None, Trigger::OnDiscardPhaseEnd, event),
-            None => Ok(Vec::new()),
-        },
+        // The Corp's identity, then its score area: Off the Books acts from
+        // there when the discard phase ends, pinned to the install handle it
+        // kept so two scored copies each spend their own counters.
+        GameEvent::DiscardPhaseEnded { side: Side::Corp } => {
+            let mut candidates: Vec<(Option<InstallId>, CardId)> =
+                state.corp.identity.iter().cloned().map(|id| (None, id)).collect();
+            candidates.extend(state.corp.scored_agendas.iter().map(|scored| (Some(scored.install_id), scored.card.clone())));
+            fire_each(state, registry, &candidates, Trigger::OnDiscardPhaseEnd, event)
+        }
 
         // Through `fire_each` (not `fire_direct`) although the audience is
         // one card: a tag can be *paid* as a cost (`Cost::TakeTags`,
@@ -512,6 +519,7 @@ fn fire_direct(
         target: None,
         target_install: None,
         event: Some(event.clone()),
+        continuation: None,
     };
     ability::fire_card_triggers(state, registry, &due, true)
 }
@@ -589,6 +597,7 @@ fn fire_each(
             target: None,
             target_install: None,
             event: Some(event.clone()),
+            continuation: None,
         })
         .collect();
     fire_plan(state, registry, &plan)
@@ -642,7 +651,7 @@ fn fire_plan(
 /// harmless; silently picking an order the player was entitled to choose
 /// would not be.
 fn declares_trigger(registry: &CardRegistry, due: &DeferredTrigger) -> bool {
-    registry.get(&due.card).is_some_and(|card| card.triggers.iter().any(|t| t.trigger == due.trigger))
+    due.continuation.is_some() || registry.get(&due.card).is_some_and(|card| card.triggers.iter().any(|t| t.trigger == due.trigger))
 }
 
 /// Parks a `PendingDecision::ChooseTriggerOrder` if `plan` holds two or
@@ -732,6 +741,13 @@ fn fire_one(
     if !still_applies(state, due) {
         return Ok(Vec::new());
     }
+    // A queued continuation (the rest of a `Sequence`) resolves as the
+    // card it was pinned to, with the event it had — no trigger lookup, no
+    // requirement, no `TriggerFired`: the trigger already fired.
+    if let Some(effect) = &due.continuation {
+        let mut ctx = ability::ResolutionContext::for_install_trigger(due.install, Some(&due.card), due.event.as_ref());
+        return ability::evaluate_effect(state, effect, &mut ctx, registry);
+    }
     // `due.event` is what makes a deferred trigger indistinguishable from
     // one that fired immediately: it rebuilds the same
     // `ability::ResolutionContext`, so a requirement reading the triggering
@@ -786,6 +802,7 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
         Some(install) => {
             state.runner.rig.iter().any(|c| c.install_id == install)
                 || state.corp.installed.iter().any(|c| c.install_id == install)
+                || state.corp.find_scored(install).is_some()
         }
         None => true,
     };
@@ -1203,6 +1220,7 @@ mod tests {
                 // requirement reading the triggering event cannot tell
                 // whether it was deferred.
                 event: Some(damage.clone()),
+                continuation: None,
             }],
             "the untouched remainder is queued, not dropped"
         );
@@ -1304,6 +1322,7 @@ mod tests {
             card: CardId("pad_campaign".to_string()),
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
+            continuation: None,
         }];
         let credits_before = state.corp.resources.credits;
 
@@ -1331,6 +1350,7 @@ mod tests {
             trigger: Trigger::OnApproachServer,
             target: None,
             event: Some(GameEvent::ServerApproached { server: ServerId::Remote(0) }),
+            continuation: None,
         };
 
         let mut ended = empty_state();
@@ -1363,6 +1383,7 @@ mod tests {
             trigger: Trigger::OnRunEnded,
             target: None,
             event: Some(GameEvent::RunEndedByEffect { server: ServerId::Hq }),
+            continuation: None,
         }];
         let before = state.runner.resources.credits;
         drain_deferred_triggers(&mut state, &registry).unwrap();
@@ -1399,6 +1420,7 @@ mod tests {
                 card: CardId("some_agenda".to_string()),
                 advancement_tokens,
             }),
+            continuation: None,
         };
 
         // First advancement: the requirement is met even though the trigger
@@ -1424,6 +1446,7 @@ mod tests {
             trigger: Trigger::OnAdvance,
             target: None,
             event: None,
+            continuation: None,
         }];
         let before = state.corp.resources.credits;
         drain_deferred_triggers(&mut state, &registry).unwrap();
@@ -1464,6 +1487,7 @@ mod tests {
             card: CardId(id.to_string()),
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
+            continuation: None,
         };
         state.deferred_triggers = vec![queued("parks_a_choice"), queued("pad_campaign")];
 

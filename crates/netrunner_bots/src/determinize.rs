@@ -74,7 +74,7 @@ fn visible_card_ids(view: &ClientView) -> HashSet<CardId> {
     // is `None`), so it must be sampled from the pool like any other
     // unknown, not treated as already-visible.
     ids.extend(view.corp.archives.iter().filter_map(|a| a.card.clone()));
-    ids.extend(view.corp.scored_agendas.iter().cloned());
+    ids.extend(view.corp.scored_agendas.iter().map(|scored| scored.card.clone()));
     for server in &view.corp.servers {
         for card in server.ice.iter().chain(server.root.iter()) {
             if let Some(id) = &card.card {
@@ -403,8 +403,13 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // trace-bid range in the sample.
         recurring_credits: view.corp.recurring_credits,
         recurring_credits_max: view.corp.recurring_credits_max,
-        agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
+        agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, once_per_turn_used: std::collections::HashSet::new(),
+        removed_from_game: view.corp.removed_from_game.clone(),
         scored_agendas: view.corp.scored_agendas.clone(),
+        // The engine seeds this from the decklist; the registry-wide list
+        // is equivalent, since it is only ever consulted for cards that
+        // are actually in Archives.
+        playable_from_archives: registry.iter().filter(|c| c.playable_from_archives).map(|c| c.id.clone()).collect(),
         resources: PlayerResources {
             credits: Credits(view.corp.credits),
             clicks: Clicks(view.corp.clicks),
@@ -500,6 +505,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // real one about the turn number would mis-evaluate any "on turn N"
         // effect the search looks ahead through.
         turn: view.turn,
+        actions_taken_this_turn: view.actions_taken_this_turn,
         active_run,
         paid_ability_window: view.paid_ability_window.clone(),
         active_trace: view.active_trace.clone(),
@@ -589,6 +595,7 @@ mod tests {
                 recurring_credits: 0,
                 recurring_credits_max: 0, agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
                 scored_agendas: Vec::new(),
+                playable_from_archives: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
                 hq: vec![CardId("hedge_fund".to_string())],
                 r_and_d: vec![CardId("corp_asset_0".to_string()), CardId("corp_asset_1".to_string())],

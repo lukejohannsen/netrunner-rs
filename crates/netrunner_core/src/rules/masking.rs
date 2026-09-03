@@ -4,7 +4,7 @@ use crate::dsl::{CardId, CardTarget, Cost, IceType};
 use crate::rules::action::{PlayerAction, TargetZone};
 use crate::rules::event::GameEvent;
 use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
-use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow,
+use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
     PendingPrevention, PlayerResources, RunnerState, Side, TraceState,
 };
 
@@ -82,11 +82,19 @@ pub struct PublicCorpState {
     /// full. See `PublicArchivedCard`.
     pub archives: Vec<PublicArchivedCard>,
     pub installed: Vec<PublicInstalledCard>,
-    /// Never masked — scored Agendas sit in a fully public score area.
-    pub scored_agendas: Vec<CardId>,
+    /// Never masked — scored Agendas sit in a fully public score area,
+    /// counters included.
+    pub scored_agendas: Vec<ScoredAgenda>,
     /// Never masked — Bad Publicity is public information in the real game,
     /// same treatment as `scored_agendas`.
     pub bad_publicity: u32,
+    /// Never masked — a card leaves the game in the open (Spin Doctor's
+    /// self-removal, Petty Cash played from Archives), so the zone is as
+    /// public as the score area. Projected since *Elevation* Stage 5:
+    /// with it absent, a log entry naming the removed card looked like a
+    /// leak whenever a second copy sat hidden in HQ or R&D.
+    #[serde(default)]
+    pub removed_from_game: Vec<CardId>,
     /// Recurring credits still unspent this turn, and the pool they refill
     /// to. Never masked: recurring credits sit as visible tokens on the
     /// card that grants them, so both players can always count them.
@@ -345,7 +353,7 @@ pub fn mask_state_for_player(state: &GameState, viewer: impl Into<Viewer>) -> Pu
         active_trace: state.active_trace.clone(),
         pending_prevention: state.pending_prevention.clone(),
         pending_paid_choice: state.pending_paid_choice.clone(),
-        pending_decision: state.pending_decision.clone(),
+        pending_decision: state.pending_decision.as_ref().map(|decision| mask_pending_decision(decision, state, viewer)),
     }
 }
 
@@ -500,12 +508,12 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::CardInstalled { .. } | GameEvent::CardDiscarded { .. } => visible(),
         // A Corp trash lands faceup only if the Runner had seen the card
         // (`ability::orient`); a facedown copy now in Archives means this
-        // may have been it. Spin Doctor's self-removal is the only
-        // `CardRemovedFromGame` and comes off a rezzed card, but
-        // `removed_from_game` is projected into no view, so the same rule.
-        GameEvent::CardTrashed { side: Side::Corp, card } | GameEvent::CardRemovedFromGame { side: Side::Corp, card } => {
-            (!concealed(card)).then(visible).flatten()
-        }
+        // may have been it.
+        GameEvent::CardTrashed { side: Side::Corp, card } => (!concealed(card)).then(visible).flatten(),
+        // Removal from the game is always in the open — Spin Doctor's
+        // self-removal comes off a rezzed card and Petty Cash is played
+        // out of Archives — and `PublicCorpState::removed_from_game`
+        // shows the zone to everyone.
         GameEvent::CardTrashed { .. } | GameEvent::CardRemovedFromGame { .. } => visible(),
         // Advancement tokens are public on an unrezzed card; its identity
         // and its counters are not (`PublicInstalledCard`). Rig cards and
@@ -657,6 +665,27 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
 /// there. HQ and R&D are deliberately *not* consulted: three copies of a
 /// card in a deck would then conceal every event about the rezzed one on
 /// the table, and the Runner's log would go dark on the Corp entirely.
+/// A parked decision is public in shape — who decides, what is offered —
+/// but the card it resolves *as* may not be: Longevity Serum's "shuffle up
+/// to 3 cards from Archives into R&D" runs as the card the first prompt
+/// just discarded facedown (the `then` convention), and naming it told
+/// the Runner what the Corp had thrown away. Found by the session sweep's
+/// masking invariant at *Elevation* Stage 5, seed 20.
+fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: Viewer) -> PendingDecision {
+    let conceal = |card: &Option<CardId>| match card {
+        Some(id) if !viewer.is(Side::Corp) && corp_card_concealed_from_runner(state, id) => None,
+        other => other.clone(),
+    };
+    let mut masked = decision.clone();
+    match &mut masked {
+        PendingDecision::ChooseEffect { source_card, .. }
+        | PendingDecision::ChooseCards { source_card, .. }
+        | PendingDecision::ChooseServer { source_card, .. } => *source_card = conceal(source_card),
+        PendingDecision::ChooseTriggerOrder { .. } => {}
+    }
+    masked
+}
+
 fn corp_card_concealed_from_runner(state: &GameState, card: &CardId) -> bool {
     state.corp.installed.iter().any(|installed| installed.card == *card && !installed.rezzed)
         || state.corp.archives.iter().any(|archived| archived.card == *card && archived.facedown)
@@ -787,6 +816,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
             .collect(),
         scored_agendas: corp.scored_agendas.clone(),
         bad_publicity: corp.bad_publicity,
+        removed_from_game: corp.removed_from_game.clone(),
         recurring_credits: corp.recurring_credits,
         recurring_credits_max: corp.recurring_credits_max,
     }
@@ -883,7 +913,7 @@ mod tests {
                     ..Default::default()
                 },
             ],
-            scored_agendas: vec![CardId("hostile_takeover".to_string())],
+            scored_agendas: vec![ScoredAgenda::plain(CardId("hostile_takeover".to_string()))],
             ..Default::default()
         }
     }
@@ -1241,7 +1271,7 @@ mod tests {
         let masked_for_corp = mask_state_for_player(&state, Side::Corp);
         let masked_for_runner = mask_state_for_player(&state, Side::Runner);
 
-        let expected_corp = vec![CardId("hostile_takeover".to_string())];
+        let expected_corp = vec![ScoredAgenda::plain(CardId("hostile_takeover".to_string()))];
         let expected_runner = vec![CardId("priority_requisition".to_string())];
         assert_eq!(masked_for_corp.corp.scored_agendas, expected_corp);
         assert_eq!(masked_for_runner.corp.scored_agendas, expected_corp);

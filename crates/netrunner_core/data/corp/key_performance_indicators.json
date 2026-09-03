@@ -1,0 +1,90 @@
+{
+  "id": "key_performance_indicators",
+  "title": "Key Performance Indicators",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 1,
+  "subtypes": [
+    "Transaction"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "ResolveSomeOf": {
+            "chooser": "Corp",
+            "count": 2,
+            "options": [
+              {
+                "Sequence": [
+                  {
+                    "DrawCards": [
+                      "Corp",
+                      1
+                    ]
+                  },
+                  {
+                    "PromptChooseCards": {
+                      "side": "Corp",
+                      "source": "OwnHq",
+                      "filter": "Any",
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": true,
+                      "destination": "OwnRAndD"
+                    }
+                  }
+                ]
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnHq",
+                  "filter": {
+                    "CardType": {
+                      "Ice": "Barrier"
+                    }
+                  },
+                  "min": 1,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "PromptInstallCorpCard": {
+                      "origin_zone": "OwnHq",
+                      "ignore_costs": true
+                    }
+                  }
+                }
+              },
+              {
+                "PromptChooseCards": {
+                  "side": "Corp",
+                  "source": "OwnInstalled",
+                  "filter": "Advanceable",
+                  "min": 0,
+                  "max": 1,
+                  "reveal": false,
+                  "shuffle_after": false,
+                  "then": {
+                    "AddAdvancementTokens": 1
+                  }
+                }
+              },
+              {
+                "GainCredits": [
+                  "Corp",
+                  2
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35077,
+  "is_playable": true
+}

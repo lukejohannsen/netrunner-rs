@@ -322,6 +322,7 @@ pub(crate) fn enter_start_of_turn(
     let turn_started_event = GameEvent::TurnStarted { side: next_side, clicks };
     events.push(turn_started_event.clone());
 
+    next.actions_taken_this_turn = 0;
     if next_side == Side::Corp {
         // Top of R&D mirrors `RunnerState::stack`'s convention — drawing
         // pops the end of the Vec (see `engine.rs::draw_card_click`).

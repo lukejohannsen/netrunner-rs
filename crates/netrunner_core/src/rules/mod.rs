@@ -52,7 +52,7 @@ pub use state::{MatchRules, DEFAULT_WINNING_AGENDA_POINTS,
     ArchivedCard, DeferredTrigger,
     AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard,
     MemoryUnits, PaidAbilityWindow, PendingChoiceResume, PendingDecision, PendingPaidChoice, PendingPaidChoiceResume,
-    PendingPrevention, PendingPreventionKind, PlayerResources, PreventionKind, PreventionResume, RunnerState, Side,
+    PendingPrevention, PendingPreventionKind, PlayerResources, PreventionKind, PreventionResume, RunnerState, ScoredAgenda, Side,
     TraceResume, TraceState, WindowCheckpoint,
 };
 pub use turn::end_turn;

@@ -76,6 +76,12 @@ pub enum Effect {
     /// composition because no existing primitive counts anything: `EffectIf`
     /// branches, it does not multiply. Same shape as `DealDamageAmount`.
     GainCreditsAmount(Side, Amount),
+    /// `LoseCredits` with a computed amount — Idiosyncresis's "the Runner
+    /// loses 2[c] for each hosted advancement counter", authored as two of
+    /// these over `Amount::HostedAdvancementTokens` the way Account Siphon
+    /// doubles with two `GainCreditsAmount`s. Records what was actually
+    /// lost like its fixed sibling.
+    LoseCreditsAmount(Side, Amount),
     /// Renamed from `InflictDamage`. `usize` (not `u32`) matches
     /// `damage::apply_damage`'s existing signature exactly. No `Side`
     /// param: damage in this engine's model always targets the Runner,
@@ -181,15 +187,18 @@ pub enum Effect {
     /// errors, same "no rollback of already-applied effects" convention as
     /// `resolve_unbroken_subroutines`/`process_card_triggers`.
     ///
-    /// Also stops (without erroring) the instant an inner `Effect` parks
-    /// something spanning future `PlayerAction`s (a trace, a prevention
-    /// window, `OfferPaidChoice`, `PresentChoice`, or `PromptChooseCards`/
-    /// `PromptChooseServer`) — there is no mechanism to resume a `Sequence`
-    /// partway through once control returns from one of those, so any
-    /// remaining effects after the parking one are simply never reached.
-    /// **Don't chain two independently-parking effects in one `Sequence`**
-    /// (e.g. two `PromptChooseCards` back to back) — the second would
-    /// silently never run. Chain through the parking effect's own `then`
+    /// When an inner `Effect` parks something spanning future
+    /// `PlayerAction`s (a trace, a prevention window, `OfferPaidChoice`,
+    /// `PresentChoice`, or `PromptChooseCards`/`PromptChooseServer`), the
+    /// remaining effects are queued as a **continuation** on
+    /// `GameState::deferred_triggers`, pinned to the acting card, and
+    /// resolve once the decision does (`DeferredTrigger::continuation` —
+    /// added for Key Performance Indicators' second pick). What the
+    /// continuation gets back is the acting card, its install and the
+    /// triggering event; the per-resolution scratch (`credits_lost`,
+    /// `damage_discarded`, `selected_count`) does not survive the park.
+    /// Before *Elevation* Stage 5 there was no continuation at all and the
+    /// rest of the sequence was silently dropped, so cards chained
     /// field instead (see Longevity Serum's card JSON for the pattern).
     Sequence(Vec<Effect>),
     /// Symmetric opposite of `GainCredits` — saturating, never errors even
@@ -507,7 +516,16 @@ pub enum Effect {
     /// a run-target choice uses. Contrast `InstallFromZoneIgnoringCost`
     /// (Brân 1.0): a *positional* install — "directly inward from this
     /// ice" — that ignores costs and offers no server choice.
-    PromptInstallCorpCard { origin_zone: CardZoneRef },
+    PromptInstallCorpCard {
+        origin_zone: CardZoneRef,
+        /// Waive the install cost and the per-protecting-ice tax — Key
+        /// Performance Indicators' "install 1 piece of ice from HQ,
+        /// ignoring all costs", Off the Books' "install that card,
+        /// ignoring all costs". Every destination is then offered, since
+        /// affordability no longer prunes any.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        ignore_costs: bool,
+    },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
     /// usual discounts) and respecting the memory budget, the console limit
@@ -592,6 +610,22 @@ pub enum Effect {
     /// subroutines handled without firing or breaking them. Fails outside
     /// an encounter (`RulesError::NotInEncounter`).
     BypassEncounteredIce,
+    /// Removes every virus counter in play, exactly as the Corp's
+    /// `PlayerAction::PurgeVirusCounters` does but as a card effect and
+    /// without the three-click cost — Flyswatter's "when you rez this ice
+    /// during a run against this server, purge virus counters". Not
+    /// composable: no primitive sweeps counters off every card at once.
+    PurgeVirusCounters,
+    /// "Resolve `count` of the following in any order" — Key Performance
+    /// Indicators. `chooser` picks one of `options`; it resolves, then the
+    /// remaining options are offered again with `count - 1`, until the
+    /// count is spent or the options run out. A composition primitive
+    /// rather than nested `PresentChoice`s: written out, four options
+    /// choose two is twelve leaves of duplicated text, and every card
+    /// with this wording would repeat the expansion. Resolves by
+    /// rewriting itself into a `PresentChoice`, so it parks and resumes
+    /// exactly as one does.
+    ResolveSomeOf { chooser: Side, count: u32, options: Vec<Effect> },
     /// Flips the Runner's identity to its other side
     /// (`RunnerState::identity_flipped`) — Dewi Subrotoputri. A flag rather
     /// than swapping the identity card: one card, two sides, and every
@@ -830,6 +864,9 @@ impl Effect {
             | Effect::MillRnDAmount(..)
             | Effect::HostCardOnThisCard(_)
             | Effect::BypassEncounteredIce
+            | Effect::PurgeVirusCounters
+            | Effect::ResolveSomeOf { .. }
+            | Effect::LoseCreditsAmount(..)
             | Effect::FlipIdentity
             | Effect::AddToBottomOfStack
             | Effect::HostRigCardOnInstall { .. }

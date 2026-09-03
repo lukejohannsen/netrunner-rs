@@ -5,6 +5,9 @@
   "card_type": "Program",
   "cost": 1,
   "memory_cost": 1,
+  "subtypes": [
+    "Trojan"
+  ],
   "installs_on_ice": true,
   "host_ice_gains_subtypes": [
     "Barrier",

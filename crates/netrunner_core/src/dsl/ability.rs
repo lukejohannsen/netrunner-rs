@@ -261,6 +261,21 @@ pub enum EffectRequirement {
     /// event for assets and upgrades too. Fails when the event names no
     /// card or there is no triggering event.
     TriggeringCardMatches(crate::dsl::CardFilter),
+    /// `Amount`, resolved against the acting card, is at least `u32` —
+    /// Syailendra's "if it has 3 or more hosted advancement counters"
+    /// (`Amount::HostedAdvancementTokens`). The comparison primitive over
+    /// the `Amount` vocabulary, so the next threshold (a counter count, a
+    /// card count, a threat level) is a new `Amount` at most, never a new
+    /// requirement. `ThisCardCountersAtLeast` predates it and stays.
+    AmountAtLeast(crate::dsl::Amount, u32),
+    /// The active side has not finished an action yet this turn
+    /// (`GameState::actions_taken_this_turn == 0`) — Petty Cash's play
+    /// condition. Not derivable from clicks: see the field's doc.
+    NoActionTakenThisTurn,
+    /// The triggering `OperationPlayed` was played from Archives rather
+    /// than HQ — Petty Cash's "if you played this operation from anywhere
+    /// except HQ, gain [click]". Fails with no triggering event.
+    PlayedFromArchives,
 }
 
 /// Who decides an `InteractiveOnAccess`, and what paying its cost does.

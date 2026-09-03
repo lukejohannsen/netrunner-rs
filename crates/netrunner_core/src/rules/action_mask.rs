@@ -283,7 +283,7 @@ impl ActionSpace {
                 Some(INSTALL_PROGRAM_ON_ICE_START + hand_slot * MAX_INSTALLED_PER_SIDE + ice_slot)
             }
             PlayerAction::PlayOperation { card_id } => {
-                Some(PLAY_OPERATION_START + bounded_position(&state.corp.hq, card_id, MAX_HAND_SIZE)?)
+                Some(PLAY_OPERATION_START + bounded_position(&state.corp.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
 
             PlayerAction::BreakSubroutineWithClick { subroutine_index, .. } => (*subroutine_index
@@ -443,7 +443,7 @@ impl ActionSpace {
             return Some(PlayerAction::InstallProgram { card_id });
         }
         if let Some(local) = in_segment(index, PLAY_OPERATION_START, PLAY_OPERATION_LEN) {
-            let card_id = state.corp.hq.get(local)?.clone();
+            let card_id = state.corp.playable_hand().get(local)?.clone();
             return Some(PlayerAction::PlayOperation { card_id });
         }
         if let Some(local) = in_segment(index, DISCARD_CARD_START, DISCARD_CARD_LEN) {
@@ -1150,6 +1150,7 @@ mod tests {
             trigger,
             target: None,
             event: None,
+            continuation: None,
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
