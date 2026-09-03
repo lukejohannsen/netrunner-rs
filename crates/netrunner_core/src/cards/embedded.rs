@@ -156,18 +156,14 @@ const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// file cannot land without deleting its entry (the count assertion fails
 /// the other way), and the set cannot be called complete while an entry
 /// remains. Started at 73 of 82 when Stage 1 (Flow and Ebb, Sabbatical)
-/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad); 48 after Stage 4 (Prick Thyself, Shootin' 'n' Lootin', Professional Opportunities); 40 after Stage 5 (Brick Stack, the first Corp deck); 31 after Stage 6 (Brutal Efficiency, Agency); 21 after Stage 7 (Fashion Lab, Pork Chops); 12 after Stage 8 (Quick Returns, Glyph of Warding).
+/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad); 48 after Stage 4 (Prick Thyself, Shootin' 'n' Lootin', Professional Opportunities); 40 after Stage 5 (Brick Stack, the first Corp deck); 31 after Stage 6 (Brutal Efficiency, Agency); 21 after Stage 7 (Fashion Lab, Pork Chops); 12 after Stage 8 (Quick Returns, Glyph of Warding); 8 after Stage 9 (Hidden Funds, Peculiarity).
 #[cfg(test)]
 const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (35047, "PT Untaian: Life's Building Blocks — stage 9: Hidden Funds / Peculiarity"),
-    (35048, "Proprionegation — stage 9: Hidden Funds / Peculiarity"),
-    (35056, "Mitra Aman — stage 9: Hidden Funds / Peculiarity"),
     (35057, "Nebula Talent Management: Making Stars — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35058, "Synapse Global: Faster than Thought — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35059, "Embedded Reporting — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35060, "Next Big Thing — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35062, "Public Access Plaza — stage 10: Fine Print / Gimbatul / Not so subtle"),
-    (35063, "Doomscroll — stage 9: Hidden Funds / Peculiarity"),
     (35064, "N-Pot — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35065, "Bigger Picture — stage 10: Fine Print / Gimbatul / Not so subtle"),
     (35066, "IP Enforcement — stage 10: Fine Print / Gimbatul / Not so subtle"),

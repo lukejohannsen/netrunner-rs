@@ -1,0 +1,33 @@
+{
+  "id": "proprionegation",
+  "title": "Proprionegation",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 4,
+  "agenda_points": 2,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "RemoveCounters": 1
+      },
+      "requirement": "DuringRun",
+      "effect": {
+        "MoveRunToOutermost": "Archives"
+      }
+    }
+  ],
+  "numeric_id": 35048,
+  "is_playable": true
+}

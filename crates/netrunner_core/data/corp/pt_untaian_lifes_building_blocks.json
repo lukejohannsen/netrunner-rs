@@ -1,0 +1,55 @@
+{
+  "id": "pt_untaian_lifes_building_blocks",
+  "title": "PT Untaian: Life's Building Blocks",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnDiscardPhaseEnd",
+      "requirement": {
+        "Not": {
+          "ZoneHasAtLeast": {
+            "zone": "OwnHq",
+            "count": 4
+          }
+        }
+      },
+      "effects": [
+        {
+          "OfferPaidChoice": {
+            "side": "Corp",
+            "cost": {
+              "Credits": 1
+            },
+            "if_paid": {
+              "PromptChooseCards": {
+                "side": "Corp",
+                "source": "OwnInstalled",
+                "filter": {
+                  "All": [
+                    "Advanceable",
+                    "Unrezzed"
+                  ]
+                },
+                "min": 1,
+                "max": 1,
+                "reveal": false,
+                "shuffle_after": false,
+                "then": {
+                  "AddAdvancementTokens": 1
+                }
+              }
+            },
+            "if_declined": {
+              "Sequence": []
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35047,
+  "is_playable": true
+}

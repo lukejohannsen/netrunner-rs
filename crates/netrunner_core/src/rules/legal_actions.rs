@@ -174,7 +174,13 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         // `current_actor` can't resolve this; ownership is a card-location
         // lookup instead.
         PlayerAction::ActivateAbility { target, .. } => {
-            if *target == InstallId::CORP_IDENTITY || state.find_corp_install(*target).is_some() {
+            // The score area counts as the Corp's too — Proprionegation's
+            // ability is used from there, and it is the one Corp card an
+            // installed-only lookup could not place.
+            if *target == InstallId::CORP_IDENTITY
+                || state.find_corp_install(*target).is_some()
+                || state.corp.find_scored(*target).is_some()
+            {
                 Side::Corp
             } else if *target == InstallId::RUNNER_IDENTITY || state.find_rig_install(*target).is_some() {
                 Side::Runner
@@ -526,6 +532,11 @@ fn activate_ability_candidates(state: &GameState, registry: &CardRegistry) -> Ve
     let mut candidates = Vec::new();
     for installed in state.corp.installed.iter().filter(|c| c.rezzed) {
         candidates.extend(paid_ability_candidates(&installed.card, installed.install_id, registry));
+    }
+    // The score area too — Proprionegation's counter ability is used from
+    // there, and a scored agenda needs no rez check.
+    for scored in &state.corp.scored_agendas {
+        candidates.extend(paid_ability_candidates(&scored.card, scored.install_id, registry));
     }
     for rig_card in &state.runner.rig {
         candidates.extend(paid_ability_candidates(&rig_card.card, rig_card.install_id, registry));

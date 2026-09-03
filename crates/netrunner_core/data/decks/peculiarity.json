@@ -1,0 +1,93 @@
+{
+  "id": "peculiarity",
+  "name": "Peculiarity",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "pt_untaian_lifes_building_blocks",
+  "cards": [
+    {
+      "card": "longevity_serum",
+      "count": 1
+    },
+    {
+      "card": "proprionegation",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "sericulture_expansion",
+      "count": 3
+    },
+    {
+      "card": "clearinghouse",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "urtica_cipher",
+      "count": 2
+    },
+    {
+      "card": "hansei_review",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 2
+    },
+    {
+      "card": "peer_review",
+      "count": 3
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "anoetic_void",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 1
+    },
+    {
+      "card": "mitra_aman",
+      "count": 2
+    },
+    {
+      "card": "palisade",
+      "count": 2
+    },
+    {
+      "card": "semak_samun",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 1
+    },
+    {
+      "card": "mycoweb",
+      "count": 2
+    },
+    {
+      "card": "whitespace",
+      "count": 3
+    },
+    {
+      "card": "empiricist",
+      "count": 2
+    },
+    {
+      "card": "karuna",
+      "count": 3
+    }
+  ]
+}

@@ -308,7 +308,7 @@ impl ActionSpace {
                 if *target == InstallId::RUNNER_IDENTITY {
                     return Some(ACTIVATE_ABILITY_RUNNER_START + IDENTITY_ABILITY_SLOT * MAX_ABILITIES_PER_CARD + ability_index);
                 }
-                if let Some(slot) = bounded_position_installed(&state.corp.installed, *target, IDENTITY_ABILITY_SLOT) {
+                if let Some(slot) = corp_ability_slot(state, *target) {
                     Some(ACTIVATE_ABILITY_CORP_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 } else {
                     let slot = bounded_position_rig(&state.runner.rig, *target, IDENTITY_ABILITY_SLOT)?;
@@ -457,7 +457,7 @@ impl ActionSpace {
             let target = if slot == IDENTITY_ABILITY_SLOT {
                 state.corp.identity.as_ref().map(|_| InstallId::CORP_IDENTITY)?
             } else {
-                state.corp.installed.get(slot)?.install_id
+                corp_ability_target(state, slot)?
             };
             return Some(PlayerAction::ActivateAbility { target, ability_index });
         }
@@ -654,6 +654,33 @@ fn bounded_position(zone: &[CardId], card_id: &CardId, cap: usize) -> Option<usi
 /// the first one's slot — an action on those copies was simply unreachable
 /// through the mask. Searching by `InstallId` makes each copy its own slot.
 /// No segment moved: this is the same position arithmetic, now correct.
+/// The Corp's ability-addressable cards, in slot order: its installs, then
+/// its score area (Proprionegation's counter ability is used from there).
+/// One list for both directions, so `index_of` and `action_at` cannot
+/// disagree about which slot names which card. The identity keeps the last
+/// slot, and the cap is unchanged — the segment did not grow.
+fn corp_ability_slot(state: &GameState, id: InstallId) -> Option<usize> {
+    let position = state
+        .corp
+        .installed
+        .iter()
+        .map(|c| c.install_id)
+        .chain(state.corp.scored_agendas.iter().map(|s| s.install_id))
+        .position(|candidate| candidate == id)?;
+    (position < IDENTITY_ABILITY_SLOT).then_some(position)
+}
+
+/// `corp_ability_slot`'s inverse.
+fn corp_ability_target(state: &GameState, slot: usize) -> Option<InstallId> {
+    state
+        .corp
+        .installed
+        .iter()
+        .map(|c| c.install_id)
+        .chain(state.corp.scored_agendas.iter().map(|s| s.install_id))
+        .nth(slot)
+}
+
 fn bounded_position_installed(
     installed: &[crate::rules::state::InstalledCard],
     id: InstallId,

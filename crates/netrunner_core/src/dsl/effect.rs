@@ -801,6 +801,35 @@ pub enum Effect {
     /// asked a second question — it is asked whether to forfeit at all,
     /// which is the decision the card is about.
     ForfeitAgendas(u32),
+    /// Moves the run to the outermost position of `ServerId` — Proprionegation's
+    /// "the Runner moves to the outermost position of Archives. (They
+    /// approach any ice in that position.)". The run's ice list is rebuilt
+    /// for the new server with **nothing passed**, which is what makes this
+    /// different from `RedirectRunOnApproach`: that one arrives at the
+    /// server having walked past everything, this one puts the Runner back
+    /// at the front door. With no ice there the Runner is at the server
+    /// approach instead, and `ServerApproached` is emitted and dispatched
+    /// so that server's own root reactions still fire.
+    ///
+    /// Composition could not reach it: nothing else writes `RunState`'s
+    /// server, ice list and position together, and every existing mover
+    /// (`RedirectRunOnApproach`, `run::reconcile_ice`) keeps the Runner's
+    /// progress rather than resetting it.
+    MoveRunToOutermost(ServerId),
+    /// Swaps the ice the Runner is approaching with the acting card, which
+    /// is a piece of ice in `origin` (HQ or Archives) — Mitra Aman's "you
+    /// may swap the ice being approached with a piece of ice from Archives
+    /// or HQ". The approached install keeps its position and handle and
+    /// takes the new card, unrezzed as it arrives from a hidden zone; the
+    /// ice that was there goes back to `origin`.
+    ///
+    /// `SwapInstalledIce` exchanges two cards already on the table and
+    /// cannot reach a zone; `InstallFromZoneIgnoringCost` adds a card
+    /// beside the approached ice rather than in its place, and has no way
+    /// to send the displaced one back. A swap is one move, not two.
+    SwapApproachedIceWithCard {
+        origin: CardZoneRef,
+    },
 }
 
 fn is_zero_u32(value: &u32) -> bool {
@@ -865,6 +894,11 @@ pub enum Amount {
     /// only if the threat level is 4 or greater"; *N-Pot* and *Public
     /// Access Plaza* print the same clause at Stage 10.
     ThreatLevel,
+    /// The Runner's current tag count — Doomscroll's "do 2 net damage if
+    /// the Runner has at least 2 tags", read through
+    /// `EffectRequirement::AmountAtLeast`. `EffectRequirement::IsTagged`
+    /// answers only "at least one".
+    RunnerTags,
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run whose
@@ -1007,6 +1041,8 @@ impl Effect {
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::ForfeitAgendas(..)
+            | Effect::MoveRunToOutermost(..)
+            | Effect::SwapApproachedIceWithCard { .. }
             | Effect::GainClicksNextTurn(..)
             | Effect::GainCreditsAmount(..) => {}
         }

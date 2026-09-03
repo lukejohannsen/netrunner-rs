@@ -1,0 +1,77 @@
+{
+  "id": "hidden_funds",
+  "name": "Hidden Funds",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "jinteki_restoring_humanity",
+  "cards": [
+    {
+      "card": "proprionegation",
+      "count": 3
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "sericulture_expansion",
+      "count": 3
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "hansei_review",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "peer_review",
+      "count": 2
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "anoetic_void",
+      "count": 2
+    },
+    {
+      "card": "mitra_aman",
+      "count": 1
+    },
+    {
+      "card": "bran_1_0",
+      "count": 3
+    },
+    {
+      "card": "semak_samun",
+      "count": 2
+    },
+    {
+      "card": "flyswatter",
+      "count": 3
+    },
+    {
+      "card": "mycoweb",
+      "count": 2
+    },
+    {
+      "card": "doomscroll",
+      "count": 3
+    },
+    {
+      "card": "empiricist",
+      "count": 3
+    }
+  ]
+}

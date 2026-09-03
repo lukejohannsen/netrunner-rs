@@ -293,6 +293,12 @@ pub enum EffectRequirement {
     /// forfeit with nothing to give up is not a way to pay. A count of
     /// agendas, not of points: what a forfeit consumes is a card.
     ScoreAreaHasAtLeast(u32),
+    /// A run is in progress and has not yet reached access — Proprionegation's
+    /// "use this ability only during a run". `DuringEncounter` is the
+    /// narrower sibling (the Runner committed to a specific piece of ice);
+    /// this one is any point from initiation to the server approach, which
+    /// is where a card that *moves* the run can still do something.
+    DuringRun,
     /// The agenda whose scoring or theft is being reacted to came from the
     /// server this card sits on or protects — Lamplighter's "when an
     /// agenda is scored or stolen from this server or its root, trash this
