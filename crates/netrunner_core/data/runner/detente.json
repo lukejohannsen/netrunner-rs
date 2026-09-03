@@ -1,0 +1,35 @@
+{
+  "id": "detente",
+  "title": "Detente",
+  "side": "Runner",
+  "card_type": "Hardware",
+  "cost": 3,
+  "unique": true,
+  "subtypes": [
+    "Console"
+  ],
+  "memory_bonus": 1,
+  "triggers": [
+    {
+      "trigger": "OnSuccessfulRunOnHq",
+      "requirement": {
+        "OncePerTurn": "detente"
+      },
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Runner",
+            "options": [
+              "HostRandomHqCardOnThisCard",
+              {
+                "Sequence": []
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35018,
+  "is_playable": true
+}

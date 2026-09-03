@@ -170,6 +170,14 @@ pub enum EffectRequirement {
     /// identity_flipped`) — the gate on a flip identity's back-side
     /// trigger (Dewi Subrotoputri). Its front-side twin is `Not(IdentityFlipped)`.
     IdentityFlipped,
+    /// `CurrentlyAccessingACard` and the card is not an agenda — Gourmand's
+    /// "trash the non-agenda card you are accessing". Read from the
+    /// registry; an unregistered card counts as non-agenda.
+    CurrentlyAccessingNonAgenda,
+    /// A subroutine has resolved during the active run
+    /// (`RunState::subroutine_resolved`) — Ryō "Phoenix" Ōno's "a run becomes
+    /// successful after a subroutine resolved during that run".
+    SubroutineResolvedThisRun,
     /// The Runner has no unused memory (`memory::available_memory == 0`)
     /// — Dewi Subrotoputri's "if your [mu] is full"; "at least 1 unused
     /// [mu]" is `Not(MemoryFull)`.

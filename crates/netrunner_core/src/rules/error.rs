@@ -6,6 +6,8 @@ use crate::rules::state::{GamePhase, InstallId, PreventionKind, Side};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RulesError {
+    #[error("the Corp must trash {required} card(s) from HQ but holds only {available}")]
+    NotEnoughCardsInHq { required: u32, available: u32 },
     #[error("{side:?} attempted to spend {requested} click(s) but only has {available}")]
     NotEnoughClicks {
         side: Side,

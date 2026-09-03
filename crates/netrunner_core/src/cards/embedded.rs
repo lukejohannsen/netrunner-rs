@@ -52,6 +52,7 @@ fn fill_catalog_metadata(cards: &mut [CardDefinition]) {
         card.set_code.clone_from(&entry.set_code);
         card.influence_cost = entry.influence_cost;
         card.deck_limit = entry.deck_limit;
+        card.influence_limit = entry.influence_limit;
         card.artist.clone_from(&entry.artist);
         card.image_url.clone_from(&entry.image_url);
         card.unique = entry.unique;
@@ -155,22 +156,14 @@ const SG_UNIMPLEMENTED: &[(u32, &str)] = &[];
 /// file cannot land without deleting its entry (the count assertion fails
 /// the other way), and the set cannot be called complete while an entry
 /// remains. Started at 73 of 82 when Stage 1 (Flow and Ebb, Sabbatical)
-/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please).
+/// landed its nine; 64 after Stage 2 (Enthusiasm, Tickets, please); 56 after Stage 3 (Bowel Movements, Dashing Mad).
 #[cfg(test)]
 const ELEV_UNIMPLEMENTED: &[(u32, &str)] = &[
-    (35001, "Ryo \"Phoenix\" Ono: Out of the Ashes — stage 3: Bowel Movements / Dashing Mad"),
     (35002, "Topan: Ormas Leader — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35003, "Charm Offensive — stage 3: Bowel Movements / Dashing Mad"),
-    (35005, "Shred — stage 3: Bowel Movements / Dashing Mad"),
     (35006, "Bling — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35007, "Gourmand — stage 3: Bowel Movements / Dashing Mad"),
-    (35008, "Hantu — stage 3: Bowel Movements / Dashing Mad"),
-    (35010, "Cacophony — stage 3: Bowel Movements / Dashing Mad"),
-    (35011, "Rent Rioters — stage 3: Bowel Movements / Dashing Mad"),
     (35012, "Barry \"Baz\" Wong: Tri-Maf Veteran — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35013, "MuslihaT: Multifarious Marketeer — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35017, "Transfer of Wealth — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
-    (35018, "Detente — stage 3: Bowel Movements / Dashing Mad"),
     (35019, "Maglectric Rapid (748 Mod) — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35020, "Sang Kancil — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),
     (35021, "Fransofia Ward — stage 4: Prick Thyself / Shootin' 'n' Lootin' / Professional Opportunities"),

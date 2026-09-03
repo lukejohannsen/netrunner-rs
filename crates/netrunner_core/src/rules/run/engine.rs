@@ -191,7 +191,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None,
+    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, end_run_prevention: None, subroutine_resolved: false,
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -630,6 +630,9 @@ fn step_subroutine(
     let (card_id, effect) = transition_subroutine(state, index, to)?;
 
     if resolve {
+        if let Some(run) = state.active_run.as_mut() {
+            run.subroutine_resolved = true;
+        }
         let mut events = vec![GameEvent::SubroutineFired { card_id, index, effect: effect.clone() }];
         events.extend(evaluate_effect(state, &effect, &mut crate::rules::ability::ResolutionContext::default(), registry)?);
         Ok(events)

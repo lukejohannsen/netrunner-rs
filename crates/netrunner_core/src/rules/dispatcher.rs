@@ -139,10 +139,9 @@ pub fn dispatch_event(
             // below, e.g. René "Loup" Arcemont's "the first time each turn
             // you trash a card you are accessing, gain 1 credit and draw 1
             // card."
+            // The identity and, since Cacophony, the rig too.
             let mut events = fire_direct(state, registry, card, None, Trigger::OnTrashedFromAccess, event)?;
-            if let Some(identity) = state.runner.identity.clone() {
-                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnTrashedFromAccess, event)?);
-            }
+            events.extend(fire_runner_side(state, registry, Trigger::OnTrashedFromAccess, event)?);
             Ok(events)
         }
 
@@ -327,6 +326,18 @@ pub fn dispatch_event(
         // self-trashing or Zahya gaining credits post-game-over changes
         // nothing about the outcome).
         GameEvent::RunCompleted { .. } | GameEvent::RunJackedOut { .. } | GameEvent::RunEndedByEffect { .. } => {
+            // The run's own end rider (`Effect::SetRunEndedEffect`, Charm
+            // Offensive) resolves first, as the card that set it, and is
+            // taken so it fires once — before the card triggers below, for
+            // the same reason `on_success_effect` resolves before them.
+            let mut events = Vec::new();
+            let rider = state.last_completed_run.as_mut().and_then(|completed| {
+                completed.on_end_effect.take().map(|effect| (effect, completed.on_end_card.clone(), completed.on_end_install))
+            });
+            if let Some((effect, card, install)) = rider {
+                let mut ctx = ability::ResolutionContext::for_parked(install, card.as_ref());
+                events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
+            }
             let mut candidates: Vec<(Option<InstallId>, CardId)> = Vec::new();
             if let Some(identity) = state.runner.identity.clone() {
                 candidates.push((None, identity));
@@ -356,7 +367,36 @@ pub fn dispatch_event(
                 );
                 candidates.extend(completed.persistent_trashed_upgrades.iter().cloned().map(|card| (None, card)));
             }
-            fire_each(state, registry, &candidates, Trigger::OnRunEnded, event)
+            events.extend(fire_each(state, registry, &candidates, Trigger::OnRunEnded, event)?);
+            Ok(events)
+        }
+
+        // "When your action phase ends": the ending side's identity plus
+        // its rig (Runner) or rezzed installs (Corp), like `TurnStarted`.
+        GameEvent::ActionPhaseEnded { side } => {
+            let mut candidates: Vec<(Option<InstallId>, CardId)> = Vec::new();
+            match side {
+                Side::Runner => {
+                    if let Some(identity) = state.runner.identity.clone() {
+                        candidates.push((None, identity));
+                    }
+                    candidates.extend(state.runner.rig.iter().map(|card| (Some(card.install_id), card.card.clone())));
+                }
+                Side::Corp => {
+                    if let Some(identity) = state.corp.identity.clone() {
+                        candidates.push((None, identity));
+                    }
+                    candidates.extend(
+                        state
+                            .corp
+                            .installed
+                            .iter()
+                            .filter(|installed| installed.rezzed)
+                            .map(|installed| (Some(installed.install_id), installed.card.clone())),
+                    );
+                }
+            }
+            fire_each(state, registry, &candidates, Trigger::OnActionPhaseEnd, event)
         }
 
         // "When your discard phase ends" — fires against that side's own
@@ -708,9 +748,22 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
                 | GameEvent::RunInitiated { .. }
         )
     );
-    // And nothing applies to a game that is over — a trigger drained after
-    // the flatline that ended the game has no game to act on.
-    !state.is_over() && (!run_scoped || state.active_run.is_some())
+    // A trigger pinned to an install that has since left play stands
+    // down: "Knickknack" O'Brian trashing Side Hustle at the start of a run
+    // both reacted to left Side Hustle's deferred `OnRunStart` firing on a
+    // card that was no longer in the rig, and its `AddCounters` errored —
+    // which failed the *Knickknack* selection that trashed it, leaving the
+    // Runner a decision whose only resolving action was illegal (the
+    // *Elevation* Stage 3 deep sweep, seed 182). A persistent-after-trash
+    // upgrade fires with no install pinned, so it is unaffected.
+    let present = match due.install {
+        Some(install) => {
+            state.runner.rig.iter().any(|c| c.install_id == install)
+                || state.corp.installed.iter().any(|c| c.install_id == install)
+        }
+        None => true,
+    };
+    !state.is_over() && present && (!run_scoped || state.active_run.is_some())
 }
 
 /// Fires whatever `fire_each` had to queue, once whatever blocked it has
@@ -1483,6 +1536,7 @@ mod tests {
             ..Default::default()
         }];
         state.last_completed_run = Some(crate::rules::state::CompletedRun {
+            accessed_cards: Vec::new(), on_end_effect: None, on_end_card: None, on_end_install: None,
             server: ServerId::Hq,
             cards_accessed: 0,
             agendas_stolen: 0,

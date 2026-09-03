@@ -117,6 +117,13 @@ pub enum CardFilter {
     /// `InstallableRunnerCard` priced `u32` cheaper — the offer half of
     /// `Effect::InstallRunnerCardFromGripWithDiscount`.
     InstallableRunnerCardWithDiscount(u32),
+    /// An installed Corp card that is rezzed — Charm Offensive's "1 rezzed
+    /// copy". Instance-level, like `UnrezzedIce`, and any card type.
+    Rezzed,
+    /// A copy of a card the Runner accessed during the run that just
+    /// ended (`CompletedRun::accessed_cards`) — Charm Offensive. By card,
+    /// as the printed text says "a copy of a card you accessed".
+    AccessedDuringLastRun,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -151,6 +158,8 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         // Purely instance-level; the definition says nothing about it.
         CardFilter::DiscardedThisDiscardPhase => true,
         CardFilter::NotSourceCard => true,
+        CardFilter::Rezzed => true,
+        CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::InstallableRunnerCardWithDiscount(_) => card_matches_filter(card, &CardFilter::InstallableRunnerCard),
         // Instance-level, not definition-level — see the variant's doc

@@ -346,6 +346,13 @@ pub enum Effect {
         /// applies to that same breach.
         #[serde(default, skip_serializing_if = "Option::is_none")]
         on_success: Option<Box<Effect>>,
+        /// Evaluated as the parking card the moment the chosen run starts —
+        /// Shred's "The first time the Corp would end that run, ..." arms
+        /// itself here. The general form of `bonus_run_credits`: a rider on
+        /// the run itself, which a `Sequence` after this effect cannot be,
+        /// since the prompt parks and the rest of the sequence never runs.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        on_start: Option<Box<Effect>>,
         /// Drop from the offer every server the Runner has already run
         /// this turn (`RunnerState::servers_run_this_turn`) — Red Team's
         /// "Run a central server you have not run this turn". A field
@@ -530,6 +537,34 @@ pub enum Effect {
     /// run is active. A run-state flag rather than an immediate change
     /// because the redirect happens at a later step of the same run.
     RedirectRunOnApproach(ServerId),
+    /// Registers `Effect` to resolve as the parking card when the active
+    /// run ends, however it ends (`RunState::on_end_effect`, evaluated by
+    /// the `OnRunEnded` dispatch) — Charm Offensive's "When that run ends,
+    /// you may trash 1 rezzed copy of a card you accessed". The run-end
+    /// twin of `PromptChooseServer::on_success`, for an Event that is in
+    /// the heap by then and cannot carry a `Trigger::OnRunEnded` of its
+    /// own. `RulesError::NoActiveRun` if no run is active.
+    SetRunEndedEffect(Box<Effect>),
+    /// Arms the active run's `RunState::end_run_prevention` — Shred. See
+    /// `EndRunPrevention` for what `Effect::EndTheRun` does with it.
+    ArmRunEndPrevention(EndRunPrevention),
+    /// Sabotage `u32`: the Corp trashes that many cards of their choice
+    /// from HQ and/or the top of R&D (Cacophony). Parks a Corp
+    /// `PendingDecision::ChooseCards` over HQ whose bounds are computed
+    /// from the two zones' sizes — at least what R&D cannot cover, at most
+    /// what HQ holds — with a `MillRnDAmount(RemainingAfterSelection)`
+    /// `then` for the rest; with nothing in HQ to choose from it mills R&D
+    /// directly. An engine variant because the bounds and the "rest" are
+    /// decided by state a card author cannot see.
+    Sabotage(u32),
+    /// Trashes `Amount` cards from the top of R&D, facedown — the R&D half
+    /// of a sabotage.
+    MillRnDAmount(Amount),
+    /// Moves one card from HQ, chosen at random with the state's PRNG,
+    /// onto the acting rig card's `hosted_cards`, faceup — Detente's "host
+    /// 1 card from HQ at random faceup on this hardware". A no-op with an
+    /// empty HQ.
+    HostRandomHqCardOnThisCard,
     /// Flips the Runner's identity to its other side
     /// (`RunnerState::identity_flipped`) — Dewi Subrotoputri. A flag rather
     /// than swapping the identity card: one card, two sides, and every
@@ -640,6 +675,24 @@ pub enum Amount {
     /// card is the one the prompt selected. Read from the registry, so a
     /// discount the card was installed with does not count.
     PrintedInstallCost,
+    /// `u32` minus the cards the resolving `PromptChooseCards` selected
+    /// (`ResolutionContext::selected_count`) — the R&D half of a sabotage
+    /// of `u32`, resolved in the HQ selection's `then`. Saturating.
+    RemainingAfterSelection(u32),
+}
+
+/// What `Effect::EndTheRun` does the first time it would end a run whose
+/// `RunState::end_run_prevention` is armed — Shred's "The first time the
+/// Corp would end that run, prevent the run from ending unless ...". A
+/// closed enum with one clause, extended when a card prints another.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EndRunPrevention {
+    /// The run ends only if the Corp pays `Cost::TrashRandomFromHq(X)`,
+    /// X being the number of cards in the attacked server's root — parked
+    /// as a Corp `OfferPaidChoice` whose acceptance ends the run. With an
+    /// empty root there is nothing to pay and the run simply ends; with
+    /// fewer than X cards in HQ the Corp cannot pay and the run goes on.
+    UnlessCorpTrashesRootCountFromHq,
 }
 
 /// How long an `Effect::BoostStrength` buff lasts.
@@ -694,14 +747,19 @@ impl Effect {
             }
             Effect::EffectIf { effect, .. }
             | Effect::Trace { on_success: effect, .. }
+            | Effect::SetRunEndedEffect(effect)
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
                 if_paid.for_each_effect(f);
                 if_declined.for_each_effect(f);
             }
-            Effect::PromptChooseCards { then: Some(effect), .. }
-            | Effect::PromptChooseServer { on_success: Some(effect), .. } => effect.for_each_effect(f),
-            Effect::PromptChooseCards { then: None, .. } | Effect::PromptChooseServer { on_success: None, .. } => {}
+            Effect::PromptChooseCards { then: Some(effect), .. } => effect.for_each_effect(f),
+            Effect::PromptChooseServer { on_success, on_start, .. } => {
+                for effect in [on_success, on_start].into_iter().flatten() {
+                    effect.for_each_effect(f);
+                }
+            }
+            Effect::PromptChooseCards { then: None, .. } => {}
             // Leaves: everything that holds no `Effect`.
             Effect::GainCredits(..)
             | Effect::DealDamage(..)
@@ -740,6 +798,10 @@ impl Effect {
             | Effect::InstallRunnerCardFromGripWithDiscount(..)
             | Effect::InstallRunnerCardFromHost
             | Effect::RedirectRunOnApproach(..)
+            | Effect::ArmRunEndPrevention(..)
+            | Effect::Sabotage(..)
+            | Effect::MillRnDAmount(..)
+            | Effect::HostRandomHqCardOnThisCard
             | Effect::FlipIdentity
             | Effect::AddToBottomOfStack
             | Effect::HostRigCardOnInstall { .. }

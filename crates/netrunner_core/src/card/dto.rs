@@ -53,6 +53,10 @@ pub struct NetrunnerDbCardDto {
     /// `CardDefinition::deck_limit` sources from it.
     #[serde(default)]
     pub deck_limit: Option<i32>,
+    /// An identity's printed influence budget; `null` for the two *Learn to
+    /// Play* starters (see `CardDefinition::unlimited_influence`).
+    #[serde(default)]
+    pub influence_limit: Option<i32>,
 }
 
 #[cfg(test)]

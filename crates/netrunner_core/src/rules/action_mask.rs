@@ -1160,6 +1160,7 @@ mod tests {
             bonus_run_credits: 0,
             allowed_servers: None,
             on_success: None,
+            on_start: None,
             source_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,

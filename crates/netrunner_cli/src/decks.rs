@@ -53,7 +53,8 @@ fn blank_card(id: String, side: Side, card_type: CardType) -> CardDefinition {
         host_ice_gains_subtypes: Vec::new(),
         hosted_breaker_bonus: None,
         hosted_credits_usable_for: None,
-        trash_when_empty: false, installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, unique: false, base_link: None, is_playable: true,
+        trash_when_empty: false,
+        influence_limit: None, installs_on_ice: false, click_breakable: false, strength_modifier: None, persistent_after_trash: false, unique: false, base_link: None, is_playable: true,
     }
 }
 

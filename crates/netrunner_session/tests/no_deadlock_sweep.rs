@@ -305,6 +305,10 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
     }
 
     let corp = &state.corp;
+    // A card hosted uninstalled on a Runner rig card (Madani, Detente) is
+    // in no other zone; Detente's are the Corp's own cards.
+    let corp_ids = deck_tally(corp_deck);
+    let hosted_corp = state.runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| corp_ids.contains_key(&id.0));
     let corp_cards = tally(
         corp.hq
             .iter()
@@ -313,7 +317,8 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .chain(corp.installed.iter().map(|c| &c.card))
             .chain(&corp.scored_agendas)
             .chain(&state.runner.scored_agendas)
-            .chain(&corp.removed_from_game),
+            .chain(&corp.removed_from_game)
+            .chain(hosted_corp),
     );
     assert_eq!(corp_cards, deck_tally(corp_deck), "seed {seed} ({matchup}): Corp cards are not conserved");
 
@@ -326,7 +331,7 @@ fn assert_cards_are_conserved(state: &GameState, corp_deck: &Deck, runner_deck: 
             .chain(&runner.heap)
             .chain(runner.rig.iter().map(|c| &c.card))
             // Hosted uninstalled on a rig card (Madani) — in no other zone.
-            .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter())),
+            .chain(runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).filter(|id| !corp_ids.contains_key(&id.0))),
     );
     assert_eq!(runner_cards, deck_tally(runner_deck), "seed {seed} ({matchup}): Runner cards are not conserved");
 }
@@ -447,6 +452,9 @@ fn visible_card_ids(view: &netrunner_core::view::ClientView) -> std::collections
     visible.extend(view.runner.scored_agendas.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.heap.iter().map(|c| c.0.as_str()));
     visible.extend(view.runner.rig.iter().map(|c| c.card.0.as_str()));
+    // Hosted faceup on a rig card (Madani's programs, Detente's HQ cards):
+    // as public as the rig, whichever side's card it is.
+    visible.extend(view.runner.rig.iter().flat_map(|c| c.hosted_cards.iter()).map(|c| c.0.as_str()));
     if let Some(cards) = &view.corp.hq_cards {
         visible.extend(cards.iter().map(|c| c.0.as_str()));
     }

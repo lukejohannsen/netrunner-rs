@@ -153,4 +153,10 @@ pub enum Trigger {
     /// credit." Deliberately not `OnTurnStart`: the discard phase ends
     /// before control passes, and the two are observably different moments.
     OnDiscardPhaseEnd,
+    /// "When your action phase ends" — fired from `turn::end_turn`, before
+    /// the end-of-turn paid-ability window, for the ending side's identity
+    /// and its rig (Runner) or rezzed installs (Corp): Cacophony's
+    /// sabotage; Mercia B4LL4RD and Nebula Talent Management later. A
+    /// separate trigger from `OnDiscardPhaseEnd`, which is a later step.
+    OnActionPhaseEnd,
 }

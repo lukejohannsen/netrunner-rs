@@ -1,0 +1,29 @@
+{
+  "id": "gourmand",
+  "title": "Gourmand",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 0,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": "TrashSelf",
+      "requirement": "CurrentlyAccessingNonAgenda",
+      "effect": {
+        "Sequence": [
+          "TrashCurrentlyAccessedCard",
+          {
+            "DrawCards": [
+              "Runner",
+              1
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 35007,
+  "is_playable": true
+}
