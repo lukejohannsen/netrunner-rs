@@ -50,6 +50,11 @@ pub fn dispatch_event(
             if is_transaction && let Some(identity) = state.corp.identity.clone() {
                 events.extend(fire_direct(state, registry, &identity, None, Trigger::OnTransactionPlayed, event)?);
             }
+            // …and the identity's "whenever you play an operation", which
+            // does not care what subtype it was (Nebula Talent Management).
+            if let Some(identity) = state.corp.identity.clone() {
+                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnOperationPlayed, event)?);
+            }
             Ok(events)
         }
 
@@ -316,6 +321,14 @@ pub fn dispatch_event(
                 candidates.push((Side::Runner, (None, identity)));
             }
             candidates.extend(state.runner.rig.iter().map(|card| (Side::Runner, (Some(card.install_id), card.card.clone()))));
+            // …and the Corp's identity, the Corp-side reactor the comment
+            // above was waiting for: Nebula Talent Management: Making
+            // Stars flips back when the Runner runs HQ or R&D
+            // successfully, which the per-server triggers below already
+            // distinguish.
+            if let Some(identity) = state.corp.identity.clone() {
+                candidates.push((Side::Corp, (None, identity)));
+            }
 
             // Built as one flat plan rather than fired inline, so a
             // blockage landing *between* two of the four triggers on the
@@ -546,6 +559,16 @@ pub fn dispatch_event(
         // The forfeited agenda itself, as it leaves the score area
         // (Greenmail). No install: it is already gone from there.
         GameEvent::AgendaForfeited { card } => fire_direct(state, registry, card, None, Trigger::OnForfeit, event),
+
+        // Any route a tag comes off by — the basic action, a cost, a card
+        // effect. Synapse Global: Faster than Thought installs off it.
+        GameEvent::TagsRemoved { side: Side::Runner, amount: 0 } => Ok(Vec::new()),
+        GameEvent::TagRemoved { side: Side::Runner }
+        | GameEvent::TagsRemoved { side: Side::Runner, .. }
+        | GameEvent::TagsCleared { side: Side::Runner } => match state.corp.identity.clone() {
+            Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnTagRemoved, event),
+            None => Ok(Vec::new()),
+        },
 
         GameEvent::TagsGiven { side: Side::Runner, .. } => match state.corp.identity.clone() {
             Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnTagsGiven, event),

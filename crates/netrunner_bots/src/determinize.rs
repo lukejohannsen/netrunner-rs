@@ -314,6 +314,12 @@ fn determinize_run(
         // Public, and load-bearing for a rollout that trashes the pending
         // card: the sample must take the same instance the real game will.
         pending_install: access.pending_install,
+        // Whether that install was rezzed when presented — the view carries
+        // the install's rez state, so the sample can say so honestly.
+        pending_install_rezzed: access
+            .pending_install
+            .and_then(|install| installed.iter().find(|c| c.install_id == install))
+            .is_some_and(|card| card.rezzed),
         // Not in the view; a rollout that re-picks an already-resolved copy
         // takes the other one, which is harmless.
         resolved_installs: Vec::new(),
@@ -409,6 +415,11 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         extra_clicks_next_turn: 0,
         // Public on the identity, and carried straight off the view.
         identity_counters: view.corp.identity_counters,
+        // Not carried by `ClientView`; a rollout re-derives it from its own
+        // play-out, as with `installed_this_turn`.
+        played_operation_this_turn: false,
+        // Public, and carried: a flipped Corp identity has different text.
+        identity_flipped: view.corp.identity_flipped,
         removed_from_game: view.corp.removed_from_game.clone(),
         scored_agendas: view.corp.scored_agendas.clone(),
         // The engine seeds this from the decklist; the registry-wide list
@@ -597,6 +608,8 @@ mod tests {
                 identity: None,
                 extra_clicks_next_turn: 0,
                 identity_counters: 0,
+                played_operation_this_turn: false,
+                identity_flipped: false,
                 bad_publicity: 0,
                 first_install_used_this_turn: false,
                 recurring_credits: 0,

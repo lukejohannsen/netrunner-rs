@@ -1,0 +1,68 @@
+{
+  "id": "synapse_global_faster_than_thought",
+  "title": "Synapse Global: Faster than Thought",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnTagRemoved",
+      "requirement": {
+        "OncePerTurn": "synapse_global_faster_than_thought"
+      },
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "CardTypeOneOf": [
+                {
+                  "Ice": "Barrier"
+                },
+                "Agenda",
+                "Asset",
+                "Upgrade"
+              ]
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": true,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "ignore_costs": true
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": "IsTagged",
+      "effect": {
+        "Sequence": [
+          {
+            "RemoveTags": 1
+          },
+          {
+            "GainCredits": [
+              "Corp",
+              2
+            ]
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 35058,
+  "is_playable": true
+}

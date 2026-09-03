@@ -251,8 +251,10 @@ fn present_card_for_access(
     // Pin the instance first: every later step of this card's resolution
     // (its `OnAccessed` trigger, a trash, a steal) reads it from here.
     let install = resolve_install(state, server, card_id);
+    let rezzed = install.and_then(|install| state.find_corp_install(install)).is_some_and(|c| c.rezzed);
     if let Some(access) = state.active_run.as_mut().and_then(|run| run.access_state.as_mut()) {
         access.pending_install = install;
+        access.pending_install_rezzed = rezzed;
     }
     let mut events = vec![GameEvent::CardAccessed { card: card_id.clone(), server, install }];
 
@@ -405,7 +407,7 @@ pub fn access_server(
         // immediately (with either `PendingInteractiveTrigger` or, via
         // `enter_pending_choice`, the real `PendingChoice`). `AccessState`
         // must exist first since both paths borrow `run.access_state.as_mut()`.
-        run.access_state = Some(AccessState { currently_accessing: None, pending_install: None, resolved_installs: Vec::new(),
+        run.access_state = Some(AccessState { currently_accessing: None, pending_install: None, pending_install_rezzed: false, resolved_installs: Vec::new(),
             server,
             unaccessed_cards: Vec::new(),
             resolved_cards: Vec::new(),
@@ -414,7 +416,7 @@ pub fn access_server(
 
         present_card_for_access(state, registry, server, &card_id)
     } else {
-        run.access_state = Some(AccessState { currently_accessing: None, pending_install: None, resolved_installs: Vec::new(),
+        run.access_state = Some(AccessState { currently_accessing: None, pending_install: None, pending_install_rezzed: false, resolved_installs: Vec::new(),
             server,
             unaccessed_cards: accessed.clone(),
             resolved_cards: Vec::new(),
@@ -1080,7 +1082,7 @@ mod tests {
         seed: u64,
     ) -> GameState {
         GameState {
-            corp: crate::rules::state::CorpState { identity: None, extra_clicks_next_turn: 0, identity_counters: 0, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0, agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
+            corp: crate::rules::state::CorpState { identity: None, extra_clicks_next_turn: 0, identity_counters: 0, played_operation_this_turn: false, identity_flipped: false, bad_publicity: 0, first_install_used_this_turn: false, recurring_credits: 0, recurring_credits_max: 0, agenda_points_scored_this_turn: 0, max_hand_size_bonus: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PlayerResources {

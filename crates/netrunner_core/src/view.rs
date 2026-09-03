@@ -64,6 +64,9 @@ pub struct CorpClientView {
     /// carried so a determinized sample can pay a cost that spends them.
     #[serde(default)]
     pub identity_counters: u32,
+    /// Public — a flip identity's side is visible to both players.
+    #[serde(default)]
+    pub identity_flipped: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -197,6 +200,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         bad_publicity: public.corp.bad_publicity,
         recurring_credits: public.corp.recurring_credits,
         identity_counters: public.corp.identity_counters,
+        identity_flipped: public.corp.identity_flipped,
         recurring_credits_max: public.corp.recurring_credits_max,
         hq_count: zone_count(&public.corp.hq),
         hq_cards: zone_cards(&public.corp.hq),

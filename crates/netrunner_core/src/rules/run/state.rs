@@ -180,6 +180,15 @@ pub struct AccessState {
     /// fixtures. Set by `access::present_card_for_access`.
     #[serde(default)]
     pub pending_install: Option<InstallId>,
+    /// Whether that install was **rezzed** when it was presented — read by
+    /// `EffectRequirement::CurrentlyAccessingInstalledCard { rezzed_only }`.
+    /// Recorded here rather than looked up on the table, because the one
+    /// card that asks after the fact (Public Access Plaza's "when the
+    /// Runner trashes this asset *while it is rezzed*") is dispatched from
+    /// `Trigger::OnTrashedFromAccess`, by which point the install has
+    /// already left the table.
+    #[serde(default)]
+    pub pending_install_rezzed: bool,
     /// Instances already resolved this breach, so the next pick of the same
     /// `CardId` resolves to the *other* copy — two Manegarm Skunkworks in
     /// one root used to both resolve to the first one installed.
@@ -202,6 +211,7 @@ impl Default for AccessState {
             resolved_cards: Vec::new(),
             currently_accessing: None,
             pending_install: None,
+            pending_install_rezzed: false,
             resolved_installs: Vec::new(),
             phase: AccessPhase::SelectNextCard { selectable_cards: Vec::new() },
         }

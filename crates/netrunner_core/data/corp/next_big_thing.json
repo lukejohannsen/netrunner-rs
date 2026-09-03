@@ -1,0 +1,58 @@
+{
+  "id": "next_big_thing",
+  "title": "Next Big Thing",
+  "side": "Corp",
+  "card_type": "Agenda",
+  "cost": 0,
+  "advancement_requirement": 5,
+  "agenda_points": 3,
+  "triggers": [
+    {
+      "trigger": "OnAgendaScored",
+      "effects": [
+        {
+          "AddCounters": 1
+        }
+      ]
+    }
+  ],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 1
+          },
+          {
+            "RemoveCounters": 1
+          }
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "DrawCards": [
+              "Corp",
+              4
+            ]
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": "Any",
+              "min": 0,
+              "max": 10,
+              "reveal": false,
+              "shuffle_after": true,
+              "destination": "OwnRAndD"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "numeric_id": 35060,
+  "is_playable": true
+}

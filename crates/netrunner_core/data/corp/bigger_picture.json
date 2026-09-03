@@ -1,0 +1,94 @@
+{
+  "id": "bigger_picture",
+  "title": "Bigger Picture",
+  "side": "Corp",
+  "card_type": "Operation",
+  "cost": 0,
+  "play_requirement": "IsTagged",
+  "triggers": [
+    {
+      "trigger": "OnPlay",
+      "effects": [
+        {
+          "PresentChoice": {
+            "chooser": "Corp",
+            "options": [
+              {
+                "GiveTags": 1
+              },
+              {
+                "Sequence": [
+                  {
+                    "LoseCreditsAmount": [
+                      "Runner",
+                      "RunnerTags"
+                    ]
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      "CreditsLostThisResolution"
+                    ]
+                  },
+                  {
+                    "LoseCreditsAmount": [
+                      "Runner",
+                      "RunnerTags"
+                    ]
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      "CreditsLostThisResolution"
+                    ]
+                  },
+                  {
+                    "LoseCreditsAmount": [
+                      "Runner",
+                      "RunnerTags"
+                    ]
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      "CreditsLostThisResolution"
+                    ]
+                  },
+                  {
+                    "LoseCreditsAmount": [
+                      "Runner",
+                      "RunnerTags"
+                    ]
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      "CreditsLostThisResolution"
+                    ]
+                  },
+                  {
+                    "LoseCreditsAmount": [
+                      "Runner",
+                      "RunnerTags"
+                    ]
+                  },
+                  {
+                    "GainCreditsAmount": [
+                      "Corp",
+                      "CreditsLostThisResolution"
+                    ]
+                  },
+                  {
+                    "RemoveTags": 99
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35065,
+  "is_playable": true
+}

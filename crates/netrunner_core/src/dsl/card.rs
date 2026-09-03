@@ -897,8 +897,7 @@ mod tests {
                     // Netrunner only permits them while encountering ICE.
                     requirement: Some(EffectRequirement::DuringEncounter),
                     effect: Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
-                    cost_discount_if: None,
-                },
+                    cost_discount_if: None, used_by: None },
                 AbilityDef {
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
@@ -909,8 +908,7 @@ mod tests {
                         count: SubroutineBreakCount::Fixed(1),
                         restrict_to: Some(IceType::Barrier),
                     },
-                    cost_discount_if: None,
-                },
+                    cost_discount_if: None, used_by: None },
             ]
         );
     }

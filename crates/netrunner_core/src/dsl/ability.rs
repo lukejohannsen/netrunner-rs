@@ -34,6 +34,18 @@ pub struct AbilityDef {
     /// computation reads this one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost_discount_if: Option<(EffectRequirement, u32)>,
+    /// Who may activate this ability, when that is not the card's own
+    /// controller — N-Pot's "3[c]: break 1 subroutine on this ice. **Only
+    /// the Runner can use this ability.**" The Runner pays the cost and
+    /// the effect resolves as the ice. `None`, the common case, means the
+    /// side whose card it is.
+    ///
+    /// Read by `engine::activate_ability` (which side pays and is checked
+    /// for priority) and by `legal_actions::action_owner` (which seat is
+    /// offered it), so the offer and the resolution agree about whose
+    /// action it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub used_by: Option<crate::rules::Side>,
 }
 
 /// A precondition gating an `AbilityDef`'s activation, a `CardDefinition::
@@ -293,6 +305,12 @@ pub enum EffectRequirement {
     /// forfeit with nothing to give up is not a way to pay. A count of
     /// agendas, not of points: what a forfeit consumes is a card.
     ScoreAreaHasAtLeast(u32),
+    /// The Corp has played an operation during this turn
+    /// (`CorpState::played_operation_this_turn`) — Nebula Talent
+    /// Management's "if you played an operation this turn". Reading a flag
+    /// rather than consuming a `OncePerTurn` tag: the question is asked at
+    /// the end of the action phase and must not spend anything.
+    PlayedOperationThisTurn,
     /// A run is in progress and has not yet reached access — Proprionegation's
     /// "use this ability only during a run". `DuringEncounter` is the
     /// narrower sibling (the Runner committed to a specific piece of ice);
@@ -455,8 +473,7 @@ mod tests {
                 cost: Some(Cost::Credits(3)),
                 requirement: None,
                 effect: Effect::DealDamage(DamageType::Net, 1),
-                cost_discount_if: None,
-            }
+                cost_discount_if: None, used_by: None }
         );
         assert_eq!(
             bundle.abilities[1],
@@ -465,8 +482,7 @@ mod tests {
                 cost: Some(Cost::TrashSelf),
                 requirement: None,
                 effect: Effect::GiveTags(1),
-                cost_discount_if: None,
-            }
+                cost_discount_if: None, used_by: None }
         );
         assert_eq!(
             bundle.subroutines[0],

@@ -816,6 +816,20 @@ pub enum Effect {
     /// (`RedirectRunOnApproach`, `run::reconcile_ice`) keeps the Runner's
     /// progress rather than resetting it.
     MoveRunToOutermost(ServerId),
+    /// Takes the acting card — an agenda the Runner has scored — out of
+    /// the Runner's score area, removes tags equal to its printed points,
+    /// and installs it unrezzed in a fresh remote. IP Enforcement's "as an
+    /// additional cost to play this operation, remove X tags. Install 1
+    /// agenda from the Runner's score area with a printed agenda point
+    /// value equal to X."
+    ///
+    /// One effect rather than a cost plus an install because X *is* the
+    /// chosen agenda's point value: the cost cannot be known until the
+    /// card is picked, and `ability::pay_cost` never sees the selection.
+    /// The destination is not offered — a stolen agenda coming back has
+    /// only one sensible home, and installing it over an occupied remote
+    /// would trash the occupant.
+    InstallAgendaFromRunnerScoreArea,
     /// Swaps the ice the Runner is approaching with the acting card, which
     /// is a piece of ice in `origin` (HQ or Archives) — Mitra Aman's "you
     /// may swap the ice being approached with a piece of ice from Archives
@@ -1042,6 +1056,7 @@ impl Effect {
             | Effect::ResolveSubroutineOfSelectedIce
             | Effect::ForfeitAgendas(..)
             | Effect::MoveRunToOutermost(..)
+            | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }
             | Effect::GainClicksNextTurn(..)
             | Effect::GainCreditsAmount(..) => {}

@@ -1,0 +1,97 @@
+{
+  "id": "gimbatul",
+  "name": "Gimbatul",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "synapse_global_faster_than_thought",
+  "cards": [
+    {
+      "card": "embedded_reporting",
+      "count": 3
+    },
+    {
+      "card": "next_big_thing",
+      "count": 2
+    },
+    {
+      "card": "orbital_superiority",
+      "count": 3
+    },
+    {
+      "card": "tomorrows_headline",
+      "count": 1
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 3
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "bigger_picture",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "ip_enforcement",
+      "count": 1
+    },
+    {
+      "card": "neurospike",
+      "count": 1
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "public_trail",
+      "count": 1
+    },
+    {
+      "card": "touch_ups",
+      "count": 3
+    },
+    {
+      "card": "amaze_amusements",
+      "count": 2
+    },
+    {
+      "card": "malapert_data_vault",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 2
+    },
+    {
+      "card": "ping",
+      "count": 3
+    },
+    {
+      "card": "funhouse",
+      "count": 2
+    },
+    {
+      "card": "n_pot",
+      "count": 3
+    },
+    {
+      "card": "doomscroll",
+      "count": 3
+    },
+    {
+      "card": "lamplighter",
+      "count": 1
+    },
+    {
+      "card": "tithe",
+      "count": 3
+    }
+  ]
+}

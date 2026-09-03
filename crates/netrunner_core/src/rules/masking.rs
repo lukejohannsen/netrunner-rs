@@ -101,6 +101,9 @@ pub struct PublicCorpState {
     /// `PublicInstalledCard::counters` applies to a *rezzed* install.
     #[serde(default)]
     pub identity_counters: u32,
+    /// `CorpState::identity_flipped` — public, like the Runner's.
+    #[serde(default)]
+    pub identity_flipped: bool,
     /// Recurring credits still unspent this turn, and the pool they refill
     /// to. Never masked: recurring credits sit as visible tokens on the
     /// card that grants them, so both players can always count them.
@@ -832,6 +835,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
         bad_publicity: corp.bad_publicity,
         removed_from_game: corp.removed_from_game.clone(),
         identity_counters: corp.identity_counters,
+        identity_flipped: corp.identity_flipped,
         recurring_credits: corp.recurring_credits,
         recurring_credits_max: corp.recurring_credits_max,
     }

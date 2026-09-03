@@ -1,0 +1,46 @@
+{
+  "id": "public_access_plaza",
+  "title": "Public Access Plaza",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "trash_cost": 2,
+  "triggers": [
+    {
+      "trigger": "OnTurnStart",
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": "OnTrashedFromAccess",
+      "requirement": {
+        "And": [
+          {
+            "AmountAtLeast": [
+              "ThreatLevel",
+              2
+            ]
+          },
+          {
+            "CurrentlyAccessingInstalledCard": {
+              "rezzed_only": true
+            }
+          }
+        ]
+      },
+      "effects": [
+        {
+          "GiveTags": 1
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35062,
+  "is_playable": true
+}

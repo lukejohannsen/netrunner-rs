@@ -634,8 +634,7 @@ mod tests {
                 cost: None,
                 requirement: None,
                 effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to },
-                cost_discount_if: None,
-            }],
+                cost_discount_if: None, used_by: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -874,8 +873,7 @@ mod tests {
             cost: Some(Cost::Credits(pump_cost)),
             requirement: None,
             effect: Effect::BoostStrength { amount: pump_amount, duration: BoostDuration::Encounter },
-            cost_discount_if: None,
-        });
+            cost_discount_if: None, used_by: None });
         def
     }
 

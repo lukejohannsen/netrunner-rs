@@ -308,6 +308,21 @@ pub struct CorpState {
     /// Public information, like everything else about an identity.
     #[serde(default)]
     pub identity_counters: u32,
+    /// Whether the Corp has played an operation this turn — Nebula Talent
+    /// Management: Making Stars flips itself at the end of an action phase
+    /// that saw one. Set by `engine::play_operation_card` (both the click
+    /// action and `Effect::PlayOperation`), cleared at every Corp turn
+    /// start. A flag rather than a `OncePerTurn` tag because nothing
+    /// *consumes* it: two cards may ask, and asking must not spend it.
+    #[serde(default)]
+    pub played_operation_this_turn: bool,
+    /// The Corp-side twin of `RunnerState::identity_flipped` — Nebula
+    /// Talent Management: Making Stars is the first Corp identity with two
+    /// sides. `Effect::FlipIdentity` toggles whichever side is resolving
+    /// and `EffectRequirement::IdentityFlipped` reads that side's flag, so
+    /// one effect and one requirement serve both.
+    #[serde(default)]
+    pub identity_flipped: bool,
     /// Tags consumed by `EffectRequirement::OncePerTurn(tag)` gates the Corp
     /// has already fired this turn — the generalized replacement for adding
     /// another bespoke per-effect bool alongside `first_install_used_this_turn`.
