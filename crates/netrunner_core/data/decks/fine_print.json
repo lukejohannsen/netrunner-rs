@@ -1,0 +1,89 @@
+{
+  "id": "fine_print",
+  "name": "Fine Print",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "nbn_reality_plus",
+  "cards": [
+    {
+      "card": "embedded_reporting",
+      "count": 3
+    },
+    {
+      "card": "next_big_thing",
+      "count": 2
+    },
+    {
+      "card": "offworld_office",
+      "count": 2
+    },
+    {
+      "card": "tomorrows_headline",
+      "count": 1
+    },
+    {
+      "card": "byte",
+      "count": 2
+    },
+    {
+      "card": "idiosyncresis",
+      "count": 2
+    },
+    {
+      "card": "otto_campaign",
+      "count": 3
+    },
+    {
+      "card": "public_access_plaza",
+      "count": 3
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "bigger_picture",
+      "count": 2
+    },
+    {
+      "card": "ip_enforcement",
+      "count": 1
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "public_trail",
+      "count": 2
+    },
+    {
+      "card": "amaze_amusements",
+      "count": 2
+    },
+    {
+      "card": "mahkota_langit_grid",
+      "count": 2
+    },
+    {
+      "card": "ping",
+      "count": 3
+    },
+    {
+      "card": "funhouse",
+      "count": 2
+    },
+    {
+      "card": "scatter_field",
+      "count": 1
+    },
+    {
+      "card": "doomscroll",
+      "count": 3
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "id": "nebula_talent_management_making_stars",
+  "title": "Nebula Talent Management: Making Stars",
+  "side": "Corp",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnActionPhaseEnd",
+      "requirement": {
+        "And": [
+          {
+            "Not": "IdentityFlipped"
+          },
+          "PlayedOperationThisTurn"
+        ]
+      },
+      "effects": [
+        {
+          "GainCredits": [
+            "Corp",
+            1
+          ]
+        },
+        "FlipIdentity"
+      ]
+    },
+    {
+      "trigger": "OnOperationPlayed",
+      "requirement": {
+        "And": [
+          "IdentityFlipped",
+          {
+            "OncePerTurn": "nebula_talent_management_making_stars"
+          }
+        ]
+      },
+      "effects": [
+        {
+          "GainClicks": [
+            "Corp",
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRunOnHq",
+      "requirement": "IdentityFlipped",
+      "effects": [
+        "FlipIdentity"
+      ]
+    },
+    {
+      "trigger": "OnSuccessfulRunOnRnD",
+      "requirement": "IdentityFlipped",
+      "effects": [
+        "FlipIdentity"
+      ]
+    }
+  ],
+  "numeric_id": 35057,
+  "is_playable": true
+}

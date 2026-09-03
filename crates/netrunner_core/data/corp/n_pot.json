@@ -1,0 +1,63 @@
+{
+  "id": "n_pot",
+  "title": "N-Pot",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 4,
+  "strength": 4,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "used_by": "Runner",
+      "cost": {
+        "Credits": 3
+      },
+      "effect": {
+        "BreakSubroutinesUnconditionally": {
+          "count": {
+            "Fixed": 1
+          }
+        }
+      }
+    }
+  ],
+  "subroutines": [
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    },
+    {
+      "text": "If the threat level is 2 or greater, end the run.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "AmountAtLeast": [
+              "ThreatLevel",
+              2
+            ]
+          },
+          "effect": "EndTheRun"
+        }
+      }
+    },
+    {
+      "text": "If the threat level is 4 or greater, end the run.",
+      "effect": {
+        "EffectIf": {
+          "condition": {
+            "AmountAtLeast": [
+              "ThreatLevel",
+              4
+            ]
+          },
+          "effect": "EndTheRun"
+        }
+      }
+    }
+  ],
+  "numeric_id": 35064,
+  "is_playable": true
+}

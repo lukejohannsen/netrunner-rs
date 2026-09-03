@@ -320,8 +320,19 @@ pub fn evaluate_effect(
         }
 
         Effect::RemoveTags(amount) => {
-            state.runner.tags = state.runner.tags.saturating_sub(*amount);
-            Ok(vec![GameEvent::TagsRemoved { side: Side::Runner, amount: *amount }])
+            // The event reports what actually came off, not what was asked
+            // for: a trigger keyed on a tag being removed (Synapse Global)
+            // must not fire on a request that removed nothing.
+            let removed = state.runner.tags.min(*amount);
+            state.runner.tags -= removed;
+            let event = GameEvent::TagsRemoved { side: Side::Runner, amount: removed };
+            // Dispatched here rather than from the caller, for the same
+            // reason `DamageTaken` is: the event is produced deep in an
+            // effect and returned, and Synapse Global: Faster than Thought
+            // reacts to it.
+            let mut events = vec![event.clone()];
+            events.extend(dispatcher::dispatch_event(state, registry, &event)?);
+            Ok(events)
         }
 
         Effect::GiveBadPublicity(amount) => {
@@ -632,8 +643,16 @@ pub fn evaluate_effect(
         Effect::BypassEncounteredIce => run::bypass_encountered_ice(state),
 
         Effect::FlipIdentity => {
-            state.runner.identity_flipped = !state.runner.identity_flipped;
-            Ok(vec![GameEvent::IdentityFlipped { side: Side::Runner }])
+            // Whichever identity is resolving. Only an identity carries a
+            // flip side, so the acting card names the side directly; the
+            // Runner is the fallback because Dewi Subrotoputri was the
+            // only flip identity before Nebula Talent Management.
+            let side = if acting_card.is_some() && acting_card == state.corp.identity.as_ref() { Side::Corp } else { Side::Runner };
+            match side {
+                Side::Corp => state.corp.identity_flipped = !state.corp.identity_flipped,
+                Side::Runner => state.runner.identity_flipped = !state.runner.identity_flipped,
+            }
+            Ok(vec![GameEvent::IdentityFlipped { side }])
         }
 
         Effect::AddToBottomOfStack => {
@@ -1269,6 +1288,39 @@ pub fn evaluate_effect(
                 events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card.clone() });
                 events.extend(dispatcher::dispatch_event(state, registry, &forfeited_event)?);
             }
+            Ok(events)
+        }
+
+        Effect::InstallAgendaFromRunnerScoreArea => {
+            let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
+            let Some(position) = state.runner.scored_agendas.iter().position(|c| c == &card_id) else {
+                return Ok(Vec::new());
+            };
+            let points = crate::rules::win::agenda_value(&card_id, registry).unwrap_or(0);
+            // The tags are the price, and the offer was filtered so they
+            // are there — but check anyway: a parked selection resolves
+            // later than it was built, and paying half a cost is worse
+            // than doing nothing.
+            if state.runner.tags < points {
+                return Ok(Vec::new());
+            }
+            state.runner.scored_agendas.remove(position);
+            state.runner.resources.agenda_points =
+                crate::rules::state::AgendaPoints(state.runner.resources.agenda_points.0.saturating_sub(points));
+            let mut events = evaluate_effect(state, &Effect::RemoveTags(points), ctx, registry)?;
+            // A fresh remote: see the variant's doc comment for why the
+            // Corp is not asked where.
+            let existing = crate::rules::legal_actions::existing_remote_ids(state);
+            let server = crate::rules::run::ServerId::Remote(crate::rules::legal_actions::fresh_remote_id(&existing));
+            events.extend(crate::rules::engine::place_corp_card(
+                state,
+                registry,
+                card_id,
+                server,
+                crate::rules::state::InstallSlot::Root,
+                false,
+                0,
+            )?);
             Ok(events)
         }
 
@@ -2235,7 +2287,13 @@ pub fn check_requirement(
             if state.active_run.as_ref().is_some_and(|run| run.subroutine_resolved) { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::IdentityFlipped => {
-            if state.runner.identity_flipped { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+            // The asking side's own flip state — `side` is the resolving
+            // card's controller, so a Corp identity reads the Corp's.
+            let flipped = match side {
+                Side::Corp => state.corp.identity_flipped,
+                Side::Runner => state.runner.identity_flipped,
+            };
+            if flipped { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::MemoryFull => {
             if crate::rules::memory::available_memory(state, registry) == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -2376,6 +2434,9 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::PlayedOperationThisTurn => {
+            if state.corp.played_operation_this_turn { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::DuringRun => {
             // Not merely `active_run.is_some()`: once the Runner is
             // accessing, or the run has ended but not been cleared, there
@@ -2471,14 +2532,14 @@ pub fn check_requirement(
             // `OnAccessed` and `OnTrashedFromAccess` triggers dispatch —
             // which is what lets Aggressive Trendsetting tell "trashed an
             // installed card" from "trashed a card found in HQ".
-            let install = state
-                .active_run
-                .as_ref()
-                .and_then(|run| run.access_state.as_ref())
-                .and_then(|access| access.pending_install);
+            let access = state.active_run.as_ref().and_then(|run| run.access_state.as_ref());
+            let install = access.and_then(|access| access.pending_install);
+            // Rezzed-ness comes off the access, not the table: the card may
+            // already be in Archives by the time the question is asked
+            // (Public Access Plaza, from `OnTrashedFromAccess`).
             let ok = match install {
                 None => false,
-                Some(install) if *rezzed_only => state.find_corp_install(install).is_some_and(|c| c.rezzed),
+                Some(_) if *rezzed_only => access.is_some_and(|access| access.pending_install_rezzed),
                 Some(_) => true,
             };
             if ok { Ok(()) } else { Err(RulesError::RequirementNotMet) }
@@ -2812,6 +2873,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::DuringEncounter
         | EffectRequirement::DuringRun
+        | EffectRequirement::PlayedOperationThisTurn
         | EffectRequirement::WasFirstAdvancementThisCard
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive
@@ -2899,7 +2961,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            abilities: vec![AbilityDef { trigger: Trigger::Paid, cost: None, requirement: None, effect, cost_discount_if: None }],
+            abilities: vec![AbilityDef { trigger: Trigger::Paid, cost: None, requirement: None, effect, cost_discount_if: None, used_by: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -3204,7 +3266,10 @@ mod tests {
         let events = evaluate_effect(&mut state, &Effect::RemoveTags(5), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 0);
-        assert_eq!(events, vec![GameEvent::TagsRemoved { side: Side::Runner, amount: 5 }]);
+        // The event reports the tag that actually came off, not the five
+        // asked for — Synapse Global: Faster than Thought reacts to a
+        // removal, and must not react to a request that removed nothing.
+        assert_eq!(events, vec![GameEvent::TagsRemoved { side: Side::Runner, amount: 1 }]);
     }
 
     #[test]

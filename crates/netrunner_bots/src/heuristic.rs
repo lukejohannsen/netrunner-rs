@@ -238,8 +238,7 @@ mod tests {
             cost: None,
             requirement: None,
             effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(IceType::Barrier) },
-            cost_discount_if: None,
-        }];
+            cost_discount_if: None, used_by: None }];
         registry.insert(cleaver);
 
         let mut state = GameState::new(0);

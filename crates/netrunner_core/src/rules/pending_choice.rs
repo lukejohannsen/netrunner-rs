@@ -51,7 +51,8 @@ fn owning_side(chooser: Side, zone: &CardZoneRef) -> Side {
         CardZoneRef::OpponentInstalled
         | CardZoneRef::OpponentDiscard
         | CardZoneRef::OpponentHand
-        | CardZoneRef::OpponentDeck => chooser.other(),
+        | CardZoneRef::OpponentDeck
+        | CardZoneRef::OpponentScoreArea => chooser.other(),
         _ => chooser,
     }
 }
@@ -88,6 +89,10 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
         CardZoneRef::OpponentDeck => match owner {
             Side::Corp => state.corp.r_and_d.clone(),
             Side::Runner => state.runner.stack.clone(),
+        },
+        CardZoneRef::OpponentScoreArea => match owner {
+            Side::Corp => state.corp.scored_agendas.iter().map(|s| s.card.clone()).collect(),
+            Side::Runner => state.runner.scored_agendas.clone(),
         },
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => match owner {
             Side::Corp => state.corp.installed.iter().map(|c| c.card.clone()).collect(),
@@ -211,6 +216,11 @@ fn instance_matches_filter(
         }
         CardFilter::Rezzed => corp_install.is_some_and(|c| c.rezzed),
         CardFilter::Unrezzed => corp_install.is_some_and(|c| !c.rezzed),
+        CardFilter::AgendaPointsAtMostRunnerTags => zone_card_ids(state, chooser, zone, source)
+            .get(position)
+            .and_then(|card| registry.get(card))
+            .and_then(|def| def.agenda_points)
+            .is_some_and(|points| points <= state.runner.tags),
         // The top of R&D and of the stack is the *end* of the `Vec` (both
         // draw by popping), so the top `count` cards are the last `count`
         // positions — Poétrï looking at the top 3 of R&D.
@@ -295,6 +305,10 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
             Side::Corp => Some(&mut state.corp.r_and_d),
             Side::Runner => Some(&mut state.runner.stack),
         },
+        // A source only — `Effect::InstallAgendaFromRunnerScoreArea` takes
+        // the card out itself, and nothing ever pushes into a score area
+        // through a selection's `destination`.
+        CardZoneRef::OpponentScoreArea => None,
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => None,
     }
 }

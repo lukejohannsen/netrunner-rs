@@ -207,4 +207,15 @@ pub enum Trigger {
     /// being approached out. Distinct from `OnEncounter`, which needs the
     /// ice rezzed and the Runner committed to it.
     OnIceApproached,
+    /// "Whenever you play an operation" — fired against the Corp's identity
+    /// for every `GameEvent::OperationPlayed`, whatever the operation's
+    /// subtype. `OnTransactionPlayed` is the narrower sibling, and Nebula
+    /// Talent Management: Making Stars reads every operation, not just the
+    /// transactions.
+    OnOperationPlayed,
+    /// "Whenever a tag is removed" — fired against the Corp's identity
+    /// when the Runner loses a tag by any route (`TagRemoved`,
+    /// `TagsRemoved`, `TagsCleared`). Synapse Global: Faster than Thought
+    /// installs off it, including off its own remove-a-tag ability.
+    OnTagRemoved,
 }

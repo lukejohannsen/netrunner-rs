@@ -1,0 +1,93 @@
+{
+  "id": "not_so_subtle",
+  "name": "Not so subtle",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "nebula_talent_management_making_stars",
+  "cards": [
+    {
+      "card": "embedded_reporting",
+      "count": 3
+    },
+    {
+      "card": "next_big_thing",
+      "count": 2
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "tomorrows_headline",
+      "count": 1
+    },
+    {
+      "card": "plutus",
+      "count": 2
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 1
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "bigger_picture",
+      "count": 1
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "peer_review",
+      "count": 3
+    },
+    {
+      "card": "petty_cash",
+      "count": 3
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 3
+    },
+    {
+      "card": "touch_ups",
+      "count": 2
+    },
+    {
+      "card": "mahkota_langit_grid",
+      "count": 2
+    },
+    {
+      "card": "ping",
+      "count": 3
+    },
+    {
+      "card": "semak_samun",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 1
+    },
+    {
+      "card": "n_pot",
+      "count": 3
+    },
+    {
+      "card": "doomscroll",
+      "count": 3
+    },
+    {
+      "card": "lamplighter",
+      "count": 2
+    },
+    {
+      "card": "tithe",
+      "count": 2
+    }
+  ]
+}

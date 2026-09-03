@@ -105,13 +105,13 @@ fn pending_access_trigger_decider(state: &GameState) -> Option<Side> {
 /// wrongly exclude it from the Corp's list and wrongly include it in the
 /// Runner's if filtering only looked at `current_actor`.
 pub fn legal_actions_for(state: &GameState, registry: &CardRegistry, side: Side) -> Vec<PlayerAction> {
-    legal_actions(state, registry).into_iter().filter(|action| action_owner(state, action) == side).collect()
+    legal_actions(state, registry).into_iter().filter(|action| action_owner(state, registry, action) == side).collect()
 }
 
 /// Which side may submit `action` against `state`. `action` is assumed to
 /// already be a member of `legal_actions(state, registry)` — i.e. it's
 /// already known to be legal for *someone*; this only resolves *who*.
-fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
+fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerAction) -> Side {
     match action {
         PlayerAction::GainCreditClick { side }
         | PlayerAction::DrawCardClick { side }
@@ -173,7 +173,30 @@ fn action_owner(state: &GameState, action: &PlayerAction) -> Side {
         // during the Runner's own priority, or vice versa) — `phase`/
         // `current_actor` can't resolve this; ownership is a card-location
         // lookup instead.
-        PlayerAction::ActivateAbility { target, .. } => {
+        PlayerAction::ActivateAbility { target, ability_index } => {
+            // An ability may name the *other* side as its user — N-Pot's
+            // "only the Runner can use this ability" sits on a Corp card.
+            // Checked first, so the offer reaches the seat that will be
+            // allowed to pay for it.
+            let card = if *target == InstallId::CORP_IDENTITY {
+                state.corp.identity.clone()
+            } else if *target == InstallId::RUNNER_IDENTITY {
+                state.runner.identity.clone()
+            } else {
+                state
+                    .find_corp_install(*target)
+                    .map(|c| c.card.clone())
+                    .or_else(|| state.corp.find_scored(*target).map(|s| s.card.clone()))
+                    .or_else(|| state.find_rig_install(*target).map(|c| c.card.clone()))
+            };
+            if let Some(used_by) = card
+                .as_ref()
+                .and_then(|card| registry.get(card))
+                .and_then(|def| def.abilities.get(*ability_index))
+                .and_then(|ability| ability.used_by)
+            {
+                return used_by;
+            }
             // The score area counts as the Corp's too — Proprionegation's
             // ability is used from there, and it is the one Corp card an
             // installed-only lookup could not place.
@@ -906,8 +929,7 @@ mod tests {
             cost: Some(Cost::Credits(1)),
             requirement: None,
             effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::BoostDuration::Encounter },
-            cost_discount_if: None,
-        }];
+            cost_discount_if: None, used_by: None }];
         registry.insert(breaker);
 
         // Phase stays `Action(Runner)` throughout a run regardless of who
@@ -1241,8 +1263,7 @@ mod tests {
             cost: Some(Cost::Credits(1)),
             requirement: None,
             effect: Effect::GainCredits(Side::Runner, 1),
-            cost_discount_if: None,
-        }];
+            cost_discount_if: None, used_by: None }];
         registry.insert(breaker);
 
         let mut state = runner_state(3, 5);

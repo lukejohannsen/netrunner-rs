@@ -131,7 +131,7 @@ pub fn apply_action(
         }
         PlayerAction::AdvanceCard { target } => advance_card(state, registry, target),
         PlayerAction::ScoreAgenda { target } => score_agenda(state, registry, target),
-        PlayerAction::RemoveTag => remove_tag(state),
+        PlayerAction::RemoveTag => remove_tag(state, registry),
         PlayerAction::PurgeVirusCounters => purge_virus_counters(state, registry),
         PlayerAction::TrashResource { target } => trash_resource(state, registry, target),
         PlayerAction::SelectCardToAccess { card_id } => {
@@ -1245,6 +1245,7 @@ pub(crate) fn play_operation_card(
     // Operations, the Weyland Consortium: Building a Better World-style
     // identity reaction (unconditional — no per-turn gate, unlike
     // `OnSuccessfulRunOnHq`/`OnInstall` above) from this one event.
+    next.corp.played_operation_this_turn = true;
     let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives };
     events.push(played_event.clone());
     events.extend(dispatcher::dispatch_event(next, registry, &played_event)?);
@@ -1963,12 +1964,6 @@ fn activate_ability(
     }
     let card_id = card.expect("an active install always resolves to a card");
 
-    if let Some(window) = &state.paid_ability_window
-        && window.active_priority != side
-    {
-        return Err(RulesError::NotYourPriority { expected: window.active_priority, actual: side });
-    }
-
     let card_def = registry
         .get(&card_id)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(card_id.clone()))?;
@@ -1978,6 +1973,20 @@ fn activate_ability(
         .ok_or(RulesError::InvalidAbilityIndex(ability_index))?;
     if ability.trigger != Trigger::Paid {
         return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
+    }
+    // N-Pot's "only the Runner can use this ability": the card is the
+    // Corp's, but the Runner pays and acts. Resolved before the priority
+    // and phase checks below, so they are applied to the side that will
+    // actually be spending.
+    let side = ability.used_by.unwrap_or(side);
+    if let Some(window) = &state.paid_ability_window {
+        if window.active_priority != side {
+            return Err(RulesError::NotYourPriority { expected: window.active_priority, actual: side });
+        }
+    } else if let GamePhase::Action(acting) = state.phase
+        && acting != side
+    {
+        return Err(RulesError::NotInActionPhase { actual: state.phase });
     }
     if let Some(requirement) = &ability.requirement {
         ability::check_requirement(state, requirement, side, &ability_ctx(is_identity, target, &card_id), registry)?;
@@ -2141,7 +2150,7 @@ fn score_agenda(
 }
 
 /// Resolves `PlayerAction::RemoveTag`, per its doc comment. Runner-only.
-fn remove_tag(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
@@ -2156,7 +2165,11 @@ fn remove_tag(state: &GameState) -> Result<(GameState, Vec<GameEvent>), RulesErr
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(2), None)?);
 
     next.runner.tags -= 1;
-    events.push(GameEvent::TagRemoved { side });
+    let removed = GameEvent::TagRemoved { side };
+    events.push(removed.clone());
+    // The Corp's identity may react to a tag coming off however it went
+    // (Synapse Global: Faster than Thought).
+    events.extend(dispatcher::dispatch_event(&mut next, registry, &removed)?);
 
     Ok((next, events))
 }
@@ -3802,7 +3815,7 @@ mod tests {
             next.active_run,
             Some(RunState {
                 cards_accessed_count: 1,
-                access_state: Some(run::AccessState { pending_install: None, resolved_installs: Vec::new(),
+                access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, resolved_installs: Vec::new(),
                     // Set when the card was presented, and left in place
                     // for the rest of its `PendingChoice`.
                     currently_accessing: Some(CardId("hedge_fund".to_string())),
@@ -4746,7 +4759,7 @@ mod tests {
             title: card_id.to_string(),
             side,
             card_type: CardType::Program,
-            abilities: vec![AbilityDef { trigger, cost, requirement: None, effect, cost_discount_if: None }],
+            abilities: vec![AbilityDef { trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -6004,8 +6017,7 @@ mod tests {
                 cost: Some(Cost::Credits(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Runner, 1),
-                cost_discount_if: None,
-            }],
+                cost_discount_if: None, used_by: None }],
             ..test_card("pennyshaver", Side::Runner, CardType::Hardware, 0, None)
         });
 
@@ -6344,7 +6356,7 @@ mod tests {
         RunState {
             server,
             phase: RunPhase::AccessingCard,
-            access_state: Some(run::AccessState { pending_install: None, resolved_installs: Vec::new(),
+            access_state: Some(run::AccessState { pending_install: None, pending_install_rezzed: false, resolved_installs: Vec::new(),
                 server,
                 phase,
                 ..Default::default()
@@ -6728,8 +6740,7 @@ mod tests {
                 count: SubroutineBreakCount::Fixed(1),
                 restrict_to: Some(IceType::Barrier),
             },
-            cost_discount_if: None,
-        });
+            cost_discount_if: None, used_by: None });
         registry.insert(card);
 
         // Runner boosts; priority passes to Corp.

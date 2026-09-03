@@ -352,6 +352,7 @@ pub(crate) fn enter_start_of_turn(
         next.corp.once_per_turn_used.clear();
         next.runner.once_per_turn_used.clear();
         next.corp.agenda_points_scored_this_turn = 0;
+        next.corp.played_operation_this_turn = false;
         next.corp.cannot_score_agendas_this_turn = false;
         // Everything still installed was necessarily installed on an earlier
         // turn — Seamless Launch's "did not install this turn" eligibility.
@@ -600,8 +601,7 @@ mod tests {
                 cost: Some(Cost::Clicks(1)),
                 requirement: None,
                 effect: Effect::GainCredits(Side::Corp, 3),
-                cost_discount_if: None,
-            }],
+                cost_discount_if: None, used_by: None }],
             is_playable: true,
             ..Default::default()
         });

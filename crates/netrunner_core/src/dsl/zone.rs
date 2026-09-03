@@ -59,6 +59,11 @@ pub enum CardZoneRef {
     /// cards it took back into; `PromptChooseCards::shuffle_after` does
     /// the shuffling, as it does for R&D.
     OpponentDeck,
+    /// The opposing side's score area — the Runner's, when the chooser is
+    /// the Corp (IP Enforcement's "install 1 agenda from the Runner's
+    /// score area"). A source only: nothing puts a card *into* an
+    /// opponent's score area.
+    OpponentScoreArea,
 }
 
 /// Which cards within a `CardZoneRef` are eligible to be selected.
@@ -190,6 +195,12 @@ pub enum CardFilter {
     /// `CardSubtype`, which is the printed-tag vocabulary rather than the
     /// ice-type one.
     IceOfType(crate::dsl::IceType),
+    /// An agenda whose printed point value is no greater than the Runner's
+    /// tag count — IP Enforcement pays for one by removing that many tags,
+    /// so an agenda it could not pay for is never offered. Instance-level
+    /// only because it reads the tag count, which is state; the point
+    /// value is the card's own.
+    AgendaPointsAtMostRunnerTags,
 }
 
 /// Whether `card` is eligible under `filter`. `CardType(CardType::Ice(_))`
@@ -226,6 +237,7 @@ pub fn card_matches_filter(card: &CardDefinition, filter: &CardFilter) -> bool {
         CardFilter::NotSourceCard => true,
         CardFilter::Rezzed => true,
         CardFilter::Unrezzed => true,
+        CardFilter::AgendaPointsAtMostRunnerTags => card.agenda_points.is_some(),
         CardFilter::AccessedDuringLastRun => true,
         CardFilter::All(filters) => filters.iter().all(|filter| card_matches_filter(card, filter)),
         CardFilter::AnyOf(filters) => filters.iter().any(|filter| card_matches_filter(card, filter)),

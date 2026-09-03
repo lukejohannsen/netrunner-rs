@@ -8211,4 +8211,248 @@ mod system_gateway {
         assert_eq!(state.runner.grip.len(), 5, "1 net only");
     }
 
+
+    // ---- Elevation Stage 10: Fine Print, Gimbatul, Not so subtle ----
+
+    #[test]
+    fn nebula_talent_management_flips_on_an_operation_refunds_a_click_and_flips_back_on_a_central_run() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("nebula_talent_management_making_stars".to_string()));
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 4];
+        state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("hedge_fund".to_string())];
+
+        // A turn with no operation played leaves it face up.
+        let quiet = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn").0;
+        assert!(!quiet.corp.identity_flipped, "no operation, no flip");
+
+        // Playing one flips it at the end of the action phase, for a credit.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        assert!(state.corp.identity_flipped);
+        assert_eq!(state.corp.resources.credits, Credits(15), "10 - 5 + 9 + 1");
+
+        // Flipped, the first operation each turn refunds a click.
+        let (state, _) = pass_until_settled(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.corp.resources.clicks, Clicks(3));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("hedge_fund".to_string()) }).expect("play again");
+        assert_eq!(state.corp.resources.clicks, Clicks(3), "spent one, got one back");
+
+        // A successful run on a central flips it back.
+        let mut running = state.clone();
+        running.phase = crate::rules::GamePhase::Action(Side::Runner);
+        running.runner.resources.clicks = Clicks(4);
+        let (running, _) = apply_action(&running, &registry, PlayerAction::InitiateRun { server: ServerId::RnD }).expect("run R&D");
+        let running = advance_until_choice(running, &registry);
+        assert!(!running.corp.identity_flipped, "flipped back on a successful central run");
+    }
+
+    #[test]
+    fn synapse_global_installs_from_hq_the_first_time_a_tag_comes_off_each_turn() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("synapse_global_faster_than_thought".to_string()));
+        state.corp.hq = vec![CardId("ice_wall".to_string())];
+        state.runner.tags = 2;
+        let ability = PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 };
+
+        let (state, _) = apply_action(&state, &registry, ability.clone()).expect("click, remove a tag");
+        assert_eq!(state.runner.tags, 1);
+        // …and the removal offers a free install out of HQ, *before* the
+        // ability's own credits: the prompt parks mid-`Sequence` and the
+        // gain is the continuation.
+        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).expect("pick it");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protect HQ");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "ice_wall"));
+        assert_eq!(state.corp.resources.credits, Credits(12), "the install was free, and the ability paid 2");
+
+        // Once per turn: the second tag comes off with no install offered.
+        let (state, _) = apply_action(&state, &registry, ability).expect("remove the other tag");
+        assert_eq!(state.runner.tags, 0);
+        assert!(state.pending_decision.is_none(), "once per turn");
+
+        // With no tag at all the ability is not offered.
+        assert!(!crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 }));
+    }
+
+    #[test]
+    fn embedded_reporting_pays_two_dividends_per_excess_and_buys_back_an_operation() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![CardId("ice_wall".to_string()), CardId("hedge_fund".to_string())];
+        state.corp.installed = vec![corp_root("embedded_reporting", ServerId::Remote(0))];
+        state.corp.installed[0].rezzed = false;
+        state.corp.installed[0].advancement_tokens = 5;
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "embedded_reporting") }).expect("score");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 4, "Dividends 2, two excess");
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let state = advance_until_choice(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend one");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 3);
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).is_err(), "not an operation");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") }).expect("find the operation");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        assert_eq!(state.corp.r_and_d.last(), Some(&CardId("hedge_fund".to_string())), "on top of R&D");
+        assert_eq!(state.corp.r_and_d.len(), 2, "it moved rather than multiplied");
+    }
+
+    #[test]
+    fn next_big_thing_scores_with_a_counter_that_draws_four_and_buries_hq() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 6];
+        state.corp.hq = vec![CardId("ice_wall".to_string())];
+        state.corp.installed = vec![corp_root("next_big_thing", ServerId::Remote(0))];
+        state.corp.installed[0].rezzed = false;
+        state.corp.installed[0].advancement_tokens = 5;
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "next_big_thing") }).expect("score");
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 1);
+        let (state, _) = close_all_windows(state, &registry);
+        let ability = PlayerAction::ActivateAbility { target: state.corp.scored_agendas[0].install_id, ability_index: 0 };
+        let (state, _) = apply_action(&state, &registry, ability).expect("a click and the counter");
+        assert_eq!(state.corp.resources.clicks, Clicks(2));
+        assert_eq!(state.corp.scored_agendas[0].agenda_counters, 0);
+        assert_eq!(state.corp.hq.len(), 5, "drew four");
+        // Any number of cards from HQ go back into R&D.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).expect("bury one");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("shuffle it in");
+        assert_eq!(state.corp.hq.len(), 4);
+        assert_eq!(state.corp.r_and_d.len(), 3, "two left plus the one shuffled back");
+    }
+
+    #[test]
+    fn public_access_plaza_pays_a_credit_a_turn_and_tags_its_trasher_only_at_threat_two() {
+        let registry = sg_registry();
+        let trash_it = |threat_points: usize, rezzed: bool| {
+            let mut state = runner_turn(10, 4);
+            state.runner.scored_agendas = vec![CardId("offworld_office".to_string()); threat_points];
+            state.corp.installed = vec![corp_root("public_access_plaza", ServerId::Remote(0))];
+            state.corp.installed[0].rezzed = rezzed;
+            let want = PlayerAction::TrashAccessedCard { card_id: CardId("public_access_plaza".to_string()) };
+            let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+            for _ in 0..30 {
+                let legal = crate::rules::legal_actions(&state, &registry);
+                if legal.contains(&want) {
+                    break;
+                }
+                let Some(action) = legal.into_iter().find(|a| {
+                    matches!(a, PlayerAction::PassPriority { .. } | PlayerAction::ContinueRun | PlayerAction::CompleteRun)
+                }) else {
+                    break;
+                };
+                state = apply_action(&state, &registry, action).expect("walk to the access").0;
+            }
+            apply_action(&state, &registry, want).expect("trash").0
+        };
+
+        // Threat 0: no tag. (Each Offworld Office is 2 points.)
+        assert_eq!(trash_it(0, true).runner.tags, 0);
+        // Threat 2: tagged.
+        assert_eq!(trash_it(1, true).runner.tags, 1);
+        // Threat 2 but the asset was never rezzed: no tag.
+        assert_eq!(trash_it(1, false).runner.tags, 0, "only while it is rezzed");
+
+        // And it pays a credit at the start of each Corp turn.
+        let mut state = base_state();
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.installed = vec![corp_root("public_access_plaza", ServerId::Remote(0))];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends");
+        let (state, _) = pass_until_settled(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.corp.resources.credits, Credits(11));
+    }
+
+    #[test]
+    fn n_pot_lets_only_the_runner_pay_three_to_break_and_ends_the_run_harder_as_the_threat_rises() {
+        let registry = sg_registry();
+        let approach = |runner_points: usize| {
+            let mut state = runner_turn(10, 4);
+            state.runner.scored_agendas = vec![CardId("offworld_office".to_string()); runner_points];
+            state.corp.installed = vec![ice_installed("n_pot", ServerId::Hq, true)];
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
+            apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("encounter").0
+        };
+        let break_one = PlayerAction::ActivateAbility { target: fixture_install_id("n_pot"), ability_index: 0 };
+
+        // The ability belongs to the Runner even though the card is the Corp's.
+        let state = approach(0);
+        assert!(crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&break_one));
+        assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Corp).contains(&break_one));
+        let (broken, events) = apply_action(&state, &registry, break_one.clone()).expect("pay 3, break 1");
+        assert_eq!(broken.runner.resources.credits, Credits(7));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::SubroutineBroken { index: 0, .. })));
+
+        // Threat 0: only the first subroutine ends the run, and it was broken.
+        let (state, _) = pass_until_settled(broken, &registry);
+        assert!(state.active_run.is_some(), "the other two are threat-gated");
+
+        // Threat 2 (one 2-point agenda stolen): the second one bites.
+        let state = approach(1);
+        let (state, _) = apply_action(&state, &registry, break_one).expect("break the first");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert!(state.active_run.is_none(), "subroutine 2 ended the run");
+    }
+
+    #[test]
+    fn bigger_picture_either_tags_again_or_drains_five_a_tag_into_the_corps_pocket() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(0);
+        state.corp.hq = vec![CardId("bigger_picture".to_string()); 2];
+        state.runner.resources.credits = Credits(12);
+        state.runner.tags = 2;
+        let play = PlayerAction::PlayOperation { card_id: CardId("bigger_picture".to_string()) };
+
+        // Only against a tagged Runner.
+        let mut untagged = state.clone();
+        untagged.runner.tags = 0;
+        assert!(!crate::rules::legal_actions(&untagged, &registry).contains(&play));
+
+        // One more tag…
+        let (state, _) = apply_action(&state, &registry, play).expect("play");
+        let (tagged, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("give a tag");
+        assert_eq!(tagged.runner.tags, 3);
+
+        // …or 5 credits a tag, straight across the table.
+        let (drained, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("drain");
+        assert_eq!(drained.runner.resources.credits, Credits(2), "12 less 5 per tag");
+        assert_eq!(drained.corp.resources.credits, Credits(10), "and the Corp takes what they lost");
+        assert_eq!(drained.runner.tags, 0, "the tags come off");
+    }
+
+    #[test]
+    fn ip_enforcement_buys_a_stolen_agenda_back_for_its_own_points_in_tags() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.hq = vec![CardId("ip_enforcement".to_string())];
+        state.runner.scored_agendas = vec![
+            CardId("offworld_office".to_string()),
+            CardId("send_a_message".to_string()),
+        ];
+        state.runner.resources.agenda_points = AgendaPoints(5);
+        state.runner.tags = 2;
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("ip_enforcement".to_string()) }).expect("play");
+        // Send a Message is 3 points and two tags cannot pay for it.
+        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "send_a_message") }).is_err(), "3 points, 2 tags");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "offworld_office") }).expect("the 2-pointer");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("take it back");
+        assert_eq!(state.runner.tags, 0, "two tags paid for two points");
+        assert_eq!(state.runner.scored_agendas, vec![CardId("send_a_message".to_string())]);
+        assert_eq!(state.runner.resources.agenda_points, AgendaPoints(3));
+        let installed = state.corp.installed.iter().find(|c| c.card.0 == "offworld_office").expect("back on the table");
+        assert!(matches!(installed.server, ServerId::Remote(_)));
+        assert_eq!(installed.advancement_tokens, 0, "the Runner is no longer tagged, so no counter");
+    }
+
 }
