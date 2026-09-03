@@ -11,6 +11,6 @@ pub use card::{
     StrengthModifier, TriggeredEffect,
 };
 pub use cost::Cost;
-pub use effect::{Amount, BoostDuration, CardTarget, DamageType, Effect, EndRunPrevention, StackZone, SubroutineBreakCount};
+pub use effect::{Amount, BoostDuration, CardTarget, DamageType, Effect, EndRunPrevention, HostedCardOrigin, StackZone, SubroutineBreakCount};
 pub use trigger::Trigger;
 pub use zone::{card_matches_filter, CardFilter, CardZoneRef};

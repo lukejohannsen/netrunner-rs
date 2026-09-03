@@ -48,6 +48,21 @@ pub enum CardTarget {
     /// `RulesError::UnresolvedCardTarget` if `acting_card` isn't a hosted
     /// card. e.g. Tranquilizer's "derez host ice" once counters reach 3.
     HostIce,
+    /// Every card hosted on `acting_card` (`InstalledRunnerCard::
+    /// hosted_cards`) — Bling's "when your discard phase ends, trash all
+    /// hosted cards". Only meaningful for `Effect::TrashCard`; each hosted
+    /// card goes to its owner's discard pile.
+    HostedOnThisCard,
+}
+
+/// Where `Effect::HostCardOnThisCard` takes the card from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum HostedCardOrigin {
+    /// A random card from HQ — Detente's "host 1 random card from HQ".
+    RandomFromHq,
+    /// The top card of the Runner's stack — Bling's "host the top card of
+    /// your stack faceup".
+    TopOfStack,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -560,11 +575,23 @@ pub enum Effect {
     /// Trashes `Amount` cards from the top of R&D, facedown — the R&D half
     /// of a sabotage.
     MillRnDAmount(Amount),
-    /// Moves one card from HQ, chosen at random with the state's PRNG,
-    /// onto the acting rig card's `hosted_cards`, faceup — Detente's "host
-    /// 1 card from HQ at random faceup on this hardware". A no-op with an
-    /// empty HQ.
-    HostRandomHqCardOnThisCard,
+    /// Moves one card from `HostedCardOrigin` onto the acting rig card's
+    /// `hosted_cards`, faceup — Detente's "host 1 card from HQ at random
+    /// faceup on this hardware", Bling's "host the top card of your stack
+    /// faceup on this hardware". A no-op when the origin is empty. One
+    /// variant with an origin rather than one per card: the hosting half
+    /// is identical, only the pick differs.
+    HostCardOnThisCard(HostedCardOrigin),
+    /// Bypasses the ice being encountered — Fransofia Ward's "(Pass that
+    /// ice. No subroutines or further "when encountered" abilities
+    /// resolve.)". Marks every pending subroutine as handled and sets
+    /// `run::RunState::ice_bypassed`, so the encounter's paid window closes
+    /// with nothing to fire and the next `Continue` passes the ice; the
+    /// dispatcher skips the ice's own `OnEncounter` reactions, and a
+    /// deferred one stands down. Not composable: nothing else can mark
+    /// subroutines handled without firing or breaking them. Fails outside
+    /// an encounter (`RulesError::NotInEncounter`).
+    BypassEncounteredIce,
     /// Flips the Runner's identity to its other side
     /// (`RunnerState::identity_flipped`) — Dewi Subrotoputri. A flag rather
     /// than swapping the identity card: one card, two sides, and every
@@ -801,7 +828,8 @@ impl Effect {
             | Effect::ArmRunEndPrevention(..)
             | Effect::Sabotage(..)
             | Effect::MillRnDAmount(..)
-            | Effect::HostRandomHqCardOnThisCard
+            | Effect::HostCardOnThisCard(_)
+            | Effect::BypassEncounteredIce
             | Effect::FlipIdentity
             | Effect::AddToBottomOfStack
             | Effect::HostRigCardOnInstall { .. }

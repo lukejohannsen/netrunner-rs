@@ -1,0 +1,89 @@
+{
+  "id": "shootin_n_lootin",
+  "name": "Shootin' 'n' Lootin'",
+  "side": "Runner",
+  "category": "Sample",
+  "identity": "muslihat",
+  "cards": [
+    {
+      "card": "clean_getaway",
+      "count": 3
+    },
+    {
+      "card": "jailbreak",
+      "count": 3
+    },
+    {
+      "card": "maintenance_access",
+      "count": 2
+    },
+    {
+      "card": "mutual_favor",
+      "count": 1
+    },
+    {
+      "card": "overclock",
+      "count": 3
+    },
+    {
+      "card": "ritual",
+      "count": 3
+    },
+    {
+      "card": "shred",
+      "count": 2
+    },
+    {
+      "card": "sure_gamble",
+      "count": 3
+    },
+    {
+      "card": "transfer_of_wealth",
+      "count": 3
+    },
+    {
+      "card": "tread_lightly",
+      "count": 2
+    },
+    {
+      "card": "docklands_pass",
+      "count": 1
+    },
+    {
+      "card": "pennyshaver",
+      "count": 2
+    },
+    {
+      "card": "open_market",
+      "count": 3
+    },
+    {
+      "card": "side_hustle",
+      "count": 3
+    },
+    {
+      "card": "echelon",
+      "count": 2
+    },
+    {
+      "card": "marjanah",
+      "count": 3
+    },
+    {
+      "card": "rising_tide",
+      "count": 1
+    },
+    {
+      "card": "sang_kancil",
+      "count": 2
+    },
+    {
+      "card": "azimat",
+      "count": 1
+    },
+    {
+      "card": "leech",
+      "count": 2
+    }
+  ]
+}

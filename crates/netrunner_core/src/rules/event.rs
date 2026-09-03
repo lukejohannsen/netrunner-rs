@@ -15,6 +15,11 @@ pub enum GameEvent {
     SubroutineFired { card_id: CardId, index: usize, effect: Effect },
     IceStrengthModified { card_id: CardId, new_strength: i32, delta: i32 },
     IcePassed { server: ServerId, position: u32 },
+    /// The Runner bypassed the ice being encountered
+    /// (`Effect::BypassEncounteredIce`, Fransofia Ward): its remaining
+    /// subroutines will not fire and its own "when encountered" reactions
+    /// do not resolve. The `IcePassed` follows on the next `Continue`.
+    IceBypassed { card_id: CardId, position: u32 },
     /// The Runner has passed the last piece of ICE (or there was none) and
     /// is approaching the server itself — NSG's approach-server step, where
     /// jacking out is legal and "when the Runner approaches this server"
@@ -49,9 +54,30 @@ pub enum GameEvent {
     RunInitiated { server: ServerId },
     EventPlayed { side: Side, card: CardId },
     OperationPlayed { side: Side, card: CardId },
-    HardwareInstalled { side: Side, card: CardId },
-    ProgramInstalled { side: Side, card: CardId, memory_cost: u8 },
-    ResourceInstalled { side: Side, card: CardId },
+    /// `credits_paid` is what the install actually cost after every
+    /// discount — Bling's "whenever you install a card without spending
+    /// credits" reads it through
+    /// `EffectRequirement::InstalledWithoutSpendingCredits`. `serde(default)`
+    /// for histories recorded before the field existed.
+    HardwareInstalled {
+        side: Side,
+        card: CardId,
+        #[serde(default)]
+        credits_paid: u32,
+    },
+    ProgramInstalled {
+        side: Side,
+        card: CardId,
+        memory_cost: u8,
+        #[serde(default)]
+        credits_paid: u32,
+    },
+    ResourceInstalled {
+        side: Side,
+        card: CardId,
+        #[serde(default)]
+        credits_paid: u32,
+    },
     /// `install` names the instance when the accessed card is a root
     /// install (`AccessState::pending_install`), so `Trigger::OnAccessed`
     /// fires against *that* copy's counters rather than the first copy's.

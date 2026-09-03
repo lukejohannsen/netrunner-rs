@@ -1,0 +1,77 @@
+{
+  "id": "barry_baz_wong",
+  "title": "Barry \u201cBaz\u201d Wong: Tri-Maf Veteran",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [
+    {
+      "trigger": "OnRez",
+      "requirement": {
+        "TriggeringCardMatches": {
+          "CardType": {
+            "Ice": "Barrier"
+          }
+        }
+      },
+      "effects": [
+        {
+          "EffectIf": {
+            "condition": {
+              "ZoneHasAtLeast": {
+                "zone": "OwnGrip",
+                "count": 1,
+                "filter": {
+                  "All": [
+                    {
+                      "CardTypeOneOf": [
+                        "Resource",
+                        "Hardware"
+                      ]
+                    },
+                    "InstallableRunnerCard"
+                  ]
+                }
+              }
+            },
+            "effect": {
+              "PresentChoice": {
+                "chooser": "Runner",
+                "options": [
+                  {
+                    "PromptChooseCards": {
+                      "side": "Runner",
+                      "source": "OwnGrip",
+                      "filter": {
+                        "All": [
+                          {
+                            "CardTypeOneOf": [
+                              "Resource",
+                              "Hardware"
+                            ]
+                          },
+                          "InstallableRunnerCard"
+                        ]
+                      },
+                      "min": 1,
+                      "max": 1,
+                      "reveal": false,
+                      "shuffle_after": false,
+                      "then": "InstallRunnerCardFromGrip"
+                    }
+                  },
+                  {
+                    "Sequence": []
+                  }
+                ]
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "numeric_id": 35012,
+  "is_playable": true
+}

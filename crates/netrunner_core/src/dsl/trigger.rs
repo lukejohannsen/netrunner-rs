@@ -8,7 +8,12 @@ pub enum Trigger {
     OnPlay,
     OnRunStart,
     /// Renamed from `OnIceEncountered` — folded into a single "OnX"
-    /// vocabulary with the other automatic variants.
+    /// vocabulary with the other automatic variants. On a piece of ice,
+    /// "when the Runner encounters this ice"; on a Runner card or
+    /// identity, "whenever you encounter a piece of ice" (Fransofia Ward)
+    /// — the dispatcher fires the Runner's side first, as the active
+    /// player's, and skips the ice's own reactions when the Runner bypassed
+    /// it.
     OnEncounter,
     /// Renamed from `StartOfTurn`, to disambiguate from the unrelated
     /// `rules::state::GamePhase::StartOfTurn(Side)` variant, which names a
@@ -110,7 +115,10 @@ pub enum Trigger {
     /// e.g. Ping's "when you rez this ice during a run against this
     /// server, give the Runner 1 tag." Combine with
     /// `EffectRequirement::RezzedDuringRunAgainstThisServer` to scope it to
-    /// a rez that happens mid-run against the card's own server.
+    /// a rez that happens mid-run against the card's own server. On a
+    /// Runner card or identity, "whenever the Corp rezzes a card" — Barry
+    /// "Baz" Wong narrows it to ice with
+    /// `EffectRequirement::TriggeringCardMatches`.
     OnRez,
     /// Fires against every rezzed Corp Root-slot install in a server the
     /// Runner has just approached (`GameEvent::ServerApproached`) — the
@@ -159,4 +167,11 @@ pub enum Trigger {
     /// sabotage; Mercia B4LL4RD and Nebula Talent Management later. A
     /// separate trigger from `OnDiscardPhaseEnd`, which is a later step.
     OnActionPhaseEnd,
+    /// "Whenever you install a card" — fired for every Runner install
+    /// against the whole rig and the identity, with the *reacting* card as
+    /// the acting card and the install in the triggering event. Distinct
+    /// from `OnInstall`, which reaches the just-installed card itself (and
+    /// the identity) and could not be widened without every "when you
+    /// install this" card firing on every install. Bling.
+    OnCardInstalled,
 }

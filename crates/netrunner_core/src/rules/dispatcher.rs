@@ -89,6 +89,7 @@ pub fn dispatch_event(
                     .collect();
                 events.extend(fire_plan(state, registry, &plan)?);
             }
+            events.extend(fire_runner_side(state, registry, Trigger::OnCardInstalled, event)?);
             Ok(events)
         }
 
@@ -96,7 +97,9 @@ pub fn dispatch_event(
         // widening `ProgramInstalled`/`ResourceInstalled` got — GAMEDRAGON™
         // Pro's "when you install this hardware ... you may host it".
         GameEvent::HardwareInstalled { card, .. } => {
-            fire_direct(state, registry, card, newest_rig_install(state, card), Trigger::OnInstall, event)
+            let mut events = fire_direct(state, registry, card, newest_rig_install(state, card), Trigger::OnInstall, event)?;
+            events.extend(fire_runner_side(state, registry, Trigger::OnCardInstalled, event)?);
+            Ok(events)
         }
 
         GameEvent::CardInstalled { side, .. } => {
@@ -122,6 +125,7 @@ pub fn dispatch_event(
             if let Some(identity) = state.runner.identity.clone() {
                 events.extend(fire_direct(state, registry, &identity, None, Trigger::OnInstall, event)?);
             }
+            events.extend(fire_runner_side(state, registry, Trigger::OnCardInstalled, event)?);
             Ok(events)
         }
 
@@ -204,6 +208,15 @@ pub fn dispatch_event(
                     .collect(),
                 Side::Runner => state.runner.rig.iter().map(|card| (Some(card.install_id), card.card.clone())).collect(),
             };
+            // The side's identity too — MuslihaT looks at the top of the
+            // stack when the Runner's turn begins. Placed first: it is
+            // the one card whose order against the rig never varies.
+            let identity = match side {
+                Side::Corp => state.corp.identity.clone(),
+                Side::Runner => state.runner.identity.clone(),
+            };
+            let candidates: Vec<(Option<InstallId>, CardId)> =
+                identity.into_iter().map(|id| (None, id)).chain(candidates).collect();
             fire_each(state, registry, &candidates, Trigger::OnTurnStart, event)
         }
 
@@ -220,8 +233,18 @@ pub fn dispatch_event(
             fire_each(state, registry, &candidates, Trigger::OnRunStart, event)
         }
 
+        // The Runner's "whenever you encounter a piece of ice" reactions
+        // first — the active player's — then the ice's own, withheld when
+        // one of the Runner's bypassed it (Fransofia Ward: "no further
+        // 'when encountered' abilities resolve"). A Runner reaction that
+        // parks a choice defers the ice's, and `still_applies` stands the
+        // deferred one down if the bypass then happens.
         GameEvent::IceEncountered { card_id, .. } => {
-            fire_direct(state, registry, card_id, encountered_install(state), Trigger::OnEncounter, event)
+            let mut events = fire_runner_side(state, registry, Trigger::OnEncounter, event)?;
+            if !state.active_run.as_ref().is_some_and(|run| run.ice_bypassed) {
+                events.extend(fire_direct(state, registry, card_id, encountered_install(state), Trigger::OnEncounter, event)?);
+            }
+            Ok(events)
         }
 
         GameEvent::RunSucceeded { server } => {
@@ -307,8 +330,12 @@ pub fn dispatch_event(
             fire_each(state, registry, &root_installs, Trigger::OnApproachServer, event)
         }
 
+        // The rezzed card's own "when rezzed" first, then the Runner's
+        // "whenever the Corp rezzes" reactions (Barry "Baz" Wong).
         GameEvent::IceRezzed { card, install, .. } => {
-            fire_direct(state, registry, card, Some(*install), Trigger::OnRez, event)
+            let mut events = fire_direct(state, registry, card, Some(*install), Trigger::OnRez, event)?;
+            events.extend(fire_runner_side(state, registry, Trigger::OnRez, event)?);
+            Ok(events)
         }
 
         GameEvent::CardAdvanced { .. } => match state.corp.identity.clone() {
@@ -401,16 +428,15 @@ pub fn dispatch_event(
 
         // "When your discard phase ends" — fires against that side's own
         // identity only (the Corp's, for Jinteki: Restoring Humanity).
-        GameEvent::DiscardPhaseEnded { side } => {
-            let identity = match side {
-                Side::Corp => state.corp.identity.clone(),
-                Side::Runner => state.runner.identity.clone(),
-            };
-            match identity {
-                Some(identity) => fire_direct(state, registry, &identity, None, Trigger::OnDiscardPhaseEnd, event),
-                None => Ok(Vec::new()),
-            }
-        }
+        // The Runner's whole rig reacts, not just the identity: Bling's
+        // "when your discard phase ends, trash all hosted cards" sits on a
+        // console. The Corp side stays identity-only until a card needs
+        // more.
+        GameEvent::DiscardPhaseEnded { side: Side::Runner } => fire_runner_side(state, registry, Trigger::OnDiscardPhaseEnd, event),
+        GameEvent::DiscardPhaseEnded { side: Side::Corp } => match state.corp.identity.clone() {
+            Some(identity) => fire_direct(state, registry, &identity, None, Trigger::OnDiscardPhaseEnd, event),
+            None => Ok(Vec::new()),
+        },
 
         // Through `fire_each` (not `fire_direct`) although the audience is
         // one card: a tag can be *paid* as a cost (`Cost::TakeTags`,
@@ -763,7 +789,13 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
         }
         None => true,
     };
-    !state.is_over() && present && (!run_scoped || state.active_run.is_some())
+    // A bypass ends the encounter's "when encountered" step for everyone
+    // (Fransofia Ward's parenthetical): a reaction to the encounter that was
+    // waiting behind the bypass offer no longer applies.
+    let bypassed = due.trigger == Trigger::OnEncounter
+        && matches!(due.event, Some(GameEvent::IceEncountered { .. }))
+        && state.active_run.as_ref().is_some_and(|run| run.ice_bypassed);
+    !state.is_over() && present && !bypassed && (!run_scoped || state.active_run.is_some())
 }
 
 /// Fires whatever `fire_each` had to queue, once whatever blocked it has

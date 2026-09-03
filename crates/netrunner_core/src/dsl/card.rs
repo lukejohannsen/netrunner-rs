@@ -71,6 +71,12 @@ pub enum CardSubtype {
     Job,
     /// A Connection resource — the other type Open Market's credits pay for.
     Connection,
+    /// A Run event — the Runner's "run event" keyword. Read two ways:
+    /// `EffectRequirement::RunEventActive` (Sang Kancil's cheaper boost
+    /// while one is resolving) and `CardFilter::HasSubtype` (MuslihaT's
+    /// "an icebreaker or a run event"). Authored on every run event, the
+    /// way `Fracter` is on every fracter.
+    Run,
     /// A singleton restriction, not a trigger-dispatch tag like the other
     /// two variants: `engine::install_hardware` rejects installing a second
     /// `Console`-subtyped Hardware while one is already in the Runner's rig
@@ -317,6 +323,23 @@ pub struct CardDefinition {
     /// installed ICE.
     #[serde(default)]
     pub installs_on_ice: bool,
+    /// Cards hosted on this card may be played or installed through the
+    /// ordinary grip actions — Bling's "you can play or install hosted
+    /// cards as if they were in your grip". Seeded onto
+    /// `rules::state::InstalledRunnerCard::hosted_cards_playable` at install
+    /// so the registry-less action space can enumerate them. Madani's
+    /// hosted programs are *not* this: they install through its own
+    /// ability only.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub hosted_cards_playable_from_grip: bool,
+    /// Added to the Corp's cost to rez every piece of ice while this card
+    /// is in the Runner's rig — Fransofia Ward's "the rez cost of each
+    /// piece of ice is increased by 1[c]". Summed over the rig by
+    /// `engine::rez_ice` next to the run-scoped
+    /// `run::RunState::ice_rez_cost_modifier` (Tread Lightly), which is the
+    /// same modifier with a run's lifetime instead of an install's.
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub ice_rez_cost_modifier: i32,
 
     /// ICE subtypes this Trojan grants its host while hosted — Chromatophores'
     /// "Host ice gains barrier, code gate, and sentry." Read where a
@@ -581,6 +604,8 @@ impl Default for CardDefinition {
             max_hand_size_bonus: None,
             install_cost_discount_if: None,
             installs_on_ice: false,
+            hosted_cards_playable_from_grip: false,
+            ice_rez_cost_modifier: 0,
             host_ice_gains_subtypes: Vec::new(),
             hosted_breaker_bonus: None,
             hosted_credits_usable_for: None,
@@ -638,6 +663,12 @@ impl CardDefinition {
         }
         Ok(())
     }
+}
+
+/// `skip_serializing_if` for the `i32` modifier fields, which serde cannot
+/// express inline.
+fn is_zero_i32(value: &i32) -> bool {
+    *value == 0
 }
 
 #[cfg(test)]

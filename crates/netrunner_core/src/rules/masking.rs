@@ -122,6 +122,11 @@ pub struct PublicInstalledRunnerCard {
     /// Public: hosted faceup means hosted faceup.
     #[serde(default)]
     pub hosted_cards: Vec<CardId>,
+    /// Whether `hosted_cards` are playable as grip cards (Bling) — see
+    /// `state::InstalledRunnerCard::hosted_cards_playable`. Public: it is
+    /// printed on the host.
+    #[serde(default)]
+    pub hosted_cards_playable: bool,
     /// Generic counters (see `dsl::card::CounterKind`) — a bare `u32`, not
     /// the `Option` its Corp counterpart carries. The asymmetry is not an
     /// oversight: a rig card is always face-up (see `PublicRunnerState::
@@ -569,6 +574,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::SubroutineFired { .. }
         | GameEvent::IceStrengthModified { .. }
         | GameEvent::IcePassed { .. }
+        | GameEvent::IceBypassed { .. }
         | GameEvent::ServerApproached { .. }
         | GameEvent::RunSucceeded { .. }
         | GameEvent::RunJackedOut { .. }
@@ -805,6 +811,7 @@ fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunn
         hosted_on_ice: card.hosted_on_ice,
         hosted_on_program: card.hosted_on_program,
         hosted_cards: card.hosted_cards.clone(),
+        hosted_cards_playable: card.hosted_cards_playable,
         counters: card.counters,
     }
 }
@@ -1182,6 +1189,7 @@ mod tests {
             hosted_on_ice: None,
             hosted_on_program: None,
             hosted_cards: Vec::new(),
+            hosted_cards_playable: false,
             counters: 0,
         }];
         assert_eq!(masked_for_corp.runner.rig, expected);

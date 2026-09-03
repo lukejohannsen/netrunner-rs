@@ -328,6 +328,18 @@ pub struct RunState {
     /// (`EffectRequirement::SubroutineResolvedThisRun`) — Ryō "Phoenix" Ōno.
     #[serde(default)]
     pub subroutine_resolved: bool,
+    /// The card whose effect started this run (`Effect::InitiateRun`,
+    /// `Effect::PromptChooseServer`) — `None` for a basic-action run.
+    /// `EffectRequirement::RunEventActive` (Sang Kancil) asks whether it
+    /// is a run event.
+    #[serde(default)]
+    pub initiated_by: Option<CardId>,
+    /// Whether the ice at `position` was bypassed
+    /// (`Effect::BypassEncounteredIce`) — cleared by `pass_current_ice`.
+    /// Read by the dispatcher to withhold the ice's own `OnEncounter`
+    /// reactions and stand down any already deferred.
+    #[serde(default)]
+    pub ice_bypassed: bool,
     /// A temporary Runner credit pool for this run only, set once at run
     /// start by whatever initiated it (e.g. Overclock's "place 5 credits on
     /// this event, then run any server — you can spend hosted credits
@@ -393,6 +405,8 @@ impl Default for RunState {
             ice_rez_cost_modifier: 0,
             bonus_run_credits: 0,
             runner_cannot_steal_or_trash: false,
+            initiated_by: None,
+            ice_bypassed: false,
             agendas_stolen_this_run: 0,
             persistent_trashed_upgrades: Vec::new(),
             on_success_effect: None,

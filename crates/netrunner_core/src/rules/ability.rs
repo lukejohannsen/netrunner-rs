@@ -1,7 +1,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{
-    card_matches_filter, Amount, BoostDuration, CardFilter, CardId, CardTarget, Cost, Effect, EffectRequirement, IceType,
-    StackZone, StrengthModifier, SubroutineBreakCount, Trigger,
+    card_matches_filter, Amount, BoostDuration, CardFilter, CardId, CardSubtype, CardTarget, CardType, Cost, Effect,
+    EffectRequirement, HostedCardOrigin, IceType, StackZone, StrengthModifier, SubroutineBreakCount, Trigger,
 };
 use crate::rules::damage;
 use crate::rules::dispatcher;
@@ -315,6 +315,12 @@ pub fn evaluate_effect(
         }
 
         Effect::TrashCard(target) => {
+            // Hosted, uninstalled cards (Bling's) have no prevention
+            // window of their own and no single owner: each goes to its
+            // own side's discard pile.
+            if matches!(target, CardTarget::HostedOnThisCard) {
+                return trash_hosted_cards(state, registry, ctx);
+            }
             // Same zero-overhead-unless-a-card-cares gating as `DealDamage`.
             if has_matching_paid_ability(state, registry, |e| matches!(e, Effect::PreventTrash)) {
                 park_trash_prevention(state, registry, target.clone(), ctx)
@@ -584,18 +590,28 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::HostRandomHqCardOnThisCard => {
+        Effect::HostCardOnThisCard(origin) => {
             let acting = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
-            if state.corp.hq.is_empty() {
-                return Ok(Vec::new());
-            }
-            let index = (state.next_u64() % state.corp.hq.len() as u64) as usize;
-            let card = state.corp.hq.remove(index);
+            let card = match origin {
+                HostedCardOrigin::RandomFromHq => {
+                    if state.corp.hq.is_empty() {
+                        return Ok(Vec::new());
+                    }
+                    let index = (state.next_u64() % state.corp.hq.len() as u64) as usize;
+                    state.corp.hq.remove(index)
+                }
+                HostedCardOrigin::TopOfStack => match state.runner.stack.pop() {
+                    Some(card) => card,
+                    None => return Ok(Vec::new()),
+                },
+            };
             let position = acting_rig_position(state, ctx)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
             state.runner.rig[position].hosted_cards.push(card.clone());
             Ok(vec![GameEvent::CardHosted { card, host: acting }])
         }
+
+        Effect::BypassEncounteredIce => run::bypass_encountered_ice(state),
 
         Effect::FlipIdentity => {
             state.runner.identity_flipped = !state.runner.identity_flipped;
@@ -871,6 +887,9 @@ pub fn evaluate_effect(
 
         Effect::InitiateRun(server) => {
             run::start_run(state, registry, *server)?;
+            if let Some(run) = state.active_run.as_mut() {
+                run.initiated_by = acting_card.cloned();
+            }
             let run_initiated_event = GameEvent::RunInitiated { server: *server };
             let mut events = vec![run_initiated_event.clone()];
             events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &run_initiated_event)?);
@@ -1402,6 +1421,9 @@ fn owning_side_of_target(target: &CardTarget, acting_card: Option<&CardId>, regi
         }
         // A Trojan's host is always a Corp installed card.
         CardTarget::HostIce => Side::Corp,
+        // Never reaches a prevention window (see `Effect::TrashCard`'s
+        // arm); the host is the Runner's.
+        CardTarget::HostedOnThisCard => Side::Runner,
     }
 }
 
@@ -1433,7 +1455,16 @@ fn resolve_corp_installed_target(
             let installed = state.find_corp_install(host).ok_or(RulesError::InstallNotFound(host))?;
             Ok((host, installed.card.clone(), installed.server))
         }
-        CardTarget::ThisCard | CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } => {
+        // A `PromptChooseCards::then` over the Corp's installs runs with the
+        // chosen install as the acting one — Maglectric Rapid's "derez 1
+        // installed Corp card" names it as `ThisCard`, the convention
+        // `TrashCard(ThisCard)` already follows.
+        CardTarget::ThisCard => {
+            let install = ctx.acting_install.ok_or(RulesError::UnresolvedCardTarget)?;
+            let installed = state.find_corp_install(install).ok_or(RulesError::UnresolvedCardTarget)?;
+            Ok((install, installed.card.clone(), installed.server))
+        }
+        CardTarget::RunnerRig(_) | CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard => {
             Err(RulesError::UnresolvedCardTarget)
         }
     }
@@ -1506,6 +1537,10 @@ pub(crate) fn trash_card(
             trash_card(state, &CardTarget::CorpInstalled { card: host, server }, ctx)
         }
 
+        // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
+        // here (it needs the registry to route each card home).
+        CardTarget::HostedOnThisCard => Err(RulesError::UnresolvedCardTarget),
+
         CardTarget::RunnerRig(card) => {
             let position = state
                 .runner
@@ -1567,6 +1602,25 @@ pub(crate) fn trash_card(
 /// — GAMEDRAGON™ Pro goes with the icebreaker it sits on. Called from
 /// every site that removes a rig card. A no-op for the overwhelming
 /// majority of rig cards, which host nothing.
+/// `Effect::TrashCard(CardTarget::HostedOnThisCard)` — Bling's "trash all
+/// hosted cards". Each card returns to its owner's discard pile: a Runner
+/// card to the heap, a Corp card (a Detente-style host) faceup to
+/// Archives, since it sat faceup on the table.
+fn trash_hosted_cards(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
+    let position = acting_rig_position(state, ctx).ok_or(RulesError::UnresolvedCardTarget)?;
+    let hosted = std::mem::take(&mut state.runner.rig[position].hosted_cards);
+    let mut events = Vec::with_capacity(hosted.len());
+    for card in hosted {
+        let side = registry.get(&card).map_or(Side::Runner, |def| def.side);
+        match side {
+            Side::Runner => state.runner.heap.push(card.clone()),
+            Side::Corp => state.corp.archives.push(ArchivedCard::faceup(card.clone())),
+        }
+        events.push(GameEvent::CardTrashed { side, card });
+    }
+    Ok(events)
+}
+
 pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, removed: &InstalledRunnerCard) -> Vec<GameEvent> {
     let host = removed.install_id;
     let mut events = Vec::new();
@@ -1970,8 +2024,14 @@ pub fn check_requirement(
             }
             Ok(())
         }
-        EffectRequirement::ZoneHasAtLeast { zone, count } => {
-            if crate::rules::pending_choice::zone_card_ids(state, side, zone, ctx.acting_install).len() < *count as usize {
+        EffectRequirement::ZoneHasAtLeast { zone, count, filter } => {
+            let found = match filter {
+                Some(filter) => {
+                    crate::rules::pending_choice::eligible_positions(state, registry, side, zone, filter, ctx.acting_install).len()
+                }
+                None => crate::rules::pending_choice::zone_card_ids(state, side, zone, ctx.acting_install).len(),
+            };
+            if found < *count as usize {
                 return Err(RulesError::RequirementNotMet);
             }
             Ok(())
@@ -2094,6 +2154,56 @@ pub fn check_requirement(
             );
             if was_first { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::CorpCreditsAtLeast(amount) => {
+            if state.corp.resources.credits.0 >= *amount { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::RunEventActive => {
+            let active = state
+                .active_run
+                .as_ref()
+                .and_then(|run| run.initiated_by.as_ref())
+                .and_then(|card| registry.get(card))
+                .is_some_and(|def| def.card_type == CardType::Event && def.subtypes.contains(&CardSubtype::Run));
+            if active { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::InstalledWithoutSpendingCredits => {
+            let free = matches!(
+                ctx.triggering_event,
+                Some(
+                    GameEvent::ProgramInstalled { credits_paid: 0, .. }
+                        | GameEvent::HardwareInstalled { credits_paid: 0, .. }
+                        | GameEvent::ResourceInstalled { credits_paid: 0, .. }
+                )
+            );
+            if free { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+        EffectRequirement::TriggeringCardMatches(filter) => {
+            let matches = ctx
+                .triggering_event
+                .and_then(triggering_card)
+                .and_then(|card| registry.get(card))
+                .is_some_and(|def| crate::dsl::card_matches_filter(def, filter));
+            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
+    }
+}
+
+/// The card a triggering event is *about*, for
+/// `EffectRequirement::TriggeringCardMatches`. Only the events a Runner-side
+/// reaction can currently be keyed off are listed; an event with no single
+/// subject card answers `None`, which fails the requirement.
+fn triggering_card(event: &GameEvent) -> Option<&CardId> {
+    match event {
+        GameEvent::IceRezzed { card, .. }
+        | GameEvent::CardInstalled { card, .. }
+        | GameEvent::ProgramInstalled { card, .. }
+        | GameEvent::HardwareInstalled { card, .. }
+        | GameEvent::ResourceInstalled { card, .. }
+        | GameEvent::EventPlayed { card, .. }
+        | GameEvent::OperationPlayed { card, .. }
+        | GameEvent::CardTrashed { card, .. }
+        | GameEvent::CardDerezzed { card } => Some(card),
+        _ => None,
     }
 }
 
@@ -2331,7 +2441,11 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::DuringEncounter
-        | EffectRequirement::WasFirstAdvancementThisCard => {}
+        | EffectRequirement::WasFirstAdvancementThisCard
+        | EffectRequirement::CorpCreditsAtLeast(_)
+        | EffectRequirement::RunEventActive
+        | EffectRequirement::InstalledWithoutSpendingCredits
+        | EffectRequirement::TriggeringCardMatches(_) => {}
     }
 }
 
@@ -2777,7 +2891,7 @@ mod tests {
     fn zone_has_at_least_requirement_counts_the_acting_sides_zone() {
         let mut state = game_state();
         state.corp.hq = vec![CardId("a".to_string())];
-        let requirement = EffectRequirement::ZoneHasAtLeast { zone: crate::dsl::CardZoneRef::OwnHq, count: 2 };
+        let requirement = EffectRequirement::ZoneHasAtLeast { zone: crate::dsl::CardZoneRef::OwnHq, count: 2, filter: None };
         assert_eq!(
             check_requirement(&state, &requirement, Side::Corp, &ResolutionContext::default(), &CardRegistry::new()),
             Err(RulesError::RequirementNotMet)

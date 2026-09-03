@@ -81,7 +81,18 @@ pub enum EffectRequirement {
     /// its `OncePerTurn` consumed, while `PromptChooseCards` silently
     /// declined to park with fewer than `min` eligible. The requirement is
     /// what keeps `legal_actions` from offering it at all.
-    ZoneHasAtLeast { zone: CardZoneRef, count: u32 },
+    ZoneHasAtLeast {
+        zone: CardZoneRef,
+        count: u32,
+        /// Count only the cards eligible under this filter — Maglectric
+        /// Rapid's "derez 1 installed Corp card" is only worth offering
+        /// while a rezzed one exists, and MuslihaT's "if that card is an
+        /// icebreaker or a run event" gates a prompt on the top card's
+        /// type. `None` (the default, and what every earlier card
+        /// authored) counts the whole zone.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        filter: Option<crate::dsl::CardFilter>,
+    },
     /// Generic negation of another requirement.
     Not(Box<EffectRequirement>),
     /// Generic conjunction of two requirements — e.g. Zahya Sadeghi's
@@ -231,6 +242,25 @@ pub enum EffectRequirement {
     /// CardAdvanced`'s `advancement_tokens == 1` *is* "this was the first".
     /// No `GameState` field backs it — the event already carried the fact.
     WasFirstAdvancementThisCard,
+    /// The Corp has at least this many credits — Fransofia Ward's "if the
+    /// Corp has 15[c] or more". `RunnerCreditsAtMost`'s Corp-side sibling.
+    CorpCreditsAtLeast(u32),
+    /// The active run was started by a `CardSubtype::Run` event
+    /// (`run::RunState::initiated_by`) — Sang Kancil's "if a run event is
+    /// active, this ability costs 2[c] less to use".
+    RunEventActive,
+    /// The install this trigger is reacting to cost no credits — Bling's
+    /// "whenever you install a card without spending credits". Answered
+    /// from the triggering `ProgramInstalled`/`HardwareInstalled`/
+    /// `ResourceInstalled` event's `credits_paid`, the same way
+    /// `WasFirstAdvancementThisCard` reads `CardAdvanced`.
+    InstalledWithoutSpendingCredits,
+    /// The card the triggering event names matches `CardFilter`
+    /// (definition-level) — Barry "Baz" Wong reacts to `IceRezzed` only
+    /// when the rezzed card is ice, since `engine::rez_ice` emits that
+    /// event for assets and upgrades too. Fails when the event names no
+    /// card or there is no triggering event.
+    TriggeringCardMatches(crate::dsl::CardFilter),
 }
 
 /// Who decides an `InteractiveOnAccess`, and what paying its cost does.

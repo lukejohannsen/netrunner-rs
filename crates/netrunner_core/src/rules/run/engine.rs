@@ -191,7 +191,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .flatten()
         .collect();
 
-    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, end_run_prevention: None, subroutine_resolved: false,
+    state.active_run = Some(RunState { agendas_stolen_this_run: 0, persistent_trashed_upgrades: Vec::new(), redirect_on_approach: None, on_end_effect: None, on_end_card: None, on_end_install: None, end_run_prevention: None, subroutine_resolved: false, initiated_by: None, ice_bypassed: false,
         on_success_effect: None,
         on_success_card: None,
         on_success_install: None,
@@ -230,6 +230,7 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
     let server = run.server;
     let mut events = vec![GameEvent::IcePassed { server, position: position as u32 }];
     run.position = position + 1;
+    run.ice_bypassed = false;
     run.phase = phase_for_position(&run.ice, run.position);
     // An ICE has now been left behind — including an unrezzed one, which
     // still counts as "passed" — opening the jack-out window whether the
@@ -587,6 +588,32 @@ fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
             Err(RulesError::RunAlreadyConcluded { phase: run.phase })
         }
     }
+}
+
+/// `Effect::BypassEncounteredIce` (Fransofia Ward): every pending
+/// subroutine of the encountered ice is marked `Broken` — no event per
+/// subroutine, since none was broken; one `IceBypassed` instead — and
+/// `RunState::ice_bypassed` is raised. The ice is *not* passed here: the
+/// bypass resolves inside a parked paid choice while the encounter's own
+/// window is open, and `resolve_encounter_ice` then finds nothing to fire
+/// and takes the `Continue` that passes it, exactly as a fully broken
+/// encounter ends. Passing it immediately would move the run out from
+/// under that window. `Broken` rather than a fourth `SubroutineStatus`:
+/// every consumer already treats `Broken` as "will not fire", which is
+/// the whole meaning of a bypass.
+pub(crate) fn bypass_encountered_ice(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
+    let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+    if run.phase != RunPhase::EncounterIce {
+        return Err(RulesError::NotInEncounter);
+    }
+    let position = run.position;
+    let ice = run.ice.get_mut(position).ok_or(RulesError::NotInEncounter)?;
+    for subroutine in ice.subroutines.iter_mut().filter(|s| s.status == SubroutineStatus::Pending) {
+        subroutine.status = SubroutineStatus::Broken;
+    }
+    let card_id = ice.card_id.clone();
+    run.ice_bypassed = true;
+    Ok(vec![GameEvent::IceBypassed { card_id, position: position as u32 }])
 }
 
 /// Validates and applies a `Pending -> {Broken, Resolved}` transition for the

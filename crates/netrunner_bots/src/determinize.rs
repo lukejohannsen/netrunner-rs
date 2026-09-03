@@ -348,6 +348,13 @@ fn determinize_run(
         on_end_install: None,
         end_run_prevention: None,
         subroutine_resolved: false,
+        // Not in the view either: which card started the run (Sang
+        // Kancil's cheaper boost) and whether the encountered ice was
+        // bypassed. A rollout starting mid-encounter sees no bypass, which
+        // only ever makes the searcher pay for subroutines the real game
+        // will not fire.
+        initiated_by: None,
+        ice_bypassed: false,
         additional_rd_access: 0,
         additional_hq_access: 0,
         access_replacement: None, cards_accessed_count: 0, ice_rez_cost_modifier: 0,
@@ -444,6 +451,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             hosted_on_ice: card.hosted_on_ice,
             hosted_on_program: card.hosted_on_program,
             hosted_cards: card.hosted_cards.clone(),
+            hosted_cards_playable: card.hosted_cards_playable,
         })
         .collect();
 

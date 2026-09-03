@@ -118,6 +118,12 @@ const PLAY_OPERATION_LEN: usize = MAX_HAND_SIZE;
 const DISCARD_CARD_START: usize = PLAY_OPERATION_START + PLAY_OPERATION_LEN;
 const DISCARD_CARD_LEN: usize = MAX_HAND_SIZE;
 
+/// The slot within each side's `ActivateAbility` segment that names the
+/// identity (`InstallId::CORP_IDENTITY`/`RUNNER_IDENTITY`) rather than an
+/// install — the last one, so installs keep their positional numbering
+/// and lose only the 32nd slot, which no real board reaches. Taking a slot
+/// rather than adding a segment keeps `ActionSpace::SIZE` stable.
+const IDENTITY_ABILITY_SLOT: usize = MAX_INSTALLED_PER_SIDE - 1;
 const ACTIVATE_ABILITY_CORP_START: usize = DISCARD_CARD_START + DISCARD_CARD_LEN;
 const ACTIVATE_ABILITY_CORP_LEN: usize = MAX_INSTALLED_PER_SIDE * MAX_ABILITIES_PER_CARD;
 
@@ -254,20 +260,25 @@ impl ActionSpace {
 
             PlayerAction::InitiateRun { server } => Some(INITIATE_RUN_START + encode_zone(*server)?),
 
+            // The Runner's hand for a play or install is
+            // `RunnerState::playable_hand` — the grip, then any card
+            // hosted "as if it were in your grip" (Bling), which extends
+            // the grip's numbering rather than needing a segment of its
+            // own.
             PlayerAction::PlayEvent { card_id } => {
-                Some(PLAY_EVENT_START + bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?)
+                Some(PLAY_EVENT_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
             PlayerAction::InstallHardware { card_id } => {
-                Some(INSTALL_HARDWARE_START + bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?)
+                Some(INSTALL_HARDWARE_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
             PlayerAction::InstallProgram { card_id, .. } => {
-                Some(INSTALL_PROGRAM_START + bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?)
+                Some(INSTALL_PROGRAM_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
             PlayerAction::InstallResource { card_id } => {
-                Some(INSTALL_RESOURCE_START + bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?)
+                Some(INSTALL_RESOURCE_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
             PlayerAction::InstallProgramOnIce { card_id, host, .. } => {
-                let hand_slot = bounded_position(&state.runner.grip, card_id, MAX_HAND_SIZE)?;
+                let hand_slot = bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?;
                 let ice_slot = bounded_position_installed(&state.corp.installed, *host, MAX_INSTALLED_PER_SIDE)?;
                 Some(INSTALL_PROGRAM_ON_ICE_START + hand_slot * MAX_INSTALLED_PER_SIDE + ice_slot)
             }
@@ -289,10 +300,18 @@ impl ActionSpace {
                 if *ability_index >= MAX_ABILITIES_PER_CARD {
                     return None;
                 }
-                if let Some(slot) = bounded_position_installed(&state.corp.installed, *target, MAX_INSTALLED_PER_SIDE) {
+                // The identity takes each side's last slot
+                // (`IDENTITY_ABILITY_SLOT`); installs are capped one short.
+                if *target == InstallId::CORP_IDENTITY {
+                    return Some(ACTIVATE_ABILITY_CORP_START + IDENTITY_ABILITY_SLOT * MAX_ABILITIES_PER_CARD + ability_index);
+                }
+                if *target == InstallId::RUNNER_IDENTITY {
+                    return Some(ACTIVATE_ABILITY_RUNNER_START + IDENTITY_ABILITY_SLOT * MAX_ABILITIES_PER_CARD + ability_index);
+                }
+                if let Some(slot) = bounded_position_installed(&state.corp.installed, *target, IDENTITY_ABILITY_SLOT) {
                     Some(ACTIVATE_ABILITY_CORP_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 } else {
-                    let slot = bounded_position_rig(&state.runner.rig, *target, MAX_INSTALLED_PER_SIDE)?;
+                    let slot = bounded_position_rig(&state.runner.rig, *target, IDENTITY_ABILITY_SLOT)?;
                     Some(ACTIVATE_ABILITY_RUNNER_START + slot * MAX_ABILITIES_PER_CARD + ability_index)
                 }
             }
@@ -412,15 +431,15 @@ impl ActionSpace {
             return Some(PlayerAction::InitiateRun { server: decode_zone(local)? });
         }
         if let Some(local) = in_segment(index, PLAY_EVENT_START, PLAY_EVENT_LEN) {
-            let card_id = state.runner.grip.get(local)?.clone();
+            let card_id = state.runner.playable_hand().get(local)?.clone();
             return Some(PlayerAction::PlayEvent { card_id });
         }
         if let Some(local) = in_segment(index, INSTALL_HARDWARE_START, INSTALL_HARDWARE_LEN) {
-            let card_id = state.runner.grip.get(local)?.clone();
+            let card_id = state.runner.playable_hand().get(local)?.clone();
             return Some(PlayerAction::InstallHardware { card_id });
         }
         if let Some(local) = in_segment(index, INSTALL_PROGRAM_START, INSTALL_PROGRAM_LEN) {
-            let card_id = state.runner.grip.get(local)?.clone();
+            let card_id = state.runner.playable_hand().get(local)?.clone();
             return Some(PlayerAction::InstallProgram { card_id });
         }
         if let Some(local) = in_segment(index, PLAY_OPERATION_START, PLAY_OPERATION_LEN) {
@@ -435,13 +454,21 @@ impl ActionSpace {
         if let Some(local) = in_segment(index, ACTIVATE_ABILITY_CORP_START, ACTIVATE_ABILITY_CORP_LEN) {
             let slot = local / MAX_ABILITIES_PER_CARD;
             let ability_index = local % MAX_ABILITIES_PER_CARD;
-            let target = state.corp.installed.get(slot)?.install_id;
+            let target = if slot == IDENTITY_ABILITY_SLOT {
+                state.corp.identity.as_ref().map(|_| InstallId::CORP_IDENTITY)?
+            } else {
+                state.corp.installed.get(slot)?.install_id
+            };
             return Some(PlayerAction::ActivateAbility { target, ability_index });
         }
         if let Some(local) = in_segment(index, ACTIVATE_ABILITY_RUNNER_START, ACTIVATE_ABILITY_RUNNER_LEN) {
             let slot = local / MAX_ABILITIES_PER_CARD;
             let ability_index = local % MAX_ABILITIES_PER_CARD;
-            let target = state.runner.rig.get(slot)?.install_id;
+            let target = if slot == IDENTITY_ABILITY_SLOT {
+                state.runner.identity.as_ref().map(|_| InstallId::RUNNER_IDENTITY)?
+            } else {
+                state.runner.rig.get(slot)?.install_id
+            };
             return Some(PlayerAction::ActivateAbility { target, ability_index });
         }
         if let Some(local) = in_segment(index, ADVANCE_CARD_START, ADVANCE_CARD_LEN) {
@@ -499,13 +526,13 @@ impl ActionSpace {
             return Some(PlayerAction::ChooseServerForPendingDecision { server: decode_zone(local)? });
         }
         if let Some(local) = in_segment(index, INSTALL_RESOURCE_START, INSTALL_RESOURCE_LEN) {
-            let card_id = state.runner.grip.get(local)?.clone();
+            let card_id = state.runner.playable_hand().get(local)?.clone();
             return Some(PlayerAction::InstallResource { card_id });
         }
         if let Some(local) = in_segment(index, INSTALL_PROGRAM_ON_ICE_START, INSTALL_PROGRAM_ON_ICE_LEN) {
             let hand_slot = local / MAX_INSTALLED_PER_SIDE;
             let ice_slot = local % MAX_INSTALLED_PER_SIDE;
-            let card_id = state.runner.grip.get(hand_slot)?.clone();
+            let card_id = state.runner.playable_hand().get(hand_slot)?.clone();
             let host = state.corp.installed.get(ice_slot)?.install_id;
             return Some(PlayerAction::InstallProgramOnIce { card_id, host });
         }

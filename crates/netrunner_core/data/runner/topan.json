@@ -1,0 +1,48 @@
+{
+  "id": "topan",
+  "title": "Topan: Ormas Leader",
+  "side": "Runner",
+  "card_type": "Identity",
+  "cost": 0,
+  "min_deck_size": 45,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Clicks": 1
+      },
+      "requirement": {
+        "OncePerTurn": "topan"
+      },
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Runner",
+          "source": "OwnGrip",
+          "filter": {
+            "InstallableRunnerCardWithDiscount": 2
+          },
+          "min": 1,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "Sequence": [
+              {
+                "InstallRunnerCardFromGripWithDiscount": 2
+              },
+              {
+                "DealDamage": [
+                  "Meat",
+                  1
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "numeric_id": 35002,
+  "is_playable": true
+}

@@ -667,7 +667,15 @@ fn rez_ice(
         .as_ref()
         .filter(|run| run.server == server)
         .map_or(0, |run| run.ice_rez_cost_modifier);
-    let rez_cost = (card_def.cost as i32 + rez_cost_modifier).max(0) as u32;
+    // The install-scoped sibling (Fransofia Ward's "+1[c] to rez each piece
+    // of ice"), summed over the rig; ice only, where the run modifier
+    // above applies to whatever is rezzed during the run.
+    let rig_modifier: i32 = if matches!(card_def.card_type, CardType::Ice(_)) {
+        next.runner.rig.iter().filter_map(|c| registry.get(&c.card)).map(|c| c.ice_rez_cost_modifier).sum()
+    } else {
+        0
+    };
+    let rez_cost = (card_def.cost as i32 + rez_cost_modifier + rig_modifier).max(0) as u32;
     let mut events = ability::pay_cost(&mut next, side, &Cost::Credits(rez_cost), Some(&ice_id))?;
 
     // The run's own view of this ICE (`RunIce::rezzed`) is not touched
@@ -810,20 +818,28 @@ fn complete_run(
     Ok((next, events))
 }
 
+/// Removes `card_id` from `side`'s hand for a play or install. The
+/// Runner's hand for this purpose is `RunnerState::playable_hand`: the
+/// grip first, then any card hosted "as if it were in your grip" (Bling),
+/// which is taken off its host instead.
 fn take_from_grip(state: &mut GameState, side: Side, card_id: &CardId) -> Result<(), RulesError> {
     let hand = match side {
         Side::Runner => &mut state.runner.grip,
         Side::Corp => &mut state.corp.hq,
     };
-    let position = hand
-        .iter()
-        .position(|c| c == card_id)
-        .ok_or_else(|| RulesError::CardNotInHand {
-            side,
-            card: card_id.clone(),
-        })?;
-    hand.remove(position);
-    Ok(())
+    if let Some(position) = hand.iter().position(|c| c == card_id) {
+        hand.remove(position);
+        return Ok(());
+    }
+    if side == Side::Runner {
+        for host in state.runner.rig.iter_mut().filter(|c| c.hosted_cards_playable) {
+            if let Some(position) = host.hosted_cards.iter().position(|c| c == card_id) {
+                host.hosted_cards.remove(position);
+                return Ok(());
+            }
+        }
+    }
+    Err(RulesError::CardNotInHand { side, card: card_id.clone() })
 }
 
 fn play_event(
@@ -947,6 +963,7 @@ fn seed_rig_card(
         hosted_on_ice: None,
         hosted_on_program: None,
         hosted_cards: Vec::new(),
+        hosted_cards_playable: card_def.hosted_cards_playable_from_grip,
     })
 }
 
@@ -1219,7 +1236,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
             next.runner.rig.push(rig_card);
-            let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };
+            let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
             events.push(installed_event.clone());
             events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
         }
@@ -1232,7 +1249,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             if let Some(bonus) = card_def.max_hand_size_bonus {
                 next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
             }
-            let installed_event = GameEvent::HardwareInstalled { side, card: card_id };
+            let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
             events.push(installed_event.clone());
             events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
         }
@@ -1242,7 +1259,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
             next.runner.rig.push(rig_card);
-            let installed_event = GameEvent::ResourceInstalled { side, card: card_id };
+            let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
             events.push(installed_event.clone());
             events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
         }
@@ -1305,7 +1322,7 @@ fn install_hardware(
     // Dispatched like a Program or Resource install — a piece of hardware
     // can react to its own install (GAMEDRAGON™ Pro). Nothing did before,
     // so this used to be a bare push.
-    let installed_event = GameEvent::HardwareInstalled { side, card: card_id };
+    let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
     events.push(installed_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
@@ -1377,7 +1394,7 @@ fn install_program(
     // what this install actually reserved, read from the registry — it used
     // to be whatever the caller named, which `legal_actions` always set to 0.
     let installed_event =
-        GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };
+        GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
     events.push(installed_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
@@ -1437,7 +1454,7 @@ fn install_program_on_ice(
     rig_card.hosted_on_ice = Some(host);
     events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
-    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8 };
+    let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
     events.push(installed_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
@@ -1484,7 +1501,7 @@ fn install_resource(
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
-    let installed_event = GameEvent::ResourceInstalled { side, card: card_id };
+    let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
     events.push(installed_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
 
@@ -1547,6 +1564,17 @@ fn break_subroutine_with_click(
 /// zone (Corp `installed && rezzed` vs Runner `rig`, disjoint by
 /// construction, so unambiguous), but *whether* they're allowed to act now
 /// is gated by `window.active_priority` instead.
+/// The resolution context an activated ability runs in: pinned to its
+/// install, or — for an identity, which has none — to the card alone, so
+/// nothing downstream goes looking for a rig position that does not exist.
+fn ability_ctx<'a>(is_identity: bool, target: InstallId, card_id: &'a CardId) -> ability::ResolutionContext<'a> {
+    if is_identity {
+        ability::ResolutionContext::for_card(Some(card_id))
+    } else {
+        ability::ResolutionContext::for_install(target, card_id)
+    }
+}
+
 fn activate_ability(
     state: &GameState,
     registry: &CardRegistry,
@@ -1557,11 +1585,15 @@ fn activate_ability(
     // scan both zones for a `CardId` and lean on their being "disjoint by
     // construction"; the id makes the owning zone a property of the target
     // rather than an inference from it.
+    // An identity is always active and has no install of its own — see
+    // `InstallId::CORP_IDENTITY`/`RUNNER_IDENTITY`.
     let corp_install = state.find_corp_install(target);
-    let corp_card = corp_install.map(|c| c.card.clone());
-    let corp_active = corp_install.is_some_and(|c| c.rezzed);
-    let runner_card = state.find_rig_install(target).map(|c| c.card.clone());
+    let corp_card = if target == InstallId::CORP_IDENTITY { state.corp.identity.clone() } else { corp_install.map(|c| c.card.clone()) };
+    let corp_active = corp_install.is_some_and(|c| c.rezzed) || (target == InstallId::CORP_IDENTITY && corp_card.is_some());
+    let runner_card =
+        if target == InstallId::RUNNER_IDENTITY { state.runner.identity.clone() } else { state.find_rig_install(target).map(|c| c.card.clone()) };
     let runner_active = runner_card.is_some();
+    let is_identity = matches!(target, InstallId::CORP_IDENTITY | InstallId::RUNNER_IDENTITY);
 
     let side = match &state.paid_ability_window {
         Some(window) => {
@@ -1615,7 +1647,7 @@ fn activate_ability(
         return Err(RulesError::AbilityNotManuallyActivatable(ability_index));
     }
     if let Some(requirement) = &ability.requirement {
-        ability::check_requirement(state, requirement, side, &ability::ResolutionContext::for_install(target, &card_id), registry)?;
+        ability::check_requirement(state, requirement, side, &ability_ctx(is_identity, target, &card_id), registry)?;
     }
 
     let mut next = state.clone();
@@ -1627,23 +1659,23 @@ fn activate_ability(
         // once-per-turn consumption, unlike `first_install_discount`.
         let discounted = match (cost, &ability.cost_discount_if) {
             (Cost::Credits(amount), Some((requirement, discount)))
-                if ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_install(target, &card_id), registry).is_ok() =>
+                if ability::check_requirement(&next, requirement, side, &ability_ctx(is_identity, target, &card_id), registry).is_ok() =>
             {
                 Cost::Credits(amount.saturating_sub(*discount))
             }
             _ => cost.clone(),
         };
-        events.extend(ability::pay_cost_ctx(&mut next, side, &discounted, &ability::ResolutionContext::for_install(target, &card_id))?);
+        events.extend(ability::pay_cost_ctx(&mut next, side, &discounted, &ability_ctx(is_identity, target, &card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
-    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability::ResolutionContext::for_install(target, &card_id), registry)?);
+    events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability_ctx(is_identity, target, &card_id), registry)?);
     // `check_requirement` above only reads — without this, a `Paid`
     // ability's `EffectRequirement::OncePerTurn` (e.g. Telework Contract's
     // click ability) would never actually get marked used and could be
     // activated any number of times per turn. Mirrors
     // `process_card_triggers`'s own check-then-consume ordering.
     if let Some(requirement) = &ability.requirement {
-        ability::consume_requirement(&mut next, requirement, side, &ability::ResolutionContext::for_install(target, &card_id));
+        ability::consume_requirement(&mut next, requirement, side, &ability_ctx(is_identity, target, &card_id));
     }
     paid_ability::note_window_action(&mut next, side);
 
@@ -3937,7 +3969,7 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Runner },
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 0 },
-                GameEvent::HardwareInstalled { side: Side::Runner, card: card_id },
+                GameEvent::HardwareInstalled { side: Side::Runner, card: card_id, credits_paid: 0 },
             ]
         );
     }
@@ -4004,6 +4036,7 @@ mod tests {
                     side: Side::Runner,
                     card: card_id,
                     memory_cost: 3,
+                    credits_paid: 0,
                 },
             ]
         );

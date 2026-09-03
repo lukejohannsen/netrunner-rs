@@ -44,5 +44,8 @@
     }
   ],
   "numeric_id": 35003,
-  "is_playable": true
+  "is_playable": true,
+  "subtypes": [
+    "Run"
+  ]
 }

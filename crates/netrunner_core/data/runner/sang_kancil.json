@@ -1,0 +1,46 @@
+{
+  "id": "sang_kancil",
+  "title": "Sang Kancil",
+  "side": "Runner",
+  "card_type": "Program",
+  "cost": 3,
+  "strength": 2,
+  "memory_cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 1
+      },
+      "effect": {
+        "BreakSubroutines": {
+          "count": {
+            "Fixed": 1
+          },
+          "restrict_to": "CodeGate"
+        }
+      },
+      "requirement": "DuringEncounter"
+    },
+    {
+      "trigger": "Paid",
+      "cost": {
+        "Credits": 3
+      },
+      "cost_discount_if": [
+        "RunEventActive",
+        2
+      ],
+      "effect": {
+        "BoostStrength": {
+          "amount": 2,
+          "duration": "Encounter"
+        }
+      },
+      "requirement": "DuringEncounter"
+    }
+  ],
+  "numeric_id": 35020,
+  "is_playable": true
+}
