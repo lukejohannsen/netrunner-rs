@@ -445,7 +445,7 @@ fn install_card(
     next.corp.hq.remove(position);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true)?);
+    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0)?);
     Ok((next, events))
 }
 
@@ -453,10 +453,12 @@ fn install_card(
 /// click action) and `pending_choice::resolve_choose_server`'s install
 /// branch (`Effect::PromptInstallCorpCard`, Ansel 1.0): type/slot
 /// validation, the one-agenda-or-asset-per-remote install-over, the
-/// per-protecting-ICE install tax (when `pay_cost`), the unique rule, the
-/// outermost ICE insertion, and the `CardInstalled` event with its
-/// identity dispatch. The caller owns getting the card *out* of wherever
-/// it was (HQ by id, an origin zone by position) and its own guards.
+/// per-protecting-ICE install tax (when `pay_cost`, less `discount` —
+/// Mercia B4LL4RD's "paying 1[c] less"), the region limit, the unique
+/// rule, the outermost ICE insertion, and the `CardInstalled` event with
+/// its identity dispatch. The caller owns getting the card *out* of
+/// wherever it was (HQ by id, an origin zone by position) and its own
+/// guards.
 pub(crate) fn place_corp_card(
     next: &mut GameState,
     registry: &CardRegistry,
@@ -464,6 +466,7 @@ pub(crate) fn place_corp_card(
     zone: TargetZone,
     slot: InstallSlot,
     pay_cost: bool,
+    discount: u32,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
     // The registry lookup stays even though the printed cost is not paid
@@ -486,6 +489,15 @@ pub(crate) fn place_corp_card(
         (InstallSlot::Root, _) => {
             return Err(RulesError::CardTypeMismatch { card: card_id, expected: "an agenda, asset or upgrade" });
         }
+    }
+    // "Limit 1 region per server": a root already holding a region,
+    // rezzed or not, cannot take another. A rejection rather than an
+    // install-over — the printed limit is a restriction on installing,
+    // not a replacement rule like the one-agenda-or-asset-per-remote
+    // rule below. Nothing enforced it before Mahkota Langit Grid, the
+    // pool's first region (ROADMAP Rules Audit, Forfeit and Region).
+    if slot == InstallSlot::Root && card_def.subtypes.contains(&CardSubtype::Region) && root_holds_region(next, registry, zone) {
+        return Err(RulesError::RegionLimitExceeded { server: zone });
     }
     let mut events = Vec::new();
 
@@ -519,7 +531,7 @@ pub(crate) fn place_corp_card(
     // double and the escalating ICE tax did not exist (ROADMAP Rules
     // Audit T3).
     let install_cost = match (pay_cost, slot) {
-        (true, InstallSlot::Ice) => ice_protecting(next, zone),
+        (true, InstallSlot::Ice) => ice_protecting(next, zone).saturating_sub(discount),
         _ => 0,
     };
     if install_cost > 0 {
@@ -579,7 +591,7 @@ pub(crate) fn place_corp_card(
 /// empty for an installable type. Computed at park time and safe to trust
 /// at resolution: a parked decision blocks every other action, so nothing
 /// can change in between.
-pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl::CardDefinition, ignore_costs: bool) -> Vec<ServerId> {
+pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegistry, card_def: &crate::dsl::CardDefinition, ignore_costs: bool) -> Vec<ServerId> {
     let existing = super::legal_actions::existing_remote_ids(state);
     let mut remotes: Vec<ServerId> = existing.iter().copied().map(ServerId::Remote).collect();
     remotes.push(ServerId::Remote(super::legal_actions::fresh_remote_id(&existing)));
@@ -588,6 +600,12 @@ pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl
         CardType::Upgrade => {
             let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             zones.extend(remotes);
+            // The region limit `place_corp_card` enforces, applied to the
+            // offer so the parked choice never names a server that would
+            // reject the install.
+            if card_def.subtypes.contains(&CardSubtype::Region) {
+                zones.retain(|zone| !root_holds_region(state, registry, *zone));
+            }
             zones
         }
         CardType::Ice(_) => {
@@ -600,6 +618,18 @@ pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl
         }
         _ => Vec::new(),
     }
+}
+
+/// Whether `server`'s root already holds a `CardSubtype::Region` card,
+/// rezzed or not — the "limit 1 region per server" test `place_corp_card`
+/// enforces and `corp_install_destinations` prunes by.
+fn root_holds_region(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
+    state
+        .corp
+        .installed
+        .iter()
+        .filter(|c| c.server == server && c.slot == InstallSlot::Root)
+        .any(|c| registry.get(&c.card).is_some_and(|def| def.subtypes.contains(&CardSubtype::Region)))
 }
 
 /// The ◆ rule: if `card_id` is unique and `side` already has a copy in
@@ -697,7 +727,41 @@ fn rez_ice(
         0
     };
     let rez_cost = (card_def.cost as i32 + rez_cost_modifier + rig_modifier).max(0) as u32;
-    let mut events = ability::pay_cost(&mut next, side, &Cost::Credits(rez_cost), Some(&ice_id))?;
+    // Hosted credits a rezzed root upgrade lets the Corp spend on rezzing
+    // in its own server (Mahkota Langit Grid's `hosted_credits_usable_for:
+    // RezInThisServer`) count towards affordability and are drained first
+    // — the Corp-side twin of `run::access::resolve_trash`'s Azimat drain,
+    // and for the same reason it is not inside `pay_cost`: that waterfall
+    // is purpose-blind and these pools are not. Assets in the root and
+    // ice protecting the server, as printed; an upgrade being rezzed pays
+    // from the wallet alone.
+    let pays_here = |installed: &InstalledCard, def: &crate::dsl::CardDefinition| {
+        installed.server == server
+            && installed.slot == InstallSlot::Root
+            && def.hosted_credits_usable_for == Some(HostedCreditUse::RezInThisServer)
+    };
+    let pool_eligible = matches!(card_def.card_type, CardType::Ice(_) | CardType::Asset);
+    let hosted: u32 = if pool_eligible {
+        next.corp
+            .installed
+            .iter()
+            .filter(|c| c.rezzed)
+            .filter(|c| registry.get(&c.card).is_some_and(|def| pays_here(c, def)))
+            .map(|c| c.counters)
+            .sum()
+    } else {
+        0
+    };
+    let available = next.corp.resources.credits.0.saturating_add(hosted);
+    if available < rez_cost {
+        return Err(RulesError::NotEnoughCredits { side, available, requested: rez_cost });
+    }
+    let (mut events, from_pools) = if pool_eligible {
+        ability::drain_corp_hosted_credit_pools(&mut next, registry, rez_cost, pays_here)?
+    } else {
+        (Vec::new(), 0)
+    };
+    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(rez_cost - from_pools), Some(&ice_id))?);
 
     // The run's own view of this ICE (`RunIce::rezzed`) is not touched
     // here: `run::reconcile_ice` re-reads it from the install at the
@@ -958,7 +1022,39 @@ fn play_operation(
     paid_ability::require_no_window(state)?;
     let mut next = state.clone();
     spend_click(&mut next, side)?;
-    let from_archives = take_operation(&mut next, &card_id)?;
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(play_operation_card(&mut next, registry, card_id)?);
+    Ok((next, events))
+}
+
+/// Whether the Corp could play `card_id` out of HQ right now, click aside:
+/// it is an operation in HQ, its `play_requirement` holds and its cost is
+/// affordable — the offer half of `CardFilter::PlayableOperation`, paired
+/// with `play_operation_card`'s own guards the way `can_install_runner_
+/// card_from_grip` pairs with its install.
+pub(crate) fn can_play_operation_from_hq(state: &GameState, registry: &CardRegistry, card_id: &CardId) -> bool {
+    let Some(card_def) = registry.get(card_id) else { return false };
+    state.corp.hq.contains(card_id)
+        && card_def.card_type == CardType::Operation
+        && state.corp.resources.credits.0 >= card_def.cost
+        && card_def.play_requirement.as_ref().is_none_or(|requirement| {
+            ability::check_requirement(state, requirement, Side::Corp, &ability::ResolutionContext::for_card(Some(card_id)), registry).is_ok()
+        })
+}
+
+/// The play half every operation shares — the click action above and
+/// `Effect::PlayOperationFromHq` (Humanoid Resources' "You may play 1
+/// operation from HQ"), which spends no click. Takes the card out of HQ or
+/// Archives, checks its type and `play_requirement`, pays its cost, files
+/// it (Archives faceup, or out of the game when played from Archives) and
+/// dispatches `OperationPlayed`.
+pub(crate) fn play_operation_card(
+    next: &mut GameState,
+    registry: &CardRegistry,
+    card_id: CardId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let side = Side::Corp;
+    let from_archives = take_operation(next, &card_id)?;
 
     let card_def = registry
         .get(&card_id)
@@ -967,11 +1063,10 @@ fn play_operation(
         return Err(RulesError::CardNotOperation { card: card_id });
     }
     if let Some(requirement) = &card_def.play_requirement {
-        ability::check_requirement(&next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
+        ability::check_requirement(next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
     }
 
-    let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
+    let mut events = ability::pay_cost(next, side, &Cost::Credits(card_def.cost), Some(&card_id))?;
     // A played Operation resolved in the open, so the Runner has seen it.
     // One played out of Archives leaves the game instead (Petty Cash's
     // "after it resolves, remove it from the game") — placed now rather
@@ -990,9 +1085,9 @@ fn play_operation(
     // `OnSuccessfulRunOnHq`/`OnInstall` above) from this one event.
     let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives };
     events.push(played_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &played_event)?);
+    events.extend(dispatcher::dispatch_event(next, registry, &played_event)?);
 
-    Ok((next, events))
+    Ok(events)
 }
 
 /// Seeds a newly-installed rig card's `base_strength` from the registry's
@@ -1604,6 +1699,12 @@ fn break_subroutine_with_click(
     }
     if !registry.get(&ice_id).is_some_and(|c| c.click_breakable) {
         return Err(RulesError::IceNotClickBreakable(ice_id));
+    }
+    // A subroutine only a printed subtype may break (Semak-samun's
+    // "except using a fracter") is not clickable through either — a click
+    // is no fracter.
+    if current_ice.subroutines.get(subroutine_index).is_some_and(|s| s.definition.only_breakable_by.is_some()) {
+        return Err(RulesError::SubroutineNotBreakableByThis { ice: ice_id, index: subroutine_index });
     }
 
     let mut next = state.clone();
@@ -2238,6 +2339,7 @@ mod tests {
                     definition: SubroutineDef {
                         text: format!("Subroutine {id}"),
                         effect: Effect::EndTheRun,
+                        only_breakable_by: None,
                     },
                     status: SubroutineStatus::Pending,
                 })
@@ -3110,7 +3212,7 @@ mod tests {
         let mut inner_card = test_card("inner_ice", Side::Corp, CardType::Ice(IceType::Barrier), 1, None);
         inner_card.strength = Some(2);
         inner_card.subroutines =
-            vec![SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun }];
+            vec![SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }];
         registry.insert(inner_card);
 
         let (next, _events) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq })
@@ -6503,12 +6605,12 @@ mod tests {
                 subroutines: vec![
                     EncounteredSubroutine {
                         id: 0,
-                        definition: SubroutineDef { text: "sub 0".to_string(), effect: Effect::GiveTags(1) },
+                        definition: SubroutineDef { text: "sub 0".to_string(), effect: Effect::GiveTags(1), only_breakable_by: None },
                         status: SubroutineStatus::Pending,
                     },
                     EncounteredSubroutine {
                         id: 1,
-                        definition: SubroutineDef { text: "sub 1".to_string(), effect: Effect::GiveTags(2) },
+                        definition: SubroutineDef { text: "sub 1".to_string(), effect: Effect::GiveTags(2), only_breakable_by: None },
                         status: SubroutineStatus::Pending,
                     },
                 ],

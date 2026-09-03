@@ -99,6 +99,15 @@ pub enum RulesError {
     #[error("the Runner already has an installed Console — limit 1 per player")]
     ConsoleLimitExceeded,
 
+    #[error("{server:?} already holds a Region — limit 1 region per server")]
+    RegionLimitExceeded { server: ServerId },
+
+    #[error("subroutine {index} on {ice:?} can only be broken by a breaker printed with the subtype it names")]
+    SubroutineNotBreakableByThis { ice: CardId, index: usize },
+
+    #[error("no pending subroutine on {ice:?} that this breaker can break")]
+    NoBreakableSubroutine { ice: CardId },
+
     #[error("cannot end turn while a run is active")]
     CannotEndTurnWhileRunActive,
 

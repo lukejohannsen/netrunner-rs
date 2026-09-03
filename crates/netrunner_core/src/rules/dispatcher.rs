@@ -798,13 +798,17 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
     // Runner a decision whose only resolving action was illegal (the
     // *Elevation* Stage 3 deep sweep, seed 182). A persistent-after-trash
     // upgrade fires with no install pinned, so it is unaffected.
+    // A continuation is exempt: it is the rest of an ability that already
+    // started resolving, and an ability resolves to its end even when its
+    // source leaves play mid-way — Humanoid Resources trashes itself as
+    // part of its own cost and then installs and plays cards.
     let present = match due.install {
-        Some(install) => {
+        Some(install) if due.continuation.is_none() => {
             state.runner.rig.iter().any(|c| c.install_id == install)
                 || state.corp.installed.iter().any(|c| c.install_id == install)
                 || state.corp.find_scored(install).is_some()
         }
-        None => true,
+        _ => true,
     };
     // A bypass ends the encounter's "when encountered" step for everyone
     // (Fransofia Ward's parenthetical): a reaction to the encounter that was

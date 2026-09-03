@@ -1,0 +1,102 @@
+{
+  "id": "humanoid_resources",
+  "title": "Humanoid Resources",
+  "side": "Corp",
+  "card_type": "Asset",
+  "cost": 1,
+  "triggers": [],
+  "abilities": [
+    {
+      "trigger": "Paid",
+      "cost": {
+        "AllOf": [
+          {
+            "Clicks": 3
+          },
+          "TrashSelf"
+        ]
+      },
+      "effect": {
+        "Sequence": [
+          {
+            "GainCredits": [
+              "Corp",
+              4
+            ]
+          },
+          {
+            "DrawCards": [
+              "Corp",
+              3
+            ]
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": {
+                "CardTypeOneOf": [
+                  {
+                    "Ice": "Barrier"
+                  },
+                  "Agenda",
+                  "Asset",
+                  "Upgrade"
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnHq"
+                }
+              }
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": {
+                "CardTypeOneOf": [
+                  {
+                    "Ice": "Barrier"
+                  },
+                  "Agenda",
+                  "Asset",
+                  "Upgrade"
+                ]
+              },
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": {
+                "PromptInstallCorpCard": {
+                  "origin_zone": "OwnHq"
+                }
+              }
+            }
+          },
+          {
+            "PromptChooseCards": {
+              "side": "Corp",
+              "source": "OwnHq",
+              "filter": "PlayableOperation",
+              "min": 0,
+              "max": 1,
+              "reveal": false,
+              "shuffle_after": false,
+              "then": "PlayOperationFromHq"
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "trash_cost": 1,
+  "numeric_id": 35039,
+  "is_playable": true
+}

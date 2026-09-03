@@ -59,4 +59,13 @@ pub enum Cost {
     /// revealed. Drawn with the state's own PRNG, so a replay trashes the
     /// same cards.
     TrashRandomFromHq(u32),
+    /// Every listed cost is paid, in order — Humanoid Resources' "[click]
+    /// [click][click], [trash]: …", a click cost *and* a self-trash on one
+    /// ability. `AnyOf`'s conjunctive twin: affordable only when every
+    /// part is, paid part by part with no choice to resolve, so unlike
+    /// `AnyOf` it goes straight through `pay_cost`. Not expressible
+    /// otherwise: `AbilityDef::cost` is one `Cost`, and folding the trash
+    /// into the effect would resolve it *after* the ability instead of as
+    /// its price.
+    AllOf(Vec<Cost>),
 }

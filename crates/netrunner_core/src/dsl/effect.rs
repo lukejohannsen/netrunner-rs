@@ -525,6 +525,23 @@ pub enum Effect {
         /// affordability no longer prunes any.
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         ignore_costs: bool,
+        /// Credits knocked off the install cost — Mercia B4LL4RD's "install
+        /// 1 piece of ice from HQ, paying 1[c] less". Only the
+        /// per-protecting-ice tax is ever paid here, so a discount larger
+        /// than it makes the install free; never a refund. Meaningless
+        /// with `ignore_costs`.
+        #[serde(default, skip_serializing_if = "is_zero_u32")]
+        discount: u32,
+        /// Resolves once the card has landed, as the card that offered the
+        /// prompt (`acting_install` is the parking install, never the
+        /// installed card) with the chosen server substituted into it —
+        /// Mercia B4LL4RD's "If you do, move this upgrade to the root of
+        /// the server that piece of ice is protecting". The "if you do" is
+        /// structural: a declined offer parks nothing and the rider never
+        /// runs. A `Sequence` continuation cannot express this — it resumes
+        /// as the *selected* card and knows nothing of the server chosen.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        then: Option<Box<Effect>>,
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
@@ -687,6 +704,33 @@ pub enum Effect {
     /// `Effect::BoostStrength` with `amount` resolved dynamically via
     /// `Amount` — e.g. Unity's "+X strength, X = installed icebreakers."
     BoostStrengthAmount { amount: Amount, duration: BoostDuration },
+    /// Moves the acting install — a root-slot Corp card — into the root of
+    /// `ServerId`, Mercia B4LL4RD's "move this upgrade to the root of the
+    /// server that piece of ice is protecting". The authored server is a
+    /// placeholder: this only ever resolves as `PromptInstallCorpCard::
+    /// then`, where `pending_choice::substitute_chosen_server` rewrites it
+    /// to the server the Corp just installed into, the way a run offer's
+    /// `AddAdditionalAccess` is rewritten. Not an install: no cost, no
+    /// `CardInstalled`, the card keeps its rez state, counters and
+    /// install id, and emits `GameEvent::CardMoved`. A no-op when the
+    /// acting install is not a root-slot Corp card any more (it was
+    /// trashed while the decision was parked), or is already there.
+    MoveThisCardToRoot(ServerId),
+    /// Plays `acting_card` — an operation sitting in HQ — paying its cost
+    /// but no click: Humanoid Resources' "You may play 1 operation from
+    /// HQ", authored as the `then` of a `PromptChooseCards` over
+    /// `CardFilter::PlayableOperation`. No existing effect plays a card,
+    /// and the play action itself spends a click. Shares
+    /// `engine::play_operation_from_hq` with the click action, so the
+    /// operation's `OnPlay`, its Transaction reaction and its
+    /// `play_requirement` are honoured identically; silently no-ops if the
+    /// pick has become unplayable since it was offered, the
+    /// `InstallRunnerCardFromGrip` precedent.
+    PlayOperationFromHq,
+}
+
+fn is_zero_u32(value: &u32) -> bool {
+    *value == 0
 }
 
 /// A dynamically-resolved quantity, computed at effect-evaluation time via
@@ -878,6 +922,8 @@ impl Effect {
             | Effect::DealDamageAmount(..)
             | Effect::AddAdditionalAccessAmount { .. }
             | Effect::BoostStrengthAmount { .. }
+            | Effect::MoveThisCardToRoot(..)
+            | Effect::PlayOperationFromHq
             | Effect::GainCreditsAmount(..) => {}
         }
     }

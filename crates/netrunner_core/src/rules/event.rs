@@ -51,6 +51,10 @@ pub enum GameEvent {
     /// `Effect::SwapInstalledIce` exchanged `a`'s and `b`'s server/slot
     /// positions.
     IceSwapped { a: CardId, b: CardId },
+    /// `Effect::MoveThisCardToRoot` carried a root-slot Corp card from one
+    /// server's root to another's (Mercia B4LL4RD following the ice it
+    /// installed). Not an install — no `CardInstalled` accompanies it.
+    CardMoved { card: CardId, from: ServerId, to: ServerId },
     RunInitiated { server: ServerId },
     EventPlayed { side: Side, card: CardId },
     /// `from_archives`: the card was played out of Archives rather than

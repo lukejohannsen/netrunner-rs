@@ -1,0 +1,50 @@
+{
+  "id": "scatter_field",
+  "title": "Scatter Field",
+  "side": "Corp",
+  "card_type": {
+    "Ice": "CodeGate"
+  },
+  "cost": 3,
+  "strength": 0,
+  "strength_modifier": {
+    "WhileOnlyIceProtectingServer": 4
+  },
+  "triggers": [],
+  "subroutines": [
+    {
+      "text": "You may install 1 card from HQ.",
+      "effect": {
+        "PromptChooseCards": {
+          "side": "Corp",
+          "source": "OwnHq",
+          "filter": {
+            "CardTypeOneOf": [
+              {
+                "Ice": "Barrier"
+              },
+              "Agenda",
+              "Asset",
+              "Upgrade"
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "reveal": false,
+          "shuffle_after": false,
+          "then": {
+            "PromptInstallCorpCard": {
+              "origin_zone": "OwnHq"
+            }
+          }
+        }
+      }
+    },
+    {
+      "text": "End the run.",
+      "effect": "EndTheRun"
+    }
+  ],
+  "numeric_id": 35042,
+  "is_playable": true
+}

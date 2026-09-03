@@ -1,0 +1,45 @@
+{
+  "id": "mercia_b4ll4rd",
+  "title": "Mercia B4LL4RD",
+  "side": "Corp",
+  "card_type": "Upgrade",
+  "cost": 2,
+  "unique": true,
+  "subtypes": [
+    "Bioroid"
+  ],
+  "triggers": [
+    {
+      "trigger": "OnActionPhaseEnd",
+      "effects": [
+        {
+          "PromptChooseCards": {
+            "side": "Corp",
+            "source": "OwnHq",
+            "filter": {
+              "CardType": {
+                "Ice": "Barrier"
+              }
+            },
+            "min": 0,
+            "max": 1,
+            "reveal": false,
+            "shuffle_after": false,
+            "then": {
+              "PromptInstallCorpCard": {
+                "origin_zone": "OwnHq",
+                "discount": 1,
+                "then": {
+                  "MoveThisCardToRoot": "Hq"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "trash_cost": 2,
+  "numeric_id": 35045,
+  "is_playable": true
+}

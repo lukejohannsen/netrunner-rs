@@ -956,6 +956,15 @@ pub struct PendingInstallFromZone {
     /// 1.0's printed text says "ignoring all costs", and that one takes
     /// the `Effect::InstallFromZoneIgnoringCost` path instead.
     pub pay_cost: bool,
+    /// `Effect::PromptInstallCorpCard::discount`, carried to
+    /// `engine::place_corp_card`. `serde(default)` for decisions recorded
+    /// before the field existed.
+    #[serde(default)]
+    pub discount: u32,
+    /// `Effect::PromptInstallCorpCard::then` — evaluated after the install
+    /// lands, with the chosen server substituted in. See that field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub then: Option<Box<Effect>>,
 }
 
 /// A decision parked by an `Effect`, awaiting a resolving `PlayerAction`.

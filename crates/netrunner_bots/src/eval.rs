@@ -747,7 +747,7 @@ mod tests {
 
         let sub = |id| EncounteredSubroutine {
             id,
-            definition: netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun },
+            definition: netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None },
             status: SubroutineStatus::Pending,
         };
         let mut encountering = running.clone();
@@ -890,7 +890,7 @@ mod tests {
             subroutines: (0..subroutines)
                 .map(|id| EncounteredSubroutine {
                     id,
-                    definition: netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun },
+                    definition: netrunner_core::dsl::SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None },
                     status: SubroutineStatus::Pending,
                 })
                 .collect(),

@@ -526,6 +526,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         GameEvent::CardAdvanced { card, .. }
         | GameEvent::CountersAdded { card, .. }
         | GameEvent::CountersRemoved { card, .. }
+        | GameEvent::CardMoved { card, .. }
         | GameEvent::CardDerezzed { card } => (!concealed(card)).then(visible).flatten(),
         // Tāo Salonga swaps ICE the Runner may not be able to identify —
         // the emit site's comment deferred masking to here.
@@ -1302,7 +1303,7 @@ mod tests {
             subroutines: if rezzed {
                 vec![EncounteredSubroutine {
                     id: 0,
-                    definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun },
+                    definition: SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None },
                     status: SubroutineStatus::Pending,
                 }]
             } else {

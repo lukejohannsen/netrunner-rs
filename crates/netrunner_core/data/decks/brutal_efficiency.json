@@ -1,0 +1,89 @@
+{
+  "id": "brutal_efficiency",
+  "name": "Brutal Efficiency",
+  "side": "Corp",
+  "category": "Sample",
+  "identity": "haas_bioroid_precision_design",
+  "cards": [
+    {
+      "card": "luminal_transubstantiation",
+      "count": 1
+    },
+    {
+      "card": "offworld_office",
+      "count": 3
+    },
+    {
+      "card": "project_ingatan",
+      "count": 2
+    },
+    {
+      "card": "send_a_message",
+      "count": 2
+    },
+    {
+      "card": "humanoid_resources",
+      "count": 2
+    },
+    {
+      "card": "regolith_mining_license",
+      "count": 2
+    },
+    {
+      "card": "spin_doctor",
+      "count": 3
+    },
+    {
+      "card": "hedge_fund",
+      "count": 3
+    },
+    {
+      "card": "predictive_planogram",
+      "count": 1
+    },
+    {
+      "card": "seamless_launch",
+      "count": 3
+    },
+    {
+      "card": "anoetic_void",
+      "count": 2
+    },
+    {
+      "card": "mahkota_langit_grid",
+      "count": 2
+    },
+    {
+      "card": "manegarm_skunkworks",
+      "count": 3
+    },
+    {
+      "card": "mercia_b4ll4rd",
+      "count": 2
+    },
+    {
+      "card": "bran_1_0",
+      "count": 2
+    },
+    {
+      "card": "kessleroid",
+      "count": 3
+    },
+    {
+      "card": "flyswatter",
+      "count": 2
+    },
+    {
+      "card": "scatter_field",
+      "count": 2
+    },
+    {
+      "card": "ansel_1_0",
+      "count": 1
+    },
+    {
+      "card": "bumi_1_0",
+      "count": 3
+    }
+  ]
+}

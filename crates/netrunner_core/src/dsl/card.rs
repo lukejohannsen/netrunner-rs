@@ -52,6 +52,11 @@ pub enum StrengthModifier {
     /// heap — Rising Tide. Runner-side and live, like
     /// `PerInstalledIcebreaker`: the heap changes at any moment.
     PerFracterInHeap(i32),
+    /// Adds the payload while this ICE is the only piece of ice protecting
+    /// its server — Scatter Field's "+4 strength". Baked at encounter like
+    /// the other Corp-ICE variants: nothing in the pool trashes or installs
+    /// ice mid-run, so the count is fixed for the run's duration.
+    WhileOnlyIceProtectingServer(i32),
 }
 
 /// A card subtype the engine dispatches a reactive identity trigger off of
@@ -83,6 +88,22 @@ pub enum CardSubtype {
     /// through `CardFilter::HasSubtype`. Authored on every trojan (Botulus,
     /// Chromatophores, Tranquilizer).
     Trojan,
+    /// A Bioroid — the printed subtype on Haas-Bioroid's click-breakable
+    /// ice and its Academic upgrades. Read by LEO Construction: Labor
+    /// Solutions' "trash 1 rezzed bioroid card in the root of or
+    /// protecting the attacked server" through `CardFilter::HasSubtype`.
+    /// Orthogonal to `CardDefinition::click_breakable`, which is the
+    /// *mechanic* the bioroid ice share; Mercia B4LL4RD is a bioroid with
+    /// no subroutines to click through. Authored on every bioroid (Ansel
+    /// 1.0, Brân 1.0, Bumi 1.0, Mercia B4LL4RD).
+    Bioroid,
+    /// A Region upgrade — "Limit 1 region per server". A singleton
+    /// restriction like `Console`, enforced by `engine::place_corp_card`
+    /// (`RulesError::RegionLimitExceeded`) and pruned out of
+    /// `engine::corp_install_destinations`' offer: a root already holding
+    /// a rezzed or unrezzed region cannot take another. Mahkota Langit
+    /// Grid is the pool's only region.
+    Region,
     /// A singleton restriction, not a trigger-dispatch tag like the other
     /// two variants: `engine::install_hardware` rejects installing a second
     /// `Console`-subtyped Hardware while one is already in the Runner's rig
@@ -521,6 +542,23 @@ pub struct CardDefinition {
     /// audience. `false` for every other card.
     #[serde(default)]
     pub persistent_after_trash: bool,
+
+    /// Added to the trash cost of every asset in the root of the server
+    /// this upgrade is installed in, while it is rezzed — Mahkota Langit
+    /// Grid's "Persistent → The trash cost of each asset in the root of
+    /// this server is increased by 2[c]". Read by `run::access::
+    /// compute_pending_choice` when an accessed asset's trash cost is
+    /// fixed, and — that being the persistent half — also from
+    /// `RunState::persistent_trashed_upgrades`, so trashing the grid on the
+    /// first access of a run still taxes the asset accessed next. `0` for
+    /// the common case. Assets only, as printed; an agenda has no trash
+    /// cost and an upgrade's is not named.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub root_asset_trash_cost_bonus: u32,
+}
+
+fn is_zero(value: &u32) -> bool {
+    *value == 0
 }
 
 /// See `CardDefinition::counter_kind`'s doc comment. Kept minimal, extend as new
@@ -568,6 +606,15 @@ pub enum HostedCreditUse {
     /// Market's "You can spend hosted credits to install connection and job
     /// resources". Drained by `engine::install_resource`.
     ResourceInstalls { subtypes: Vec<CardSubtype> },
+    /// The rez cost of an asset in the root of, or a piece of ice
+    /// protecting, the server this upgrade is installed in — Mahkota Langit
+    /// Grid's "You can spend hosted credits to rez assets in the root of
+    /// this server and ice protecting this server". The first Corp-side
+    /// purpose; drained by `engine::rez_ice` (the one rez path) from the
+    /// rezzed root upgrades of the rezzed card's own server. Upgrades in
+    /// the root are deliberately not covered — the printed text names
+    /// assets and ice.
+    RezInThisServer,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -654,7 +701,7 @@ impl Default for CardDefinition {
             artist: None,
             image_url: None,
             is_playable: false,
-            persistent_after_trash: false,
+            persistent_after_trash: false, root_asset_trash_cost_bonus: 0,
         }
     }
 }
@@ -765,7 +812,7 @@ mod tests {
         assert_eq!(card.strength, Some(1));
         assert_eq!(
             card.subroutines,
-            vec![SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun }]
+            vec![SubroutineDef { text: "End the run.".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }]
         );
         assert!(card.triggers.is_empty());
     }
@@ -840,7 +887,7 @@ mod tests {
         let mut card = blank_card("bad_agenda", CardType::Agenda);
         card.agenda_points = Some(3);
         card.advancement_requirement = Some(4);
-        card.subroutines = vec![SubroutineDef { text: "oops".to_string(), effect: Effect::EndTheRun }];
+        card.subroutines = vec![SubroutineDef { text: "oops".to_string(), effect: Effect::EndTheRun, only_breakable_by: None }];
 
         assert_eq!(card.validate(), Err(CardValidationError::AgendaHasSubroutines(CardId("bad_agenda".to_string()))));
     }

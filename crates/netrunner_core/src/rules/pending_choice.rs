@@ -198,6 +198,15 @@ fn instance_matches_filter(
             })
         }
         CardFilter::Rezzed => corp_install.is_some_and(|c| c.rezzed),
+        // Root or ice, any rez state — the filter's caller says which.
+        CardFilter::InAttackedServer => {
+            corp_install.is_some_and(|c| state.active_run.as_ref().is_some_and(|run| run.server == c.server))
+        }
+        CardFilter::PlayableOperation => {
+            matches!(zone, CardZoneRef::OwnHq)
+                && chooser == Side::Corp
+                && state.corp.hq.get(position).is_some_and(|card| crate::rules::engine::can_play_operation_from_hq(state, registry, card))
+        }
         CardFilter::AccessedDuringLastRun => {
             let card = zone_card_ids(state, chooser, zone, source).get(position).cloned();
             card.is_some_and(|card| {
@@ -777,6 +786,8 @@ pub(crate) fn resolve_confirm_card_selection(
 fn substitute_chosen_server(effect: Effect, server: crate::rules::run::ServerId) -> Effect {
     match effect {
         Effect::AddAdditionalAccess { count, .. } => Effect::AddAdditionalAccess { server, count },
+        // Mercia B4LL4RD follows the ice it installed.
+        Effect::MoveThisCardToRoot(_) => Effect::MoveThisCardToRoot(server),
         Effect::Sequence(effects) => {
             Effect::Sequence(effects.into_iter().map(|e| substitute_chosen_server(e, server)).collect())
         }
@@ -827,7 +838,23 @@ pub(crate) fn resolve_choose_server(
             _ => InstallSlot::Root,
         };
         let mut events = vec![GameEvent::PendingChoiceResolved { chooser: Side::Corp, option_index: 0 }];
-        events.extend(crate::rules::engine::place_corp_card(state, registry, card_id, server, slot, pending_install.pay_cost)?);
+        events.extend(crate::rules::engine::place_corp_card(
+            state,
+            registry,
+            card_id,
+            server,
+            slot,
+            pending_install.pay_cost,
+            pending_install.discount,
+        )?);
+        // The offering card's rider, with the chosen server substituted in
+        // (`PromptInstallCorpCard::then`) — resolved as the parking install,
+        // never as the card that just landed.
+        if let Some(then) = pending_install.then {
+            let effect = substitute_chosen_server(*then, server);
+            let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+            events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
+        }
         if resume == PendingChoiceResume::ResumeSubroutines {
             // The install's own dispatch may have parked something (an
             // identity reaction); propagate the resume intent exactly as
