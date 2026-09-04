@@ -51,7 +51,7 @@ pub use mcts::MctsAgent;
 pub use onnx_policy::{OnnxPolicyError, OnnxPolicyEvaluator};
 pub use observation::{encode_observation, to_observation_vector, OBS_SIZE};
 pub use personality::Personality;
-pub use policy::{PolicyEvaluator, UniformPolicyEvaluator};
+pub use policy::{PolicyEvaluator, SplitEvaluator, UniformPolicyEvaluator};
 pub use puct::{pick_action, ActionStat, PuctAgent, PuctConfig, PuctSearchStats, MAX_GREEDY_REPEATS};
 pub use random::RandomAgent;
 pub use scripted::ScriptedAgent;

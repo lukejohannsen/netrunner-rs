@@ -27,8 +27,8 @@ use rand::SeedableRng;
 use rayon::prelude::*;
 
 use netrunner_bots::{
-    encode_observation, pick_action, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator,
-    MAX_GREEDY_REPEATS, OBS_SIZE,
+    encode_observation, pick_action, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, SplitEvaluator,
+    UniformPolicyEvaluator, MAX_GREEDY_REPEATS, OBS_SIZE,
 };
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
@@ -89,6 +89,37 @@ struct Cli {
     /// run is distilled from, and so the first thing it has to beat.
     #[arg(long = "arena-incumbent")]
     arena_incumbent: Option<PathBuf>,
+    /// Which halves of the candidate's network to actually use, with the
+    /// uniform evaluator supplying the other. `both` is an ordinary arena;
+    /// the two ablations answer "is it the priors or the value that loses"
+    /// when a whole network scores below the search it was distilled from.
+    /// See `netrunner_bots::SplitEvaluator`.
+    #[arg(long = "candidate-uses", value_enum, default_value_t = CandidateUses::Both)]
+    candidate_uses: CandidateUses,
+}
+
+/// Which halves of a candidate network the arena seats. An ablation over
+/// `--arena-candidate`, never over the incumbent — the incumbent is the
+/// bar, and moving it would make two runs incomparable.
+#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum CandidateUses {
+    /// The whole network: its priors and its value.
+    Both,
+    /// The network's value at the leaves, uniform priors at every node.
+    ValueOnly,
+    /// The network's priors at every node, `evaluate_state`'s value at the
+    /// leaves.
+    PriorsOnly,
+}
+
+impl CandidateUses {
+    fn label(self) -> &'static str {
+        match self {
+            CandidateUses::Both => "both",
+            CandidateUses::ValueOnly => "value-only",
+            CandidateUses::PriorsOnly => "priors-only",
+        }
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -130,6 +161,10 @@ enum ArenaResult {
 /// reads to decide a promotion.
 #[derive(Debug, Serialize, PartialEq)]
 struct ArenaSummary {
+    /// Which halves of the candidate's network were seated — `"both"` for
+    /// an ordinary arena. Recorded so a run's own output says what it
+    /// measured, rather than the reader having to remember the flags.
+    candidate_uses: &'static str,
     games: usize,
     candidate_wins: usize,
     incumbent_wins: usize,
@@ -138,13 +173,13 @@ struct ArenaSummary {
     candidate_score: f64,
 }
 
-fn summarize(results: &[ArenaResult]) -> ArenaSummary {
+fn summarize(results: &[ArenaResult], candidate_uses: CandidateUses) -> ArenaSummary {
     let count = |wanted: ArenaResult| results.iter().filter(|r| **r == wanted).count();
     let (candidate_wins, incumbent_wins, draws) =
         (count(ArenaResult::CandidateWin), count(ArenaResult::IncumbentWin), count(ArenaResult::Draw));
     let games = results.len();
     let candidate_score = if games == 0 { 0.0 } else { (candidate_wins as f64 + draws as f64 / 2.0) / games as f64 };
-    ArenaSummary { games, candidate_wins, incumbent_wins, draws, candidate_score }
+    ArenaSummary { candidate_uses: candidate_uses.label(), games, candidate_wins, incumbent_wins, draws, candidate_score }
 }
 
 /// The candidate takes the Corp chair in even-numbered games and the
@@ -173,8 +208,13 @@ fn play_arena_game(
     let candidate_side = candidate_side(game_index);
     let config = PuctConfig { iterations: cli.simulations.max(1), ..PuctConfig::default() };
     let seat = |side: Side, seat_seed: u64| -> Result<Seat, SelfPlayError> {
-        let model = if side == candidate_side { candidate } else { incumbent };
+        let is_candidate = side == candidate_side;
+        let model = if is_candidate { candidate } else { incumbent };
         let evaluator = make_evaluator(side, model)?;
+        // Only the candidate is ever ablated: the incumbent is the bar,
+        // and moving it would make two ablation runs incomparable with
+        // each other and with the ordinary arena.
+        let evaluator = if is_candidate { ablate(evaluator, side, cli.candidate_uses) } else { evaluator };
         Ok(Seat::Agent(Box::new(PuctAgent::with_config(side, seat_seed, evaluator, config))))
     };
     let corp = seat(Side::Corp, seed)?;
@@ -186,6 +226,21 @@ fn play_arena_game(
         }
         SessionStep::Stalled(_) => Ok(ArenaResult::Draw),
         other => Err(SelfPlayError::ArenaUnexpectedStep(format!("{other:?}"))),
+    }
+}
+
+/// Wraps `evaluator` so only the requested halves of it survive, the
+/// uniform evaluator supplying the rest. `Both` returns it untouched, so
+/// an ordinary arena pays nothing for this existing.
+fn ablate(evaluator: Box<dyn PolicyEvaluator>, side: Side, uses: CandidateUses) -> Box<dyn PolicyEvaluator> {
+    match uses {
+        CandidateUses::Both => evaluator,
+        CandidateUses::ValueOnly => {
+            Box::new(SplitEvaluator::new(Box::new(UniformPolicyEvaluator::new(side)), evaluator))
+        }
+        CandidateUses::PriorsOnly => {
+            Box::new(SplitEvaluator::new(evaluator, Box::new(UniformPolicyEvaluator::new(side))))
+        }
     }
 }
 
@@ -429,7 +484,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into_par_iter()
             .map(|game_index| play_arena_game(game_index, &cli, &cli.arena_candidate, &cli.arena_incumbent))
             .collect::<Result<Vec<_>, _>>()?;
-        println!("{}", serde_json::to_string(&summarize(&results))?);
+        println!("{}", serde_json::to_string(&summarize(&results, cli.candidate_uses))?);
         return Ok(());
     }
 
@@ -536,12 +591,74 @@ mod tests {
 
     #[test]
     fn candidate_score_counts_a_stall_as_half() {
-        let summary = summarize(&[ArenaResult::CandidateWin, ArenaResult::Draw, ArenaResult::IncumbentWin, ArenaResult::Draw]);
+        let results = [ArenaResult::CandidateWin, ArenaResult::Draw, ArenaResult::IncumbentWin, ArenaResult::Draw];
+        let summary = summarize(&results, CandidateUses::Both);
         assert_eq!(
             summary,
-            ArenaSummary { games: 4, candidate_wins: 1, incumbent_wins: 1, draws: 2, candidate_score: 0.5 }
+            ArenaSummary {
+                candidate_uses: "both",
+                games: 4,
+                candidate_wins: 1,
+                incumbent_wins: 1,
+                draws: 2,
+                candidate_score: 0.5
+            }
         );
-        assert_eq!(summarize(&[]).candidate_score, 0.0, "no games is not a pass");
+        assert_eq!(summarize(&[], CandidateUses::Both).candidate_score, 0.0, "no games is not a pass");
+    }
+
+    /// An arena line has to say what it measured. Three runs of the same
+    /// candidate against the same incumbent differ only in this field, and
+    /// a reader comparing them months later will not have the flags.
+    #[test]
+    fn an_arena_summary_names_the_ablation_it_ran() {
+        let labels: Vec<&str> = [CandidateUses::Both, CandidateUses::ValueOnly, CandidateUses::PriorsOnly]
+            .into_iter()
+            .map(|uses| summarize(&[], uses).candidate_uses)
+            .collect();
+        assert_eq!(labels, ["both", "value-only", "priors-only"], "every variant is labelled, and distinctly");
+
+        let json = serde_json::to_string(&summarize(&[ArenaResult::CandidateWin], CandidateUses::PriorsOnly)).unwrap();
+        assert!(json.contains(r#""candidate_uses":"priors-only""#), "the label reaches the printed line: {json}");
+    }
+
+    /// `Both` must not wrap: an ordinary arena has to be the same search it
+    /// was before this flag existed, or every prior verdict becomes
+    /// incomparable with every later one.
+    #[test]
+    fn the_default_ablation_leaves_the_evaluator_untouched() {
+        let registry = fixtures::registry();
+        let (corp_deck, runner_deck) = fixtures::matchups()[0].decks();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 1).unwrap();
+
+        let plain = UniformPolicyEvaluator::new(Side::Corp).evaluate(&state, &registry);
+        let through_both = ablate(Box::new(UniformPolicyEvaluator::new(Side::Corp)), Side::Corp, CandidateUses::Both)
+            .evaluate(&state, &registry);
+        assert_eq!(plain, through_both);
+    }
+
+    /// The instrument itself: priors come from one source, value from the
+    /// other, and neither leaks into the other's half. Built from two
+    /// uniform evaluators on *different* sides, because `evaluate_state` is
+    /// zero-sum enough that the Corp's and Runner's values differ while
+    /// their legal-action priors do not.
+    #[test]
+    fn a_split_evaluator_takes_each_half_from_the_source_it_was_given() {
+        let registry = fixtures::registry();
+        let (corp_deck, runner_deck) = fixtures::matchups()[0].decks();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 1).unwrap();
+
+        let (corp_priors, corp_value) = UniformPolicyEvaluator::new(Side::Corp).evaluate(&state, &registry);
+        let (_runner_priors, runner_value) = UniformPolicyEvaluator::new(Side::Runner).evaluate(&state, &registry);
+        assert_ne!(corp_value, runner_value, "the fixture must distinguish the two sources for this to prove anything");
+
+        let split = SplitEvaluator::new(
+            Box::new(UniformPolicyEvaluator::new(Side::Corp)),
+            Box::new(UniformPolicyEvaluator::new(Side::Runner)),
+        );
+        let (priors, value) = split.evaluate(&state, &registry);
+        assert_eq!(priors, corp_priors, "priors come from the first source");
+        assert_eq!(value, runner_value, "value comes from the second");
     }
 
     #[test]
@@ -625,7 +742,7 @@ mod tests {
         let cli = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "unused.onnx"]);
         let results: Vec<ArenaResult> =
             (0..2).map(|i| play_arena_game(i, &cli, &None, &None).expect("uniform arena game")).collect();
-        let summary = summarize(&results);
+        let summary = summarize(&results, CandidateUses::Both);
         assert_eq!(summary.games, 2);
         assert_eq!(summary.candidate_wins + summary.incumbent_wins + summary.draws, 2);
         let line = serde_json::to_string(&summary).unwrap();

@@ -76,6 +76,48 @@ impl PolicyEvaluator for UniformPolicyEvaluator {
     }
 }
 
+/// Takes its priors from one evaluator and its value from another.
+///
+/// **An instrument, not a player.** A `PolicyEvaluator` answers two
+/// questions at once — "which moves are worth looking at" and "how good is
+/// this position" — and when a network-backed search loses to a
+/// network-free one, the aggregate result cannot say which of the two
+/// answers went wrong. Pairing one source's priors with the other's value
+/// separates them: run the arena twice, once each way, and the half that
+/// carries the loss is the half at fault.
+///
+/// That question is live. Across three volume runs (ROADMAP Phase 2 §5)
+/// every candidate scored 0.22–0.48 against the uniform search, and there
+/// is a specific reason to suspect the priors rather than the value:
+/// `OnnxPolicyEvaluator` encodes its observation from a **fixed** side
+/// while `get_action_mask` returns the **side-to-move**'s legal set, and
+/// training only ever pairs a side's observation with that same side's
+/// visit counts. `ActionSpace` is heavily side-partitioned, so at an
+/// opponent-to-move node the softmax renormalizes over exactly the slots
+/// training drove toward −∞. The value head has no equivalent problem: its
+/// fixed perspective is what `puct::simulate`'s negamax convention wants.
+///
+/// Costs two forward passes per node, which is the point of it being a
+/// diagnostic rather than something to seat in a real match.
+pub struct SplitEvaluator {
+    priors_from: Box<dyn PolicyEvaluator>,
+    value_from: Box<dyn PolicyEvaluator>,
+}
+
+impl SplitEvaluator {
+    pub fn new(priors_from: Box<dyn PolicyEvaluator>, value_from: Box<dyn PolicyEvaluator>) -> Self {
+        Self { priors_from, value_from }
+    }
+}
+
+impl PolicyEvaluator for SplitEvaluator {
+    fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
+        let (priors, _discarded_value) = self.priors_from.evaluate(state, registry);
+        let (_discarded_priors, value) = self.value_from.evaluate(state, registry);
+        (priors, value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
