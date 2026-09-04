@@ -27,8 +27,8 @@ use rand::SeedableRng;
 use rayon::prelude::*;
 
 use netrunner_bots::{
-    encode_observation, pick_action, ActionStat, PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator,
-    MAX_GREEDY_REPEATS, OBS_SIZE,
+    encode_observation, pick_action, ActionStat, CycleGuard, PolicyEvaluator, PuctAgent, PuctConfig,
+    UniformPolicyEvaluator, OBS_SIZE,
 };
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
@@ -234,10 +234,10 @@ fn choose_action<'a>(
     actions: &'a [ActionStat],
     ply: usize,
     temp_plies: usize,
-    repeated: Option<&PlayerAction>,
+    avoid: &[PlayerAction],
     rng: &mut StdRng,
 ) -> Option<&'a ActionStat> {
-    pick_action(actions, ply < temp_plies, repeated, rng)
+    pick_action(actions, ply < temp_plies, avoid, rng)
 }
 
 /// Re-keys a search's visit counts into `state`'s `ActionSpace` encoding.
@@ -304,11 +304,13 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
 
     let mut steps: Vec<SelfPlayStep> = Vec::new();
     let mut ply = 0usize;
-    // Consecutive identical chosen actions, for `choose_action`'s cycle
-    // break. Compared as `PlayerAction`s rather than real-state indices so
-    // the count means the same thing here as inside `PuctAgent`.
-    let mut last_action: Option<PlayerAction> = None;
-    let mut repeats = 0usize;
+    // One cycle guard per side, the same `CycleGuard` `PuctAgent` and
+    // `MctsAgent` use — self-play seats are `Seat::External`, so the
+    // agents' own guards never run here and these are the only ones in
+    // play. Per side because a chooser's repetition is what says *that*
+    // chooser is stuck.
+    let mut corp_cycle = CycleGuard::default();
+    let mut runner_cycle = CycleGuard::default();
 
     // The session's own `MAX_STEPS` bounds this now; the local copy this
     // loop used to carry is gone. The terminal step is kept rather than
@@ -341,16 +343,19 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
         // on. See `policy_target_for`.
         let policy_target = policy_target_for(session.state(), &stats.actions);
 
-        let repeated = if repeats >= MAX_GREEDY_REPEATS { last_action.as_ref() } else { None };
-        let Some(chosen) = choose_action(&stats.actions, ply, cli.temp_plies, repeated, &mut rng) else {
+        let cycle = match side {
+            Side::Corp => &mut corp_cycle,
+            Side::Runner => &mut runner_cycle,
+        };
+        let avoid = cycle.cycling();
+        let Some(chosen) = choose_action(&stats.actions, ply, cli.temp_plies, &avoid, &mut rng) else {
             // Unreachable by `search`'s contract. Play on rather than end
             // the run; the ply simply contributes no training example.
             session.submit(view.legal_actions[0].clone())?;
             continue;
         };
         let chosen_index = ActionSpace::index_of(session.state(), &chosen.action);
-        repeats = if last_action.as_ref() == Some(&chosen.action) { repeats + 1 } else { 0 };
-        last_action = Some(chosen.action.clone());
+        cycle.record(&chosen.action, !avoid.is_empty());
 
         // A step whose action has no slot in the real state's encoding
         // can't be labelled, so it is played but not recorded.
@@ -530,8 +535,8 @@ mod tests {
     #[test]
     fn choose_action_reports_no_choice_rather_than_panicking_on_an_empty_list() {
         let mut rng = StdRng::seed_from_u64(0);
-        assert!(choose_action(&[], 0, 8, None, &mut rng).is_none());
-        assert!(choose_action(&[], 99, 8, Some(&PlayerAction::EndTurn), &mut rng).is_none());
+        assert!(choose_action(&[], 0, 8, &[], &mut rng).is_none());
+        assert!(choose_action(&[], 99, 8, &[PlayerAction::EndTurn], &mut rng).is_none());
     }
 
     #[test]
