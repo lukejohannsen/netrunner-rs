@@ -32,7 +32,7 @@ pub enum ReplayError {
     /// action identically), so this is the signature of a rules change
     /// since the match was played — named by entry so the divergence can
     /// be found.
-    #[error("entry {index} ({action:?}) no longer replays: {error:?} — the rules have changed since this record was written")]
+    #[error("entry {index} ({action:?}) no longer replays: {error} — the rules have changed since this record was written")]
     Diverged { index: usize, action: PlayerAction, error: RulesError },
 }
 

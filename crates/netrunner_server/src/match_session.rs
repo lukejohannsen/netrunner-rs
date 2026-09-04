@@ -339,8 +339,16 @@ impl MatchSession {
                             // The session leaves the state untouched and
                             // this same side still awaiting, so the next
                             // `step` re-offers the decision.
+                            // `Display`, not `Debug`: `RulesError` carries
+                            // 97 authored `#[error(...)]` messages written
+                            // for a player to read, and this is one of the
+                            // two places a player ever sees a rejection.
+                            // `{error:?}` shipped the struct literal instead
+                            // ("NotEnoughCredits { side: Runner, available:
+                            // 2, requested: 5 }") and made every one of
+                            // them unreachable.
                             Err(error) => {
-                                self.send_to(side, ServerMessage::ActionRejected { reason: format!("{error:?}") });
+                                self.send_to(side, ServerMessage::ActionRejected { reason: error.to_string() });
                             }
                         },
                         ClientMessage::Surrender => {
@@ -640,7 +648,21 @@ mod tests {
         // phase) — should get rejected, not panic or hang the session.
         corp_client_tx.send(ClientMessage::SubmitAction(PlayerAction::EndTurn)).unwrap();
         let rejection = corp_rx.recv().await.unwrap();
-        assert!(matches!(rejection, ServerMessage::ActionRejected { .. }));
+        let ServerMessage::ActionRejected { reason } = rejection else {
+            panic!("expected a rejection, got {rejection:?}");
+        };
+        // The reason a player reads is `RulesError`'s authored `Display`
+        // message, never its `Debug` struct literal. This used to be
+        // `format!("{error:?}")` on both this path and the TUI's, which
+        // made all 97 `#[error(...)]` strings in `rules::error`
+        // unreachable by any user. Compared against the engine's own error
+        // for the same action rather than a hardcoded sentence, so the
+        // assertion follows `error.rs` if the wording is ever improved.
+        let (fresh, _events) = CoreGameState::setup(&corp_deck, &runner_deck, &fixtures::sample_registry(), 3).unwrap();
+        let expected = netrunner_core::rules::apply_action(&fresh, &fixtures::sample_registry(), PlayerAction::EndTurn)
+            .expect_err("EndTurn is illegal during the Mulligan phase");
+        assert_eq!(reason, expected.to_string());
+        assert!(!reason.contains('{'), "a Debug struct literal leaked into a player-facing reason: {reason}");
 
         // A legal follow-up still gets accepted and the session keeps going.
         corp_client_tx.send(ClientMessage::SubmitAction(PlayerAction::KeepHand)).unwrap();
