@@ -24,10 +24,34 @@ use crate::rules::run::{AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{GamePhase, GameState, InstallId, InstallSlot, Side};
 
 pub fn legal_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
-    candidate_actions(state, registry)
-        .into_iter()
-        .filter(|action| apply_action(state, registry, action.clone()).is_ok())
-        .collect()
+    let mut seen: Vec<PlayerAction> = Vec::new();
+    for action in candidate_actions(state, registry) {
+        // Deduplicated, and the reason is that a hand is a *multiset*.
+        // `candidate_actions` proposes one action per hand position, but a
+        // hand card is named by `CardId`, so three copies of Hedge Fund in
+        // HQ produced three byte-identical `PlayOperation` entries. They
+        // are not three moves — playing the second copy and playing the
+        // third are the same move, unlike two installed copies, which
+        // `InstallId` correctly separates because they hold different
+        // counters (ROADMAP Phase 1 §3).
+        //
+        // Left alone, the duplicates reached everything downstream:
+        // `ClientView::legal_actions` showed a player the same entry N
+        // times, `UniformPolicyEvaluator` divides its prior by
+        // `legal_count` so a card held in multiples drew N times the prior
+        // mass of one held singly, and `get_action_mask` lit one bit per
+        // aliasing slot. Deduplicating here fixes all three at the source
+        // rather than at each consumer.
+        //
+        // `Vec::contains` over a list this short (mean 7, and it is the
+        // *candidate* count that bounds it) beats hashing `PlayerAction`,
+        // and it preserves candidate order, which several callers and the
+        // `ActionSpace` round trip depend on.
+        if !seen.contains(&action) && apply_action(state, registry, action.clone()).is_ok() {
+            seen.push(action);
+        }
+    }
+    seen
 }
 
 /// Whose decision is actually pending right now, if anyone's. `GameState::
