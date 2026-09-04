@@ -118,6 +118,60 @@ impl PolicyEvaluator for SplitEvaluator {
     }
 }
 
+/// Mixes another evaluator's priors toward uniform over the legal set:
+/// `P' = (1 - epsilon) * P + epsilon / legal_count`, value untouched.
+///
+/// **An instrument, like `SplitEvaluator`, and for a measured reason.**
+/// `rejected_iter_008.onnx` ranks better than chance — 44.4% top-1 against
+/// the search's own argmax over 47,327 held-out steps, where uniform scores
+/// 30.1% — yet seating its priors alone scores 0.1745 in the arena against
+/// 0.4141 for its value alone. The diagnosis is calibration, not ranking:
+/// the head is *peakier than its own training target* (top prior 0.452 mean
+/// against the search's 0.349) and, in the 56% of steps where it is wrong,
+/// gives the correct action a median prior of 0.110. `puct_score`'s
+/// exploration term is linear in the prior and there is no root Dirichlet
+/// noise, so a starved action is never explored back. A uniform prior
+/// starves nothing, which is how a worse ranking wins.
+///
+/// `epsilon` is therefore a dial between the two: `0.0` is the network's
+/// prior untouched, `1.0` is the uniform search's own prior. Sweeping it
+/// says whether the loss is recoverable by calibration alone.
+pub struct MixedPriorEvaluator {
+    inner: Box<dyn PolicyEvaluator>,
+    epsilon: f32,
+}
+
+impl MixedPriorEvaluator {
+    pub fn new(inner: Box<dyn PolicyEvaluator>, epsilon: f32) -> Self {
+        Self { inner, epsilon: epsilon.clamp(0.0, 1.0) }
+    }
+}
+
+impl PolicyEvaluator for MixedPriorEvaluator {
+    fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
+        let (priors, value) = self.inner.evaluate(state, registry);
+        if self.epsilon <= 0.0 {
+            return (priors, value);
+        }
+        // Mixed over the *mask*, not over whichever slots came back
+        // nonzero: a legal slot the inner evaluator gave exactly 0.0 (an
+        // underflowed softmax tail) is precisely the starved case this
+        // exists to lift.
+        let mask = get_action_mask(state, registry);
+        let legal_count = mask.iter().filter(|&&legal| legal).count();
+        if legal_count == 0 {
+            return (priors, value);
+        }
+        let uniform = 1.0 / legal_count as f32;
+        let mixed = priors
+            .iter()
+            .zip(&mask)
+            .map(|(&prior, &legal)| if legal { (1.0 - self.epsilon) * prior + self.epsilon * uniform } else { 0.0 })
+            .collect();
+        (mixed, value)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -206,6 +260,55 @@ mod tests {
         assert!(runner_value < 0.0);
         assert!((-1.0..=1.0).contains(&corp_value));
         assert!((-1.0..=1.0).contains(&runner_value));
+    }
+
+    #[test]
+    fn mixing_all_the_way_to_uniform_reproduces_the_uniform_evaluators_prior() {
+        let (registry, state) = sample_corp_turn_state();
+        let uniform = UniformPolicyEvaluator::new(Side::Corp);
+        let (expected, _) = uniform.evaluate(&state, &registry);
+
+        let mixed = MixedPriorEvaluator::new(Box::new(UniformPolicyEvaluator::new(Side::Corp)), 1.0);
+        let (priors, _) = mixed.evaluate(&state, &registry);
+
+        for (index, (&got, &want)) in priors.iter().zip(&expected).enumerate() {
+            assert!((got - want).abs() < 1e-6, "index {index}: {got} != {want}");
+        }
+    }
+
+    #[test]
+    fn mixing_lifts_a_starved_legal_slot_and_leaves_illegal_slots_at_zero() {
+        // The case the dial exists for: a legal action the inner evaluator
+        // gave no mass at all still gets its uniform share.
+        struct OneHot;
+        impl PolicyEvaluator for OneHot {
+            fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
+                let mask = get_action_mask(state, registry);
+                let first = mask.iter().position(|&legal| legal).expect("the fixture state has legal actions");
+                let mut priors = vec![0.0; ActionSpace::SIZE];
+                priors[first] = 1.0;
+                (priors, 0.0)
+            }
+        }
+
+        let (registry, state) = sample_corp_turn_state();
+        let mask = get_action_mask(&state, &registry);
+        let legal_count = mask.iter().filter(|&&legal| legal).count();
+        assert!(legal_count > 1, "this test needs a state with a slot to starve");
+
+        let mixed = MixedPriorEvaluator::new(Box::new(OneHot), 0.5);
+        let (priors, _) = mixed.evaluate(&state, &registry);
+
+        let share = 0.5 / legal_count as f32;
+        for (index, &legal) in mask.iter().enumerate() {
+            if legal {
+                assert!(priors[index] >= share - 1e-6, "legal index {index} was left starved at {}", priors[index]);
+            } else {
+                assert_eq!(priors[index], 0.0, "index {index} is illegal but got mass");
+            }
+        }
+        let sum: f32 = priors.iter().sum();
+        assert!((sum - 1.0).abs() < 1e-4, "mixing must stay a distribution, summed to {sum}");
     }
 
     #[test]
