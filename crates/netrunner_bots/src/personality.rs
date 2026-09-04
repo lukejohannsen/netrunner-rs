@@ -126,25 +126,40 @@ impl Personality {
                 ..base
             },
             Personality::Trap => Weights {
-                // Half a point per card in the Runner's grip: a net
-                // damage is +0.5 and an emptied grip is +2.5, on the
-                // scale where an agenda point is 20.
-                opponent_grip_weight: 0.5,
-                // **The lever the first cut of this profile was missing.**
-                // It valued a thin grip with no way to recognise the
-                // cards that would thin it, so it only ever paid for the
-                // wish: ROADMAP Phase 3 §1 records it losing to balanced,
-                // 37 Corp wins to 42. A face-down ambush is now worth
-                // more than a plain install to *this* profile alone, and
-                // its tokens are worth nearly an agenda's, since damage
-                // is what this Corp is buying with them.
-                ambush_weight: 1.0,
-                ambush_advancement_weight: 1.4,
-                ambush_advancement_cap: 4,
-                own_credit_weight: 0.5,
-                unrezzed_install_weight: 1.3,
-                agenda_protection_weight: 0.3,
-                hq_floor: 4,
+                // **Three terms, all of them card-inspecting, and nothing
+                // else.** The first cut of this profile was six generic
+                // knobs — hoard credits, install more, hold a bigger hand,
+                // protect agendas *less* — around a wish that the Runner's
+                // hand be thin, and it lost to balanced 73 to 89 over five
+                // seeds of 192 games. Every one of those knobs was
+                // costing it: with them removed and only the ambush terms
+                // left it went to 443, and turning the ambush terms up to
+                // these values to 460 — ahead of balanced's 439 on all
+                // five seeds. The lesson is recorded in ROADMAP Phase 3
+                // §1: a profile earns its name from a lever that reads the
+                // cards, not from twisting the shared dials.
+                //
+                // `ambush_advancement_weight` is the engine. Alone it is
+                // worth +14 over balanced; `ambush_weight` alone is worth
+                // −2, and only +7 more on top of it — a face-down ambush
+                // is a threat *because it is loaded*, and valuing the
+                // face-down card without valuing what fills it buys
+                // nothing. The cap at 7 rather than the balanced 3
+                // because this Corp is buying damage with its clicks and
+                // means to reach a lethal number; past 10 it turns over
+                // (457) as the clicks stop being worth it.
+                //
+                // **`opponent_grip_weight` is deliberately absent**, and
+                // that is a measurement, not an oversight: it was the
+                // term this archetype was built around, and setting it to
+                // 0.5 changes nothing — 443 against 444 at the old
+                // settings, 460 against 460 at these, with the same
+                // `DamageTaken` and the same trigger counts to the unit.
+                // The Corp does not choose to deal this damage; the
+                // Runner walks into it. No profile uses the term now.
+                ambush_weight: 3.0,
+                ambush_advancement_weight: 2.8,
+                ambush_advancement_cap: 7,
                 ..base
             },
             Personality::Aggressive => Weights {
@@ -225,10 +240,18 @@ mod tests {
         assert!(glacier.agenda_protection_weight > base.agenda_protection_weight && glacier.advancement_weight < base.advancement_weight);
         assert!(glacier.agenda_protection_cap > base.agenda_protection_cap);
         let trap = Personality::Trap.weights();
-        assert!(trap.opponent_grip_weight > 0.0 && base.opponent_grip_weight == 0.0);
         assert!(trap.ambush_weight > 0.0 && base.ambush_weight == 0.0, "the lever the profile was missing");
         assert!(trap.ambush_advancement_weight > base.ambush_advancement_weight);
         assert!(trap.ambush_advancement_cap > base.ambush_advancement_cap);
+        // The profile is *only* its ambush terms — the retune measured
+        // every other knob it used to carry as a cost, and the grip term
+        // it was named for as inert. If a later change reintroduces one,
+        // it should have to justify it against balanced.
+        assert_eq!(
+            Weights { ambush_weight: base.ambush_weight, ambush_advancement_weight: base.ambush_advancement_weight, ambush_advancement_cap: base.ambush_advancement_cap, ..trap },
+            base,
+            "Trap deviates from balanced in its ambush terms and nothing else"
+        );
         let aggressive = Personality::Aggressive.weights();
         assert!(aggressive.active_run_weight > base.active_run_weight && aggressive.pending_subroutine_weight < base.pending_subroutine_weight);
         let cautious = Personality::Cautious.weights();
