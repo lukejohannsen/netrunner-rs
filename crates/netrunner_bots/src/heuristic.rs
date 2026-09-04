@@ -164,6 +164,62 @@ mod tests {
         assert_eq!(glacier.select_action(&view, &registry), ice_in_front);
     }
 
+    /// PT Untaian's discard-phase offer, which the Corp declined every
+    /// one of the 332 times it was made across 192 heuristic-vs-heuristic
+    /// games: pay 1[c] and put an advancement token on an installed card.
+    /// Accepting hands the Corp a `PromptChooseCards`, so before
+    /// `PENDING_DECISION_UPSIDE_WEIGHT` the accept was charged the
+    /// prompt's penalty on top of the credit while declining resolved to
+    /// nothing and was free.
+    #[test]
+    fn accepts_a_paid_choice_that_buys_an_advancement_token() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef, Cost, Effect};
+        use netrunner_core::rules::{PendingPaidChoice, PendingPaidChoiceResume};
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.runner = empty_runner();
+        state.corp = CorpState {
+            resources: PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            installed: vec![InstalledCard {
+                card: CardId("agenda".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        state.pending_paid_choice = Some(PendingPaidChoice {
+            side: Side::Corp,
+            cost: Cost::Credits(1),
+            if_paid: Effect::PromptChooseCards {
+                side: Side::Corp,
+                source: CardZoneRef::OwnInstalled,
+                filter: CardFilter::All(vec![CardFilter::Advanceable, CardFilter::Unrezzed]),
+                min: 1,
+                max: 1,
+                reveal: false,
+                shuffle_after: false,
+                destination: None,
+                then: Some(Box::new(Effect::AddAdvancementTokens(1))),
+            },
+            if_declined: Effect::Sequence(Vec::new()),
+            source_card: None,
+            source_install: None,
+            resume: PendingPaidChoiceResume::None,
+        });
+
+        let view = build_client_view(&state, &registry, Side::Corp);
+        assert!(view.legal_actions.contains(&PlayerAction::DeclinePendingPaidChoice));
+        let chosen = HeuristicAgent::new(Side::Corp, 1).select_action(&view, &registry);
+        assert_eq!(chosen, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None });
+    }
+
     #[test]
     fn prefers_scoring_a_ready_agenda_over_an_idle_click() {
         let mut registry = CardRegistry::new();

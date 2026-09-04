@@ -1,8 +1,11 @@
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{Amount, CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount, Trigger};
+use netrunner_core::dsl::{
+    card_matches_filter, Amount, CardDefinition, CardFilter, CardType, CardZoneRef, Cost, Effect, IceType,
+    SubroutineBreakCount, Trigger,
+};
 use netrunner_core::rules::{
-    current_actor, GamePhase, GameState, InstalledCard, InstalledRunnerCard, RunIce, RunPhase, RunState, Side,
-    SubroutineStatus,
+    current_actor, GamePhase, GameState, InstalledCard, InstalledRunnerCard, PendingDecision, RunIce, RunPhase,
+    RunState, Side, SubroutineStatus,
 };
 
 const WIN_SCORE: f64 = 1000.0;
@@ -177,6 +180,33 @@ const PENDING_SUBROUTINE_WEIGHT: f64 = 1.0;
 /// well above the largest per-card term on either side (`GRIP_SHORTFALL_
 /// WEIGHT` 0.7, `HQ_SHORTFALL_WEIGHT` 0.5, a rig card's 1.0 presence).
 const UNRESOLVED_DECISION_WEIGHT: f64 = 2.0;
+/// Credited to a parked `PendingDecision` whose continuation this
+/// evaluator can already price, on top of that continuation's own
+/// lower-bound value (`pending_decision_upside`). Without it the Corp
+/// accepted **none of 332** paid choices in 192 heuristic-vs-heuristic
+/// games, at every one of five seeds, and the arithmetic is why:
+/// `AcceptPendingPaidChoice` pays a real cost and hands the payer a
+/// `PromptChooseCards`, so the successor owes
+/// `UNRESOLVED_DECISION_WEIGHT` while `DeclinePendingPaidChoice`
+/// resolves to `Sequence []` and owes nothing. PT Untaian's "pay 1[c],
+/// put an advancement token on an installed card" scored −0.4 − 2.0 =
+/// −2.4 against declining's 0.0, and the token it buys is one ply the
+/// other side of the prompt.
+///
+/// **Why an allowance on top of the priced continuation, and why it has
+/// to stay under `UNRESOLVED_DECISION_WEIGHT`.** Writing `P` for that
+/// penalty, `C` for the accept cost and `F` for what resolving really
+/// delivers: accepting wins when `upside + this > P + C`, and the agent
+/// still prefers *resolving* the prompt to sitting in it when
+/// `F + P > upside + this`. The second is the toggle-walk the penalty
+/// exists to prevent, and because `upside` is a **lower bound** on `F`
+/// it holds for every card whenever this constant is below `P` — safe by
+/// construction rather than by measurement, which is the whole reason
+/// the upside is a bound and not an estimate. The first then flips any
+/// accept whose priced upside beats `P + C − this` = 0.5 + `C`. A flat
+/// bonus large enough to flip an accept on its own would have to exceed
+/// `P` and would re-create the wander.
+const PENDING_DECISION_UPSIDE_WEIGHT: f64 = 1.5;
 /// Each point by which the encountered ICE's strength exceeds the best
 /// matching breaker's. Pumping strength changes nothing else a static
 /// evaluator sees, so a Runner holding Cleaver against a strength-4
@@ -230,9 +260,14 @@ const GRIP_FLOOR: usize = 3;
 /// than stalling; at the floor a draw is worth 0 and the clicks go to
 /// installs and advancement.
 const HQ_SHORTFALL_WEIGHT: f64 = 0.5;
-/// Cards in HQ below which `HQ_SHORTFALL_WEIGHT` applies. Two, not the
-/// Runner's three: the mandatory draw already feeds HQ every turn, and
-/// every card held there is one more an HQ run can steal.
+/// Cards in HQ below which `HQ_SHORTFALL_WEIGHT` applies. Three, the
+/// same floor as the Runner's `GRIP_FLOOR`, and measured there: the
+/// stall that set `UNRESOLVED_DECISION_WEIGHT` was found at this floor
+/// (heuristic Corp vs random Runner, seed 77), so the pair was tuned
+/// together. The pull the other way is real — the mandatory draw
+/// already feeds HQ every turn and every card held there is one more an
+/// HQ run can steal — which is why the floor sits at three rather than
+/// higher.
 const HQ_FLOOR: usize = 3;
 /// R&D size below which the HQ term switches off. A Corp that draws its
 /// deck out loses at the next mandatory draw, and a one-ply evaluator
@@ -275,6 +310,7 @@ pub struct Weights {
     pub active_run_weight: f64,
     pub pending_subroutine_weight: f64,
     pub unresolved_decision_weight: f64,
+    pub pending_decision_upside_weight: f64,
     pub strength_shortfall_weight: f64,
     pub savings_shortfall_weight: f64,
     pub grip_shortfall_weight: f64,
@@ -324,6 +360,7 @@ impl Default for Weights {
             active_run_weight: ACTIVE_RUN_WEIGHT,
             pending_subroutine_weight: PENDING_SUBROUTINE_WEIGHT,
             unresolved_decision_weight: UNRESOLVED_DECISION_WEIGHT,
+            pending_decision_upside_weight: PENDING_DECISION_UPSIDE_WEIGHT,
             strength_shortfall_weight: STRENGTH_SHORTFALL_WEIGHT,
             savings_shortfall_weight: SAVINGS_SHORTFALL_WEIGHT,
             grip_shortfall_weight: GRIP_SHORTFALL_WEIGHT,
@@ -364,6 +401,10 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
     let mut score = (own.agenda_points.0 as f64 - opponent.agenda_points.0 as f64) * w.agenda_point_weight;
     if state.is_resolution_blocked() && current_actor(state) == Some(side) {
         score -= w.unresolved_decision_weight;
+        let upside = pending_decision_upside(state, side, registry, w);
+        if upside > 0.0 {
+            score += upside + w.pending_decision_upside_weight;
+        }
     }
     score += own.credits.0 as f64 * w.own_credit_weight;
     score -= opponent.credits.0 as f64 * w.opponent_credit_weight;
@@ -612,6 +653,182 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &We
         }
     }
     value
+}
+
+/// A **lower bound** on what resolving the `PendingDecision` `side`
+/// currently owes will add to this same evaluation — zero whenever the
+/// decision's continuation is one this evaluator cannot price, which is
+/// most of them.
+///
+/// A bound rather than an estimate, and that is the whole design: the
+/// caller credits this alongside `PENDING_DECISION_UPSIDE_WEIGHT`, and
+/// over-crediting a parked prompt makes sitting in it better than
+/// resolving it — the wander `UNRESOLVED_DECISION_WEIGHT` exists to
+/// stop. Everything below therefore prices the *worst* resolution the
+/// decision allows, never the one the agent would like, and
+/// `continuation_upside` is a **whitelist**: an effect it does not
+/// recognise makes the whole continuation unpriceable rather than
+/// contributing zero to a sum. Measured, on the branch that added this:
+/// with a catch-all instead, *Touch-ups* stalled the view sweep at seed
+/// 7 for the full 10,000 actions. Its `then` advances a card by two
+/// (priced, +3.0) and *then* parks a `PresentChoice` (worth zero to this
+/// term but −`UNRESOLVED_DECISION_WEIGHT` to the state), so confirming
+/// the selection was 1.5 worse than sitting in it and the Corp toggled
+/// position 4 on and off until the budget ran out. A continuation that
+/// parks a further decision therefore has to be unpriceable, and a
+/// whitelist gets that right for every future `Effect` variant without
+/// anyone remembering to classify it.
+///
+/// Only `ChooseCards` is read. `ChooseEffect` gates a set of options
+/// this would have to price one by one and take the worst of;
+/// `ChooseServer` and `ChooseTriggerOrder` gate a run target and an
+/// ordering rather than a value. All three keep the plain penalty they
+/// have always had.
+fn pending_decision_upside(state: &GameState, side: Side, registry: &CardRegistry, w: &Weights) -> f64 {
+    let Some(PendingDecision::ChooseCards { side: chooser, source, filter, min, destination, then, .. }) =
+        &state.pending_decision
+    else {
+        return 0.0;
+    };
+    if *chooser != side {
+        return 0.0;
+    }
+    // Cards this selection takes out of R&D, checked where the HQ term
+    // is: that term switches off entirely below `rd_draw_reserve`, so a
+    // bound that moved two cards into HQ without noticing R&D had
+    // crossed the reserve would over-credit exactly the draw it prices.
+    let rd_spent = if matches!(source, CardZoneRef::OwnRAndD) && destination.is_some() { *min as usize } else { 0 };
+    let moved = match destination {
+        // No destination means no cards move — the selection names
+        // targets for the `then` and leaves them where they are.
+        None => 0.0,
+        Some(destination) => {
+            zone_size_value(state, side, w, destination, i64::from(*min), rd_spent)
+                + zone_size_value(state, side, w, source, -i64::from(*min), rd_spent)
+        }
+    };
+    match then {
+        None => moved,
+        Some(then) => match continuation_upside(state, side, registry, w, source, filter, then, rd_spent) {
+            Some(value) => moved + value,
+            None => 0.0,
+        },
+    }
+}
+
+/// What the `then` of a parked selection is worth, or `None` when any
+/// part of it is an effect this evaluator does not price — see
+/// `pending_decision_upside` for why an unrecognised effect has to
+/// poison the whole continuation rather than count as zero. `EndTheRun`
+/// is the conspicuous absentee: the Corp has no term for a run in
+/// progress at all, which is why *Anoetic Void*'s "discard 2 from HQ to
+/// end the run" is still declined every time it is offered.
+#[allow(clippy::too_many_arguments)]
+fn continuation_upside(
+    state: &GameState,
+    side: Side,
+    registry: &CardRegistry,
+    w: &Weights,
+    source: &CardZoneRef,
+    filter: &CardFilter,
+    effect: &Effect,
+    rd_spent: usize,
+) -> Option<f64> {
+    match effect {
+        Effect::Sequence(effects) => effects
+            .iter()
+            .map(|effect| continuation_upside(state, side, registry, w, source, filter, effect, rd_spent))
+            .sum(),
+        Effect::GainCredits(gains, amount) if *gains == side => Some(f64::from(*amount) * w.own_credit_weight),
+        Effect::DrawCards(draws, amount) if *draws == side => Some(zone_size_value(
+            state,
+            side,
+            w,
+            &own_hand_zone(side),
+            i64::from(*amount),
+            rd_spent + *amount as usize,
+        )),
+        Effect::AddAdvancementTokens(amount) => {
+            Some(advancement_upside(state, side, registry, w, source, filter, *amount))
+        }
+        _ => None,
+    }
+}
+
+fn own_hand_zone(side: Side) -> CardZoneRef {
+    match side {
+        Side::Corp => CardZoneRef::OwnHq,
+        Side::Runner => CardZoneRef::OwnGrip,
+    }
+}
+
+/// What `delta` cards arriving in (or leaving) `zone` are worth. Only the
+/// two hands are worth anything at all here, and only through the
+/// shortfall terms that already price them — a card above the floor is
+/// worth nothing to this evaluator, so a draw into a healthy hand is
+/// correctly credited zero rather than optimistically.
+fn zone_size_value(
+    state: &GameState,
+    side: Side,
+    w: &Weights,
+    zone: &CardZoneRef,
+    delta: i64,
+    rd_spent: usize,
+) -> f64 {
+    let (held, floor, weight) = match (side, zone) {
+        // Mirrors the live term, `rd_draw_reserve` guard included.
+        (Side::Corp, CardZoneRef::OwnHq) => {
+            if state.corp.r_and_d.len() < w.rd_draw_reserve + rd_spent {
+                return 0.0;
+            }
+            (state.corp.hq.len(), w.hq_floor, w.hq_shortfall_weight)
+        }
+        (Side::Runner, CardZoneRef::OwnGrip) => (state.runner.grip.len(), w.grip_floor, w.grip_shortfall_weight),
+        _ => return 0.0,
+    };
+    let after = held.saturating_add_signed(delta as isize);
+    let before_shortfall = floor.saturating_sub(held) as f64;
+    let after_shortfall = floor.saturating_sub(after) as f64;
+    (before_shortfall - after_shortfall) * weight
+}
+
+/// What another advancement token is worth on the *worst* card the parked
+/// selection could put it on. `card_matches_filter` is the
+/// definition-level half of the filter — its instance-level clauses
+/// (`Unrezzed`, `TopOfZone`) pass everything — so the cards walked here
+/// are a **superset** of the eligible ones, which is exactly what keeps
+/// the minimum over them a lower bound.
+///
+/// The evaluator cannot see which card the selection will land on: a
+/// toggle changes `selected`, which nothing here scores. So the worst
+/// eligible target is not pessimism, it is the honest reading — an
+/// agenda already at its requirement or an ambush at
+/// `ambush_advancement_cap` gains nothing from another token, and where
+/// one of those is eligible this term is correctly zero.
+fn advancement_upside(
+    state: &GameState,
+    side: Side,
+    registry: &CardRegistry,
+    w: &Weights,
+    source: &CardZoneRef,
+    filter: &CardFilter,
+    amount: u32,
+) -> f64 {
+    if side != Side::Corp || !matches!(source, CardZoneRef::OwnInstalled) {
+        return 0.0;
+    }
+    let mut worst: Option<f64> = None;
+    for installed in &state.corp.installed {
+        let Some(def) = registry.get(&installed.card) else { return 0.0 };
+        if !card_matches_filter(def, filter) {
+            continue;
+        }
+        let mut advanced = installed.clone();
+        advanced.advancement_tokens += amount;
+        let delta = corp_install_value(&advanced, registry, w) - corp_install_value(installed, registry, w);
+        worst = Some(worst.map_or(delta, |worst: f64| worst.min(delta)));
+    }
+    worst.unwrap_or(0.0).max(0.0)
 }
 
 /// Agenda counters sitting on the Corp's scored agendas — Dividends,
@@ -1108,6 +1325,169 @@ mod tests {
             evaluate_state(&parked, Side::Corp, &registry),
             evaluate_state(&clear, Side::Corp, &registry),
             "the opponent's parked decision is not the Corp's problem"
+        );
+    }
+
+    /// The structural guarantee behind `PENDING_DECISION_UPSIDE_WEIGHT`,
+    /// asserted on the constants rather than inferred from a position:
+    /// while the allowance stays under the penalty it is credited
+    /// alongside, and the upside it accompanies is a lower bound on what
+    /// resolving delivers, resolving a prompt always beats sitting in it.
+    /// Raise this above `UNRESOLVED_DECISION_WEIGHT` and the toggle-walk
+    /// that weight exists to stop comes back.
+    #[test]
+    fn the_prompt_allowance_stays_under_the_penalty_it_offsets() {
+        let w = Weights::default();
+        assert!(w.pending_decision_upside_weight < w.unresolved_decision_weight);
+    }
+
+    fn advanceable(id: &str, required: u32) -> CardDefinition {
+        CardDefinition {
+            card_type: CardType::Agenda,
+            advancement_requirement: Some(required),
+            agenda_points: Some(2),
+            ..ice(id, 0)
+        }
+    }
+
+    /// PT Untaian's shape: a parked selection over the Corp's own
+    /// advanceable installs whose `then` puts a token on whichever it
+    /// picks. Before this term the prompt was pure cost, so the paid
+    /// choice that hands it over was declined every time it was offered
+    /// (332 of 332 across 192 heuristic-vs-heuristic games).
+    fn parked_advancement_prompt(installed: Vec<InstalledCard>) -> GameState {
+        use netrunner_core::rules::PendingChoiceResume;
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.installed = installed;
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnInstalled,
+            filter: CardFilter::All(vec![CardFilter::Advanceable, CardFilter::Unrezzed]),
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: None,
+            then: Some(Box::new(Effect::AddAdvancementTokens(1))),
+            selected: Vec::new(),
+            source_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        state
+    }
+
+    fn under_requirement() -> InstalledCard {
+        InstalledCard { card: CardId("under".to_string()), install_id: InstallId(1), ..Default::default() }
+    }
+
+    #[test]
+    fn a_parked_prompt_that_will_advance_a_card_is_worth_entering_and_still_worth_resolving() {
+        let registry = CardRegistry::from_cards(vec![advanceable("under", 3)]);
+        let mut clear = GameState::new(0);
+        clear.phase = GamePhase::Action(Side::Corp);
+        clear.corp.installed = vec![under_requirement()];
+        let parked = parked_advancement_prompt(vec![under_requirement()]);
+        let mut resolved = clear.clone();
+        resolved.corp.installed[0].advancement_tokens = 1;
+
+        let score = |state: &GameState| evaluate_state(state, Side::Corp, &registry);
+        assert!(
+            score(&parked) > score(&clear),
+            "a prompt that will land an advancement token is worth being handed"
+        );
+        assert!(
+            score(&resolved) > score(&parked),
+            "and resolving it still beats sitting in it — the toggle-walk guarantee"
+        );
+    }
+
+    /// The bound is over the *worst* target the selection allows, because
+    /// the evaluator cannot see which one a toggle will pick. One agenda
+    /// already at its requirement among the eligible cards is enough to
+    /// price the whole prompt at nothing.
+    #[test]
+    fn a_prompt_whose_worst_target_gains_nothing_keeps_the_full_penalty() {
+        let registry = CardRegistry::from_cards(vec![advanceable("under", 3), advanceable("done", 1)]);
+        let finished = InstalledCard {
+            card: CardId("done".to_string()),
+            install_id: InstallId(2),
+            advancement_tokens: 1,
+            ..Default::default()
+        };
+        let mut clear = GameState::new(0);
+        clear.phase = GamePhase::Action(Side::Corp);
+        clear.corp.installed = vec![under_requirement(), finished.clone()];
+        let parked = parked_advancement_prompt(vec![under_requirement(), finished]);
+
+        let score = |state: &GameState| evaluate_state(state, Side::Corp, &registry);
+        assert!(score(&parked) < score(&clear), "the worst eligible target gains nothing, so neither does the prompt");
+    }
+
+    /// *Touch-ups*' shape, and the regression this whole design is
+    /// built around: a continuation that advances a card (priced) and
+    /// *then* parks a `PresentChoice` (not priced, but charged the
+    /// penalty the moment it lands). Crediting the priced half alone
+    /// made confirming the selection worse than sitting in it, and the
+    /// heuristic Corp toggled one position on and off for the whole
+    /// 10,000-action budget (view sweep, seed 7, gimbatul vs
+    /// professional_opportunities). An unrecognised effect anywhere in
+    /// the continuation has to make the whole thing unpriceable.
+    #[test]
+    fn a_continuation_that_parks_a_further_decision_is_not_priced_at_all() {
+        let registry = CardRegistry::from_cards(vec![advanceable("under", 3)]);
+        let mut clear = GameState::new(0);
+        clear.phase = GamePhase::Action(Side::Corp);
+        clear.corp.installed = vec![under_requirement()];
+
+        let mut parked = parked_advancement_prompt(vec![under_requirement()]);
+        let priced = evaluate_state(&parked, Side::Corp, &registry);
+        let Some(PendingDecision::ChooseCards { then, .. }) = &mut parked.pending_decision else { unreachable!() };
+        *then = Some(Box::new(Effect::Sequence(vec![
+            Effect::AddAdvancementTokens(1),
+            Effect::PresentChoice {
+                chooser: Side::Corp,
+                options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())],
+            },
+        ])));
+
+        assert!(evaluate_state(&parked, Side::Corp, &registry) < priced);
+        assert_eq!(
+            evaluate_state(&clear, Side::Corp, &registry) - evaluate_state(&parked, Side::Corp, &registry),
+            UNRESOLVED_DECISION_WEIGHT,
+            "a continuation that parks another decision keeps the plain penalty"
+        );
+    }
+
+    /// A prompt whose continuation this evaluator cannot price — most of
+    /// them, `EndTheRun` included — is charged the plain penalty exactly
+    /// as it was before the term existed.
+    #[test]
+    fn an_unpriceable_prompt_is_charged_exactly_the_old_penalty() {
+        use netrunner_core::rules::PendingChoiceResume;
+        let registry = CardRegistry::new();
+        let mut clear = GameState::new(0);
+        clear.phase = GamePhase::Action(Side::Corp);
+        let mut parked = clear.clone();
+        parked.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnHq,
+            filter: CardFilter::Any,
+            min: 2,
+            max: 2,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(CardZoneRef::OwnArchives),
+            then: Some(Box::new(Effect::EndTheRun)),
+            selected: Vec::new(),
+            source_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        assert_eq!(
+            evaluate_state(&clear, Side::Corp, &registry) - evaluate_state(&parked, Side::Corp, &registry),
+            UNRESOLVED_DECISION_WEIGHT
         );
     }
 
