@@ -683,7 +683,7 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     let state = match GameState::setup(&dealt.corp, &dealt.runner, &shared.cards, seed) {
         Ok((state, _events)) => state,
         Err(error) => {
-            let reason = format!("match setup failed: {error:?}");
+            let reason = format!("match setup failed: {error}");
             for player in [&corp, &runner] {
                 if let Some(tx) = player.channel_tx() {
                     refuse(tx, &reason);

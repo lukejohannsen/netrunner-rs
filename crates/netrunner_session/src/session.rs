@@ -111,7 +111,17 @@ pub enum SubmitError {
     NoActor,
     /// The engine rejected the action. The state is unchanged and the same
     /// side is still awaiting.
-    #[error("the engine rejected the action: {0:?}")]
+    ///
+    /// `transparent`, so `RulesError`'s own authored message is what a
+    /// caller displays. It used to be `"the engine rejected the action:
+    /// {0:?}"`, which printed the `Debug` struct literal and so hid all 97
+    /// `#[error(...)]` messages in `rules::error` from every user of this
+    /// type — including the two places a player actually reads a rejection,
+    /// `MatchSession`'s `ActionRejected` and the TUI's `last_rejection`.
+    /// The prefix carried nothing a caller cannot say itself, and this
+    /// variant is a pure wrapper, which is exactly what `transparent` is
+    /// for (`SelfPlayError::Rules` already relates to it the same way).
+    #[error(transparent)]
     Rules(#[from] RulesError),
 }
 

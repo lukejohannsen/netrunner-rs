@@ -368,7 +368,7 @@ fn drive_local(
                 let index = agent.select_action(session.state(), session.registry(), &mask);
                 let action = ActionSpace::action_at(session.state(), index)
                     .ok_or_else(|| format!("the {side:?} policy chose index {index}, which decodes to no action"))?;
-                session.submit(action).map_err(|error| format!("the {side:?} policy chose an action the engine rejected: {error:?}"))?;
+                session.submit(action).map_err(|error| format!("the {side:?} policy chose an action the engine rejected: {error}"))?;
                 log_last(session, ui, human_side);
             }
             SessionStep::Ended { winner, reason } => {
@@ -434,7 +434,9 @@ fn prompt_human(
                     if let Some(action) = ui.selected_action() {
                         match submit(action) {
                             Ok(()) => return Ok(false),
-                            Err(SubmitError::Rules(error)) => ui.last_rejection = Some(format!("{error:?}")),
+                            // `Display`, not `Debug` — see the same
+                            // change in `MatchSession`'s reject arm.
+                            Err(SubmitError::Rules(error)) => ui.last_rejection = Some(error.to_string()),
                             Err(error) => return Err(error.into()),
                         }
                     }
