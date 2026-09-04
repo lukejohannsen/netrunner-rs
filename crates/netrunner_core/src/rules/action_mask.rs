@@ -557,11 +557,36 @@ impl ActionSpace {
 /// indices whose `ActionSpace::action_at` yields a member of
 /// `legal_actions(state, registry)`. All legality logic is `legal_actions`'
 /// — this only decides which fixed index each legal action occupies.
+/// **One bit per legal action, at its canonical slot** — built forwards
+/// through `ActionSpace::index_of` rather than by decoding all
+/// `ActionSpace::SIZE` slots and keeping the ones `legal_actions` contains.
+///
+/// The backwards form was `O(SIZE x legal)` with an allocation and a
+/// `String` comparison in its inner loop: at 1,646 slots against a mean of
+/// seven legal actions, ~1,600 `PlayerAction`s built to set about seven
+/// bits. `PuctNode::expand` calls this once per search node, so it is the
+/// hot path of self-play; forwards measures 1.67x on identical games.
+///
+/// It also fixes an aliasing bug, which is why this is not a pure
+/// optimisation. `index_of` resolves a hand card by `CardId` and takes the
+/// first matching position, so three copies of one card in hand share one
+/// canonical slot while `action_at` decodes *all three* of their positions
+/// back to the same action. The backwards form therefore lit three bits
+/// for one move, tripling its share of `UniformPolicyEvaluator`'s
+/// `1 / legal_count` prior and giving the search three identical edges.
+/// `legal_actions` now deduplicates (see there for why a hand is a
+/// multiset), and this lights each surviving action exactly once.
 pub fn get_action_mask(state: &GameState, registry: &CardRegistry) -> Vec<bool> {
-    let legal = legal_actions(state, registry);
-    (0..ActionSpace::SIZE)
-        .map(|index| ActionSpace::action_at(state, index).is_some_and(|action| legal.contains(&action)))
-        .collect()
+    let mut mask = vec![false; ActionSpace::SIZE];
+    for action in legal_actions(state, registry) {
+        // `None` is not an error: an action `legal_actions` offers may have
+        // no slot in the fixed encoding (a dynamic field past its cap). The
+        // backwards form dropped it too, by never decoding to it.
+        if let Some(index) = ActionSpace::index_of(state, &action) {
+            mask[index] = true;
+        }
+    }
+    mask
 }
 
 /// `Some(index - start)` when `index` falls in `[start, start + len)`.
@@ -809,15 +834,78 @@ mod tests {
         }
     }
 
+    /// The independent oracle for `get_action_mask`, derived the other way
+    /// round: walk every slot, decode it, and expect a bit exactly where
+    /// the decoded action is legal **and this slot is that action's
+    /// canonical one**.
+    ///
+    /// That last clause is the aliasing rule, and it is why this is not
+    /// simply "decoded is legal". Several hand positions can decode to the
+    /// same action when a hand holds duplicate copies; only the slot
+    /// `index_of` resolves to is the one the mask lights. Keep this written
+    /// backwards from `action_at` — rewriting it to loop over
+    /// `legal_actions` would make it a restatement of the implementation
+    /// instead of a check on it, and would retire the only assertion that
+    /// `index_of` and `action_at` still invert each other.
     fn assert_mask_matches_legal_actions(state: &GameState, registry: &CardRegistry) {
         let legal = legal_actions(state, registry);
         let mask = get_action_mask(state, registry);
         assert_eq!(mask.len(), ActionSpace::SIZE);
         for (index, &is_legal) in mask.iter().enumerate() {
             let decoded = ActionSpace::action_at(state, index);
-            let expected = decoded.as_ref().is_some_and(|a| legal.contains(a));
+            let expected = decoded
+                .as_ref()
+                .is_some_and(|a| legal.contains(a) && ActionSpace::index_of(state, a) == Some(index));
             assert_eq!(is_legal, expected, "mask[{index}] disagrees with legal_actions (decoded: {decoded:?})");
         }
+    }
+
+    /// Three copies of one card in hand are one move, not three.
+    ///
+    /// `candidate_actions` proposes per hand position, so this used to
+    /// yield three identical `PlayOperation`s, six mask bits (three
+    /// aliasing `InstallCard` slots and three `PlayOperation` slots) and a
+    /// tripled share of a uniform prior. Regression test for the hand-side
+    /// twin of ROADMAP Phase 1 §3's installed-card aliasing.
+    #[test]
+    fn duplicate_copies_in_hand_are_one_action_at_one_slot() {
+        let mut registry = CardRegistry::new();
+        registry.insert(CardDefinition {
+            id: CardId("hedge_fund".to_string()),
+            title: "Hedge Fund".to_string(),
+            side: Side::Corp,
+            card_type: CardType::Operation,
+            cost: 5,
+            is_playable: true,
+            ..Default::default()
+        });
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp = CorpState {
+            resources: PlayerResources { credits: Credits(10), clicks: Clicks(3), agenda_points: AgendaPoints(0) },
+            hq: vec![
+                CardId("hedge_fund".to_string()),
+                CardId("hedge_fund".to_string()),
+                CardId("hedge_fund".to_string()),
+            ],
+            ..Default::default()
+        };
+
+        let legal = legal_actions(&state, &registry);
+        let plays = legal.iter().filter(|a| matches!(a, PlayerAction::PlayOperation { .. })).count();
+        assert_eq!(plays, 1, "three copies of one operation are one legal move: {legal:?}");
+
+        let mut deduped = legal.clone();
+        deduped.dedup();
+        assert_eq!(deduped.len(), legal.len(), "legal_actions must not repeat an entry: {legal:?}");
+
+        let mask = get_action_mask(&state, &registry);
+        assert_eq!(
+            mask.iter().filter(|&&b| b).count(),
+            legal.len(),
+            "one bit per legal action, no aliases"
+        );
+        assert_mask_matches_legal_actions(&state, &registry);
     }
 
     /// Three copies of one card must occupy three distinct slots.
