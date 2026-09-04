@@ -282,8 +282,7 @@ pub struct PuctAgent {
     /// What `select_action` last chose, and how many times in a row it has
     /// chosen exactly that — the input to `pick_action`'s cycle break. See
     /// `MAX_GREEDY_REPEATS` for why a `BotAgent` needs one at all.
-    last_action: Option<PlayerAction>,
-    repeats: usize,
+    cycle: CycleGuard,
 }
 
 impl PuctAgent {
@@ -293,7 +292,7 @@ impl PuctAgent {
 
     pub fn with_config(side: Side, seed: u64, evaluator: impl PolicyEvaluator + 'static, config: PuctConfig) -> Self {
         let config = PuctConfig { iterations: config.iterations.max(1), max_depth: config.max_depth.max(1), ..config };
-        Self { side, seed, evaluator: Box::new(evaluator), config, last_action: None, repeats: 0 }
+        Self { side, seed, evaluator: Box::new(evaluator), config, cycle: CycleGuard::default() }
     }
 
     /// Runs a full PUCT search from `view`/`registry` and returns every
@@ -387,6 +386,81 @@ impl PuctAgent {
 /// decisions of network search, and each handed the candidate half a point.
 pub const MAX_GREEDY_REPEATS: usize = 8;
 
+/// How many *distinct* actions a full window may hold and still count as a
+/// cycle rather than play.
+///
+/// Two, so this stays a strict generalisation of "the same action
+/// `MAX_GREEDY_REPEATS` times" (a window of one distinct action) plus the
+/// two-cycle that has always been the observed shape — a card toggled on
+/// and off. Anything with three or more distinct actions in eight is left
+/// alone, which keeps ordinary repetitive play well clear of it.
+pub const MAX_CYCLE_WIDTH: usize = 2;
+
+/// How many recent picks `CycleGuard` weighs. `MAX_GREEDY_REPEATS + 1`, so
+/// that a window of a single distinct action fires on exactly the pick the
+/// old counter fired on — "the same action `MAX_GREEDY_REPEATS` times
+/// back-to-back, then escape" is unchanged, and only the *width* of what
+/// counts as a cycle is new.
+const CYCLE_WINDOW: usize = MAX_GREEDY_REPEATS + 1;
+
+/// One chooser's recent-action window, and the cycle break built on it.
+///
+/// **Strikes the repeated *set*, not the last action, and that is the whole
+/// point.** `MAX_GREEDY_REPEATS` alone escapes a run of one identical
+/// action; `pick_action` then removes that single action and samples the
+/// remainder by visits. When the cycle runs over a handful of
+/// interchangeable moves, the remainder *is* the rest of the cycle, so the
+/// escape lasts one ply and the count resets.
+///
+/// That is not hypothetical. Every one of iteration 9's twenty stalled
+/// self-play games (September 2026 volume run) is one-sided, and across
+/// them the last 2,000 decisions each are **99.1% `ToggleCardSelection`
+/// over nine slots**, while `ConfirmCardSelection` sat legal throughout and
+/// was picked 0.46% of the time. The minority slots in that trace are the
+/// old guard firing and being walked straight through.
+///
+/// Avoiding every distinct action in the window forces the chooser out of
+/// the set entirely — onto the confirm that ends the selection. The window
+/// is cleared when it fires, so an escape is not immediately re-triggered
+/// by its own history.
+#[derive(Debug, Default, Clone)]
+pub struct CycleGuard {
+    recent: Vec<PlayerAction>,
+}
+
+impl CycleGuard {
+    /// The actions to strike, or empty while this chooser looks like it is
+    /// playing rather than looping.
+    pub fn cycling(&self) -> Vec<PlayerAction> {
+        if self.recent.len() < CYCLE_WINDOW {
+            return Vec::new();
+        }
+        // Oldest first, so `avoid.last()` is the most recent pick — which
+        // is the one `pick_action`'s middle rung strikes when it cannot
+        // strike them all.
+        let mut distinct: Vec<PlayerAction> = Vec::new();
+        for action in &self.recent {
+            if let Some(position) = distinct.iter().position(|seen| seen == action) {
+                distinct.remove(position);
+            }
+            distinct.push(action.clone());
+        }
+        if distinct.len() <= MAX_CYCLE_WIDTH { distinct } else { Vec::new() }
+    }
+
+    /// Records what was actually played. Clearing on a fired window is what
+    /// keeps the escape from re-arming on the history that caused it.
+    pub fn record(&mut self, action: &PlayerAction, escaped: bool) {
+        if escaped {
+            self.recent.clear();
+        }
+        self.recent.push(action.clone());
+        if self.recent.len() > CYCLE_WINDOW {
+            self.recent.remove(0);
+        }
+    }
+}
+
 /// Picks which searched action to play.
 ///
 /// Greedy — most visits, `total_value` breaking ties — unless
@@ -413,17 +487,37 @@ pub const MAX_GREEDY_REPEATS: usize = 8;
 pub fn pick_action<'a>(
     actions: &'a [ActionStat],
     sample_by_visits: bool,
-    avoid: Option<&PlayerAction>,
+    avoid: &[PlayerAction],
     rng: &mut impl Rng,
 ) -> Option<&'a ActionStat> {
     if actions.is_empty() {
         return None;
     }
-    if let Some(avoid) = avoid {
-        let mut candidates: Vec<&ActionStat> = actions.iter().filter(|stat| stat.action != *avoid).collect();
+    if !avoid.is_empty() {
+        // Widest strike first, then narrow, then nothing — the escape
+        // degrades rather than collapsing.
+        //
+        // Striking the whole cycle is the point, but it can leave nothing
+        // legal: a card selection mid-cycle may not yet satisfy its bound,
+        // so `ConfirmCardSelection` is not offered and the toggles are all
+        // there is. Falling straight from "strike everything" to "strike
+        // nothing" is *worse* than the old single-action strike, because
+        // the unfiltered visit-weighted sample lands back on the cycle's
+        // favourite. Pinned by `a_puct_seat_does_not_toggle_a_card_
+        // selection_until_the_budget_runs_out`, which regressed at seed 2
+        // on exactly this before the middle rung existed.
+        let mut candidates: Vec<&ActionStat> = actions.iter().filter(|stat| !avoid.contains(&stat.action)).collect();
         if candidates.is_empty() {
-            // Nothing but the repeated action is legal; there is no cycle
-            // to break, only one move to make.
+            // Middle rung: strike only the most recent pick, which is what
+            // the guard did before it learned about sets. Still makes
+            // progress inside a cycle whose members are the only legal
+            // moves.
+            let last = avoid.last().expect("avoid is non-empty here");
+            candidates = actions.iter().filter(|stat| stat.action != *last).collect();
+        }
+        if candidates.is_empty() {
+            // Nothing outside the cycle is legal at all; there is no cycle
+            // to break, only the one move there is.
             candidates = actions.iter().collect();
         }
         let weights: Vec<u32> = candidates.iter().map(|stat| stat.visits).collect();
@@ -499,8 +593,8 @@ impl BotAgent for PuctAgent {
         // `search` advanced `self.seed`, so this draw changes every call and
         // the whole agent stays a pure function of its construction seed.
         let mut rng = StdRng::seed_from_u64(self.seed ^ ESCAPE_RNG_SALT);
-        let avoid = if self.repeats >= MAX_GREEDY_REPEATS { self.last_action.as_ref() } else { None };
-        let chosen = pick_action(&stats.actions, false, avoid, &mut rng)
+        let avoid = self.cycle.cycling();
+        let chosen = pick_action(&stats.actions, false, &avoid, &mut rng)
             .map(|stat| stat.action.clone())
             .unwrap_or_else(|| view.legal_actions[0].clone());
 
@@ -514,8 +608,7 @@ impl BotAgent for PuctAgent {
         // where the alternative was letting a 10,000-step stall through.
         // A single legal action never reaches this point, so it neither
         // extends nor resets the count, matching the driver.
-        self.repeats = if self.last_action.as_ref() == Some(&chosen) { self.repeats + 1 } else { 0 };
-        self.last_action = Some(chosen.clone());
+        self.cycle.record(&chosen, !avoid.is_empty());
         chosen
     }
 }
@@ -952,9 +1045,9 @@ mod tests {
             stat(PlayerAction::GainCreditClick { side: Side::Corp }, 9, -1.0),
             stat(PlayerAction::DrawCardClick { side: Side::Corp }, 9, 2.0),
         ];
-        let chosen = pick_action(&actions, false, None, &mut rng).expect("non-empty");
+        let chosen = pick_action(&actions, false, &[], &mut rng).expect("non-empty");
         assert_eq!(chosen.action, PlayerAction::DrawCardClick { side: Side::Corp });
-        assert!(pick_action(&[], false, None, &mut rng).is_none());
+        assert!(pick_action(&[], false, &[], &mut rng).is_none());
     }
 
     #[test]
@@ -962,7 +1055,7 @@ mod tests {
         let mut rng = StdRng::seed_from_u64(1);
         let actions = [stat(PlayerAction::EndTurn, 0, 0.0), stat(PlayerAction::GainCreditClick { side: Side::Corp }, 3, 0.0)];
         for _ in 0..50 {
-            let chosen = pick_action(&actions, true, None, &mut rng).expect("non-empty");
+            let chosen = pick_action(&actions, true, &[], &mut rng).expect("non-empty");
             assert_eq!(chosen.action, PlayerAction::GainCreditClick { side: Side::Corp });
         }
     }
@@ -981,7 +1074,7 @@ mod tests {
         ];
         let mut seen_confirm = false;
         for _ in 0..100 {
-            let chosen = pick_action(&actions, false, Some(&toggle), &mut rng).expect("non-empty");
+            let chosen = pick_action(&actions, false, std::slice::from_ref(&toggle), &mut rng).expect("non-empty");
             assert_ne!(chosen.action, toggle, "the repeated action must be struck from the candidates");
             seen_confirm |= chosen.action == PlayerAction::ConfirmCardSelection;
         }
@@ -990,7 +1083,7 @@ mod tests {
         // The only legal action is the repeated one: there is no cycle to
         // break, just one move to make.
         let only = [stat(toggle.clone(), 4, 0.0)];
-        assert_eq!(pick_action(&only, false, Some(&toggle), &mut rng).expect("non-empty").action, toggle);
+        assert_eq!(pick_action(&only, false, std::slice::from_ref(&toggle), &mut rng).expect("non-empty").action, toggle);
     }
 
     /// A `PuctAgent` that keeps being handed the same position and keeps

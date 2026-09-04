@@ -12,7 +12,7 @@ use crate::agent::BotAgent;
 use crate::determinize::determinize;
 use crate::eval::{evaluate_state_with, Weights};
 use crate::personality::Personality;
-use crate::puct::{pick_action, ActionStat, ESCAPE_RNG_SALT, MAX_GREEDY_REPEATS};
+use crate::puct::{pick_action, ActionStat, CycleGuard, ESCAPE_RNG_SALT};
 
 // Both `Node::new` (per expansion) and `rollout` (per rollout ply) call
 // `netrunner_core::rules::legal_actions`, which itself validates every
@@ -54,8 +54,7 @@ pub struct MctsAgent {
     /// input to `pick_action`'s cycle break. Same bookkeeping as
     /// `PuctAgent`, for the same reason: see `MAX_GREEDY_REPEATS`. A bare
     /// argmax over root visits re-picks a state-preserving action forever.
-    last_action: Option<PlayerAction>,
-    repeats: usize,
+    cycle: CycleGuard,
     /// Leaf and rollout evaluation terms — `Weights::default()` unless a
     /// `Personality` was asked for through `with_personality`.
     weights: Weights,
@@ -82,8 +81,7 @@ impl MctsAgent {
             exploration,
             trees: trees.max(1),
             seed,
-            last_action: None,
-            repeats: 0,
+            cycle: CycleGuard::default(),
             weights: Weights::default(),
         }
     }
@@ -148,12 +146,11 @@ impl BotAgent for MctsAgent {
         // `self.seed` advanced above, so the escape draw changes per call
         // and the agent stays a pure function of its construction seed.
         let mut rng = StdRng::seed_from_u64(self.seed ^ ESCAPE_RNG_SALT);
-        let avoid = if self.repeats >= MAX_GREEDY_REPEATS { self.last_action.as_ref() } else { None };
-        let chosen = pick_action(&stats, false, avoid, &mut rng)
+        let avoid = self.cycle.cycling();
+        let chosen = pick_action(&stats, false, &avoid, &mut rng)
             .map(|stat| stat.action.clone())
             .unwrap_or_else(|| view.legal_actions[0].clone());
-        self.repeats = if self.last_action.as_ref() == Some(&chosen) { self.repeats + 1 } else { 0 };
-        self.last_action = Some(chosen.clone());
+        self.cycle.record(&chosen, !avoid.is_empty());
         chosen
     }
 }
@@ -473,15 +470,18 @@ mod tests {
 
         let mut agent = MctsAgent::with_config(Side::Corp, 3, 16, 4, DEFAULT_EXPLORATION, 1);
         let first = agent.select_action(&view, &registry);
-        assert_eq!(agent.repeats, 0, "a first pick repeats nothing");
+        assert!(agent.cycle.cycling().is_empty(), "a first pick is not a cycle");
 
-        agent.last_action = Some(first.clone());
-        agent.repeats = MAX_GREEDY_REPEATS;
+        // Fill the window with one action, the shape the guard exists for.
+        for _ in 0..=crate::puct::MAX_GREEDY_REPEATS {
+            agent.cycle.record(&first, false);
+        }
+        assert_eq!(agent.cycle.cycling(), vec![first.clone()], "a full window of one action is a cycle");
+
         let escaped = agent.select_action(&view, &registry);
-        assert_ne!(escaped, first, "at the bound the repeated action is struck from the candidates");
+        assert_ne!(escaped, first, "at the bound the repeated set is struck from the candidates");
         assert!(view.legal_actions.contains(&escaped));
-        assert_eq!(agent.repeats, 0, "a different pick resets the count");
-        assert_eq!(agent.last_action, Some(escaped));
+        assert!(agent.cycle.cycling().is_empty(), "firing clears the window that caused it");
     }
 
     /// UCT at an opponent node prefers the child that is worst for the
