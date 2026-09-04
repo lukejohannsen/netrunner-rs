@@ -106,11 +106,24 @@ pub const OBS_SIZE: usize = SCALAR_COUNT + PLANE_COUNT * CARD_VOCAB;
 /// was.
 ///
 /// A genuinely new set takes the next rank and appends, exactly as before.
+///
+/// **`elev` used to sit at rank 1, ahead of `core`, and that was the bug
+/// this rule exists to prevent.** The rank was reserved for *Elevation*
+/// before any of its cards existed, which reads as "append" only while the
+/// Core Set is not already in the vocabulary — it was. Every Elevation card
+/// that landed therefore *inserted* ahead of the 19 Core Set cards and
+/// pushed them along (slots 75..=93 → 101..=119 by the third stage), in the
+/// middle of the second 2,400-game training run, whose self-play was
+/// recompiled mid-run by a loop that shelled out to `cargo run`
+/// (ROADMAP Phase 2 §5). Ranks are assigned in the order sets *entered this
+/// vocabulary* — System Gateway, then the backfilled Core Set, then
+/// *Elevation* — which is the only ordering under which a later set cannot
+/// disturb an earlier one's slots.
 fn set_rank(set_code: Option<&str>) -> u32 {
     match set_code {
         Some("sg") => 0,
-        Some("elev") => 1,
-        Some("core") => 2,
+        Some("core") => 1,
+        Some("elev") => 2,
         _ => 3,
     }
 }
@@ -395,14 +408,53 @@ mod tests {
         // The Core Set sorts *after* System Gateway despite its far lower
         // card numbers — the whole point of `set_rank`. Backfilling its
         // printed metadata reordered those 19 baseline cards among
-        // themselves (slots 75..=93, printed order now rather than
-        // alphabetical) and moved no System Gateway card at all, which is
-        // the property deciding whether an exported policy survives a
-        // card-data change.
-        let tail: Vec<&str> = by_slot.iter().rev().take(2).map(|(_, id)| id.as_str()).collect();
-        assert_eq!(tail, vec!["wall_of_static", "enigma"]);
+        // themselves (printed order now rather than alphabetical) and moved
+        // no System Gateway card at all, which is the property deciding
+        // whether an exported policy survives a card-data change.
+        //
+        // **Pinned by slot, not just by id.** Asserting the tail's *ids*
+        // was what let *Elevation* reindex the Core Set unnoticed: its
+        // cards ranked ahead of `core`, so all 19 moved along together
+        // while `enigma` and `wall_of_static` stayed the last two of them
+        // and this test stayed green. 77..=95 is where the Core Set sits
+        // with System Gateway's 77 cards below it — the slots the second
+        // volume run's first seven iterations were recorded against.
+        assert_eq!(slot_of(&CardId("enigma".to_string())), 94);
+        assert_eq!(slot_of(&CardId("wall_of_static".to_string())), 95);
 
         assert!(vocabulary.len() <= OVERFLOW_SLOT, "vocabulary must leave the overflow slot free");
+    }
+
+    /// The rule `set_rank` exists to enforce, stated over the whole
+    /// vocabulary rather than at its ends: a set that joins later takes
+    /// higher slots than every set already in it, so adding a set appends
+    /// and no recorded observation reindexes underneath a model.
+    ///
+    /// This is the assertion that would have failed the moment *Elevation*
+    /// Stage 1 landed, instead of a training run finding out nine
+    /// iterations later (ROADMAP Phase 2 §5).
+    #[test]
+    fn a_later_set_takes_higher_slots_than_every_earlier_one() {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+
+        let mut highest = std::collections::HashMap::new();
+        let mut lowest = std::collections::HashMap::new();
+        for card in registry.iter() {
+            let slot = slot_of(&card.id);
+            let set = card.set_code.clone().unwrap_or_else(|| "none".to_string());
+            highest.entry(set.clone()).and_modify(|top| *top = slot.max(*top)).or_insert(slot);
+            lowest.entry(set).and_modify(|bottom| *bottom = slot.min(*bottom)).or_insert(slot);
+        }
+
+        // In vocabulary order: System Gateway, the backfilled Core Set,
+        // then Elevation. A new set adds a pair here and nothing else.
+        for (earlier, later) in [("sg", "core"), ("core", "elev")] {
+            let (Some(top), Some(bottom)) = (highest.get(earlier), lowest.get(later)) else {
+                panic!("both {earlier} and {later} should be in the playable pool");
+            };
+            assert!(top < bottom, "{later} must append after {earlier}: {earlier} ends at {top}, {later} starts at {bottom}");
+        }
     }
 
     /// Every playable card must have its own slot — two cards sharing one

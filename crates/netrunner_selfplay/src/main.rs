@@ -33,7 +33,7 @@ use netrunner_bots::{
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
 use netrunner_core::rules::{ActionSpace, GamePhase, GameState, PlayerAction, RulesError, Side};
-use netrunner_session::{Seat, Session, SessionStep, SubmitError};
+use netrunner_session::{GameEndReason, Seat, Session, SessionStep, StallReason, SubmitError};
 
 use schema::{sparse, GameTrajectory, SelfPlayStep};
 use serde::Serialize;
@@ -311,8 +311,16 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
     let mut repeats = 0usize;
 
     // The session's own `MAX_STEPS` bounds this now; the local copy this
-    // loop used to carry is gone.
-    while let SessionStep::Awaiting { side, view } = session.step() {
+    // loop used to carry is gone. The terminal step is kept rather than
+    // dropped: `end_reason` is what lets the trainer tell a game that
+    // ended from one that ran out of budget, and at iteration 8 of the
+    // second volume run those were 24% of every recorded decision (see
+    // `GameTrajectory::end_reason`).
+    let ending = loop {
+        let step = session.step();
+        let SessionStep::Awaiting { side, view } = step else {
+            break step;
+        };
         if view.legal_actions.len() == 1 {
             // No real decision was made, so there's nothing meaningful to
             // record — mirrors `PuctAgent::select_action`'s own
@@ -358,7 +366,7 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
 
         session.submit(chosen.action.clone())?;
         ply += 1;
-    }
+    };
 
     let outcome_corp = match session.state().phase {
         GamePhase::GameOver(Side::Corp) => 1.0,
@@ -373,7 +381,36 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
         steps,
         outcome_corp,
         matchup: matchup.id(),
+        pool_fingerprint: netrunner_core::pool_fingerprint(),
+        end_reason: end_reason_of(&ending),
     })
+}
+
+/// The recorded name of a terminal `SessionStep`.
+///
+/// Snake case rather than `{:?}`, and every stall behind a `stall_` prefix
+/// that the trainer keys on: a stalled game is not a draw, it is `MAX_STEPS`
+/// cycling decisions with a zero value target, and the trainer drops them.
+/// A step that is neither `Ended` nor `Stalled` cannot occur here — both
+/// seats are `External`, so `step` returns `Awaiting` until it does not —
+/// but it is named rather than panicked on, since losing a game's label is
+/// not worth aborting a 2,400-game batch over.
+fn end_reason_of(step: &SessionStep) -> String {
+    match step {
+        SessionStep::Ended { reason, .. } => match reason {
+            GameEndReason::AgendaThreshold => "agenda_threshold",
+            GameEndReason::Flatline => "flatline",
+            GameEndReason::Deckout => "deckout",
+            GameEndReason::Surrender => "surrender",
+            GameEndReason::Disconnected => "disconnected",
+            GameEndReason::TimedOut => "timed_out",
+        },
+        SessionStep::Stalled(StallReason::BudgetExhausted) => "stall_budget_exhausted",
+        SessionStep::Stalled(StallReason::NoLegalActions { .. }) => "stall_no_legal_actions",
+        SessionStep::Stalled(StallReason::NoCurrentActor) => "stall_no_current_actor",
+        SessionStep::Applied { .. } | SessionStep::Awaiting { .. } => "unterminated",
+    }
+    .to_string()
 }
 
 fn write_trajectory(output_dir: &Path, game_index: usize, trajectory: &GameTrajectory) -> Result<(), SelfPlayError> {
@@ -537,6 +574,47 @@ mod tests {
         );
         assert_eq!((first.observation_size, first.action_space_size), (OBS_SIZE, ActionSpace::SIZE));
         assert!(first.steps.iter().all(|s| s.observation.len() < OBS_SIZE / 4), "the observation is written sparse");
+    }
+
+    /// The two header fields the trainer gates on: which engine recorded
+    /// the game, and whether the game actually ended.
+    ///
+    /// A real game is played rather than a fixture asserted, because the
+    /// failure being guarded against is a *recorded* corpus that does not
+    /// carry them — the second volume run trained across three different
+    /// card pools without either field existing to notice
+    /// (ROADMAP Phase 2 §5).
+    #[test]
+    fn every_recorded_game_names_its_engine_and_how_it_ended() {
+        let cli = Cli::parse_from(["netrunner_selfplay", "-n", "1", "-s", "2", "-o", "unused"]);
+        let game = play_one_game(3, &cli).expect("self-play game");
+
+        assert_eq!(game.pool_fingerprint, netrunner_core::pool_fingerprint());
+        assert!(!game.pool_fingerprint.is_empty(), "an empty fingerprint is how an archived corpus reads");
+        assert!(
+            !game.end_reason.is_empty() && game.end_reason != "unterminated",
+            "a played game names its ending, got {:?}",
+            game.end_reason
+        );
+        assert_eq!(game.end_reason.starts_with("stall_"), game.outcome_corp == 0.0, "only a stall is undecided");
+    }
+
+    /// The prefix the trainer keys on to drop a game: every stall carries
+    /// it, no ending does. Asserted over the variants rather than by
+    /// stalling a real game, which costs `MAX_STEPS` searches.
+    #[test]
+    fn only_a_stall_is_named_with_the_prefix_the_trainer_drops() {
+        let ended = SessionStep::Ended { winner: Side::Corp, reason: GameEndReason::Flatline };
+        assert_eq!(end_reason_of(&ended), "flatline");
+        for stall in [
+            StallReason::BudgetExhausted,
+            StallReason::NoLegalActions { side: Side::Runner },
+            StallReason::NoCurrentActor,
+        ] {
+            let named = end_reason_of(&SessionStep::Stalled(stall));
+            assert!(named.starts_with("stall_"), "{named} must be droppable by prefix");
+        }
+        assert_eq!(end_reason_of(&SessionStep::Stalled(StallReason::BudgetExhausted)), "stall_budget_exhausted");
     }
 
     /// The arena path end to end with no network on either side: two real
