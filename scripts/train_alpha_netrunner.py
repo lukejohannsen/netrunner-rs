@@ -124,11 +124,24 @@ class NetrunnerCorpus:
     games rather than judging positions — the loss that read 0.006 while the
     network lost to the uniform search on both sides (ROADMAP Phase 2 §5).
 
-    Two things are refused rather than tolerated, because each has silently
-    poisoned a corpus before: a file whose recorded widths differ from the
-    rest (August's 1,357-wide targets against a 1,646-wide action space),
-    and two games with the same seed (a loop that replayed the same 96 games
-    every iteration once self-play became reproducible).
+    Three things are refused rather than tolerated, because each has
+    silently poisoned a corpus before: a file whose recorded widths differ
+    from the rest (August's 1,357-wide targets against a 1,646-wide action
+    space), two games with the same seed (a loop that replayed the same 96
+    games every iteration once self-play became reproducible), and a window
+    that mixes `pool_fingerprint`s — two games recorded by different
+    engines. The third is the second 2,400-game run: its loop shelled out to
+    `cargo run` per stage, so three *Elevation* stages landing in the working
+    tree recompiled self-play mid-run, the deck pool went 12 matchups to 36,
+    the card planes reindexed, and every width stayed put, so nothing here
+    objected (ROADMAP Phase 2 §5).
+
+    Stalled games are *dropped* rather than refused, and that is the fourth
+    lesson from the same run: a game that hit `MAX_STEPS` is not a draw, it
+    is ~10,000 cycling near-duplicate decisions carrying a zero value
+    target, and at iteration 8 nineteen such games of 2,400 held 24% of
+    every recorded decision — enough to move `baseline_mse` from 1.00 to
+    0.77 and make a value head that had not improved look as though it had.
     """
 
     def __init__(self, data_dir: str, window=None, limit_games=None):
@@ -143,7 +156,10 @@ class NetrunnerCorpus:
         self.game_of_sample = []
         self.missing_search_value = 0
         self.outcomes = {1.0: 0, -1.0: 0, 0.0: 0}
+        self.dropped_stalls = 0
+        self.dropped_stall_steps = 0
         seeds = {}
+        fingerprints = {}
         game_index = 0
         for filepath in files:
             if limit_games is not None and game_index >= limit_games:
@@ -165,11 +181,33 @@ class NetrunnerCorpus:
                             f"{filepath} was recorded with widths {widths}, the corpus so far with "
                             f"{(self.observation_size, self.action_space_size)}; a corpus must not mix layouts"
                         )
+                    # An absent fingerprint is the archived corpora's
+                    # own value: they were all recorded before the field
+                    # existed, so they read as one engine, which is what
+                    # they are.
+                    fingerprint = game.get("pool_fingerprint", "")
+                    if fingerprint not in fingerprints:
+                        if fingerprints:
+                            other, other_file = next(iter(fingerprints.items()))
+                            raise ValueError(
+                                f"{filepath} was recorded by engine {fingerprint or '(pre-fingerprint)'}, "
+                                f"{other_file} by engine {other or '(pre-fingerprint)'}; a corpus must not mix "
+                                "engines — see GameTrajectory::pool_fingerprint"
+                            )
+                        fingerprints[fingerprint] = filepath
                     seed = game["seed"]
                     if seed in seeds:
                         raise ValueError(f"{filepath} replays seed {seed} already recorded by {seeds[seed]}; "
                                          "self-play iterations need distinct --seed-offset values")
                     seeds[seed] = filepath
+                    # A stall is not a game. Dropped after the seed is
+                    # registered — a replayed iteration is still a replayed
+                    # iteration — and before its steps are read, so the
+                    # window's size counts decisions a search resolved.
+                    if str(game.get("end_reason", "")).startswith("stall_"):
+                        self.dropped_stalls += 1
+                        self.dropped_stall_steps += len(game["steps"])
+                        continue
                     game_index += 1
                     outcome_corp = float(game["outcome_corp"])
                     self.outcomes[outcome_corp] = self.outcomes.get(outcome_corp, 0) + 1
@@ -340,6 +378,10 @@ def train(args):
     outcomes = corpus.outcomes
     print(f"Loaded {corpus.game_count} games, {len(corpus)} decision steps in {time.time() - started:.1f}s "
           f"(corp wins {outcomes.get(1.0, 0)}, runner wins {outcomes.get(-1.0, 0)}, stalls {outcomes.get(0.0, 0)}).")
+    if corpus.dropped_stalls:
+        share = corpus.dropped_stall_steps / max(1, corpus.dropped_stall_steps + len(corpus))
+        print(f"Dropped {corpus.dropped_stalls} stalled games holding {corpus.dropped_stall_steps} decisions "
+              f"({share:.1%} of everything recorded) — see NetrunnerCorpus's docstring.")
     print(f"Split by game: {len(train_idx)} training steps, {len(val_idx)} validation steps.")
     # A cross-entropy against a soft target bottoms out at the target's own
     # entropy, so a validation policy loss only means something relative to
@@ -393,6 +435,7 @@ def train(args):
     # One JSON line for the loop to keep, the way the arena reports.
     summary = {
         "games": corpus.game_count, "steps": len(corpus), "train_steps": int(len(train_idx)),
+        "dropped_stalls": corpus.dropped_stalls, "dropped_stall_steps": corpus.dropped_stall_steps,
         "val_steps": int(len(val_idx)), "policy_floor": policy_floor, "best_epoch": best_epoch,
         "best_val_loss": best_val_loss, "value_target_mix": args.value_target_mix,
         "value_loss_weight": args.value_loss_weight, "best_value_diagnostics": best_diag,

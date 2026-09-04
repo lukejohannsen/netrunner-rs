@@ -70,6 +70,39 @@ pub struct GameTrajectory {
     /// tell from the data that every one of them came from a single broken
     /// fixture in which the Corp lost 100% of the time.
     pub matchup: String,
+    /// `netrunner_core::cards::pool_fingerprint()` combined with the deck
+    /// pool's ids: *which engine* recorded this game, where the widths
+    /// above say only *which layout*.
+    ///
+    /// The widths were not enough. The second 2,400-game run's loop shelled
+    /// out to `cargo run` per stage, so three *Elevation* stages landing in
+    /// the working tree beside it recompiled self-play mid-run: the deck
+    /// pool went 12 matchups → 20 → 36 and the card planes reindexed, while
+    /// `OBS_SIZE` and `ActionSpace::SIZE` never moved and the trainer
+    /// happily mixed all three into one window (ROADMAP Phase 2 §5). The
+    /// trainer now refuses a corpus that mixes fingerprints.
+    ///
+    /// `#[serde(default)]` so the archived corpora, recorded before this
+    /// field existed, still load — they read as one shared empty
+    /// fingerprint, which is what they are.
+    #[serde(default)]
+    pub pool_fingerprint: String,
+    /// How the game ended: the `GameEndReason` in snake case
+    /// (`"agenda_threshold"`, `"flatline"`, `"deckout"`, …), or
+    /// `"stall_*"` for a `SessionStep::Stalled` — chiefly
+    /// `"stall_budget_exhausted"`, `MAX_STEPS` decisions with no winner.
+    ///
+    /// Recorded because a stalled game is not a draw, it is 10,000 cycling
+    /// decisions with a zero value target, and at iteration 8 of the second
+    /// volume run **19 stalled games of 2,400 (0.8%) held 187,971 of
+    /// ~780,000 recorded decisions — 24% of the corpus**. The trainer drops
+    /// every `"stall_*"` game; the prefix is the contract between these two
+    /// files.
+    ///
+    /// `#[serde(default)]` for the archived corpora, where it reads empty
+    /// and nothing is dropped, exactly as those runs were trained.
+    #[serde(default)]
+    pub end_reason: String,
 }
 
 #[cfg(test)]
