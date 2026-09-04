@@ -28,7 +28,7 @@ use rayon::prelude::*;
 
 use netrunner_bots::{
     encode_observation, pick_action, ActionStat, CycleGuard, PolicyEvaluator, PuctAgent, PuctConfig,
-    SplitEvaluator, UniformPolicyEvaluator, OBS_SIZE,
+    MixedPriorEvaluator, SplitEvaluator, UniformPolicyEvaluator, OBS_SIZE,
 };
 #[cfg(feature = "onnx")]
 use netrunner_bots::OnnxPolicyEvaluator;
@@ -96,6 +96,13 @@ struct Cli {
     /// See `netrunner_bots::SplitEvaluator`.
     #[arg(long = "candidate-uses", value_enum, default_value_t = CandidateUses::Both)]
     candidate_uses: CandidateUses,
+    /// Mixes the candidate's priors toward uniform over the legal set
+    /// before the search sees them: `0.0` leaves the network's prior
+    /// alone, `1.0` replaces it with the uniform search's own. A dial for
+    /// "is the policy head's loss ranking or calibration", never something
+    /// to seat in a real match. See `netrunner_bots::MixedPriorEvaluator`.
+    #[arg(long = "candidate-prior-mix", default_value_t = 0.0)]
+    candidate_prior_mix: f32,
 }
 
 /// Which halves of a candidate network the arena seats. An ablation over
@@ -161,6 +168,9 @@ enum ArenaResult {
 /// reads to decide a promotion.
 #[derive(Debug, Serialize, PartialEq)]
 struct ArenaSummary {
+    /// `--candidate-prior-mix`, recorded for the same reason
+    /// `candidate_uses` is: a result line should say what produced it.
+    prior_mix: f32,
     /// Which halves of the candidate's network were seated — `"both"` for
     /// an ordinary arena. Recorded so a run's own output says what it
     /// measured, rather than the reader having to remember the flags.
@@ -173,13 +183,21 @@ struct ArenaSummary {
     candidate_score: f64,
 }
 
-fn summarize(results: &[ArenaResult], candidate_uses: CandidateUses) -> ArenaSummary {
+fn summarize(results: &[ArenaResult], candidate_uses: CandidateUses, prior_mix: f32) -> ArenaSummary {
     let count = |wanted: ArenaResult| results.iter().filter(|r| **r == wanted).count();
     let (candidate_wins, incumbent_wins, draws) =
         (count(ArenaResult::CandidateWin), count(ArenaResult::IncumbentWin), count(ArenaResult::Draw));
     let games = results.len();
     let candidate_score = if games == 0 { 0.0 } else { (candidate_wins as f64 + draws as f64 / 2.0) / games as f64 };
-    ArenaSummary { candidate_uses: candidate_uses.label(), games, candidate_wins, incumbent_wins, draws, candidate_score }
+    ArenaSummary {
+        prior_mix,
+        candidate_uses: candidate_uses.label(),
+        games,
+        candidate_wins,
+        incumbent_wins,
+        draws,
+        candidate_score,
+    }
 }
 
 /// The candidate takes the Corp chair in even-numbered games and the
@@ -215,6 +233,13 @@ fn play_arena_game(
         // and moving it would make two ablation runs incomparable with
         // each other and with the ordinary arena.
         let evaluator = if is_candidate { ablate(evaluator, side, cli.candidate_uses) } else { evaluator };
+        // After the ablation, so `--candidate-prior-mix` dials whichever
+        // priors the ablation left in place rather than a discarded set.
+        let evaluator: Box<dyn PolicyEvaluator> = if is_candidate && cli.candidate_prior_mix > 0.0 {
+            Box::new(MixedPriorEvaluator::new(evaluator, cli.candidate_prior_mix))
+        } else {
+            evaluator
+        };
         Ok(Seat::Agent(Box::new(PuctAgent::with_config(side, seat_seed, evaluator, config))))
     };
     let corp = seat(Side::Corp, seed)?;
@@ -489,7 +514,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .into_par_iter()
             .map(|game_index| play_arena_game(game_index, &cli, &cli.arena_candidate, &cli.arena_incumbent))
             .collect::<Result<Vec<_>, _>>()?;
-        println!("{}", serde_json::to_string(&summarize(&results, cli.candidate_uses))?);
+        println!("{}", serde_json::to_string(&summarize(&results, cli.candidate_uses, cli.candidate_prior_mix))?);
         return Ok(());
     }
 
@@ -597,10 +622,11 @@ mod tests {
     #[test]
     fn candidate_score_counts_a_stall_as_half() {
         let results = [ArenaResult::CandidateWin, ArenaResult::Draw, ArenaResult::IncumbentWin, ArenaResult::Draw];
-        let summary = summarize(&results, CandidateUses::Both);
+        let summary = summarize(&results, CandidateUses::Both, 0.0);
         assert_eq!(
             summary,
             ArenaSummary {
+                prior_mix: 0.0,
                 candidate_uses: "both",
                 games: 4,
                 candidate_wins: 1,
@@ -609,7 +635,7 @@ mod tests {
                 candidate_score: 0.5
             }
         );
-        assert_eq!(summarize(&[], CandidateUses::Both).candidate_score, 0.0, "no games is not a pass");
+        assert_eq!(summarize(&[], CandidateUses::Both, 0.0).candidate_score, 0.0, "no games is not a pass");
     }
 
     /// An arena line has to say what it measured. Three runs of the same
@@ -619,11 +645,12 @@ mod tests {
     fn an_arena_summary_names_the_ablation_it_ran() {
         let labels: Vec<&str> = [CandidateUses::Both, CandidateUses::ValueOnly, CandidateUses::PriorsOnly]
             .into_iter()
-            .map(|uses| summarize(&[], uses).candidate_uses)
+            .map(|uses| summarize(&[], uses, 0.0).candidate_uses)
             .collect();
         assert_eq!(labels, ["both", "value-only", "priors-only"], "every variant is labelled, and distinctly");
 
-        let json = serde_json::to_string(&summarize(&[ArenaResult::CandidateWin], CandidateUses::PriorsOnly)).unwrap();
+        let json = serde_json::to_string(&summarize(&[ArenaResult::CandidateWin], CandidateUses::PriorsOnly, 0.5)).unwrap();
+        assert!(json.contains("\"prior_mix\":0.5"), "a summary must say what dial produced it: {json}");
         assert!(json.contains(r#""candidate_uses":"priors-only""#), "the label reaches the printed line: {json}");
     }
 
@@ -747,7 +774,7 @@ mod tests {
         let cli = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "unused.onnx"]);
         let results: Vec<ArenaResult> =
             (0..2).map(|i| play_arena_game(i, &cli, &None, &None).expect("uniform arena game")).collect();
-        let summary = summarize(&results, CandidateUses::Both);
+        let summary = summarize(&results, CandidateUses::Both, 0.0);
         assert_eq!(summary.games, 2);
         assert_eq!(summary.candidate_wins + summary.incumbent_wins + summary.draws, 2);
         let line = serde_json::to_string(&summary).unwrap();
