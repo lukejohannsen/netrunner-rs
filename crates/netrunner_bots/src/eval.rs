@@ -51,9 +51,32 @@ const UNREZZED_INSTALL_WEIGHT: f64 = 1.0;
 /// (−0.4) against `GainCreditClick`'s +0.4, so a token must be worth more
 /// than 0.8 to be preferred; scoring at `AGENDA_POINT_WEIGHT` per point
 /// still dominates once the requirement is met. Tokens past the
-/// requirement are worth nothing, so the Corp scores rather than piling
-/// on.
+/// requirement are worth nothing *unless the agenda pays Dividends* —
+/// see `AGENDA_COUNTER_WEIGHT` — so the Corp still scores rather than
+/// piling on where piling on buys nothing.
 const ADVANCEMENT_WEIGHT: f64 = 1.5;
+/// One agenda counter, on a scored agenda or promised by an advancement
+/// token past a Dividends agenda's requirement (`CardDefinition::
+/// dividends` counters per excess token, `engine::score_agenda`).
+///
+/// **Why the term exists at all**: `puct@32` over the whole 192-matchup
+/// pool advanced 3,270 times, scored the two Dividends agendas 47 times
+/// and fired their trigger *zero* times (ROADMAP Phase 3 §1). Not a
+/// horizon problem — a search evaluates its leaves with this same
+/// function, so an over-advanced token worth zero at every depth is a
+/// move no search budget can find.
+///
+/// **Why 2.0.** The decision it has to win is "score now" against
+/// "advance once more, then score" — scoring costs no click, so both end
+/// with the agenda scored and the second is one click and one credit
+/// dearer. The counter therefore has to beat a credit-click (0.4) plus
+/// the credit spent advancing (0.4), and to stay well under a point of
+/// agenda (20.0) so that a Dividends agenda never looks better held than
+/// taken. 2.0 is what a counter buys, conservatively: *Sericulture
+/// Expansion* spends one for two advancement tokens (+3.0 at
+/// `ADVANCEMENT_WEIGHT`), *Off the Books* for a searched card installed
+/// free.
+const AGENDA_COUNTER_WEIGHT: f64 = 2.0;
 /// Each piece of ICE, up to two, protecting the server an installed
 /// agenda sits in. Every install was worth the same flat
 /// `UNREZZED_INSTALL_WEIGHT` wherever it went, so the one-ply Corp put an
@@ -207,6 +230,7 @@ pub struct Weights {
     pub rezzed_asset_weight: f64,
     pub unrezzed_install_weight: f64,
     pub advancement_weight: f64,
+    pub agenda_counter_weight: f64,
     pub agenda_protection_weight: f64,
     pub agenda_protection_cap: usize,
     pub breaker_coverage_weight: f64,
@@ -252,6 +276,7 @@ impl Default for Weights {
             rezzed_asset_weight: REZZED_ASSET_WEIGHT,
             unrezzed_install_weight: UNREZZED_INSTALL_WEIGHT,
             advancement_weight: ADVANCEMENT_WEIGHT,
+            agenda_counter_weight: AGENDA_COUNTER_WEIGHT,
             agenda_protection_weight: AGENDA_PROTECTION_WEIGHT,
             agenda_protection_cap: AGENDA_PROTECTION_CAP,
             breaker_coverage_weight: BREAKER_COVERAGE_WEIGHT,
@@ -308,6 +333,7 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             for installed in &state.corp.installed {
                 score += corp_install_value(installed, registry, w);
             }
+            score += f64::from(scored_agenda_counters(state)) * w.agenda_counter_weight;
             score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
             if w.installed_agenda_weight != 0.0 {
                 score += installed_agendas(state, registry) as f64 * w.installed_agenda_weight;
@@ -463,8 +489,31 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &We
     };
     if let Some(required) = def.and_then(|d| d.advancement_requirement) {
         value += installed.advancement_tokens.min(required) as f64 * w.advancement_weight;
+        // Past the requirement a token is worth what it will *become* at
+        // score time — `dividends` agenda counters each — and nothing at
+        // all on an agenda that pays none. Valuing the promise rather
+        // than adding a second constant keeps the two halves of one
+        // mechanic on one weight: the same token is counted here while
+        // the agenda is installed and by `scored_agenda_counters` after.
+        let dividends = def.and_then(|d| d.dividends).unwrap_or(0);
+        if dividends > 0 {
+            let excess = installed.advancement_tokens.saturating_sub(required);
+            value += f64::from(excess * dividends) * w.agenda_counter_weight;
+        }
     }
     value
+}
+
+/// Agenda counters sitting on the Corp's scored agendas — Dividends,
+/// spent by the agendas' own discard-phase triggers.
+///
+/// Without this the term above would evaporate at the moment it paid
+/// off: a search comparing "score now" with "advance once more, then
+/// score" sees the installed agenda gone in both branches, so unless the
+/// counters survive into the score area the two branches are worth the
+/// same and the extra click is pure cost.
+fn scored_agenda_counters(state: &GameState) -> u32 {
+    state.corp.scored_agendas.iter().map(|scored| scored.agenda_counters).sum()
 }
 
 /// Installed, unscored agendas — what `installed_agenda_weight` counts.
@@ -685,13 +734,14 @@ mod tests {
         assert!(evaluate_state(&clicked_instead, Side::Runner, &registry) > evaluate_state(&second, Side::Runner, &registry));
     }
 
-    #[test]
-    fn advancement_is_valued_up_to_the_requirement_and_no_further() {
+    /// Two agendas, identical but for `dividends`, at the same tokens.
+    fn advancement_value_at(dividends: Option<u32>) -> impl Fn(u32) -> f64 {
         let mut agenda = ice("offworld_office", 0);
         agenda.card_type = CardType::Agenda;
         agenda.advancement_requirement = Some(3);
+        agenda.dividends = dividends;
         let registry = CardRegistry::from_cards(vec![agenda]);
-        let at = |tokens| {
+        move |tokens| {
             let mut state = GameState::new(0);
             state.corp.installed = vec![InstalledCard {
                 card: CardId("offworld_office".to_string()),
@@ -700,10 +750,57 @@ mod tests {
                 ..Default::default()
             }];
             evaluate_state(&state, Side::Corp, &registry)
-        };
+        }
+    }
+
+    #[test]
+    fn advancement_is_valued_up_to_the_requirement_and_no_further() {
+        let at = advancement_value_at(None);
         assert!(at(1) > at(0));
         assert!(at(3) > at(2));
         assert_eq!(at(4), at(3), "tokens past the requirement are worth nothing — score instead");
+    }
+
+    /// The exception, and the reason `agenda_counter_weight` exists: on a
+    /// Dividends agenda an excess token is not waste, it is one counter
+    /// per `dividends` at score time. It must be worth more than the
+    /// credit-click it costs (0.4 + 0.4) and far less than a point of
+    /// agenda, so the Corp still takes the points.
+    #[test]
+    fn a_token_past_the_requirement_is_worth_its_dividends_and_no_more() {
+        let plain = advancement_value_at(None);
+        let dividend = advancement_value_at(Some(1));
+        assert_eq!(dividend(3), plain(3), "up to the requirement the two agendas are identical");
+        assert!(dividend(4) > dividend(3) + 0.8, "an excess token must beat the click and credit it costs");
+        assert!(dividend(4) - dividend(3) < AGENDA_POINT_WEIGHT, "and never rival taking the points");
+        assert_eq!(dividend(5) - dividend(4), dividend(4) - dividend(3), "each excess token is worth the same");
+
+        let double = advancement_value_at(Some(2));
+        assert!(
+            (double(4) - double(3) - 2.0 * (dividend(4) - dividend(3))).abs() < f64::EPSILON,
+            "two counters per token is worth twice one"
+        );
+    }
+
+    /// The half that makes the first half survive being cashed in: a
+    /// search comparing "score now" with "advance once more, then score"
+    /// sees the install gone either way, so the counters have to be worth
+    /// something in the score area or the extra click is pure cost.
+    #[test]
+    fn counters_on_a_scored_agenda_outlive_the_install_that_carried_them() {
+        use netrunner_core::rules::ScoredAgenda;
+        let registry = CardRegistry::from_cards(vec![]);
+        let scored = |agenda_counters| {
+            let mut state = GameState::new(0);
+            state.corp.scored_agendas = vec![ScoredAgenda {
+                card: CardId("offworld_office".to_string()),
+                install_id: InstallId(1),
+                agenda_counters,
+            }];
+            evaluate_state(&state, Side::Corp, &registry)
+        };
+        assert!(scored(1) > scored(0) + 0.8, "a counter carried into the score area beats the click that bought it");
+        assert_eq!(scored(2) - scored(1), scored(1) - scored(0));
     }
 
     /// Rezzing a mid-cost ICE at approach must beat passing, and installing
