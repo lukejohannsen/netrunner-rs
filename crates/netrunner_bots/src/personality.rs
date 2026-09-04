@@ -130,6 +130,17 @@ impl Personality {
                 // damage is +0.5 and an emptied grip is +2.5, on the
                 // scale where an agenda point is 20.
                 opponent_grip_weight: 0.5,
+                // **The lever the first cut of this profile was missing.**
+                // It valued a thin grip with no way to recognise the
+                // cards that would thin it, so it only ever paid for the
+                // wish: ROADMAP Phase 3 §1 records it losing to balanced,
+                // 37 Corp wins to 42. A face-down ambush is now worth
+                // more than a plain install to *this* profile alone, and
+                // its tokens are worth nearly an agenda's, since damage
+                // is what this Corp is buying with them.
+                ambush_weight: 1.0,
+                ambush_advancement_weight: 1.4,
+                ambush_advancement_cap: 4,
                 own_credit_weight: 0.5,
                 unrezzed_install_weight: 1.3,
                 agenda_protection_weight: 0.3,
@@ -215,6 +226,9 @@ mod tests {
         assert!(glacier.agenda_protection_cap > base.agenda_protection_cap);
         let trap = Personality::Trap.weights();
         assert!(trap.opponent_grip_weight > 0.0 && base.opponent_grip_weight == 0.0);
+        assert!(trap.ambush_weight > 0.0 && base.ambush_weight == 0.0, "the lever the profile was missing");
+        assert!(trap.ambush_advancement_weight > base.ambush_advancement_weight);
+        assert!(trap.ambush_advancement_cap > base.ambush_advancement_cap);
         let aggressive = Personality::Aggressive.weights();
         assert!(aggressive.active_run_weight > base.active_run_weight && aggressive.pending_subroutine_weight < base.pending_subroutine_weight);
         let cautious = Personality::Cautious.weights();
