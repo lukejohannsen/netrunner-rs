@@ -1,5 +1,5 @@
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount, Trigger};
+use netrunner_core::dsl::{Amount, CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount, Trigger};
 use netrunner_core::rules::{
     current_actor, GamePhase, GameState, InstalledCard, InstalledRunnerCard, RunIce, RunPhase, RunState, Side,
     SubroutineStatus,
@@ -77,6 +77,41 @@ const ADVANCEMENT_WEIGHT: f64 = 1.5;
 /// `ADVANCEMENT_WEIGHT`), *Off the Books* for a searched card installed
 /// free.
 const AGENDA_COUNTER_WEIGHT: f64 = 2.0;
+/// One advancement token on an *ambush* — a card that is not an agenda
+/// but whose own text reads its advancement tokens to deal damage
+/// (*Clearinghouse*, *Urtica Cipher*).
+///
+/// **These were worth exactly zero**, the same shape of bug the Dividends
+/// term above fixes: an ambush carries `advancement_requirement: Some(0)`,
+/// so `advancement_tokens.min(required)` counted every token as nothing
+/// and the Corp never advanced one. Clearinghouse's turn-start trigger
+/// fired 274 times in a 192-game heuristic report and dealt no damage at
+/// all, because its damage *is* its token count. Unlike Dividends this
+/// needs no search to reach: there is no competing action that banks the
+/// same value one ply later, so a one-ply Corp can see it.
+///
+/// 1.0 rather than `ADVANCEMENT_WEIGHT`: advancing costs a click and a
+/// credit against `GainCreditClick` (0.8), so at 1.0 an ambush token is
+/// worth taking when there is nothing better and never worth more than
+/// an agenda token.
+const AMBUSH_ADVANCEMENT_WEIGHT: f64 = 1.0;
+/// How many of an ambush's tokens are counted. **A cap is what makes the
+/// term safe**: an agenda self-limits — past its requirement the Corp
+/// scores — while an ambush has no requirement to stop at, so an uncapped
+/// weight above the credit-click would have the Corp advancing one
+/// forever. Three is past the point where more damage stops being the
+/// cheapest thing to buy with a click, and it is where the `Trap` profile
+/// found its wins.
+const AMBUSH_ADVANCEMENT_CAP: u32 = 3;
+/// An installed, unrezzed non-agenda that punishes access with damage,
+/// over and above `UNREZZED_INSTALL_WEIGHT`. **Zero by default, like
+/// `opponent_grip_weight`**: the balanced Corp does not play for the
+/// flatline, and an ambush it will not follow up on is just an install.
+/// It exists for `Personality::Trap`, which ROADMAP Phase 3 §1 records as
+/// not working *because this lever was missing* — the profile valued the
+/// Runner's grip being thin without any way to recognise the cards that
+/// would thin it.
+const AMBUSH_WEIGHT: f64 = 0.0;
 /// Each piece of ICE, up to two, protecting the server an installed
 /// agenda sits in. Every install was worth the same flat
 /// `UNREZZED_INSTALL_WEIGHT` wherever it went, so the one-ply Corp put an
@@ -231,6 +266,9 @@ pub struct Weights {
     pub unrezzed_install_weight: f64,
     pub advancement_weight: f64,
     pub agenda_counter_weight: f64,
+    pub ambush_advancement_weight: f64,
+    pub ambush_advancement_cap: u32,
+    pub ambush_weight: f64,
     pub agenda_protection_weight: f64,
     pub agenda_protection_cap: usize,
     pub breaker_coverage_weight: f64,
@@ -277,6 +315,9 @@ impl Default for Weights {
             unrezzed_install_weight: UNREZZED_INSTALL_WEIGHT,
             advancement_weight: ADVANCEMENT_WEIGHT,
             agenda_counter_weight: AGENDA_COUNTER_WEIGHT,
+            ambush_advancement_weight: AMBUSH_ADVANCEMENT_WEIGHT,
+            ambush_advancement_cap: AMBUSH_ADVANCEMENT_CAP,
+            ambush_weight: AMBUSH_WEIGHT,
             agenda_protection_weight: AGENDA_PROTECTION_WEIGHT,
             agenda_protection_cap: AGENDA_PROTECTION_CAP,
             breaker_coverage_weight: BREAKER_COVERAGE_WEIGHT,
@@ -479,6 +520,59 @@ fn pending_subroutines(run: &RunState) -> usize {
     run.ice.get(run.position).map_or(0, |ice| pending_on(ice) as usize)
 }
 
+/// Every effect the card declares anywhere — triggers, abilities and its
+/// access interaction — so the recognisers below read a card's *text*
+/// rather than its name. That distinction is the whole point: a card
+/// named here would be a preference, and `personality` forbids those; a
+/// shape recognised here values the next card with the same text for
+/// free.
+fn for_each_declared_effect(def: &CardDefinition, f: &mut impl FnMut(&Effect)) {
+    let declared = def
+        .triggers
+        .iter()
+        .flat_map(|trigger| trigger.effects.iter())
+        .chain(def.abilities.iter().map(|ability| &ability.effect))
+        .chain(def.interactive_on_access.iter().flat_map(|access| access.effects.iter()));
+    for effect in declared {
+        effect.for_each_effect(f);
+    }
+}
+
+/// An ambush that grows: its damage *is* its advancement-token count.
+fn damage_grows_with_advancement(def: &CardDefinition) -> bool {
+    let mut found = false;
+    for_each_declared_effect(def, &mut |effect| {
+        if matches!(effect, Effect::DealDamageAmount(_, Amount::HostedAdvancementTokens)) {
+            found = true;
+        }
+    });
+    found
+}
+
+/// An ambush at all: a non-agenda that answers being accessed with
+/// damage, whether through an `OnAccessed` trigger (*Urtica Cipher*) or
+/// a paid access interaction (*Snare!*).
+fn punishes_access_with_damage(def: &CardDefinition) -> bool {
+    // An agenda that hurts on access is not an ambush — the Runner takes
+    // the points anyway — and an identity is never an install, so neither
+    // is a card this term should price.
+    if matches!(def.card_type, CardType::Agenda | CardType::Identity) {
+        return false;
+    }
+    let deals_damage = |effect: &Effect| matches!(effect, Effect::DealDamage(..) | Effect::DealDamageAmount(..));
+    let mut found = false;
+    let on_access = def
+        .triggers
+        .iter()
+        .filter(|trigger| trigger.trigger == Trigger::OnAccessed)
+        .flat_map(|trigger| trigger.effects.iter())
+        .chain(def.interactive_on_access.iter().flat_map(|access| access.effects.iter()));
+    for effect in on_access {
+        effect.for_each_effect(&mut |e| found |= deals_damage(e));
+    }
+    found
+}
+
 fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights) -> f64 {
     let def = registry.get(&installed.card);
     let is_ice = def.is_some_and(|d| matches!(d.card_type, CardType::Ice(_)));
@@ -499,6 +593,22 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &We
         if dividends > 0 {
             let excess = installed.advancement_tokens.saturating_sub(required);
             value += f64::from(excess * dividends) * w.agenda_counter_weight;
+        }
+    }
+    if let Some(def) = def {
+        // An ambush's `advancement_requirement` is `Some(0)`, so the line
+        // above counted every one of its tokens as nothing — see
+        // `AMBUSH_ADVANCEMENT_WEIGHT`. Capped rather than open-ended
+        // because nothing else stops the Corp advancing it.
+        if damage_grows_with_advancement(def) {
+            let counted = installed.advancement_tokens.min(w.ambush_advancement_cap);
+            value += f64::from(counted) * w.ambush_advancement_weight;
+        }
+        // Face-down and dangerous. Only while unrezzed: once it is turned
+        // up it is a known quantity and the Runner simply stops running
+        // at it.
+        if w.ambush_weight != 0.0 && !installed.rezzed && punishes_access_with_damage(def) {
+            value += w.ambush_weight;
         }
     }
     value
@@ -615,7 +725,7 @@ fn breaker_savings_shortfall(state: &GameState, registry: &CardRegistry) -> u32 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::dsl::{AbilityDef, CardDefinition, CardId, SubroutineBreakCount, Trigger};
+    use netrunner_core::dsl::{AbilityDef, CardDefinition, CardId, DamageType, SubroutineBreakCount, Trigger, TriggeredEffect};
     use netrunner_core::rules::{AgendaPoints, Credits, GameState, InstallId, InstalledRunnerCard};
 
     fn empty() -> CardRegistry {
@@ -780,6 +890,96 @@ mod tests {
             (double(4) - double(3) - 2.0 * (dividend(4) - dividend(3))).abs() < f64::EPSILON,
             "two counters per token is worth twice one"
         );
+    }
+
+    /// The ambush recogniser reads a card's *text*, so it must fire on a
+    /// card that grows its damage and not on one that merely deals it.
+    #[test]
+    fn an_ambush_is_recognised_by_its_text_and_a_plain_damage_card_is_not() {
+        let mut growing = ice("urtica", 0);
+        growing.card_type = CardType::Asset;
+        growing.advancement_requirement = Some(0);
+        growing.triggers = vec![TriggeredEffect {
+            trigger: Trigger::OnAccessed,
+            effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],
+            requirement: None,
+        }];
+        assert!(damage_grows_with_advancement(&growing));
+        assert!(punishes_access_with_damage(&growing));
+
+        let mut flat = growing.clone();
+        flat.triggers[0].effects = vec![Effect::DealDamage(DamageType::Net, 3)];
+        assert!(!damage_grows_with_advancement(&flat), "a fixed amount does not grow");
+        assert!(punishes_access_with_damage(&flat), "but it is still an ambush");
+
+        let mut elsewhere = growing.clone();
+        elsewhere.triggers[0].trigger = Trigger::OnTurnStart;
+        assert!(damage_grows_with_advancement(&elsewhere));
+        assert!(!punishes_access_with_damage(&elsewhere), "damage on your own turn is not an access punish");
+
+        let mut agenda = growing.clone();
+        agenda.card_type = CardType::Agenda;
+        assert!(!punishes_access_with_damage(&agenda), "an agenda that hurts on access is not an ambush to install");
+    }
+
+    /// The zero this term exists to remove. An ambush carries
+    /// `advancement_requirement: Some(0)`, so every token it held was
+    /// counted by `.min(required)` as nothing and no Corp ever advanced
+    /// one — while the card's damage *is* that count.
+    #[test]
+    fn advancing_an_ambush_is_worth_more_than_the_click_it_costs_and_stops_at_the_cap() {
+        let mut ambush = ice("clearinghouse", 0);
+        ambush.card_type = CardType::Asset;
+        ambush.advancement_requirement = Some(0);
+        ambush.triggers = vec![TriggeredEffect {
+            trigger: Trigger::OnTurnStart,
+            effects: vec![Effect::DealDamageAmount(DamageType::Meat, Amount::HostedAdvancementTokens)],
+            requirement: None,
+        }];
+        let registry = CardRegistry::from_cards(vec![ambush]);
+        let at = |tokens| {
+            let mut state = GameState::new(0);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId("clearinghouse".to_string()),
+                install_id: InstallId(1),
+                advancement_tokens: tokens,
+                ..Default::default()
+            }];
+            evaluate_state(&state, Side::Corp, &registry)
+        };
+        let cap = Weights::default().ambush_advancement_cap;
+        assert!(at(1) > at(0) + 0.8, "advancing must beat the click and credit it costs");
+        assert_eq!(at(cap + 1), at(cap), "and stop at the cap — nothing else would stop it");
+    }
+
+    /// `ambush_weight` is a profile term, off for the balanced Corp, and
+    /// it applies only while the card is face down.
+    #[test]
+    fn a_face_down_ambush_is_worth_more_only_to_a_corp_that_plays_for_damage() {
+        let mut ambush = ice("snare", 0);
+        ambush.card_type = CardType::Asset;
+        ambush.triggers = vec![TriggeredEffect {
+            trigger: Trigger::OnAccessed,
+            effects: vec![Effect::DealDamage(DamageType::Net, 3)],
+            requirement: None,
+        }];
+        let registry = CardRegistry::from_cards(vec![ambush]);
+        let value = |rezzed, w: &Weights| {
+            let mut state = GameState::new(0);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId("snare".to_string()),
+                install_id: InstallId(1),
+                rezzed,
+                ..Default::default()
+            }];
+            evaluate_state_with(&state, Side::Corp, &registry, w)
+        };
+        let base = Weights::default();
+        assert_eq!(value(false, &base), value(false, &base), "balanced is indifferent — the term is zero");
+        let trap = crate::Personality::Trap.weights();
+        assert!(value(false, &trap) > value(false, &base) + base.unrezzed_install_weight - trap.unrezzed_install_weight);
+        let rezzed_trap = value(true, &trap);
+        assert!(rezzed_trap < value(false, &trap), "face up it is a known quantity, not a threat");
     }
 
     /// The half that makes the first half survive being cashed in: a
