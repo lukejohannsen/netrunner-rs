@@ -899,8 +899,9 @@ fn rig_coverage(state: &GameState, registry: &CardRegistry) -> [bool; 3] {
 
 /// Which ICE subtypes `def` can break — indexed Barrier, Code Gate,
 /// Sentry. `IceType` is not `Hash`, and three flags say it more plainly
-/// than a set would anyway.
-fn covers(def: &CardDefinition) -> [bool; 3] {
+/// than a set would anyway. Shared with `observation`'s rig and coverage
+/// blocks so the network is shown exactly what this evaluator counts.
+pub(crate) fn covers(def: &CardDefinition) -> [bool; 3] {
     let mut covered = [false; 3];
     let slot = |subtype: IceType| match subtype {
         IceType::Barrier => 0,
