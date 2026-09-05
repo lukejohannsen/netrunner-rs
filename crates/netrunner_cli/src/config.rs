@@ -146,7 +146,7 @@ pub struct Config {
     /// and `puct-onnx` — the artifact `scripts/run_iteration_loop.py`
     /// promotes each iteration. Ignored unless a side is set to one of
     /// those kinds.
-    #[arg(long, default_value = "checkpoints/latest_policy.onnx")]
+    #[arg(long, default_value = "data/checkpoints/latest_policy.onnx")]
     pub model: String,
 
     /// Which deck the Corp plays: a built-in deck id (e.g.

@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from action_space_segments import SEGMENTS, SIZE as SEGMENT_SIZE
 
 N_GAMES = int(sys.argv[1]) if len(sys.argv) > 1 else 200
-MODEL = sys.argv[2] if len(sys.argv) > 2 else "checkpoints/rejected_iter_008.onnx"
+MODEL = sys.argv[2] if len(sys.argv) > 2 else "data/checkpoints/rejected_iter_008.onnx"
 CORPUS = sys.argv[3] if len(sys.argv) > 3 else "data/selfplay/iter_009"
 GAMES = sorted(glob.glob(f"{CORPUS}/game_*.jsonl"))[:N_GAMES]
 if not GAMES:
