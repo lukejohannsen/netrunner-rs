@@ -271,10 +271,16 @@ impl Session {
             // `side` is the chooser: `current_actor` puts a parked
             // decision's owner ahead of everything but a trace or a paid
             // choice, and neither of those can loop.
+            // Attribution, not resolution: `prompting_card` names the card
+            // whose text asked; `source_card` is what the decision resolves
+            // *as* and can be the card it just selected. Older recorded
+            // states have no `prompting_card`, hence the fallback.
             let source_card = match decision {
-                PendingDecision::ChooseCards { source_card, .. }
-                | PendingDecision::ChooseEffect { source_card, .. }
-                | PendingDecision::ChooseServer { source_card, .. } => source_card.clone(),
+                PendingDecision::ChooseCards { source_card, prompting_card, .. }
+                | PendingDecision::ChooseEffect { source_card, prompting_card, .. }
+                | PendingDecision::ChooseServer { source_card, prompting_card, .. } => {
+                    prompting_card.clone().or_else(|| source_card.clone())
+                }
                 PendingDecision::ChooseTriggerOrder { .. } => None,
             };
             return SessionStep::Stalled(StallReason::DecisionLivelock {

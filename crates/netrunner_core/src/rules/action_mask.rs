@@ -1187,6 +1187,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::GiveTags(1),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingPaidChoiceResume::None,
         });
@@ -1209,6 +1210,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
@@ -1238,6 +1240,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
@@ -1303,6 +1306,7 @@ mod tests {
             on_success: None,
             on_start: None,
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
@@ -1452,6 +1456,7 @@ mod tests {
                 crate::dsl::Effect::Sequence(Vec::new()),
             ],
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });

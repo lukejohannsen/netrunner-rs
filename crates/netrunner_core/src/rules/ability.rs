@@ -75,6 +75,27 @@ pub struct ResolutionContext<'a> {
     /// selected — `Amount::RemainingAfterSelection` (a sabotage's R&D
     /// half). 0 outside a selection's `then`.
     pub selected_count: u32,
+    /// The card whose printed text this resolution is a *continuation* of,
+    /// when that differs from `acting_card`. Read only by the effects that
+    /// park a decision (`PromptChooseCards`, `PresentChoice`,
+    /// `OfferPaidChoice`, `PromptChooseServer`, a sabotage) to fill the
+    /// parked decision's `source_card`; `None` means "the acting card".
+    ///
+    /// A `then` after a card selection resolves *as the selected card* —
+    /// `resolve_confirm_card_selection` sets `acting_card` to it so Plutus
+    /// replays the transaction it chose and Seamless Launch advances the
+    /// Offworld Office it picked — and that is right for what the effect
+    /// *does*. It is wrong for what the effect *is*: AU Co.'s "look at the
+    /// top 3, trash 1, then add the top 2 to HQ" parked its second prompt as
+    /// whichever card it had just trashed, so a livelock inside that prompt
+    /// was reported against *Measured Response*, the card on top of R&D
+    /// (ROADMAP Phase 2 §5). Touch-ups shows why the two cannot be one
+    /// field: its `then` is a `Sequence` that advances the chosen install
+    /// and *then* presents a choice — the first half needs the selection,
+    /// the second is Touch-ups still talking. A fresh card resolution
+    /// (`play_operation_card`, a fired trigger) builds a context with this
+    /// `None`, so a prompt parked by a card Plutus replays is that card's.
+    pub prompting_card: Option<&'a CardId>,
 }
 
 impl<'a> ResolutionContext<'a> {
@@ -111,6 +132,15 @@ impl<'a> ResolutionContext<'a> {
     /// across the `PlayerAction` boundary for exactly this.
     pub fn for_parked(acting_install: Option<InstallId>, acting_card: Option<&'a CardId>) -> Self {
         ResolutionContext { acting_card, acting_install, ..ResolutionContext::default() }
+    }
+
+    /// The card a decision parked by this resolution is *attributed* to:
+    /// the continuation's owner when there is one, else the acting card.
+    /// Fills `prompting_card` on whatever gets parked; never `source_card`,
+    /// which stays the acting card because resume reads it as such. See
+    /// `prompting_card`.
+    pub fn attributed_card(&self) -> Option<CardId> {
+        self.prompting_card.or(self.acting_card).cloned()
     }
 }
 
@@ -601,10 +631,11 @@ pub fn evaluate_effect(
                 then: Some(Box::new(Effect::MillRnDAmount(Amount::RemainingAfterSelection(*count)))),
                 selected: Vec::new(),
                 source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
-            Ok(vec![GameEvent::PendingCardSelectionOffered { side: Side::Corp, min: from_hq_min, max: from_hq_max }])
+            Ok(vec![GameEvent::PendingCardSelectionOffered { side: Side::Corp, min: from_hq_min, max: from_hq_max, source: ctx.attributed_card() }])
         }
 
         Effect::MillRnDAmount(amount) => {
@@ -1005,6 +1036,7 @@ pub fn evaluate_effect(
                 if_paid: (**if_paid).clone(),
                 if_declined: (**if_declined).clone(),
                 source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingPaidChoiceResume::None,
             });
@@ -1016,6 +1048,7 @@ pub fn evaluate_effect(
                 chooser: *chooser,
                 options: options.clone(),
                 source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
@@ -1051,10 +1084,11 @@ pub fn evaluate_effect(
                 then: then.clone(),
                 selected: Vec::new(),
                 source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
-            Ok(vec![GameEvent::PendingCardSelectionOffered { side: *side, min: *min, max: *max }])
+            Ok(vec![GameEvent::PendingCardSelectionOffered { side: *side, min: *min, max: *max, source: ctx.attributed_card() }])
         }
 
         Effect::PromptChooseServer {
@@ -1128,6 +1162,7 @@ pub fn evaluate_effect(
                 on_start: on_start.clone(),
                 install: None,
                 source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
@@ -1186,6 +1221,7 @@ pub fn evaluate_effect(
                 // hidden information until it lands. The install payload
                 // above names it by position instead.
                 source_card: None,
+                prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
                 resume: PendingChoiceResume::None,
             });
@@ -1596,10 +1632,9 @@ fn park_damage_prevention(
     amount: usize,
     ctx: &ResolutionContext<'_>,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let acting_card = ctx.acting_card;
     state.pending_prevention = Some(PendingPrevention {
         kind: PendingPreventionKind::Damage { damage_type, amount, prevented: 0 },
-        source_card: acting_card.cloned(),
+        source_card: ctx.acting_card.cloned(),
         source_install: ctx.acting_install,
         resume: PreventionResume::None,
     });
@@ -1625,7 +1660,7 @@ fn park_trash_prevention(
     let priority = owning_side_of_target(&target, acting_card, registry);
     state.pending_prevention = Some(PendingPrevention {
         kind: PendingPreventionKind::Trash { target: target.clone(), prevented: false },
-        source_card: acting_card.cloned(),
+        source_card: ctx.acting_card.cloned(),
         source_install: ctx.acting_install,
         resume: PreventionResume::None,
     });

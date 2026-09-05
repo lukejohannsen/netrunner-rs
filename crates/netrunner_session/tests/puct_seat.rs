@@ -68,6 +68,7 @@ fn tao_swap_pending() -> (GameState, CardRegistry) {
         then: None,
         selected: vec![0],
         source_card: None,
+        prompting_card: None,
         source_install: None,
         resume: PendingChoiceResume::None,
     });
@@ -145,6 +146,7 @@ fn plutus_pay_pending() -> (GameState, CardRegistry) {
         then: None,
         selected: Vec::new(),
         source_card: Some(CardId("plutus".to_string())),
+        prompting_card: None,
         source_install: None,
         resume: PendingChoiceResume::None,
     });

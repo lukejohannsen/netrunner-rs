@@ -209,7 +209,18 @@ pub enum GameEvent {
     /// PromptChooseCards::reveal`.
     CardsSelected { side: Side, cards: Vec<CardId>, revealed: bool },
     /// `Effect::PromptChooseCards` parked a `PendingDecision::ChooseCards`.
-    PendingCardSelectionOffered { side: Side, min: u32, max: u32 },
+    /// `source` is the card whose text asked (`PendingDecision::ChooseCards::
+    /// prompting_card`), so a coverage report can charge the actions a
+    /// prompt absorbs to the card that opened it — the measurement that
+    /// makes a grinding prompt visible before it livelocks (ROADMAP Phase 2
+    /// §5). Absent from records made before the field existed.
+    PendingCardSelectionOffered {
+        side: Side,
+        min: u32,
+        max: u32,
+        #[serde(default)]
+        source: Option<CardId>,
+    },
     /// The Runner has `over_by` more memory units in use than available
     /// (a console left play under a full rig), so `rules::memory::
     /// enforce_limit` has parked a `ChooseCards` over their own programs:

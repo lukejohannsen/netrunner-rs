@@ -568,6 +568,12 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             Some(GameEvent::TraceInitiated { base: *base, initiating_card: None })
         }
         GameEvent::TraceInitiated { .. } => visible(),
+        // Same treatment for a prompt's source: struck out, not withheld —
+        // the prompt itself is public, the chooser is about to act on it.
+        GameEvent::PendingCardSelectionOffered { side, min, max, source: Some(card) } if concealed(card) => {
+            Some(GameEvent::PendingCardSelectionOffered { side: *side, min: *min, max: *max, source: None })
+        }
+        GameEvent::PendingCardSelectionOffered { .. } => visible(),
         // Every virus host today is a public rig card; this is the strip
         // the variant's doc comment promised for the day a Corp card holds
         // virus counters.
@@ -648,7 +654,6 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::TriggerFired { .. }
         | GameEvent::BadPublicityCreditsSpent { .. }
         | GameEvent::BonusRunCreditsSpent { .. }
-        | GameEvent::PendingCardSelectionOffered { .. }
         | GameEvent::MemoryLimitExceeded { .. }
         | GameEvent::PendingServerChoiceOffered { .. }
         | GameEvent::BadPublicityGiven { .. }
@@ -695,9 +700,12 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
     };
     let mut masked = decision.clone();
     match &mut masked {
-        PendingDecision::ChooseEffect { source_card, .. }
-        | PendingDecision::ChooseCards { source_card, .. }
-        | PendingDecision::ChooseServer { source_card, .. } => *source_card = conceal(source_card),
+        PendingDecision::ChooseEffect { source_card, prompting_card, .. }
+        | PendingDecision::ChooseCards { source_card, prompting_card, .. }
+        | PendingDecision::ChooseServer { source_card, prompting_card, .. } => {
+            *source_card = conceal(source_card);
+            *prompting_card = conceal(prompting_card);
+        }
         PendingDecision::ChooseTriggerOrder { .. } => {}
     }
     masked
@@ -1579,6 +1587,15 @@ mod tests {
             Some(GameEvent::TraceInitiated { base: 3, initiating_card: None })
         );
         assert_eq!(mask_event_for_player(&event, &state, Side::Corp), Some(event.clone()));
+
+        // A prompt's source gets the same treatment: the offer is public, the
+        // concealed card that made it is struck out for the other side.
+        let offered = GameEvent::PendingCardSelectionOffered { side: Side::Corp, min: 1, max: 1, source: Some(id("ice_wall")) };
+        assert_eq!(
+            mask_event_for_player(&offered, &state, Side::Runner),
+            Some(GameEvent::PendingCardSelectionOffered { side: Side::Corp, min: 1, max: 1, source: None })
+        );
+        assert_eq!(mask_event_for_player(&offered, &state, Side::Corp), Some(offered.clone()));
 
         let purge = GameEvent::VirusCountersPurged { cards: vec![id("botulus"), id("ice_wall")] };
         assert_eq!(

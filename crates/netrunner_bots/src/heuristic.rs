@@ -220,6 +220,7 @@ mod tests {
             },
             if_declined: Effect::Sequence(Vec::new()),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingPaidChoiceResume::None,
         });

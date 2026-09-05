@@ -955,6 +955,9 @@ pub struct PendingPaidChoice {
     /// CardDefinition whose effect offered this choice — same role as
     /// `TraceState::initiating_card`.
     pub source_card: Option<CardId>,
+    /// See `PendingDecision::ChooseCards::prompting_card`.
+    #[serde(default)]
+    pub prompting_card: Option<CardId>,
     /// The install `source_card` was resolving as, when it was one — so a
     /// resolution resumed later acts on *that* copy, not the first copy of
     /// the same card (ROADMAP Rules Audit §4).
@@ -1018,6 +1021,9 @@ pub enum PendingDecision {
         chooser: Side,
         options: Vec<Effect>,
         source_card: Option<CardId>,
+        /// See `ChooseCards::prompting_card`.
+        #[serde(default)]
+        prompting_card: Option<CardId>,
         /// See `PendingPaidChoice::source_install`.
         #[serde(default)]
         source_install: Option<InstallId>,
@@ -1049,6 +1055,18 @@ pub enum PendingDecision {
         /// nothing the chooser was not already shown.
         selected: Vec<usize>,
         source_card: Option<CardId>,
+        /// The card whose printed text parked this — **for attribution, never
+        /// for resolution.** `source_card` is the card the decision resolves
+        /// *as* on resume (a `then` after a selection resolves as the
+        /// selected card, which is what lets Plutus replay the transaction it
+        /// chose), so it cannot double as "which card is asking": AU Co.'s
+        /// "trash 1 of the top 3, then add the top 2 to HQ" parked its second
+        /// question as whichever card it had just trashed, and a livelock
+        /// inside that prompt was reported against *Measured Response*
+        /// (ROADMAP Phase 2 §5). `None` in states recorded before the field
+        /// existed; readers fall back to `source_card`.
+        #[serde(default)]
+        prompting_card: Option<CardId>,
         /// See `PendingPaidChoice::source_install`.
         #[serde(default)]
         source_install: Option<InstallId>,
@@ -1107,6 +1125,9 @@ pub enum PendingDecision {
         /// see `Effect::PromptChooseServer::on_success`.
         on_success: Option<Box<Effect>>,
         source_card: Option<CardId>,
+        /// See `ChooseCards::prompting_card`.
+        #[serde(default)]
+        prompting_card: Option<CardId>,
         /// See `PendingPaidChoice::source_install`.
         #[serde(default)]
         source_install: Option<InstallId>,

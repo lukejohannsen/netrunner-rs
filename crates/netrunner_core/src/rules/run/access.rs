@@ -367,6 +367,7 @@ fn try_replace_access(
                 crate::dsl::Effect::Sequence(Vec::new()),
             ],
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
