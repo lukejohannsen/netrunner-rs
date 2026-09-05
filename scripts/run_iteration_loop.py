@@ -136,7 +136,7 @@ def main():
     parser.add_argument("--window", type=int, default=None,
                         help="Train on the last N iterations only (the replay window); default every iteration")
     parser.add_argument("--data-dir", type=str, default="./data/selfplay", help="Trajectory output directory")
-    parser.add_argument("--ckpt-dir", type=str, default="./checkpoints", help="Checkpoints directory")
+    parser.add_argument("--ckpt-dir", type=str, default="./data/checkpoints", help="Checkpoints directory")
     parser.add_argument("--arena-games", type=int, default=48,
                         help="Head-to-head games a candidate plays against the incumbent before promotion")
     parser.add_argument("--promote-threshold", type=float, default=0.55,

@@ -2,7 +2,7 @@
 //! ONNX file can actually drive an opponent a human plays against.
 //!
 //! Before this existed, `scripts/run_iteration_loop.py` could produce
-//! `checkpoints/latest_policy.onnx` and nothing in the workspace could
+//! `data/checkpoints/latest_policy.onnx` and nothing in the workspace could
 //! load it into a game — `BotKind` had no `Onnx` variant at all, so a
 //! trained model was unreachable however good it was.
 //!
@@ -13,13 +13,16 @@
 
 #![cfg(feature = "onnx")]
 
-use netrunner_bots::onnx_fixture;
+use netrunner_bots::{onnx_fixture, Personality};
 use netrunner_core::rules::{GamePhase, GameState, Side};
 use netrunner_single_player::SinglePlayerSession;
 
 #[path = "../src/bots.rs"]
 mod bots;
 #[path = "../src/config.rs"]
+// Path-included, so the binary sees all of `config` while using only
+// `BotKind`; the rest would be dead code here and nowhere else.
+#[allow(dead_code)]
 mod config;
 // Included because `decks` refers to it as `crate::deck_store`, and with no
 // `lib.rs` in this crate the test binary *is* the crate root — so every
@@ -52,10 +55,10 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
 
     // The ONNX policy takes the Corp seat; a scripted agent takes the
     // Runner's, standing in for the human.
-    let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, 8, model_path)
+    let corp_driver = bots::make_driver(BotKind::Onnx, Side::Corp, 1, 8, model_path, Personality::Balanced)
         .expect("the fixture model loads at the current observation/action shape");
     let runner_driver =
-        bots::make_driver(BotKind::Heuristic, Side::Runner, 2, 8, model_path).expect("heuristic driver");
+        bots::make_driver(BotKind::Heuristic, Side::Runner, 2, 8, model_path, Personality::Balanced).expect("heuristic driver");
 
     let session = SinglePlayerSession::new(state, registry, corp_driver, runner_driver);
     let (final_state, history) = session.run();
@@ -80,7 +83,7 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
 /// before training anything — must explain itself rather than panic.
 #[test]
 fn a_missing_checkpoint_explains_how_to_produce_one() {
-    let Err(error) = bots::make_driver(BotKind::Onnx, Side::Corp, 0, 8, "checkpoints/does_not_exist.onnx") else {
+    let Err(error) = bots::make_driver(BotKind::Onnx, Side::Corp, 0, 8, "data/checkpoints/does_not_exist.onnx", Personality::Balanced) else {
         panic!("a missing checkpoint cannot yield a driver");
     };
     assert!(error.contains("run_iteration_loop.py"), "error should point at the training command: {error}");

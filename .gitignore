@@ -7,11 +7,12 @@ venv/
 env/
 .env/
 
-# Generated self-play training artifacts (all of /data is generated: the
-# live corpus, and any stale one moved aside under another name)
+# Generated training artifacts. Everything under /data is generated and lives
+# nowhere else: data/selfplay (the live corpus), data/checkpoints (the live
+# run: promoted and rejected policies, pinned binaries, logs) and data/runs/<name>
+# (retired runs, checkpoints and logs only — their corpora are deleted once the
+# roadmap records what they showed).
 /data/
-/checkpoints/
-/checkpoints_*/
 
 # Local Claude Code state (per-machine agent settings and permissions)
 .claude/

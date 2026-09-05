@@ -564,7 +564,7 @@ def train(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--data-dir", "-d", type=str, required=True)
-    parser.add_argument("--output-dir", "-o", type=str, default="./checkpoints")
+    parser.add_argument("--output-dir", "-o", type=str, default="./data/checkpoints")
     parser.add_argument("--epochs", "-e", type=int, default=10)
     parser.add_argument("--batch-size", "-b", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-3)
