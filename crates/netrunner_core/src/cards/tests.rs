@@ -807,6 +807,7 @@ mod system_gateway {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::PendingChoiceResume::None,
         });
@@ -843,6 +844,7 @@ mod system_gateway {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::PendingChoiceResume::None,
         };
@@ -8179,6 +8181,65 @@ mod system_gateway {
             .expect("play sprint");
         assert_eq!(sprint.corp.hq.len(), 7, "4 kept + 3 drawn");
         assert_eq!(confirm_every_subset("sprint", sprint), 21);
+    }
+
+    /// Every `PromptChooseCards` in the pool, read straight off the card
+    /// JSON: `min <= max` always, and the `min > 0` prompts — the ones a
+    /// chooser *must* satisfy before Confirm is legal, i.e. every prompt
+    /// that can livelock a chooser that deselects — listed by card and zone
+    /// in the test output so the set of must-resolve prompts is one command
+    /// away (`cargo test -p netrunner_core every_prompt -- --nocapture`).
+    /// The engine already refuses to park a prompt with fewer than `min`
+    /// eligible cards; this is the authoring-time half of that guard.
+    #[test]
+    fn every_prompt_in_the_pool_has_min_at_most_max_and_the_must_resolve_ones_are_listed() {
+        fn walk(value: &serde_json::Value, card: &str, path: &str, found: &mut Vec<(String, String, u64, u64, String)>) {
+            match value {
+                serde_json::Value::Object(map) => {
+                    if let Some(serde_json::Value::Object(prompt)) = map.get("PromptChooseCards") {
+                        let n = |key: &str| prompt.get(key).and_then(|v| v.as_u64());
+                        let (min, max) = (n("min").unwrap_or(0), n("max").unwrap_or(0));
+                        let zone = prompt.get("source").map_or("?".to_string(), |z| z.to_string());
+                        found.push((card.to_string(), path.to_string(), min, max, zone));
+                    }
+                    for (key, child) in map {
+                        walk(child, card, &format!("{path}/{key}"), found);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for (index, child) in items.iter().enumerate() {
+                        walk(child, card, &format!("{path}[{index}]"), found);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let data = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("data");
+        let mut found = Vec::new();
+        for side in ["corp", "runner"] {
+            let mut files: Vec<_> = std::fs::read_dir(data.join(side)).expect("card data dir").flatten().collect();
+            files.sort_by_key(|entry| entry.path());
+            for entry in files {
+                let path = entry.path();
+                if path.extension().is_some_and(|e| e == "json") {
+                    let text = std::fs::read_to_string(&path).expect("card JSON is readable");
+                    let value: serde_json::Value = serde_json::from_str(&text).expect("card JSON parses");
+                    let card = value.get("id").and_then(|v| v.as_str()).unwrap_or("?").to_string();
+                    walk(&value, &card, "", &mut found);
+                }
+            }
+        }
+        assert!(found.len() > 40, "the pool has many prompts; found {}", found.len());
+
+        for (card, path, min, max, _) in &found {
+            assert!(min <= max, "{card}{path}: PromptChooseCards min {min} > max {max} can never be confirmed");
+        }
+        let must_resolve: Vec<_> = found.iter().filter(|(_, _, min, _, _)| *min > 0).collect();
+        println!("{} PromptChooseCards in the pool, {} with min > 0 (must be satisfied before Confirm):", found.len(), must_resolve.len());
+        for (card, path, min, max, zone) in &must_resolve {
+            println!("  {card:36} min {min} max {max}  from {zone}  at {path}");
+        }
     }
 
     #[test]

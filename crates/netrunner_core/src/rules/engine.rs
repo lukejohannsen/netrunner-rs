@@ -5707,6 +5707,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
             source_card: Some(CardId("parks_a_choice".to_string())),
+            prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });

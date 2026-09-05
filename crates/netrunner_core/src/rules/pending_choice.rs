@@ -437,7 +437,9 @@ pub(crate) fn resolve_accept(
         cost_events.iter().filter(|e| matches!(e, GameEvent::TagsGiven { .. })).cloned().collect();
     let mut events = cost_events;
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
-    events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()), registry)?);
+    let mut ctx = ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref());
+    ctx.prompting_card = pending.prompting_card.as_ref().or(pending.source_card.as_ref());
+    events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ctx, registry)?);
     for tag_event in cost_tag_events {
         events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &tag_event)?);
     }
@@ -460,7 +462,9 @@ pub(crate) fn resolve_decline(state: &mut GameState, registry: &CardRegistry) ->
     let pending = state.pending_paid_choice.take().ok_or(RulesError::NoPendingPaidChoice)?;
 
     let mut events = vec![GameEvent::PendingPaidChoiceDeclined { side: pending.side }];
-    events.extend(ability::evaluate_effect(state, &pending.if_declined, &mut ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()), registry)?);
+    let mut ctx = ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref());
+    ctx.prompting_card = pending.prompting_card.as_ref().or(pending.source_card.as_ref());
+    events.extend(ability::evaluate_effect(state, &pending.if_declined, &mut ctx, registry)?);
 
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_declined`
@@ -480,7 +484,7 @@ pub(crate) fn resolve_choice(
     registry: &CardRegistry,
     option_index: usize,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseEffect { chooser, options, source_card, source_install, resume } =
+    let PendingDecision::ChooseEffect { chooser, options, source_card, prompting_card, source_install, resume } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -488,7 +492,9 @@ pub(crate) fn resolve_choice(
 
     let effect = options.get(option_index).ok_or(RulesError::InvalidChoiceIndex(option_index))?.clone();
     let mut events = vec![GameEvent::PendingChoiceResolved { chooser, option_index }];
-    events.extend(ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_parked(source_install, source_card.as_ref()), registry)?);
+    let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+    ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+    events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
 
     if resume == PendingChoiceResume::ResumeSubroutines {
         // The chosen `effect` may itself have parked a *further* pending
@@ -637,6 +643,7 @@ pub(crate) fn resolve_confirm_card_selection(
         then,
         selected,
         source_card,
+        prompting_card,
         source_install,
         resume,
         ..
@@ -824,6 +831,10 @@ pub(crate) fn resolve_confirm_card_selection(
         if let Some(effect) = effect {
             let mut ctx = ability::ResolutionContext::for_parked(acting_install, acting);
             ctx.selected_count = selected.len() as u32;
+            // The `then` acts *as* the selection (above) but *is* still the
+            // prompting card's text, so anything it parks is attributed to
+            // that card — see `ResolutionContext::prompting_card`.
+            ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
             events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
         }
     }
@@ -869,7 +880,7 @@ pub(crate) fn resolve_choose_server(
     registry: &CardRegistry,
     server: crate::rules::run::ServerId,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, source_card, source_install, resume, .. } =
+    let PendingDecision::ChooseServer { rez_cost_delta, bonus_run_credits, allowed_servers, on_success, on_start, install, source_card, prompting_card, source_install, resume, .. } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -920,6 +931,7 @@ pub(crate) fn resolve_choose_server(
         if let Some(then) = pending_install.then {
             let effect = substitute_chosen_server(*then, server);
             let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+            ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
             events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
         }
         if resume == PendingChoiceResume::ResumeSubroutines {
@@ -992,6 +1004,163 @@ mod tests {
         }
     }
 
+    /// A `then` acts as the selected card but *is* the prompting card's
+    /// text, so a decision it parks belongs to the prompting card. AU Co.'s
+    /// turn-start ability — trash 1 of the top 3, then add the top 2 to HQ —
+    /// parked its second prompt as whichever card it had just trashed, and a
+    /// livelock inside that prompt was reported against *Measured Response*,
+    /// the card that happened to be on top of R&D (ROADMAP Phase 2 §5).
+    #[test]
+    fn a_prompt_parked_by_a_then_is_attributed_to_the_prompting_card_not_the_selection() {
+        use crate::dsl::{CardFilter, CardZoneRef};
+        use crate::rules::apply_action;
+
+        // `eligible_positions` looks every card up, so the fixture registers
+        // its R&D as plain operations.
+        let mut registry = CardRegistry::new();
+        let r_and_d = ["deep", "deeper", "third", "second", "measured_response"];
+        for id in r_and_d {
+            registry.insert(crate::dsl::CardDefinition {
+                id: CardId(id.to_string()),
+                title: id.to_string(),
+                side: Side::Corp,
+                card_type: crate::dsl::CardType::Operation,
+                is_playable: true,
+                ..Default::default()
+            });
+        }
+        let mut state = game_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.r_and_d = r_and_d.iter().map(|id| CardId(id.to_string())).collect();
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnRAndD,
+            filter: CardFilter::TopOfZone(3),
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: Some(CardZoneRef::OwnArchives),
+            then: Some(Box::new(Effect::PromptChooseCards {
+                side: Side::Corp,
+                source: CardZoneRef::OwnRAndD,
+                filter: CardFilter::TopOfZone(2),
+                min: 2,
+                max: 2,
+                reveal: false,
+                shuffle_after: false,
+                destination: Some(CardZoneRef::OwnHq),
+                then: None,
+            })),
+            selected: Vec::new(),
+            source_card: Some(CardId("au_co".to_string())),
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+
+        // Trash the top card — Measured Response — then confirm.
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 4 }).unwrap();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).unwrap();
+
+        assert_eq!(state.corp.archives.len(), 1, "the chosen card was trashed");
+        assert_eq!(state.corp.archives[0].card, CardId("measured_response".to_string()));
+        match &state.pending_decision {
+            Some(PendingDecision::ChooseCards { filter: CardFilter::TopOfZone(2), min: 2, max: 2, source_card, prompting_card, .. }) => {
+                assert_eq!(
+                    prompting_card.as_ref().map(|c| c.0.as_str()),
+                    Some("au_co"),
+                    "the nested prompt is AU Co.'s, not the trashed card's"
+                );
+                assert_eq!(
+                    source_card.as_ref().map(|c| c.0.as_str()),
+                    Some("measured_response"),
+                    "while resume still acts as the selected card"
+                );
+            }
+            other => panic!("expected the nested top-2 prompt, got {other:?}"),
+        }
+    }
+
+    /// The other half of the same contract, on Touch-ups' shape: a `then`
+    /// that is a `Sequence` of "act on the selection" and "ask another
+    /// question". The advancement must still land on the *selected*
+    /// install, and the parked choice must still be *Touch-ups'*.
+    #[test]
+    fn a_then_still_acts_on_the_selection_while_its_parked_choice_names_the_prompting_card() {
+        use crate::dsl::{CardFilter, CardZoneRef};
+        use crate::rules::apply_action;
+        use crate::rules::state::{InstallSlot, InstalledCard};
+        use crate::rules::ServerId;
+
+        let mut registry = CardRegistry::new();
+        for id in ["first", "second"] {
+            registry.insert(crate::dsl::CardDefinition {
+                id: CardId(id.to_string()),
+                title: id.to_string(),
+                side: Side::Corp,
+                card_type: crate::dsl::CardType::Asset,
+                is_playable: true,
+                ..Default::default()
+            });
+        }
+        let mut state = game_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.installed = vec![
+            InstalledCard {
+                install_id: InstallId(1),
+                card: CardId("first".to_string()),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Root,
+                rezzed: false,
+                ..Default::default()
+            },
+            InstalledCard {
+                install_id: InstallId(2),
+                card: CardId("second".to_string()),
+                server: ServerId::Remote(1),
+                slot: InstallSlot::Root,
+                rezzed: false,
+                ..Default::default()
+            },
+        ];
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnInstalled,
+            filter: CardFilter::Any,
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: None,
+            then: Some(Box::new(Effect::Sequence(vec![
+                Effect::AddAdvancementTokens(2),
+                Effect::PresentChoice { chooser: Side::Corp, options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())] },
+            ]))),
+            selected: Vec::new(),
+            source_card: Some(CardId("touch_ups".to_string())),
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+
+        let second = crate::rules::legal_actions(&state, &registry)
+            .into_iter()
+            .find(|a| matches!(a, PlayerAction::ToggleCardSelection { position: 1 }))
+            .expect("the second install is selectable");
+        let (state, _) = apply_action(&state, &registry, second).unwrap();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).unwrap();
+
+        assert_eq!(state.corp.installed[1].advancement_tokens, 2, "advanced the install the Corp picked");
+        assert_eq!(state.corp.installed[0].advancement_tokens, 0, "and not the first copy");
+        match &state.pending_decision {
+            Some(PendingDecision::ChooseEffect { prompting_card, .. }) => {
+                assert_eq!(prompting_card.as_ref().map(|c| c.0.as_str()), Some("touch_ups"), "the choice is Touch-ups' own");
+            }
+            other => panic!("expected the parked PresentChoice, got {other:?}"),
+        }
+    }
+
     #[test]
     fn accept_pays_the_cost_and_resolves_if_paid() {
         let mut state = game_state();
@@ -1001,6 +1170,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::GiveTags(1),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
@@ -1022,6 +1192,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::GiveTags(1),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
@@ -1043,6 +1214,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::EndTheRun,
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
@@ -1062,6 +1234,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::EndTheRun,
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
@@ -1078,6 +1251,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });
@@ -1096,6 +1270,7 @@ mod tests {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2)],
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });
@@ -1114,6 +1289,7 @@ mod tests {
             if_paid: Effect::Sequence(Vec::new()),
             if_declined: Effect::GiveTags(1),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingPaidChoiceResume::None,
         });
@@ -1172,6 +1348,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });
@@ -1243,6 +1420,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });
@@ -1306,6 +1484,7 @@ mod tests {
             then: None,
             selected: vec![1],
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });

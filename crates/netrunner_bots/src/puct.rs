@@ -947,6 +947,10 @@ mod tests {
             // Position 0 — the rezzed Palisade.
             selected: vec![0],
             source_card: None,
+            // Attributed to the unrezzed ICE on purpose: the field passes
+            // through the masked view like `source_card`, so the leak check
+            // below covers it too.
+            prompting_card: Some(CardId("ballista".to_string())),
             source_install: None,
             resume: PendingChoiceResume::None,
         });

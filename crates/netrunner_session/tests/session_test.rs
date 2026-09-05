@@ -274,6 +274,7 @@ fn a_decision_that_never_resolves_is_reported_as_a_livelock_naming_the_card() {
         then: None,
         selected: Vec::new(),
         source_card: Some(CardId("plutus".to_string())),
+        prompting_card: None,
         source_install: None,
         resume: PendingChoiceResume::None,
     });
@@ -301,6 +302,73 @@ fn a_decision_that_never_resolves_is_reported_as_a_livelock_naming_the_card() {
     // `BudgetExhausted` would have cost `MAX_STEPS`. An order of magnitude
     // is the bar — if the two ever drift close, one of them is wrong.
     assert!(session.steps() * 8 <= MAX_STEPS, "the livelock budget ({}) must be far cheaper than the step budget ({MAX_STEPS})", session.steps());
+}
+
+/// A `then` after a selection resolves *as* the selected card, so a prompt
+/// it parks carries that card as `source_card` — AU Co.'s second question
+/// was parked as the card it had just trashed. The livelock report must name
+/// the card whose text is asking, which is `prompting_card`.
+#[test]
+fn a_livelock_is_attributed_to_the_prompting_card_not_the_card_the_decision_acts_as() {
+    use netrunner_bots::BotAgent;
+    use netrunner_core::dsl::{CardDefinition, CardFilter, CardId, CardType, CardZoneRef};
+    use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+    use netrunner_core::view::ClientView;
+    use netrunner_session::StallReason;
+
+    struct AlwaysToggles;
+    impl BotAgent for AlwaysToggles {
+        fn select_action(&mut self, view: &ClientView, _registry: &CardRegistry) -> PlayerAction {
+            view.legal_actions
+                .iter()
+                .find(|a| matches!(a, PlayerAction::ToggleCardSelection { .. }))
+                .unwrap_or(&view.legal_actions[0])
+                .clone()
+        }
+    }
+
+    let top = ["second", "measured_response"];
+    let mut registry = CardRegistry::new();
+    for id in top {
+        registry.insert(CardDefinition {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Corp,
+            card_type: CardType::Operation,
+            is_playable: true,
+            ..Default::default()
+        });
+    }
+    let mut state = GameState::new(0);
+    state.phase = GamePhase::Action(Side::Corp);
+    state.corp.r_and_d = top.iter().map(|id| CardId(id.to_string())).collect();
+    // AU Co.'s nested prompt exactly as the engine parks it after the first
+    // pick trashed Measured Response: acts as that card, asked by AU Co.
+    state.pending_decision = Some(PendingDecision::ChooseCards {
+        side: Side::Corp,
+        source: CardZoneRef::OwnRAndD,
+        filter: CardFilter::TopOfZone(2),
+        min: 2,
+        max: 2,
+        reveal: false,
+        shuffle_after: false,
+        destination: Some(CardZoneRef::OwnHq),
+        then: None,
+        selected: Vec::new(),
+        source_card: Some(CardId("measured_response".to_string())),
+        prompting_card: Some(CardId("au_co".to_string())),
+        source_install: None,
+        resume: PendingChoiceResume::None,
+    });
+
+    let mut session =
+        Session::new(state, registry, Seat::Agent(Box::new(AlwaysToggles)), Seat::Agent(Box::new(RandomAgent::new(1))));
+    match outcome_reason(&session.run()) {
+        Some(StallReason::DecisionLivelock { source_card, .. }) => {
+            assert_eq!(source_card.as_ref().map(|c| c.0.as_str()), Some("au_co"), "named the card that asked");
+        }
+        other => panic!("expected a livelock, got {other:?}"),
+    }
 }
 
 fn outcome_reason(step: &SessionStep) -> Option<netrunner_session::StallReason> {

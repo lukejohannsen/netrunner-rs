@@ -810,6 +810,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });

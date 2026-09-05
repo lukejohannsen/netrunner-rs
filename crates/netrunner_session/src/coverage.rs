@@ -66,6 +66,21 @@ pub struct CardCoverage {
     /// specifically — the bioroid click-break, which is the one break path
     /// that owes nothing to an icebreaker.
     pub click_broken: u64,
+    /// How many `ChooseCards` prompts this card's text opened
+    /// (`GameEvent::PendingCardSelectionOffered::source`).
+    #[serde(default)]
+    pub prompts_offered: u64,
+    /// Actions — toggles and the confirm — spent inside those prompts, in
+    /// total. A prompt that resolves takes `max + 1` at most from a bot
+    /// that never deselects; the volume runs' livelocks took ~9,800 each.
+    #[serde(default)]
+    pub prompt_actions: u64,
+    /// The most any single prompt of this card absorbed. **The number the
+    /// prompt-cost gate reads**: a card that grinds without quite livelocking
+    /// shows up here first, which is the shape the next bad prompt will
+    /// take (ROADMAP Phase 2 §5).
+    #[serde(default)]
+    pub prompt_actions_max: u64,
 }
 
 impl CardCoverage {
@@ -122,6 +137,13 @@ pub struct Coverage {
     /// that had ended before a deferred trigger drained; it also covers
     /// board-wide triggers (`OnTurnStart`) the inference could not name.
     pub triggers_fired: BTreeMap<String, u64>,
+    /// The card selection currently open in the match being absorbed and
+    /// the actions spent in it so far — bookkeeping for `CardCoverage::
+    /// prompt_actions`, never part of the report. A game that ends inside a
+    /// prompt (a livelock) is flushed by `absorb_match`, so its cost is
+    /// charged rather than lost.
+    #[serde(skip)]
+    open_prompt: Option<(String, u64)>,
 }
 
 fn bump(map: &mut BTreeMap<String, u64>, key: impl Into<String>) {
@@ -158,6 +180,19 @@ impl Coverage {
         for entry in history.entries() {
             self.absorb_entry(entry, registry);
         }
+        // A match that ended inside a prompt never confirmed it; charge what
+        // it absorbed to the card that asked.
+        self.close_prompt();
+    }
+
+    /// Charges the open prompt's actions to its card and clears it.
+    fn close_prompt(&mut self) {
+        if let Some((card, spent)) = self.open_prompt.take() {
+            let entry = self.cards.entry(card).or_default();
+            entry.prompts_offered += 1;
+            entry.prompt_actions += spent;
+            entry.prompt_actions_max = entry.prompt_actions_max.max(spent);
+        }
     }
 
     /// Records one applied action and the events it produced.
@@ -167,9 +202,27 @@ impl Coverage {
         bump(&mut self.actions_by_side, format!("{:?}/{action}", entry.side));
         bump(&mut self.actions, action);
 
+        // Counted before the events, because the confirm that closes a
+        // prompt is itself an action spent inside it.
+        if let Some((_, spent)) = self.open_prompt.as_mut()
+            && matches!(entry.action, PlayerAction::ToggleCardSelection { .. } | PlayerAction::ConfirmCardSelection)
+        {
+            *spent += 1;
+        }
         let click_break = matches!(entry.action, PlayerAction::BreakSubroutineWithClick { .. });
         for event in &entry.events {
             bump(&mut self.events, variant_name(&format!("{event:?}")));
+            match event {
+                // A nested prompt (AU Co.'s second question) opens in the
+                // same entry that confirmed the first, so close then open.
+                GameEvent::PendingCardSelectionOffered { source, .. } => {
+                    self.close_prompt();
+                    let card = source.as_ref().map_or_else(|| "(unattributed)".to_string(), |c| c.0.clone());
+                    self.open_prompt = Some((card, 0));
+                }
+                GameEvent::CardsSelected { .. } => self.close_prompt(),
+                _ => {}
+            }
             self.absorb_event(event, registry, click_break);
         }
     }
@@ -294,6 +347,9 @@ impl Coverage {
             into.subroutines_fired += from.subroutines_fired;
             into.subroutines_broken += from.subroutines_broken;
             into.click_broken += from.click_broken;
+            into.prompts_offered += from.prompts_offered;
+            into.prompt_actions += from.prompt_actions;
+            into.prompt_actions_max = into.prompt_actions_max.max(from.prompt_actions_max);
         }
         for (server, from) in &other.runs {
             let into = self.runs.entry(server.clone()).or_default();
@@ -539,6 +595,16 @@ fn pool_card_ids<'d>(registry: &CardRegistry, decks: impl Iterator<Item = &'d De
     ids
 }
 
+/// The most actions one card-selection prompt may absorb before the gate
+/// calls it a defect. A bot that never deselects (`netrunner_bots::agent::
+/// progressive`) resolves any prompt in `max + 1`, and the largest `max`
+/// any pool card asks for over a zone it can fill is Longevity Serum's 99
+/// over an HQ that holds ~6, so a dozen is generous and 32 is three times
+/// Plutus's four. Set well below `DECISION_BUDGET` (256) on purpose: that
+/// budget stops a *running* game, this one flags a *recorded* one, and the
+/// point of recording is to see the grind before it becomes a stall.
+pub const PROMPT_ACTIONS_GATE: u64 = 32;
+
 impl Coverage {
     /// Every gate at once: the failures, empty when all pass. Both sweeps
     /// call this so a failure reads identically whichever agent shape found
@@ -568,6 +634,19 @@ impl Coverage {
     /// not both be right: whichever list satisfied one failed the other.
     pub fn gate_failures_excluding(&self, card_universe: &[CardId], absent_from_these_decks: &[&str]) -> Vec<String> {
         let mut failures = Vec::new();
+
+        // Prompt cost, before reachability: a card whose prompt swallowed
+        // more actions than any resolution needs is a livelock that happened
+        // not to hit `DECISION_BUDGET` — or a prompt no chooser could close.
+        // Named by card, because that is the question a stall raises.
+        for (card, coverage) in &self.cards {
+            if coverage.prompt_actions_max > PROMPT_ACTIONS_GATE {
+                failures.push(format!(
+                    "card {card} had a prompt absorb {} actions (gate {PROMPT_ACTIONS_GATE}); {} prompts, {} actions in all",
+                    coverage.prompt_actions_max, coverage.prompts_offered, coverage.prompt_actions
+                ));
+            }
+        }
 
         for name in PlayerAction::VARIANT_NAMES {
             if absent_from_these_decks.contains(name) {
@@ -749,6 +828,91 @@ mod tests {
         );
         assert_eq!(coverage.triggers_fired.get("reactive/OnPlay"), Some(&1));
         assert_eq!(coverage.effects_seen.get("GainCredits"), Some(&1), "the fired trigger's effects are counted");
+    }
+
+    fn offered(card: Option<&str>) -> GameEvent {
+        GameEvent::PendingCardSelectionOffered {
+            side: Side::Corp,
+            min: 1,
+            max: 1,
+            source: card.map(|id| CardId(id.to_string())),
+        }
+    }
+
+    fn selected() -> GameEvent {
+        GameEvent::CardsSelected { side: Side::Corp, cards: Vec::new(), revealed: false }
+    }
+
+    fn toggle(position: usize) -> PlayerAction {
+        PlayerAction::ToggleCardSelection { position }
+    }
+
+    /// The actions a prompt absorbs are charged to the card whose text
+    /// opened it, and a nested prompt that opens in the same entry that
+    /// confirmed the first is charged separately to *its* card.
+    #[test]
+    fn prompt_actions_are_charged_to_the_card_that_asked() {
+        let history = MatchHistory::from_entries(vec![
+            entry(Side::Corp, PlayerAction::EndTurn, vec![offered(Some("plutus"))]),
+            entry(Side::Corp, toggle(0), vec![]),
+            entry(Side::Corp, toggle(0), vec![]),
+            entry(Side::Corp, toggle(1), vec![]),
+            // Confirming the first prompt opens AU Co.'s second in the same entry.
+            entry(Side::Corp, PlayerAction::ConfirmCardSelection, vec![selected(), offered(Some("au_co"))]),
+            entry(Side::Corp, toggle(0), vec![]),
+            entry(Side::Corp, PlayerAction::ConfirmCardSelection, vec![selected()]),
+        ]);
+        let mut coverage = Coverage::default();
+        coverage.absorb_match(&history, &registry(), &SessionStep::Ended { winner: Side::Corp, reason: GameEndReason::AgendaThreshold });
+
+        let plutus = &coverage.cards["plutus"];
+        assert_eq!((plutus.prompts_offered, plutus.prompt_actions, plutus.prompt_actions_max), (1, 4, 4), "{plutus:?}");
+        let au_co = &coverage.cards["au_co"];
+        assert_eq!((au_co.prompts_offered, au_co.prompt_actions, au_co.prompt_actions_max), (1, 2, 2), "{au_co:?}");
+        assert!(coverage.gate_failures(&[]).iter().all(|f| !f.contains("prompt")), "well-behaved prompts pass the gate");
+    }
+
+    /// A match that ends inside a prompt never confirms it. Its cost is
+    /// flushed at the end of the match, and the gate names the card — this
+    /// is the report-time half of `StallReason::DecisionLivelock`.
+    #[test]
+    fn a_prompt_still_open_when_the_match_ends_is_charged_and_fails_the_gate() {
+        let mut entries = vec![entry(Side::Corp, PlayerAction::EndTurn, vec![offered(Some("anoetic_void"))])];
+        entries.extend((0..40).map(|i| entry(Side::Corp, toggle(i % 2), vec![])));
+        let history = MatchHistory::from_entries(entries);
+        let mut coverage = Coverage::default();
+        coverage.absorb_match(
+            &history,
+            &registry(),
+            &SessionStep::Stalled(StallReason::DecisionLivelock {
+                side: Side::Corp,
+                source_card: Some(CardId("anoetic_void".to_string())),
+                actions: 40,
+            }),
+        );
+
+        let void = &coverage.cards["anoetic_void"];
+        assert_eq!((void.prompts_offered, void.prompt_actions_max), (1, 40));
+        assert_eq!(coverage.end_reasons["Stalled/DecisionLivelock/anoetic_void"], 1);
+        let failures = coverage.gate_failures(&[]);
+        assert!(
+            failures.iter().any(|f| f.contains("anoetic_void") && f.contains("40 actions")),
+            "the gate names the card and the cost: {failures:?}"
+        );
+    }
+
+    /// Records made before the event carried its source still absorb; the
+    /// cost lands on a placeholder rather than vanishing.
+    #[test]
+    fn an_unattributed_prompt_is_charged_to_a_placeholder() {
+        let history = MatchHistory::from_entries(vec![
+            entry(Side::Corp, PlayerAction::EndTurn, vec![offered(None)]),
+            entry(Side::Corp, toggle(0), vec![]),
+            entry(Side::Corp, PlayerAction::ConfirmCardSelection, vec![selected()]),
+        ]);
+        let mut coverage = Coverage::default();
+        coverage.absorb_match(&history, &registry(), &SessionStep::Ended { winner: Side::Corp, reason: GameEndReason::AgendaThreshold });
+        assert_eq!(coverage.cards["(unattributed)"].prompt_actions, 2);
     }
 
     #[test]

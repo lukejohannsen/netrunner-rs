@@ -1317,6 +1317,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });
@@ -1372,6 +1373,7 @@ mod tests {
             then: Some(Box::new(Effect::AddAdvancementTokens(1))),
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });
@@ -1482,6 +1484,7 @@ mod tests {
             then: Some(Box::new(Effect::EndTheRun)),
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         });
@@ -1866,6 +1869,7 @@ mod tests {
             then: None,
             selected: Vec::new(),
             source_card: None,
+            prompting_card: None,
             source_install: None,
             resume: PendingChoiceResume::None,
         };
