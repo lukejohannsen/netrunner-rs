@@ -816,6 +816,28 @@ they are consequences of one having existed.
   - **And it contradicts the offline diagnostic in a way worth chasing:** `scripts/diagnose_policy_head.py` puts Corp top-1 agreement *above* Runner's (46.9% against 41.6%). So the Corp policy imitates the search's first choice **better** and plays far worse, which means the defect is not the move it ranks first. The cheap next measurement is prior mass on the `ADVANCE_CARD`/`SCORE_AGENDA` blocks against the search's own — a Corp that never advances cannot win, and top-1 agreement would not notice.
   - No coverage report: nothing in `netrunner_core` is touched, and the change is to how an arena harness indexes its own games.
 
+- **Where the Corp policy's mass actually goes: it will not score, will not rez, and passes instead — 5 September 2026** (`diag/policy-head-by-segment`). The chair split above said the Corp head is what loses and named "failing to close" as the failure mode. This measures it: for every `ActionSpace` segment, over the same 47,327 held-out steps, the mass the **search** put there against the mass the **model** gave the search, per chair, counted only over steps where that segment had a legal slot at all.
+  - `scripts/diagnose_policy_head.py` grew the breakdown. The segment offsets are derived in the script because `action_mask.rs`'s consts are private, and the derivation **asserts against the pinned `ActionSpace::SIZE`** — if the lengths stop summing to 1,646 the layout moved and the table is stale, so it fails loudly instead of silently mislabelling. It prints every segment the search puts mass on rather than a top-N, which is the only reason the finding below is visible at all.
+  - **The Corp, ordered by the search's own mass:**
+
+    | segment | slots | steps | search | model | ratio |
+    |---|---|---|---|---|---|
+    | install card | 416 | 7377 | 0.620 | 0.509 | 0.82 |
+    | pass priority | 2 | 7472 | 0.473 | **0.818** | **1.73** |
+    | activate ability (corp) | 128 | 7299 | 0.351 | 0.109 | **0.31** |
+    | rez ice | 32 | 5516 | 0.411 | 0.200 | **0.49** |
+    | basic action | 9 | 10085 | 0.184 | 0.253 | 1.37 |
+    | ADVANCE CARD | 32 | 4120 | 0.280 | 0.255 | 0.91 |
+    | confirm card selection | 1 | 3452 | 0.241 | 0.411 | 1.70 |
+    | gain credit | 2 | 8099 | 0.095 | 0.148 | 1.56 |
+    | draw | 2 | 8090 | 0.090 | 0.146 | 1.62 |
+    | **SCORE AGENDA** | 32 | **430** | **0.659** | **0.204** | **0.31** |
+
+  - **`SCORE AGENDA` is the finding, and it is only legal on 430 of 24,548 Corp steps.** When it is, the search spends **two thirds** of its visits there and the model offers **a fifth** — a 3× under-weighting of the one action that ends the game in the Corp's favour. Scoring is rare enough that no aggregate metric can see it: Corp top-1 agreement is 46.9%, *higher* than the Runner's, because it is dominated by the thousands of ordinary steps. **A prediction half right, recorded as such:** the standing guess was that the Corp under-weights advancing *and* scoring. `ADVANCE CARD` is 0.91 — near-neutral, essentially innocent. Only the scoring half held.
+  - **And the general shape is passivity.** Mass moves out of the wide, active segments — `activate ability` 0.31, `rez ice` 0.49, `install card` 0.82 — and into the narrow ones a player can always take: `pass priority` **1.73**, `draw` 1.62, `gain credit` 1.56, `basic action` 1.37. A Corp that rezzes half as often as it should, activates a third as often, refuses to score, and passes 73% more than it should is not a Corp that loses games; it is a Corp that never finishes them. That is precisely the 25-of-192 and 44-of-192 draw counts in the entry above.
+  - **The Runner is the same distortion with none of the consequences,** which is the whole reason its chair holds up: its two dominant segments are barely touched — `basic action` 1.06, `initiate run` 1.10 — so the bias lands on `install resource` (0.43) and `play event` (0.61) while the Runner's core game is priced correctly. The Corp's *entire* game lives in the segments that got suppressed.
+  - **What it points at.** The suppressed segments are the wide ones (128, 416, 32 slots) and the inflated ones are narrow (1, 2, 9); the model appears to hedge toward actions it can always name and away from choices among many similar slots. That is a resolution failure inside a segment rather than a legality failure across the space, so it is *not* the unmasked-objective story tested and dropped above — 58.8% of mass already lands on legal slots. The cheap next test is whether a masked, per-segment-reweighted objective moves `SCORE AGENDA`'s 0.31, measured here before any arena time is spent.
+
 ---
 
 ## 🏆 Phase 3: Bot Personalities, Elo & Player Progression
