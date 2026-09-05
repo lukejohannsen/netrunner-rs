@@ -880,7 +880,16 @@ they are consequences of one having existed.
     | wall | 6,246s | **630s** | |
 
   - **The 25 Corp "draws" were won games the network Corp could not finish.** Forced to resolve its selections it wins 103 of 192 from that chair, and the Corp deficit against a neutral player shrinks from −0.51 to −0.19 without the model changing at all. Every arena verdict in this section up to here measured the prompt livelock at least as much as the network. The Runner's apparent +0.086 edge was likewise mostly the old arena: against the new baseline it is +0.005 — neutral.
-  - **What is left is now a plausible training problem rather than a harness one.** −0.19 as Corp, neutral as Runner, 0.4089 overall (about −64 Elo) against the search that generated the data, on a model trained with the masked objective; the value head's Corp side is the remaining suspect (value-only was −0.305 as Corp before this fix and has not been re-measured). Whether the loop can now climb is the question the next iteration answers, and for the first time the arena that judges it is not scoring a stuck prompt as half a point. The whole leg runs in 630s where it took 6,246s, which is the compute the livelocks were costing.
+  - **What is left is now a plausible training problem rather than a harness one.** −0.19 as Corp, neutral as Runner, 0.4089 overall (about −64 Elo) against the search that generated the data, on a model trained with the masked objective; the value head's Corp side is the remaining suspect (value-only re-measured below). Whether the loop can now climb is the question the next iteration answers, and for the first time the arena that judges it is not scoring a stuck prompt as half a point. The whole leg runs in 630s where it took 6,246s, which is the compute the livelocks were costing.
+  - **`value-only` on the same binary and model, same day: the value head carries the Corp deficit.** Network value, uniform priors, 384 games at 128 simulations, zero draws, 619s (the old leg took 7,945s and 61 of its games were livelocks scored as half a point).
+
+    | `value-only` | old arena bots | fixed arena | vs chair baseline |
+    |---|---|---|---|
+    | overall | 0.3841 | **0.3828** (147–237–0) | −0.117 |
+    | as Corp | 0.4375 (**44** draws) | **0.469** (90–102–0) | **−0.255** |
+    | as Runner | 0.331 (17 draws) | **0.297** (57–135–0) | +0.021 |
+
+    Read against the plan's decision table: Corp **0.469** is far below the 0.60 line, so the deficit is in the value head, not an interaction between the heads — with the network's own masked priors added back (`both`) the Corp chair recovers from 0.469 to 0.536, so the priors are worth about +0.07 as Corp and the value head is the larger term by a wide margin. The Runner is neutral in every leg. The old value-only number happened to land within 0.002 of the new one overall, but for the wrong reason: 61 livelock half-points as Corp and Runner roughly offset the games the network could not finish, so the old figure was right by coincidence and uninterpretable per chair. **Decision: the next engineering step is the observation rework** — give the value head what `eval.rs` reads and the network cannot see (advancement tokens, rez state, ICE strength and subroutine status, the run target, the pending decision), in a fresh run directory with a pinned binary, since it invalidates every checkpoint and corpus.
 
 ---
 
