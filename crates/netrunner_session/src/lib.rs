@@ -20,4 +20,4 @@ pub use coverage::{played_pool_card_ids, sweep_decks_for_seed, Coverage};
 pub use history::{HistoryEntry, HistoryReadError, MatchHistory, MatchRecordHeader, PublicHistoryEntry};
 pub use lesson::{LessonError, LessonSession, LessonStep};
 pub use outcome::{classify_end_reason, GameEndReason};
-pub use session::{Seat, Session, SessionStep, StallReason, SubmitError, MAX_STEPS};
+pub use session::{Seat, Session, SessionStep, StallReason, SubmitError, DECISION_BUDGET, MAX_STEPS};

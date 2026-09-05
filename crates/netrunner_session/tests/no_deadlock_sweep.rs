@@ -23,7 +23,7 @@ use netrunner_core::cards::{register_playable_cards, CardRegistry};
 use netrunner_core::decks::{self, DeckFile};
 use netrunner_core::rules::{Deck, GameEvent, GameState, MaskedZone, PublicAccessPhase, Side, Viewer};
 use netrunner_session::coverage::played_pool_card_ids;
-use netrunner_session::{Coverage, PublicHistoryEntry, Seat, Session, SessionStep, StallReason};
+use netrunner_session::{Coverage, PublicHistoryEntry, Seat, Session, SessionStep};
 
 /// How many seeds the sweep walks, default 32 — sized for the inner loop,
 /// matching `system_gateway_delivery::sweep_seed_count`. Raise it for a deep
@@ -83,14 +83,6 @@ impl Seating {
         }
     }
 
-    /// Two uniformly random players can legitimately take more than
-    /// `MAX_STEPS` to finish (measured: 1 game in 192), so for that seating
-    /// budget exhaustion is slow play, not a stall. The invariant this
-    /// sweep pins — a named actor always has a legal action — is
-    /// `StallReason::NoLegalActions`, which no seating may ever produce.
-    fn tolerates_budget_exhaustion(self) -> bool {
-        matches!(self, Seating::RandomBoth)
-    }
 }
 
 /// Also the view-path **rules-coverage gate**: every `PlayerAction`
@@ -117,9 +109,18 @@ fn view_based_agents_never_reach_a_state_with_no_legal_action() {
             let (corp, runner) = seating.agents(seed);
             let mut session = Session::new(state, registry, Seat::Agent(corp), Seat::Agent(runner));
             let outcome = session.run();
+            // No seating may stall, for any reason. Random-vs-random used
+            // to be allowed a `BudgetExhausted` on the theory that two
+            // random players can legitimately outlast `MAX_STEPS`
+            // ("measured: 1 game in 192"). They cannot: the Corp's
+            // mandatory draw and the deck-out rule end any game whose
+            // turns advance within ~45 Corp turns. That one game was a
+            // card-selection livelock, and the tolerance hid it from the
+            // one test built to catch it (ROADMAP Phase 2 §5). A stall is
+            // now named — `DecisionLivelock` carries the card — so a
+            // failure here says which prompt to look at.
             match &outcome {
                 SessionStep::Ended { .. } => {}
-                SessionStep::Stalled(StallReason::BudgetExhausted) if seating.tolerates_budget_exhaustion() => {}
                 SessionStep::Stalled(reason) => panic!(
                     "seed {seed} ({matchup}, {seating:?}) stalled: {reason:?} after {} actions",
                     session.steps()

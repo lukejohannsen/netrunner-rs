@@ -219,6 +219,97 @@ fn an_exhausted_budget_is_reported_as_such_and_not_as_a_stall() {
     assert_eq!(session.steps(), 5);
 }
 
+/// The livelock the volume runs were burning 10,000 actions on, reduced to
+/// its essentials: a chooser that only ever toggles inside a `min == max`
+/// card selection. The session must stop it at `DECISION_BUDGET` and say
+/// *which card's* prompt it was — not run to `MAX_STEPS` and report a
+/// budget stall indistinguishable from a slow game.
+#[test]
+fn a_decision_that_never_resolves_is_reported_as_a_livelock_naming_the_card() {
+    use netrunner_bots::BotAgent;
+    use netrunner_core::dsl::{CardDefinition, CardFilter, CardId, CardType, CardZoneRef};
+    use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+    use netrunner_core::view::ClientView;
+    use netrunner_session::{StallReason, DECISION_BUDGET, MAX_STEPS};
+
+    /// Always picks a toggle when one is offered — the greedy chooser that,
+    /// indifferent between equal-valued toggles, never lands on Confirm.
+    struct AlwaysToggles;
+    impl BotAgent for AlwaysToggles {
+        fn select_action(&mut self, view: &ClientView, _registry: &CardRegistry) -> PlayerAction {
+            view.legal_actions
+                .iter()
+                .find(|a| matches!(a, PlayerAction::ToggleCardSelection { .. }))
+                .unwrap_or(&view.legal_actions[0])
+                .clone()
+        }
+    }
+
+    let hand = ["hedge_fund", "ice_wall", "offworld_office", "regolith_mining_license", "government_subsidy"];
+    let mut registry = CardRegistry::new();
+    for id in hand {
+        registry.insert(CardDefinition {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Corp,
+            card_type: CardType::Operation,
+            is_playable: true,
+            ..Default::default()
+        });
+    }
+    let mut state = GameState::new(0);
+    state.phase = GamePhase::Action(Side::Corp);
+    state.corp.hq = hand.iter().map(|id| CardId(id.to_string())).collect();
+    // Plutus's alternative rez cost, as the engine parks it: exactly three
+    // of the five, with the card that asked recorded on the decision.
+    state.pending_decision = Some(PendingDecision::ChooseCards {
+        side: Side::Corp,
+        source: CardZoneRef::OwnHq,
+        filter: CardFilter::Any,
+        min: 3,
+        max: 3,
+        reveal: true,
+        shuffle_after: false,
+        destination: Some(CardZoneRef::OwnArchives),
+        then: None,
+        selected: Vec::new(),
+        source_card: Some(CardId("plutus".to_string())),
+        source_install: None,
+        resume: PendingChoiceResume::None,
+    });
+
+    let mut session = Session::new(
+        state,
+        registry,
+        Seat::Agent(Box::new(AlwaysToggles)),
+        Seat::Agent(Box::new(RandomAgent::new(1))),
+    );
+    let outcome = session.run();
+
+    assert_eq!(
+        outcome_reason(&outcome),
+        Some(StallReason::DecisionLivelock {
+            side: Side::Corp,
+            source_card: Some(CardId("plutus".to_string())),
+            actions: DECISION_BUDGET,
+        }),
+        "got {}",
+        describe(&outcome)
+    );
+    assert_eq!(session.steps(), DECISION_BUDGET, "stopped at the decision budget, not the step budget");
+    // The whole point of a separate budget: this stopped in 256 actions where
+    // `BudgetExhausted` would have cost `MAX_STEPS`. An order of magnitude
+    // is the bar — if the two ever drift close, one of them is wrong.
+    assert!(session.steps() * 8 <= MAX_STEPS, "the livelock budget ({}) must be far cheaper than the step budget ({MAX_STEPS})", session.steps());
+}
+
+fn outcome_reason(step: &SessionStep) -> Option<netrunner_session::StallReason> {
+    match step {
+        SessionStep::Stalled(reason) => Some(reason.clone()),
+        _ => None,
+    }
+}
+
 fn describe(step: &SessionStep) -> String {
     match step {
         SessionStep::Applied { side } => format!("Applied({side:?})"),
