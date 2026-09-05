@@ -48,6 +48,13 @@ impl BotAgent for HeuristicAgent {
 
         let mut best: Option<(f64, usize)> = None;
         for (index, action) in view.legal_actions.iter().enumerate() {
+            // A deselect scores exactly like the select it undoes — the
+            // board is identical — so the jitter decides, and a one-ply
+            // chooser can walk a card selection forever. See
+            // `agent::is_regressive`.
+            if crate::agent::is_regressive(action, view.pending_decision.as_ref()) {
+                continue;
+            }
             let Ok((next, _events)) = apply_action(&sample, registry, action.clone()) else { continue };
             let score = evaluate_state_with(&next, self.side, registry, &self.weights) + self.rng.random::<f64>() * TIE_BREAK_JITTER;
             if best.is_none_or(|(best_score, _)| score > best_score) {
@@ -61,7 +68,10 @@ impl BotAgent for HeuristicAgent {
         // against the determinized `sample` too — falling back to the
         // first entry only guards against a hypothetical future
         // divergence, not an expected case.
-        best.map_or_else(|| view.legal_actions[0].clone(), |(_, index)| view.legal_actions[index].clone())
+        best.map_or_else(
+            || crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref())[0].clone(),
+            |(_, index)| view.legal_actions[index].clone(),
+        )
     }
 }
 

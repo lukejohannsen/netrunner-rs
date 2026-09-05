@@ -115,7 +115,10 @@ impl BotAgent for MctsAgent {
             .map(|tree_index| {
                 let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(tree_index as u64));
                 let sample = determinize(view, registry, &mut rng);
-                let mut root = Node::new_root(sample, view.legal_actions.clone());
+                let mut root = Node::new_root(
+                    sample,
+                    crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref()),
+                );
                 for _ in 0..per_tree_iterations {
                     simulate(&mut root, registry, side, max_depth, exploration, &mut rng, &weights);
                 }
@@ -165,7 +168,10 @@ struct Node {
 
 impl Node {
     fn new(state: GameState, registry: &CardRegistry) -> Self {
-        let untried = engine_legal_actions(&state, registry);
+        // No deselects in the tree either: a toggle two-cycle inside a
+        // prompt is a subtree of identical positions that soaks up
+        // rollouts and teaches the root nothing. See `agent::is_regressive`.
+        let untried = crate::agent::progressive(&engine_legal_actions(&state, registry), state.pending_decision.as_ref());
         Node { state, untried, children: Vec::new(), visits: 0, total_value: 0.0 }
     }
 

@@ -24,7 +24,12 @@ impl RandomAgent {
 impl BotAgent for RandomAgent {
     fn select_action(&mut self, view: &ClientView, _registry: &CardRegistry) -> PlayerAction {
         assert!(!view.legal_actions.is_empty(), "BotAgent::select_action requires at least one legal action");
-        view.legal_actions[self.rng.random_range(0..view.legal_actions.len())].clone()
+        // Uniform over the *progressive* moves: a random walk that can
+        // deselect spends most of its time below a `min == max` prompt's
+        // bound, and the one seating the sweeps call "unbiased" was quietly
+        // the one most able to livelock. See `agent::is_regressive`.
+        let choices = crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref());
+        choices[self.rng.random_range(0..choices.len())].clone()
     }
 }
 

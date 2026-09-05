@@ -81,6 +81,11 @@ impl PuctNode {
                     .expect("get_action_mask's true entries always decode via action_at");
                 Edge { index: Some(index), action, prior: priors[index], visits: 0, total_value: 0.0, child: None }
             })
+            // A deselect edge leads to a position the tree has already
+            // priced, one ply up. Pruning it keeps a card selection a DAG
+            // of growing selections rather than a cycle the simulations
+            // wander in. See `agent::is_regressive`.
+            .filter(|edge| !crate::agent::is_regressive(&edge.action, self.state.pending_decision.as_ref()))
             .collect();
         self.expanded = true;
         value
@@ -320,18 +325,25 @@ impl PuctAgent {
         // `expand_root`. Counted as one visit, the same bookkeeping
         // `simulate`'s own expansion branch does, so `puct_score`'s
         // `sqrt(N_parent)` starts from a visited parent.
+        // The root's candidates are the caller's legal actions *minus
+        // deselects* (`agent::progressive`). A deselect is never a move this
+        // agent takes, so reporting a visit count for one would hand
+        // self-play a policy target for an action the policy must never
+        // learn — and a search that could descend it would spend
+        // simulations cycling a card selection instead of pricing it.
+        let candidates = crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref());
         let mut root = PuctNode::new(sample);
-        root.expand_root(&view.legal_actions, registry, self.evaluator.as_ref());
+        root.expand_root(&candidates, registry, self.evaluator.as_ref());
         root.visits = 1;
         for _ in 0..self.config.iterations {
             simulate(&mut root, registry, self.evaluator.as_ref(), self.side, self.config.c_puct, self.config.max_depth);
         }
 
-        // One `ActionStat` per `view.legal_actions` entry, always: the
-        // caller's list is the authoritative candidate set (matching
-        // `MctsAgent::new_root`), and `expand_root` made it the root's
-        // edge set, so every entry has stats to report even if the search
-        // never descended it. `index` is this action's slot *in the
+        // One `ActionStat` per progressive `view.legal_actions` entry,
+        // always: the caller's list is the authoritative candidate set
+        // (matching `MctsAgent::new_root`), and `expand_root` made it the
+        // root's edge set, so every entry has stats to report even if the
+        // search never descended it. `index` is this action's slot *in the
         // determinized sample* and can be absent — see `Edge::index`; such
         // an action still gets a stat, it just claims no `visit_counts`
         // slot. Callers recording a policy target should re-index against
@@ -356,8 +368,8 @@ impl PuctAgent {
 
         debug_assert_eq!(
             actions.len(),
-            view.legal_actions.len(),
-            "search must report every action the caller may submit"
+            candidates.len(),
+            "search must report every progressive action the caller may submit"
         );
         let (total_value, total_visits) =
             root.edges.iter().fold((0.0f64, 0u32), |(v, n), edge| (v + edge.total_value, n + edge.visits));
@@ -564,9 +576,12 @@ pub struct PuctSearchStats {
     /// sample's** space — see `ActionStat::index`. Zero everywhere except
     /// the slots `actions` below could encode.
     pub visit_counts: Vec<u32>,
-    /// Exactly one entry per `view.legal_actions` entry, in that order —
-    /// `search` reports every action the caller may submit, with zero
-    /// visits for one the search never descended.
+    /// Exactly one entry per **progressive** `view.legal_actions` entry, in
+    /// that order — every action the caller may submit except a deselect
+    /// inside a card selection (`agent::is_regressive`), with zero visits
+    /// for one the search never descended. A deselect is omitted rather
+    /// than reported at zero because a recorded policy target must not
+    /// name a move the policy is never allowed to make.
     pub actions: Vec<ActionStat>,
     /// The search's own estimate of the root position from the agent's
     /// side: the mean of every value backed up through a root edge, in the
@@ -596,7 +611,7 @@ impl BotAgent for PuctAgent {
         let avoid = self.cycle.cycling();
         let chosen = pick_action(&stats.actions, false, &avoid, &mut rng)
             .map(|stat| stat.action.clone())
-            .unwrap_or_else(|| view.legal_actions[0].clone());
+            .unwrap_or_else(|| crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref())[0].clone());
 
         // Counted per agent, over its own consecutive searched decisions.
         // Self-play's driver counts across both sides' interleaved
@@ -962,7 +977,13 @@ mod tests {
             view.pending_decision
         );
 
-        // Many samples: it must hold for every one, not most.
+        // Many samples: it must hold for every one, not most. The search
+        // reports every *progressive* legal action: position 0 is already
+        // selected, so toggling it is a deselect and is deliberately not a
+        // candidate (`agent::progressive`); position 1 — the masked ICE this
+        // test is about — must be.
+        let expected = crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref());
+        assert_eq!(expected.len(), view.legal_actions.len() - 1, "exactly the deselect is filtered: {:?}", view.legal_actions);
         for seed in 0..25u64 {
             let mut agent = PuctAgent::with_config(
                 Side::Runner,
@@ -971,10 +992,11 @@ mod tests {
                 PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4 },
             );
             let stats = agent.search(&view, &registry);
-            assert_eq!(
-                stats.actions.len(),
-                view.legal_actions.len(),
-                "seed {seed}: search dropped an action the caller may submit"
+            let reported: Vec<&PlayerAction> = stats.actions.iter().map(|s| &s.action).collect();
+            assert_eq!(reported, expected.iter().collect::<Vec<_>>(), "seed {seed}: search dropped an action the caller may submit");
+            assert!(
+                reported.contains(&&PlayerAction::ToggleCardSelection { position: 1 }),
+                "seed {seed}: the masked ICE must stay a candidate"
             );
         }
     }
