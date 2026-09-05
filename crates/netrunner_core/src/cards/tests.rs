@@ -8039,6 +8039,148 @@ mod system_gateway {
         assert!(!state.corp.archives.iter().any(|a| a.card.0 == "hedge_fund"));
     }
 
+    /// The diagnosis test for the prompt livelock (ROADMAP Phase 2 §5).
+    ///
+    /// Self-play games were parking in `ChooseCards` prompts with `min ==
+    /// max` over HQ — Plutus's alternative rez cost (3 of 5), Anoetic Void's
+    /// paid choice (2 of 5), Sprint's on-play (2 of 7) — and toggling for
+    /// ~9,700 actions with `ConfirmCardSelection` legal in only 6–8% of
+    /// them. Two explanations fit that number and need different fixes: a
+    /// chooser that never settles on a full selection, or a Confirm that is
+    /// silently *withheld* at a valid count because its resolution fails
+    /// (`legal_actions` keeps an action only if the whole `apply_action`
+    /// succeeds — the shape `CardFilter::UnrezzedIce` once produced). The
+    /// per-card tests above only ever confirm the minimal HQ where every
+    /// card is selected; the livelock shape is a proper subset of a mixed
+    /// hand, where the cards actually moved differ by selection. So this
+    /// walks **every** `min`-subset of a realistic HQ and demands Confirm is
+    /// offered and resolves for each — a failure names the subset and the
+    /// error, which is the whole point.
+    #[test]
+    fn every_exact_count_hq_selection_confirms_for_plutus_anoetic_void_and_sprint() {
+        use crate::rules::{legal_actions, PendingDecision};
+
+        let registry = sg_registry();
+        let mixed_hq = || -> Vec<CardId> {
+            ["hedge_fund", "ice_wall", "offworld_office", "regolith_mining_license", "government_subsidy"]
+                .iter()
+                .map(|id| CardId(id.to_string()))
+                .collect()
+        };
+
+        fn combinations(n: usize, k: usize) -> Vec<Vec<usize>> {
+            fn go(start: usize, n: usize, k: usize, current: &mut Vec<usize>, out: &mut Vec<Vec<usize>>) {
+                if current.len() == k {
+                    out.push(current.clone());
+                    return;
+                }
+                for i in start..n {
+                    current.push(i);
+                    go(i + 1, n, k, current, out);
+                    current.pop();
+                }
+            }
+            let mut out = Vec::new();
+            go(0, n, k, &mut Vec::new(), &mut out);
+            out
+        }
+
+        let toggle = |position: usize| PlayerAction::ToggleCardSelection { position };
+        let eligible_positions = |state: &GameState| -> Vec<usize> {
+            legal_actions(state, &registry)
+                .into_iter()
+                .filter_map(|a| match a {
+                    PlayerAction::ToggleCardSelection { position } => Some(position),
+                    _ => None,
+                })
+                .collect()
+        };
+
+        let confirm_every_subset = |label: &str, parked: GameState| {
+            let Some(PendingDecision::ChooseCards { min, max, .. }) = &parked.pending_decision else {
+                panic!("{label}: expected a parked ChooseCards, got {:?}", parked.pending_decision);
+            };
+            let (min, max) = (*min as usize, *max as usize);
+            assert_eq!(min, max, "{label}: this test is about exact-count prompts");
+            let eligible = eligible_positions(&parked);
+            assert!(eligible.len() > min, "{label}: the livelock shape needs more eligible cards than `min`, got {eligible:?}");
+            assert!(
+                !legal_actions(&parked, &registry).contains(&PlayerAction::ConfirmCardSelection),
+                "{label}: Confirm must not be offered below `min`"
+            );
+
+            let subsets = combinations(eligible.len(), min);
+            for subset in &subsets {
+                let mut state = parked.clone();
+                for &i in subset {
+                    state = apply_action(&state, &registry, toggle(eligible[i]))
+                        .unwrap_or_else(|e| panic!("{label}: toggling position {} in subset {subset:?} failed: {e:?}", eligible[i]))
+                        .0;
+                }
+                assert!(
+                    legal_actions(&state, &registry).contains(&PlayerAction::ConfirmCardSelection),
+                    "{label}: Confirm is WITHHELD at a valid count for subset {subset:?} — the prompt is unresolvable there"
+                );
+                let resolved = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
+                    .unwrap_or_else(|e| panic!("{label}: Confirm FAILED for subset {subset:?}: {e:?}"))
+                    .0;
+                assert!(resolved.pending_decision.is_none(), "{label}: Confirm left a decision parked for {subset:?}");
+            }
+
+            // A deselect mid-way must not poison the eventual confirm.
+            let mut state = parked.clone();
+            for &position in &eligible[..min] {
+                state = apply_action(&state, &registry, toggle(position)).expect("select").0;
+            }
+            state = apply_action(&state, &registry, toggle(eligible[0])).expect("deselect the first").0;
+            assert!(!legal_actions(&state, &registry).contains(&PlayerAction::ConfirmCardSelection), "{label}: below min again");
+            state = apply_action(&state, &registry, toggle(eligible[min])).expect("select a different card").0;
+            apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
+                .unwrap_or_else(|e| panic!("{label}: Confirm failed after a deselect/reselect: {e:?}"));
+
+            subsets.len()
+        };
+
+        // Plutus: 3 of 5 as an alternative rez cost (its only available way
+        // to pay here — no agenda to forfeit — so no PresentChoice first).
+        let mut plutus = base_state();
+        plutus.corp.installed = vec![corp_root("plutus", ServerId::Remote(0))];
+        plutus.corp.installed[0].rezzed = false;
+        plutus.corp.hq = mixed_hq();
+        let (plutus, _) = apply_action(&plutus, &registry, PlayerAction::RezIce { ice: install_of(&plutus, "plutus") })
+            .expect("rez via the trash-three alternative");
+        assert_eq!(confirm_every_subset("plutus", plutus), 10);
+
+        // Anoetic Void: 2 of 5 behind the paid choice on approach.
+        let mut void = base_state();
+        void.phase = GamePhase::Action(Side::Runner);
+        void.runner.resources.clicks = Clicks(4);
+        void.corp.resources.credits = Credits(5);
+        void.corp.hq = mixed_hq();
+        void.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1030),
+            card: CardId("anoetic_void".to_string()),
+            server: ServerId::Remote(0),
+            rezzed: true,
+            ..Default::default()
+        }];
+        let (void, _) = apply_action(&void, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run");
+        let (void, _) = apply_action(&void, &registry, PlayerAction::ContinueRun).expect("approach");
+        let (void, _) = apply_action(&void, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
+            .expect("pay 2");
+        assert_eq!(confirm_every_subset("anoetic_void", void), 10);
+
+        // Sprint: draw 3 into a 4-card hand, then shuffle exactly 2 of the 7 back.
+        let mut sprint = base_state();
+        sprint.corp.hq = mixed_hq();
+        sprint.corp.hq[0] = CardId("sprint".to_string());
+        sprint.corp.r_and_d = vec![CardId("tithe".to_string()), CardId("palisade".to_string()), CardId("seamless_launch".to_string())];
+        let (sprint, _) = apply_action(&sprint, &registry, PlayerAction::PlayOperation { card_id: CardId("sprint".to_string()) })
+            .expect("play sprint");
+        assert_eq!(sprint.corp.hq.len(), 7, "4 kept + 3 drawn");
+        assert_eq!(confirm_every_subset("sprint", sprint), 21);
+    }
+
     #[test]
     fn lamplighter_taxes_a_tag_or_three_credits_and_burns_out_when_its_server_gives_up_an_agenda() {
         let registry = sg_registry();
