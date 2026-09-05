@@ -97,7 +97,7 @@ cargo clippy --workspace --all-targets
 - **[`ARCHITECTURE.md`](ARCHITECTURE.md)** — how the engine is shaped and why: the state and
   execution model, the blocking-guard precedence invariant, the privacy layers, and card data flow.
 - **[`ROADMAP.md`](ROADMAP.md)** — the single source of truth for project status: what is done,
-  what is open, what is next.
+  what is open, what is next. It indexes the per-phase records under [`docs/roadmap/`](docs/roadmap/).
 - **[`AGENTS.md`](AGENTS.md)** — contributing conventions: the decoupled-engine rule, the DSL
   growth rule, state hygiene, and the testing gates a change has to clear.
 

@@ -2,7 +2,7 @@
 
 This repository contains an asynchronous, turn-based Netrunner card game built in Rust using a modular, decoupled architecture.
 
-**This file is the rules of engagement. `ROADMAP.md` is the single source of truth for status** — what is done, what is open, what is next. Do not track status here; add it to `ROADMAP.md` instead.
+**This file is the rules of engagement. `ROADMAP.md` is the single source of truth for status** — what is done, what is open, what is next. It is an index; the per-phase record lives in `docs/roadmap/` (one file per phase, linked from the index), and an entry's address — "Phase 2 §5", "Rules Audit T8" — resolves through that index. Do not track status here; add it to the area roadmap and update `ROADMAP.md`.
 
 ---
 
@@ -100,7 +100,7 @@ New mechanics MUST also be exercised through the two agent-driven sweeps. They h
 | `no_panics_or_deadlocks_across_many_seeds_system_gateway` (`crates/netrunner_single_player/tests/system_gateway_delivery.rs`) | index-based `netrunner_bots::Agent` | the `ActionSpace` round trip and the side-agnostic `get_action_mask` — the RL path |
 | `view_based_agents_never_reach_a_state_with_no_legal_action` (`crates/netrunner_session/tests/no_deadlock_sweep.rs`) | `netrunner_session::Seat::Agent` | `legal_actions_for` — the per-seat `ClientView` slice every real client gets |
 
-**That the index path alone was not enough is settled, not theoretical.** Both bugs behind the "a run can outlive the game" entry in `ROADMAP.md` were reachable on ordinary sample decks at seeds 2, 3 and 6, and neither sweep-by-index could see them: the `ActionSpace` round trip does not reach the path. Do not delete the view-based sweep as redundant.
+**That the index path alone was not enough is settled, not theoretical.** Both bugs behind the "a run can outlive the game" entry in `docs/roadmap/phase-1-single-player.md` (Phase 1.5) were reachable on ordinary sample decks at seeds 2, 3 and 6, and neither sweep-by-index could see them: the `ActionSpace` round trip does not reach the path. Do not delete the view-based sweep as redundant.
 
 **Run both deep before merging engine-level work.** Each deadlock found was one specific RNG path, so coverage scales with seed count. The default (32 seeds) is sized for the inner loop; raise it with `NETRUNNER_SWEEP_SEEDS`:
 
@@ -122,9 +122,9 @@ cargo run --release -p netrunner_cli -- --headless --all-matchups --games 96 \
 
 `--all-matchups` plays `matchups[index % len]`, so **`--games` below `decks::matchups().len()` leaves the tail of the pool unplayed** — at 16 Corp × 12 Runner, 96 games stop eight Corp decks in and a whole deck's cards read as zero. Size the run to at least one pass of the cross product (132 today) whenever the point of the measurement is per-card coverage.
 
-and `diff` the JSON against the previous report. Random-vs-random is the seating that reaches the most rules; a heuristic seating measures the bot as much as the engine. Quote the load-bearing deltas in the ROADMAP entry.
+and `diff` the JSON against the previous report. Random-vs-random is the seating that reaches the most rules; a heuristic seating measures the bot as much as the engine. Quote the load-bearing deltas in the area roadmap entry.
 
-Heuristic seatings are byte-identical run to run since `determinize`'s pools were sorted (September 2026), so they are valid before/after measurements too — but reproducibility buys *attribution*, not *significance*: any code change re-rolls all 96 games, so a small heuristic delta can be pure trajectory drift. A change claiming a small heuristic effect must beat the **seed-spread band** recorded under `ROADMAP.md` Phase 2 §5, or show the effect across several seeds.
+Heuristic seatings are byte-identical run to run since `determinize`'s pools were sorted (September 2026), so they are valid before/after measurements too — but reproducibility buys *attribution*, not *significance*: any code change re-rolls all 96 games, so a small heuristic delta can be pure trajectory drift. A change claiming a small heuristic effect must beat the **seed-spread band** recorded under Phase 2 §5 (`docs/roadmap/phase-2-bots-and-training.md`), or show the effect across several seeds.
 
 Related mechanical gates, all of which must stay green:
 
@@ -165,6 +165,6 @@ The bar for any change: `cargo test --workspace` fully green and `cargo clippy -
 
 ## Agent Workflow / Guidelines
 
-- Agents MUST consult `ROADMAP.md` at the start of complex tasks and keep it updated upon completing architectural changes or feature milestones.
+- Agents MUST consult `ROADMAP.md` at the start of complex tasks, and the area roadmap it points to for the phase being worked on; keep both updated upon completing architectural changes or feature milestones.
 - Status belongs in `ROADMAP.md` only. Do not reintroduce a status section into this file.
 - Refer to `ARCHITECTURE.md` for core design principles, state rules, and evaluation models.

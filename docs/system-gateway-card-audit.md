@@ -1,6 +1,6 @@
 # System Gateway Card Fidelity Audit — September 2026
 
-Status and the findings list live in `ROADMAP.md` (§ System Gateway Card Fidelity Audit); this file is the per-card record. Every one of the 75 playable *System Gateway* cards was read three ways:
+Status and the findings list live in `docs/roadmap/rules-audit.md` (§ System Gateway Card Fidelity Audit); this file is the per-card record. Every one of the 75 playable *System Gateway* cards was read three ways:
 
 1. **Text ↔ DSL** — every clause of the NetrunnerDB `stripped_text` maps to a trigger/ability/subroutine/field, nothing extra, nothing missing; "may" is optional, "unless" is a real payable choice by the right side, "X or Y" is chosen by the side the card names.
 2. **Rules semantics** — the primitives the card uses were read down to their engine code (timing window, who chooses, cost vs. effect, self-reference by `InstallId`, per-turn scoping), not trusted by name.
@@ -131,7 +131,7 @@ Every card below is in a sample deck, so both agent-driven sweeps exercise all o
 
 ## Documented approximations (deliberate, do not "fix" without a reason)
 
-- **Red Team** — "a central server you have not run this turn" needs a per-turn record of servers run; tracked in `ROADMAP.md`.
+- **Red Team** — "a central server you have not run this turn" needs a per-turn record of servers run; closed by the Rules Audit §4 follow-ups (`docs/roadmap/rules-audit.md`).
 - **Docklands Pass** — "breach" modelled as successful run; equivalent until a breach-without-run card is implemented.
 - **Zahya Sadeghi** — the gated payout is mandatory; the printed "may" is only observable as declining a ≥1[c] gain to hold the once-per-turn for a bigger run the same turn. Consumption-at-fire is `TriggeredEffect::requirement`'s design.
 - **Mutual Favor** — an unaffordable found breaker's install option resolves to a no-op (the card stays in the grip) rather than being withheld.
