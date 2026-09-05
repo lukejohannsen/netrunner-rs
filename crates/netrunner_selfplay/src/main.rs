@@ -154,6 +154,16 @@ enum SelfPlayError {
     ArenaUnexpectedStep(String),
 }
 
+/// One arena game: how it went, and which chair the candidate sat in.
+/// The chair is carried because the aggregate hides the number that has
+/// historically been the most diagnostic — an earlier trained net was 3–16
+/// as Corp and 11–4 as Runner, an asymmetry no single score can show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct ArenaGame {
+    candidate_side: Side,
+    result: ArenaResult,
+}
+
 /// How one arena game went, from the candidate's side of the table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ArenaResult {
@@ -162,6 +172,19 @@ enum ArenaResult {
     /// The session stalled at `MAX_STEPS` — nobody won, and it counts as
     /// half a point each in `ArenaSummary::candidate_score`.
     Draw,
+}
+
+/// The candidate's record from one chair. Both chairs are reported
+/// because a candidate that is strong from one and hopeless from the other
+/// averages to "mediocre", which is the least actionable thing a verdict
+/// can say.
+#[derive(Debug, Serialize, PartialEq)]
+struct ChairSummary {
+    games: usize,
+    wins: usize,
+    losses: usize,
+    draws: usize,
+    score: f64,
 }
 
 /// The one line arena mode prints: what `scripts/run_iteration_loop.py`
@@ -181,30 +204,72 @@ struct ArenaSummary {
     draws: usize,
     /// `(wins + draws / 2) / games` — 1.0 is a clean sweep, 0.5 is parity.
     candidate_score: f64,
+    /// The same record split by the chair the candidate sat in. Games are
+    /// paired one per chair, so these two counts differ by at most one.
+    as_corp: ChairSummary,
+    as_runner: ChairSummary,
 }
 
-fn summarize(results: &[ArenaResult], candidate_uses: CandidateUses, prior_mix: f32) -> ArenaSummary {
-    let count = |wanted: ArenaResult| results.iter().filter(|r| **r == wanted).count();
-    let (candidate_wins, incumbent_wins, draws) =
-        (count(ArenaResult::CandidateWin), count(ArenaResult::IncumbentWin), count(ArenaResult::Draw));
-    let games = results.len();
-    let candidate_score = if games == 0 { 0.0 } else { (candidate_wins as f64 + draws as f64 / 2.0) / games as f64 };
+fn summarize(games: &[ArenaGame], candidate_uses: CandidateUses, prior_mix: f32) -> ArenaSummary {
+    let chair = |side: Option<Side>| -> ChairSummary {
+        let rows: Vec<ArenaResult> =
+            games.iter().filter(|g| side.is_none_or(|s| g.candidate_side == s)).map(|g| g.result).collect();
+        let count = |wanted: ArenaResult| rows.iter().filter(|r| **r == wanted).count();
+        let (wins, losses, draws) =
+            (count(ArenaResult::CandidateWin), count(ArenaResult::IncumbentWin), count(ArenaResult::Draw));
+        let played = rows.len();
+        let score = if played == 0 { 0.0 } else { (wins as f64 + draws as f64 / 2.0) / played as f64 };
+        ChairSummary { games: played, wins, losses, draws, score }
+    };
+
+    let overall = chair(None);
     ArenaSummary {
         prior_mix,
         candidate_uses: candidate_uses.label(),
-        games,
-        candidate_wins,
-        incumbent_wins,
-        draws,
-        candidate_score,
+        games: overall.games,
+        candidate_wins: overall.wins,
+        incumbent_wins: overall.losses,
+        draws: overall.draws,
+        candidate_score: overall.score,
+        as_corp: chair(Some(Side::Corp)),
+        as_runner: chair(Some(Side::Runner)),
     }
 }
 
 /// The candidate takes the Corp chair in even-numbered games and the
-/// Runner chair in odd ones, so with the matchup rotating on the same
-/// index every pairing is played from both sides over a 24-game arena.
+/// Runner chair in odd ones. Paired with `arena_matchup_index`, which
+/// advances every *two* games, that means each matchup is played once
+/// from each chair off the same deal.
+///
+/// **This used to be a bias worth 0.0755 to the candidate, measured.**
+/// `matchup_for` indexed on `game_index` directly, so the matchup advanced
+/// on every game while the chair alternated on every game too. `matchups()`
+/// builds the cross product as `corp_index * runners + runner_index`, and
+/// with an even number of Runner decks (12) a matchup's index has the
+/// parity of its *Runner* deck — so the candidate played Corp against the
+/// even-indexed Runner decks and Runner as the odd-indexed ones, and never
+/// the reverse. A candidate provably identical to the incumbent scored
+/// **0.5755** over the full 192-matchup cross product, clearing the 0.55
+/// promotion gate on seating alone (ROADMAP Phase 2 §5).
 fn candidate_side(game_index: usize) -> Side {
     if game_index.is_multiple_of(2) { Side::Corp } else { Side::Runner }
+}
+
+/// Which matchup an arena game plays: one per *pair* of games, so games
+/// `2k` and `2k + 1` are the same pairing from opposite chairs.
+///
+/// The arena's seed follows this too, so the two halves of a pair are the
+/// same deal played both ways round rather than two different games. That
+/// is what makes the null-candidate property exact rather than approximate:
+/// when candidate and incumbent are the same evaluator, the pair is one
+/// game scored from both sides, so it contributes exactly one win and one
+/// loss and the arena returns exactly 0.5.
+///
+/// Self-play does not use this — `play_one_game` still indexes matchups on
+/// the game index directly, because there is no chair to balance when both
+/// seats are the same searcher and a training corpus wants breadth.
+fn arena_matchup_index(game_index: usize) -> usize {
+    game_index / 2
 }
 
 /// One arena game. `candidate`/`incumbent` are model paths, `None` meaning
@@ -216,11 +281,13 @@ fn play_arena_game(
     cli: &Cli,
     candidate: &Option<PathBuf>,
     incumbent: &Option<PathBuf>,
-) -> Result<ArenaResult, SelfPlayError> {
+) -> Result<ArenaGame, SelfPlayError> {
     let registry = fixtures::registry();
-    let matchup = matchup_for(game_index, cli)?;
+    let pair = arena_matchup_index(game_index);
+    let matchup = matchup_for(pair, cli)?;
     let (corp_deck, runner_deck) = matchup.decks();
-    let seed = game_index as u64;
+    // The pair index, not the game index: both chairs play the same deal.
+    let seed = pair as u64;
     let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
 
     let candidate_side = candidate_side(game_index);
@@ -245,13 +312,14 @@ fn play_arena_game(
     let corp = seat(Side::Corp, seed)?;
     let runner = seat(Side::Runner, seed.wrapping_add(1))?;
     let mut session = Session::new(state, registry, corp, runner).without_history();
-    match session.run() {
+    let result = match session.run() {
         SessionStep::Ended { winner, .. } => {
-            Ok(if winner == candidate_side { ArenaResult::CandidateWin } else { ArenaResult::IncumbentWin })
+            if winner == candidate_side { ArenaResult::CandidateWin } else { ArenaResult::IncumbentWin }
         }
-        SessionStep::Stalled(_) => Ok(ArenaResult::Draw),
-        other => Err(SelfPlayError::ArenaUnexpectedStep(format!("{other:?}"))),
-    }
+        SessionStep::Stalled(_) => ArenaResult::Draw,
+        other => return Err(SelfPlayError::ArenaUnexpectedStep(format!("{other:?}"))),
+    };
+    Ok(ArenaGame { candidate_side, result })
 }
 
 /// Wraps `evaluator` so only the requested halves of it survive, the
@@ -622,7 +690,12 @@ mod tests {
     #[test]
     fn candidate_score_counts_a_stall_as_half() {
         let results = [ArenaResult::CandidateWin, ArenaResult::Draw, ArenaResult::IncumbentWin, ArenaResult::Draw];
-        let summary = summarize(&results, CandidateUses::Both, 0.0);
+        let games: Vec<ArenaGame> = results
+            .iter()
+            .enumerate()
+            .map(|(index, &result)| ArenaGame { candidate_side: candidate_side(index), result })
+            .collect();
+        let summary = summarize(&games, CandidateUses::Both, 0.0);
         assert_eq!(
             summary,
             ArenaSummary {
@@ -632,7 +705,11 @@ mod tests {
                 candidate_wins: 1,
                 incumbent_wins: 1,
                 draws: 2,
-                candidate_score: 0.5
+                candidate_score: 0.5,
+                // Indices 0 and 2 are the Corp chair (a win and a loss),
+                // 1 and 3 the Runner chair (two stalls).
+                as_corp: ChairSummary { games: 2, wins: 1, losses: 1, draws: 0, score: 0.5 },
+                as_runner: ChairSummary { games: 2, wins: 0, losses: 0, draws: 2, score: 0.5 },
             }
         );
         assert_eq!(summarize(&[], CandidateUses::Both, 0.0).candidate_score, 0.0, "no games is not a pass");
@@ -649,7 +726,8 @@ mod tests {
             .collect();
         assert_eq!(labels, ["both", "value-only", "priors-only"], "every variant is labelled, and distinctly");
 
-        let json = serde_json::to_string(&summarize(&[ArenaResult::CandidateWin], CandidateUses::PriorsOnly, 0.5)).unwrap();
+        let one = [ArenaGame { candidate_side: Side::Corp, result: ArenaResult::CandidateWin }];
+        let json = serde_json::to_string(&summarize(&one, CandidateUses::PriorsOnly, 0.5)).unwrap();
         assert!(json.contains("\"prior_mix\":0.5"), "a summary must say what dial produced it: {json}");
         assert!(json.contains(r#""candidate_uses":"priors-only""#), "the label reaches the printed line: {json}");
     }
@@ -697,7 +775,50 @@ mod tests {
     fn the_candidate_alternates_chairs_across_games() {
         assert_eq!(candidate_side(0), Side::Corp);
         assert_eq!(candidate_side(1), Side::Runner);
-        assert_eq!(candidate_side(12), Side::Corp, "the same matchup, the other chair");
+    }
+
+    /// The property the old indexing silently violated. Chair must not be
+    /// a function of the matchup, or the candidate is handed a fixed
+    /// seating for every pairing and the arena measures the chair.
+    #[test]
+    fn every_matchup_is_played_from_both_chairs() {
+        let cli = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "unused.onnx"]);
+        let pairings = fixtures::matchups().len();
+
+        for pair in 0..pairings {
+            let (first, second) = (pair * 2, pair * 2 + 1);
+            assert_eq!(arena_matchup_index(first), pair);
+            assert_eq!(arena_matchup_index(second), pair);
+            assert_eq!(
+                matchup_for(arena_matchup_index(first), &cli).unwrap().id(),
+                matchup_for(arena_matchup_index(second), &cli).unwrap().id(),
+                "a pair of games must be the same matchup"
+            );
+            assert_ne!(candidate_side(first), candidate_side(second), "and opposite chairs");
+        }
+    }
+
+    /// The regression test for a bias that was worth 0.0755 and cleared
+    /// the 0.55 promotion gate on seating alone. Two `None` model paths
+    /// make candidate and incumbent the same evaluator, so each pair is
+    /// one deal scored from both sides: exactly one win and one loss,
+    /// whatever happens in it. Anything but 0.5 is the chair leaking back
+    /// into the verdict.
+    #[test]
+    fn a_candidate_identical_to_the_incumbent_scores_exactly_one_half() {
+        let cli = Cli::parse_from(["netrunner_selfplay", "-n", "8", "-s", "2", "--arena-candidate", "unused.onnx"]);
+        let games: Vec<ArenaGame> =
+            (0..8).map(|index| play_arena_game(index, &cli, &None, &None).expect("arena game")).collect();
+
+        let summary = summarize(&games, CandidateUses::Both, 0.0);
+        assert_eq!(summary.candidate_score, 0.5, "a null candidate must score exactly parity: {summary:?}");
+        assert_eq!(summary.as_corp.games, 4);
+        assert_eq!(summary.as_runner.games, 4);
+        assert_eq!(
+            summary.as_corp.wins + summary.as_runner.wins,
+            summary.as_corp.losses + summary.as_runner.losses,
+            "each pair contributes one win and one loss"
+        );
     }
 
     /// Two runs at the same offset are the same game, and a different
@@ -772,12 +893,13 @@ mod tests {
     #[test]
     fn a_uniform_arena_plays_its_games_and_accounts_for_every_one() {
         let cli = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "unused.onnx"]);
-        let results: Vec<ArenaResult> =
+        let results: Vec<ArenaGame> =
             (0..2).map(|i| play_arena_game(i, &cli, &None, &None).expect("uniform arena game")).collect();
         let summary = summarize(&results, CandidateUses::Both, 0.0);
         assert_eq!(summary.games, 2);
         assert_eq!(summary.candidate_wins + summary.incumbent_wins + summary.draws, 2);
         let line = serde_json::to_string(&summary).unwrap();
         assert!(line.contains("\"candidate_score\""), "{line}");
+        assert!(line.contains("\"as_corp\"") && line.contains("\"as_runner\""), "the chair split reaches the line: {line}");
     }
 }
