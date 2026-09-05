@@ -67,7 +67,36 @@ def forward(obs):
     value = np.tanh(gemm(v, W["value_head.2.weight"], W["value_head.2.bias"]))
     return logits, value[:, 0]
 
+# `ActionSpace`'s segment layout (`action_mask.rs`), whose consts are
+# private. Derived here and checked against the pinned `SIZE` below: if the
+# lengths stop summing to 1646 the layout moved and this table is stale, so
+# the assertion is the guard rather than a comment asking to be trusted.
+_H, _I, _REMOTE, _ABIL, _SUBS = 16, 32, 10, 4, 8
+_DECK, _ACCESS, _COST, _PENDING, _TRACE = 50, 32, 2, 4, 30
+_ZONE = 3 + _REMOTE
+_SEGMENT_LENGTHS = [
+    ("basic action", 9), ("draw", 2), ("gain credit", 2), ("pass priority", 2),
+    ("install card", _H * _ZONE * 2), ("rez ice", _I), ("initiate run", _ZONE),
+    ("play event", _H), ("install hardware", _H), ("install program", _H),
+    ("play operation", _H), ("discard", _H),
+    ("activate ability (corp)", _I * _ABIL), ("activate ability (runner)", _I * _ABIL),
+    ("ADVANCE CARD", _I), ("SCORE AGENDA", _I), ("trash resource", _I),
+    ("select card to access", _ACCESS), ("steal agenda", 1), ("trash accessed", 1),
+    ("pass accessed", 1), ("pay access trigger", 1), ("decline trigger", 1),
+    ("corp trace bid", _TRACE + 1), ("runner trace bid", _TRACE + 1),
+    ("accept paid choice", 1 + _COST), ("resolve pending choice", _PENDING),
+    ("toggle card selection", _DECK), ("confirm card selection", 1),
+    ("choose server", _ZONE), ("install resource", _H),
+    ("install program on ice", _H * _I), ("break subroutine (click)", _SUBS),
+    ("choose trigger", _I),
+]
+SEGMENTS, _off = [], 0
+for _name, _len in _SEGMENT_LENGTHS:
+    SEGMENTS.append((_name, _off, _off + _len))
+    _off += _len
+
 OBS_SIZE, SIZE = 990, 1646
+assert _off == SIZE, f"segment table sums to {_off}, not ActionSpace::SIZE ({SIZE}) -- the layout moved"
 rows_obs, rows_sup, rows_tgt, rows_side = [], [], [], []
 skipped_stall = 0
 for path in GAMES:
@@ -98,6 +127,9 @@ full /= full.sum(1, keepdims=True)
 
 legal_mass, top1, top1_masked_uniform, argmax_legal, n_legal = [], [], [], [], []
 peak, tgt_peak, on_best, ent_ratio = [], [], [], []
+# Per side, per segment: [steps where the segment had a legal slot,
+# summed search mass, summed model mass].
+seg_stats = {0: np.zeros((len(SEGMENTS), 3)), 1: np.zeros((len(SEGMENTS), 3))}
 side_hit = {0: [], 1: []}
 for k in range(len(obs)):
     sup, tgt = rows_sup[k], rows_tgt[k]
@@ -119,6 +151,13 @@ for k in range(len(obs)):
     on_best.append(q[tgt.argmax()])
     h = -(q * np.log(q + 1e-12)).sum()
     ent_ratio.append(h / np.log(len(sup)))
+    acc = seg_stats[rows_side[k]]
+    for si, (_name, lo, hi) in enumerate(SEGMENTS):
+        inside = (sup >= lo) & (sup < hi)
+        if inside.any():
+            acc[si, 0] += 1
+            acc[si, 1] += tgt[inside].sum()
+            acc[si, 2] += q[inside].sum()
 
 lm = np.array(legal_mass); t1 = np.array(top1, dtype=float)
 print()
@@ -153,6 +192,26 @@ print()
 wrong = ~np.array(top1)
 print(f"  when the model is WRONG (n={wrong.sum()}): mass on the correct action  mean {on_best[wrong].mean():.3f}  median {np.median(on_best[wrong]):.3f}")
 print(f"      and on its own (wrong) pick:                                mean {peak[wrong].mean():.3f}")
+print()
+print()
+print("WHERE THE MASS GOES, per chair, over steps where that segment was legal at all.")
+print("`search` is the visit distribution the model was trained to imitate; `model` is")
+print("the prior the search actually consumed. `ratio` below 1.0 is under-weighting.")
+for side, label in ((0, "CORP"), (1, "RUNNER")):
+    acc = seg_stats[side]
+    print(f"\n  --- {label} ---")
+    print(f"  {'segment':26s} {'slots':>6s} {'steps':>7s} {'search':>8s} {'model':>8s} {'ratio':>7s}")
+    order = np.argsort(-acc[:, 1])
+    for si in order:
+        steps, search_m, model_m = acc[si]
+        # Everything the search actually puts mass on. Not a top-N: hiding
+        # a segment is how "the Corp never scores" would stay invisible.
+        if steps == 0 or search_m / max(steps, 1) < 0.005:
+            continue
+        name, lo, hi = SEGMENTS[si]
+        s_mean, m_mean = search_m / steps, model_m / steps
+        ratio = m_mean / s_mean if s_mean > 0 else float("nan")
+        print(f"  {name:26s} {hi - lo:6d} {int(steps):7d} {s_mean:8.3f} {m_mean:8.3f} {ratio:7.2f}")
 print()
 print("AGREEMENT vs how much mass the model puts on legal slots")
 edges=np.percentile(lm,[0,20,40,60,80,100])
