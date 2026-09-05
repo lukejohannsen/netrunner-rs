@@ -70,7 +70,11 @@ def forward(obs):
     value = np.tanh(gemm(v, W["value_head.2.weight"], W["value_head.2.bias"]))
     return logits, value[:, 0]
 
-OBS_SIZE, SIZE = 990, SEGMENT_SIZE
+# The observation width comes from the games themselves: every trajectory
+# records the `OBS_SIZE` it was encoded under, and a corpus never mixes
+# layouts (`NetrunnerCorpus` refuses to). Hardcoding 990 here would have
+# silently mis-densified every game recorded after the board-block rework.
+OBS_SIZE, SIZE = None, SEGMENT_SIZE
 rows_obs, rows_sup, rows_tgt, rows_side = [], [], [], []
 skipped_stall = 0
 for path in GAMES:
@@ -79,6 +83,10 @@ for path in GAMES:
     if str(game.get("end_reason", "")).startswith("stall_"):
         skipped_stall += 1
         continue
+    if OBS_SIZE is None:
+        OBS_SIZE = game["observation_size"]
+    elif game["observation_size"] != OBS_SIZE:
+        raise SystemExit(f"{path}: observation_size {game['observation_size']} != {OBS_SIZE}; a corpus must not mix layouts")
     for st in game["steps"]:
         o = np.zeros(OBS_SIZE, dtype=np.float32)
         for i, v in st["observation"]:

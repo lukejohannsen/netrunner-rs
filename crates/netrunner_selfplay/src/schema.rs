@@ -4,7 +4,9 @@
 //!
 //! Both per-step vectors are stored **sparse**, as `[index, value]` pairs
 //! of their nonzero entries. Measured on the September 2026 corpus, an
-//! observation has ~29 nonzero entries of `OBS_SIZE` 990 and a policy
+//! observation had ~29 nonzero entries of `OBS_SIZE` 990 (the board blocks
+//! that took it to 2,262 add a few dozen more — see the Phase 2 §5 entry
+//! for the rework's measurement) and a policy
 //! target ~8 of `ActionSpace::SIZE` 1,646, so the dense form was ~97–99%
 //! zeros written out as text: 1.9 MB per game, 190 MB per 96-game
 //! iteration, and a trainer that held every zero as a `float32` — the

@@ -188,9 +188,13 @@ mod tests {
     /// be deliberate rather than a side effect of touching the encoder.
     /// Grew 30 → 990 when card-identity planes were added — the scalar-only
     /// encoding made every same-size hand look identical to the network,
-    /// which capped a trained policy at generic tempo play.
+    /// which capped a trained policy at generic tempo play. Grew 990 →
+    /// 2,262 with the per-install board blocks, the run and the parked
+    /// decision (ROADMAP Phase 2 §5, item 18): the value head scored the
+    /// Corp at 0.469 against a 0.724 chair baseline because it could not
+    /// see an advancement token, a rez, or a run's target.
     #[test]
     fn obs_size_constant_is_pinned() {
-        assert_eq!(OBS_SIZE, 990);
+        assert_eq!(OBS_SIZE, 2262);
     }
 }
