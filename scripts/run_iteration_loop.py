@@ -3,8 +3,9 @@
 
 Each iteration plays `--games-per-iter` games with the incumbent network in
 the search (the uniform search until one is promoted), trains a fresh
-network on the replay window, and promotes it only if it beats the
-incumbent in the arena. Every game of a run has a distinct seed
+network on the replay window (masked policy objective unless
+`--unmasked-policy`), and promotes it only if it beats the incumbent in a
+384-game arena, both chairs. Every game of a run has a distinct seed
 (`--seed-offset`), the iteration is resumable (an iteration directory that
 already holds its games is not replayed), and one JSON line per iteration
 goes to `<ckpt-dir>/iterations.log` with the timings and both summaries, so
@@ -137,8 +138,22 @@ def main():
                         help="Train on the last N iterations only (the replay window); default every iteration")
     parser.add_argument("--data-dir", type=str, default="./data/selfplay", help="Trajectory output directory")
     parser.add_argument("--ckpt-dir", type=str, default="./data/checkpoints", help="Checkpoints directory")
-    parser.add_argument("--arena-games", type=int, default=48,
-                        help="Head-to-head games a candidate plays against the incumbent before promotion")
+    # 384, not 48. The three volume runs gated on 48-game arenas, and their
+    # verdicts swung 0.22-0.48 iteration to iteration with no trend: at 48
+    # games one chair is 24 games, and the chair baseline alone is 0.72/0.28,
+    # so the noise was the size of any effect a candidate could have. 384
+    # is the count every re-measurement in ROADMAP Phase 2 §5 (items 13 and
+    # 17) was made at, and it is about a tenth of an iteration's self-play.
+    parser.add_argument("--arena-games", type=int, default=384,
+                        help="Head-to-head games a candidate plays against the incumbent before promotion, "
+                             "half in each chair")
+    # Masked by default here, unmasked by default in the trainer: the
+    # trainer's default reproduces the recorded runs byte for byte, while a
+    # new run has no reason to train the objective that put the Corp's
+    # prior mass on `pass priority` and `draw` (Phase 2 §5 items 14-15).
+    parser.add_argument("--unmasked-policy", action="store_true",
+                        help="Train the policy softmax over every ActionSpace slot rather than the target's "
+                             "support (the pre-item-15 objective; masked is the default)")
     parser.add_argument("--promote-threshold", type=float, default=0.55,
                         help="Candidate score (wins + draws/2, over arena games) needed to be promoted")
     parser.add_argument("--value-target-mix", type=float, default=0.5,
@@ -203,6 +218,8 @@ def main():
                 train_cmd.extend(["--window", str(args.window)])
             train_cmd.extend(["--value-target-mix", str(args.value_target_mix),
                               "--value-loss-weight", str(args.value_loss_weight)])
+            if not args.unmasked_policy:
+                train_cmd.append("--masked-policy")
             res = run_cmd(
                 train_cmd,
                 f"Iteration {iter_idx}/{args.iterations}: Training Neural Network",
@@ -239,10 +256,18 @@ def main():
             record["arena_seconds"] = time.time() - started
             promoted = summary["candidate_score"] >= args.promote_threshold
             record["promoted"] = promoted
+            # Both chairs on the line, not only the blend. The blend hid the
+            # whole story for three runs: a network broken as the Corp and
+            # neutral-to-good as the Runner averaged to "a bit below the
+            # search" (Phase 2 §5 item 13), and nobody reading
+            # `promotions.log` could have told.
+            chair = lambda c: f"{c['wins']}-{c['losses']}-{c['draws']} ({c['score']:.3f})"
             verdict = (
                 f"iter={iter_idx} games={summary['games']} wins={summary['candidate_wins']} "
                 f"losses={summary['incumbent_wins']} draws={summary['draws']} "
-                f"score={summary['candidate_score']:.3f} threshold={args.promote_threshold} promoted={promoted}"
+                f"score={summary['candidate_score']:.3f} "
+                f"corp={chair(summary['as_corp'])} runner={chair(summary['as_runner'])} "
+                f"threshold={args.promote_threshold} promoted={promoted}"
             )
             with open(os.path.join(args.ckpt_dir, "promotions.log"), "a", encoding="utf-8") as log:
                 log.write(verdict + "\n")
