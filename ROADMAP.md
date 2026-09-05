@@ -22,11 +22,10 @@ Code and docs address entries as `ROADMAP <phase> §<n>` — "Phase 2 §5", "Rul
 
 ## What is next, in order
 
-1. **Loop hygiene before the next overnight run**: `--masked-policy` by default in `run_iteration_loop.py`, the arena at 384 games, per-chair scores in `promotions.log` and the console verdict (`iterations.log` already carries `as_corp`/`as_runner`).
-2. **The first volume run on the reworked observation** (Phase 2 §5 item 18): `data/selfplay` and `data/checkpoints` are empty and waiting; the smoke figures in that entry size it.
-3. **The Corp damage/pressure term** (Phase 3 §1): the lever Phật Gioan, Measured Response and the dead `opponent_grip_weight` all reduce to, plus a Corp counterpart to `ACTIVE_RUN_WEIGHT` for Anoetic Void.
-4. **Phase 1 §5 Format Support.**
-5. Small open items, each recorded in its area file: `netrunner_gym` can still toggle-loop; the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; Core Set cards have no sweep coverage; an `InstallId` on install/advance/swap events for narrated logs.
+1. **The first volume run on the reworked observation** (Phase 2 §5 items 18–19): `data/checkpoints/launch_overnight.sh` is written for it — masked objective, 384-game arena, per-chair verdicts are now the loop's defaults; `data/selfplay` and `data/checkpoints` are otherwise empty.
+2. **The Corp damage/pressure term** (Phase 3 §1): the lever Phật Gioan, Measured Response and the dead `opponent_grip_weight` all reduce to, plus a Corp counterpart to `ACTIVE_RUN_WEIGHT` for Anoetic Void.
+3. **Phase 1 §5 Format Support.**
+4. Small open items, each recorded in its area file: `netrunner_gym` can still toggle-loop; the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; Core Set cards have no sweep coverage; an `InstallId` on install/advance/swap events for narrated logs.
 
 ## How this file is kept
 
