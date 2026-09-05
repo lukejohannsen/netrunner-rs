@@ -869,6 +869,19 @@ they are consequences of one having existed.
   - **C — prompt cost per card, measured and gated.** `GameEvent::PendingCardSelectionOffered` carries `source` (struck out for the opponent when concealed, like `TraceInitiated`); `CardCoverage` gains `prompts_offered`, `prompt_actions` and `prompt_actions_max`, charged from the offer through every toggle to the confirm — a game that ends *inside* a prompt is flushed at the end of the match, so a livelock's cost lands on its card; and `gate_failures` fails any card whose single worst prompt exceeded **`PROMPT_ACTIONS_GATE = 32`**, by name and cost. **Measured on the unbiased seating over the full cross product:** the worst any prompt now costs is **4 actions** (Plutus's 3-of-5 and Madani's 1-to-9), everything else 3 or fewer — i.e. exactly `max + 1` or better, which is what a chooser that never deselects guarantees. A DSL lint (`every_prompt_in_the_pool_has_min_at_most_max_and_the_must_resolve_ones_are_listed`) reads every card JSON: **86 `PromptChooseCards`, 56 with `min > 0`** — the prompts a chooser must satisfy before Confirm is legal — none with `min > max`, and the must-resolve list is one `--nocapture` away.
   - **Rules-neutral, verified:** the 192-matchup random-vs-random report is identical to the A+B tree's in every count — `steps`, `end_reasons`, `actions`, `actions_by_side`, `events`, `runs`, `effects_seen`, `triggers_fired` and every existing per-card counter — with only the new per-card fields added. 256-seed sweeps pass on both paths (index 74s, view 50s, release).
 
+- **The masked model re-measured on the fixed arena: the network's Corp was never as bad as every verdict said — its prompts were eating the games — 5 September 2026.** Same model (`masked_iter008.onnx`), same 384 games at 128 simulations, on `main` with bots that cannot deselect and a livelock scored as a loss; binary and model pinned by sha. The null control on this binary is exactly 0.5 with **zero** draws, and the chair baseline it gives is Corp **0.724** / Runner **0.276** (was 0.742/0.258 with the old bots).
+
+    | `both` | old arena bots | fixed arena | vs chair baseline |
+    |---|---|---|---|
+    | overall | 0.2878 | **0.4089** (157–227–0) | −0.091 |
+    | as Corp | 0.232 (32–135–**25**) | **0.536** (103–89–0) | **−0.188** (was −0.510) |
+    | as Runner | 0.344 (64–124–4) | **0.281** (54–138–0) | +0.005 (was +0.086) |
+    | draws | 29 | **0** | |
+    | wall | 6,246s | **630s** | |
+
+  - **The 25 Corp "draws" were won games the network Corp could not finish.** Forced to resolve its selections it wins 103 of 192 from that chair, and the Corp deficit against a neutral player shrinks from −0.51 to −0.19 without the model changing at all. Every arena verdict in this section up to here measured the prompt livelock at least as much as the network. The Runner's apparent +0.086 edge was likewise mostly the old arena: against the new baseline it is +0.005 — neutral.
+  - **What is left is now a plausible training problem rather than a harness one.** −0.19 as Corp, neutral as Runner, 0.4089 overall (about −64 Elo) against the search that generated the data, on a model trained with the masked objective; the value head's Corp side is the remaining suspect (value-only was −0.305 as Corp before this fix and has not been re-measured). Whether the loop can now climb is the question the next iteration answers, and for the first time the arena that judges it is not scoring a stuck prompt as half a point. The whole leg runs in 630s where it took 6,246s, which is the compute the livelocks were costing.
+
 ---
 
 ## 🏆 Phase 3: Bot Personalities, Elo & Player Progression
