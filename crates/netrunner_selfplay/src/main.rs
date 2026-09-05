@@ -169,8 +169,10 @@ struct ArenaGame {
 enum ArenaResult {
     CandidateWin,
     IncumbentWin,
-    /// The session stalled at `MAX_STEPS` — nobody won, and it counts as
-    /// half a point each in `ArenaSummary::candidate_score`.
+    /// The session stalled without anyone failing to act — `MAX_STEPS` ran
+    /// out, or nobody had a decision — and it counts as half a point each
+    /// in `ArenaSummary::candidate_score`. A `DecisionLivelock` is **not**
+    /// this: see `play_arena_game`.
     Draw,
 }
 
@@ -315,6 +317,14 @@ fn play_arena_game(
     let result = match session.run() {
         SessionStep::Ended { winner, .. } => {
             if winner == candidate_side { ArenaResult::CandidateWin } else { ArenaResult::IncumbentWin }
+        }
+        // A player who cannot resolve its own prompt has failed to act, and
+        // that is a loss, not half a point. Scoring it as a draw hid 25 and
+        // 44 of 192 Corp "draws" in two arena legs that were one seat
+        // toggling a card selection for 10,000 actions (ROADMAP Phase 2 §5)
+        // — from a chair that wins 74% of its games when it plays them out.
+        SessionStep::Stalled(StallReason::DecisionLivelock { side, .. }) => {
+            if side == candidate_side { ArenaResult::IncumbentWin } else { ArenaResult::CandidateWin }
         }
         SessionStep::Stalled(_) => ArenaResult::Draw,
         other => return Err(SelfPlayError::ArenaUnexpectedStep(format!("{other:?}"))),
@@ -561,6 +571,12 @@ fn end_reason_of(step: &SessionStep) -> String {
         SessionStep::Stalled(StallReason::BudgetExhausted) => "stall_budget_exhausted",
         SessionStep::Stalled(StallReason::NoLegalActions { .. }) => "stall_no_legal_actions",
         SessionStep::Stalled(StallReason::NoCurrentActor) => "stall_no_current_actor",
+        // The card goes into the reason so a corpus can be grouped by
+        // offender with nothing but `end_reason`; the `stall_` prefix keeps
+        // the trainer dropping it.
+        SessionStep::Stalled(StallReason::DecisionLivelock { source_card, .. }) => {
+            return format!("stall_livelock:{}", source_card.as_ref().map_or("unknown", |card| card.0.as_str()));
+        }
         SessionStep::Applied { .. } | SessionStep::Awaiting { .. } => "unterminated",
     }
     .to_string()
@@ -876,15 +892,22 @@ mod tests {
     fn only_a_stall_is_named_with_the_prefix_the_trainer_drops() {
         let ended = SessionStep::Ended { winner: Side::Corp, reason: GameEndReason::Flatline };
         assert_eq!(end_reason_of(&ended), "flatline");
+        let livelock = StallReason::DecisionLivelock {
+            side: Side::Corp,
+            source_card: Some(netrunner_core::dsl::CardId("plutus".to_string())),
+            actions: 256,
+        };
         for stall in [
             StallReason::BudgetExhausted,
             StallReason::NoLegalActions { side: Side::Runner },
             StallReason::NoCurrentActor,
+            livelock.clone(),
         ] {
             let named = end_reason_of(&SessionStep::Stalled(stall));
             assert!(named.starts_with("stall_"), "{named} must be droppable by prefix");
         }
         assert_eq!(end_reason_of(&SessionStep::Stalled(StallReason::BudgetExhausted)), "stall_budget_exhausted");
+        assert_eq!(end_reason_of(&SessionStep::Stalled(livelock)), "stall_livelock:plutus", "the offender is in the reason");
     }
 
     /// The arena path end to end with no network on either side: two real

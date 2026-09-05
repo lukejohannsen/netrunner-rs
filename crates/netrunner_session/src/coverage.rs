@@ -144,6 +144,13 @@ impl Coverage {
         let reason = match outcome {
             SessionStep::Ended { winner, reason } => format!("Ended/{winner:?}/{reason:?}"),
             SessionStep::Stalled(StallReason::NoLegalActions { side }) => format!("Stalled/NoLegalActions/{side:?}"),
+            // Keyed by card, so a report over many games lists which
+            // prompts are absorbing whole matches — the question a livelock
+            // exists to answer.
+            SessionStep::Stalled(StallReason::DecisionLivelock { source_card, .. }) => format!(
+                "Stalled/DecisionLivelock/{}",
+                source_card.as_ref().map_or("unknown", |card| card.0.as_str())
+            ),
             SessionStep::Stalled(reason) => format!("Stalled/{reason:?}"),
             SessionStep::Applied { .. } | SessionStep::Awaiting { .. } => "Unfinished".to_string(),
         };

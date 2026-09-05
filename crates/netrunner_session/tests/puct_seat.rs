@@ -4,7 +4,7 @@
 //! and it is the one that stalled 14–23 of every 48 arena games in the
 //! September 2026 volume run (ROADMAP Phase 2 §5).
 
-use netrunner_bots::{PolicyEvaluator, PuctAgent, PuctConfig, UniformPolicyEvaluator};
+use netrunner_bots::{HeuristicAgent, MctsAgent, PolicyEvaluator, PuctAgent, PuctConfig, RandomAgent, UniformPolicyEvaluator};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardDefinition, CardFilter, CardId, CardType, CardZoneRef, IceType};
 use netrunner_core::rules::{
@@ -110,6 +110,106 @@ fn puct_seat(side: Side, seed: u64, evaluator: impl PolicyEvaluator + 'static) -
         evaluator,
         PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4 },
     )))
+}
+
+/// Plutus's alternative rez cost as the engine parks it — exactly three of a
+/// five-card HQ, the Corp choosing — which is the shape that livelocked 133
+/// self-play games (ROADMAP Phase 2 §5). Five slots, so a chooser that
+/// deselects has a large space to wander in; a chooser that cannot has at
+/// most four moves.
+fn plutus_pay_pending() -> (GameState, CardRegistry) {
+    let hand = ["hedge_fund", "ice_wall", "offworld_office", "regolith_mining_license", "government_subsidy"];
+    let mut registry = CardRegistry::new();
+    for id in hand {
+        registry.insert(CardDefinition {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Corp,
+            card_type: CardType::Operation,
+            is_playable: true,
+            ..Default::default()
+        });
+    }
+    let mut state = GameState::new(0);
+    state.phase = GamePhase::Action(Side::Corp);
+    state.corp.hq = hand.iter().map(|id| CardId(id.to_string())).collect();
+    state.pending_decision = Some(PendingDecision::ChooseCards {
+        side: Side::Corp,
+        source: CardZoneRef::OwnHq,
+        filter: CardFilter::Any,
+        min: 3,
+        max: 3,
+        reveal: true,
+        shuffle_after: false,
+        destination: Some(CardZoneRef::OwnArchives),
+        then: None,
+        selected: Vec::new(),
+        source_card: Some(CardId("plutus".to_string())),
+        source_install: None,
+        resume: PendingChoiceResume::None,
+    });
+    (state, registry)
+}
+
+/// Every agent kind in the crate, seated as `side`, at a token search
+/// budget. The livelock was a property of *how a bot chooses*, so every
+/// chooser has to be shown to have lost it.
+fn every_agent_kind(side: Side) -> Vec<(&'static str, Seat)> {
+    vec![
+        ("random", Seat::Agent(Box::new(RandomAgent::new(7)))),
+        ("heuristic", Seat::Agent(Box::new(HeuristicAgent::new(side, 7)))),
+        ("mcts", Seat::Agent(Box::new(MctsAgent::with_iterations(side, 7, 16)))),
+        ("puct/uniform", puct_seat(side, 7, UniformPolicyEvaluator::new(side))),
+        ("puct/toggle-lover", puct_seat(side, 7, ToggleLover)),
+    ]
+}
+
+/// Drives `session` until the parked prompt clears and asserts the chooser
+/// got there in at most `max_own_actions` of its own moves without ever
+/// toggling a card it had already selected. The bound is `max + 1`
+/// (select up to `max`, then Confirm) less whatever was pre-selected.
+fn resolves_without_deselecting(label: &str, chooser: Side, mut session: Session, max_own_actions: usize) {
+    let mut own = 0;
+    let mut toggled: Vec<usize> = Vec::new();
+    while session.state().pending_decision.is_some() {
+        match session.step() {
+            SessionStep::Applied { side } => {
+                assert_eq!(side, chooser, "{label}: only the chooser acts during its own prompt");
+                own += 1;
+                assert!(own <= max_own_actions, "{label}: {own} actions in and the prompt is still open");
+                let last = session.history().entries().last().expect("an applied step is recorded");
+                if let PlayerAction::ToggleCardSelection { position } = last.action {
+                    assert!(!toggled.contains(&position), "{label}: deselected position {position} — a bot must only ever add to a selection");
+                    toggled.push(position);
+                }
+            }
+            other => panic!("{label}: {other:?} before the prompt resolved"),
+        }
+    }
+}
+
+/// The fix for the livelock, pinned per agent kind: no bot deselects, so a
+/// `min == max` prompt is resolved in `max + 1` moves or fewer. Before
+/// `agent::progressive` the PUCT seats here toggled until the budget ran
+/// out and the random seat random-walked the subset space; the one-ply
+/// heuristic scored a deselect identically to the select it undid and let
+/// its tie-break jitter decide.
+#[test]
+fn every_agent_kind_resolves_an_exact_count_prompt_without_deselecting() {
+    // Tāo's swap: Runner chooses, one of two already selected → 1 select + Confirm.
+    for (label, runner) in every_agent_kind(Side::Runner) {
+        let (state, registry) = tao_swap_pending();
+        let corp = puct_seat(Side::Corp, 99, UniformPolicyEvaluator::new(Side::Corp));
+        let session = Session::new(state, registry, corp, runner);
+        resolves_without_deselecting(&format!("tao/{label}"), Side::Runner, session, 2);
+    }
+    // Plutus's cost: Corp chooses 3 of 5 from nothing → 3 selects + Confirm.
+    for (label, corp) in every_agent_kind(Side::Corp) {
+        let (state, registry) = plutus_pay_pending();
+        let runner = Seat::Agent(Box::new(RandomAgent::new(99)));
+        let session = Session::new(state, registry, corp, runner);
+        resolves_without_deselecting(&format!("plutus/{label}"), Side::Corp, session, 4);
+    }
 }
 
 /// Once the selection is confirmed the swap resolves and the game runs off

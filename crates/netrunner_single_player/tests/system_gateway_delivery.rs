@@ -16,7 +16,7 @@ use netrunner_bots::{HeuristicAgent, IndexedHeuristicAgent, IndexedRandomAgent, 
 use netrunner_core::dsl::CardId;
 use netrunner_bots::Agent;
 use netrunner_core::rules::{validate_deck, DeckOrder, GamePhase, GameState, Side, WindowCheckpoint};
-use netrunner_session::{Coverage, Seat, Session, SessionStep, StallReason};
+use netrunner_session::{Coverage, Seat, Session, SessionStep};
 use netrunner_single_player::{SinglePlayerSession, MAX_STEPS};
 
 /// The registry a consumer builds must contain System Gateway cards, and
@@ -139,12 +139,6 @@ impl Seating {
         }
     }
 
-    /// Random-vs-random can legitimately outlast `MAX_STEPS` (measured: 1
-    /// game in 192); that is slow play, not a deadlock. A deadlock is
-    /// `StallReason::NoLegalActions`, which no seating may produce.
-    fn tolerates_budget_exhaustion(self) -> bool {
-        matches!(self, Seating::RandomBoth)
-    }
 }
 
 /// Also the index-path **rules-coverage gate**: every `PlayerAction`
@@ -167,10 +161,13 @@ fn no_panics_or_deadlocks_across_many_seeds_system_gateway() {
             let (corp, runner) = seating.drivers(seed);
             let (final_state, history, outcome) =
                 SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
+            // Every seating must reach `GameOver`. Random-vs-random used to
+            // be allowed a `BudgetExhausted` ("measured: 1 game in 192") —
+            // deck-out makes that impossible for a game whose turns advance,
+            // and that game was a card-selection livelock the tolerance was
+            // hiding (ROADMAP Phase 2 §5). A stall now names its card.
             assert!(
-                matches!(final_state.phase, GamePhase::GameOver(_))
-                    || (seating.tolerates_budget_exhaustion()
-                        && matches!(outcome, SessionStep::Stalled(StallReason::BudgetExhausted))),
+                matches!(final_state.phase, GamePhase::GameOver(_)),
                 "seed {seed} ({seating:?}): expected GameOver within {MAX_STEPS} steps, got {outcome:?}"
             );
             assert!(!history.is_empty(), "seed {seed} ({seating:?}): history should be non-empty");
@@ -269,9 +266,7 @@ fn every_sample_deck_matchup_finishes() {
             let (final_state, history, outcome) =
                 SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
             assert!(
-                matches!(final_state.phase, GamePhase::GameOver(_))
-                    || (seating.tolerates_budget_exhaustion()
-                        && matches!(outcome, SessionStep::Stalled(StallReason::BudgetExhausted))),
+                matches!(final_state.phase, GamePhase::GameOver(_)),
                 "{label} ({seating:?}): expected GameOver within {MAX_STEPS} steps, got {outcome:?}"
             );
             coverage.absorb_match(&history, &registry, &outcome);

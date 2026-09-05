@@ -23,8 +23,9 @@
 
 use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
+use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{
-    apply_action, current_actor, GamePhase, GameState, PlayerAction, RulesError, Side, Viewer,
+    apply_action, current_actor, GamePhase, GameState, PendingDecision, PlayerAction, RulesError, Side, Viewer,
 };
 use netrunner_core::view::{build_client_view, ClientView};
 
@@ -33,7 +34,37 @@ use crate::outcome::{classify_end_reason, GameEndReason};
 
 /// Guard against a stalled or looping game running forever. One budget for
 /// every consumer — this constant previously existed in four places.
-pub const MAX_STEPS: u32 = 10_000;
+///
+/// **Sized from data, not caution.** It was 10,000, which is not a bound on
+/// anything a real game does: the Corp's mandatory draw plus the deck-out
+/// rule end any game whose turns advance within ~45 Corp turns, and the
+/// longest legitimate game in 10,800 recorded self-play games (median 225
+/// actions) was **1,992**; over the full 192-matchup cross product the
+/// longest random-vs-random game is 1,002, heuristic-vs-random 861,
+/// random-vs-heuristic 1,401 (p99 1,159). A game at 10,000 actions is one
+/// whose turns have stopped — a card-selection livelock, which
+/// `DECISION_BUDGET` now catches at 256 — and letting it run there cost
+/// ~40 ordinary games of compute per stall and 44% of every recorded
+/// decision in one training window (ROADMAP Phase 2 §5). 2,500 is 25%
+/// above anything ever observed and a quarter of the old tax, and both
+/// deadlock sweeps — which no longer tolerate budget exhaustion for any
+/// seating — are the check that it clips nothing.
+pub const MAX_STEPS: u32 = 2_500;
+
+/// How many consecutive applied actions one parked decision may absorb
+/// before the session reports `StallReason::DecisionLivelock`.
+///
+/// Sized against the largest *legitimate* resolution and the smallest
+/// useful bound. A bot that never deselects resolves any `ChooseCards` in
+/// at most `max + 1` actions, and the widest zone a prompt selects from is
+/// `MAX_DECK_ZONE` (50), so 51 is the ceiling for a well-behaved chooser
+/// and 256 is five times that. It is also more toggling than a human does
+/// in the TUI — which pumps this same `Session` — and forty times cheaper
+/// than letting a loop run to `MAX_STEPS`, which is what a livelocked
+/// self-play game cost before this existed: ~9,800 recorded decisions of
+/// one Corp toggling, 44% of every decision in iterations 5–8 of the third
+/// volume run.
+pub const DECISION_BUDGET: u32 = 256;
 
 /// How one side's decisions get made.
 ///
@@ -61,7 +92,7 @@ pub enum Seat {
 /// current_actor(&state) else { break }` alongside `for _ in 0..MAX_STEPS`,
 /// which left callers unable to tell these apart — each then reported
 /// whichever one its error message happened to name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StallReason {
     /// `current_actor` named nobody. Expected and benign at
     /// `GamePhase::StartOfTurn`, which resolves inside `apply_action`
@@ -76,6 +107,17 @@ pub enum StallReason {
     NoLegalActions { side: Side },
     /// `MAX_STEPS` actions were applied without the game ending.
     BudgetExhausted,
+    /// One parked decision absorbed `DECISION_BUDGET` consecutive actions
+    /// without resolving. A **livelock**, and the thing `BudgetExhausted`
+    /// was hiding: every 10,000-action "stall" in three volume runs was a
+    /// Corp toggling the same 3–5 HQ cards on and off inside a
+    /// `min == max` `ChooseCards` prompt — 98.7% `ToggleCardSelection`,
+    /// Confirm taken once in 9,888 steps — while turns never advanced, so
+    /// the deck-out rule that would otherwise have ended the game in ~45
+    /// Corp turns never got the chance (ROADMAP Phase 2 §5). Reported with
+    /// the card that parked the decision, because the question a stall
+    /// raises is *which card*, and the pending decision already knows.
+    DecisionLivelock { side: Side, source_card: Option<CardId>, actions: u32 },
 }
 
 /// What one `step` did. Deliberately **owned**, borrowing nothing from the
@@ -136,6 +178,13 @@ pub struct Session {
     record_history: bool,
     max_steps: u32,
     steps: u32,
+    /// See `DECISION_BUDGET`.
+    decision_budget: u32,
+    /// Consecutive applied actions during which `state.pending_decision`
+    /// has stayed `Some`. Reset the moment it clears, so a chain of prompts
+    /// that each resolve promptly never accumulates; only a decision that
+    /// keeps *not* resolving counts up.
+    decision_actions: u32,
     /// Set by `Awaiting`, cleared by a successful `submit`. Only ever an
     /// attribution hint — never a gate on what `submit` accepts; see its
     /// doc comment.
@@ -158,9 +207,18 @@ impl Session {
             record_history: true,
             max_steps: MAX_STEPS,
             steps: 0,
+            decision_budget: DECISION_BUDGET,
+            decision_actions: 0,
             awaiting: None,
             ended: None,
         }
+    }
+
+    /// Override `DECISION_BUDGET` — the number of consecutive actions one
+    /// parked decision may absorb before `StallReason::DecisionLivelock`.
+    pub fn with_decision_budget(mut self, decision_budget: u32) -> Self {
+        self.decision_budget = decision_budget;
+        self
     }
 
     /// Stop recording a `MatchHistory`. For a long-running RL environment,
@@ -208,6 +266,22 @@ impl Session {
         };
         if self.steps >= self.max_steps {
             return SessionStep::Stalled(StallReason::BudgetExhausted);
+        }
+        if let Some(decision) = self.state.pending_decision.as_ref().filter(|_| self.decision_actions >= self.decision_budget) {
+            // `side` is the chooser: `current_actor` puts a parked
+            // decision's owner ahead of everything but a trace or a paid
+            // choice, and neither of those can loop.
+            let source_card = match decision {
+                PendingDecision::ChooseCards { source_card, .. }
+                | PendingDecision::ChooseEffect { source_card, .. }
+                | PendingDecision::ChooseServer { source_card, .. } => source_card.clone(),
+                PendingDecision::ChooseTriggerOrder { .. } => None,
+            };
+            return SessionStep::Stalled(StallReason::DecisionLivelock {
+                side,
+                source_card,
+                actions: self.decision_actions,
+            });
         }
 
         let view = build_client_view(&self.state, &self.registry, side);
@@ -312,6 +386,15 @@ impl Session {
         }
         self.state = next;
         self.steps += 1;
+        // Only an action that leaves a decision parked counts toward the
+        // livelock budget, and resolving one clears the count — so the
+        // budget measures "how long has *this* decision been open", not
+        // "how many prompts has this game had".
+        if self.state.pending_decision.is_some() {
+            self.decision_actions += 1;
+        } else {
+            self.decision_actions = 0;
+        }
         Ok(())
     }
 

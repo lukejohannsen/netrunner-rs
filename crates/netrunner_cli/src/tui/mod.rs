@@ -297,6 +297,10 @@ fn stall_message(reason: StallReason) -> String {
         StallReason::BudgetExhausted => "match ended without reaching GameOver (step budget exhausted)".to_string(),
         StallReason::NoCurrentActor => "match stalled: no side has a decision pending".to_string(),
         StallReason::NoLegalActions { side } => format!("match deadlocked: {side:?} has priority but no legal action"),
+        StallReason::DecisionLivelock { side, source_card, actions } => format!(
+            "match livelocked: {side:?} spent {actions} actions inside {}'s prompt without resolving it",
+            source_card.as_ref().map_or("an unnamed card", |card| card.0.as_str())
+        ),
     }
 }
 
