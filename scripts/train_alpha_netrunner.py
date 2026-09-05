@@ -13,10 +13,14 @@ import json
 import math
 import os
 import random
+import sys
 import time
 
 import numpy as np
 import torch
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from action_space_segments import SEGMENTS, segment_of_slot
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -298,15 +302,111 @@ def export_onnx(model: nn.Module, export_path: str, obs_dim: int):
     )
 
 
-def losses(model, obs, target_pi, target_val):
+def losses(model, obs, target_pi, target_val, masked_policy=False, sample_weight=None):
+    """Policy cross-entropy and value MSE.
+
+    `masked_policy` renormalizes the policy softmax over the target's own
+    support instead of all `ActionSpace::SIZE` slots. **The default is the
+    unmasked form the three volume runs were trained with**, kept so a
+    rerun reproduces them; the masked form exists because the trained
+    quantity is otherwise not the one the search consumes. Inference
+    (`masked_softmax`) always renormalizes over the legal set, so an
+    unmasked objective spends capacity on a normalizer that is thrown
+    away — measured at 41.2% of the softmax mass landing on illegal slots
+    (ROADMAP Phase 2 §5).
+
+    The support stands in for the legal set: a recorded `policy_target` is
+    the root visit distribution and PUCT expands every legal root edge, so
+    with 128 simulations over ~7 legal actions the two coincide.
+
+    **Masked and unmasked policy losses are not comparable to each other.**
+    Both are bounded below by the target's entropy, but only the masked one
+    can approach it, so a masked run reports a smaller number for the same
+    quality. Compare a variant with itself across epochs, never across
+    variants.
+
+    `sample_weight` reweights whole samples in the mean — see
+    `segment_balance_weights`.
+    """
     logits, val_pred = model(obs)
-    log_probs = F.log_softmax(logits, dim=1)
-    policy_loss = -torch.sum(target_pi * log_probs, dim=1).mean()
-    value_loss = F.mse_loss(val_pred, target_val)
+    if masked_policy:
+        support = target_pi > 0
+        # A row with no target at all (never produced by self-play, but a
+        # corpus is not a promise) would make every logit -inf and the
+        # log-softmax NaN. Leave those rows unmasked; their all-zero target
+        # contributes nothing to the sum either way.
+        support = support | ~support.any(dim=1, keepdim=True)
+        logits = logits.masked_fill(~support, float("-inf"))
+        log_probs = F.log_softmax(logits, dim=1)
+        # A masked slot is exactly -inf and its target is exactly 0, and
+        # `0 * -inf` is NaN -- which poisons the *reported* loss without
+        # touching the gradient (the derivative wrt log_probs is the
+        # target, i.e. 0 there). That asymmetry is nastier than a crash:
+        # the first run of this trained correctly for ten epochs while
+        # every printed policy loss read `nan`, so `best_val_loss` never
+        # improved, no checkpoint was written, and the export died on a
+        # missing file. Drop the masked terms before multiplying.
+        log_probs = torch.where(support, log_probs, torch.zeros_like(log_probs))
+    else:
+        log_probs = F.log_softmax(logits, dim=1)
+    per_sample = -torch.sum(target_pi * log_probs, dim=1)
+    if sample_weight is None:
+        policy_loss = per_sample.mean()
+        value_loss = F.mse_loss(val_pred, target_val)
+    else:
+        # Weights are normalized to mean 1.0 upstream, so a weighted loss
+        # stays on the same scale as an unweighted one.
+        policy_loss = (per_sample * sample_weight).mean()
+        value_loss = (F.mse_loss(val_pred, target_val, reduction="none").squeeze(-1) * sample_weight).mean()
     return policy_loss, value_loss
 
 
-def run_epoch(model, corpus, rows, batch_size, device, optimizer=None, value_loss_weight=1.0):
+def segment_balance_weights(corpus, strength: float):
+    """Per-sample weights that lift steps whose decision lives in a rare
+    `ActionSpace` segment.
+
+    **Why this exists.** The policy head under-weights `SCORE AGENDA` by
+    3× — the search spends 0.659 of its visits there when scoring is legal
+    and the model offers 0.204 — and scoring is legal on only 430 of
+    24,548 Corp steps. A uniform objective sees those steps 57 times less
+    often than ordinary ones and fits them accordingly, while the arena
+    weights them enormously: they are the moves that end the game. The
+    same shape holds for `rez ice` (0.49) and `activate ability` (0.31).
+
+    A sample is attributed to the segment its *target's* argmax falls in —
+    what the search actually wanted here — and weighted by
+    `(mean_count / count) ** strength`, normalized to mean 1.0. `strength`
+    0.0 is uniform and 1.0 is full inverse frequency; the square root
+    (0.5) is the usual compromise, since full inverse frequency on a
+    segment seen 430 times hands single samples enormous gradients.
+
+    **This deliberately biases the optimum.** Cross-entropy against a soft
+    target is a proper scoring rule and its optimum is the target
+    distribution; reweighting moves that optimum toward the rare segments.
+    That is the point — it trades calibration on common steps for fit on
+    decisive ones — but it is a distortion, not a correction, and it is
+    why this is off by default.
+    """
+    slot_segment = segment_of_slot()
+    argmax_slot = np.empty(len(corpus.policies.indptr) - 1, dtype=np.int64)
+    for row in range(len(argmax_slot)):
+        lo, hi = corpus.policies.indptr[row], corpus.policies.indptr[row + 1]
+        if hi <= lo:
+            argmax_slot[row] = 0
+            continue
+        values = corpus.policies.values[lo:hi]
+        argmax_slot[row] = corpus.policies.indices[lo + int(np.argmax(values))]
+    segment = slot_segment[argmax_slot]
+
+    counts = np.bincount(segment, minlength=len(SEGMENTS)).astype(np.float64)
+    seen = counts[counts > 0]
+    weights = np.where(counts > 0, (seen.mean() / np.maximum(counts, 1.0)) ** strength, 1.0)
+    per_sample = weights[segment]
+    return (per_sample / per_sample.mean()).astype(np.float32), segment, counts
+
+
+def run_epoch(model, corpus, rows, batch_size, device, optimizer=None, value_loss_weight=1.0,
+              masked_policy=False, sample_weights=None):
     """One pass over `rows`; trains when `optimizer` is given, else evaluates.
     Returns (policy loss, value loss) averaged per sample, each unweighted —
     `value_loss_weight` scales the value term in the gradient only, so the
@@ -316,14 +416,17 @@ def run_epoch(model, corpus, rows, batch_size, device, optimizer=None, value_los
     for start in range(0, len(order), batch_size):
         batch_rows = order[start:start + batch_size]
         obs, target_pi, target_val = corpus.batch(batch_rows, device)
+        weight = None
+        if sample_weights is not None:
+            weight = torch.from_numpy(sample_weights[batch_rows]).to(device)
         if optimizer is not None:
             optimizer.zero_grad()
-            policy_loss, value_loss = losses(model, obs, target_pi, target_val)
+            policy_loss, value_loss = losses(model, obs, target_pi, target_val, masked_policy, weight)
             (policy_loss + value_loss_weight * value_loss).backward()
             optimizer.step()
         else:
             with torch.no_grad():
-                policy_loss, value_loss = losses(model, obs, target_pi, target_val)
+                policy_loss, value_loss = losses(model, obs, target_pi, target_val, masked_policy, weight)
         total_p += policy_loss.item() * len(batch_rows)
         total_v += value_loss.item() * len(batch_rows)
     return total_p / max(1, len(order)), total_v / max(1, len(order))
@@ -391,6 +494,15 @@ def train(args):
     print(f"Value target: {1.0 - args.value_target_mix:.2f} x outcome + {args.value_target_mix:.2f} x search root value; "
           f"value loss weight {args.value_loss_weight:g}")
 
+    sample_weights = None
+    if args.segment_balance > 0.0:
+        sample_weights, segment, counts = segment_balance_weights(corpus, args.segment_balance)
+        loudest = np.argsort(-counts)[:3]
+        rarest = [i for i in np.argsort(counts) if counts[i] > 0][:3]
+        print(f"Segment balance {args.segment_balance:g}: weights {sample_weights.min():.2f}-{sample_weights.max():.2f}; "
+              f"most common {[SEGMENTS[i][0] for i in loudest]}, rarest {[SEGMENTS[i][0] for i in rarest]}")
+    print(f"Policy objective: {'masked to the target support' if args.masked_policy else 'unmasked over all slots'}")
+
     model = AlphaNetrunnerNet(obs_dim=corpus.observation_size, action_dim=corpus.action_space_size).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
 
@@ -405,9 +517,13 @@ def train(args):
         epoch_started = time.time()
         model.train()
         train_p, train_v = run_epoch(model, corpus, train_idx, args.batch_size, device, optimizer,
-                                     value_loss_weight=args.value_loss_weight)
+                                     value_loss_weight=args.value_loss_weight,
+                                     masked_policy=args.masked_policy, sample_weights=sample_weights)
         model.eval()
-        val_p, val_v = run_epoch(model, corpus, val_idx, args.batch_size, device)
+        # Validation is unweighted on purpose: the selection criterion has
+        # to stay the honest distribution even when the gradient does not.
+        val_p, val_v = run_epoch(model, corpus, val_idx, args.batch_size, device,
+                                 masked_policy=args.masked_policy)
         diag = value_diagnostics(model, corpus, val_idx, args.batch_size, device)
         # Selected on the same weighted sum the gradient used, so the
         # checkpoint that ships is the one the training objective preferred.
@@ -439,6 +555,7 @@ def train(args):
         "val_steps": int(len(val_idx)), "policy_floor": policy_floor, "best_epoch": best_epoch,
         "best_val_loss": best_val_loss, "value_target_mix": args.value_target_mix,
         "value_loss_weight": args.value_loss_weight, "best_value_diagnostics": best_diag,
+        "masked_policy": args.masked_policy, "segment_balance": args.segment_balance,
         "epochs": history, "seconds": time.time() - started,
     }
     print(json.dumps(summary))
@@ -458,6 +575,14 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0, help="Seed for the game split and batch order")
     parser.add_argument("--value-target-mix", type=float, default=0.5,
                         help="Value target = (1 - mix) x final outcome + mix x search root value (see set_value_target_mix)")
+    parser.add_argument("--masked-policy", action="store_true",
+                        help="Renormalize the policy softmax over the target's support instead of all "
+                             "ActionSpace slots, matching what masked_softmax does at inference. Off by "
+                             "default: the recorded runs were trained unmasked and a rerun must reproduce them.")
+    parser.add_argument("--segment-balance", type=float, default=0.0,
+                        help="Reweight samples by the inverse frequency of their target's ActionSpace segment, "
+                             "raised to this power (0 = off, 0.5 = square root, 1 = full). Lifts rare decisive "
+                             "decisions such as SCORE AGENDA. Biases the optimum -- see segment_balance_weights.")
     parser.add_argument("--value-loss-weight", type=float, default=0.25,
                         help="Weight of the value loss against the policy loss in the gradient and in checkpoint selection")
     args = parser.parse_args()

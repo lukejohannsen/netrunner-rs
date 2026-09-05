@@ -28,10 +28,13 @@ off the ONNX initializers with `onnx` — already a training dependency — and
 the forward pass is reproduced here in numpy. One less thing to install on a
 machine that only wants to read a checkpoint.
 """
-import json, sys, glob
+import json, sys, glob, os
 import numpy as np
 import onnx
 from onnx import numpy_helper
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from action_space_segments import SEGMENTS, SIZE as SEGMENT_SIZE
 
 N_GAMES = int(sys.argv[1]) if len(sys.argv) > 1 else 200
 MODEL = sys.argv[2] if len(sys.argv) > 2 else "checkpoints/rejected_iter_008.onnx"
@@ -67,36 +70,7 @@ def forward(obs):
     value = np.tanh(gemm(v, W["value_head.2.weight"], W["value_head.2.bias"]))
     return logits, value[:, 0]
 
-# `ActionSpace`'s segment layout (`action_mask.rs`), whose consts are
-# private. Derived here and checked against the pinned `SIZE` below: if the
-# lengths stop summing to 1646 the layout moved and this table is stale, so
-# the assertion is the guard rather than a comment asking to be trusted.
-_H, _I, _REMOTE, _ABIL, _SUBS = 16, 32, 10, 4, 8
-_DECK, _ACCESS, _COST, _PENDING, _TRACE = 50, 32, 2, 4, 30
-_ZONE = 3 + _REMOTE
-_SEGMENT_LENGTHS = [
-    ("basic action", 9), ("draw", 2), ("gain credit", 2), ("pass priority", 2),
-    ("install card", _H * _ZONE * 2), ("rez ice", _I), ("initiate run", _ZONE),
-    ("play event", _H), ("install hardware", _H), ("install program", _H),
-    ("play operation", _H), ("discard", _H),
-    ("activate ability (corp)", _I * _ABIL), ("activate ability (runner)", _I * _ABIL),
-    ("ADVANCE CARD", _I), ("SCORE AGENDA", _I), ("trash resource", _I),
-    ("select card to access", _ACCESS), ("steal agenda", 1), ("trash accessed", 1),
-    ("pass accessed", 1), ("pay access trigger", 1), ("decline trigger", 1),
-    ("corp trace bid", _TRACE + 1), ("runner trace bid", _TRACE + 1),
-    ("accept paid choice", 1 + _COST), ("resolve pending choice", _PENDING),
-    ("toggle card selection", _DECK), ("confirm card selection", 1),
-    ("choose server", _ZONE), ("install resource", _H),
-    ("install program on ice", _H * _I), ("break subroutine (click)", _SUBS),
-    ("choose trigger", _I),
-]
-SEGMENTS, _off = [], 0
-for _name, _len in _SEGMENT_LENGTHS:
-    SEGMENTS.append((_name, _off, _off + _len))
-    _off += _len
-
-OBS_SIZE, SIZE = 990, 1646
-assert _off == SIZE, f"segment table sums to {_off}, not ActionSpace::SIZE ({SIZE}) -- the layout moved"
+OBS_SIZE, SIZE = 990, SEGMENT_SIZE
 rows_obs, rows_sup, rows_tgt, rows_side = [], [], [], []
 skipped_stall = 0
 for path in GAMES:
@@ -163,6 +137,8 @@ lm = np.array(legal_mass); t1 = np.array(top1, dtype=float)
 print()
 print(f"mean legal actions/step         {np.mean(n_legal):.2f}")
 print(f"MASS ON LEGAL SLOTS  mean       {lm.mean()*100:.3f}%   median {np.median(lm)*100:.3f}%")
+print("  (meaningless for a model trained with --masked-policy: that objective never asks")
+print("   for mass in the *unmasked* softmax, only for the conditional given legality.)")
 print(f"                     p10/p90    {np.percentile(lm,10)*100:.3f}% / {np.percentile(lm,90)*100:.3f}%")
 print(f"unmasked argmax is a legal slot {np.mean(argmax_legal)*100:.1f}%")
 print()
