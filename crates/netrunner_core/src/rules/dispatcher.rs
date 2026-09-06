@@ -1544,7 +1544,8 @@ mod tests {
             trigger: Trigger::OnAdvance,
             target: None,
             event: Some(GameEvent::CardAdvanced {
-                card: CardId("some_agenda".to_string()),
+                install: crate::rules::InstallId::PLACEHOLDER,
+                card: Some(CardId("some_agenda".to_string())),
                 advancement_tokens,
             }),
             continuation: None,

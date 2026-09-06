@@ -263,8 +263,13 @@ impl Coverage {
     fn absorb_event(&mut self, event: &GameEvent, registry: &CardRegistry, click_break: bool) {
         match event {
             GameEvent::TriggerFired { card, trigger } => self.note_trigger_fired(card, *trigger, registry),
-            GameEvent::CardInstalled { card, .. }
-            | GameEvent::HardwareInstalled { card, .. }
+            // `CardInstalled`'s identity is an `Option` only because
+            // `masking::mask_event_for_player` can strike it; coverage
+            // reads the engine's own events, which always carry it.
+            GameEvent::CardInstalled { card: Some(card), .. } => {
+                self.card(card).installed += 1;
+            }
+            GameEvent::HardwareInstalled { card, .. }
             | GameEvent::ProgramInstalled { card, .. }
             | GameEvent::ResourceInstalled { card, .. } => {
                 self.card(card).installed += 1;

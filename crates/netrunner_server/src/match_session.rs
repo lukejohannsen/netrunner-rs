@@ -759,7 +759,16 @@ mod tests {
         match spectator_rx.recv().await.unwrap() {
             ServerMessage::ActionLog(entry) => {
                 assert!(matches!(entry.action, PublicAction::Concealed(ConcealedAction::InstallCard { .. })));
-                assert!(!entry.events.iter().any(|event| matches!(event, GameEvent::CardInstalled { .. })));
+                // The install event survives with its handle and loses only
+                // its identity, so the log can say *which* install landed.
+                assert!(entry.events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::CardInstalled { card: None, .. }
+                )));
+                assert!(!entry.events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::CardInstalled { card: Some(_), .. }
+                )));
                 assert_eq!(*entry, *runner_entry, "for a Corp install, the spectator's copy is the Runner's copy");
             }
             other => panic!("expected the spectator's ActionLog, got {other:?}"),
@@ -813,7 +822,11 @@ mod tests {
                     "the Runner's copy names the install's shape, not its card: {:?}",
                     entry.action
                 );
-                assert!(!entry.events.iter().any(|event| matches!(event, GameEvent::CardInstalled { .. })));
+                // Present and struck, not absent: the handle is public.
+                assert!(entry.events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::CardInstalled { card: None, .. }
+                )));
                 let PlayerAction::InstallCard { card_id, .. } = &install else { unreachable!() };
                 let rendered = format!("{entry:?}");
                 assert!(!rendered.contains(&format!("\"{}\"", card_id.0)), "{rendered}");

@@ -508,13 +508,23 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
     let visible = || Some(event.clone());
 
     match event {
-        // Always facedown by construction: a Corp install is unrezzed until
-        // `rez_ice`, and `turn::discard_to_pile` sends an HQ discard
-        // facedown because the Runner never saw it.
-        GameEvent::CardInstalled { side: Side::Corp, .. } | GameEvent::CardDiscarded { side: Side::Corp, .. } => {
-            viewer.is(Side::Corp).then(visible).flatten()
+        // A Corp install is always facedown by construction (unrezzed
+        // until `rez_ice`), so its identity goes — but the *fact* stays,
+        // struck out. Where it landed is already public through
+        // `ConcealedAction::InstallCard`, the handle is public through
+        // `PublicInstalledCard::install_id`, and the Runner watched the
+        // card hit the table. Dropping the whole event instead was a real
+        // loss for an install a card's own text performed (Ansel 1.0):
+        // no action names one, so the Runner's log had no record of it.
+        GameEvent::CardInstalled { side: Side::Corp, install, card: Some(card), server } if concealed(card) => {
+            Some(GameEvent::CardInstalled { side: Side::Corp, install: *install, card: None, server: *server })
         }
-        GameEvent::CardInstalled { .. } | GameEvent::CardDiscarded { .. } => visible(),
+        GameEvent::CardInstalled { .. } => visible(),
+        // A discard has no install to name — it never reached the table —
+        // so it is still dropped whole. `turn::discard_to_pile` sends an
+        // HQ discard facedown because the Runner never saw it.
+        GameEvent::CardDiscarded { side: Side::Corp, .. } => viewer.is(Side::Corp).then(visible).flatten(),
+        GameEvent::CardDiscarded { .. } => visible(),
         // A Corp trash lands faceup only if the Runner had seen the card
         // (`ability::orient`); a facedown copy now in Archives means this
         // may have been it.
@@ -524,22 +534,44 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         // out of Archives — and `PublicCorpState::removed_from_game`
         // shows the zone to everyone.
         GameEvent::CardTrashed { .. } | GameEvent::CardRemovedFromGame { .. } => visible(),
-        // Advancement tokens are public on an unrezzed card; its identity
-        // and its counters are not (`PublicInstalledCard`). Rig cards and
-        // identities never match the predicate and pass through.
-        // `CardDerezzed` is here too, although the Runner *saw* the card
-        // while it was rezzed: the view has no notion of "seen before" and
-        // renders the derezzed install as `card: None`, and the log's rule
-        // is never to name what the view conceals. The StateUpdate still
-        // shows which install flipped.
-        GameEvent::CardAdvanced { card, .. }
-        | GameEvent::CountersAdded { card, .. }
+        // Advancement tokens are public on an unrezzed card, so this event
+        // told the Runner *less* than their own board already showed them
+        // while it was being dropped: the identity is the only part they
+        // may not have. Struck out, handle and count kept.
+        GameEvent::CardAdvanced { install, card: Some(card), advancement_tokens } if concealed(card) => {
+            Some(GameEvent::CardAdvanced {
+                install: *install,
+                card: None,
+                advancement_tokens: *advancement_tokens,
+            })
+        }
+        GameEvent::CardAdvanced { .. } => visible(),
+        // Tāo Salonga swaps ice the Runner may not be able to identify.
+        // Each identity is struck on its own condition — one of the two is
+        // often a rezzed piece the Runner can name — and both handles stay,
+        // because two installs trading places is on the table for anyone to
+        // see and no `PlayerAction` names it.
+        GameEvent::IceSwapped { a, b, a_card, b_card }
+            if a_card.as_ref().is_some_and(&concealed) || b_card.as_ref().is_some_and(&concealed) =>
+        {
+            let keep = |card: &Option<CardId>| card.clone().filter(|card| !concealed(card));
+            Some(GameEvent::IceSwapped { a: *a, b: *b, a_card: keep(a_card), b_card: keep(b_card) })
+        }
+        GameEvent::IceSwapped { .. } => visible(),
+        // The identity and its counters are not public on an unrezzed card
+        // (`PublicInstalledCard`). Rig cards and identities never match the
+        // predicate and pass through. `CardDerezzed` is here too, although
+        // the Runner *saw* the card while it was rezzed: the view has no
+        // notion of "seen before" and renders the derezzed install as
+        // `card: None`, and the log's rule is never to name what the view
+        // conceals. The StateUpdate still shows which install flipped.
+        // None of these four carry a handle, so they are dropped whole;
+        // giving them one is the same change this file just made for
+        // install, advance and swap.
+        GameEvent::CountersAdded { card, .. }
         | GameEvent::CountersRemoved { card, .. }
         | GameEvent::CardMoved { card, .. }
         | GameEvent::CardDerezzed { card } => (!concealed(card)).then(visible).flatten(),
-        // Tāo Salonga swaps ICE the Runner may not be able to identify —
-        // the emit site's comment deferred masking to here.
-        GameEvent::IceSwapped { a, b } => (!concealed(a) && !concealed(b)).then(visible).flatten(),
         // The chooser saw what they picked — unless the selection was the
         // Runner's over the Corp's *installed* cards (Tāo's
         // `OpponentInstalled`), where the pending decision offered them
@@ -1483,29 +1515,79 @@ mod tests {
         }
     }
 
+    /// The Runner keeps the *fact* of a Corp install and loses only its
+    /// identity: they watched the card land, and both the destination and
+    /// the handle are public already. A discard never reached the table,
+    /// has no handle to keep, and is still dropped whole.
     #[test]
-    fn a_corp_install_or_discard_event_is_dropped_for_the_runner_only() {
+    fn a_corp_install_is_struck_for_the_runner_and_a_corp_discard_is_dropped() {
         let state = game_state(corp_state_with_cards());
-        for event in [
-            GameEvent::CardInstalled { side: Side::Corp, card: id("ice_wall"), server: ServerId::Hq },
-            GameEvent::CardDiscarded { side: Side::Corp, card: id("hedge_fund") },
-        ] {
-            assert_eq!(mask_event_for_player(&event, &state, Side::Runner), None);
-            assert_eq!(mask_event_for_player(&event, &state, Side::Corp), Some(event.clone()));
-        }
+        let installed = GameEvent::CardInstalled {
+            side: Side::Corp,
+            install: InstallId(1069),
+            card: Some(id("ice_wall")),
+            server: ServerId::Hq,
+        };
+        assert_eq!(
+            mask_event_for_player(&installed, &state, Side::Runner),
+            Some(GameEvent::CardInstalled {
+                side: Side::Corp,
+                install: InstallId(1069),
+                card: None,
+                server: ServerId::Hq,
+            }),
+            "the Runner keeps which install and where, never what"
+        );
+        assert_eq!(mask_event_for_player(&installed, &state, Side::Corp), Some(installed.clone()));
+
+        // A rezzed card's install is not concealed, so nothing is struck.
+        let rezzed = GameEvent::CardInstalled {
+            side: Side::Corp,
+            install: InstallId(1070),
+            card: Some(id("enigma")),
+            server: ServerId::RnD,
+        };
+        assert_eq!(mask_event_for_player(&rezzed, &state, Side::Runner), Some(rezzed.clone()));
+
+        let discard = GameEvent::CardDiscarded { side: Side::Corp, card: id("hedge_fund") };
+        assert_eq!(mask_event_for_player(&discard, &state, Side::Runner), None);
+        assert_eq!(mask_event_for_player(&discard, &state, Side::Corp), Some(discard.clone()));
         let runner_discard = GameEvent::CardDiscarded { side: Side::Runner, card: id("sure_gamble") };
         assert_eq!(mask_event_for_player(&runner_discard, &state, Side::Corp), Some(runner_discard.clone()));
     }
 
+    /// Advancement tokens are public on a face-down card
+    /// (`PublicInstalledCard::advancement_tokens`), so striking the
+    /// identity and keeping the count tells the Runner exactly what their
+    /// own board already shows — where dropping the event told them less.
     #[test]
-    fn advancing_or_counting_an_unrezzed_card_drops_the_event_for_the_runner() {
+    fn advancing_an_unrezzed_card_strikes_its_identity_and_keeps_the_count() {
+        let state = game_state(corp_state_with_cards());
+        let hidden = GameEvent::CardAdvanced {
+            install: InstallId(1069),
+            card: Some(id("ice_wall")),
+            advancement_tokens: 1,
+        };
+        assert_eq!(
+            mask_event_for_player(&hidden, &state, Side::Runner),
+            Some(GameEvent::CardAdvanced { install: InstallId(1069), card: None, advancement_tokens: 1 })
+        );
+        assert_eq!(mask_event_for_player(&hidden, &state, Side::Corp), Some(hidden.clone()));
+
+        let shown = GameEvent::CardAdvanced {
+            install: InstallId(1070),
+            card: Some(id("enigma")),
+            advancement_tokens: 3,
+        };
+        assert_eq!(mask_event_for_player(&shown, &state, Side::Runner), Some(shown.clone()));
+    }
+
+    /// The four that still carry no handle, and so are still dropped whole.
+    #[test]
+    fn counting_or_derezzing_an_unrezzed_card_drops_the_event_for_the_runner() {
         // `ice_wall` is installed unrezzed; `enigma` is rezzed.
         let state = game_state(corp_state_with_cards());
         for (hidden, shown) in [
-            (
-                GameEvent::CardAdvanced { card: id("ice_wall"), advancement_tokens: 1 },
-                GameEvent::CardAdvanced { card: id("enigma"), advancement_tokens: 3 },
-            ),
             (
                 GameEvent::CountersAdded { card: id("ice_wall"), amount: 2 },
                 GameEvent::CountersAdded { card: id("enigma"), amount: 2 },
@@ -1538,13 +1620,38 @@ mod tests {
         assert_eq!(mask_event_for_player(&runner_trash, &state, Side::Runner), Some(runner_trash.clone()));
     }
 
+    /// Each half of a swap is struck on its own condition: the Runner
+    /// learns that these two installs traded places and which rezzed piece
+    /// was involved, without learning the face-down one. Both handles
+    /// survive — a swap comes from a card's text and no `PlayerAction`
+    /// names it, so this event is the Runner's only record of it.
     #[test]
-    fn a_swap_naming_an_unrezzed_ice_is_dropped_for_the_runner() {
+    fn a_swap_strikes_only_the_ice_the_runner_cannot_identify() {
         let state = game_state(corp_state_with_cards());
-        let hidden = GameEvent::IceSwapped { a: id("ice_wall"), b: id("enigma") };
-        let shown = GameEvent::IceSwapped { a: id("enigma"), b: id("enigma") };
-        assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
+        let hidden = GameEvent::IceSwapped {
+            a: InstallId(1069),
+            b: InstallId(1070),
+            a_card: Some(id("ice_wall")),
+            b_card: Some(id("enigma")),
+        };
+        assert_eq!(
+            mask_event_for_player(&hidden, &state, Side::Runner),
+            Some(GameEvent::IceSwapped {
+                a: InstallId(1069),
+                b: InstallId(1070),
+                a_card: None,
+                b_card: Some(id("enigma")),
+            }),
+            "the rezzed half stays named, the face-down half does not"
+        );
         assert_eq!(mask_event_for_player(&hidden, &state, Side::Corp), Some(hidden.clone()));
+
+        let shown = GameEvent::IceSwapped {
+            a: InstallId(1070),
+            b: InstallId(1070),
+            a_card: Some(id("enigma")),
+            b_card: Some(id("enigma")),
+        };
         assert_eq!(mask_event_for_player(&shown, &state, Side::Runner), Some(shown.clone()));
     }
 
@@ -1688,10 +1795,27 @@ mod tests {
     #[test]
     fn a_spectator_gets_every_event_the_more_restricted_seat_gets_and_no_other() {
         let state = game_state(corp_state_with_cards());
-        let corp_secret = GameEvent::CardInstalled { side: Side::Corp, card: id("ice_wall"), server: ServerId::Hq };
+        let corp_secret = GameEvent::CardDiscarded { side: Side::Corp, card: id("hedge_fund") };
         let runner_secret = GameEvent::AccessPassed { card: id("hedge_fund") };
         let public = GameEvent::CardAccessed { card: id("cyberdex_trial"), server: ServerId::Archives, install: None };
         assert_eq!(mask_event_for_player(&corp_secret, &state, Viewer::Spectator), None);
+        // An install is struck rather than dropped, for a spectator as for
+        // the Runner: the handle and the destination are public.
+        let corp_install = GameEvent::CardInstalled {
+            side: Side::Corp,
+            install: InstallId(1069),
+            card: Some(id("ice_wall")),
+            server: ServerId::Hq,
+        };
+        assert_eq!(
+            mask_event_for_player(&corp_install, &state, Viewer::Spectator),
+            Some(GameEvent::CardInstalled {
+                side: Side::Corp,
+                install: InstallId(1069),
+                card: None,
+                server: ServerId::Hq,
+            })
+        );
         assert_eq!(mask_event_for_player(&runner_secret, &state, Viewer::Spectator), None);
         assert_eq!(mask_event_for_player(&public, &state, Viewer::Spectator), Some(public.clone()));
         // Struck out in place, as for the Runner.

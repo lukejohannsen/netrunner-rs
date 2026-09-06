@@ -15,7 +15,9 @@ use crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::rules::{ConcealedAction, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, Side, Viewer};
+use netrunner_core::rules::{
+    ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, Side, Viewer,
+};
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
 use netrunner_server::{ClientMessage, PublicHistoryEntry, ServerMessage};
@@ -67,6 +69,14 @@ pub fn push_log_line(log: &mut Vec<String>, entry: &PublicHistoryEntry, registry
         entry.side,
         describe_public_action(&entry.action, registry, view)
     ));
+    // What the action line cannot say — an install or a swap a card's own
+    // text performed, an advance's resulting token count — comes off the
+    // entry's masked events. Indented under the action they resolved from.
+    for event in &entry.events {
+        if let Some(line) = narrate_event(event, &entry.action, registry, view) {
+            log.push(format!("           {line}"));
+        }
+    }
     if log.len() > MAX_LOG_LINES {
         let excess = log.len() - MAX_LOG_LINES;
         log.drain(0..excess);
@@ -340,44 +350,148 @@ impl RenderableView for App {
 /// `view` is what resolves an `InstallId` to something a person can read.
 /// It is optional because the action log has no view to hand — see
 /// `install_label` for what each case renders.
-pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Option<&ClientView>) -> String {
-    let title = |card_id: &netrunner_core::dsl::CardId| -> String {
-        registry.get(card_id).map(|c| c.title.clone()).unwrap_or_else(|| card_id.0.clone())
-    };
+fn card_title(card_id: &netrunner_core::dsl::CardId, registry: &CardRegistry) -> String {
+    registry.get(card_id).map(|c| c.title.clone()).unwrap_or_else(|| card_id.0.clone())
+}
 
-    // An `InstallId` names a position on the table, not a card, so this
-    // renders whatever the *viewer* is entitled to see there:
-    //
-    // - a card they can identify → its title;
-    // - a card the view masks (an unrezzed Corp install) → where it sits,
-    //   never its title. Naming it here would reintroduce, in the UI, the
-    //   exact leak `InstallId` exists to close;
-    // - no view, or an install no longer on the table (a scored agenda) →
-    //   the bare id. Only the action log hits this, and only for a card
-    //   that has already left; a log line naming it would need
-    //   `PublicHistoryEntry::events` rather than the action alone, which
-    //   nothing renders yet.
-    let install_label = |id: &InstallId| -> String {
-        let Some(view) = view else { return format!("install #{}", id.0) };
-        for server in &view.corp.servers {
-            for card in server.ice.iter().chain(server.root.iter()) {
-                if card.install_id != *id {
-                    continue;
-                }
-                return match &card.card {
-                    Some(card_id) => title(card_id),
-                    None => {
-                        let kind = if card.slot == InstallSlot::Ice { "ice" } else { "card" };
-                        format!("the unrezzed {kind} at {:?}", server.server)
-                    }
-                };
+/// An `InstallId` names a position on the table, not a card, so this
+/// renders whatever the *viewer* is entitled to see there:
+///
+/// - a card they can identify → its title;
+/// - a card the view masks (an unrezzed Corp install) → where it sits,
+///   never its title. Naming it here would reintroduce, in the UI, the
+///   exact leak `InstallId` exists to close;
+/// - no view, or an install no longer on the table (a scored agenda) →
+///   the bare id.
+///
+/// A free function rather than a closure inside `describe_action` because
+/// `narrate_event` needs exactly the same rule: an event's install handle
+/// is public and its identity may have been struck by
+/// `masking::mask_event_for_player`, so the log resolves the handle
+/// through the viewer's own board rather than trusting the event to name
+/// anything.
+pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&ClientView>) -> String {
+    let Some(view) = view else { return format!("install #{}", id.0) };
+    for server in &view.corp.servers {
+        for card in server.ice.iter().chain(server.root.iter()) {
+            if card.install_id != *id {
+                continue;
             }
+            return match &card.card {
+                Some(card_id) => card_title(card_id, registry),
+                None => {
+                    let kind = if card.slot == InstallSlot::Ice { "ice" } else { "card" };
+                    format!("the unrezzed {kind} at {:?}", server.server)
+                }
+            };
         }
-        match view.runner.rig.iter().find(|c| c.install_id == *id) {
-            Some(rig_card) => title(&rig_card.card),
-            None => format!("install #{}", id.0),
+    }
+    match view.runner.rig.iter().find(|c| c.install_id == *id) {
+        Some(rig_card) => card_title(&rig_card.card, registry),
+        None => format!("install #{}", id.0),
+    }
+}
+
+/// One extra log line for an event that says something the action line
+/// does not, or `None` for one that does not earn a line.
+///
+/// The log is a list of *actions*; events are how it learns about things
+/// no action names. An install performed by a card's own text (Ansel 1.0)
+/// and an ice swap (Tāo Salonga, Brân 1.0) have no `PlayerAction` behind
+/// them at all, and an advance's resulting token count lives nowhere else.
+/// Before install handles reached these three events
+/// (`masking::mask_event_for_player`), a viewer who could not identify the
+/// card got no event at all and so could not be told any of it.
+///
+/// Every identity here is an `Option` the masking layer may have struck,
+/// and this never reads it: `install_label` resolves the handle against
+/// the viewer's own `ClientView`, which is the same rule the board
+/// renderer follows, so a face-down install reads as its position in both
+/// places and can read as its title in neither.
+///
+/// Exhaustive with no catch-all, matching `mask_event_for_player`'s own
+/// discipline: a new event has to be classified as narrated or not rather
+/// than silently going unmentioned.
+pub fn narrate_event(
+    event: &GameEvent,
+    action: &PublicAction,
+    registry: &CardRegistry,
+    view: Option<&ClientView>,
+) -> Option<String> {
+    let at = |id: &InstallId| install_label(id, registry, view);
+    match event {
+        // The action line already reads "Install a card into Remote 0"
+        // whenever a player clicked to install, so this earns a line only
+        // when something else put the card there.
+        GameEvent::CardInstalled { install, server, .. }
+            if !matches!(
+                action,
+                PublicAction::Visible(PlayerAction::InstallCard { .. })
+                    | PublicAction::Concealed(ConcealedAction::InstallCard { .. })
+            ) =>
+        {
+            Some(format!("installed {} into {:?}", at(install), server))
         }
-    };
+        GameEvent::CardInstalled { .. } => None,
+        // Always: the count after the advancement is on no action.
+        GameEvent::CardAdvanced { install, advancement_tokens, .. } => Some(format!(
+            "advanced {}, now at {advancement_tokens} advancement token{}",
+            at(install),
+            if *advancement_tokens == 1 { "" } else { "s" }
+        )),
+        // Always: no action names a swap, and both handles are public even
+        // when neither identity is.
+        GameEvent::IceSwapped { a, b, .. } if a == b => {
+            Some(format!("swapped the ice at {} for another", at(a)))
+        }
+        GameEvent::IceSwapped { a, b, .. } => Some(format!("swapped {} with {}", at(a), at(b))),
+        // Not narrated: the entry's action line already carries these, or
+        // they are bookkeeping a player does not read a log for. Adding a
+        // line here is the cheap way to say more.
+        GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::CardDrawn { .. } |
+        GameEvent::IceApproached { .. } | GameEvent::IceEncountered { .. } | GameEvent::SubroutineBroken { ..
+        } | GameEvent::SubroutineFired { .. } | GameEvent::IceStrengthModified { .. } | GameEvent::IcePassed {
+        .. } | GameEvent::IceBypassed { .. } | GameEvent::ServerApproached { .. } | GameEvent::RunSucceeded {
+        .. } | GameEvent::RunJackedOut { .. } | GameEvent::RunCompleted { .. } | GameEvent::IceRezzed { .. } |
+        GameEvent::CardDerezzed { .. } | GameEvent::CardMoved { .. } | GameEvent::RunInitiated { .. } |
+        GameEvent::EventPlayed { .. } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { ..
+        } | GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. } | GameEvent::CardAccessed
+        { .. } | GameEvent::TurnEnded { .. } | GameEvent::TurnStarted { .. } | GameEvent::DiscardPending { ..
+        } | GameEvent::DiscardPhaseEnded { .. } | GameEvent::CardDiscarded { .. } |
+        GameEvent::CardAddedToBottomOfStack { .. } | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped
+        { .. } | GameEvent::ActionPhaseEnded { .. } | GameEvent::RunEndPrevented { .. } |
+        GameEvent::RunRedirected { .. } | GameEvent::AgendaStolen { .. } | GameEvent::DamageTaken { .. } |
+        GameEvent::RunnerFlatlined | GameEvent::CreditsSpent { .. } | GameEvent::TagsGiven { .. } |
+        GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. } | GameEvent::CardRemovedFromGame { .. }
+        | GameEvent::CardsTrashedFromHq { .. } | GameEvent::AgendaForfeited { .. } |
+        GameEvent::AbilityGainedCredits { .. } | GameEvent::RunEndedByEffect { .. } | GameEvent::GameOver { ..
+        } | GameEvent::AbilityActivated { .. } | GameEvent::CardTrashedFromAccess { .. } |
+        GameEvent::AccessPassed { .. } | GameEvent::PaidAbilityWindowOpened { .. } | GameEvent::PriorityPassed
+        { .. } | GameEvent::PaidAbilityWindowClosed | GameEvent::StrengthBoosted { .. } |
+        GameEvent::TraceInitiated { .. } | GameEvent::TraceCorpBidSubmitted { .. } |
+        GameEvent::TraceRunnerBidSubmitted { .. } | GameEvent::TraceAvoided { .. } |
+        GameEvent::TraceSuccessful { .. } | GameEvent::TagRemoved { .. } | GameEvent::TagsRemoved { .. } |
+        GameEvent::TriggerOrderPending { .. } | GameEvent::TriggerOrderChosen { .. } | GameEvent::TriggerFired
+        { .. } | GameEvent::VirusCountersPurged { .. } | GameEvent::BadPublicityCreditsSpent { .. } |
+        GameEvent::BonusRunCreditsSpent { .. } | GameEvent::CardsSelected { .. } |
+        GameEvent::PendingCardSelectionOffered { .. } | GameEvent::MemoryLimitExceeded { .. } |
+        GameEvent::PendingServerChoiceOffered { .. } | GameEvent::BadPublicityGiven { .. } |
+        GameEvent::BadPublicityRemoved { .. } | GameEvent::HandKept { .. } | GameEvent::MulliganTaken { .. } |
+        GameEvent::AdditionalAccessGranted { .. } | GameEvent::AccessReplacementSet { .. } |
+        GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. } |
+        GameEvent::ClicksGained { .. } | GameEvent::RecurringCreditsSpent { .. } | GameEvent::AgendaScored {
+        .. } | GameEvent::DamageAboutToResolve { .. } | GameEvent::TrashAboutToResolve { .. } |
+        GameEvent::DamagePrevented { .. } | GameEvent::TrashPrevented { .. } | GameEvent::CountersAdded { .. }
+        | GameEvent::CountersRemoved { .. } | GameEvent::MaxHandSizeGained { .. } |
+        GameEvent::BasicDrawActionTaken { .. } | GameEvent::PendingChoicePresented { .. } |
+        GameEvent::PendingChoiceResolved { .. } | GameEvent::PendingPaidChoiceOffered { .. } |
+        GameEvent::PendingPaidChoiceAccepted { .. } | GameEvent::PendingPaidChoiceDeclined { .. } => None,
+    }
+}
+
+pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Option<&ClientView>) -> String {
+    let title = |card_id: &netrunner_core::dsl::CardId| -> String { card_title(card_id, registry) };
+    let install_label = |id: &InstallId| -> String { install_label(id, registry, view) };
 
     match action {
         PlayerAction::GainCreditClick { side } => format!("Gain 1 credit ({side:?})"),
@@ -583,6 +697,225 @@ mod tests {
         assert_eq!(
             describe_public_action(&PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice }), &registry, None),
             "Install a card into Remote(0) (Ice)"
+        );
+    }
+
+    /// A board with one face-down Corp install and one rezzed piece of
+    /// ice, seen from the Runner's chair — the seat every masking rule in
+    /// this file exists for.
+    fn runner_view_of_a_facedown_install() -> (CardRegistry, netrunner_core::view::ClientView) {
+        use netrunner_core::rules::{GameState, InstallId, InstalledCard, InstallSlot};
+        let mut registry = CardRegistry::new();
+        registry.insert(netrunner_core::dsl::CardDefinition {
+            id: CardId("ice_wall".to_string()),
+            title: "Ice Wall".to_string(),
+            side: Side::Corp,
+            card_type: netrunner_core::dsl::CardType::Ice(netrunner_core::dsl::IceType::Barrier),
+            ..Default::default()
+        });
+        let mut state = GameState::new(0);
+        state.corp.installed = vec![
+            InstalledCard {
+                install_id: InstallId(7),
+                card: CardId("ice_wall".to_string()),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Ice,
+                ..Default::default()
+            },
+            InstalledCard {
+                install_id: InstallId(8),
+                card: CardId("ice_wall".to_string()),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Root,
+                rezzed: true,
+                ..Default::default()
+            },
+        ];
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        (registry, view)
+    }
+
+    /// The line the whole change exists to produce: the Runner is told
+    /// that a face-down card was advanced and how far it now is, by
+    /// position, without ever being told what it is. Before the install
+    /// handle reached this event the entry carried nothing at all.
+    #[test]
+    fn an_advance_on_a_masked_install_names_its_position_and_count_but_no_title() {
+        use netrunner_core::rules::InstallId;
+        let (registry, view) = runner_view_of_a_facedown_install();
+        let struck = GameEvent::CardAdvanced { install: InstallId(7), card: None, advancement_tokens: 2 };
+        let line = narrate_event(&struck, &PublicAction::Visible(PlayerAction::EndTurn), &registry, Some(&view))
+            .expect("an advance always earns a line");
+        assert!(line.contains("the unrezzed ice at Remote(0)"), "{line}");
+        assert!(line.contains("2 advancement tokens"), "{line}");
+        assert!(!line.contains("Ice Wall"), "the masked card must not be named: {line}");
+
+        // The rezzed install is nameable, and the count is singular at one.
+        let visible = GameEvent::CardAdvanced { install: InstallId(8), card: None, advancement_tokens: 1 };
+        let line = narrate_event(&visible, &PublicAction::Visible(PlayerAction::EndTurn), &registry, Some(&view))
+            .expect("an advance always earns a line");
+        assert!(line.contains("Ice Wall"), "{line}");
+        assert!(line.contains("1 advancement token,") || line.ends_with("1 advancement token"), "{line}");
+    }
+
+    /// An install the player clicked for is already on the action line, so
+    /// it earns no second one; an install a card's own text performed has
+    /// no action behind it and does.
+    #[test]
+    fn only_an_install_no_action_names_earns_its_own_line() {
+        use netrunner_core::rules::InstallId;
+        let (registry, view) = runner_view_of_a_facedown_install();
+        let event = GameEvent::CardInstalled {
+            side: Side::Corp,
+            install: InstallId(7),
+            card: None,
+            server: ServerId::Remote(0),
+        };
+        let clicked = PublicAction::Concealed(ConcealedAction::InstallCard {
+            zone: ServerId::Remote(0),
+            slot: InstallSlot::Ice,
+        });
+        assert_eq!(narrate_event(&event, &clicked, &registry, Some(&view)), None);
+
+        let by_a_card = PublicAction::Visible(PlayerAction::PlayOperation { card_id: CardId("ansel".to_string()) });
+        let line = narrate_event(&event, &by_a_card, &registry, Some(&view)).expect("an effect-driven install is news");
+        assert!(line.contains("the unrezzed ice at Remote(0)"), "{line}");
+        assert!(!line.contains("Ice Wall"), "{line}");
+    }
+
+    /// No `PlayerAction` names a swap, so it always earns a line, and the
+    /// half the Runner can identify is named while the other is not.
+    #[test]
+    fn a_swap_is_always_narrated_and_names_only_the_ice_the_viewer_can_see() {
+        use netrunner_core::rules::InstallId;
+        let (registry, view) = runner_view_of_a_facedown_install();
+        let event = GameEvent::IceSwapped {
+            a: InstallId(7),
+            b: InstallId(8),
+            a_card: None,
+            b_card: Some(CardId("ice_wall".to_string())),
+        };
+        let line = narrate_event(&event, &PublicAction::Visible(PlayerAction::EndTurn), &registry, Some(&view))
+            .expect("a swap always earns a line");
+        assert!(line.contains("the unrezzed ice at Remote(0)"), "{line}");
+        assert!(line.contains("Ice Wall"), "the rezzed half is nameable: {line}");
+    }
+
+    /// The ninety-seven variants that are not narrated stay silent, so the
+    /// log does not restate what the action line already said.
+    #[test]
+    fn an_event_the_action_line_already_covers_is_not_narrated() {
+        let (registry, view) = runner_view_of_a_facedown_install();
+        for event in [
+            GameEvent::ClickSpent { side: Side::Corp },
+            GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
+            GameEvent::TurnEnded { side: Side::Corp },
+        ] {
+            assert_eq!(
+                narrate_event(&event, &PublicAction::Visible(PlayerAction::EndTurn), &registry, Some(&view)),
+                None,
+                "{event:?}"
+            );
+        }
+    }
+
+    /// The whole change, end to end: a real match, masked per seat,
+    /// rendered the way the TUI renders it.
+    ///
+    /// The tests above build one event and check one line. This plays
+    /// actual games and asserts the property the change exists for — a
+    /// Runner watching a bot Corp advance a face-down card is *told* so,
+    /// by position, and is still never told what the card is. Before
+    /// install handles reached these events the event was dropped for that
+    /// seat and the log said nothing at all.
+    #[test]
+    fn a_real_match_tells_the_runner_about_advances_without_naming_the_card() {
+        use netrunner_bots::{BotAgent, HeuristicAgent};
+        use netrunner_core::cards::register_playable_cards;
+        use netrunner_core::rules::GameState;
+        use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
+
+        let mut seeds_with_an_advance = 0;
+        let mut masked_advance_lines = 0;
+        for seed in 0..6 {
+            let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
+            let mut registry = CardRegistry::new();
+            register_playable_cards(&mut registry);
+            let (state, _events) =
+                GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed)
+                    .expect("sample decks are legal by construction");
+
+            let mut corp = HeuristicAgent::new(Side::Corp, seed);
+            let mut runner = RandomAgent::new(seed);
+            let mut session = Session::new(state, registry, Seat::External, Seat::External);
+            let viewer = Viewer::Player(Side::Runner);
+
+            let mut log: Vec<String> = Vec::new();
+            let mut advance_lines = 0;
+            loop {
+                match session.step() {
+                    SessionStep::Awaiting { side, view } => {
+                        let action = match side {
+                            Side::Corp => corp.select_action(&view, session.registry()),
+                            Side::Runner => runner.select_action(&view, session.registry()),
+                        };
+                        session.submit(action).expect("a legal action");
+                        let seat_view = session.view_for(viewer);
+                        let Some(entry) = session.last_entry_for(viewer) else { continue };
+                        let before = log.len();
+                        push_log_line(&mut log, &entry, session.registry(), Some(&seat_view));
+
+                        // Checked against the board *as it stands for this
+                        // line*, not against everything ever hidden: a card
+                        // rezzed later is legitimately nameable later, and
+                        // the rule is only ever about the moment of writing.
+                        let concealed: Vec<String> = seat_view
+                            .corp
+                            .servers
+                            .iter()
+                            .flat_map(|server| server.ice.iter().chain(server.root.iter()))
+                            .filter(|card| card.card.is_none())
+                            .filter_map(|card| session.state().find_corp_install(card.install_id))
+                            .filter_map(|real| session.registry().get(&real.card))
+                            .map(|def| def.title.clone())
+                            .collect();
+                        for line in &log[before..] {
+                            if !line.contains("advanced ") {
+                                continue;
+                            }
+                            advance_lines += 1;
+                            if line.contains("the unrezzed") {
+                                masked_advance_lines += 1;
+                            }
+                            assert!(line.contains("advancement token"), "seed {seed}: no count on {line}");
+                            for title in &concealed {
+                                assert!(
+                                    !line.contains(title.as_str()),
+                                    "seed {seed}: an advance line names {title}, concealed on the Runner's own board: {line}"
+                                );
+                            }
+                        }
+                    }
+                    SessionStep::Applied { .. } => {}
+                    SessionStep::Ended { .. } => break,
+                    SessionStep::Stalled(reason) => panic!("seed {seed} stalled: {reason:?}"),
+                }
+            }
+            if advance_lines > 0 {
+                seeds_with_an_advance += 1;
+            }
+        }
+        assert!(
+            seeds_with_an_advance > 0,
+            "the heuristic Corp advances in these matchups; no advance line at all means the log stopped rendering events"
+        );
+        // The masked path specifically, not just the rezzed one. A Corp
+        // advances face-down cards constantly, and those are the lines the
+        // Runner used to get nothing for; if this ever drops to zero the
+        // event is being dropped again rather than struck.
+        assert!(
+            masked_advance_lines > 0,
+            "no advance line named a position, so the concealed path was never exercised"
         );
     }
 

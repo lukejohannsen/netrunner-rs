@@ -644,8 +644,16 @@ pub(crate) fn swap_approached_ice_with_card(
         }),
     }
     // `IceSwapped` says two pieces of ice exchanged places, which is what
-    // happened — one of them simply was not on the table.
-    let mut events = vec![GameEvent::IceSwapped { a: displaced, b: card_id.clone() }];
+    // happened — one of them simply was not on the table. **Both handles
+    // are the approached install**, and that is not a shortcut: this swap
+    // replaces the occupant of one slot rather than trading two, so the
+    // handle names where the exchange happened for both halves of it.
+    let mut events = vec![GameEvent::IceSwapped {
+        a: approached,
+        b: approached,
+        a_card: Some(displaced.clone()),
+        b_card: Some(card_id.clone()),
+    }];
     // The run's own copy of the ice is stale now; rebuilding it here rather
     // than waiting for the next step keeps the approach pointed at the card
     // that is actually there.
