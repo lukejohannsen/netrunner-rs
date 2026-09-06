@@ -179,6 +179,15 @@ pub struct PublicRunnerState {
     /// where the engine will.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
+    /// Never masked — `RunnerState::made_successful_run_this_turn`; a run's
+    /// success is announced to both players. Carried for the same reason
+    /// as `servers_run_this_turn`: a bot's determinized sample must agree
+    /// with the real state about it, both for the engine (Carmen's
+    /// discount) and for `netrunner_bots::eval`'s run term, which reads it
+    /// — a sample that always started the turn without a success would
+    /// price a second successful run as a first (ROADMAP Phase 3 §1).
+    #[serde(default)]
+    pub made_successful_run_this_turn: bool,
     /// `RunnerState::discarded_this_discard_phase`, public like the heap it
     /// indexes into: a discard to hand size is made on the table. Carried
     /// so a parked Magdalene Keino-Chemutai choice can be re-evaluated from
@@ -930,6 +939,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         scored_agendas: runner.scored_agendas.clone(),
         link_strength: runner.link_strength,
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
+        made_successful_run_this_turn: runner.made_successful_run_this_turn,
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
         identity_flipped: runner.identity_flipped,
     }

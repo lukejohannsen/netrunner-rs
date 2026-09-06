@@ -493,7 +493,12 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         heap: view.runner.heap.clone(),
         link_strength: view.runner.link_strength,
         first_hq_run_used_this_turn: false,
-        first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
+        first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(),
+        // Public and carried, like `servers_run_this_turn` beside it: the
+        // evaluator's run term reads it, so a sample that forgot this
+        // turn's success priced the next one as the first.
+        made_successful_run_this_turn: view.runner.made_successful_run_this_turn,
+        made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
         identity_flipped: view.runner.identity_flipped,
     };
@@ -542,6 +547,57 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         next_install_id,
         // Public, and the win threshold the search plays toward.
         rules: view.rules,
+    }
+}
+
+/// Re-draws, in place, every card of `state` that `view` hides from its
+/// viewer — R&D and the Stack always, HQ and the Grip when they are the
+/// opponent's, the Archives cards the viewer saw facedown, and the
+/// identity of every installed card the view masks — keeping each zone's
+/// length, every install's `InstallId`, and everything public exactly as
+/// it is. Cards the sample has moved since it was drawn (a card the
+/// rollout installed, an Archives entry it added) are not in the view and
+/// are left alone.
+///
+/// The second half of determinization. `determinize` fixes one story
+/// about the hidden cards for a whole search, which is the right thing
+/// for an unrezzed ICE — the sample commits to it being *something* and
+/// the search plays against that — but the wrong thing at a breach: the
+/// card the Runner is about to access is, to the real Runner, a draw from
+/// everything it might be, and a tree that resolves it to the one card the
+/// sample happened to put there values the access as that card. `PuctAgent`
+/// calls this on each outcome child of a `CompleteRun` edge so the edge's
+/// value averages over the draw (`PuctConfig::breach_outcomes`).
+pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) {
+    let mut pools = build_pools(view, registry, rng);
+
+    state.corp.r_and_d = pools.corp_any.draw_n(state.corp.r_and_d.len());
+    if view.corp.hq_cards.is_none() {
+        state.corp.hq = pools.corp_any.draw_n(state.corp.hq.len());
+    }
+    for (archived, seen) in state.corp.archives.iter_mut().zip(&view.corp.archives) {
+        if seen.card.is_none() {
+            archived.card = pools.corp_any.draw();
+        }
+    }
+    let masked: HashSet<_> = view
+        .corp
+        .servers
+        .iter()
+        .flat_map(|server| server.ice.iter().chain(server.root.iter()))
+        .filter(|card| card.card.is_none())
+        .map(|card| card.install_id)
+        .collect();
+    for installed in state.corp.installed.iter_mut().filter(|card| masked.contains(&card.install_id)) {
+        installed.card = match installed.slot {
+            InstallSlot::Ice => pools.corp_ice.draw(),
+            InstallSlot::Root => pools.corp_root.draw(),
+        };
+    }
+
+    state.runner.stack = pools.runner_any.draw_n(state.runner.stack.len());
+    if view.runner.grip_cards.is_none() {
+        state.runner.grip = pools.runner_any.draw_n(state.runner.grip.len());
     }
 }
 
@@ -649,6 +705,39 @@ mod tests {
             seed: 1,
             ..Default::default()
         }
+    }
+
+    /// `resample_hidden` redraws only what the viewer cannot see and
+    /// keeps every count, every public card and every `InstallId`.
+    #[test]
+    fn resample_hidden_redraws_hidden_zones_only_and_keeps_their_shape() {
+        let registry = registry();
+        let state = state_with_hidden_zones();
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let mut rng = StdRng::seed_from_u64(3);
+        let mut sample = determinize(&view, &registry, &mut rng);
+        let before = sample.clone();
+
+        resample_hidden(&mut sample, &view, &registry, &mut StdRng::seed_from_u64(11));
+
+        assert_eq!(sample.corp.hq.len(), before.corp.hq.len());
+        assert_eq!(sample.corp.r_and_d.len(), before.corp.r_and_d.len());
+        assert_eq!(sample.runner.stack.len(), before.runner.stack.len());
+        assert_eq!(sample.runner.grip, before.runner.grip, "the Runner's own grip is visible and kept");
+        assert_eq!(sample.runner.rig, before.runner.rig);
+        assert_eq!(
+            sample.corp.installed.iter().map(|c| c.install_id).collect::<Vec<_>>(),
+            before.corp.installed.iter().map(|c| c.install_id).collect::<Vec<_>>(),
+            "install ids are public and never reallocated"
+        );
+        assert!(sample.corp.installed.iter().all(|c| registry.get(&c.card).is_some_and(|d| matches!(d.card_type, CardType::Ice(_)))));
+        assert!(
+            sample.corp.hq != before.corp.hq || sample.corp.r_and_d != before.corp.r_and_d || sample.runner.stack != before.runner.stack,
+            "a different draw tells a different story about the hidden cards"
+        );
+        let mut again = before.clone();
+        resample_hidden(&mut again, &view, &registry, &mut StdRng::seed_from_u64(11));
+        assert_eq!(again, sample, "the redraw is a pure function of its seed");
     }
 
     #[test]

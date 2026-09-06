@@ -109,7 +109,7 @@ fn puct_seat(side: Side, seed: u64, evaluator: impl PolicyEvaluator + 'static) -
         side,
         seed,
         evaluator,
-        PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4, samples: 1 },
+        PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4, ..PuctConfig::default() },
     )))
 }
 

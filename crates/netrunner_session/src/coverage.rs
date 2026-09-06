@@ -480,11 +480,17 @@ pub const ACTIONS_RARE_WITH_SAMPLE_DECKS: &[(&str, &str, u64)] = &[
     ("RemoveTag", "needs a tag the Runner still has on their own turn, with 2 credits", 128),
     // *Byte!* (Pork Chops, Elevation Stage 7) is the pool's first
     // interactive-on-access card, so both halves of that decision left
-    // `ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS` — the view-path sweep
-    // reached the decline within its default 32 seeds. Paying is the
-    // rarer half: it needs the Corp holding 4[c] at the moment the Runner
-    // accesses a 2-of in a 49-card deck, one deck in eight.
+    // `ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS`. Paying needs the Corp
+    // holding 4[c] at the moment the Runner accesses a 2-of in a 49-card
+    // deck, one deck in eight. The decline was reached within the default
+    // 32 seeds until the Runner's run term was kept through the breach
+    // (ROADMAP Phase 3 §1, `eval::SUCCESSFUL_RUN_WEIGHT`): the heuristic
+    // Runner runs more and the Corp holds its credits differently, and the
+    // decline fell from 5–13 per 96 heuristic games to 0 in one 96-game
+    // sweep while every 256-seed run still reaches it. Same card, same
+    // deck, same threshold.
     ("PayAccessTrigger", "needs the Corp holding 4 credits as the Runner accesses Byte!", 512),
+    ("DeclineAccessTrigger", "needs the Runner accessing Byte! and the Corp declining or unable to pay", 512),
 ];
 
 /// Cards in the sample decks that the sweep is permitted never to see in
