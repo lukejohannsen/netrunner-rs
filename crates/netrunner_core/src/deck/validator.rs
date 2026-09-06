@@ -63,6 +63,9 @@ pub enum DeckValidationError {
 
     #[error("card {card:?}'s set {set_code:?} is not legal in {format:?}")]
     PackNotLegal { card: CardId, set_code: String, format: NsgFormat },
+
+    #[error("restricted cards cost {spent} points, over {format:?}'s budget of {budget}")]
+    RestrictionBudgetExceeded { spent: u32, budget: u32, format: NsgFormat },
 }
 
 /// A successfully validated deck's summary — the useful-to-a-caller
@@ -96,14 +99,33 @@ pub fn validate_deck(
     registry: &CardRegistry,
     format: NsgFormat,
 ) -> Result<ValidationReport, DeckValidationError> {
-    let rules = format.rules();
+    validate_deck_with_rules(deck, registry, format, &format.rules())
+}
+
+/// `validate_deck` against rules supplied by the caller rather than
+/// `NsgFormat::rules()`.
+///
+/// The seam exists because the shipped tables are a deliberately small
+/// seed (see `format`'s module comment) — every format currently bans
+/// nothing and restricts nothing, so the ban and restriction paths would
+/// otherwise be unreachable and untestable until real data landed. `format`
+/// is still passed because it is what the error variants name, and a rule
+/// set is meaningless without saying whose it is. Named for the
+/// `evaluate_state_with` idiom the bots crate already uses for exactly this
+/// "same function, caller-supplied configuration" shape.
+pub fn validate_deck_with_rules(
+    deck: &Decklist,
+    registry: &CardRegistry,
+    format: NsgFormat,
+    rules: &FormatRules,
+) -> Result<ValidationReport, DeckValidationError> {
 
     let identity =
         registry.get_by_numeric_id(deck.identity).ok_or(DeckValidationError::IdentityNotFound(deck.identity))?;
     if identity.card_type != CardType::Identity {
         return Err(DeckValidationError::NotAnIdentity(deck.identity));
     }
-    check_format_legality(deck.identity, identity, format, &rules)?;
+    check_format_legality(deck.identity, identity, format, rules)?;
 
     // A missing `min_deck_size` degrades to "no minimum enforced" rather
     // than a new error variant — every real Identity card carries this
@@ -119,6 +141,7 @@ pub fn validate_deck(
 
     let mut influence_spent = 0u32;
     let mut agenda_points = 0u32;
+    let mut restriction_spent = 0u32;
 
     for (&card_id, &count) in &deck.cards {
         let card = registry.get_by_numeric_id(card_id).ok_or(DeckValidationError::CardNotFound(card_id))?;
@@ -134,13 +157,18 @@ pub fn validate_deck(
             return Err(DeckValidationError::RunnerDeckContainsAgenda(card_id));
         }
 
-        check_format_legality(card_id, card, format, &rules)?;
+        check_format_legality(card_id, card, format, rules)?;
 
-        let max_copies =
-            if rules.restricted.contains(&card_id) { 1 } else { card.deck_limit.unwrap_or(MAX_COPIES_PER_CARD) };
+        // The copy limit is the card's own; the restriction list is a
+        // budget spent below, not a cap on copies. Capping a restricted
+        // card at one copy was the old approximation of a rule that
+        // constrains the deck rather than the card — see `FormatRules`.
+        let max_copies = card.deck_limit.unwrap_or(MAX_COPIES_PER_CARD);
         if count > max_copies {
             return Err(DeckValidationError::TooManyCopies { card: card_id, count, max: max_copies });
         }
+        // Once per distinct card, whatever the count.
+        restriction_spent = restriction_spent.saturating_add(rules.restriction_points.get(&card_id).copied().unwrap_or(0));
 
         let card_faction = card.faction.unwrap_or(Faction::NeutralCorp);
         if card_faction != identity_faction && !is_neutral(card_faction) {
@@ -157,6 +185,17 @@ pub fn validate_deck(
     let limit = identity.influence_limit.unwrap_or(DEFAULT_INFLUENCE_LIMIT);
     if !identity.unlimited_influence && influence_spent > limit {
         return Err(DeckValidationError::InfluenceExceeded { spent: influence_spent, limit });
+    }
+
+    // Checked here rather than per card, because the budget is a property
+    // of the whole deck — which is the thing the old per-card copy cap
+    // could not express.
+    if restriction_spent > rules.restriction_budget {
+        return Err(DeckValidationError::RestrictionBudgetExceeded {
+            spent: restriction_spent,
+            budget: rules.restriction_budget,
+            format,
+        });
     }
 
     let agenda_points_report = if identity.side == Side::Corp {
@@ -418,6 +457,88 @@ mod tests {
             })
         );
         assert!(validate_deck(&deck, &registry, NsgFormat::Standard).is_ok());
+    }
+
+    /// The restriction budget, which no shipped format uses yet because
+    /// the tables are a seed — so it is exercised through
+    /// `validate_deck_with_rules`, which exists for this.
+    ///
+    /// The rule it replaces could not be expressed at all: a per-card copy
+    /// cap says "at most one copy of *this* card", where the real list
+    /// says "at most this much restricted card in the deck, whichever you
+    /// pick". Three copies of one listed card is legal here and one copy
+    /// each of two listed cards is not, which is precisely the distinction
+    /// the old approximation got backwards.
+    #[test]
+    fn the_restriction_budget_constrains_the_deck_not_the_card() {
+        use std::collections::HashMap;
+        let (mut registry, mut deck) = valid_corp_registry_and_deck();
+        registry.insert(card(901, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg"));
+        registry.insert(card(902, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg"));
+        let listed = |ids: &[u32]| FormatRules {
+            restriction_points: ids.iter().map(|id| (CardId(*id), 1)).collect::<HashMap<_, _>>(),
+            restriction_budget: 1,
+            ..FormatRules::default()
+        };
+
+        // Three copies of one listed card: one point, inside the budget.
+        deck.cards.insert(CardId(901), 3);
+        assert!(
+            validate_deck_with_rules(&deck, &registry, NsgFormat::Standard, &listed(&[901, 902])).is_ok(),
+            "cost is per card, not per copy"
+        );
+
+        // One copy each of two listed cards: two points, over it.
+        deck.cards.insert(CardId(902), 1);
+        assert_eq!(
+            validate_deck_with_rules(&deck, &registry, NsgFormat::Standard, &listed(&[901, 902])),
+            Err(DeckValidationError::RestrictionBudgetExceeded {
+                spent: 2,
+                budget: 1,
+                format: NsgFormat::Standard,
+            })
+        );
+
+        // The same deck is legal where neither card is listed, and where
+        // the budget covers both.
+        assert!(validate_deck_with_rules(&deck, &registry, NsgFormat::Standard, &FormatRules::default()).is_ok());
+        let generous = FormatRules { restriction_budget: 2, ..listed(&[901, 902]) };
+        assert!(validate_deck_with_rules(&deck, &registry, NsgFormat::Standard, &generous).is_ok());
+    }
+
+    /// A listed card is not otherwise capped: the budget is the only thing
+    /// the list does, and copies remain `CardDefinition::deck_limit`'s job.
+    #[test]
+    fn a_restricted_card_keeps_its_own_copy_limit() {
+        use std::collections::HashMap;
+        let (mut registry, mut deck) = valid_corp_registry_and_deck();
+        let mut limited = card(903, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg");
+        limited.deck_limit = Some(1);
+        registry.insert(limited);
+        deck.cards.insert(CardId(903), 2);
+        let rules = FormatRules {
+            restriction_points: HashMap::from([(CardId(903), 1)]),
+            restriction_budget: 5,
+            ..FormatRules::default()
+        };
+        assert_eq!(
+            validate_deck_with_rules(&deck, &registry, NsgFormat::Standard, &rules),
+            Err(DeckValidationError::TooManyCopies { card: CardId(903), count: 2, max: 1 }),
+            "the card's own limit still applies, and is not the list's doing"
+        );
+    }
+
+    /// Every shipped format is unrestricted today, so nothing a player
+    /// builds can hit the budget by accident. This pins that, so adding a
+    /// real list is a deliberate act with a failing test behind it.
+    #[test]
+    fn no_shipped_format_restricts_anything_yet() {
+        for format in [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Snapshot] {
+            let rules = format.rules();
+            assert!(rules.restriction_points.is_empty(), "{format:?} lists a restricted card");
+            assert!(rules.banned.is_empty(), "{format:?} bans a card");
+            assert_eq!(rules.restriction_budget, u32::MAX, "{format:?} caps a budget nothing spends");
+        }
     }
 
     #[test]
