@@ -157,6 +157,59 @@ const BREAKER_COVERAGE_WEIGHT: f64 = 3.0;
 /// guess the real Runner cannot see and the Corp may never rez. Jacking
 /// out still forfeits the term, so a breakable run is worth finishing.
 const ACTIVE_RUN_WEIGHT: f64 = 0.6;
+/// The Corp's counterpart, subtracted while the Runner is mid-run and can
+/// afford to break every rezzed ICE still ahead of it. **The Corp branch
+/// had no run term at all**: its score was identical whether the Runner
+/// was one ICE from a remote holding a nearly-scored agenda or the board
+/// was quiet, which is why `continuation_upside` could not price
+/// `EndTheRun` and *Anoetic Void*'s "discard 2 from HQ to end the run" was
+/// declined every time it was offered (ROADMAP Phase 3 §1).
+///
+/// Gated on `run_is_breakable`, the same predicate the Runner's term uses,
+/// so the two sides agree on when a run is real — a run into ICE the
+/// Runner cannot get through is not something the Corp should pay to stop.
+///
+/// **Why 1.5.** The decision it has to win is Anoetic Void's offer, and
+/// that arithmetic is exact: accepting costs 2 credits (−0.8) and parks a
+/// selection (−`UNRESOLVED_DECISION_WEIGHT`, −2.0), against declining's
+/// zero, with `PENDING_DECISION_UPSIDE_WEIGHT` (+1.5) credited beside the
+/// continuation once it prices above zero. So the term must clear about
+/// 1.3 for a Corp with a healthy HQ to take the offer. It also has to stay
+/// far under a point of agenda (20.0), so ending runs never competes with
+/// scoring, and it lands at one advancement token — the Corp gives up
+/// about one advance's worth of tempo to turn a live run away.
+const ACTIVE_RUN_AGAINST_WEIGHT: f64 = 1.5;
+// **There is no Corp damage term, and that is a measurement.**
+//
+// `opponent_grip_weight` — a value per card in the Runner's grip — was
+// removed here rather than retuned. It had measured inert for
+// `Personality::Trap`, the archetype built around it (460 games to 460),
+// and the obvious diagnosis was its shape: linear priced five cards to
+// four the same as two to one, when the whole value of non-lethal damage
+// sits at the bottom of the grip. A *lethal* hit needs no term at all, as
+// the resulting state is `GamePhase::GameOver` and already scores
+// `WIN_SCORE`.
+//
+// So it was rebuilt as a shortfall below a floor, mirroring the Runner's
+// own `GRIP_SHORTFALL_WEIGHT`, and measured over 480 heuristic-vs-heuristic
+// games: **byte-identical to having no term at all, on all five seeds** —
+// not one decision changed. At four times the weight, still nothing
+// (ROADMAP Phase 3 §1).
+//
+// The shape was never the problem. A one-ply evaluator ranks *actions*,
+// so a term only differentiates where an action changes the quantity it
+// reads, and **no Corp action in the sample pool makes the Runner's grip
+// smaller**. Neurospike, the one direct-damage Corp operation in the pool
+// with no play requirement, deals damage equal to the agenda points
+// scored *this turn* — zero in the general case, so no weight makes it
+// worth 3 credits. Every other damage source in the pool (ambushes, ice
+// subroutines, agenda-scored triggers) fires from a card's own text on
+// access or on a trigger, never as the action being ranked. The Corp does
+// not choose to deal this damage; the Runner walks into it.
+//
+// A damage term needs a lever before it needs a weight: a search deep
+// enough to see the follow-up kill, or a card pool where dealing damage
+// is a Corp action.
 /// Each still-pending subroutine on the ICE the Runner is encountering.
 /// Breaking a subroutine has no visible effect on the board, so without
 /// this a Runner with a rig of breakers would never pay to use one and
@@ -318,11 +371,9 @@ pub struct Weights {
     pub hq_shortfall_weight: f64,
     pub hq_floor: usize,
     pub rd_draw_reserve: usize,
-    /// Corp only: each card in the Runner's grip, subtracted. Zero by
-    /// default — the balanced Corp does not play for the flatline — and
-    /// positive for a `Personality::Trap`, for whom every point of net
-    /// damage dealt is worth this much and an empty grip is a kill.
-    pub opponent_grip_weight: f64,
+    /// Corp only: the Runner is mid-run and can break what is left of it.
+    /// See `ACTIVE_RUN_AGAINST_WEIGHT`.
+    pub active_run_against_weight: f64,
     /// Corp only: each installed, unscored agenda, added. Zero by default
     /// — every unrezzed install is worth the same flat
     /// `unrezzed_install_weight`, which is why the balanced Corp has no
@@ -368,7 +419,7 @@ impl Default for Weights {
             hq_shortfall_weight: HQ_SHORTFALL_WEIGHT,
             hq_floor: HQ_FLOOR,
             rd_draw_reserve: RD_DRAW_RESERVE,
-            opponent_grip_weight: 0.0,
+            active_run_against_weight: ACTIVE_RUN_AGAINST_WEIGHT,
             installed_agenda_weight: 0.0,
         }
     }
@@ -423,7 +474,15 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             if state.corp.r_and_d.len() >= w.rd_draw_reserve {
                 score -= w.hq_floor.saturating_sub(state.corp.hq.len()) as f64 * w.hq_shortfall_weight;
             }
-            score -= state.runner.grip.len() as f64 * w.opponent_grip_weight;
+            // The mirror of the Runner's `active_run_weight`, on the same
+            // `run_is_breakable` gate. Jacking out or ending the run
+            // returns it, which is what makes `EndTheRun` priceable in
+            // `continuation_upside`.
+            if let Some(run) = &state.active_run
+                && run_is_breakable(state, run, registry)
+            {
+                score -= w.active_run_against_weight;
+            }
         }
         Side::Runner => {
             score -= state.runner.tags as f64 * w.tag_weight;
@@ -720,9 +779,9 @@ fn pending_decision_upside(state: &GameState, side: Side, registry: &CardRegistr
 /// part of it is an effect this evaluator does not price — see
 /// `pending_decision_upside` for why an unrecognised effect has to
 /// poison the whole continuation rather than count as zero. `EndTheRun`
-/// is the conspicuous absentee: the Corp has no term for a run in
-/// progress at all, which is why *Anoetic Void*'s "discard 2 from HQ to
-/// end the run" is still declined every time it is offered.
+/// was the conspicuous absentee until the Corp got a run term at all
+/// (`ACTIVE_RUN_AGAINST_WEIGHT`); it is priced here now, which is what
+/// lets *Anoetic Void*'s "discard 2 from HQ to end the run" be accepted.
 #[allow(clippy::too_many_arguments)]
 fn continuation_upside(
     state: &GameState,
@@ -751,6 +810,18 @@ fn continuation_upside(
         Effect::AddAdvancementTokens(amount) => {
             Some(advancement_upside(state, side, registry, w, source, filter, *amount))
         }
+        // Exact rather than a bound, unusually for this function: ending
+        // the run removes precisely the penalty the Corp branch applies,
+        // so the continuation is worth the term and nothing else. Zero
+        // when there is no run the Corp is paying for — an offer to end a
+        // run the Runner cannot finish anyway buys nothing.
+        Effect::EndTheRun if side == Side::Corp => Some(
+            state
+                .active_run
+                .as_ref()
+                .filter(|run| run_is_breakable(state, run, registry))
+                .map_or(0.0, |_| w.active_run_against_weight),
+        ),
         _ => None,
     }
 }
@@ -1959,7 +2030,7 @@ mod tests {
         for side in [Side::Corp, Side::Runner] {
             assert_eq!(evaluate_state(&state, side, &empty()), evaluate_state_with(&state, side, &empty(), &Weights::default()));
         }
-        assert_eq!(Weights::default().opponent_grip_weight, 0.0, "the balanced Corp does not play for the flatline");
+        assert_eq!(Weights::default().installed_agenda_weight, 0.0, "the balanced Corp has no install preference by type");
         assert_eq!(Weights::default().installed_agenda_weight, 0.0, "the balanced Corp has no install preference by type");
     }
 
@@ -1992,16 +2063,107 @@ mod tests {
         assert!(evaluate_state_with(&with_agenda, Side::Corp, &registry, &rush) > evaluate_state_with(&with_ice, Side::Corp, &registry, &rush));
     }
 
+    /// The Corp's mirror of `active_run_weight`, on the same gate: a run
+    /// the Runner can finish costs the Corp; one they cannot get through
+    /// does not, because there is nothing there for the Corp to pay to
+    /// stop.
     #[test]
-    fn a_positive_opponent_grip_weight_makes_the_corp_want_the_runners_hand_thin() {
-        let mut full = GameState::new(0);
-        full.runner.grip = corp_cards("g", 5);
-        let mut thin = full.clone();
-        thin.runner.grip.truncate(1);
-        let balanced = Weights::default();
-        assert_eq!(evaluate_state_with(&full, Side::Corp, &empty(), &balanced), evaluate_state_with(&thin, Side::Corp, &empty(), &balanced));
-        let trap = Weights { opponent_grip_weight: 0.5, ..balanced };
-        let delta = evaluate_state_with(&thin, Side::Corp, &empty(), &trap) - evaluate_state_with(&full, Side::Corp, &empty(), &trap);
-        assert!((delta - 2.0).abs() < 1e-9, "four cards of damage at 0.5 each");
+    fn a_breakable_run_costs_the_corp_and_an_unbreakable_one_does_not() {
+        use netrunner_core::rules::{RunIce, ServerId};
+        let registry = CardRegistry::from_cards(vec![priced_breaker("cleaver", Some(IceType::Barrier), (1, 2), (2, 1))]);
+        let w = Weights::default();
+
+        // The run term against the *same* board with no run, so every
+        // other term cancels — credits especially, which the Corp scores
+        // through `opponent_credit_weight`.
+        let run_term = |ice: Vec<RunIce>, credits: u32, rig: Vec<InstalledRunnerCard>| {
+            let mut idle = GameState::new(0);
+            idle.runner.resources.credits = Credits(credits);
+            idle.runner.rig = rig;
+            let mut running = idle.clone();
+            running.active_run = Some(RunState { server: ServerId::Hq, ice, position: 0, ..Default::default() });
+            evaluate_state_with(&running, Side::Corp, &registry, &w)
+                - evaluate_state_with(&idle, Side::Corp, &registry, &w)
+        };
+
+        // Nothing rezzed in the way: the run is breakable by definition.
+        let delta = run_term(Vec::new(), 0, Vec::new());
+        assert!((delta + w.active_run_against_weight).abs() < 1e-9, "an open run costs the Corp the term: {delta}");
+
+        // A rezzed Barrier the Runner has no breaker for: not the Corp's
+        // problem, and the same predicate the Runner's own term uses.
+        let delta = run_term(vec![run_ice(1, IceType::Barrier, 1, true)], 5, Vec::new());
+        assert_eq!(delta, 0.0, "a run into ice the Runner cannot break costs the Corp nothing");
+
+        // The same ice with a breaker and the credits to use it: the Corp
+        // is paying again, which is the gate doing its job in both
+        // directions.
+        let armed = InstalledRunnerCard { base_strength: 3, ..rig_card("cleaver") };
+        let delta = run_term(vec![run_ice(1, IceType::Barrier, 1, true)], 5, vec![armed]);
+        assert!((delta + w.active_run_against_weight).abs() < 1e-9, "a breakable run costs the Corp: {delta}");
     }
+
+    /// The decision the run term was sized to win, and the reason it
+    /// exists: *Anoetic Void* offers the Corp "pay 2, discard 2 from HQ,
+    /// end the run", and before the term the continuation priced at zero
+    /// so it was declined every time (ROADMAP Phase 3 §1).
+    ///
+    /// Checked through `pending_decision_upside`, which is what the
+    /// evaluator credits beside `pending_decision_upside_weight` when the
+    /// Corp is sitting on the parked selection.
+    #[test]
+    fn ending_a_run_is_worth_exactly_the_term_it_removes() {
+        use netrunner_core::rules::{PendingChoiceResume, RunIce, ServerId};
+        let registry = CardRegistry::new();
+        let w = Weights::default();
+
+        let parked = |ice: Vec<RunIce>, hq: usize| {
+            let mut state = GameState::new(0);
+            state.phase = GamePhase::Action(Side::Runner);
+            state.corp.hq = (0..hq).map(|i| CardId(format!("hq{i}"))).collect();
+            state.corp.r_and_d = (0..20).map(|i| CardId(format!("rd{i}"))).collect();
+            state.active_run = Some(RunState { server: ServerId::Hq, ice, position: 0, ..Default::default() });
+            state.pending_decision = Some(PendingDecision::ChooseCards {
+                side: Side::Corp,
+                source: CardZoneRef::OwnHq,
+                filter: CardFilter::Any,
+                min: 2,
+                max: 2,
+                reveal: false,
+                shuffle_after: false,
+                destination: Some(CardZoneRef::OwnArchives),
+                then: Some(Box::new(Effect::EndTheRun)),
+                selected: Vec::new(),
+                source_card: None,
+                prompting_card: None,
+                source_install: None,
+                resume: PendingChoiceResume::None,
+            });
+            state
+        };
+
+        // A live run, and an HQ well above the floor so the two discards
+        // are free: the upside is the run term and nothing else.
+        let state = parked(Vec::new(), 8);
+        let upside = pending_decision_upside(&state, Side::Corp, &registry, &w);
+        assert!(
+            (upside - w.active_run_against_weight).abs() < 1e-9,
+            "ending the run recovers exactly the term: {upside}"
+        );
+        // And it clears the bar that decides the offer: the parked
+        // decision costs `unresolved_decision_weight` against
+        // `pending_decision_upside_weight` plus this.
+        assert!(
+            upside + w.pending_decision_upside_weight > w.unresolved_decision_weight,
+            "the Corp has to come out ahead for Anoetic Void to be accepted"
+        );
+
+        // No run to end: the continuation is worth nothing, and the offer
+        // goes back to being declined.
+        let mut no_run = parked(Vec::new(), 8);
+        no_run.active_run = None;
+        assert_eq!(pending_decision_upside(&no_run, Side::Corp, &registry, &w), 0.0);
+    }
+
+
 }

@@ -17,15 +17,14 @@ Code and docs address entries as `ROADMAP <phase> §<n>` — "Phase 2 §5", "Rul
 | **Rules Audit** and the card fidelity audits | Closed. Twelve Tier-1 rules, Tier 2, six hazard classes; System Gateway 11 and Core Set 4 deviations fixed. | [rules-audit.md](docs/roadmap/rules-audit.md) |
 | **Phase 1.75** — Learn to Play | Done. Seven lessons a side, the starter game at 6 points. | [phase-1-75-learn-to-play.md](docs/roadmap/phase-1-75-learn-to-play.md) |
 | **Phase 2** — Bots, replay, gym, training | §1–§4 done. **§5 open: three volume runs and no candidate ever promoted.** The harness is now trusted (unbiased arena, no livelocks, masked objective) and the observation now shows the value head the board (§5 item 18); the next run is the first on that layout. | [phase-2-bots-and-training.md](docs/roadmap/phase-2-bots-and-training.md) |
-| **Phase 3** — Personalities and rating | Done. Five archetypes measured across seeds; Glicko-2 ladder. Standing item: a Corp damage/pressure term. | [phase-3-personalities-and-rating.md](docs/roadmap/phase-3-personalities-and-rating.md) |
+| **Phase 3** — Personalities and rating | Done. Five archetypes measured across seeds; Glicko-2 ladder. The Corp run term landed; the damage term is measured impossible at one ply. | [phase-3-personalities-and-rating.md](docs/roadmap/phase-3-personalities-and-rating.md) |
 | **Phase 4** — Network | §1–§3 done (masked log, reconnect, registry/lobby/clock/spectators, the published pool). §4 deltas deferred until profiled. | [phase-4-network.md](docs/roadmap/phase-4-network.md) |
 
 ## What is next, in order
 
 1. **The first volume run on the reworked observation** (Phase 2 §5 items 18–19): `data/checkpoints/launch_overnight.sh` is written for it — masked objective, 384-game arena, per-chair verdicts are now the loop's defaults; `data/selfplay` and `data/checkpoints` are otherwise empty.
-2. **The Corp damage/pressure term** (Phase 3 §1): the lever Phật Gioan, Measured Response and the dead `opponent_grip_weight` all reduce to, plus a Corp counterpart to `ACTIVE_RUN_WEIGHT` for Anoetic Void.
-3. **Phase 1 §5 Format Support.**
-4. Small open items, each recorded in its area file: `netrunner_gym` can still toggle-loop; the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; Core Set cards have no sweep coverage.
+2. **Phase 1 §5 Format Support** — the last open box in Phase 1. The server validates no deck legality before a match starts, every banlist is empty so Standard and Eternal behave identically, and the points system is not modeled.
+3. Small open items, each recorded in its area file: `netrunner_gym` can still toggle-loop; the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; Core Set cards have no sweep coverage.
 
 ## How this file is kept
 

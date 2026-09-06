@@ -12,10 +12,14 @@
 //! and the profile is data. That keeps a personality cheap to add and
 //! impossible to make illegal — it can only rank the same candidates
 //! differently. The price is that a profile can only express what the
-//! evaluator already has a term for; `Weights::opponent_grip_weight` and
-//! `Weights::installed_agenda_weight` were added (at zero by default, so
-//! balanced play is byte-identical to before they existed) because the
-//! trap and rush archetypes had no lever at all without them.
+//! evaluator already has a term for; `Weights::installed_agenda_weight`
+//! was added (at zero by default, so balanced play is byte-identical to
+//! before it existed) because the rush archetype had no lever at all
+//! without it. `opponent_grip_weight` was added the same way for Trap and
+//! is **gone, with nothing in its place**: it measured inert for the very
+//! archetype it was built around, and rebuilding it in a better shape
+//! measured inert too — see the note above `ACTIVE_RUN_AGAINST_WEIGHT` in
+//! `eval` for why no weight can work here (ROADMAP Phase 3 §1).
 //!
 //! **Each archetype is written for one chair.** A Corp profile seated as
 //! the Runner touches only the shared terms (credits), which is harmless
@@ -46,9 +50,9 @@ pub enum Personality {
     /// are worth more, advancement less, and credits more.
     Glacier,
     /// A trap Corp: wants the Runner's grip thin and cards on the table
-    /// that might be anything. The only profile with a term of its own
-    /// (`opponent_grip_weight`); also keeps more credits (an ambush
-    /// costs to fire), installs more readily and holds a fuller HQ.
+    /// that might be anything. Three ambush terms and nothing else — see
+    /// the profile — plus more credits kept (an ambush costs to fire),
+    /// readier installs and a fuller HQ.
     Trap,
     /// An aggressive Runner: runs are worth double, unbroken subroutines
     /// and tags cost less, the grip may run thinner, and the opponent's
@@ -149,14 +153,17 @@ impl Personality {
                 // means to reach a lethal number; past 10 it turns over
                 // (457) as the clicks stop being worth it.
                 //
-                // **`opponent_grip_weight` is deliberately absent**, and
-                // that is a measurement, not an oversight: it was the
-                // term this archetype was built around, and setting it to
-                // 0.5 changes nothing — 443 against 444 at the old
-                // settings, 460 against 460 at these, with the same
-                // `DamageTaken` and the same trigger counts to the unit.
-                // The Corp does not choose to deal this damage; the
-                // Runner walks into it. No profile uses the term now.
+                // **No grip term of its own**, and that is a
+                // measurement, not an oversight: `opponent_grip_weight`
+                // was the term this archetype was built around, and
+                // setting it to 0.5 changed nothing — 443 against 444 at
+                // the old settings, 460 against 460 at these, with the
+                // same `DamageTaken` and the same trigger counts to the
+                // unit. The Corp does not choose to deal this damage; the
+                // Runner walks into it. The term is gone entirely, and
+                // so is the reshaped version tried in its place: a one-ply
+                // evaluator ranks actions, and no Corp action in the pool
+                // makes the Runner's grip smaller. See `eval`.
                 ambush_weight: 3.0,
                 ambush_advancement_weight: 2.8,
                 ambush_advancement_cap: 7,
