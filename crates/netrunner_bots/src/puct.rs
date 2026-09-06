@@ -32,7 +32,7 @@ use netrunner_core::rules::{current_actor, get_action_mask, ActionSpace, GamePha
 use netrunner_core::view::ClientView;
 
 use crate::agent::BotAgent;
-use crate::determinize::determinize;
+use crate::determinize::{determinize, resample_hidden};
 use crate::policy::PolicyEvaluator;
 
 struct Edge {
@@ -49,6 +49,9 @@ struct Edge {
     visits: u32,
     total_value: f64,
     child: Option<Box<PuctNode>>,
+    /// A breach edge's children, one per redraw of the hidden zones —
+    /// `child` stays `None` on such an edge. See `Breach`.
+    outcomes: Vec<PuctNode>,
 }
 
 struct PuctNode {
@@ -80,7 +83,7 @@ impl PuctNode {
             .map(|(index, _)| {
                 let action = ActionSpace::action_at(&self.state, index)
                     .expect("get_action_mask's true entries always decode via action_at");
-                Edge { index: Some(index), action, prior: priors[index], visits: 0, total_value: 0.0, child: None }
+                Edge { index: Some(index), action, prior: priors[index], visits: 0, total_value: 0.0, child: None, outcomes: Vec::new() }
             })
             // A deselect edge leads to a position the tree has already
             // priced, one ply up. Pruning it keeps a card selection a DAG
@@ -129,7 +132,7 @@ impl PuctNode {
             .map(|action| {
                 let index = ActionSpace::index_of(&self.state, action);
                 let prior = index.map_or(uniform_prior, |index| priors[index]);
-                Edge { index, action: action.clone(), prior, visits: 0, total_value: 0.0, child: None }
+                Edge { index, action: action.clone(), prior, visits: 0, total_value: 0.0, child: None, outcomes: Vec::new() }
             })
             .collect();
         self.expanded = true;
@@ -181,6 +184,76 @@ fn agent_to_move(state: &GameState, side: Side) -> bool {
     current_actor(state).is_none_or(|actor| actor == side)
 }
 
+/// The breach as a chance node. `CompleteRun` is the action that turns
+/// the hidden cards of the attacked server into an outcome, and a single
+/// determinized sample resolves it to *one* card: the one `determinize`
+/// happened to put on top of R&D, or the one the sample's own dice pick
+/// out of its six-card HQ. A tree that steps through that edge once and
+/// caches the child values the whole breach as that card — an agenda one
+/// time in four or five, otherwise nothing, or a trash prompt that costs
+/// a ply — so at the approach-server step, where `JackOut` and
+/// `CompleteRun` both forfeit `ACTIVE_RUN_WEIGHT` and differ only by what
+/// the breach finds, the two read within 0.03 of each other and the
+/// choice went either way: 1,213 jack-outs in 192 games against the
+/// heuristic Corp's 25, every traced one at the door. Averaging whole
+/// determinizations at the root (`PuctConfig::samples` 4) measured
+/// nothing, because each sample still sees one outcome and the budget
+/// splits four ways. This node is the honest fix and it measured worse
+/// (`BREACH_OUTCOMES`); what closed the door in the end is
+/// `eval::SUCCESSFUL_RUN_WEIGHT`, a bias rather than an expectation
+/// (ROADMAP Phase 3 §1).
+///
+/// So the edge holds `outcomes` children instead of one: each visit
+/// through it takes the next child round-robin, creating it on first use
+/// from a copy of the parent's state whose hidden zones are re-drawn
+/// (`determinize::resample_hidden`) before the action is applied. Q on
+/// the edge is then the mean over the draw, each child a real subtree the
+/// later visits deepen. Only the *hidden* cards are re-drawn, so the
+/// Runner's own grip, every public fact and every `InstallId` are the
+/// same in each child, and the tree above the edge is untouched. The
+/// redraw seed comes from a per-search counter rather than the tree
+/// position, so the agent stays a pure function of its construction seed
+/// whatever order rayon runs the samples in.
+struct Breach<'a> {
+    view: &'a ClientView,
+    seed: u64,
+    outcomes: usize,
+    draws: std::cell::Cell<u64>,
+}
+
+impl Breach<'_> {
+    fn is_breach(action: &PlayerAction) -> bool {
+        matches!(action, PlayerAction::CompleteRun)
+    }
+
+    /// The parent's state with its hidden zones re-drawn, for one more
+    /// outcome child.
+    fn redraw(&self, state: &GameState, registry: &CardRegistry) -> GameState {
+        let draw = self.draws.get();
+        self.draws.set(draw + 1);
+        let mut rng = StdRng::seed_from_u64(self.seed.wrapping_add(draw).wrapping_mul(BREACH_RNG_SALT));
+        let mut state = state.clone();
+        resample_hidden(&mut state, self.view, registry, &mut rng);
+        state
+    }
+}
+
+/// Decorrelates the breach redraws from the determinization stream and the
+/// escape draw, which share the agent's seed counter.
+const BREACH_RNG_SALT: u64 = 0xD1B5_4A32_D192_ED03;
+
+/// Everything one `simulate` pass reads and never changes: the search's
+/// fixed inputs, so the recursion carries one reference rather than seven
+/// arguments.
+struct Search<'a> {
+    registry: &'a CardRegistry,
+    evaluator: &'a dyn PolicyEvaluator,
+    side: Side,
+    c_puct: f64,
+    anchor: f32,
+    breach: Breach<'a>,
+}
+
 /// One select→expand→backup pass from `node` down, PUCT-style (no
 /// rollout): a terminal state backs up a literal `±1.0`; an unexpanded
 /// node is expanded and its evaluator value backed up directly;
@@ -193,15 +266,9 @@ fn agent_to_move(state: &GameState, side: Side) -> bool {
 /// perspective is fixed and the *selection* flips sign, rather than
 /// negating values on the way up, because the evaluator's value is
 /// already from `side` at every node.
-fn simulate(
-    node: &mut PuctNode,
-    registry: &CardRegistry,
-    evaluator: &dyn PolicyEvaluator,
-    side: Side,
-    c_puct: f64,
-    depth_budget: usize,
-    anchor: f32,
-) -> f64 {
+fn simulate(node: &mut PuctNode, search: &Search, depth_budget: usize) -> f64 {
+    let Search { registry, evaluator, side, c_puct, anchor, breach } = search;
+    let (registry, evaluator, side, c_puct, anchor) = (*registry, *evaluator, *side, *c_puct, *anchor);
     if let GamePhase::GameOver(winner) = node.state.phase {
         node.visits += 1;
         return if winner == side { 1.0 } else { -1.0 };
@@ -231,12 +298,30 @@ fn simulate(
 
     let edge_index = node.select_edge(c_puct, agent_to_move(&node.state, side));
 
-    if node.edges[edge_index].child.is_none() {
-        let action = node.edges[edge_index].action.clone();
-        match node.state.step(registry, action) {
-            Ok((next_state, _events)) => {
-                node.edges[edge_index].child = Some(Box::new(PuctNode::new(next_state)));
-            }
+    // A breach edge fans out over `breach.outcomes` redraws of the hidden
+    // cards; every other edge has the one child. Which outcome this visit
+    // takes is round-robin on the edge's own visit count, so the children
+    // fill in order and then share the visits evenly.
+    let action = node.edges[edge_index].action.clone();
+    let outcome = if Breach::is_breach(&action) && breach.outcomes > 1 {
+        Some(node.edges[edge_index].visits as usize % breach.outcomes)
+    } else {
+        None
+    };
+    let needs_child = match outcome {
+        Some(slot) => node.edges[edge_index].outcomes.len() <= slot,
+        None => node.edges[edge_index].child.is_none(),
+    };
+    if needs_child {
+        let from = match outcome {
+            Some(_) => breach.redraw(&node.state, registry),
+            None => node.state.clone(),
+        };
+        match from.step(registry, action) {
+            Ok((next_state, _events)) => match outcome {
+                Some(_) => node.edges[edge_index].outcomes.push(PuctNode::new(next_state)),
+                None => node.edges[edge_index].child = Some(Box::new(PuctNode::new(next_state))),
+            },
             // `edge.action` came from `get_action_mask`'s legal slots, so
             // this should never actually fail; treat it as a dead branch
             // rather than corrupting the tree with an unresolved child.
@@ -248,15 +333,11 @@ fn simulate(
         }
     }
 
-    let value = simulate(
-        node.edges[edge_index].child.as_mut().expect("just ensured Some above"),
-        registry,
-        evaluator,
-        side,
-        c_puct,
-        depth_budget - 1,
-        anchor,
-    );
+    let child = match outcome {
+        Some(slot) => &mut node.edges[edge_index].outcomes[slot],
+        None => node.edges[edge_index].child.as_mut().expect("just ensured Some above"),
+    };
+    let value = simulate(child, search, depth_budget - 1);
 
     node.edges[edge_index].visits += 1;
     node.edges[edge_index].total_value += value;
@@ -288,13 +369,30 @@ pub struct PuctConfig {
     /// `MctsAgent` already has, and so that the result is on the field
     /// rather than re-discovered (ROADMAP Phase 3 §1).
     pub samples: usize,
+    /// How many redraws of the hidden cards a `CompleteRun` edge fans out
+    /// over — see `Breach` and `BREACH_OUTCOMES` for why the default is
+    /// one: one cached child, the breach valued as the one card the sample
+    /// holds.
+    pub breach_outcomes: usize,
 }
 
 impl Default for PuctConfig {
     fn default() -> Self {
-        Self { c_puct: 1.5, iterations: 64, max_depth: 16, samples: 1 }
+        Self { c_puct: 1.5, iterations: 64, max_depth: 16, samples: 1, breach_outcomes: BREACH_OUTCOMES }
     }
 }
+
+/// One: the breach valued as the one card the sample holds. The chance
+/// node (`Breach`) is built and tested, and every fan-out measured on the
+/// Runner chair against the heuristic Corp was worse than none — 0.411
+/// with one outcome, 0.339 / 0.328 / 0.307 with 2 / 4 / 8 — because the
+/// mean it computes is over the *registry* pool, a quarter agendas, and
+/// the Runner it produces runs the centrals and lets the remotes score
+/// (steals 432 → 379, `AgendaScored` 450 → 502 at four). Left in at one
+/// for the same reason `PuctConfig::samples` is: the result is on the
+/// field, and a deck-aware pool would make it worth re-measuring
+/// (ROADMAP Phase 3 §1).
+pub const BREACH_OUTCOMES: usize = 1;
 
 /// PUCT over `ActionSpace`'s fixed index space, driven by a
 /// `PolicyEvaluator`. See the module doc comment for the search shape and
@@ -320,6 +418,7 @@ impl PuctAgent {
             iterations: config.iterations.max(1),
             max_depth: config.max_depth.max(1),
             samples: config.samples.max(1),
+            breach_outcomes: config.breach_outcomes.max(1),
             ..config
         };
         Self { side, seed, evaluator: Box::new(evaluator), config, cycle: CycleGuard::default() }
@@ -359,6 +458,7 @@ impl PuctAgent {
         self.seed = self.seed.wrapping_add(samples as u64);
         let (side, c_puct, max_depth) = (self.side, self.config.c_puct, self.config.max_depth);
         let evaluator = self.evaluator.as_ref();
+        let breach_outcomes = self.config.breach_outcomes;
 
         let per_sample: Vec<Vec<(Option<usize>, u32, f64)>> = (0..samples)
             .into_par_iter()
@@ -371,11 +471,24 @@ impl PuctAgent {
                 // `simulate`'s own expansion branch does, so `puct_score`'s
                 // `sqrt(N_parent)` starts from a visited parent.
                 let anchor = evaluator.anchor(&sample, registry);
+                let search = Search {
+                    registry,
+                    evaluator,
+                    side,
+                    c_puct,
+                    anchor,
+                    breach: Breach {
+                        view,
+                        seed: base_seed.wrapping_add(sample_index as u64),
+                        outcomes: breach_outcomes,
+                        draws: std::cell::Cell::new(0),
+                    },
+                };
                 let mut root = PuctNode::new(sample);
                 root.expand_root(&candidates, registry, evaluator, anchor);
                 root.visits = 1;
                 for _ in 0..per_sample_iterations {
-                    simulate(&mut root, registry, evaluator, side, c_puct, max_depth, anchor);
+                    simulate(&mut root, &search, max_depth);
                 }
                 root.edges.iter().map(|edge| (edge.index, edge.visits, edge.total_value)).collect()
             })
@@ -582,8 +695,25 @@ pub fn pick_action<'a>(
         // Every action has zero visits: nothing to weight by, fall through
         // to greedy, which then resolves on `total_value`.
     }
-    actions.iter().max_by(|a, b| {
-        a.visits.cmp(&b.visits).then_with(|| a.total_value.partial_cmp(&b.total_value).unwrap_or(std::cmp::Ordering::Equal))
+    // A full tie — same visits *and* same value — goes to the earlier
+    // candidate, not the later one `Iterator::max_by` would return. A tie
+    // that exact means the search found the two subtrees identical and has
+    // no opinion, and the caller's order is the engine's, which lists the
+    // null option first: `KeepHand` before `TakeMulligan`. The opening-hand
+    // decision is exactly such a tie — the Corp's whole turn sits between
+    // the mulligan and the first Runner action, and nothing in the
+    // evaluator reads what the grip holds, so both children back up the
+    // same value to the visit — and until this the PUCT Runner mulliganed
+    // 191 of 192 opening hands on the last-wins rule. Forcing a keep on
+    // all 192 measured the same (0.411 → 0.391, inside the seed band), so
+    // this is fidelity rather than strength (ROADMAP Phase 3 §1).
+    actions.iter().reduce(|best, candidate| {
+        match candidate.visits.cmp(&best.visits).then_with(|| {
+            candidate.total_value.partial_cmp(&best.total_value).unwrap_or(std::cmp::Ordering::Equal)
+        }) {
+            std::cmp::Ordering::Greater => candidate,
+            _ => best,
+        }
     })
 }
 
@@ -719,7 +849,7 @@ mod tests {
             side,
             99,
             UniformPolicyEvaluator::new(side),
-            PuctConfig { c_puct: 1.5, iterations: 40, max_depth: 8, samples: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 40, max_depth: 8, samples: 1, breach_outcomes: 1 },
         )
     }
 
@@ -783,7 +913,7 @@ mod tests {
             Side::Corp,
             123,
             UniformPolicyEvaluator::new(Side::Corp),
-            PuctConfig { c_puct: 1.5, iterations: 200, max_depth: 10, samples: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 200, max_depth: 10, samples: 1, breach_outcomes: 1 },
         );
         let chosen = agent.select_action(&view, &registry);
         assert_eq!(chosen, PlayerAction::ScoreAgenda { target: InstallId(1) });
@@ -1036,7 +1166,7 @@ mod tests {
                 Side::Runner,
                 seed,
                 UniformPolicyEvaluator::new(Side::Runner),
-                PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4, samples: 1 },
+                PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4, samples: 1, breach_outcomes: 1 },
             );
             let stats = agent.search(&view, &registry);
             let reported: Vec<&PlayerAction> = stats.actions.iter().map(|s| &s.action).collect();
@@ -1119,6 +1249,20 @@ mod tests {
         assert!(pick_action(&[], false, &[], &mut rng).is_none());
     }
 
+    /// The mulligan tie: identical subtrees, identical stats. The earlier
+    /// candidate — the engine lists `KeepHand` first — wins, where
+    /// `max_by`'s last-wins rule mulliganed 191 of 192 hands.
+    #[test]
+    fn pick_action_gives_a_full_tie_to_the_earlier_candidate() {
+        let mut rng = StdRng::seed_from_u64(0);
+        let actions = [stat(PlayerAction::KeepHand, 64, -7.29), stat(PlayerAction::TakeMulligan, 64, -7.29)];
+        let chosen = pick_action(&actions, false, &[], &mut rng).expect("non-empty");
+        assert_eq!(chosen.action, PlayerAction::KeepHand);
+        let reversed = [stat(PlayerAction::TakeMulligan, 64, -7.29), stat(PlayerAction::KeepHand, 64, -7.29)];
+        let chosen = pick_action(&reversed, false, &[], &mut rng).expect("non-empty");
+        assert_eq!(chosen.action, PlayerAction::TakeMulligan, "order, not identity, breaks the tie");
+    }
+
     #[test]
     fn pick_action_sampling_never_returns_an_unvisited_action_when_another_was_visited() {
         let mut rng = StdRng::seed_from_u64(1);
@@ -1187,7 +1331,7 @@ mod tests {
             Side::Corp,
             7,
             AlwaysEndTurn,
-            PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 2, samples: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 2, samples: 1, breach_outcomes: 1 },
         );
         for _ in 0..MAX_GREEDY_REPEATS + 1 {
             assert_eq!(agent.select_action(&view, &registry), PlayerAction::EndTurn, "greedy up to the bound");
@@ -1209,6 +1353,7 @@ mod tests {
             visits: 10,
             total_value,
             child: None,
+            outcomes: Vec::new(),
         };
         let good_for_corp = PlayerAction::GainCreditClick { side: Side::Runner };
         let bad_for_corp = PlayerAction::DrawCardClick { side: Side::Runner };
@@ -1263,13 +1408,75 @@ mod tests {
             Side::Corp,
             5,
             UniformPolicyEvaluator::new(Side::Corp),
-            PuctConfig { c_puct: 1.5, iterations: 64, max_depth: 8, samples: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 64, max_depth: 8, samples: 1, breach_outcomes: 1 },
         );
         let stats = agent.search(&view, &registry);
         let (value, visits) = stats.actions.iter().fold((0.0, 0u32), |(v, n), s| (v + s.total_value, n + s.visits));
         assert!((stats.root_value as f64 - value / visits as f64).abs() < 1e-5);
         assert!((-1.0..=1.0).contains(&stats.root_value));
         assert!(stats.root_value > 0.0, "a score for the win is one move away: {}", stats.root_value);
+    }
+
+    /// The door decision as a chance node: at the approach-server step a
+    /// `CompleteRun` edge fans out over `breach_outcomes` redraws of the
+    /// hidden cards, each a cached child with its own R&D, taken
+    /// round-robin — where every other edge keeps its one child.
+    #[test]
+    fn a_breach_edge_fans_out_over_redrawn_hidden_cards_and_a_plain_edge_does_not() {
+        let mut registry = CardRegistry::new();
+        for i in 0..6 {
+            registry.insert(blank_card(&format!("operation_{i}"), CardType::Operation));
+        }
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.corp = empty_corp();
+        state.runner.resources.clicks = Clicks(3);
+        state.runner.resources.credits = Credits(5);
+        state.corp.r_and_d = (0..6).map(|i| CardId(format!("operation_{i}"))).collect();
+        state.active_run = Some(RunState {
+            server: ServerId::RnD,
+            phase: RunPhase::Success,
+            position: 0,
+            jack_out_permitted: true,
+            ..Default::default()
+        });
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(view.legal_actions.contains(&PlayerAction::CompleteRun) && view.legal_actions.contains(&PlayerAction::JackOut));
+
+        let evaluator = UniformPolicyEvaluator::new(Side::Runner);
+        let mut rng = StdRng::seed_from_u64(1);
+        let sample = determinize(&view, &registry, &mut rng);
+        let anchor = evaluator.anchor(&sample, &registry);
+        let search = Search {
+            registry: &registry,
+            evaluator: &evaluator,
+            side: Side::Runner,
+            c_puct: 1.5,
+            anchor,
+            breach: Breach { view: &view, seed: 7, outcomes: 3, draws: std::cell::Cell::new(0) },
+        };
+        let mut root = PuctNode::new(sample);
+        root.expand_root(&view.legal_actions, &registry, &evaluator, anchor);
+        root.visits = 1;
+        for _ in 0..40 {
+            simulate(&mut root, &search, 6);
+        }
+
+        let complete = root.edges.iter().find(|e| e.action == PlayerAction::CompleteRun).unwrap();
+        let jack_out = root.edges.iter().find(|e| e.action == PlayerAction::JackOut).unwrap();
+        assert!(complete.visits > 3, "the breach was searched past its redraws: {} visits", complete.visits);
+        assert_eq!(complete.outcomes.len(), 3, "one child per redraw, then round-robin");
+        assert!(complete.child.is_none());
+        let decks: Vec<_> = complete.outcomes.iter().map(|child| child.state.corp.r_and_d.clone()).collect();
+        assert!(decks.iter().any(|deck| deck != &decks[0]), "the outcomes disagree about R&D: {decks:?}");
+        assert!(decks.iter().all(|deck| deck.len() == 6), "and agree about its size");
+        assert!(jack_out.outcomes.is_empty() && jack_out.child.is_some(), "a plain edge keeps its one child");
     }
 
     /// Several samples merge positionally onto the caller's candidate

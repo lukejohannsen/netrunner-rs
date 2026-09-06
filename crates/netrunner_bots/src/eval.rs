@@ -157,6 +157,46 @@ const BREAKER_COVERAGE_WEIGHT: f64 = 3.0;
 /// guess the real Runner cannot see and the Corp may never rez. Jacking
 /// out still forfeits the term, so a breakable run is worth finishing.
 const ACTIVE_RUN_WEIGHT: f64 = 0.6;
+/// A run reached its server this turn
+/// (`RunnerState::made_successful_run_this_turn`): the run term, kept for
+/// the rest of the turn, so that **breaching keeps it and only leaving
+/// forfeits it.**
+///
+/// `ACTIVE_RUN_WEIGHT` alone is returned however the run ends, and that
+/// made the approach-server step — rule 6.1.5's last chance to jack out —
+/// a coin flip for a search that looks past the breach: `JackOut` and
+/// `CompleteRun` both lose the 0.6 and differ only by what the breach
+/// finds, which a single determinized sample resolves to one card. An
+/// agenda one time in four, otherwise nothing or a trash prompt, so a
+/// traced PUCT Runner read the two within 0.03 of each other and walked
+/// away from the door 1,213 times in 192 games against the heuristic
+/// Corp — which, seeing one ply, keeps the run term through the access
+/// and left 25 times. Two other shapes were measured first and rejected
+/// (ROADMAP Phase 3 §1): valuing the breach honestly in the search, as a
+/// chance node over redraws of the hidden cards
+/// (`PuctConfig::breach_outcomes`), was *worse* at every fan-out
+/// (0.339 / 0.328 / 0.307 at 2 / 4 / 8), because the registry pool it
+/// draws from is a quarter agendas and the Runner went to the centrals;
+/// and a prior on accesses made, read off `last_completed_run`, either
+/// reset at every determinized root and rewarded churning open servers or,
+/// carried, punished starting any run that might end early. This term
+/// does neither: it is paid once a turn on a flag both players watched
+/// get set, cannot be lost once earned, and does not follow the run's
+/// contents — a stolen agenda is still `AGENDA_POINT_WEIGHT`'s.
+///
+/// **Sized by the sweep, not the decision**: PUCT Runner against the
+/// heuristic Corp over 192 games, 0.411 without it, then 0.432 / 0.469 /
+/// **0.516** / 0.490 at 0.6 / 1.2 / 2.0 / 3.0. Two is five credits'
+/// worth: enough that the door is never close (jack-outs 1,213 → 575) and
+/// that a run counts as a turn's work over clicking for credits
+/// (2,387 → 1,722), and still a tenth of a point of agenda. Beyond it the
+/// Runner starts leaving breakers uninstalled (`SubroutineBroken` 292 →
+/// 236 at 3.0). Runner-only; the heuristic reads it too and moves inside
+/// the seed band.
+const SUCCESSFUL_RUN_WEIGHT: f64 = 2.0;
+// Worth more than the run it came from, so the door is never close, and
+// far under what the breach may find.
+const _: () = assert!(SUCCESSFUL_RUN_WEIGHT > ACTIVE_RUN_WEIGHT && SUCCESSFUL_RUN_WEIGHT < AGENDA_POINT_WEIGHT / 5.0);
 /// The Corp's counterpart, subtracted while the Runner is mid-run and can
 /// afford to break every rezzed ICE still ahead of it. **The Corp branch
 /// had no run term at all**: its score was identical whether the Runner
@@ -361,6 +401,9 @@ pub struct Weights {
     pub agenda_protection_cap: usize,
     pub breaker_coverage_weight: f64,
     pub active_run_weight: f64,
+    /// Runner only: a run reached its server this turn. See
+    /// `SUCCESSFUL_RUN_WEIGHT`.
+    pub successful_run_weight: f64,
     pub pending_subroutine_weight: f64,
     pub unresolved_decision_weight: f64,
     pub pending_decision_upside_weight: f64,
@@ -409,6 +452,7 @@ impl Default for Weights {
             agenda_protection_cap: AGENDA_PROTECTION_CAP,
             breaker_coverage_weight: BREAKER_COVERAGE_WEIGHT,
             active_run_weight: ACTIVE_RUN_WEIGHT,
+            successful_run_weight: SUCCESSFUL_RUN_WEIGHT,
             pending_subroutine_weight: PENDING_SUBROUTINE_WEIGHT,
             unresolved_decision_weight: UNRESOLVED_DECISION_WEIGHT,
             pending_decision_upside_weight: PENDING_DECISION_UPSIDE_WEIGHT,
@@ -491,6 +535,9 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             score += breaker_coverage(state, registry) as f64 * w.breaker_coverage_weight;
             score -= breaker_savings_shortfall(state, registry) as f64 * w.savings_shortfall_weight;
             score -= w.grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.grip_shortfall_weight;
+            if state.runner.made_successful_run_this_turn {
+                score += w.successful_run_weight;
+            }
             if let Some(run) = &state.active_run {
                 if run_is_breakable(state, run, registry) {
                     score += w.active_run_weight;
@@ -1817,6 +1864,23 @@ mod tests {
         assert!((with_grip(1) - with_grip(0) - GRIP_SHORTFALL_WEIGHT).abs() < 1e-9);
         assert!((with_grip(GRIP_FLOOR) - with_grip(GRIP_FLOOR - 1) - GRIP_SHORTFALL_WEIGHT).abs() < 1e-9);
         assert_eq!(with_grip(GRIP_FLOOR + 1), with_grip(GRIP_FLOOR), "cards past the floor are worth nothing");
+    }
+
+    /// The door: a run that reached its server this turn is worth the run
+    /// term for the rest of the turn, once, and only to the Runner.
+    #[test]
+    fn a_successful_run_this_turn_keeps_the_run_term_once() {
+        let registry = CardRegistry::new();
+        let mut breached = GameState::new(0);
+        breached.runner.made_successful_run_this_turn = true;
+        let fresh = GameState::new(0);
+        let delta = evaluate_state(&breached, Side::Runner, &registry) - evaluate_state(&fresh, Side::Runner, &registry);
+        assert!((delta - SUCCESSFUL_RUN_WEIGHT).abs() < 1e-9);
+        assert_eq!(
+            evaluate_state(&breached, Side::Corp, &registry),
+            evaluate_state(&fresh, Side::Corp, &registry),
+            "Runner-only"
+        );
     }
 
     /// Why the weight sits above the run term: with a thin grip a draw

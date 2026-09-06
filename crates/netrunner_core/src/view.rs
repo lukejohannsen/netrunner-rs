@@ -91,6 +91,9 @@ pub struct RunnerClientView {
     /// `PublicRunnerState::servers_run_this_turn`.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
+    /// `PublicRunnerState::made_successful_run_this_turn`.
+    #[serde(default)]
+    pub made_successful_run_this_turn: bool,
     /// Cards discarded to hand size in the Runner's last discard phase —
     /// public, see `PublicRunnerState::discarded_this_discard_phase`.
     #[serde(default)]
@@ -225,6 +228,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,
         servers_run_this_turn: public.runner.servers_run_this_turn.clone(),
+        made_successful_run_this_turn: public.runner.made_successful_run_this_turn,
         discarded_this_discard_phase: public.runner.discarded_this_discard_phase.clone(),
         identity_flipped: public.runner.identity_flipped,
         scored_agendas: public.runner.scored_agendas,
