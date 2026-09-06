@@ -55,6 +55,7 @@ use uuid::Uuid;
 use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory};
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Deck, GameState, Side};
 use netrunner_rating::{Outcome, RatingBook, Track};
 
@@ -134,6 +135,11 @@ pub struct ServeOptions {
     /// useful — configuration.
     pub corp_deck: Option<String>,
     pub runner_deck: Option<String>,
+    /// The competitive format every deck this daemon deals must be legal
+    /// in, checked once at `bind`. Startup by default, matching
+    /// `netrunner_cli --format`, so the two agree on what "legal" means
+    /// without the operator having to say it twice.
+    pub format: NsgFormat,
     /// Where the daemon keeps its `netrunner_rating::RatingBook`. Loaded
     /// at bind, rewritten after every rated match (temp file plus
     /// rename, like the deck store and the card cache), and the only
@@ -153,6 +159,7 @@ impl Default for ServeOptions {
             turn_timeout: None,
             corp_deck: None,
             runner_deck: None,
+            format: NsgFormat::Startup,
             ratings_file: None,
         }
     }
@@ -170,7 +177,19 @@ struct PinnedDecks {
 /// available, matching the convention the CLI's deck flags already set —
 /// a daemon operator naming a deck that does not exist should not have to
 /// go and read `data/decks/`.
-fn pin_deck(name: Option<&str>, side: Side) -> std::io::Result<Option<(String, Deck)>> {
+///
+/// **Legality is checked here too**, which the doc comment above this
+/// function used to claim while nothing did it: a pinned deck was taken on
+/// its name and side alone, so a daemon could serve an illegal matchup for
+/// as long as it ran. `DeckFile::validate` is the same gate
+/// `netrunner_cli` puts a saved deck through before starting a game, so
+/// "this deck is playable" means one thing in both.
+fn pin_deck(
+    name: Option<&str>,
+    side: Side,
+    registry: &CardRegistry,
+    format: NsgFormat,
+) -> std::io::Result<Option<(String, Deck)>> {
     let Some(name) = name else { return Ok(None) };
     let available = || {
         decks::for_side(side)
@@ -186,7 +205,33 @@ fn pin_deck(name: Option<&str>, side: Side) -> std::io::Result<Option<(String, D
     if deck.side != side {
         return Err(std::io::Error::other(format!("deck {name:?} is a {:?} deck, not {side:?}", deck.side)));
     }
+    if let Err(e) = deck.validate(registry, format) {
+        return Err(std::io::Error::other(format!("deck {name:?} is not legal in {format:?}: {e}")));
+    }
     Ok(Some((deck.id.clone(), deck.to_deck())))
+}
+
+/// Every deck the rotating matchup pool can deal, checked against the
+/// daemon's format once at `bind`.
+///
+/// The pool is `decks::matchups()`, which is the sample decks' cross
+/// product, so this is the same set `netrunner_core`'s own
+/// `every_sample_deck_is_legal` covers — but that test fixes the format it
+/// checks, and an operator picks one. A daemon serving Startup out of a
+/// pool that is only Eternal-legal should refuse to start, not deal an
+/// illegal game on whichever seed reaches the offending deck.
+fn check_rotating_pool(registry: &CardRegistry, format: NsgFormat) -> std::io::Result<()> {
+    for side in [Side::Corp, Side::Runner] {
+        for deck in decks::for_side(side).into_iter().filter(|deck| deck.category == DeckCategory::Sample) {
+            if let Err(e) = deck.validate(registry, format) {
+                return Err(std::io::Error::other(format!(
+                    "sample deck {:?} is not legal in {format:?}: {e}; pin a legal matchup or serve another format",
+                    deck.id
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn make_serve_agent(kind: ServeBotKind, side: Side, seed: u64, personality: Personality) -> Box<dyn BotAgent> {
@@ -425,12 +470,20 @@ impl Server {
             Some(path) => load_ratings(path)?,
             None => RatingBook::default(),
         };
+        let cards = fixtures::sample_registry();
         let pinned = PinnedDecks {
-            corp: pin_deck(options.corp_deck.as_deref(), Side::Corp)?,
-            runner: pin_deck(options.runner_deck.as_deref(), Side::Runner)?,
+            corp: pin_deck(options.corp_deck.as_deref(), Side::Corp, &cards, options.format)?,
+            runner: pin_deck(options.runner_deck.as_deref(), Side::Runner, &cards, options.format)?,
         };
+        // The rotating pool needs the same gate as a pinned deck, and for
+        // a better reason: an operator who pins a deck names it and would
+        // see it refused, while a rotating daemon deals whatever the seed
+        // picks and would only find out mid-match. Checked once here
+        // rather than per match — the pool is embedded and cannot change
+        // while the process runs.
+        check_rotating_pool(&cards, options.format)?;
         let shared = Shared {
-            cards: fixtures::sample_registry(),
+            cards,
             registry: Arc::new(StdMutex::new(Registry { ratings, ..Registry::default() })),
             options,
             base_seed,
@@ -766,5 +819,59 @@ fn assign_sides(a: PendingHuman, b: PendingHuman) -> (PendingHuman, PendingHuman
         (_, Some(Side::Corp)) => (b, a),
         (_, Some(Side::Runner)) => (a, b),
         _ => (a, b),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The daemon's legality gate is wired, and a failure names the deck
+    /// and the format rather than surfacing as a mid-match surprise.
+    ///
+    /// Checked against an empty registry rather than a genuinely illegal
+    /// deck because **no shipped format rejects any shipped deck**: every
+    /// published decklist is built from `sg` and `elev`, which is exactly
+    /// Startup's pool, and no format bans or restricts anything yet (the
+    /// tables are a documented seed). So what is testable here is the
+    /// wiring — that `DeckFile::validate` is consulted at all and its
+    /// verdict reaches the caller — while the rules themselves are covered
+    /// where they live, in `netrunner_core::deck::validator`. Before this,
+    /// `pin_deck` checked a deck's name and side and nothing else, while
+    /// its own doc comment claimed it validated.
+    #[test]
+    fn an_unplayable_pinned_deck_is_refused_at_bind() {
+        let empty = CardRegistry::new();
+        let error = pin_deck(Some("discretion_advised"), Side::Corp, &empty, NsgFormat::Startup)
+            .expect_err("a deck whose cards are unknown cannot be legal");
+        let error = error.to_string();
+        assert!(error.contains("discretion_advised"), "{error}");
+        assert!(error.contains("Startup"), "the format is named: {error}");
+        assert!(error.contains("not legal"), "{error}");
+    }
+
+    /// The rotating pool gets the same gate, and for a stronger reason: an
+    /// operator who pins a deck sees it refused by name, while a rotating
+    /// daemon would deal the offending deck only on whichever seed reached
+    /// it.
+    #[test]
+    fn an_unplayable_rotating_pool_is_refused_at_bind() {
+        let empty = CardRegistry::new();
+        let error = check_rotating_pool(&empty, NsgFormat::Startup).expect_err("the pool cannot be legal");
+        let error = error.to_string();
+        assert!(error.contains("sample deck"), "{error}");
+        assert!(error.contains("Startup"), "{error}");
+    }
+
+    /// The real pool against the real registry, in every format the daemon
+    /// can be asked to serve. This is what stops the gate from being a
+    /// startup failure the day someone runs `--format standard`.
+    #[test]
+    fn every_shipped_format_can_actually_serve_the_sample_pool() {
+        let registry = fixtures::sample_registry();
+        for format in [NsgFormat::Startup, NsgFormat::Standard, NsgFormat::Eternal, NsgFormat::Snapshot] {
+            check_rotating_pool(&registry, format)
+                .unwrap_or_else(|e| panic!("a daemon serving {format:?} must be able to start: {e}"));
+        }
     }
 }

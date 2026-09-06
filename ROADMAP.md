@@ -12,7 +12,7 @@ Code and docs address entries as `ROADMAP <phase> §<n>` — "Phase 2 §5", "Rul
 
 | Area | Status | Record |
 |---|---|---|
-| **Phase 1** — Single-player completeness | Done except **§5 Format Support**. Saved decks, legible view, the rules gaps, *System Gateway* 77/77, *Elevation* 82/82 with all 28 published decks (192 matchups). | [phase-1-single-player.md](docs/roadmap/phase-1-single-player.md) |
+| **Phase 1** — Single-player completeness | **Done.** §5 Format Support closed: mechanisms enforced, tables a documented seed. Saved decks, legible view, the rules gaps, *System Gateway* 77/77, *Elevation* 82/82 with all 28 published decks (192 matchups). | [phase-1-single-player.md](docs/roadmap/phase-1-single-player.md) |
 | **Phase 1.5** — Session unification | Done. One `Session`, one `MAX_STEPS`, two seat kinds. | same file, tail |
 | **Rules Audit** and the card fidelity audits | Closed. Twelve Tier-1 rules, Tier 2, six hazard classes; System Gateway 11 and Core Set 4 deviations fixed. | [rules-audit.md](docs/roadmap/rules-audit.md) |
 | **Phase 1.75** — Learn to Play | Done. Seven lessons a side, the starter game at 6 points. | [phase-1-75-learn-to-play.md](docs/roadmap/phase-1-75-learn-to-play.md) |
@@ -23,8 +23,7 @@ Code and docs address entries as `ROADMAP <phase> §<n>` — "Phase 2 §5", "Rul
 ## What is next, in order
 
 1. **The first volume run on the reworked observation** (Phase 2 §5 items 18–19): `data/checkpoints/launch_overnight.sh` is written for it — masked objective, 384-game arena, per-chair verdicts are now the loop's defaults; `data/selfplay` and `data/checkpoints` are otherwise empty.
-2. **Phase 1 §5 Format Support** — the last open box in Phase 1. The server validates no deck legality before a match starts, every banlist is empty so Standard and Eternal behave identically, and the points system is not modeled.
-3. Small open items, each recorded in its area file: `netrunner_gym` can still toggle-loop; the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; Core Set cards have no sweep coverage.
+2. Small open items, each recorded in its area file: `netrunner_gym` can still toggle-loop; the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; Core Set cards have no sweep coverage.
 
 ## How this file is kept
 

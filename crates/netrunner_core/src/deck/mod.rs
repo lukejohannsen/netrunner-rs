@@ -55,7 +55,7 @@ use crate::card::CardId;
 
 pub mod validator;
 
-pub use validator::{validate_deck, DeckValidationError, ValidationReport};
+pub use validator::{validate_deck, validate_deck_with_rules, DeckValidationError, ValidationReport};
 
 /// A deckbuilding-time decklist: an identity plus a card pool, each entry
 /// paired with how many copies are included. Deserializes from the common

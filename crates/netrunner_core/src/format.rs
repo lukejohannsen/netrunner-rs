@@ -11,8 +11,22 @@
 //! "sg"/"elev") for
 //! a maintainer to extend as new packs/banlist updates are published — not
 //! a claim of being NSG's current authoritative rotation or banlist.
+//!
+//! **The mechanisms are complete; the data is not, and the distinction is
+//! deliberate.** A ban, a pack pool and a restriction budget are all
+//! enforced by `deck::validator`, and each is exercised by a test that
+//! supplies its own rules through `validate_deck_with_rules` — because
+//! every shipped format currently bans nothing, restricts nothing, and
+//! (for Startup and Snapshot) allows exactly the two packs this crate
+//! embeds, so those paths are unreachable from the shipped tables alone.
+//! Filling in a real banlist or rotation is a data change against working
+//! machinery, and `no_shipped_format_restricts_anything_yet` fails when
+//! someone makes it, so it is a deliberate act rather than a silent one.
+//! Nothing here should be invented: an entry that is not sourced from a
+//! published NSG list is worse than an empty table, because an empty table
+//! is visibly a seed and a wrong one is not.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
@@ -32,21 +46,51 @@ pub enum NsgFormat {
 }
 
 /// The legality rules for one `NsgFormat`: which packs are in the legal
-/// pool, which cards are outright banned, and which are capped to a single
-/// copy (Null Signal Games' "Restricted List"). `restricted` is a
-/// deliberate simplification of the real Restricted List rule, which caps
-/// the *whole deck* to one restricted card total rather than one copy of
-/// *each* restricted card — no `Decklist`/catalog field exists to source
-/// the cross-card interaction from, and a single-copy-per-card cap is the
-/// closer approximation of the two easy alternatives (the other being no
-/// enforcement at all).
-#[derive(Debug, Clone, Default)]
+/// pool, which cards are outright banned, and what the deck may spend on
+/// restricted cards.
+///
+/// **The restriction model is a points budget, which is the real rule's
+/// shape.** It used to be a `HashSet` of cards each capped to one copy,
+/// and that was documented as a deliberate approximation: the actual rule
+/// constrains the *deck as a whole* rather than each card, so a per-card
+/// copy limit could not express "one restricted card, whichever you pick"
+/// at all. A budget does: give every listed card a cost and the deck an
+/// allowance, and the classic "at most one restricted card" list is the
+/// special case where each costs 1 and the allowance is 1.
+///
+/// Cost is counted **once per distinct card**, not per copy, because the
+/// list restricts which cards a deck may build around rather than how many
+/// copies it runs; the copy count is already `CardDefinition::deck_limit`'s
+/// job.
+#[derive(Debug, Clone)]
 pub struct FormatRules {
     /// `None` means every pack is legal (Eternal). `Some(set)` restricts
     /// legality to exactly these `CardDefinition::set_code` values.
     pub allowed_packs: Option<HashSet<&'static str>>,
     pub banned: HashSet<CardId>,
-    pub restricted: HashSet<CardId>,
+    /// What each listed card costs against `restriction_budget`. A card
+    /// that is not listed costs nothing.
+    pub restriction_points: HashMap<CardId, u32>,
+    /// What a deck may spend in total. `u32::MAX` is "unrestricted", which
+    /// is what `Default` gives, so a format that lists nothing is not
+    /// accidentally capped at zero.
+    pub restriction_budget: u32,
+}
+
+impl Default for FormatRules {
+    /// Everything legal and nothing restricted — the shape `Standard` and
+    /// `Eternal` take. Hand-written rather than derived because
+    /// `restriction_budget` must default to "unlimited" and `u32`'s own
+    /// default is 0, which would make every deck illegal the moment a card
+    /// was listed.
+    fn default() -> Self {
+        FormatRules {
+            allowed_packs: None,
+            banned: HashSet::new(),
+            restriction_points: HashMap::new(),
+            restriction_budget: u32::MAX,
+        }
+    }
 }
 
 /// The influence budget every identity grants by default. Real Netrunner
