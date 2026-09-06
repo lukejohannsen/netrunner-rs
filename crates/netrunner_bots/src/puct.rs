@@ -25,6 +25,7 @@ use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use rayon::prelude::*;
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{current_actor, get_action_mask, ActionSpace, GamePhase, GameState, PlayerAction, Side};
@@ -67,9 +68,9 @@ impl PuctNode {
     /// index. Returns the evaluator's scalar value estimate for
     /// `self.state`, for the caller to backpropagate exactly like a
     /// rollout result would be in plain MCTS.
-    fn expand(&mut self, registry: &CardRegistry, evaluator: &dyn PolicyEvaluator) -> f32 {
+    fn expand(&mut self, registry: &CardRegistry, evaluator: &dyn PolicyEvaluator, anchor: f32) -> f32 {
         let mask = get_action_mask(&self.state, registry);
-        let (priors, value) = evaluator.evaluate(&self.state, registry);
+        let (priors, value) = evaluator.evaluate_from(&self.state, registry, anchor);
         debug_assert_eq!(priors.len(), ActionSpace::SIZE, "PolicyEvaluator must return ActionSpace::SIZE priors");
 
         self.edges = mask
@@ -114,8 +115,9 @@ impl PuctNode {
         actions: &[PlayerAction],
         registry: &CardRegistry,
         evaluator: &dyn PolicyEvaluator,
+        anchor: f32,
     ) -> f32 {
-        let (priors, value) = evaluator.evaluate(&self.state, registry);
+        let (priors, value) = evaluator.evaluate_from(&self.state, registry, anchor);
         debug_assert_eq!(priors.len(), ActionSpace::SIZE, "PolicyEvaluator must return ActionSpace::SIZE priors");
 
         // A uniform stand-in for a candidate that doesn't encode against
@@ -198,6 +200,7 @@ fn simulate(
     side: Side,
     c_puct: f64,
     depth_budget: usize,
+    anchor: f32,
 ) -> f64 {
     if let GamePhase::GameOver(winner) = node.state.phase {
         node.visits += 1;
@@ -205,7 +208,7 @@ fn simulate(
     }
 
     if !node.expanded {
-        let value = node.expand(registry, evaluator) as f64;
+        let value = node.expand(registry, evaluator, anchor) as f64;
         node.visits += 1;
         return value;
     }
@@ -221,7 +224,7 @@ fn simulate(
         // Depth cutoff on an already-expanded node: re-evaluate its
         // current value without descending further, rather than treating
         // this as a fresh expansion.
-        let (_priors, value) = evaluator.evaluate(&node.state, registry);
+        let (_priors, value) = evaluator.evaluate_from(&node.state, registry, anchor);
         node.visits += 1;
         return value as f64;
     }
@@ -252,6 +255,7 @@ fn simulate(
         side,
         c_puct,
         depth_budget - 1,
+        anchor,
     );
 
     node.edges[edge_index].visits += 1;
@@ -268,11 +272,27 @@ pub struct PuctConfig {
     pub c_puct: f64,
     pub iterations: usize,
     pub max_depth: usize,
+    /// How many independent determinizations one decision searches, the
+    /// `iterations` budget split evenly across them and the root stats
+    /// summed by candidate — `MctsAgent`'s root-parallel shape, brought to
+    /// PUCT. `1` is a single tree over a single sample.
+    ///
+    /// Measured twice on the Runner chair against the heuristic Corp
+    /// (192 games each) and found nothing: 0.219 → 0.219 when the leaf
+    /// values were absolute, and 0.411 → 0.406 once they were relative to
+    /// the root (`UniformPolicyEvaluator::evaluate_from`). The single
+    /// sample's certainty about hidden cards was the suspected cause of
+    /// the Runner initiating a run on one decision and jacking out on the
+    /// next; it was not — the search was choosing by noise, and averaging
+    /// noise is noise. Left in at `1` because it is the IS-MCTS shape
+    /// `MctsAgent` already has, and so that the result is on the field
+    /// rather than re-discovered (ROADMAP Phase 3 §1).
+    pub samples: usize,
 }
 
 impl Default for PuctConfig {
     fn default() -> Self {
-        Self { c_puct: 1.5, iterations: 64, max_depth: 16 }
+        Self { c_puct: 1.5, iterations: 64, max_depth: 16, samples: 1 }
     }
 }
 
@@ -296,7 +316,12 @@ impl PuctAgent {
     }
 
     pub fn with_config(side: Side, seed: u64, evaluator: impl PolicyEvaluator + 'static, config: PuctConfig) -> Self {
-        let config = PuctConfig { iterations: config.iterations.max(1), max_depth: config.max_depth.max(1), ..config };
+        let config = PuctConfig {
+            iterations: config.iterations.max(1),
+            max_depth: config.max_depth.max(1),
+            samples: config.samples.max(1),
+            ..config
+        };
         Self { side, seed, evaluator: Box::new(evaluator), config, cycle: CycleGuard::default() }
     }
 
@@ -316,15 +341,6 @@ impl PuctAgent {
     pub fn search(&mut self, view: &ClientView, registry: &CardRegistry) -> PuctSearchStats {
         assert!(!view.legal_actions.is_empty(), "PuctAgent::search requires at least one legal action");
 
-        let mut rng = StdRng::seed_from_u64(self.seed);
-        self.seed = self.seed.wrapping_add(1);
-        let sample = determinize(view, registry, &mut rng);
-
-        // Expanded here rather than by the first `simulate`, because only
-        // the root may be seeded from `view.legal_actions` — see
-        // `expand_root`. Counted as one visit, the same bookkeeping
-        // `simulate`'s own expansion branch does, so `puct_score`'s
-        // `sqrt(N_parent)` starts from a visited parent.
         // The root's candidates are the caller's legal actions *minus
         // deselects* (`agent::progressive`). A deselect is never a move this
         // agent takes, so reporting a visit count for one would hand
@@ -332,47 +348,67 @@ impl PuctAgent {
         // learn — and a search that could descend it would spend
         // simulations cycling a card selection instead of pricing it.
         let candidates = crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref());
-        let mut root = PuctNode::new(sample);
-        root.expand_root(&candidates, registry, self.evaluator.as_ref());
-        root.visits = 1;
-        for _ in 0..self.config.iterations {
-            simulate(&mut root, registry, self.evaluator.as_ref(), self.side, self.config.c_puct, self.config.max_depth);
-        }
+
+        // One tree per determinization, each on its own seed so the agent
+        // stays a pure function of its construction seed whatever rayon
+        // does with the order; the budget is split, not multiplied, so
+        // `iterations` means the same work at any `samples`.
+        let samples = self.config.samples;
+        let per_sample_iterations = (self.config.iterations / samples).max(1);
+        let base_seed = self.seed;
+        self.seed = self.seed.wrapping_add(samples as u64);
+        let (side, c_puct, max_depth) = (self.side, self.config.c_puct, self.config.max_depth);
+        let evaluator = self.evaluator.as_ref();
+
+        let per_sample: Vec<Vec<(Option<usize>, u32, f64)>> = (0..samples)
+            .into_par_iter()
+            .map(|sample_index| {
+                let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(sample_index as u64));
+                let sample = determinize(view, registry, &mut rng);
+                // Expanded here rather than by the first `simulate`, because
+                // only the root may be seeded from `view.legal_actions` — see
+                // `expand_root`. Counted as one visit, the same bookkeeping
+                // `simulate`'s own expansion branch does, so `puct_score`'s
+                // `sqrt(N_parent)` starts from a visited parent.
+                let anchor = evaluator.anchor(&sample, registry);
+                let mut root = PuctNode::new(sample);
+                root.expand_root(&candidates, registry, evaluator, anchor);
+                root.visits = 1;
+                for _ in 0..per_sample_iterations {
+                    simulate(&mut root, registry, evaluator, side, c_puct, max_depth, anchor);
+                }
+                root.edges.iter().map(|edge| (edge.index, edge.visits, edge.total_value)).collect()
+            })
+            .collect();
 
         // One `ActionStat` per progressive `view.legal_actions` entry,
         // always: the caller's list is the authoritative candidate set
-        // (matching `MctsAgent::new_root`), and `expand_root` made it the
-        // root's edge set, so every entry has stats to report even if the
-        // search never descended it. `index` is this action's slot *in the
+        // (matching `MctsAgent::new_root`), and `expand_root` made it every
+        // root's edge set in that order — so the samples merge
+        // positionally, and every entry has stats to report even if no
+        // search descended it. `index` is this action's slot *in the first
         // determinized sample* and can be absent — see `Edge::index`; such
         // an action still gets a stat, it just claims no `visit_counts`
         // slot. Callers recording a policy target should re-index against
         // whatever state that target is paired with rather than reusing
         // these; see `netrunner_selfplay`.
         let mut visit_counts = vec![0u32; ActionSpace::SIZE];
-        let actions: Vec<ActionStat> = root
-            .edges
+        let actions: Vec<ActionStat> = candidates
             .iter()
-            .map(|edge| {
-                if let Some(index) = edge.index {
-                    visit_counts[index] = edge.visits;
+            .enumerate()
+            .map(|(position, action)| {
+                let index = per_sample[0][position].0;
+                let visits = per_sample.iter().map(|edges| edges[position].1).sum::<u32>();
+                let total_value = per_sample.iter().map(|edges| edges[position].2).sum::<f64>();
+                if let Some(index) = index {
+                    visit_counts[index] = visits;
                 }
-                ActionStat {
-                    index: edge.index,
-                    action: edge.action.clone(),
-                    visits: edge.visits,
-                    total_value: edge.total_value,
-                }
+                ActionStat { index, action: action.clone(), visits, total_value }
             })
             .collect();
 
-        debug_assert_eq!(
-            actions.len(),
-            candidates.len(),
-            "search must report every progressive action the caller may submit"
-        );
         let (total_value, total_visits) =
-            root.edges.iter().fold((0.0f64, 0u32), |(v, n), edge| (v + edge.total_value, n + edge.visits));
+            actions.iter().fold((0.0f64, 0u32), |(v, n), stat| (v + stat.total_value, n + stat.visits));
         let root_value = if total_visits == 0 { 0.0 } else { (total_value / total_visits as f64) as f32 };
         PuctSearchStats { visit_counts, actions, root_value }
     }
@@ -586,6 +622,12 @@ pub struct PuctSearchStats {
     /// The search's own estimate of the root position from the agent's
     /// side: the mean of every value backed up through a root edge, in the
     /// evaluator's `[-1, 1]` convention (`0.0` if nothing was visited).
+    /// For a network that is an absolute estimate; for a static evaluator
+    /// it is **relative to the root** (`PolicyEvaluator::evaluate_from`) —
+    /// how much the search expects to gain from here — so uniform-search
+    /// self-play now records a different quantity under this name than a
+    /// network's search does. A trainer mixing it into the value target
+    /// should know which it has.
     ///
     /// Recorded by self-play as a value-head target beside the game's
     /// final outcome. The outcome of a 64-simulation weak-search game is
@@ -677,7 +719,7 @@ mod tests {
             side,
             99,
             UniformPolicyEvaluator::new(side),
-            PuctConfig { c_puct: 1.5, iterations: 40, max_depth: 8 },
+            PuctConfig { c_puct: 1.5, iterations: 40, max_depth: 8, samples: 1 },
         )
     }
 
@@ -741,7 +783,7 @@ mod tests {
             Side::Corp,
             123,
             UniformPolicyEvaluator::new(Side::Corp),
-            PuctConfig { c_puct: 1.5, iterations: 200, max_depth: 10 },
+            PuctConfig { c_puct: 1.5, iterations: 200, max_depth: 10, samples: 1 },
         );
         let chosen = agent.select_action(&view, &registry);
         assert_eq!(chosen, PlayerAction::ScoreAgenda { target: InstallId(1) });
@@ -762,7 +804,7 @@ mod tests {
 
         let mut node = PuctNode::new(state.clone());
         let evaluator = UniformPolicyEvaluator::new(Side::Corp);
-        node.expand(&registry, &evaluator);
+        node.expand(&registry, &evaluator, 0.0);
 
         // `PlayerAction` isn't `Hash`, so compare as multisets via mutual
         // containment rather than collecting into a `HashSet`.
@@ -810,6 +852,7 @@ mod tests {
             &[legal.clone(), illegal.clone()],
             &registry,
             &UniformPolicyEvaluator::new(Side::Corp),
+            0.0,
         );
 
         let edges: Vec<&PlayerAction> = root.edges.iter().map(|edge| &edge.action).collect();
@@ -993,7 +1036,7 @@ mod tests {
                 Side::Runner,
                 seed,
                 UniformPolicyEvaluator::new(Side::Runner),
-                PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4 },
+                PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4, samples: 1 },
             );
             let stats = agent.search(&view, &registry);
             let reported: Vec<&PlayerAction> = stats.actions.iter().map(|s| &s.action).collect();
@@ -1144,7 +1187,7 @@ mod tests {
             Side::Corp,
             7,
             AlwaysEndTurn,
-            PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 2 },
+            PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 2, samples: 1 },
         );
         for _ in 0..MAX_GREEDY_REPEATS + 1 {
             assert_eq!(agent.select_action(&view, &registry), PlayerAction::EndTurn, "greedy up to the bound");
@@ -1220,13 +1263,52 @@ mod tests {
             Side::Corp,
             5,
             UniformPolicyEvaluator::new(Side::Corp),
-            PuctConfig { c_puct: 1.5, iterations: 64, max_depth: 8 },
+            PuctConfig { c_puct: 1.5, iterations: 64, max_depth: 8, samples: 1 },
         );
         let stats = agent.search(&view, &registry);
         let (value, visits) = stats.actions.iter().fold((0.0, 0u32), |(v, n), s| (v + s.total_value, n + s.visits));
         assert!((stats.root_value as f64 - value / visits as f64).abs() < 1e-5);
         assert!((-1.0..=1.0).contains(&stats.root_value));
         assert!(stats.root_value > 0.0, "a score for the win is one move away: {}", stats.root_value);
+    }
+
+    /// Several samples merge positionally onto the caller's candidate
+    /// list: one stat per progressive action, the budget split across
+    /// the samples and summed back, and the whole thing a pure function
+    /// of the construction seed even though the samples search in
+    /// parallel.
+    #[test]
+    fn several_samples_merge_onto_the_candidates_and_stay_deterministic() {
+        let registry = CardRegistry::new();
+        let mut state = GameState::new(0);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        let view = build_client_view(&state, &registry, Side::Corp);
+
+        let search = || {
+            let mut agent = PuctAgent::with_config(
+                Side::Corp,
+                7,
+                UniformPolicyEvaluator::new(Side::Corp),
+                PuctConfig { iterations: 40, samples: 4, ..PuctConfig::default() },
+            );
+            agent.search(&view, &registry)
+        };
+        let first = search();
+        let second = search();
+
+        let candidates = crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref());
+        assert_eq!(first.actions.len(), candidates.len(), "one stat per progressive candidate, whatever the sample count");
+        assert!(first.actions.iter().zip(&candidates).all(|(stat, action)| stat.action == *action), "in the caller's order");
+        let total: u32 = first.actions.iter().map(|stat| stat.visits).sum();
+        assert_eq!(total, 40, "four samples of ten iterations each descend forty root edges between them");
+        assert!(
+            first.actions.iter().zip(&second.actions).all(|(a, b)| a.visits == b.visits && a.total_value == b.total_value),
+            "the same seed must merge to the same stats however the samples were scheduled"
+        );
+        assert_eq!(first.root_value, second.root_value);
     }
 
     #[test]
