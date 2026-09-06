@@ -451,7 +451,7 @@ pub fn evaluate_effect(
                 .find(|c| c.install_id == install)
                 .ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
             installed.rezzed = false;
-            Ok(vec![GameEvent::CardDerezzed { card: card_id }])
+            Ok(vec![GameEvent::CardDerezzed { install, card: Some(card_id) }])
         }
 
         Effect::GainCreditsPerCounter { side, credits_per_counter } => {
@@ -1243,9 +1243,9 @@ pub fn evaluate_effect(
             if installed.slot != crate::rules::state::InstallSlot::Root || installed.server == *server {
                 return Ok(Vec::new());
             }
-            let (card, from) = (installed.card.clone(), installed.server);
+            let (card, from, install) = (installed.card.clone(), installed.server, installed.install_id);
             state.corp.installed[position].server = *server;
-            Ok(vec![GameEvent::CardMoved { card, from, to: *server }])
+            Ok(vec![GameEvent::CardMoved { install, card: Some(card), from, to: *server }])
         }
 
         Effect::PlayOperation { from } => {
@@ -2617,7 +2617,7 @@ fn triggering_card(event: &GameEvent) -> Option<&CardId> {
         | GameEvent::EventPlayed { card, .. }
         | GameEvent::OperationPlayed { card, .. }
         | GameEvent::CardTrashed { card, .. }
-        | GameEvent::CardDerezzed { card }
+        | GameEvent::CardDerezzed { card: Some(card), .. }
         // The card whose ability paid out — The Zwicky Group asks whether
         // it was an agenda or an operation.
         | GameEvent::AbilityGainedCredits { card, .. } => Some(card),

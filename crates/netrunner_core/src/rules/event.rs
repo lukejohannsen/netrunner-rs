@@ -61,9 +61,22 @@ pub enum GameEvent {
         install: crate::rules::state::InstallId,
     },
     /// A rezzed Corp installed card was flipped back face-down —
-    /// `Effect::DerezCard`'s only emission site. No player-driven derez
-    /// action exists (rez itself is otherwise one-way).
-    CardDerezzed { card: CardId },
+    /// `Effect::DerezCard`'s only emission site (Maglectric Rapid,
+    /// Tranquilizer). No player-driven derez action exists (rez itself is
+    /// otherwise one-way), so this event is the only record of it.
+    ///
+    /// Handle public, identity strikeable — see `CardInstalled`. The
+    /// Runner *saw* the card while it was rezzed, but the view has no
+    /// notion of "seen before" and renders the now-derezzed install as
+    /// `card: None`; the log follows the view rather than a memory it
+    /// cannot model. Keeping the handle is what lets it still say which
+    /// install flipped.
+    CardDerezzed {
+        #[serde(default)]
+        install: crate::rules::state::InstallId,
+        #[serde(default)]
+        card: Option<CardId>,
+    },
     /// `Effect::SwapInstalledIce` exchanged `a`'s and `b`'s server/slot
     /// positions.
     ///
@@ -85,7 +98,18 @@ pub enum GameEvent {
     /// `Effect::MoveThisCardToRoot` carried a root-slot Corp card from one
     /// server's root to another's (Mercia B4LL4RD following the ice it
     /// installed). Not an install — no `CardInstalled` accompanies it.
-    CardMoved { card: CardId, from: ServerId, to: ServerId },
+    /// Handle public, identity strikeable — see `CardInstalled`. The card
+    /// keeps its install id across the move (`Effect::MoveThisCardToRoot`),
+    /// and both servers are public, so a viewer who cannot name the card
+    /// still watched it leave one root and arrive in another.
+    CardMoved {
+        #[serde(default)]
+        install: crate::rules::state::InstallId,
+        #[serde(default)]
+        card: Option<CardId>,
+        from: ServerId,
+        to: ServerId,
+    },
     RunInitiated { server: ServerId },
     EventPlayed { side: Side, card: CardId },
     /// `from_archives`: the card was played out of Archives rather than
@@ -292,7 +316,21 @@ pub enum GameEvent {
     TrashAboutToResolve { target: CardTarget },
     DamagePrevented { amount: usize },
     TrashPrevented { target: CardTarget },
+    /// **Deliberately no install handle, unlike `CardInstalled`,
+    /// `CardAdvanced`, `IceSwapped`, `CardMoved` and `CardDerezzed`.**
+    ///
+    /// Those five keep a handle so `masking::mask_event_for_player` can
+    /// strike the identity and still say *which* install; the obvious next
+    /// step is to do the same here, and it would be a leak. A face-down
+    /// Corp card's counters are concealed in their own right —
+    /// `PublicInstalledCard::counters` is `None` for exactly this reason,
+    /// "whose counters would otherwise leak what it is (a *Nico Campaign*
+    /// draining credits is recognisable long before it is rezzed)" — so
+    /// "the counters on install #7 changed" publishes the very fact the
+    /// view withholds. These stay dropped whole for a viewer who cannot
+    /// identify the card (ROADMAP Phase 4 §1).
     CountersAdded { card: CardId, amount: u32 },
+    /// No install handle, for the reason on `CountersAdded`.
     CountersRemoved { card: CardId, amount: u32 },
     MaxHandSizeGained { side: Side, amount: u32 },
     /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw

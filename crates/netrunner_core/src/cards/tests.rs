@@ -3762,7 +3762,7 @@ mod system_gateway {
 
         assert_eq!(state.runner.rig[0].counters, 3);
         assert!(!state.corp.installed[0].rezzed, "3 counters should have derezzed the host ice");
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDerezzed { card } if card.0 == "wall_of_static")));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDerezzed { card: Some(card), .. } if card.0 == "wall_of_static")));
     }
 
     #[test]
@@ -6727,7 +6727,7 @@ mod system_gateway {
         assert_eq!(state.runner.heap, vec![CardId("maglectric_rapid".to_string())]);
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("the ice");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("derez it");
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDerezzed { card } if card.0 == "ice_wall")));
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDerezzed { card: Some(card), .. } if card.0 == "ice_wall")));
         assert!(!state.corp.installed[1].rezzed);
         assert!(state.corp.installed[0].rezzed, "the other one untouched");
 

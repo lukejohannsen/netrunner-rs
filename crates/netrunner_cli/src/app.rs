@@ -392,22 +392,50 @@ pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&Clie
     }
 }
 
+/// Whether the entry's own action line already says what `event` says, so
+/// the log does not print the same fact twice.
+///
+/// One helper rather than a guard on each arm: the pairs are few, and
+/// keeping them together is what makes "does this duplicate?" a question
+/// with one answer. Scoring and stealing are deliberately absent — their
+/// events carry the agenda's point value, which no action line does.
+fn action_implies(event: &GameEvent, action: &PublicAction) -> bool {
+    let visible = match action {
+        PublicAction::Visible(action) => Some(action),
+        // The only concealed shape that duplicates an event is an install.
+        PublicAction::Concealed(ConcealedAction::InstallCard { .. }) => {
+            return matches!(event, GameEvent::CardInstalled { .. })
+        }
+        PublicAction::Concealed(_) => None,
+    };
+    matches!(
+        (event, visible),
+        (GameEvent::CardInstalled { .. }, Some(PlayerAction::InstallCard { .. }))
+            | (GameEvent::IceRezzed { .. }, Some(PlayerAction::RezIce { .. }))
+            | (GameEvent::TagRemoved { .. }, Some(PlayerAction::RemoveTag))
+            | (GameEvent::SubroutineBroken { .. }, Some(PlayerAction::BreakSubroutineWithClick { .. }))
+            | (GameEvent::RunJackedOut { .. }, Some(PlayerAction::JackOut))
+    )
+}
+
 /// One extra log line for an event that says something the action line
 /// does not, or `None` for one that does not earn a line.
 ///
-/// The log is a list of *actions*; events are how it learns about things
-/// no action names. An install performed by a card's own text (Ansel 1.0)
-/// and an ice swap (Tāo Salonga, Brân 1.0) have no `PlayerAction` behind
-/// them at all, and an advance's resulting token count lives nowhere else.
-/// Before install handles reached these three events
-/// (`masking::mask_event_for_player`), a viewer who could not identify the
-/// card got no event at all and so could not be told any of it.
+/// **The criterion**: narrate an event when no `PlayerAction` already
+/// implies it (`action_implies`) and it changes something a player would
+/// want in a log. What a player *did* is the action line's job; what the
+/// cards did back is this one's. So the bookkeeping stays silent — clicks,
+/// priority, windows opening and closing, offers being made, credits
+/// moving — and the consequences do not: damage, tags, a trigger firing, a
+/// subroutine resolving, an agenda scored off a card's text, how a run
+/// ended, whether a trace landed. None of those has an action behind it,
+/// so before this the log could not mention them at all.
 ///
-/// Every identity here is an `Option` the masking layer may have struck,
-/// and this never reads it: `install_label` resolves the handle against
-/// the viewer's own `ClientView`, which is the same rule the board
-/// renderer follows, so a face-down install reads as its position in both
-/// places and can read as its title in neither.
+/// **No leak analysis of its own is needed here.** This runs on an
+/// already-masked entry, so any event that reaches it is one the viewer is
+/// entitled to. The single care is resolving an install handle, which goes
+/// through `install_label` against the viewer's own `ClientView` — the
+/// same rule the board renderer follows.
 ///
 /// Exhaustive with no catch-all, matching `mask_event_for_player`'s own
 /// discipline: a new event has to be classified as narrated or not rather
@@ -418,74 +446,143 @@ pub fn narrate_event(
     registry: &CardRegistry,
     view: Option<&ClientView>,
 ) -> Option<String> {
+    if action_implies(event, action) {
+        return None;
+    }
     let at = |id: &InstallId| install_label(id, registry, view);
-    match event {
-        // The action line already reads "Install a card into Remote 0"
-        // whenever a player clicked to install, so this earns a line only
-        // when something else put the card there.
-        GameEvent::CardInstalled { install, server, .. }
-            if !matches!(
-                action,
-                PublicAction::Visible(PlayerAction::InstallCard { .. })
-                    | PublicAction::Concealed(ConcealedAction::InstallCard { .. })
-            ) =>
-        {
-            Some(format!("installed {} into {:?}", at(install), server))
+    // For a line that states the rez change itself, so it does not read
+    // "derezzed the unrezzed ice at Remote(0)".
+    let place = |id: &InstallId| install_place_label(id, registry, view);
+    let title = |card: &netrunner_core::dsl::CardId| card_title(card, registry);
+    // A struck identity is the normal case for a masked entry; the handle
+    // carries the "which" instead.
+    let named = |card: &Option<netrunner_core::dsl::CardId>, id: &InstallId| match card {
+        Some(card) => title(card),
+        None => at(id),
+    };
+
+    let line = match event {
+        // ---- the board ----
+        GameEvent::CardInstalled { install, server, .. } => {
+            format!("installed {} into {server:?}", at(install))
         }
-        GameEvent::CardInstalled { .. } => None,
-        // Always: the count after the advancement is on no action.
-        GameEvent::CardAdvanced { install, advancement_tokens, .. } => Some(format!(
+        GameEvent::CardAdvanced { install, advancement_tokens, .. } => format!(
             "advanced {}, now at {advancement_tokens} advancement token{}",
             at(install),
             if *advancement_tokens == 1 { "" } else { "s" }
-        )),
-        // Always: no action names a swap, and both handles are public even
-        // when neither identity is.
-        GameEvent::IceSwapped { a, b, .. } if a == b => {
-            Some(format!("swapped the ice at {} for another", at(a)))
+        ),
+        GameEvent::IceSwapped { a, b, .. } if a == b => format!("swapped the ice at {} for another", at(a)),
+        GameEvent::IceSwapped { a, b, .. } => format!("swapped {} with {}", at(a), at(b)),
+        GameEvent::CardMoved { install, from, to, .. } => {
+            format!("moved {} from {from:?} to {to:?}", at(install))
         }
-        GameEvent::IceSwapped { a, b, .. } => Some(format!("swapped {} with {}", at(a), at(b))),
+        GameEvent::CardDerezzed { install, .. } => format!("derezzed {}", place(install)),
+        GameEvent::IceRezzed { install, card, server } => {
+            format!("rezzed {} protecting {server:?}", named(&Some(card.clone()), install))
+        }
+        GameEvent::CardTrashed { side, card } => format!("{side:?} trashed {}", title(card)),
+        GameEvent::CardsTrashedFromHq { count } => format!("trashed {count} card(s) from HQ"),
+
+        // ---- what the cards did ----
+        GameEvent::TriggerFired { card, trigger } => format!("{} triggered ({trigger:?})", title(card)),
+        GameEvent::SubroutineFired { card_id, index, .. } => {
+            format!("subroutine {} on {} fired", index + 1, title(card_id))
+        }
+        GameEvent::SubroutineBroken { card_id, index } => {
+            format!("broke subroutine {} on {}", index + 1, title(card_id))
+        }
+
+        // ---- harm ----
+        GameEvent::DamageTaken { damage_type, amount } => {
+            format!("the Runner took {amount} {} damage", format!("{damage_type:?}").to_lowercase())
+        }
+        GameEvent::RunnerFlatlined => "the Runner is flatlined".to_string(),
+        GameEvent::TagsGiven { side, amount } => format!("{side:?} took {amount} tag(s)"),
+        GameEvent::TagRemoved { side } => format!("{side:?} removed a tag"),
+        GameEvent::TagsRemoved { side, amount } => format!("{side:?} removed {amount} tag(s)"),
+        GameEvent::BadPublicityGiven { amount } => format!("the Corp took {amount} bad publicity"),
+        GameEvent::BadPublicityRemoved { amount } => format!("the Corp removed {amount} bad publicity"),
+
+        // ---- agendas ----
+        GameEvent::AgendaScored { card, agenda_points, .. } => {
+            format!("scored {} for {agenda_points} point(s)", title(card))
+        }
+        GameEvent::AgendaStolen { card, agenda_points } => {
+            format!("stole {} for {agenda_points} point(s)", title(card))
+        }
+        GameEvent::AgendaForfeited { card } => format!("forfeited {}", title(card)),
+
+        // ---- runs and traces ----
+        GameEvent::RunSucceeded { server } => format!("the run on {server:?} succeeded"),
+        GameEvent::RunJackedOut { server } => format!("the Runner jacked out of {server:?}"),
+        GameEvent::RunEndedByEffect { server } => format!("the run on {server:?} was ended"),
+        GameEvent::RunEndPrevented { server } => format!("the end of the run on {server:?} was prevented"),
+        GameEvent::TraceInitiated { base, initiating_card } => match initiating_card {
+            Some(card) => format!("{} started a trace with base strength {base}", title(card)),
+            None => format!("a trace started with base strength {base}"),
+        },
+        GameEvent::TraceSuccessful { corp_total, runner_total } => {
+            format!("the trace succeeded, {corp_total} against {runner_total}")
+        }
+        GameEvent::TraceAvoided { corp_total, runner_total } => {
+            format!("the trace was beaten, {corp_total} against {runner_total}")
+        }
+
+        // ---- the shape of the match ----
+        GameEvent::GameOver { winner } => format!("the game is over: {winner:?} wins"),
+        GameEvent::IdentityFlipped { side } => format!("{side:?}'s identity flipped"),
+        GameEvent::MemoryLimitExceeded { over_by } => format!("the Runner is {over_by} MU over the limit"),
+
         // Not narrated: the entry's action line already carries these, or
         // they are bookkeeping a player does not read a log for. Adding a
         // line here is the cheap way to say more.
         GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::CardDrawn { .. } |
-        GameEvent::IceApproached { .. } | GameEvent::IceEncountered { .. } | GameEvent::SubroutineBroken { ..
-        } | GameEvent::SubroutineFired { .. } | GameEvent::IceStrengthModified { .. } | GameEvent::IcePassed {
-        .. } | GameEvent::IceBypassed { .. } | GameEvent::ServerApproached { .. } | GameEvent::RunSucceeded {
-        .. } | GameEvent::RunJackedOut { .. } | GameEvent::RunCompleted { .. } | GameEvent::IceRezzed { .. } |
-        GameEvent::CardDerezzed { .. } | GameEvent::CardMoved { .. } | GameEvent::RunInitiated { .. } |
-        GameEvent::EventPlayed { .. } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { ..
-        } | GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. } | GameEvent::CardAccessed
-        { .. } | GameEvent::TurnEnded { .. } | GameEvent::TurnStarted { .. } | GameEvent::DiscardPending { ..
+        GameEvent::IceApproached { .. } | GameEvent::IceEncountered { .. } | GameEvent::IceStrengthModified
+        { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. } | GameEvent::ServerApproached {
+        .. } | GameEvent::RunCompleted { .. } | GameEvent::RunInitiated { .. } | GameEvent::EventPlayed { ..
+        } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { .. } |
+        GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. } | GameEvent::CardAccessed {
+        .. } | GameEvent::TurnEnded { .. } | GameEvent::TurnStarted { .. } | GameEvent::DiscardPending { ..
         } | GameEvent::DiscardPhaseEnded { .. } | GameEvent::CardDiscarded { .. } |
-        GameEvent::CardAddedToBottomOfStack { .. } | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped
-        { .. } | GameEvent::ActionPhaseEnded { .. } | GameEvent::RunEndPrevented { .. } |
-        GameEvent::RunRedirected { .. } | GameEvent::AgendaStolen { .. } | GameEvent::DamageTaken { .. } |
-        GameEvent::RunnerFlatlined | GameEvent::CreditsSpent { .. } | GameEvent::TagsGiven { .. } |
-        GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. } | GameEvent::CardRemovedFromGame { .. }
-        | GameEvent::CardsTrashedFromHq { .. } | GameEvent::AgendaForfeited { .. } |
-        GameEvent::AbilityGainedCredits { .. } | GameEvent::RunEndedByEffect { .. } | GameEvent::GameOver { ..
-        } | GameEvent::AbilityActivated { .. } | GameEvent::CardTrashedFromAccess { .. } |
-        GameEvent::AccessPassed { .. } | GameEvent::PaidAbilityWindowOpened { .. } | GameEvent::PriorityPassed
-        { .. } | GameEvent::PaidAbilityWindowClosed | GameEvent::StrengthBoosted { .. } |
-        GameEvent::TraceInitiated { .. } | GameEvent::TraceCorpBidSubmitted { .. } |
-        GameEvent::TraceRunnerBidSubmitted { .. } | GameEvent::TraceAvoided { .. } |
-        GameEvent::TraceSuccessful { .. } | GameEvent::TagRemoved { .. } | GameEvent::TagsRemoved { .. } |
-        GameEvent::TriggerOrderPending { .. } | GameEvent::TriggerOrderChosen { .. } | GameEvent::TriggerFired
-        { .. } | GameEvent::VirusCountersPurged { .. } | GameEvent::BadPublicityCreditsSpent { .. } |
+        GameEvent::CardAddedToBottomOfStack { .. } | GameEvent::CardHosted { .. } |
+        GameEvent::ActionPhaseEnded { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { ..
+        } | GameEvent::TagsCleared { .. } | GameEvent::CardRemovedFromGame { .. } |
+        GameEvent::AbilityGainedCredits { .. } | GameEvent::AbilityActivated { .. } |
+        GameEvent::CardTrashedFromAccess { .. } | GameEvent::AccessPassed { .. } |
+        GameEvent::PaidAbilityWindowOpened { .. } | GameEvent::PriorityPassed { .. } |
+        GameEvent::PaidAbilityWindowClosed | GameEvent::StrengthBoosted { .. } |
+        GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. } |
+        GameEvent::TriggerOrderPending { .. } | GameEvent::TriggerOrderChosen { .. } |
+        GameEvent::VirusCountersPurged { .. } | GameEvent::BadPublicityCreditsSpent { .. } |
         GameEvent::BonusRunCreditsSpent { .. } | GameEvent::CardsSelected { .. } |
-        GameEvent::PendingCardSelectionOffered { .. } | GameEvent::MemoryLimitExceeded { .. } |
-        GameEvent::PendingServerChoiceOffered { .. } | GameEvent::BadPublicityGiven { .. } |
-        GameEvent::BadPublicityRemoved { .. } | GameEvent::HandKept { .. } | GameEvent::MulliganTaken { .. } |
-        GameEvent::AdditionalAccessGranted { .. } | GameEvent::AccessReplacementSet { .. } |
-        GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. } |
-        GameEvent::ClicksGained { .. } | GameEvent::RecurringCreditsSpent { .. } | GameEvent::AgendaScored {
-        .. } | GameEvent::DamageAboutToResolve { .. } | GameEvent::TrashAboutToResolve { .. } |
-        GameEvent::DamagePrevented { .. } | GameEvent::TrashPrevented { .. } | GameEvent::CountersAdded { .. }
-        | GameEvent::CountersRemoved { .. } | GameEvent::MaxHandSizeGained { .. } |
-        GameEvent::BasicDrawActionTaken { .. } | GameEvent::PendingChoicePresented { .. } |
-        GameEvent::PendingChoiceResolved { .. } | GameEvent::PendingPaidChoiceOffered { .. } |
-        GameEvent::PendingPaidChoiceAccepted { .. } | GameEvent::PendingPaidChoiceDeclined { .. } => None,
+        GameEvent::PendingCardSelectionOffered { .. } | GameEvent::PendingServerChoiceOffered { .. } |
+        GameEvent::HandKept { .. } | GameEvent::MulliganTaken { .. } | GameEvent::AdditionalAccessGranted {
+        .. } | GameEvent::AccessReplacementSet { .. } | GameEvent::AccessReplaced { .. } |
+        GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. } | GameEvent::ClicksGained { .. } |
+        GameEvent::RecurringCreditsSpent { .. } | GameEvent::DamageAboutToResolve { .. } |
+        GameEvent::TrashAboutToResolve { .. } | GameEvent::DamagePrevented { .. } |
+        GameEvent::TrashPrevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { ..
+        } | GameEvent::MaxHandSizeGained { .. } | GameEvent::BasicDrawActionTaken { .. } |
+        GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. } |
+        GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. } |
+        GameEvent::PendingPaidChoiceDeclined { .. } => return None,
+    };
+    Some(line)
+}
+
+/// `install_label` without the "unrezzed" qualifier: "the ice at
+/// Remote(0)" rather than "the unrezzed ice at Remote(0)".
+///
+/// For a line that states the rez change itself — a derez reads
+/// "derezzed the unrezzed ice at Remote(0)" through the other one, which
+/// is accurate and badly written. Identical in every other respect, and it
+/// conceals exactly as much: a masked install is still named by position
+/// and never by title.
+pub fn install_place_label(id: &InstallId, registry: &CardRegistry, view: Option<&ClientView>) -> String {
+    let full = install_label(id, registry, view);
+    match full.strip_prefix("the unrezzed ") {
+        Some(rest) => format!("the {rest}"),
+        None => full,
     }
 }
 
@@ -823,13 +920,16 @@ mod tests {
     /// rendered the way the TUI renders it.
     ///
     /// The tests above build one event and check one line. This plays
-    /// actual games and asserts the property the change exists for — a
-    /// Runner watching a bot Corp advance a face-down card is *told* so,
-    /// by position, and is still never told what the card is. Before
-    /// install handles reached these events the event was dropped for that
-    /// seat and the log said nothing at all.
+    /// actual games and asserts two things at once. **The fog rule at the
+    /// UI layer**: no rendered line, from any of the narration arms, ever
+    /// names a card that seat's own view conceals — checked against the
+    /// board as it stood when each line was written, since a card rezzed
+    /// later is legitimately nameable later. And **the payoff**: a Runner
+    /// watching a bot Corp advance a face-down card is told so, by
+    /// position, where before install handles reached these events the
+    /// event was dropped for that seat and the log said nothing at all.
     #[test]
-    fn a_real_match_tells_the_runner_about_advances_without_naming_the_card() {
+    fn no_rendered_log_line_names_a_card_the_seat_conceals() {
         use netrunner_bots::{BotAgent, HeuristicAgent};
         use netrunner_core::cards::register_playable_cards;
         use netrunner_core::rules::GameState;
@@ -869,6 +969,30 @@ mod tests {
                         // line*, not against everything ever hidden: a card
                         // rezzed later is legitimately nameable later, and
                         // the rule is only ever about the moment of writing.
+                        //
+                        // Titles are not unique per install, so a title the
+                        // view shows *somewhere* is subtracted — two copies
+                        // of one ice, one rezzed and one not, make the name
+                        // legitimately printable. That is the same
+                        // subtraction the sweep's `visible_card_ids` does,
+                        // and what survives it is the real rule: a title
+                        // nothing in this seat's view accounts for must
+                        // never reach a log line.
+                        let nameable: std::collections::HashSet<String> = seat_view
+                            .corp
+                            .servers
+                            .iter()
+                            .flat_map(|server| server.ice.iter().chain(server.root.iter()))
+                            .filter_map(|card| card.card.clone())
+                            .chain(seat_view.corp.hq_cards.clone().unwrap_or_default())
+                            .chain(seat_view.corp.archives.iter().filter_map(|a| a.card.clone()))
+                            .chain(seat_view.corp.scored_agendas.iter().map(|a| a.card.clone()))
+                            .chain(seat_view.runner.grip_cards.clone().unwrap_or_default())
+                            .chain(seat_view.runner.rig.iter().map(|c| c.card.clone()))
+                            .chain(seat_view.runner.heap.iter().cloned())
+                            .chain(seat_view.runner.scored_agendas.iter().cloned())
+                            .filter_map(|card| session.registry().get(&card).map(|d| d.title.clone()))
+                            .collect();
                         let concealed: Vec<String> = seat_view
                             .corp
                             .servers
@@ -878,8 +1002,34 @@ mod tests {
                             .filter_map(|card| session.state().find_corp_install(card.install_id))
                             .filter_map(|real| session.registry().get(&real.card))
                             .map(|def| def.title.clone())
+                            .filter(|title| !nameable.contains(title))
+                            .collect();
+                        // A seat's own action may name what it just saw —
+                        // the Runner accessed the card and is passing on
+                        // it. `mask_action_for_player` returns `Visible`
+                        // for one's own action for exactly this reason, and
+                        // the sweep's entry-level gate makes the same
+                        // exemption. Only the action line earns it; the
+                        // narrated lines under it are still checked.
+                        let own_action_line = log.get(before).cloned().unwrap_or_default();
+                        let concealed: Vec<String> = concealed
+                            .into_iter()
+                            .filter(|title| !(viewer.side() == Some(entry.side) && own_action_line.contains(title.as_str())))
                             .collect();
                         for line in &log[before..] {
+                            // **Every line, not only the advances.** This
+                            // is the fog rule at the layer a person
+                            // actually reads. The sweep's own scan checks
+                            // the masked *entry*; nothing checked the
+                            // strings the UI prints from it, and those are
+                            // built by thirty-one narration arms plus two
+                            // handle resolvers.
+                            for title in &concealed {
+                                assert!(
+                                    !line.contains(title.as_str()),
+                                    "seed {seed}: a log line names {title}, concealed on the Runner's own board: {line}"
+                                );
+                            }
                             if !line.contains("advanced ") {
                                 continue;
                             }
@@ -888,12 +1038,6 @@ mod tests {
                                 masked_advance_lines += 1;
                             }
                             assert!(line.contains("advancement token"), "seed {seed}: no count on {line}");
-                            for title in &concealed {
-                                assert!(
-                                    !line.contains(title.as_str()),
-                                    "seed {seed}: an advance line names {title}, concealed on the Runner's own board: {line}"
-                                );
-                            }
                         }
                     }
                     SessionStep::Applied { .. } => {}
