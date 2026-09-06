@@ -20,6 +20,20 @@ use crate::personality::Personality;
 /// assigns at `GameOver`.
 pub trait PolicyEvaluator: Send + Sync {
     fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32);
+
+    /// The search root's score in this evaluator's own units, for an
+    /// evaluator whose value is a static score rather than a learned
+    /// estimate; `evaluate_from` then reports every leaf *relative* to it.
+    /// A learned value is already a position estimate and anchors at 0.
+    fn anchor(&self, _state: &GameState, _registry: &CardRegistry) -> f32 {
+        0.0
+    }
+
+    /// `evaluate`, with the value taken relative to `anchor`. The default
+    /// ignores the anchor, which is right for a network.
+    fn evaluate_from(&self, state: &GameState, registry: &CardRegistry, _anchor: f32) -> (Vec<f32>, f32) {
+        self.evaluate(state, registry)
+    }
 }
 
 /// Lets a boxed trait object stand in for `impl PolicyEvaluator + 'static`
@@ -31,6 +45,12 @@ impl PolicyEvaluator for Box<dyn PolicyEvaluator> {
     fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
         (**self).evaluate(state, registry)
     }
+    fn anchor(&self, state: &GameState, registry: &CardRegistry) -> f32 {
+        (**self).anchor(state, registry)
+    }
+    fn evaluate_from(&self, state: &GameState, registry: &CardRegistry, anchor: f32) -> (Vec<f32>, f32) {
+        (**self).evaluate_from(state, registry, anchor)
+    }
 }
 
 /// Rescales `evaluate_state`'s unbounded score into PUCT's expected
@@ -38,6 +58,12 @@ impl PolicyEvaluator for Box<dyn PolicyEvaluator> {
 /// ±20/agenda point plus smaller credit/tag/board terms, so a mid-game
 /// lead of ~±60 lands around ±0.5 rather than saturating immediately.
 const VALUE_SQUASH_SCALE: f64 = 100.0;
+/// `evaluate_from`'s scale: a click's worth (a credit, 0.4) lands at 0.08,
+/// a subroutine (1.0) at 0.2, a breaker (3.0) at 0.54, and a point of
+/// agenda (20) saturates — the search should never trade a point for any
+/// number of clicks, and it never needs to rank two point swings against
+/// each other within one decision.
+const RELATIVE_VALUE_SCALE: f64 = 5.0;
 
 /// Baseline evaluator with no learned network behind it: priors are
 /// uniform over whichever slots `get_action_mask` marks legal, and value is
@@ -61,18 +87,49 @@ impl UniformPolicyEvaluator {
     }
 }
 
-impl PolicyEvaluator for UniformPolicyEvaluator {
-    fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
+impl UniformPolicyEvaluator {
+    /// Uniform over the legal slots. No legal actions (an over/stuck
+    /// state) still needs a correctly-sized, all-zero prior vector —
+    /// `PuctNode::expand` handles that by simply producing no edges.
+    fn priors(&self, state: &GameState, registry: &CardRegistry) -> Vec<f32> {
         let mask = get_action_mask(state, registry);
         let legal_count = mask.iter().filter(|&&legal| legal).count();
-        // No legal actions (an over/stuck state) still needs a
-        // correctly-sized, all-zero prior vector — `PuctNode::expand`
-        // handles that by simply producing no edges.
         let prior = if legal_count == 0 { 0.0 } else { 1.0 / legal_count as f32 };
-        let priors = mask.iter().map(|&legal| if legal { prior } else { 0.0 }).collect();
+        mask.iter().map(|&legal| if legal { prior } else { 0.0 }).collect()
+    }
+}
 
+impl PolicyEvaluator for UniformPolicyEvaluator {
+    fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
         let value = (evaluate_state_with(state, self.side, registry, &self.weights) / VALUE_SQUASH_SCALE).tanh() as f32;
-        (priors, value)
+        (self.priors(state, registry), value)
+    }
+
+    fn anchor(&self, state: &GameState, registry: &CardRegistry) -> f32 {
+        evaluate_state_with(state, self.side, registry, &self.weights) as f32
+    }
+
+    /// The leaf's static score minus the root's, squashed at a scale sized
+    /// to one decision rather than to the whole game. This is what makes
+    /// PUCT over a static evaluator a search at all.
+    ///
+    /// Absolute values put every candidate of an ordinary Runner turn
+    /// within 0.005 of each other — a credit is 0.4 / `VALUE_SQUASH_SCALE`
+    /// — so the exploration term alone set the visit counts (12–19 per
+    /// candidate in a traced puct@128 game, whatever their values) and the
+    /// argmax was noise; and once the Runner was two agendas down the
+    /// whole subtree sat in `tanh`'s flat tail at −0.69, where even that
+    /// spread collapsed five-fold. Against the heuristic Corp the PUCT
+    /// Runner won 21.9% of 192 games, the random Runner 11.5%. Taken
+    /// relative to the root at scale 5 the same search wins 41.1%, and the
+    /// PUCT Corp against the heuristic Runner 41.7% → 51.0%. Scale 2
+    /// measured the same as 5 (40.6%) and 10 worse (34.9%); depth 2–16 and
+    /// four samples per decision measured nothing either side of it
+    /// (ROADMAP Phase 3 §1, the Runner chair of PUCT).
+    fn evaluate_from(&self, state: &GameState, registry: &CardRegistry, anchor: f32) -> (Vec<f32>, f32) {
+        let raw = evaluate_state_with(state, self.side, registry, &self.weights);
+        let value = ((raw - anchor as f64) / RELATIVE_VALUE_SCALE).tanh() as f32;
+        (self.priors(state, registry), value)
     }
 }
 
@@ -116,6 +173,14 @@ impl PolicyEvaluator for SplitEvaluator {
         let (_discarded_priors, value) = self.value_from.evaluate(state, registry);
         (priors, value)
     }
+    fn anchor(&self, state: &GameState, registry: &CardRegistry) -> f32 {
+        self.value_from.anchor(state, registry)
+    }
+    fn evaluate_from(&self, state: &GameState, registry: &CardRegistry, anchor: f32) -> (Vec<f32>, f32) {
+        let (priors, _discarded_value) = self.priors_from.evaluate(state, registry);
+        let (_discarded_priors, value) = self.value_from.evaluate_from(state, registry, anchor);
+        (priors, value)
+    }
 }
 
 /// Mixes another evaluator's priors toward uniform over the legal set:
@@ -147,9 +212,8 @@ impl MixedPriorEvaluator {
     }
 }
 
-impl PolicyEvaluator for MixedPriorEvaluator {
-    fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
-        let (priors, value) = self.inner.evaluate(state, registry);
+impl MixedPriorEvaluator {
+    fn mix(&self, state: &GameState, registry: &CardRegistry, priors: Vec<f32>, value: f32) -> (Vec<f32>, f32) {
         if self.epsilon <= 0.0 {
             return (priors, value);
         }
@@ -169,6 +233,20 @@ impl PolicyEvaluator for MixedPriorEvaluator {
             .map(|(&prior, &legal)| if legal { (1.0 - self.epsilon) * prior + self.epsilon * uniform } else { 0.0 })
             .collect();
         (mixed, value)
+    }
+}
+
+impl PolicyEvaluator for MixedPriorEvaluator {
+    fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
+        let (priors, value) = self.inner.evaluate(state, registry);
+        self.mix(state, registry, priors, value)
+    }
+    fn anchor(&self, state: &GameState, registry: &CardRegistry) -> f32 {
+        self.inner.anchor(state, registry)
+    }
+    fn evaluate_from(&self, state: &GameState, registry: &CardRegistry, anchor: f32) -> (Vec<f32>, f32) {
+        let (priors, value) = self.inner.evaluate_from(state, registry, anchor);
+        self.mix(state, registry, priors, value)
     }
 }
 
