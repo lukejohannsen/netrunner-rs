@@ -191,7 +191,7 @@ pub fn event_card(event: &GameEvent) -> Option<&CardId> {
         // `ability::triggering_card`.
         GameEvent::CardInstalled { card, .. } | GameEvent::CardAdvanced { card, .. } => card.as_ref(),
         GameEvent::IceRezzed { card, .. }
-        | GameEvent::CardDerezzed { card }
+        | GameEvent::CardDerezzed { card: Some(card), .. }
         | GameEvent::EventPlayed { card, .. }
         | GameEvent::OperationPlayed { card, .. }
         | GameEvent::HardwareInstalled { card, .. }

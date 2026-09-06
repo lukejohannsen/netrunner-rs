@@ -437,7 +437,7 @@ fn assert_no_concealed_card_is_named_in_log(
     }
 }
 
-/// The other half of the fog rule for the three events that survive
+/// The other half of the fog rule for the five events that survive
 /// masking with their identity struck: **the handle has to be real.**
 ///
 /// The scan above proves a masked entry names no card it should not. It
@@ -451,7 +451,10 @@ fn assert_every_install_event_keeps_its_handle(entry: &PublicHistoryEntry, seed:
     use netrunner_core::rules::InstallId;
     for event in &entry.events {
         let handles: Vec<InstallId> = match event {
-            GameEvent::CardInstalled { install, .. } | GameEvent::CardAdvanced { install, .. } => vec![*install],
+            GameEvent::CardInstalled { install, .. }
+            | GameEvent::CardAdvanced { install, .. }
+            | GameEvent::CardMoved { install, .. }
+            | GameEvent::CardDerezzed { install, .. } => vec![*install],
             GameEvent::IceSwapped { a, b, .. } => vec![*a, *b],
             _ => continue,
         };
