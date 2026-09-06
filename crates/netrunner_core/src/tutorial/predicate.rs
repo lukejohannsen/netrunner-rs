@@ -187,8 +187,10 @@ pub fn event_card(event: &GameEvent) -> Option<&CardId> {
         | GameEvent::IceStrengthModified { card_id, .. }
         | GameEvent::AbilityActivated { card_id, .. }
         | GameEvent::StrengthBoosted { card_id, .. } => Some(card_id),
-        GameEvent::CardInstalled { card, .. }
-        | GameEvent::IceRezzed { card, .. }
+        // Both carry an `Option` the masking layer may have struck; see
+        // `ability::triggering_card`.
+        GameEvent::CardInstalled { card, .. } | GameEvent::CardAdvanced { card, .. } => card.as_ref(),
+        GameEvent::IceRezzed { card, .. }
         | GameEvent::CardDerezzed { card }
         | GameEvent::EventPlayed { card, .. }
         | GameEvent::OperationPlayed { card, .. }
@@ -200,7 +202,6 @@ pub fn event_card(event: &GameEvent) -> Option<&CardId> {
         | GameEvent::AgendaStolen { card, .. }
         | GameEvent::CardTrashed { card, .. }
         | GameEvent::CardRemovedFromGame { card, .. }
-        | GameEvent::CardAdvanced { card, .. }
         | GameEvent::CardTrashedFromAccess { card, .. }
         | GameEvent::AccessPassed { card }
         | GameEvent::TriggerOrderChosen { card, .. }

@@ -25,7 +25,7 @@ Code and docs address entries as `ROADMAP <phase> §<n>` — "Phase 2 §5", "Rul
 1. **The first volume run on the reworked observation** (Phase 2 §5 items 18–19): `data/checkpoints/launch_overnight.sh` is written for it — masked objective, 384-game arena, per-chair verdicts are now the loop's defaults; `data/selfplay` and `data/checkpoints` are otherwise empty.
 2. **The Corp damage/pressure term** (Phase 3 §1): the lever Phật Gioan, Measured Response and the dead `opponent_grip_weight` all reduce to, plus a Corp counterpart to `ACTIVE_RUN_WEIGHT` for Anoetic Void.
 3. **Phase 1 §5 Format Support.**
-4. Small open items, each recorded in its area file: `netrunner_gym` can still toggle-loop; the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; Core Set cards have no sweep coverage; an `InstallId` on install/advance/swap events for narrated logs.
+4. Small open items, each recorded in its area file: `netrunner_gym` can still toggle-loop; the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `netrunner_single_player/tests/common/mod.rs` still carries a filler fixture; Core Set cards have no sweep coverage; `CountersAdded`/`CountersRemoved`/`CardMoved`/`CardDerezzed` still carry no install handle, so a masked log drops them whole (Phase 4 §1).
 
 ## How this file is kept
 

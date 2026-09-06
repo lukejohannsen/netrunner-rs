@@ -33,7 +33,23 @@ pub enum GameEvent {
     RunSucceeded { server: ServerId },
     RunJackedOut { server: ServerId },
     RunCompleted { server: ServerId },
-    CardInstalled { side: Side, card: CardId, server: ServerId },
+    /// `install` names which copy landed, and is never masked — an install
+    /// handle is public the moment the card hits the table
+    /// (`PublicInstalledCard::install_id`). `card` is `None` exactly when
+    /// `masking::mask_event_for_player` struck it out for a viewer who may
+    /// not identify a face-down Corp install; **the engine always emits
+    /// `Some`**. Before the handle existed the whole event was dropped for
+    /// that viewer, so a Runner's log said nothing at all about an install
+    /// driven by a card's own text (Ansel 1.0), which no action names
+    /// either. `serde(default)` on both for histories recorded before.
+    CardInstalled {
+        side: Side,
+        #[serde(default)]
+        install: crate::rules::state::InstallId,
+        #[serde(default)]
+        card: Option<CardId>,
+        server: ServerId,
+    },
     /// `install` names which copy was rezzed, so `Trigger::OnRez` resolves
     /// on that copy — two Nico Campaigns used to load both sets of counters
     /// onto the first. `serde(default)` (the placeholder) for histories
@@ -50,7 +66,22 @@ pub enum GameEvent {
     CardDerezzed { card: CardId },
     /// `Effect::SwapInstalledIce` exchanged `a`'s and `b`'s server/slot
     /// positions.
-    IceSwapped { a: CardId, b: CardId },
+    ///
+    /// The two handles are public and the two identities are struck
+    /// independently — see `CardInstalled`. A swap is the case that needs
+    /// this most: it comes from a card's text (Tāo Salonga, Brân 1.0) and
+    /// there is no `PlayerAction` naming it, so when this event was dropped
+    /// the Runner's log had no record that ice had moved at all.
+    IceSwapped {
+        #[serde(default)]
+        a: crate::rules::state::InstallId,
+        #[serde(default)]
+        b: crate::rules::state::InstallId,
+        #[serde(default)]
+        a_card: Option<CardId>,
+        #[serde(default)]
+        b_card: Option<CardId>,
+    },
     /// `Effect::MoveThisCardToRoot` carried a root-slot Corp card from one
     /// server's root to another's (Mercia B4LL4RD following the ice it
     /// installed). Not an install — no `CardInstalled` accompanies it.
@@ -158,7 +189,22 @@ pub enum GameEvent {
     RunEndedByEffect { server: ServerId },
     GameOver { winner: Side },
     AbilityActivated { side: Side, card_id: CardId, ability_index: usize },
-    CardAdvanced { card: CardId, advancement_tokens: u32 },
+    /// `advancement_tokens` is the count *after* this advancement, which is
+    /// what `EffectRequirement::WasFirstAdvancementThisCard` reads off the
+    /// resolution context rather than needing a flag of its own.
+    ///
+    /// Handle public, identity strikeable — see `CardInstalled`. Tokens on
+    /// a face-down card are themselves public
+    /// (`PublicInstalledCard::advancement_tokens` is never masked), so
+    /// dropping this event told the Runner less than their own board
+    /// already showed them.
+    CardAdvanced {
+        #[serde(default)]
+        install: crate::rules::state::InstallId,
+        #[serde(default)]
+        card: Option<CardId>,
+        advancement_tokens: u32,
+    },
     CardTrashedFromAccess { card: CardId, cost_paid: u32 },
     AccessPassed { card: CardId },
     PaidAbilityWindowOpened { side: Side },

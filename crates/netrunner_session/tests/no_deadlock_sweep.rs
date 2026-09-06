@@ -268,6 +268,7 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
                         let entry = session.last_entry_for(viewer).expect("the session records history");
                         let view = session.view_for(viewer);
                         assert_no_concealed_card_is_named_in_log(&entry, &view, session.state(), seed, &matchup, viewer);
+                        assert_every_install_event_keeps_its_handle(&entry, seed, &matchup, viewer);
                     }
                 }
                 // An action resolved with nothing further owed — keep pumping.
@@ -433,6 +434,34 @@ fn assert_no_concealed_card_is_named_in_log(
             !rendered.contains(&quoted),
             "seed {seed} ({matchup}): {side:?}'s log entry names {id}, which their own view conceals — {rendered}"
         );
+    }
+}
+
+/// The other half of the fog rule for the three events that survive
+/// masking with their identity struck: **the handle has to be real.**
+///
+/// The scan above proves a masked entry names no card it should not. It
+/// cannot prove the entry still says anything at all — an event emitted
+/// with `InstallId::PLACEHOLDER` would pass it and leave the log unable to
+/// name *which* install was involved, which is the whole point of carrying
+/// the handle (ROADMAP Phase 4 §1). Before the handles existed these
+/// events were dropped outright; this is what stops them regressing to
+/// that in substance while still being present in form.
+fn assert_every_install_event_keeps_its_handle(entry: &PublicHistoryEntry, seed: u64, matchup: &str, side: Viewer) {
+    use netrunner_core::rules::InstallId;
+    for event in &entry.events {
+        let handles: Vec<InstallId> = match event {
+            GameEvent::CardInstalled { install, .. } | GameEvent::CardAdvanced { install, .. } => vec![*install],
+            GameEvent::IceSwapped { a, b, .. } => vec![*a, *b],
+            _ => continue,
+        };
+        for handle in handles {
+            assert_ne!(
+                handle,
+                InstallId::PLACEHOLDER,
+                "seed {seed} ({matchup}): {side:?}'s {event:?} carries no install handle, so the log cannot say which"
+            );
+        }
     }
 }
 

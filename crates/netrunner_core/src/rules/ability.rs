@@ -484,11 +484,13 @@ pub fn evaluate_effect(
             state.corp.installed[pos_a].slot = slot_b;
             state.corp.installed[pos_b].server = server_a;
             state.corp.installed[pos_b].slot = slot_a;
-            // The event names the cards, not the installs, because
-            // `Trigger` dispatch is keyed by `CardId`. A client sees it
-            // only through `masking::mask_event_for_player`, which drops
-            // it for the Runner while either card is unrezzed.
-            Ok(vec![GameEvent::IceSwapped { a: card_a, b: card_b }])
+            // Both handles and both identities: `Trigger` dispatch is
+            // keyed by `CardId`, and the handles are what let
+            // `masking::mask_event_for_player` strike an identity the
+            // Runner may not learn while keeping the fact that these two
+            // installs traded places — which is on the table for anyone to
+            // see, and which no `PlayerAction` names.
+            Ok(vec![GameEvent::IceSwapped { a: *a, b: *b, a_card: Some(card_a), b_card: Some(card_b) }])
         }
 
         Effect::InstallFromZoneIgnoringCost { card_id, origin_zone, into, slot, insert_after } => {
@@ -523,9 +525,10 @@ pub fn evaluate_effect(
             if resolved_slot == crate::rules::InstallSlot::Ice && !matches!(card_def.card_type, crate::dsl::CardType::Ice(_)) {
                 return Err(RulesError::CardTypeMismatch { card: card_id.clone(), expected: "ice" });
             }
+            let install_id = state.allocate_install_id();
             let new_card = crate::rules::InstalledCard {
                 card: card_id.clone(),
-                install_id: state.allocate_install_id(),
+                install_id,
                 server: *into,
                 slot: resolved_slot,
                 rezzed: false,
@@ -543,7 +546,12 @@ pub fn evaluate_effect(
                 }
                 None => state.corp.installed.push(new_card),
             }
-            Ok(vec![GameEvent::CardInstalled { side: Side::Corp, card: card_id.clone(), server: *into }])
+            Ok(vec![GameEvent::CardInstalled {
+                side: Side::Corp,
+                install: install_id,
+                card: Some(card_id.clone()),
+                server: *into,
+            }])
         }
 
         Effect::DrawCardsAmount(side, amount) => {
@@ -753,7 +761,8 @@ pub fn evaluate_effect(
                 acting_corp_install_mut(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
             installed.advancement_tokens = installed.advancement_tokens.saturating_add(*amount);
             let advancement_tokens = installed.advancement_tokens;
-            Ok(vec![GameEvent::CardAdvanced { card: card_id.clone(), advancement_tokens }])
+            let install = installed.install_id;
+            Ok(vec![GameEvent::CardAdvanced { install, card: Some(card_id.clone()), advancement_tokens }])
         }
 
         Effect::BoostStrength { amount, duration } => {
@@ -2595,8 +2604,13 @@ pub fn check_requirement(
 /// subject card answers `None`, which fails the requirement.
 fn triggering_card(event: &GameEvent) -> Option<&CardId> {
     match event {
+        // `CardInstalled` carries an `Option`, struck by
+        // `masking::mask_event_for_player`. Dispatch only ever sees the
+        // engine's own unmasked events, so this is `Some` in practice; a
+        // masked one answering `None` is the same answer every event with
+        // no subject card gives.
+        GameEvent::CardInstalled { card, .. } => card.as_ref(),
         GameEvent::IceRezzed { card, .. }
-        | GameEvent::CardInstalled { card, .. }
         | GameEvent::ProgramInstalled { card, .. }
         | GameEvent::HardwareInstalled { card, .. }
         | GameEvent::ResourceInstalled { card, .. }

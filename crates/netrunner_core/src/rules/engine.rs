@@ -569,7 +569,8 @@ pub(crate) fn place_corp_card(
     }
     let installed_event = GameEvent::CardInstalled {
         side,
-        card: card_id,
+        install: install_id,
+        card: Some(card_id),
         server: zone,
     };
     events.push(installed_event.clone());
@@ -2060,11 +2061,12 @@ fn advance_card(
 
     installed.advancement_tokens += 1;
     let advancement_tokens = installed.advancement_tokens;
+    let install = installed.install_id;
     // No "was this the first advancement?" flag is recorded: the event
     // below already carries `advancement_tokens`, and
     // `EffectRequirement::WasFirstAdvancementThisCard` reads it from the
     // `ability::ResolutionContext` the dispatch builds.
-    let advanced_event = GameEvent::CardAdvanced { card: card_id, advancement_tokens };
+    let advanced_event = GameEvent::CardAdvanced { install, card: Some(card_id), advancement_tokens };
     events.push(advanced_event.clone());
     events.extend(dispatcher::dispatch_event(&mut next, registry, &advanced_event)?);
 
@@ -2789,7 +2791,8 @@ mod tests {
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CardInstalled {
                     side: Side::Corp,
-                    card: card_id,
+                    install: next.corp.installed[0].install_id,
+                    card: Some(card_id),
                     server: ServerId::Hq,
                 },
             ]
@@ -5407,7 +5410,11 @@ mod tests {
             vec![
                 GameEvent::ClickSpent { side: Side::Corp },
                 GameEvent::CreditsSpent { side: Side::Corp, amount: 1 },
-                GameEvent::CardAdvanced { card: card_id, advancement_tokens: 2 },
+                GameEvent::CardAdvanced {
+                    install: InstallId(1059),
+                    card: Some(card_id),
+                    advancement_tokens: 2,
+                },
             ]
         );
     }
