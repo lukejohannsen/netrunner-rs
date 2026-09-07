@@ -163,6 +163,69 @@ The bar for any change: `cargo test --workspace` fully green and `cargo clippy -
 
 ---
 
+## Git Hygiene
+
+These are this repository's own conventions, read off its history — not generic
+advice. A commit here is a record someone will read in a year to find out why a
+number moved, so the rules below are mostly about making that possible.
+
+### Branches
+
+- **One branch per landed idea**, named `<type>/<kebab-subject>`. The types in
+  use are `feat/`, `fix/`, `docs/`, `chore/` and — distinctive to this repo —
+  **`diag/`, a branch whose product is a *measurement* rather than a behaviour
+  change** (`diag/policy-head-by-segment`, `diag/value-only-rerun`). Use it when
+  the finding is the deliverable and the code change is scaffolding; it keeps
+  "we learned this" out of `feat/`.
+- Name the subject, not the activity: `feat/corp-pressure-terms`, not
+  `feat/update-eval`. A long series splits by stage
+  (`feat/elevation-stage-8-quick-returns-glyph-of-warding`).
+- Branch from current `main`. If `main` moves under you, **rebase** — do not
+  merge `main` into the branch, or the `--no-ff` merge stops being a single
+  readable unit.
+
+### Commits
+
+- **One commit per branch** is the norm — every merge in recent history is a
+  single commit. Squash locally before merging if the work took several.
+- **The subject states what is now true, not what you did.** "A hand is a
+  multiset", "The Corp had no run term at all", "PUCT over a static evaluator
+  was choosing by noise: root-relative leaf values". Imperative
+  "Add/Update/Fix X" is not the house style, and the 50-character rule is not
+  observed — subjects run 55–110 characters, with a colon separating the claim
+  from its mechanism.
+- **The body carries the decision, the alternative rejected, and the
+  load-bearing numbers** — before → after, with seeds and game counts — wrapped
+  at ~75 characters. Same standard as a roadmap entry, because it usually
+  becomes one. A body that only restates the diff is not worth writing.
+- A change that corrects an earlier claim says so, in the commit and in the
+  roadmap entry, rather than quietly replacing it.
+- Never commit generated artifacts. Everything generated lives under `data/`
+  (corpora, checkpoints, run logs) or `target/`, and corpora are deleted once
+  the roadmap records what they showed.
+
+### Merging
+
+- Merge to `main` with **`git merge --no-ff`**, keeping the default
+  `Merge branch '<name>'` subject, then push and delete the branch. The
+  no-fast-forward is what preserves which commits were one idea.
+- **The bar before merging** is the one in the Testing Rule above:
+  `cargo test --workspace` green, `cargo clippy --workspace --all-targets`
+  silent, and for engine-level work both 256-seed sweeps. A branch that claims
+  a measured effect also carries the before/after numbers, taken on **pinned
+  binaries** — see the Testing Rule for why.
+- Never force-push `main` and never rewrite published history.
+
+### Pull requests
+
+Local `--no-ff` merges are the repo's history to date and remain fine for solo
+work. Use `gh` to open a PR when a change wants review before it lands, when it
+is large enough that the diff is the discussion, or when the user asks. PR title
+and body follow the commit rules above — the body is the commit body, since that
+is where the numbers are. `gh` needs `gh auth login` first, which is interactive.
+
+---
+
 ## Agent Workflow / Guidelines
 
 - Agents MUST consult `ROADMAP.md` at the start of complex tasks, and the area roadmap it points to for the phase being worked on; keep both updated upon completing architectural changes or feature milestones.
