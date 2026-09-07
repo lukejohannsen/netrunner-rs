@@ -241,13 +241,15 @@ class NetrunnerCorpus:
                             search_values.append(0.0)
                             self.missing_search_value += 1
                         # Absent from every corpus recorded before September
-                        # 2026, and 0.0 there rather than absent in one
-                        # recorded by a build that predates the field but
-                        # postdates serde's default — so a zero counts as
-                        # missing too. See `set_value_target`.
-                        absolute = float(step.get("search_value_absolute", 0.0))
-                        search_values_absolute.append(absolute)
-                        if absolute == 0.0:
+                        # 2026. Tested for presence, not for zero: an
+                        # evaluator scoring a position at dead level reports
+                        # exactly 0.0, which is a reading rather than a gap
+                        # (66 steps of 499,225 in the first HEAD corpus), and
+                        # counting those as missing refused the whole corpus.
+                        if "search_value_absolute" in step:
+                            search_values_absolute.append(float(step["search_value_absolute"]))
+                        else:
+                            search_values_absolute.append(0.0)
                             self.missing_search_value_absolute += 1
                         positions.append(position / max(1, len(steps) - 1))
                         steps_to_end.append(len(steps) - 1 - position)
