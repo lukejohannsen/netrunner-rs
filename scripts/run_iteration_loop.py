@@ -113,13 +113,14 @@ def run_identity(binary):
             "binary_sha256": digest}
 
 
-def arena(binary, candidate, incumbent, games, simulations, description):
+def arena(binary, candidate, incumbent, games, simulations, description, stride=1):
     """The evaluator step: the candidate against the incumbent (or the
     uniform search when there is none yet), both chairs. Returns the
     summary dict `netrunner_selfplay --arena-candidate` prints."""
     cmd = [
         binary,
         "--arena-candidate", candidate, "-n", str(games), "-s", str(simulations),
+        "--arena-pair-stride", str(stride),
     ]
     if incumbent is not None:
         cmd.extend(["--arena-incumbent", incumbent])
@@ -160,6 +161,21 @@ def main():
                         help="Passed to the trainer: share of the value target taken from the search's root value")
     parser.add_argument("--value-loss-weight", type=float, default=0.25,
                         help="Passed to the trainer: weight of the value loss against the policy loss")
+    parser.add_argument("--arena-screen-games", type=int, default=96,
+                        help="Games in the cheap screen run before the full arena (0 disables the screen). "
+                             "A cost filter only: promotion is still decided by the full arena.")
+    parser.add_argument("--arena-screen-threshold", type=float, default=0.45,
+                        help="Skip the full arena when the screen scores below this. Sits well under "
+                             "--promote-threshold so a real candidate is not screened out.")
+    parser.add_argument("--value-target", default="mixed",
+                        choices=("outcome", "mixed", "discounted", "discounted_unforeseeable"),
+                        help="Which value-head target the trainer builds (see train_alpha_netrunner.py)")
+    parser.add_argument("--value-discount", type=float, default=0.99,
+                        help="For the discounted value targets")
+    parser.add_argument("--select-on", choices=("blended", "value", "policy"), default="blended",
+                        help="Which validation loss picks the exported epoch")
+    parser.add_argument("--early-stop-patience", type=int, default=0,
+                        help="Trainer early stop; 0 keeps the historical every-epoch behaviour")
     parser.add_argument("--skip-arena", action="store_true",
                         help="Promote every checkpoint unconditionally (the pre-gating behaviour)")
     args = parser.parse_args()
@@ -216,7 +232,11 @@ def main():
             ]
             if args.window is not None:
                 train_cmd.extend(["--window", str(args.window)])
-            train_cmd.extend(["--value-target-mix", str(args.value_target_mix),
+            train_cmd.extend(["--value-target", args.value_target,
+                              "--value-discount", str(args.value_discount),
+                              "--select-on", args.select_on,
+                              "--early-stop-patience", str(args.early_stop_patience),
+                              "--value-target-mix", str(args.value_target_mix),
                               "--value-loss-weight", str(args.value_loss_weight)])
             if not args.unmasked_policy:
                 train_cmd.append("--masked-policy")
@@ -247,14 +267,52 @@ def main():
 
             started = time.time()
             incumbent = latest_onnx if os.path.exists(latest_onnx) else None
-            summary = arena(
-                binary, iter_onnx, incumbent, args.arena_games, args.simulations,
-                f"Iteration {iter_idx}/{args.iterations}: Arena, candidate vs "
-                f"{'incumbent' if incumbent else 'uniform search'} ({args.arena_games} games)",
-            )
+            against = f"{'incumbent' if incumbent else 'uniform search'}"
+
+            # A cheap screen before the full verdict. The arena was 5.00 h of
+            # the fourth run's 9.95 h, every hour of it a 384-game verdict on
+            # an iteration that was never going to promote (Phase 2 §5 item
+            # 20). The screen is a *cost filter only* — the number that gates
+            # promotion is still the full arena's — and its threshold sits
+            # well below the gate so a real candidate is not screened out: at
+            # 96 games the score's sd is about 0.051, so a true 0.55 survives
+            # a 0.45 cut about 97 times in 100 while a true 0.40 is stopped
+            # about five times in six.
+            #
+            # The stride is not optional at this size. `decks::matchups()` is
+            # corp-major, so 48 pairs at stride 1 are the first four Corp
+            # decks — a narrower arena, not a smaller one, and the reason the
+            # first three runs' 48-game verdicts swung 0.22–0.48.
+            screen = None
+            if args.arena_screen_games and args.arena_screen_games < args.arena_games:
+                # The full arena walks every pairing once; the screen walks
+                # the same span in `stride` steps, so it spreads over the
+                # whole pool instead of its first corner.
+                stride = max(1, args.arena_games // args.arena_screen_games)
+                screen = arena(
+                    binary, iter_onnx, incumbent, args.arena_screen_games, args.simulations,
+                    f"Iteration {iter_idx}/{args.iterations}: Arena screen vs {against} "
+                    f"({args.arena_screen_games} games, stride {stride})",
+                    stride=stride,
+                )
+                record["arena_screen"] = screen
+
+            if screen is not None and screen["candidate_score"] < args.arena_screen_threshold:
+                summary = screen
+                record["arena_screened_out"] = True
+            else:
+                summary = arena(
+                    binary, iter_onnx, incumbent, args.arena_games, args.simulations,
+                    f"Iteration {iter_idx}/{args.iterations}: Arena, candidate vs {against} "
+                    f"({args.arena_games} games)",
+                )
+                record["arena_screened_out"] = False
             record["arena"] = summary
             record["arena_seconds"] = time.time() - started
-            promoted = summary["candidate_score"] >= args.promote_threshold
+            # A screened-out candidate never played the full arena, so it
+            # cannot clear the gate — the screen's own score stands in the
+            # log as the reason, flagged by `arena_screened_out`.
+            promoted = not record["arena_screened_out"] and summary["candidate_score"] >= args.promote_threshold
             record["promoted"] = promoted
             # Both chairs on the line, not only the blend. The blend hid the
             # whole story for three runs: a network broken as the Corp and

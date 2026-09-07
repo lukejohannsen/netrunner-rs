@@ -103,6 +103,24 @@ struct Cli {
     /// to seat in a real match. See `netrunner_bots::MixedPriorEvaluator`.
     #[arg(long = "candidate-prior-mix", default_value_t = 0.0)]
     candidate_prior_mix: f32,
+    /// How far apart the matchups an arena run walks are. `1` (the
+    /// default) plays pairings `0, 1, 2, …`, which at the full `-n 384` is
+    /// every one of the 192 sample matchups exactly once from each chair.
+    ///
+    /// It exists for runs **shorter** than that, and it matters more than
+    /// it looks: `decks::matchups()` is corp-major (16 Corp × 12 Runner),
+    /// so the first 48 pairings are the first *four* Corp decks against
+    /// all twelve Runners, and a 96-game screen at stride 1 is not a
+    /// smaller arena — it is a different, narrower one. Stride 4 over 48
+    /// pairs walks 0, 4, 8, … and reaches three matchups of every Corp
+    /// deck. The pairing itself is untouched, so the null-candidate
+    /// property (`arena_matchup_index`) is exact at any stride.
+    ///
+    /// This is also the retro-explanation for the 48-game verdicts of the
+    /// first three volume runs swinging 0.22–0.48 with no trend: they were
+    /// two Corp decks.
+    #[arg(long = "arena-pair-stride", default_value_t = 1)]
+    arena_pair_stride: usize,
 }
 
 /// Which halves of a candidate network the arena seats. An ablation over
@@ -286,7 +304,7 @@ fn play_arena_game(
 ) -> Result<ArenaGame, SelfPlayError> {
     let registry = fixtures::registry();
     let pair = arena_matchup_index(game_index);
-    let matchup = matchup_for(pair, cli)?;
+    let matchup = matchup_for(pair * cli.arena_pair_stride.max(1), cli)?;
     let (corp_deck, runner_deck) = matchup.decks();
     // The pair index, not the game index: both chairs play the same deal.
     let seed = pair as u64;
@@ -522,6 +540,7 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
                 observation: sparse(&observation),
                 policy_target: sparse(&policy_target),
                 search_value: stats.root_value,
+                search_value_absolute: stats.root_value_absolute,
                 action_taken,
                 active_side: side as u8,
             });
@@ -812,6 +831,34 @@ mod tests {
             );
             assert_ne!(candidate_side(first), candidate_side(second), "and opposite chairs");
         }
+    }
+
+    /// A short arena at stride 1 is not a smaller arena, it is a narrower
+    /// one: `matchups()` is corp-major, so the first 48 pairings are four
+    /// Corp decks. The stride is what makes a screen a screen.
+    #[test]
+    fn a_short_arena_needs_a_stride_to_reach_every_corp_deck() {
+        let cli = |stride: &str| {
+            Cli::parse_from([
+                "netrunner_selfplay", "-n", "96", "-s", "2", "--arena-candidate", "unused.onnx",
+                "--arena-pair-stride", stride,
+            ])
+        };
+        let corp_decks = |cli: &Cli| -> std::collections::BTreeSet<String> {
+            (0..96)
+                .map(|game| {
+                    let pair = arena_matchup_index(game) * cli.arena_pair_stride.max(1);
+                    matchup_for(pair, cli).unwrap().decks().0.identity.0.clone()
+                })
+                .collect()
+        };
+        let all_corp: std::collections::BTreeSet<String> =
+            fixtures::matchups().iter().map(|m| m.decks().0.identity.0.clone()).collect();
+
+        let narrow = corp_decks(&cli("1"));
+        let strided = corp_decks(&cli("4"));
+        assert!(narrow.len() < strided.len(), "stride 1 over 48 pairs is the narrow one: {} against {}", narrow.len(), strided.len());
+        assert_eq!(strided.len(), all_corp.len(), "stride 4 reaches every Corp identity in the pool");
     }
 
     /// The regression test for a bias that was worth 0.0755 and cleared
