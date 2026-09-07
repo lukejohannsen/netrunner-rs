@@ -388,10 +388,15 @@ impl Default for PuctConfig {
 /// with one outcome, 0.339 / 0.328 / 0.307 with 2 / 4 / 8 — because the
 /// mean it computes is over the *registry* pool, a quarter agendas, and
 /// the Runner it produces runs the centrals and lets the remotes score
-/// (steals 432 → 379, `AgendaScored` 450 → 502 at four). Left in at one
-/// for the same reason `PuctConfig::samples` is: the result is on the
-/// field, and a deck-aware pool would make it worth re-measuring
-/// (ROADMAP Phase 3 §1).
+/// (steals 432 → 379, `AgendaScored` 450 → 502 at four). That was the
+/// explanation until the pool was fixed: over the identity's published
+/// decklist (`determinize`, September 2026) the node still lost at every
+/// fan-out — 0.432 / 0.453 / 0.448 at 2 / 4 / 8 against 0.500 with one —
+/// so the agenda density was never the reason. Left in at one for the
+/// same reason `PuctConfig::samples` is: the result is on the field. The
+/// next suspect is the budget itself: `iterations` is fixed, so every
+/// outcome child gets a shallower subtree below the door than the single
+/// committed sample does (ROADMAP Phase 3 §1).
 pub const BREACH_OUTCOMES: usize = 1;
 
 /// PUCT over `ActionSpace`'s fixed index space, driven by a

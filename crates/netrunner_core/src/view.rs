@@ -67,6 +67,12 @@ pub struct CorpClientView {
     /// Public — a flip identity's side is visible to both players.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// The Corp's identity card — public, see
+    /// `masking::PublicCorpState::identity`. A client can name the opponent
+    /// from it; a determinizing bot narrows the hidden zones to that
+    /// identity's published decklists.
+    #[serde(default)]
+    pub identity: Option<CardId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -101,6 +107,9 @@ pub struct RunnerClientView {
     /// `PublicRunnerState::identity_flipped`.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// The Runner's identity card — public, see `CorpClientView::identity`.
+    #[serde(default)]
+    pub identity: Option<CardId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +213,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         recurring_credits: public.corp.recurring_credits,
         identity_counters: public.corp.identity_counters,
         identity_flipped: public.corp.identity_flipped,
+        identity: public.corp.identity,
         recurring_credits_max: public.corp.recurring_credits_max,
         hq_count: zone_count(&public.corp.hq),
         hq_cards: zone_cards(&public.corp.hq),
@@ -231,6 +241,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         made_successful_run_this_turn: public.runner.made_successful_run_this_turn,
         discarded_this_discard_phase: public.runner.discarded_this_discard_phase.clone(),
         identity_flipped: public.runner.identity_flipped,
+        identity: public.runner.identity,
         scored_agendas: public.runner.scored_agendas,
     };
 

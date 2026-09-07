@@ -73,6 +73,17 @@ pub struct PublicInstalledCard {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicCorpState {
+    /// `CorpState::identity` — never masked. An identity is a faceup card
+    /// on the table from setup, and what it is decides what the opponent
+    /// is playing against: which abilities to expect, and — for a bot that
+    /// knows the published decklists — which forty-odd cards can be behind
+    /// the hidden zones. Absent from the view until September 2026, so
+    /// every determinized sample played both seats as if they had no
+    /// identity and filled hidden slots from the whole registry
+    /// (ROADMAP Phase 3 §1). `Option` only because `GameState::new()`
+    /// has no identity to report before `setup`.
+    #[serde(default)]
+    pub identity: Option<CardId>,
     pub resources: PlayerResources,
     pub hq: MaskedZone,
     pub r_and_d: MaskedZone,
@@ -155,6 +166,10 @@ pub struct PublicInstalledRunnerCard {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicRunnerState {
+    /// `RunnerState::identity` — never masked, for the reasons on
+    /// `PublicCorpState::identity`.
+    #[serde(default)]
+    pub identity: Option<CardId>,
     pub resources: PlayerResources,
     pub memory_units: MemoryUnits,
     /// Never masked — Brain damage count, like `memory_units`, is plain
@@ -882,6 +897,7 @@ fn mask_archived_card(archived: &ArchivedCard, owner_view: bool) -> PublicArchiv
 
 fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
     PublicCorpState {
+        identity: corp.identity.clone(),
         resources: corp.resources.clone(),
         hq: mask_zone(&corp.hq, owner_view),
         r_and_d: mask_zone(&corp.r_and_d, owner_view),
@@ -928,6 +944,7 @@ fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunn
 
 fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerState {
     PublicRunnerState {
+        identity: runner.identity.clone(),
         resources: runner.resources.clone(),
         memory_units: runner.memory_units,
         brain_damage: runner.brain_damage,
@@ -1818,6 +1835,21 @@ mod tests {
             for viewer in [Side::Corp, Side::Runner] {
                 assert_eq!(mask_event_for_player(&event, &state, viewer), Some(event.clone()));
             }
+        }
+    }
+
+    /// An identity is faceup from setup, so every viewer — the owner, the
+    /// opponent and a spectator — sees both. A determinizing bot reads the
+    /// opponent's to narrow the hidden zones to its published decklists.
+    #[test]
+    fn both_identities_are_public_to_every_viewer() {
+        let mut state = game_state(corp_state_with_cards());
+        state.corp.identity = Some(id("weyland_consortium_built_to_last"));
+        state.runner.identity = Some(id("zahya_sadeghi"));
+        for viewer in [Viewer::from(Side::Corp), Viewer::from(Side::Runner), Viewer::Spectator] {
+            let masked = mask_state_for_player(&state, viewer);
+            assert_eq!(masked.corp.identity, state.corp.identity);
+            assert_eq!(masked.runner.identity, state.runner.identity);
         }
     }
 
