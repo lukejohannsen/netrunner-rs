@@ -1,23 +1,51 @@
 //! Samples one concrete, `ClientView`-consistent `GameState` — the "I" in
 //! Information Set MCTS: `MctsAgent` runs its unchanged Phase-1 search
 //! machinery against a sampled state instead of the real (unavailable) one,
-//! and `HeuristicAgent` does the same for its one-ply lookahead.
+//! `HeuristicAgent` does the same for its one-ply lookahead, and `PuctAgent`
+//! searches one sample and redraws it at every breach.
 //!
-//! There's no decklist/multiplicity concept anywhere in this engine, so
-//! hidden slots are filled by drawing from the full `CardRegistry` pool for
-//! the right side (optionally type-constrained — an unrezzed ICE slot only
-//! ever draws an ICE-typed card, a root slot only an Agenda/Asset), minus
-//! every card id already visible somewhere in the view. This is a known,
-//! documented baseline simplification, not an attempt at a "real" opponent
-//! hand model.
+//! **Hidden slots are filled from the decklist when one is known.** An
+//! identity is public (`ClientView::corp.identity`), and the published
+//! decklists are embedded (`netrunner_core::decks`), so when a seat's
+//! identity matches one, the pool for its hidden zones is that list as a
+//! multiset minus every copy already visible somewhere in the view: the
+//! forty-odd cards the opponent actually brought, with the right number of
+//! each, rather than one of everything ever printed. When two published
+//! lists share an identity, the one that explains the most visible cards
+//! wins the sample, then the one whose size matches the cards on the
+//! table; with nothing seen yet they tie and the first by id is taken.
+//! The viewer's *own* hidden deck is the same computation, and for it the
+//! answer is exact up to order.
+//!
+//! What this bought, measured (ROADMAP Phase 3 §1, September 2026): a
+//! sample that is a permutation of the real deck, and the removal of a
+//! confound — the registry pool was a quarter agendas, and every
+//! expectation-based valuation of a breach had been blamed on it. Not
+//! strength: the PUCT Runner against the fixed heuristic Corp moved
+//! 0.516 → 0.500 (192 games, inside the band) and heuristic-vs-heuristic
+//! 0.417 → 0.417 on the same seating; and the breach chance node, re-run
+//! over the honest pool, still lost to a single committed sample (0.432 /
+//! 0.453 / 0.448 at 2 / 4 / 8 outcomes against 0.500). Whatever keeps the
+//! search from valuing a breach in expectation, it is not the pool.
+//!
+//! **Without a matching decklist** — a homebrew deck, or a test fixture
+//! with no identity — the pool falls back to the full `CardRegistry` for
+//! the right side (type-constrained: an unrezzed ICE slot only ever draws
+//! an ICE-typed card, a root slot only a card that can sit in a root),
+//! minus every card id already visible. The fallback also takes over when
+//! a decklist runs out before the hidden slots do, which is the sample's
+//! way of saying the guess was wrong. Neither path models anything the
+//! view does not say: no draw order, no "they kept two ICE in hand".
 
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+use std::sync::OnceLock;
 
 use rand::seq::SliceRandom;
 use rand::Rng;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::dsl::{CardId, CardType};
+use netrunner_core::decks::DeckFile;
+use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::rules::{
     ArchivedCard,
     AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard,
@@ -28,7 +56,9 @@ use netrunner_core::view::ClientView;
 
 /// A shuffled draw pool that cycles once exhausted (draws-with-replacement
 /// across repeated full passes) — matches "shuffle then keep drawing" for
-/// however many hidden slots need filling, however many that is.
+/// however many hidden slots need filling, however many that is. This is
+/// the **registry fallback**; a known decklist (`Pools::corp_deck`,
+/// `Pools::runner_deck`) is drawn first and is consumed, not cycled.
 struct Pool {
     cards: Vec<CardId>,
     cursor: usize,
@@ -51,21 +81,92 @@ impl Pool {
         self.cursor += 1;
         card
     }
+}
 
-    fn draw_n(&mut self, n: usize) -> Vec<CardId> {
-        (0..n).map(|_| self.draw()).collect()
+/// Which hidden slot a draw fills. The view says what *kind* of install
+/// sits in a slot even when it hides which card, so an ICE slot only ever
+/// takes an ICE-typed card and a root slot only a card that can be
+/// installed in a root — an Agenda, an Asset or an Upgrade. Upgrades were
+/// left out until the decklist pool landed, which biased every unrezzed
+/// remote card toward being an agenda; against a real list the bias was
+/// the difference between "a Manegarm Skunkworks" and "an agenda".
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Slot {
+    CorpAny,
+    CorpIce,
+    CorpRoot,
+    RunnerAny,
+}
+
+impl Slot {
+    fn side(self) -> Side {
+        match self {
+            Slot::CorpAny | Slot::CorpIce | Slot::CorpRoot => Side::Corp,
+            Slot::RunnerAny => Side::Runner,
+        }
+    }
+
+    fn admits(self, card: &CardDefinition) -> bool {
+        match self {
+            Slot::CorpAny | Slot::RunnerAny => true,
+            Slot::CorpIce => matches!(card.card_type, CardType::Ice(_)),
+            Slot::CorpRoot => matches!(card.card_type, CardType::Agenda | CardType::Asset | CardType::Upgrade),
+        }
     }
 }
 
-struct Pools {
+/// The two tiers of draw pool for one determinization: a side's remaining
+/// decklist when its identity names a published one, and the cycling
+/// registry pools behind it.
+struct Pools<'a> {
+    registry: &'a CardRegistry,
+    /// Each side's decklist minus the copies the view already shows,
+    /// shuffled. Empty when no published list matches the identity, and
+    /// emptied as slots consume it.
+    corp_deck: Vec<CardId>,
+    runner_deck: Vec<CardId>,
     corp_any: Pool,
     corp_ice: Pool,
     corp_root: Pool,
     runner_any: Pool,
 }
 
-fn visible_card_ids(view: &ClientView) -> HashSet<CardId> {
-    let mut ids = HashSet::new();
+impl Pools<'_> {
+    /// The first remaining decklist card the slot admits, else a registry
+    /// draw. Taking the first admissible card of an already-shuffled list
+    /// is a uniform draw from the admissible ones, and removing it is what
+    /// makes the sample a permutation of the deck rather than a bag of
+    /// guesses: a card drawn into R&D is not also behind an unrezzed ICE.
+    fn draw(&mut self, slot: Slot) -> CardId {
+        let registry = self.registry;
+        let deck = match slot.side() {
+            Side::Corp => &mut self.corp_deck,
+            Side::Runner => &mut self.runner_deck,
+        };
+        if let Some(index) = deck.iter().position(|id| registry.get(id).is_some_and(|card| slot.admits(card))) {
+            return deck.remove(index);
+        }
+        match slot {
+            Slot::CorpAny => self.corp_any.draw(),
+            Slot::CorpIce => self.corp_ice.draw(),
+            Slot::CorpRoot => self.corp_root.draw(),
+            Slot::RunnerAny => self.runner_any.draw(),
+        }
+    }
+
+    fn draw_n(&mut self, slot: Slot, n: usize) -> Vec<CardId> {
+        (0..n).map(|_| self.draw(slot)).collect()
+    }
+}
+
+/// Every card the view shows the identity of, **one entry per copy** —
+/// a multiset, because the decklist pool subtracts copies, not ids. Each
+/// physical location is walked once: a rezzed ICE appears in its server's
+/// `ice`, so the run's copy of it is not counted again, and an accessed
+/// card the viewer can see is counted from the access state only when its
+/// zone (HQ, R&D) is hidden to them.
+fn visible_cards(view: &ClientView) -> Vec<CardId> {
+    let mut ids = Vec::new();
     if let Some(cards) = &view.corp.hq_cards {
         ids.extend(cards.iter().cloned());
     }
@@ -75,10 +176,11 @@ fn visible_card_ids(view: &ClientView) -> HashSet<CardId> {
     // unknown, not treated as already-visible.
     ids.extend(view.corp.archives.iter().filter_map(|a| a.card.clone()));
     ids.extend(view.corp.scored_agendas.iter().map(|scored| scored.card.clone()));
+    ids.extend(view.corp.removed_from_game.iter().cloned());
     for server in &view.corp.servers {
         for card in server.ice.iter().chain(server.root.iter()) {
             if let Some(id) = &card.card {
-                ids.insert(id.clone());
+                ids.push(id.clone());
             }
         }
     }
@@ -89,79 +191,164 @@ fn visible_card_ids(view: &ClientView) -> HashSet<CardId> {
     ids.extend(view.runner.heap.iter().cloned());
     ids.extend(view.runner.scored_agendas.iter().cloned());
     for rig_card in &view.runner.rig {
-        ids.insert(rig_card.card.clone());
+        ids.push(rig_card.card.clone());
+        ids.extend(rig_card.hosted_cards.iter().cloned());
     }
 
-    if let Some(run) = &view.active_run {
-        for ice in &run.ice {
-            if let Some(identity) = &ice.identity {
-                ids.insert(identity.card.clone());
-            }
+    // An access shows the Runner cards out of a zone the view otherwise
+    // hides from them (HQ, R&D); the Corp already counted them from its
+    // own hand. Archives accesses are faceup cards counted above.
+    if let Some(access) = view.active_run.as_ref().and_then(|run| run.access_state.as_ref())
+        && view.corp.hq_cards.is_none()
+        && !matches!(access.server, netrunner_core::rules::ServerId::Archives)
+    {
+        if let MaskedZone::Visible(cards) = &access.unaccessed_cards {
+            ids.extend(cards.iter().cloned());
         }
-        if let Some(access) = &run.access_state {
-            if let MaskedZone::Visible(cards) = &access.unaccessed_cards {
+        if let MaskedZone::Visible(cards) = &access.resolved_cards {
+            ids.extend(cards.iter().cloned());
+        }
+        match &access.phase {
+            PublicAccessPhase::SelectNextCard { selectable_cards: MaskedZone::Visible(cards) } => {
                 ids.extend(cards.iter().cloned());
             }
-            if let MaskedZone::Visible(cards) = &access.resolved_cards {
-                ids.extend(cards.iter().cloned());
+            PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. }
+            | PublicAccessPhase::PendingChoice { card: Some(id), .. } => {
+                ids.push(id.clone());
             }
-            match &access.phase {
-                PublicAccessPhase::SelectNextCard { selectable_cards: MaskedZone::Visible(cards) } => {
-                    ids.extend(cards.iter().cloned());
-                }
-                PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. }
-                | PublicAccessPhase::PendingChoice { card: Some(id), .. } => {
-                    ids.insert(id.clone());
-                }
-                _ => {}
-            }
+            _ => {}
         }
     }
 
     ids
 }
 
-/// Builds the per-side, per-type draw pools from the registry.
+/// The embedded decklists, parsed once: `determinize` runs on every
+/// decision and `resample_hidden` on every breach outcome, and
+/// `decks::embedded_decks` parses JSON each call.
+fn embedded_decks() -> &'static [DeckFile] {
+    static DECKS: OnceLock<Vec<DeckFile>> = OnceLock::new();
+    DECKS.get_or_init(netrunner_core::decks::embedded_decks)
+}
+
+/// How many cards of `side` the view can account for, hidden or not — the
+/// deck's size, if every card of it is still in the game somewhere. A
+/// preference between two lists sharing an identity, never a filter: a
+/// card in a play area the view does not model is one off, and one off
+/// must not throw away the right list.
+fn cards_in_game(view: &ClientView, side: Side) -> usize {
+    match side {
+        Side::Corp => {
+            view.corp.hq_count
+                + view.corp.rd_count
+                + view.corp.archives.len()
+                + view.corp.servers.iter().map(|server| server.ice.len() + server.root.len()).sum::<usize>()
+                + view.corp.scored_agendas.len()
+                + view.runner.scored_agendas.len()
+                + view.corp.removed_from_game.len()
+        }
+        Side::Runner => {
+            view.runner.grip_count
+                + view.runner.stack_count
+                + view.runner.heap.len()
+                + view.runner.rig.iter().map(|card| 1 + card.hosted_cards.len()).sum::<usize>()
+        }
+    }
+}
+
+/// The cards of `side` still unseen, if its identity names a published
+/// decklist: that list as a multiset with one copy struck for every
+/// visible copy of the card. Empty when nothing matches. Order is the
+/// decklist's — the caller shuffles.
 ///
-/// The candidates are **sorted by `CardId` before `Pool::new` shuffles
-/// them.** `CardRegistry::iter` is `HashMap::values()`, whose order differs
-/// from one process to the next, and a seeded shuffle only reproduces its
-/// output over an identical input — so without the sort the same seed
-/// sampled different hidden cards on every run, and every determinizing
-/// bot (heuristic, MCTS, PUCT) was nondeterministic run to run. That made
-/// heuristic-vs-heuristic useless as a before/after measurement (96 games
-/// at seed 1 differed from *themselves* in 262 report keys) and a seeded
-/// self-play or arena run unreproducible. Sorting here rather than making
-/// `CardRegistry::iter` ordered keeps the fix where the requirement lives;
-/// the registry's doc still promises no order, and nothing else relies on
-/// one.
-///
-/// Identities are excluded: an identity is never in a deck, so it can
-/// never be in a hidden zone, and a sample that put *The Syndicate* in HQ
-/// or on top of the stack was imagining a card the real game cannot hold
-/// there. The registry carries every side's identities alongside its
-/// playable cards, so the pool has to say so itself.
-fn build_pools(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) -> Pools {
-    let visible = visible_card_ids(view);
-    let could_be_hidden = |c: &&netrunner_core::dsl::CardDefinition| {
-        !matches!(c.card_type, CardType::Identity) && !visible.contains(&c.id)
+/// Several published lists share an identity (*Precision Design* has two
+/// sample decks; a starter and its boosted form share theirs). The one
+/// taken explains the most visible copies; a tie goes to the list whose
+/// size is nearest the cards on the table, then to the first by id. That
+/// is a maximum-likelihood pick over a two-element prior, not a posterior
+/// over lists, and it is enough: the two lists sharing an identity
+/// diverge early, on the first unique card seen.
+fn remaining_decklist(side: Side, identity: Option<&CardId>, visible: &[CardId], view: &ClientView, registry: &CardRegistry) -> Vec<CardId> {
+    let Some(identity) = identity else { return Vec::new() };
+    let candidates = embedded_decks().iter().filter(|deck| deck.side == side && &deck.identity == identity);
+
+    // Only this side's visible cards can count against its list; a Runner
+    // card in the heap says nothing about which Corp list is in play.
+    let mut seen: BTreeMap<&CardId, usize> = BTreeMap::new();
+    for card in visible.iter().filter(|id| registry.get(id).is_some_and(|card| card.side == side)) {
+        *seen.entry(card).or_insert(0) += 1;
+    }
+    let in_game = cards_in_game(view, side);
+
+    let scored = candidates.map(|deck| {
+        let explained: usize =
+            deck.cards.iter().map(|entry| seen.get(&entry.card).map_or(0, |count| (*count).min(entry.count as usize))).sum();
+        let size_gap = (deck.size() as usize).abs_diff(in_game);
+        (explained, size_gap, deck)
+    });
+    let Some((_, _, deck)) = scored.min_by(|a, b| b.0.cmp(&a.0).then(a.1.cmp(&b.1)).then(a.2.id.cmp(&b.2.id))) else {
+        return Vec::new();
     };
-    let mut corp_cards: Vec<&netrunner_core::dsl::CardDefinition> =
-        registry.iter().filter(|c| c.side == Side::Corp).filter(could_be_hidden).collect();
+
+    let mut remaining = Vec::with_capacity(deck.size() as usize);
+    for entry in &deck.cards {
+        // A card the registry does not know cannot be played by the
+        // sample either — a homebrew registry that lacks a published card
+        // gets one fewer copy rather than an unplayable id.
+        if registry.get(&entry.card).is_none() {
+            continue;
+        }
+        let struck = seen.get(&entry.card).copied().unwrap_or(0).min(entry.count as usize);
+        remaining.extend(std::iter::repeat_n(entry.card.clone(), entry.count as usize - struck));
+    }
+    remaining
+}
+
+/// Builds the per-side draw pools: each side's remaining decklist when
+/// known (`remaining_decklist`), and the registry fallback behind it.
+///
+/// The registry candidates are **sorted by `CardId` before `Pool::new`
+/// shuffles them.** `CardRegistry::iter` is `HashMap::values()`, whose
+/// order differs from one process to the next, and a seeded shuffle only
+/// reproduces its output over an identical input — so without the sort
+/// the same seed sampled different hidden cards on every run, and every
+/// determinizing bot (heuristic, MCTS, PUCT) was nondeterministic run to
+/// run. That made heuristic-vs-heuristic useless as a before/after
+/// measurement (96 games at seed 1 differed from *themselves* in 262
+/// report keys) and a seeded self-play or arena run unreproducible.
+/// Sorting here rather than making `CardRegistry::iter` ordered keeps the
+/// fix where the requirement lives; the registry's doc still promises no
+/// order, and nothing else relies on one. A decklist is already ordered.
+///
+/// Identities are excluded from the registry pool: an identity is never
+/// in a deck, so it can never be in a hidden zone, and a sample that put
+/// *The Syndicate* in HQ or on top of the stack was imagining a card the
+/// real game cannot hold there. The registry carries every side's
+/// identities alongside its playable cards, so the pool has to say so
+/// itself.
+fn build_pools<'a>(view: &ClientView, registry: &'a CardRegistry, rng: &mut impl Rng) -> Pools<'a> {
+    let visible_copies = visible_cards(view);
+    let mut corp_deck = remaining_decklist(Side::Corp, view.corp.identity.as_ref(), &visible_copies, view, registry);
+    let mut runner_deck = remaining_decklist(Side::Runner, view.runner.identity.as_ref(), &visible_copies, view, registry);
+    corp_deck.shuffle(rng);
+    runner_deck.shuffle(rng);
+
+    let visible: HashSet<CardId> = visible_copies.into_iter().collect();
+    let could_be_hidden = |c: &&CardDefinition| !matches!(c.card_type, CardType::Identity) && !visible.contains(&c.id);
+    let mut corp_cards: Vec<&CardDefinition> = registry.iter().filter(|c| c.side == Side::Corp).filter(could_be_hidden).collect();
     corp_cards.sort_by(|a, b| a.id.cmp(&b.id));
     let mut runner_cards: Vec<CardId> =
         registry.iter().filter(|c| c.side == Side::Runner).filter(could_be_hidden).map(|c| c.id.clone()).collect();
     runner_cards.sort();
 
     let corp_any: Vec<CardId> = corp_cards.iter().map(|c| c.id.clone()).collect();
-    let corp_ice: Vec<CardId> = corp_cards.iter().filter(|c| matches!(c.card_type, CardType::Ice(_))).map(|c| c.id.clone()).collect();
-    let corp_root: Vec<CardId> = corp_cards
-        .iter()
-        .filter(|c| matches!(c.card_type, CardType::Agenda | CardType::Asset))
-        .map(|c| c.id.clone())
-        .collect();
+    let corp_ice: Vec<CardId> = corp_cards.iter().filter(|c| Slot::CorpIce.admits(c)).map(|c| c.id.clone()).collect();
+    let corp_root: Vec<CardId> = corp_cards.iter().filter(|c| Slot::CorpRoot.admits(c)).map(|c| c.id.clone()).collect();
 
     Pools {
+        registry,
+        corp_deck,
+        runner_deck,
         // Falling back to the unfiltered `corp_any` pool when no
         // type-matching card is registered at all keeps a determinized
         // sample buildable even against a tiny/synthetic test registry,
@@ -178,10 +365,12 @@ fn build_pools(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) -
 /// is what that position is for.
 fn determinize_installed(
     server_view: &netrunner_core::view::ServerView,
-    pools: &mut Pools,
+    pools: &mut Pools<'_>,
 ) -> Vec<(usize, InstalledCard)> {
-    let ice = server_view.ice.iter().map(|card| (card.position, InstalledCard {
-        card: card.card.clone().unwrap_or_else(|| pools.corp_ice.draw()),
+    // Drawn before the root cards, in server order: both slots consume
+    // the same decklist, so the two maps cannot be lazily interleaved.
+    let ice: Vec<(usize, InstalledCard)> = server_view.ice.iter().map(|card| (card.position, InstalledCard {
+        card: card.card.clone().unwrap_or_else(|| pools.draw(Slot::CorpIce)),
         // Carried straight off the view, never reallocated. This is what
         // keeps the sample's actions the *same* actions as the caller's:
         // an `InstallId` is public, so the real state and every
@@ -203,9 +392,9 @@ fn determinize_installed(
         // `ClientView` doesn't carry install timing; a rollout re-derives it
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
-    }));
+    })).collect();
     let root = server_view.root.iter().map(|card| (card.position, InstalledCard {
-        card: card.card.clone().unwrap_or_else(|| pools.corp_root.draw()),
+        card: card.card.clone().unwrap_or_else(|| pools.draw(Slot::CorpRoot)),
         // Carried, never reallocated — see the `ice` arm above.
         install_id: card.install_id,
         server: card.server,
@@ -222,40 +411,40 @@ fn determinize_installed(
         // from its own play-out, same approximation as `counters` above.
         installed_this_turn: false,
     }));
-    ice.chain(root).collect()
+    ice.into_iter().chain(root).collect()
 }
 
-fn determinize_zone(cards: &Option<Vec<CardId>>, count: usize, pool: &mut Pool) -> Vec<CardId> {
+fn determinize_zone(cards: &Option<Vec<CardId>>, count: usize, pools: &mut Pools<'_>, slot: Slot) -> Vec<CardId> {
     match cards {
         Some(cards) => cards.clone(),
-        None => pool.draw_n(count),
+        None => pools.draw_n(slot, count),
     }
 }
 
-fn determinize_access_cards(zone: &MaskedZone, pool: &mut Pool) -> Vec<CardId> {
+fn determinize_access_cards(zone: &MaskedZone, pools: &mut Pools<'_>) -> Vec<CardId> {
     match zone {
         MaskedZone::Visible(cards) => cards.clone(),
-        MaskedZone::Hidden { count } => pool.draw_n(*count as usize),
+        MaskedZone::Hidden { count } => pools.draw_n(Slot::CorpAny, *count as usize),
     }
 }
 
-fn determinize_access_phase(phase: &PublicAccessPhase, pool: &mut Pool) -> AccessPhase {
+fn determinize_access_phase(phase: &PublicAccessPhase, pools: &mut Pools<'_>) -> AccessPhase {
     match phase {
         PublicAccessPhase::SelectNextCard { selectable_cards } => {
-            AccessPhase::SelectNextCard { selectable_cards: determinize_access_cards(selectable_cards, pool) }
+            AccessPhase::SelectNextCard { selectable_cards: determinize_access_cards(selectable_cards, pools) }
         }
         // `decider` copies straight through rather than being re-derived
         // from the sampled card: it is public information, and a search tree
         // that disagreed with reality about whose decision is pending would
         // evaluate the position for the wrong player entirely.
         PublicAccessPhase::PendingInteractiveTrigger { card, cost, decider, can_pay } => AccessPhase::PendingInteractiveTrigger {
-            card_id: card.clone().unwrap_or_else(|| pool.draw()),
+            card_id: card.clone().unwrap_or_else(|| pools.draw(Slot::CorpAny)),
             cost: cost.clone(),
             decider: *decider,
             can_pay: *can_pay,
         },
         PublicAccessPhase::PendingChoice { card, trash_cost, mandatory_steal, steal_cost } => AccessPhase::PendingChoice {
-            card_id: card.clone().unwrap_or_else(|| pool.draw()),
+            card_id: card.clone().unwrap_or_else(|| pools.draw(Slot::CorpAny)),
             trash_cost: *trash_cost,
             mandatory_steal: *mandatory_steal,
             steal_cost: steal_cost.clone(),
@@ -271,7 +460,7 @@ fn determinize_access_phase(phase: &PublicAccessPhase, pool: &mut Pool) -> Acces
 fn determinize_run(
     run: &netrunner_core::rules::PublicRunState,
     registry: &CardRegistry,
-    pools: &mut Pools,
+    pools: &mut Pools<'_>,
     installed: &[InstalledCard],
 ) -> RunState {
     let ice = run
@@ -291,7 +480,7 @@ fn determinize_run(
                     .iter()
                     .find(|c| c.install_id == ice.install_id)
                     .map(|c| c.card.clone())
-                    .unwrap_or_else(|| pools.corp_ice.draw());
+                    .unwrap_or_else(|| pools.draw(Slot::CorpIce));
                 let strength = registry.get(&card_id).and_then(|c| c.strength).unwrap_or(0);
                 RunIce {
                     install_id: ice.install_id,
@@ -323,9 +512,9 @@ fn determinize_run(
         // Not in the view; a rollout that re-picks an already-resolved copy
         // takes the other one, which is harmless.
         resolved_installs: Vec::new(),
-        unaccessed_cards: determinize_access_cards(&access.unaccessed_cards, &mut pools.corp_any),
-        resolved_cards: determinize_access_cards(&access.resolved_cards, &mut pools.corp_any),
-        phase: determinize_access_phase(&access.phase, &mut pools.corp_any),
+        unaccessed_cards: determinize_access_cards(&access.unaccessed_cards, pools),
+        resolved_cards: determinize_access_cards(&access.resolved_cards, pools),
+        phase: determinize_access_phase(&access.phase, pools),
     });
 
     RunState {
@@ -401,6 +590,16 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
     let installed: Vec<InstalledCard> = placed.into_iter().map(|(_, card)| card).collect();
 
     let corp = CorpState {
+        // Deliberately not `view.corp.identity`, though the view carries
+        // it. With the identity set, every identity trigger fires in the
+        // rollouts — which is the truth, and measured worse for the search
+        // (PUCT Runner against the fixed heuristic Corp, 192 games): over
+        // the registry pool both identities cost 0.516 → 0.406; over the
+        // decklist pool the Corp's cost 0.500 → 0.495, the Runner's own
+        // 0.484, both 0.469 — inside the band, negative every time, while
+        // the one-ply heuristic Runner *gained* 0.417 → 0.448. A sample
+        // that plays *Precision Design* as a blank card is the lesser
+        // error until the search's loss is understood (ROADMAP Phase 3 §1).
         identity: None,
         bad_publicity: view.corp.bad_publicity,
         first_install_used_this_turn: false,
@@ -431,8 +630,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             clicks: Clicks(view.corp.clicks),
             agenda_points: AgendaPoints(view.corp.agenda_points),
         },
-        hq: determinize_zone(&view.corp.hq_cards, view.corp.hq_count, &mut pools.corp_any),
-        r_and_d: pools.corp_any.draw_n(view.corp.rd_count),
+        hq: determinize_zone(&view.corp.hq_cards, view.corp.hq_count, &mut pools, Slot::CorpAny),
+        r_and_d: pools.draw_n(Slot::CorpAny, view.corp.rd_count),
         archives: view
             .corp
             .archives
@@ -443,7 +642,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
                 // orientation are known, the identity is not, so draw a
                 // plausible one from the same pool every other hidden zone
                 // samples from.
-                None => ArchivedCard { card: pools.corp_any.draw(), facedown: true },
+                None => ArchivedCard { card: pools.draw(Slot::CorpAny), facedown: true },
             })
             .collect(),
         installed,
@@ -477,6 +676,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         .collect();
 
     let runner = RunnerState {
+        // Not carried — see `corp.identity` above.
         identity: None,
         scored_agendas: view.runner.scored_agendas.clone(),
         resources: PlayerResources {
@@ -487,8 +687,8 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         memory_units: MemoryUnits(view.runner.memory_units),
         brain_damage: view.runner.brain_damage,
         tags: view.runner.tags,
-        grip: determinize_zone(&view.runner.grip_cards, view.runner.grip_count, &mut pools.runner_any),
-        stack: pools.runner_any.draw_n(view.runner.stack_count),
+        grip: determinize_zone(&view.runner.grip_cards, view.runner.grip_count, &mut pools, Slot::RunnerAny),
+        stack: pools.draw_n(Slot::RunnerAny, view.runner.stack_count),
         rig,
         heap: view.runner.heap.clone(),
         link_strength: view.runner.link_strength,
@@ -571,13 +771,13 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
 pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &CardRegistry, rng: &mut impl Rng) {
     let mut pools = build_pools(view, registry, rng);
 
-    state.corp.r_and_d = pools.corp_any.draw_n(state.corp.r_and_d.len());
+    state.corp.r_and_d = pools.draw_n(Slot::CorpAny, state.corp.r_and_d.len());
     if view.corp.hq_cards.is_none() {
-        state.corp.hq = pools.corp_any.draw_n(state.corp.hq.len());
+        state.corp.hq = pools.draw_n(Slot::CorpAny, state.corp.hq.len());
     }
     for (archived, seen) in state.corp.archives.iter_mut().zip(&view.corp.archives) {
         if seen.card.is_none() {
-            archived.card = pools.corp_any.draw();
+            archived.card = pools.draw(Slot::CorpAny);
         }
     }
     let masked: HashSet<_> = view
@@ -590,14 +790,14 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
         .collect();
     for installed in state.corp.installed.iter_mut().filter(|card| masked.contains(&card.install_id)) {
         installed.card = match installed.slot {
-            InstallSlot::Ice => pools.corp_ice.draw(),
-            InstallSlot::Root => pools.corp_root.draw(),
+            InstallSlot::Ice => pools.draw(Slot::CorpIce),
+            InstallSlot::Root => pools.draw(Slot::CorpRoot),
         };
     }
 
-    state.runner.stack = pools.runner_any.draw_n(state.runner.stack.len());
+    state.runner.stack = pools.draw_n(Slot::RunnerAny, state.runner.stack.len());
     if view.runner.grip_cards.is_none() {
-        state.runner.grip = pools.runner_any.draw_n(state.runner.grip.len());
+        state.runner.grip = pools.draw_n(Slot::RunnerAny, state.runner.grip.len());
     }
 }
 
@@ -705,6 +905,162 @@ mod tests {
             seed: 1,
             ..Default::default()
         }
+    }
+
+
+    fn multiset(cards: impl IntoIterator<Item = CardId>) -> std::collections::BTreeMap<CardId, usize> {
+        let mut counts = std::collections::BTreeMap::new();
+        for card in cards {
+            *counts.entry(card).or_insert(0) += 1;
+        }
+        counts
+    }
+
+    fn decklist(id: &str) -> std::collections::BTreeMap<CardId, usize> {
+        let deck = netrunner_core::decks::by_id(id).unwrap();
+        multiset(deck.cards.iter().flat_map(|entry| std::iter::repeat_n(entry.card.clone(), entry.count as usize)))
+    }
+
+    /// Every Corp card the sample holds anywhere — hidden zones and public
+    /// ones alike — so that it can be compared with the decklist as a
+    /// whole.
+    fn every_corp_card(state: &CoreGameState) -> std::collections::BTreeMap<CardId, usize> {
+        multiset(
+            state
+                .corp
+                .hq
+                .iter()
+                .chain(&state.corp.r_and_d)
+                .chain(state.corp.archives.iter().map(|a| &a.card))
+                .chain(state.corp.installed.iter().map(|c| &c.card))
+                .chain(state.corp.scored_agendas.iter().map(|s| &s.card))
+                .chain(&state.runner.scored_agendas)
+                .chain(&state.corp.removed_from_game)
+                .cloned(),
+        )
+    }
+
+    fn playable_registry() -> CardRegistry {
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        registry
+    }
+
+    fn sample_game(corp: &str, runner: &str) -> (CoreGameState, CardRegistry) {
+        let registry = playable_registry();
+        let corp = netrunner_core::decks::by_id(corp).unwrap().to_deck();
+        let runner = netrunner_core::decks::by_id(runner).unwrap().to_deck();
+        let (state, _) = CoreGameState::setup(&corp, &runner, &registry, 5).unwrap();
+        (state, registry)
+    }
+
+    /// The whole point of the decklist pool: a sample's hidden Corp cards
+    /// plus the Corp cards the view shows are the Corp's decklist, exactly
+    /// — one copy of each card for every copy the list has, whatever has
+    /// been installed, discarded or stolen — and the same for the Runner's
+    /// own stack, which the Runner cannot see either.
+    #[test]
+    fn a_known_decklist_partitions_exactly_into_the_sample() {
+        let (mut state, registry) = sample_game("agency", "stolen_goods");
+        let mut rng = StdRng::seed_from_u64(11);
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let sample = determinize(&view, &registry, &mut rng);
+        assert_eq!(every_corp_card(&sample), decklist("agency"), "at setup, HQ and R&D together are the list");
+        assert_eq!(
+            multiset(sample.runner.grip.iter().chain(&sample.runner.stack).cloned()),
+            decklist("stolen_goods"),
+            "the Runner's own stack is the list minus the grip"
+        );
+
+        // Mid-game: a rezzed install, a faceup discard and a stolen agenda
+        // are all visible to the Runner, and each strikes one copy.
+        let installed = state.corp.hq.remove(0);
+        state.corp.installed.push(InstalledCard {
+            card: installed,
+            install_id: netrunner_core::rules::InstallId(7),
+            server: netrunner_core::rules::ServerId::Remote(0),
+            slot: CoreInstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        });
+        let discarded = state.corp.r_and_d.remove(0);
+        state.corp.archives.push(netrunner_core::rules::ArchivedCard { card: discarded, facedown: false });
+        let stolen = state.corp.r_and_d.remove(0);
+        state.runner.scored_agendas.push(stolen);
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let sample = determinize(&view, &registry, &mut rng);
+        assert_eq!(every_corp_card(&sample), decklist("agency"));
+        assert_eq!(every_corp_card(&state), decklist("agency"), "and so does the real state, which is the premise");
+    }
+
+    /// The identities reach the sample's *pool* (the decklist is chosen
+    /// by them) but not the sample's *state*: carrying them measured
+    /// worse for the search — see the comment on `determinize`'s
+    /// `identity: None`. This pins the decision so that re-enabling it is
+    /// a deliberate, measured change rather than a drive-by.
+    #[test]
+    fn identities_choose_the_pool_but_are_not_carried_into_the_sample() {
+        let (state, registry) = sample_game("agency", "stolen_goods");
+        assert!(state.corp.identity.is_some() && state.runner.identity.is_some(), "the premise");
+        for viewer in [Side::Corp, Side::Runner] {
+            let view = build_client_view(&state, &registry, viewer);
+            assert_eq!(view.corp.identity, state.corp.identity, "the view carries it");
+            let sample = determinize(&view, &registry, &mut StdRng::seed_from_u64(1));
+            assert_eq!(every_corp_card(&sample), decklist("agency"), "and the pool was chosen by it");
+            assert_eq!(sample.corp.identity, None);
+            assert_eq!(sample.runner.identity, None);
+        }
+    }
+
+    /// Two published lists share *Precision Design*. With nothing visible
+    /// they tie and the first by id is taken; the first card seen that
+    /// only one of them plays decides it.
+    #[test]
+    fn two_lists_sharing_an_identity_are_told_apart_by_what_is_visible() {
+        let (mut state, registry) = sample_game("discretion_advised", "stolen_goods");
+        let mut rng = StdRng::seed_from_u64(2);
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let sample = determinize(&view, &registry, &mut rng);
+        assert_eq!(every_corp_card(&sample), decklist("brutal_efficiency"), "nothing seen: the tie goes to the first by id");
+
+        // Nico Campaign is in Discretion Advised and not in Brutal
+        // Efficiency. Faceup in Archives, it is visible to the Runner.
+        let nico = CardId("nico_campaign".to_string());
+        let position = state.corp.r_and_d.iter().position(|c| c == &nico).expect("the list plays it");
+        let card = state.corp.r_and_d.remove(position);
+        state.corp.archives.push(netrunner_core::rules::ArchivedCard { card, facedown: false });
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let sample = determinize(&view, &registry, &mut rng);
+        assert_eq!(every_corp_card(&sample), decklist("discretion_advised"));
+    }
+
+    /// A list that runs out before the hidden slots do — the opponent is
+    /// not playing the list the identity suggests, or a rollout has drawn
+    /// more than the real deck holds — hands the remaining slots to the
+    /// registry rather than a placeholder or a panic.
+    #[test]
+    fn hidden_slots_beyond_the_decklist_fall_back_to_the_registry() {
+        let (mut state, registry) = sample_game("agency", "stolen_goods");
+        state.corp.r_and_d.extend(std::iter::repeat_n(CardId("hedge_fund".to_string()), 10));
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let sample = determinize(&view, &registry, &mut StdRng::seed_from_u64(4));
+        assert_eq!(sample.corp.r_and_d.len(), state.corp.r_and_d.len());
+        assert!(sample.corp.r_and_d.iter().all(|card| registry.get(card).is_some_and(|c| c.side == Side::Corp)));
+    }
+
+    /// A root slot can hold an Upgrade as well as an Agenda or an Asset;
+    /// leaving Upgrades out made every unrezzed remote card an agenda or an
+    /// asset, which against a real list overstated the agenda density.
+    #[test]
+    fn a_root_slot_admits_upgrades() {
+        assert!(Slot::CorpRoot.admits(&blank_card("grid", Side::Corp, CardType::Upgrade)));
+        assert!(Slot::CorpRoot.admits(&blank_card("agenda", Side::Corp, CardType::Agenda)));
+        assert!(!Slot::CorpRoot.admits(&blank_card("ice", Side::Corp, CardType::Ice(IceType::Barrier))));
+        assert!(!Slot::CorpIce.admits(&blank_card("grid", Side::Corp, CardType::Upgrade)));
     }
 
     /// `resample_hidden` redraws only what the viewer cannot see and
