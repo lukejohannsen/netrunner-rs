@@ -112,6 +112,32 @@ fn evaluation_perspective(state: &GameState, value_side: Side) -> Side {
     current_actor(state).unwrap_or(value_side)
 }
 
+/// The divisor for a **root-relative** network leaf, or `None` for the
+/// absolute leaves a network has always reported.
+///
+/// `None` today, and left in with its numbers on it the way
+/// `puct::BREACH_OUTCOMES` is. The static evaluator went root-relative in
+/// September 2026 and a network's evaluator did not, so on that engine
+/// every arena leg seating a *network's* value searched the regime the
+/// static one had just left: `priors-only` 0.430 (its value comes from the
+/// uniform evaluator) against `value-only` 0.135, about 12σ over 384 games.
+/// Anchoring the network the same way is worth a consistent **+0.035** —
+/// 0.177 / 0.164 / 0.174 at scales 0.05 / 0.1 / 0.2 against 0.135 — real,
+/// flat in the scale, and only a seventh of the gap. It is off because
+/// every one of those numbers is from `rejected_iter_016.onnx`, a
+/// checkpoint fit where the Corp won 67% against this engine's 55.3%, so
+/// the measurement cannot separate the regime from the staleness. Turn it
+/// on when a checkpoint trained on this engine says so
+/// (ROADMAP Phase 2 §5 item 21).
+///
+/// The scale is what the first attempt missed: subtracting two already
+/// squashed `[-1, 1]` outputs leaves a within-decision gap of ~0.01–0.05
+/// against an exploration term of ~0.13 — the flat-tail pathology, not the
+/// cure — where the uniform evaluator's divisor *expands* a decision-sized
+/// difference. Unscaled subtraction measured 0.122, inside noise of doing
+/// nothing.
+const ANCHOR_SCALE: Option<f64> = None;
+
 impl PolicyEvaluator for OnnxPolicyEvaluator {
     fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
         let mask = get_action_mask(state, registry);
@@ -124,6 +150,22 @@ impl PolicyEvaluator for OnnxPolicyEvaluator {
         let value = if deciding == self.side { value } else { -value };
 
         (masked_softmax(&policy_logits, &mask), value)
+    }
+
+    /// The network's own root value as the anchor, leaves reported relative
+    /// to it and rescaled — the symmetry of what the static evaluator got.
+    /// Inert while `ANCHOR_SCALE` is `None`; see it for the measurement.
+    fn anchor(&self, state: &GameState, registry: &CardRegistry) -> f32 {
+        if ANCHOR_SCALE.is_some() { self.evaluate(state, registry).1 } else { 0.0 }
+    }
+
+    fn evaluate_from(&self, state: &GameState, registry: &CardRegistry, anchor: f32) -> (Vec<f32>, f32) {
+        let (priors, value) = self.evaluate(state, registry);
+        let value = match ANCHOR_SCALE {
+            Some(scale) => (((value - anchor) as f64) / scale).tanh() as f32,
+            None => value,
+        };
+        (priors, value)
     }
 }
 

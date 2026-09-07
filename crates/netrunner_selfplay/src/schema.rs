@@ -44,6 +44,22 @@ pub struct SelfPlayStep {
     /// comment for why the outcome alone taught the head nothing; the
     /// trainer mixes the two (`--value-target-mix`).
     pub search_value: f32,
+    /// `PuctSearchStats::root_value_absolute`: the evaluator's absolute
+    /// read of this position, from the acting side, in `[-1, 1]`.
+    ///
+    /// The field beside it stopped meaning one thing. A static evaluator's
+    /// leaves became relative to the root in September 2026, so
+    /// `search_value` from a uniform-search corpus is a per-decision
+    /// *delta* centred near zero, while one recorded under a network is an
+    /// absolute estimate — and nothing on disk said which. This is the
+    /// quantity `--value-target-mix` was written for, and it is absolute
+    /// for both, so a corpus is comparable to every corpus before it.
+    ///
+    /// `#[serde(default)]` for the archived corpora, where it reads `0.0`;
+    /// the trainer refuses a nonzero mix against one rather than training
+    /// half its value target on zeros.
+    #[serde(default)]
+    pub search_value_absolute: f32,
     /// `ActionSpace` index of the action actually applied to the game.
     pub action_taken: usize,
     /// `Side::Corp as u8 == 0`, `Side::Runner as u8 == 1`.
@@ -116,6 +132,21 @@ mod tests {
         assert_eq!(sparse(&[0.0, 0.5, 0.0, 0.0, 0.25, -1.0]), vec![(1, 0.5), (4, 0.25), (5, -1.0)]);
         assert!(sparse(&[0.0; 8]).is_empty());
         assert!(sparse(&[]).is_empty());
+    }
+
+    /// An archived corpus predates `search_value_absolute` and must still
+    /// load, reading `0.0` — the same `#[serde(default)]` contract
+    /// `pool_fingerprint` and `end_reason` established. The trainer's job
+    /// is to refuse a nonzero `--value-target-mix` against such a corpus
+    /// rather than train half a value target on zeros.
+    #[test]
+    fn a_step_recorded_before_the_absolute_value_existed_still_loads() {
+        let archived = r#"{"observation":[[0,1.0]],"policy_target":[[2,1.0]],
+            "search_value":0.25,"action_taken":2,"active_side":1}"#;
+        let step: SelfPlayStep = serde_json::from_str(archived).unwrap();
+        assert_eq!(step.search_value, 0.25);
+        assert_eq!(step.search_value_absolute, 0.0);
+        assert_eq!(step.active_side, 1);
     }
 
     /// A pair serializes as a two-element JSON array, which is what the

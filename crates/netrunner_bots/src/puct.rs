@@ -142,6 +142,13 @@ impl PuctNode {
     /// PUCT selection: `argmax_a ±Q(a) + c_puct * P(a) * sqrt(N_parent) /
     /// (1 + N(a))`, with first-play-urgency `Q = 0` for an unvisited edge.
     ///
+    /// FPU stays at zero, measured rather than assumed. An absolute-valued
+    /// head in a 67/33 game must report roughly ±0.34 by chair, so an FPU
+    /// of 0 makes every unvisited edge outrank every visited one at
+    /// opponent nodes — a plausible account of the Corp chair's deficit,
+    /// and wrong: FPU at the node's own mean Q measured 0.120 against
+    /// 0.135 over 384 games, inside noise (ROADMAP Phase 2 §5 item 21).
+    ///
     /// `agent_to_move` is the negamax half of the search. Every value in
     /// the tree is from the agent's fixed perspective (see `simulate`), so
     /// at a node where the *opponent* decides, the edge they would take is
@@ -168,6 +175,11 @@ impl PuctNode {
     }
 
 }
+
+/// What one determinization contributes to the merged root stats: the
+/// evaluator's absolute read of that sample's root, and one
+/// `(slot, visits, total_value)` per root edge in the caller's order.
+type SampleStats = (f32, Vec<(Option<usize>, u32, f64)>);
 
 fn puct_score(edge: &Edge, sqrt_parent_visits: f64, c_puct: f64, agent_to_move: bool) -> f64 {
     let q = if edge.visits == 0 { 0.0 } else { edge.total_value / edge.visits as f64 };
@@ -465,11 +477,18 @@ impl PuctAgent {
         let evaluator = self.evaluator.as_ref();
         let breach_outcomes = self.config.breach_outcomes;
 
-        let per_sample: Vec<Vec<(Option<usize>, u32, f64)>> = (0..samples)
+        let per_sample: Vec<SampleStats> = (0..samples)
             .into_par_iter()
             .map(|sample_index| {
                 let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(sample_index as u64));
                 let sample = determinize(view, registry, &mut rng);
+                // The evaluator's *absolute* read of this root, taken before
+                // the search runs. `evaluate` rather than `evaluate_from`
+                // because that is the one call whose value means the same
+                // thing for every evaluator kind — see
+                // `PuctSearchStats::root_value_absolute`. One evaluation
+                // against `iterations` of them, so it does not show up.
+                let root_absolute = evaluator.evaluate(&sample, registry).1;
                 // Expanded here rather than by the first `simulate`, because
                 // only the root may be seeded from `view.legal_actions` — see
                 // `expand_root`. Counted as one visit, the same bookkeeping
@@ -495,7 +514,7 @@ impl PuctAgent {
                 for _ in 0..per_sample_iterations {
                     simulate(&mut root, &search, max_depth);
                 }
-                root.edges.iter().map(|edge| (edge.index, edge.visits, edge.total_value)).collect()
+                (root_absolute, root.edges.iter().map(|edge| (edge.index, edge.visits, edge.total_value)).collect())
             })
             .collect();
 
@@ -515,9 +534,9 @@ impl PuctAgent {
             .iter()
             .enumerate()
             .map(|(position, action)| {
-                let index = per_sample[0][position].0;
-                let visits = per_sample.iter().map(|edges| edges[position].1).sum::<u32>();
-                let total_value = per_sample.iter().map(|edges| edges[position].2).sum::<f64>();
+                let index = per_sample[0].1[position].0;
+                let visits = per_sample.iter().map(|(_, edges)| edges[position].1).sum::<u32>();
+                let total_value = per_sample.iter().map(|(_, edges)| edges[position].2).sum::<f64>();
                 if let Some(index) = index {
                     visit_counts[index] = visits;
                 }
@@ -528,7 +547,13 @@ impl PuctAgent {
         let (total_value, total_visits) =
             actions.iter().fold((0.0f64, 0u32), |(v, n), stat| (v + stat.total_value, n + stat.visits));
         let root_value = if total_visits == 0 { 0.0 } else { (total_value / total_visits as f64) as f32 };
-        PuctSearchStats { visit_counts, actions, root_value }
+        // Averaged over the determinizations for the same reason the edge
+        // stats are summed over them: each sample is one story about the
+        // hidden cards, and the caller asked about the position, not about
+        // one story.
+        let root_value_absolute =
+            (per_sample.iter().map(|(absolute, _)| *absolute as f64).sum::<f64>() / samples as f64) as f32;
+        PuctSearchStats { visit_counts, actions, root_value, root_value_absolute }
     }
 }
 
@@ -771,7 +796,30 @@ pub struct PuctSearchStats {
     /// never beat predicting zero at any corpus size (ROADMAP Phase 2 §5).
     /// The root value is what the search actually believed about *this*
     /// position, smoother and position-specific, at no extra cost.
+    ///
+    /// **Not a win estimate under a static evaluator** — see
+    /// `root_value_absolute`, which is.
     pub root_value: f32,
+    /// The evaluator's **absolute** read of the root, before the search
+    /// ran: `PolicyEvaluator::evaluate`'s value, averaged over the
+    /// determinizations.
+    ///
+    /// It exists because `root_value` stopped meaning one thing.
+    /// `evaluate_from` made a static evaluator's leaves relative to the
+    /// root (`policy.rs`, September 2026) — the change that took the PUCT
+    /// Runner from 0.219 to 0.411 — so the mean backed up through the root
+    /// became "how much the search expects to *gain* from here", centred
+    /// near zero, while a network's `evaluate_from` ignores the anchor and
+    /// still backs up absolute values. Two quantities under one name, and
+    /// self-play was writing whichever it happened to have into a value
+    /// target the trainer blends with the game's outcome
+    /// (`--value-target-mix`): half that target had silently become ~0.
+    ///
+    /// `evaluate` is the call that is absolute for every evaluator kind, so
+    /// this field is comparable across uniform and network self-play and
+    /// across every corpus recorded since. For a uniform search it
+    /// reproduces exactly what `root_value` carried before the change.
+    pub root_value_absolute: f32,
 }
 
 impl BotAgent for PuctAgent {
@@ -1420,6 +1468,59 @@ mod tests {
         assert!((stats.root_value as f64 - value / visits as f64).abs() < 1e-5);
         assert!((-1.0..=1.0).contains(&stats.root_value));
         assert!(stats.root_value > 0.0, "a score for the win is one move away: {}", stats.root_value);
+
+        // The absolute read is the evaluator's own value at the root,
+        // untouched by the search, and it is *not* `root_value`: the leaves
+        // this search backed up were relative to it.
+        let expected = UniformPolicyEvaluator::new(Side::Corp).evaluate(&state, &registry).1;
+        assert!(
+            (stats.root_value_absolute - expected).abs() < 1e-5,
+            "absolute {} against the evaluator's own {expected}",
+            stats.root_value_absolute
+        );
+        assert!((-1.0..=1.0).contains(&stats.root_value_absolute));
+    }
+
+    /// The two root values are different quantities, and this is the test
+    /// that says so: `root_value` is what the search backed up (relative to
+    /// the root under a static evaluator, so it prices the *next decision*)
+    /// and `root_value_absolute` is what the evaluator thinks of the
+    /// position itself. Conflating them put ~0 into half of self-play's
+    /// value target — see `PuctSearchStats::root_value_absolute`.
+    #[test]
+    fn the_absolute_root_value_is_a_position_read_and_the_relative_one_is_not() {
+        let registry = CardRegistry::new();
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.corp.resources.clicks = Clicks(3);
+        // Two agenda points to the Corp: a lopsided position, which an
+        // absolute read must notice and a per-decision delta must not.
+        state.corp.resources.agenda_points = AgendaPoints(2);
+        let view = build_client_view(&state, &registry, Side::Corp);
+
+        let mut agent = PuctAgent::with_config(
+            Side::Corp,
+            5,
+            UniformPolicyEvaluator::new(Side::Corp),
+            PuctConfig { c_puct: 1.5, iterations: 32, max_depth: 4, samples: 1, breach_outcomes: 1 },
+        );
+        let stats = agent.search(&view, &registry);
+
+        let evaluator = UniformPolicyEvaluator::new(Side::Corp);
+        assert!((stats.root_value_absolute - evaluator.evaluate(&state, &registry).1).abs() < 1e-5);
+        // `evaluate_from` against its own anchor is zero by construction —
+        // the root gains nothing on itself — which is what makes the
+        // backed-up mean a delta rather than a position read.
+        let anchor = evaluator.anchor(&state, &registry);
+        assert_eq!(evaluator.evaluate_from(&state, &registry, anchor).1, 0.0);
+        assert!(
+            stats.root_value_absolute > stats.root_value,
+            "two agenda points show up in the absolute read ({}) and not in the delta ({})",
+            stats.root_value_absolute,
+            stats.root_value
+        );
     }
 
     /// The door decision as a chance node: at the approach-server step a
@@ -1521,6 +1622,7 @@ mod tests {
             "the same seed must merge to the same stats however the samples were scheduled"
         );
         assert_eq!(first.root_value, second.root_value);
+        assert_eq!(first.root_value_absolute, second.root_value_absolute, "the absolute read merges deterministically too");
     }
 
     #[test]

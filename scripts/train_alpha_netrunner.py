@@ -118,6 +118,12 @@ class SparseRows:
         return total / max(1, len(rows))
 
 
+#: The value-head targets `--value-target` selects between. See
+#: `NetrunnerCorpus.set_value_target` for what each one is and the
+#: measurement that motivates it.
+VALUE_TARGET_KINDS = ("outcome", "mixed", "discounted", "discounted_unforeseeable")
+
+
 class NetrunnerCorpus:
     """Every recorded decision of a corpus, remembering which game each came from.
 
@@ -155,10 +161,15 @@ class NetrunnerCorpus:
         self.observations = None
         self.policies = None
         outcomes = []
+        active_sides = []
         search_values = []
+        search_values_absolute = []
         positions = []
+        steps_to_end = []
+        end_reasons = []
         self.game_of_sample = []
         self.missing_search_value = 0
+        self.missing_search_value_absolute = 0
         self.outcomes = {1.0: 0, -1.0: 0, 0.0: 0}
         self.dropped_stalls = 0
         self.dropped_stall_steps = 0
@@ -208,7 +219,8 @@ class NetrunnerCorpus:
                     # registered — a replayed iteration is still a replayed
                     # iteration — and before its steps are read, so the
                     # window's size counts decisions a search resolved.
-                    if str(game.get("end_reason", "")).startswith("stall_"):
+                    end_reason = str(game.get("end_reason", ""))
+                    if end_reason.startswith("stall_"):
                         self.dropped_stalls += 1
                         self.dropped_stall_steps += len(game["steps"])
                         continue
@@ -220,6 +232,7 @@ class NetrunnerCorpus:
                         self.observations.append(step["observation"])
                         self.policies.append(step["policy_target"])
                         outcomes.append(outcome_corp if step["active_side"] == 0 else -outcome_corp)
+                        active_sides.append(int(step["active_side"]))
                         # Recorded from the acting side already, like the
                         # outcome above once it is signed.
                         if "search_value" in step:
@@ -227,7 +240,18 @@ class NetrunnerCorpus:
                         else:
                             search_values.append(0.0)
                             self.missing_search_value += 1
+                        # Absent from every corpus recorded before September
+                        # 2026, and 0.0 there rather than absent in one
+                        # recorded by a build that predates the field but
+                        # postdates serde's default — so a zero counts as
+                        # missing too. See `set_value_target`.
+                        absolute = float(step.get("search_value_absolute", 0.0))
+                        search_values_absolute.append(absolute)
+                        if absolute == 0.0:
+                            self.missing_search_value_absolute += 1
                         positions.append(position / max(1, len(steps) - 1))
+                        steps_to_end.append(len(steps) - 1 - position)
+                        end_reasons.append(end_reason)
                         self.game_of_sample.append(game_index)
         if self.observations is None:
             raise ValueError(f"No trajectory steps found in '{data_dir}'")
@@ -236,28 +260,78 @@ class NetrunnerCorpus:
         self.outcomes_by_sample = np.asarray(outcomes, dtype=np.float32)
         self.search_values = np.asarray(search_values, dtype=np.float32)
         self.positions = np.asarray(positions, dtype=np.float32)
+        self.active_sides = np.asarray(active_sides, dtype=np.int8)
+        self.search_values_absolute = np.asarray(search_values_absolute, dtype=np.float32)
+        self.steps_to_end = np.asarray(steps_to_end, dtype=np.float32)
+        # Decided by something no board feature sees: the ~40% of games that
+        # end in a flatline or a deck-out rather than on agenda points
+        # (ROADMAP Phase 2 §5).
+        self.unforeseeable = np.isin(np.asarray(end_reasons), ("flatline", "deckout"))
         self.game_of_sample = np.asarray(self.game_of_sample, dtype=np.int64)
         self.game_count = game_index
         self.values = self.outcomes_by_sample
 
-    def set_value_target_mix(self, mix: float):
-        """The value head's target: `(1 - mix)` of the game's final outcome plus
-        `mix` of the search's own root value at that decision, both from the
-        acting side.
+    def set_value_target(self, kind: str, mix: float, discount: float):
+        """Build the value head's target. `self.values` is what the head is
+        trained on; `outcomes_by_sample` stays the signed final outcome and is
+        what every diagnostic measures against, so targets stay comparable to
+        each other and to all four earlier runs.
 
-        The outcome alone taught the head nothing: a 64-simulation search's
-        game is decided largely by opening noise, every position of a game
-        carries the same label, and the head memorised games — held-out MSE
-        never beat predicting zero at 96, 288, 960 or 2,400 games while the
-        training loss sat at 0.01–0.05 (ROADMAP Phase 2 §5). The root value
-        is what the search believed about *this* position, and it varies
-        within a game. A corpus recorded before `search_value` existed can
-        only be trained with `mix == 0`, and is refused otherwise rather
-        than silently trained on zeros."""
-        if mix > 0.0 and self.missing_search_value:
-            raise ValueError(f"{self.missing_search_value} steps carry no search_value; this corpus predates it, "
-                             "so --value-target-mix must be 0")
-        self.values = ((1.0 - mix) * self.outcomes_by_sample + mix * self.search_values).astype(np.float32)
+        Rebinds `self.values` rather than writing into it — it starts as an
+        *alias* of `outcomes_by_sample`, and an in-place write would corrupt
+        the diagnostics along with it.
+
+        The kinds, and the measurement behind each (ROADMAP Phase 2 §5):
+
+        `outcome` — the signed final outcome, ±1 on every step of the game.
+        The original target, and the control. Its problem is on the record:
+        `sign_accuracy_by_decile` reads 54% in the opening rising to 66% at
+        the end, so the opening half of every game carries a confident label
+        that is nearly a coin flip.
+
+        `mixed` — `(1 - mix)` of that plus `mix` of the search's **absolute**
+        root read. What `--value-target-mix` was always meant to be. It is
+        keyed to `search_values_absolute`, not `search_values`: a static
+        evaluator's leaves became root-relative in September 2026, so
+        `search_value` from a uniform-search corpus is a per-decision delta
+        centred near zero and blending it at 0.5 would halve the target
+        rather than smooth it.
+
+        `discounted` — the outcome decayed by distance to the end,
+        `outcome * discount ** steps_to_end`. The head is asked how *decided*
+        a position is and for whom, which is a function of the board, instead
+        of being asked to call a game 200 decisions early. A near-zero value
+        at an early leaf also hands that subtree back to the priors, which
+        the ablation legs measured as neutral (0.672 as Corp against a 0.693
+        baseline) where the value head measured as −0.292.
+
+        `discounted_unforeseeable` — `discounted`, but the decay applies only
+        to games that ended in a flatline or a deck-out. About 40% of
+        PUCT-vs-PUCT games end that way and neither a board feature nor the
+        agenda-point margin sees one coming, while an agenda-point game is
+        genuinely foreshadowed by the score and the board. This is the
+        narrower claim: discount what is unforeseeable, keep the label where
+        it was earned.
+        """
+        if kind not in VALUE_TARGET_KINDS:
+            raise ValueError(f"unknown value target {kind!r}; expected one of {', '.join(VALUE_TARGET_KINDS)}")
+        if kind == "mixed" and mix > 0.0 and self.missing_search_value_absolute:
+            raise ValueError(
+                f"{self.missing_search_value_absolute} steps carry no search_value_absolute; this corpus was "
+                "recorded before the field existed (or by a search that never ran), so --value-target mixed "
+                "would train half its target on zeros. Re-record the corpus or use --value-target outcome."
+            )
+
+        decay = np.power(discount, self.steps_to_end, dtype=np.float32)
+        if kind == "outcome":
+            values = self.outcomes_by_sample
+        elif kind == "mixed":
+            values = (1.0 - mix) * self.outcomes_by_sample + mix * self.search_values_absolute
+        elif kind == "discounted":
+            values = self.outcomes_by_sample * decay
+        elif kind == "discounted_unforeseeable":
+            values = self.outcomes_by_sample * np.where(self.unforeseeable, decay, 1.0)
+        self.values = np.asarray(values, dtype=np.float32)
 
     def __len__(self):
         return len(self.outcomes_by_sample)
@@ -454,11 +528,40 @@ def value_diagnostics(model, corpus, rows, batch_size, device):
     pred = np.concatenate(preds) if preds else np.zeros(0, dtype=np.float32)
     outcome = corpus.outcomes_by_sample[rows]
     decided = outcome != 0.0
+    sides = corpus.active_sides[rows]
+    # The honest null. Predicting zero is the null for a *symmetric* game,
+    # and this one is not: the Corp wins about two games in three, so a
+    # predictor that knows nothing but which chair is to move already
+    # scores 1 - (2p-1)^2 per chair. Measured on the fourth volume run's
+    # own logs, that null is 0.882 and the head averaged 0.926 — it beat
+    # the chair in two iterations of sixteen. `baseline_mse` (predict-zero,
+    # 1.000 when every game is decided) is kept beside it because every
+    # earlier run is recorded against it, but it is the easy null and
+    # ROADMAP Phase 2 §5 item 20's reading of it was too kind.
+    chair_pred = np.zeros_like(outcome)
+    for side in (0, 1):
+        pick = sides == side
+        if pick.any():
+            chair_pred[pick] = np.mean(outcome[pick])
     diag = {
         "mse_vs_outcome": float(np.mean((pred - outcome) ** 2)) if len(rows) else 0.0,
         "baseline_mse": float(np.mean(outcome ** 2)) if len(rows) else 0.0,
+        "chair_baseline_mse": float(np.mean((chair_pred - outcome) ** 2)) if len(rows) else 0.0,
         "sign_accuracy": float(np.mean(np.sign(pred[decided]) == np.sign(outcome[decided]))) if decided.any() else 0.0,
     }
+    # Where the head's mass actually sits, by chair: a head that has learned
+    # only the base rate reports about +/-(2p-1) here and little spread.
+    for side, name in ((0, "corp"), (1, "runner")):
+        pick = sides == side
+        diag[f"mean_pred_{name}"] = float(np.mean(pred[pick])) if pick.any() else None
+        diag[f"rms_pred_{name}"] = float(np.sqrt(np.mean(pred[pick] ** 2))) if pick.any() else None
+    # Split by how the game ended. If the head calls agenda-point games and
+    # misses flatlines and deck-outs, the deficit is localised for free —
+    # and a target built around end reason has earned its place.
+    for name, pick_reason in (("unforeseeable", corpus.unforeseeable[rows]), ("foreseeable", ~corpus.unforeseeable[rows])):
+        pick = decided & pick_reason
+        diag[f"sign_accuracy_{name}"] = float(np.mean(np.sign(pred[pick]) == np.sign(outcome[pick]))) if pick.any() else None
+        diag[f"share_{name}"] = float(np.mean(pick_reason)) if len(rows) else 0.0
     deciles = np.minimum((corpus.positions[rows] * 10).astype(int), 9)
     by_decile = []
     for d in range(10):
@@ -476,7 +579,7 @@ def train(args):
 
     started = time.time()
     corpus = NetrunnerCorpus(args.data_dir, window=args.window, limit_games=args.limit_games)
-    corpus.set_value_target_mix(args.value_target_mix)
+    corpus.set_value_target(args.value_target, args.value_target_mix, args.value_discount)
     train_idx, val_idx = corpus.split_by_game(val_fraction=0.1, seed=args.seed)
     outcomes = corpus.outcomes
     print(f"Loaded {corpus.game_count} games, {len(corpus)} decision steps in {time.time() - started:.1f}s "
@@ -491,8 +594,15 @@ def train(args):
     # this. Printed once so "4.5" can be read as "1.9 nats above the floor".
     policy_floor = corpus.policies.entropy(val_idx)
     print(f"Validation policy-target entropy (loss floor): {policy_floor:.4f} nats")
-    print(f"Value target: {1.0 - args.value_target_mix:.2f} x outcome + {args.value_target_mix:.2f} x search root value; "
-          f"value loss weight {args.value_loss_weight:g}")
+    described = {
+        "outcome": "final outcome",
+        "mixed": f"{1.0 - args.value_target_mix:.2f} x outcome + {args.value_target_mix:.2f} x absolute search root value",
+        "discounted": f"outcome x {args.value_discount:g} ** steps_to_end",
+        "discounted_unforeseeable": f"outcome, x {args.value_discount:g} ** steps_to_end on flatline/deckout games only",
+    }[args.value_target]
+    print(f"Value target ({args.value_target}): {described}; value loss weight {args.value_loss_weight:g} "
+          f"| mean |target| {float(np.mean(np.abs(corpus.values))):.3f}, "
+          f"unforeseeable steps {float(np.mean(corpus.unforeseeable)):.1%}")
 
     sample_weights = None
     if args.segment_balance > 0.0:
@@ -512,6 +622,7 @@ def train(args):
     history = []
     os.makedirs(args.output_dir, exist_ok=True)
     best_pt_path = os.path.join(args.output_dir, "best_model.pt")
+    epochs_since_best = 0
 
     for epoch in range(1, args.epochs + 1):
         epoch_started = time.time()
@@ -527,20 +638,38 @@ def train(args):
         diag = value_diagnostics(model, corpus, val_idx, args.batch_size, device)
         # Selected on the same weighted sum the gradient used, so the
         # checkpoint that ships is the one the training objective preferred.
-        val_loss = val_p + args.value_loss_weight * val_v
+        #
+        # `--select-on value` exists because that sum is dominated by the
+        # policy term at the default weight of 0.25: a change that improves
+        # the value head need not change which epoch ships, so an experiment
+        # about the value target measured through this criterion can read as
+        # no change when the head did move (ROADMAP Phase 2 §5).
+        val_loss = {
+            "blended": val_p + args.value_loss_weight * val_v,
+            "value": val_v,
+            "policy": val_p,
+        }[args.select_on]
         history.append({"epoch": epoch, "train_policy": train_p, "train_value": train_v,
                         "val_policy": val_p, "val_value": val_v, "val_value_diagnostics": diag})
         print(f"Epoch {epoch:02d}/{args.epochs:02d} | "
               f"Train (Policy: {train_p:.4f}, Value: {train_v:.4f}) | "
               f"Val (Policy: {val_p:.4f}, +{val_p - policy_floor:.4f} over floor, Value: {val_v:.4f}) | "
-              f"Value vs outcome: MSE {diag['mse_vs_outcome']:.3f} (predict-zero {diag['baseline_mse']:.3f}), "
+              f"Value vs outcome: MSE {diag['mse_vs_outcome']:.3f} (chair {diag['chair_baseline_mse']:.3f}, "
+              f"predict-zero {diag['baseline_mse']:.3f}), "
               f"sign {diag['sign_accuracy']:.1%} | {time.time() - epoch_started:.0f}s")
 
+        if val_loss < best_val_loss - 1e-9:
+            epochs_since_best = 0
+        else:
+            epochs_since_best += 1
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             best_epoch = epoch
             best_diag = diag
             torch.save(model.state_dict(), best_pt_path)
+        if args.early_stop_patience and epochs_since_best >= args.early_stop_patience:
+            print(f"Early stop: {epochs_since_best} epochs since the best (epoch {best_epoch}).")
+            break
 
     print("Training complete. Exporting best checkpoint to ONNX...")
     onnx_path = os.path.join(args.output_dir, "netrunner_policy.onnx")
@@ -553,7 +682,10 @@ def train(args):
         "games": corpus.game_count, "steps": len(corpus), "train_steps": int(len(train_idx)),
         "dropped_stalls": corpus.dropped_stalls, "dropped_stall_steps": corpus.dropped_stall_steps,
         "val_steps": int(len(val_idx)), "policy_floor": policy_floor, "best_epoch": best_epoch,
-        "best_val_loss": best_val_loss, "value_target_mix": args.value_target_mix,
+        "best_val_loss": best_val_loss, "value_target": args.value_target,
+        "value_target_mix": args.value_target_mix, "value_discount": args.value_discount,
+        "select_on": args.select_on, "early_stop_patience": args.early_stop_patience,
+        "mean_abs_value_target": float(np.mean(np.abs(corpus.values))),
         "value_loss_weight": args.value_loss_weight, "best_value_diagnostics": best_diag,
         "masked_policy": args.masked_policy, "segment_balance": args.segment_balance,
         "epochs": history, "seconds": time.time() - started,
@@ -573,8 +705,20 @@ if __name__ == "__main__":
     parser.add_argument("--limit-games", type=int, default=None,
                         help="Use only the first N games, in file order — for measuring how loss scales with data")
     parser.add_argument("--seed", type=int, default=0, help="Seed for the game split and batch order")
+    parser.add_argument("--value-target", choices=VALUE_TARGET_KINDS, default="mixed",
+                        help="Which value-head target to train (see NetrunnerCorpus.set_value_target)")
     parser.add_argument("--value-target-mix", type=float, default=0.5,
-                        help="Value target = (1 - mix) x final outcome + mix x search root value (see set_value_target_mix)")
+                        help="For --value-target mixed: (1 - mix) x final outcome + mix x absolute search root value")
+    parser.add_argument("--value-discount", type=float, default=0.99,
+                        help="For the discounted targets: outcome x discount ** steps_to_end")
+    parser.add_argument("--select-on", choices=("blended", "value", "policy"), default="blended",
+                        help="Which validation loss picks the exported epoch. 'blended' is "
+                             "val_policy + value_loss_weight * val_value, the historical criterion, and is "
+                             "policy-dominated at the default weight; 'value' is what an experiment about "
+                             "the value target should select on.")
+    parser.add_argument("--early-stop-patience", type=int, default=0,
+                        help="Stop after this many epochs with no improvement in the selection loss "
+                             "(0 = off, the historical behaviour: every epoch always runs)")
     parser.add_argument("--masked-policy", action="store_true",
                         help="Renormalize the policy softmax over the target's support instead of all "
                              "ActionSpace slots, matching what masked_softmax does at inference. Off by "
