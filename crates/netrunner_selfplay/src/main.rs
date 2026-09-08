@@ -56,6 +56,21 @@ struct Cli {
     /// no-network `UniformPolicyEvaluator` baseline.
     #[arg(short = 'm', long = "model-path")]
     model_path: Option<PathBuf>,
+    /// Which halves of `--model-path` the self-play search seats, the
+    /// uniform evaluator supplying the rest. `both` is an ordinary run.
+    ///
+    /// `priors-only` exists because the two halves came apart: the priors
+    /// of a checkpoint trained on this engine beat the uniform search they
+    /// were distilled from (0.617, both chairs above baseline, over the
+    /// 0.55 promotion threshold) while its value scored 0.141 and seating
+    /// both gave 0.359 — so the whole-network run that four volume runs
+    /// kept making is the one configuration worse than either half is
+    /// alone (ROADMAP Phase 2 §5 item 22). Rejected as an alternative:
+    /// leaving this to `--value-loss-weight 0`, which changes what the
+    /// *trainer* optimises rather than what the *search* seats, and so
+    /// still puts an untrained value head at every leaf.
+    #[arg(long = "model-uses", value_enum, default_value_t = NetworkUses::Both)]
+    model_uses: NetworkUses,
     /// Number of recorded decisions (per game) sampled proportionally to
     /// visit counts before switching to greedy (argmax-visits) selection.
     #[arg(long = "temp-plies", default_value_t = 10)]
@@ -94,8 +109,8 @@ struct Cli {
     /// the two ablations answer "is it the priors or the value that loses"
     /// when a whole network scores below the search it was distilled from.
     /// See `netrunner_bots::SplitEvaluator`.
-    #[arg(long = "candidate-uses", value_enum, default_value_t = CandidateUses::Both)]
-    candidate_uses: CandidateUses,
+    #[arg(long = "candidate-uses", value_enum, default_value_t = NetworkUses::Both)]
+    candidate_uses: NetworkUses,
     /// Mixes the candidate's priors toward uniform over the legal set
     /// before the search sees them: `0.0` leaves the network's prior
     /// alone, `1.0` replaces it with the uniform search's own. A dial for
@@ -123,11 +138,21 @@ struct Cli {
     arena_pair_stride: usize,
 }
 
-/// Which halves of a candidate network the arena seats. An ablation over
-/// `--arena-candidate`, never over the incumbent — the incumbent is the
-/// bar, and moving it would make two runs incomparable.
-#[derive(Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
-enum CandidateUses {
+/// Which halves of a network a search actually seats, with the uniform
+/// evaluator supplying the rest.
+///
+/// It began as an arena-only ablation answering "is it the priors or the
+/// value that loses", and the answer turned out to be worth *running on*:
+/// on a checkpoint trained on this engine the priors score 0.617 against
+/// the uniform search — over the 0.55 promotion threshold and above
+/// baseline on both chairs — while its value scores 0.141 and seating both
+/// gives 0.359 (ROADMAP Phase 2 §5 item 22). So the same enum now drives
+/// `--model-uses` on the self-play path, where it selects what generates a
+/// corpus, as well as `--candidate-uses` in the arena, where it is still
+/// applied to the candidate only: the incumbent is the bar, and moving it
+/// would make two runs incomparable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+enum NetworkUses {
     /// The whole network: its priors and its value.
     Both,
     /// The network's value at the leaves, uniform priors at every node.
@@ -137,12 +162,12 @@ enum CandidateUses {
     PriorsOnly,
 }
 
-impl CandidateUses {
+impl NetworkUses {
     fn label(self) -> &'static str {
         match self {
-            CandidateUses::Both => "both",
-            CandidateUses::ValueOnly => "value-only",
-            CandidateUses::PriorsOnly => "priors-only",
+            NetworkUses::Both => "both",
+            NetworkUses::ValueOnly => "value-only",
+            NetworkUses::PriorsOnly => "priors-only",
         }
     }
 }
@@ -170,6 +195,9 @@ enum SelfPlayError {
     UnknownMatchup(String, String),
     #[error("an arena session with two Agent seats yielded {0:?} instead of ending or stalling")]
     ArenaUnexpectedStep(String),
+    #[error("--model-uses {0} needs --model-path: with no network there are no halves to seat, \
+             and the run would silently be an ordinary uniform-search one")]
+    ModelUsesWithoutModel(&'static str),
 }
 
 /// One arena game: how it went, and which chair the candidate sat in.
@@ -230,7 +258,7 @@ struct ArenaSummary {
     as_runner: ChairSummary,
 }
 
-fn summarize(games: &[ArenaGame], candidate_uses: CandidateUses, prior_mix: f32) -> ArenaSummary {
+fn summarize(games: &[ArenaGame], candidate_uses: NetworkUses, prior_mix: f32) -> ArenaSummary {
     let chair = |side: Option<Side>| -> ChairSummary {
         let rows: Vec<ArenaResult> =
             games.iter().filter(|g| side.is_none_or(|s| g.candidate_side == s)).map(|g| g.result).collect();
@@ -353,13 +381,13 @@ fn play_arena_game(
 /// Wraps `evaluator` so only the requested halves of it survive, the
 /// uniform evaluator supplying the rest. `Both` returns it untouched, so
 /// an ordinary arena pays nothing for this existing.
-fn ablate(evaluator: Box<dyn PolicyEvaluator>, side: Side, uses: CandidateUses) -> Box<dyn PolicyEvaluator> {
+fn ablate(evaluator: Box<dyn PolicyEvaluator>, side: Side, uses: NetworkUses) -> Box<dyn PolicyEvaluator> {
     match uses {
-        CandidateUses::Both => evaluator,
-        CandidateUses::ValueOnly => {
+        NetworkUses::Both => evaluator,
+        NetworkUses::ValueOnly => {
             Box::new(SplitEvaluator::new(Box::new(UniformPolicyEvaluator::new(side)), evaluator))
         }
-        CandidateUses::PriorsOnly => {
+        NetworkUses::PriorsOnly => {
             Box::new(SplitEvaluator::new(evaluator, Box::new(UniformPolicyEvaluator::new(side))))
         }
     }
@@ -473,9 +501,15 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
         Session::new(state, registry.clone(), Seat::External, Seat::External).without_history();
 
     let config = PuctConfig { iterations: cli.simulations.max(1), ..PuctConfig::default() };
-    let mut corp_agent = PuctAgent::with_config(Side::Corp, seed, make_evaluator(Side::Corp, &cli.model_path)?, config);
-    let mut runner_agent =
-        PuctAgent::with_config(Side::Runner, seed.wrapping_add(1), make_evaluator(Side::Runner, &cli.model_path)?, config);
+    // Both seats are ablated the same way, which is the difference from the
+    // arena: there the ablation is asymmetric on purpose (the incumbent is
+    // the bar), here it *is* the player being measured, so a corpus is
+    // generated by one configuration rather than two.
+    let evaluator = |side: Side| -> Result<Box<dyn PolicyEvaluator>, SelfPlayError> {
+        Ok(ablate(make_evaluator(side, &cli.model_path)?, side, cli.model_uses))
+    };
+    let mut corp_agent = PuctAgent::with_config(Side::Corp, seed, evaluator(Side::Corp)?, config);
+    let mut runner_agent = PuctAgent::with_config(Side::Runner, seed.wrapping_add(1), evaluator(Side::Runner)?, config);
     let mut rng = StdRng::seed_from_u64(seed.wrapping_add(2));
 
     let mut steps: Vec<SelfPlayStep> = Vec::new();
@@ -565,6 +599,10 @@ fn play_one_game(game_index: usize, cli: &Cli) -> Result<GameTrajectory, SelfPla
         matchup: matchup.id(),
         pool_fingerprint: netrunner_core::pool_fingerprint(),
         end_reason: end_reason_of(&ending),
+        // Empty rather than "both" when there is no network: the field
+        // says what the search seated, and with no model there is nothing
+        // to seat halves of.
+        model_uses: if cli.model_path.is_some() { cli.model_uses.label().to_string() } else { String::new() },
     })
 }
 
@@ -609,7 +647,24 @@ fn write_trajectory(output_dir: &Path, game_index: usize, trajectory: &GameTraje
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// Prints the error's *message* and not its `Debug` form.
+///
+/// `fn main() -> Result<_, _>` reports with `{:?}`, so every message on
+/// `SelfPlayError` was reaching an operator as a bare variant name —
+/// `ModelUsesWithoutModel("priors-only")` in place of the sentence saying
+/// why that combination is refused. These messages exist to be read at
+/// 2 a.m. by whoever finds a stopped run.
+fn main() -> std::process::ExitCode {
+    match run() {
+        Ok(()) => std::process::ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("error: {err}");
+            std::process::ExitCode::FAILURE
+        }
+    }
+}
+
+fn run() -> Result<(), Box<dyn std::error::Error>> {
     let cli = Cli::parse();
 
     if cli.arena_candidate.is_some() {
@@ -619,6 +674,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .collect::<Result<Vec<_>, _>>()?;
         println!("{}", serde_json::to_string(&summarize(&results, cli.candidate_uses, cli.candidate_prior_mix))?);
         return Ok(());
+    }
+
+    // Before a single game, because the failure this catches is silent:
+    // ablating a uniform evaluator against a uniform evaluator is just a
+    // uniform evaluator, so `--model-uses priors-only` with no `-m` would
+    // spend a full iteration producing an ordinary corpus under a label
+    // saying otherwise.
+    if cli.model_path.is_none() && cli.model_uses != NetworkUses::Both {
+        return Err(SelfPlayError::ModelUsesWithoutModel(cli.model_uses.label()).into());
     }
 
     let output_dir = cli.output_dir.as_ref().expect("clap requires --output-dir outside arena mode");
@@ -653,6 +717,32 @@ mod tests {
 
     fn stat(action: PlayerAction, index: Option<usize>, visits: u32) -> ActionStat {
         ActionStat { index, action, visits, total_value: 0.0 }
+    }
+
+    /// The self-play path seats the ablation too, not just the arena.
+    /// `--model-uses` defaults to `both`, so an ordinary run is unchanged
+    /// by this flag existing.
+    #[test]
+    fn model_uses_defaults_to_the_whole_network_and_parses_the_halves() {
+        let cli = Cli::parse_from(["netrunner_selfplay", "-n", "1", "-s", "2", "-o", "unused"]);
+        assert_eq!(cli.model_uses, NetworkUses::Both, "an ordinary run is untouched");
+        let cli = Cli::parse_from([
+            "netrunner_selfplay", "-n", "1", "-s", "2", "-o", "unused", "-m", "p.onnx", "--model-uses", "priors-only",
+        ]);
+        assert_eq!(cli.model_uses, NetworkUses::PriorsOnly);
+        assert_eq!(cli.model_uses.label(), "priors-only", "the label is what reaches the corpus");
+    }
+
+    /// Ablating a uniform evaluator against a uniform evaluator *is* a
+    /// uniform evaluator, so this combination would spend a whole
+    /// iteration producing an ordinary corpus under a label saying it was
+    /// something else. `main` rejects it before the first game.
+    #[test]
+    fn ablating_without_a_model_is_refused_rather_than_silently_ignored() {
+        let cli = Cli::parse_from([
+            "netrunner_selfplay", "-n", "1", "-s", "2", "-o", "unused", "--model-uses", "priors-only",
+        ]);
+        assert!(cli.model_path.is_none() && cli.model_uses != NetworkUses::Both, "the condition main() refuses");
     }
 
     /// The policy target must be keyed in the *real* state's `ActionSpace`,
@@ -730,7 +820,7 @@ mod tests {
             .enumerate()
             .map(|(index, &result)| ArenaGame { candidate_side: candidate_side(index), result })
             .collect();
-        let summary = summarize(&games, CandidateUses::Both, 0.0);
+        let summary = summarize(&games, NetworkUses::Both, 0.0);
         assert_eq!(
             summary,
             ArenaSummary {
@@ -747,7 +837,7 @@ mod tests {
                 as_runner: ChairSummary { games: 2, wins: 0, losses: 0, draws: 2, score: 0.5 },
             }
         );
-        assert_eq!(summarize(&[], CandidateUses::Both, 0.0).candidate_score, 0.0, "no games is not a pass");
+        assert_eq!(summarize(&[], NetworkUses::Both, 0.0).candidate_score, 0.0, "no games is not a pass");
     }
 
     /// An arena line has to say what it measured. Three runs of the same
@@ -755,14 +845,14 @@ mod tests {
     /// a reader comparing them months later will not have the flags.
     #[test]
     fn an_arena_summary_names_the_ablation_it_ran() {
-        let labels: Vec<&str> = [CandidateUses::Both, CandidateUses::ValueOnly, CandidateUses::PriorsOnly]
+        let labels: Vec<&str> = [NetworkUses::Both, NetworkUses::ValueOnly, NetworkUses::PriorsOnly]
             .into_iter()
             .map(|uses| summarize(&[], uses, 0.0).candidate_uses)
             .collect();
         assert_eq!(labels, ["both", "value-only", "priors-only"], "every variant is labelled, and distinctly");
 
         let one = [ArenaGame { candidate_side: Side::Corp, result: ArenaResult::CandidateWin }];
-        let json = serde_json::to_string(&summarize(&one, CandidateUses::PriorsOnly, 0.5)).unwrap();
+        let json = serde_json::to_string(&summarize(&one, NetworkUses::PriorsOnly, 0.5)).unwrap();
         assert!(json.contains("\"prior_mix\":0.5"), "a summary must say what dial produced it: {json}");
         assert!(json.contains(r#""candidate_uses":"priors-only""#), "the label reaches the printed line: {json}");
     }
@@ -777,7 +867,7 @@ mod tests {
         let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 1).unwrap();
 
         let plain = UniformPolicyEvaluator::new(Side::Corp).evaluate(&state, &registry);
-        let through_both = ablate(Box::new(UniformPolicyEvaluator::new(Side::Corp)), Side::Corp, CandidateUses::Both)
+        let through_both = ablate(Box::new(UniformPolicyEvaluator::new(Side::Corp)), Side::Corp, NetworkUses::Both)
             .evaluate(&state, &registry);
         assert_eq!(plain, through_both);
     }
@@ -873,7 +963,7 @@ mod tests {
         let games: Vec<ArenaGame> =
             (0..8).map(|index| play_arena_game(index, &cli, &None, &None).expect("arena game")).collect();
 
-        let summary = summarize(&games, CandidateUses::Both, 0.0);
+        let summary = summarize(&games, NetworkUses::Both, 0.0);
         assert_eq!(summary.candidate_score, 0.5, "a null candidate must score exactly parity: {summary:?}");
         assert_eq!(summary.as_corp.games, 4);
         assert_eq!(summary.as_runner.games, 4);
@@ -965,7 +1055,7 @@ mod tests {
         let cli = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "unused.onnx"]);
         let results: Vec<ArenaGame> =
             (0..2).map(|i| play_arena_game(i, &cli, &None, &None).expect("uniform arena game")).collect();
-        let summary = summarize(&results, CandidateUses::Both, 0.0);
+        let summary = summarize(&results, NetworkUses::Both, 0.0);
         assert_eq!(summary.games, 2);
         assert_eq!(summary.candidate_wins + summary.incumbent_wins + summary.draws, 2);
         let line = serde_json::to_string(&summary).unwrap();
