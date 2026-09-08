@@ -111,6 +111,21 @@ struct Cli {
     /// See `netrunner_bots::SplitEvaluator`.
     #[arg(long = "candidate-uses", value_enum, default_value_t = NetworkUses::Both)]
     candidate_uses: NetworkUses,
+    /// Which halves of `--arena-incumbent` are seated. Defaults to `both`,
+    /// which is right for the ablation this file was built for: there the
+    /// incumbent is a fixed bar and moving it would make two diagnostic
+    /// legs incomparable.
+    ///
+    /// It is *wrong* for the other use the ablation has since acquired. A
+    /// run that plays priors-only (`--model-uses`) deploys its incumbent
+    /// priors-only too, so an arena that seats that same incumbent whole
+    /// would compare the candidate against a configuration nobody runs —
+    /// and since priors-only scores 0.617 where the whole network scores
+    /// 0.359 (ROADMAP Phase 2 §5 item 22), the candidate would clear the
+    /// gate on the configuration gap alone, having improved nothing.
+    /// `run_iteration_loop.py` sets this to match `--model-uses`.
+    #[arg(long = "incumbent-uses", value_enum, default_value_t = NetworkUses::Both)]
+    incumbent_uses: NetworkUses,
     /// Mixes the candidate's priors toward uniform over the legal set
     /// before the search sees them: `0.0` leaves the network's prior
     /// alone, `1.0` replaces it with the uniform search's own. A dial for
@@ -246,6 +261,11 @@ struct ArenaSummary {
     /// an ordinary arena. Recorded so a run's own output says what it
     /// measured, rather than the reader having to remember the flags.
     candidate_uses: &'static str,
+    /// The same for the incumbent. The pair is what makes a verdict
+    /// readable: `candidate_uses` alone cannot distinguish "this candidate
+    /// is better" from "this candidate was seated in a stronger
+    /// configuration than the incumbent it beat".
+    incumbent_uses: &'static str,
     games: usize,
     candidate_wins: usize,
     incumbent_wins: usize,
@@ -258,7 +278,7 @@ struct ArenaSummary {
     as_runner: ChairSummary,
 }
 
-fn summarize(games: &[ArenaGame], candidate_uses: NetworkUses, prior_mix: f32) -> ArenaSummary {
+fn summarize(games: &[ArenaGame], candidate_uses: NetworkUses, incumbent_uses: NetworkUses, prior_mix: f32) -> ArenaSummary {
     let chair = |side: Option<Side>| -> ChairSummary {
         let rows: Vec<ArenaResult> =
             games.iter().filter(|g| side.is_none_or(|s| g.candidate_side == s)).map(|g| g.result).collect();
@@ -274,6 +294,7 @@ fn summarize(games: &[ArenaGame], candidate_uses: NetworkUses, prior_mix: f32) -
     ArenaSummary {
         prior_mix,
         candidate_uses: candidate_uses.label(),
+        incumbent_uses: incumbent_uses.label(),
         games: overall.games,
         candidate_wins: overall.wins,
         incumbent_wins: overall.losses,
@@ -344,10 +365,12 @@ fn play_arena_game(
         let is_candidate = side == candidate_side;
         let model = if is_candidate { candidate } else { incumbent };
         let evaluator = make_evaluator(side, model)?;
-        // Only the candidate is ever ablated: the incumbent is the bar,
-        // and moving it would make two ablation runs incomparable with
-        // each other and with the ordinary arena.
-        let evaluator = if is_candidate { ablate(evaluator, side, cli.candidate_uses) } else { evaluator };
+        // Each side by its own flag. `--incumbent-uses` defaults to
+        // `both`, so a diagnostic ablation still moves only the candidate
+        // against a fixed bar; a *run* sets both, because the incumbent it
+        // is gating against is deployed ablated too.
+        let uses = if is_candidate { cli.candidate_uses } else { cli.incumbent_uses };
+        let evaluator = ablate(evaluator, side, uses);
         // After the ablation, so `--candidate-prior-mix` dials whichever
         // priors the ablation left in place rather than a discarded set.
         let evaluator: Box<dyn PolicyEvaluator> = if is_candidate && cli.candidate_prior_mix > 0.0 {
@@ -672,7 +695,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
             .into_par_iter()
             .map(|game_index| play_arena_game(game_index, &cli, &cli.arena_candidate, &cli.arena_incumbent))
             .collect::<Result<Vec<_>, _>>()?;
-        println!("{}", serde_json::to_string(&summarize(&results, cli.candidate_uses, cli.candidate_prior_mix))?);
+        println!("{}", serde_json::to_string(&summarize(&results, cli.candidate_uses, cli.incumbent_uses, cli.candidate_prior_mix))?);
         return Ok(());
     }
 
@@ -717,6 +740,26 @@ mod tests {
 
     fn stat(action: PlayerAction, index: Option<usize>, visits: u32) -> ActionStat {
         ActionStat { index, action, visits, total_value: 0.0 }
+    }
+
+    /// A run that plays priors-only deploys its incumbent priors-only, so
+    /// an arena seating that incumbent whole would compare the candidate
+    /// against a configuration nobody runs — and it would clear the gate
+    /// on the configuration gap (0.617 against 0.359) rather than on any
+    /// improvement. The two flags are independent so the diagnostic use
+    /// keeps its fixed bar and a run can ablate both sides.
+    #[test]
+    fn the_incumbent_can_be_ablated_with_the_candidate_for_a_real_run() {
+        let default = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "c.onnx"]);
+        assert_eq!(default.incumbent_uses, NetworkUses::Both, "a diagnostic leg still moves only the candidate");
+        let run = Cli::parse_from([
+            "netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "c.onnx",
+            "--candidate-uses", "priors-only", "--incumbent-uses", "priors-only",
+        ]);
+        assert_eq!(run.candidate_uses, NetworkUses::PriorsOnly);
+        assert_eq!(run.incumbent_uses, NetworkUses::PriorsOnly);
+        let json = serde_json::to_string(&summarize(&[], run.candidate_uses, run.incumbent_uses, 0.0)).unwrap();
+        assert!(json.contains(r#""incumbent_uses":"priors-only""#), "a verdict says how both sides were seated: {json}");
     }
 
     /// The self-play path seats the ablation too, not just the arena.
@@ -820,12 +863,13 @@ mod tests {
             .enumerate()
             .map(|(index, &result)| ArenaGame { candidate_side: candidate_side(index), result })
             .collect();
-        let summary = summarize(&games, NetworkUses::Both, 0.0);
+        let summary = summarize(&games, NetworkUses::Both, NetworkUses::Both, 0.0);
         assert_eq!(
             summary,
             ArenaSummary {
                 prior_mix: 0.0,
                 candidate_uses: "both",
+                incumbent_uses: "both",
                 games: 4,
                 candidate_wins: 1,
                 incumbent_wins: 1,
@@ -837,7 +881,7 @@ mod tests {
                 as_runner: ChairSummary { games: 2, wins: 0, losses: 0, draws: 2, score: 0.5 },
             }
         );
-        assert_eq!(summarize(&[], NetworkUses::Both, 0.0).candidate_score, 0.0, "no games is not a pass");
+        assert_eq!(summarize(&[], NetworkUses::Both, NetworkUses::Both, 0.0).candidate_score, 0.0, "no games is not a pass");
     }
 
     /// An arena line has to say what it measured. Three runs of the same
@@ -847,12 +891,12 @@ mod tests {
     fn an_arena_summary_names_the_ablation_it_ran() {
         let labels: Vec<&str> = [NetworkUses::Both, NetworkUses::ValueOnly, NetworkUses::PriorsOnly]
             .into_iter()
-            .map(|uses| summarize(&[], uses, 0.0).candidate_uses)
+            .map(|uses| summarize(&[], uses, NetworkUses::Both, 0.0).candidate_uses)
             .collect();
         assert_eq!(labels, ["both", "value-only", "priors-only"], "every variant is labelled, and distinctly");
 
         let one = [ArenaGame { candidate_side: Side::Corp, result: ArenaResult::CandidateWin }];
-        let json = serde_json::to_string(&summarize(&one, NetworkUses::PriorsOnly, 0.5)).unwrap();
+        let json = serde_json::to_string(&summarize(&one, NetworkUses::PriorsOnly, NetworkUses::Both, 0.5)).unwrap();
         assert!(json.contains("\"prior_mix\":0.5"), "a summary must say what dial produced it: {json}");
         assert!(json.contains(r#""candidate_uses":"priors-only""#), "the label reaches the printed line: {json}");
     }
@@ -963,7 +1007,7 @@ mod tests {
         let games: Vec<ArenaGame> =
             (0..8).map(|index| play_arena_game(index, &cli, &None, &None).expect("arena game")).collect();
 
-        let summary = summarize(&games, NetworkUses::Both, 0.0);
+        let summary = summarize(&games, NetworkUses::Both, NetworkUses::Both, 0.0);
         assert_eq!(summary.candidate_score, 0.5, "a null candidate must score exactly parity: {summary:?}");
         assert_eq!(summary.as_corp.games, 4);
         assert_eq!(summary.as_runner.games, 4);
@@ -1055,7 +1099,7 @@ mod tests {
         let cli = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "unused.onnx"]);
         let results: Vec<ArenaGame> =
             (0..2).map(|i| play_arena_game(i, &cli, &None, &None).expect("uniform arena game")).collect();
-        let summary = summarize(&results, NetworkUses::Both, 0.0);
+        let summary = summarize(&results, NetworkUses::Both, NetworkUses::Both, 0.0);
         assert_eq!(summary.games, 2);
         assert_eq!(summary.candidate_wins + summary.incumbent_wins + summary.draws, 2);
         let line = serde_json::to_string(&summary).unwrap();

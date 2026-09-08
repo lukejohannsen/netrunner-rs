@@ -127,6 +127,11 @@ def arena(binary, candidate, incumbent, games, simulations, description, stride=
         binary,
         "--arena-candidate", candidate, "-n", str(games), "-s", str(simulations),
         "--arena-pair-stride", str(stride), "--candidate-uses", uses,
+        # Both sides, not just the candidate. The incumbent this gates
+        # against is deployed by self-play under the same ablation, so
+        # seating it whole would let a candidate clear the gate on the
+        # configuration gap (0.617 against 0.359) rather than on merit.
+        "--incumbent-uses", uses,
     ]
     if incumbent is not None:
         cmd.extend(["--arena-incumbent", incumbent])
