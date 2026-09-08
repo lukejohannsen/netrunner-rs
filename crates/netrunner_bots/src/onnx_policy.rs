@@ -136,6 +136,18 @@ fn evaluation_perspective(state: &GameState, value_side: Side) -> Side {
 /// cure — where the uniform evaluator's divisor *expands* a decision-sized
 /// difference. Unscaled subtraction measured 0.122, inside noise of doing
 /// nothing.
+///
+/// **Measured twice, and the second time is why it is still `None`.** The
+/// +0.035 above is from `rejected_iter_016.onnx`, a checkpoint fit to a
+/// 67%-Corp engine, so it could not separate the leaf regime from its own
+/// staleness. On a checkpoint trained on *this* engine (ROADMAP Phase 2 §5
+/// item 22; 384-game legs, null leg exactly 0.500 with zero draws) the
+/// anchor is worth **+0.008** in `value-only` — 0.3σ, nothing — and
+/// **−0.101 in `both`**, the configuration promotion is actually decided
+/// in, which is about 3.9σ of harm. The regime is also not what ails a
+/// network value in this search: on the same legs a head that beats its
+/// chair null (0.762 against 0.911) still scores 0.141, where the stale
+/// one scored 0.135.
 const ANCHOR_SCALE: Option<f64> = None;
 
 impl PolicyEvaluator for OnnxPolicyEvaluator {
