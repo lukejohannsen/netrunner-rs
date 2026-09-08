@@ -404,11 +404,20 @@ impl Default for PuctConfig {
 /// explanation until the pool was fixed: over the identity's published
 /// decklist (`determinize`, September 2026) the node still lost at every
 /// fan-out — 0.432 / 0.453 / 0.448 at 2 / 4 / 8 against 0.500 with one —
-/// so the agenda density was never the reason. Left in at one for the
-/// same reason `PuctConfig::samples` is: the result is on the field. The
-/// next suspect is the budget itself: `iterations` is fixed, so every
-/// outcome child gets a shallower subtree below the door than the single
-/// committed sample does (ROADMAP Phase 3 §1).
+/// so the agenda density was never the reason. Nor is the budget, which
+/// was the next suspect named here: `iterations` is fixed, so each
+/// outcome child gets a shallower subtree than the single committed
+/// sample. Quadrupling it — four outcomes at 512 simulations, so the
+/// children have between them what the one sample had at 128 — recovers
+/// nothing (0.500 → 0.443, against 0.500 → 0.453 at 128). Over seeds 1,
+/// 2 and 3 at 128 the node costs **0.038** (sd 0.008, same sign on all
+/// three), which is the one number here that clears the seating's
+/// seed-spread band. Four explanations measured away — agenda density,
+/// the pool, `samples`, the budget — so it is left in at one with the
+/// numbers on it rather than a fifth suspect. Worth knowing before
+/// picking it up again: this search is not budget-bound at all, 128 → 512
+/// simulations being worth 0.483 → 0.481 over the same three seeds
+/// (ROADMAP Phase 3 §1).
 pub const BREACH_OUTCOMES: usize = 1;
 
 /// PUCT over `ActionSpace`'s fixed index space, driven by a
