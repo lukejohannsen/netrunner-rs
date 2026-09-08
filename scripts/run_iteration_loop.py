@@ -113,14 +113,20 @@ def run_identity(binary):
             "binary_sha256": digest}
 
 
-def arena(binary, candidate, incumbent, games, simulations, description, stride=1):
+def arena(binary, candidate, incumbent, games, simulations, description, stride=1, uses="both"):
     """The evaluator step: the candidate against the incumbent (or the
     uniform search when there is none yet), both chairs. Returns the
-    summary dict `netrunner_selfplay --arena-candidate` prints."""
+    summary dict `netrunner_selfplay --arena-candidate` prints.
+
+    `uses` is the ablation the *candidate* is seated with, and it tracks
+    --model-uses rather than defaulting to the whole network: a run that
+    generates its games with priors-only search must be gated on a
+    priors-only candidate, or promotion would measure a configuration the
+    run never plays. The incumbent is never ablated — it is the bar."""
     cmd = [
         binary,
         "--arena-candidate", candidate, "-n", str(games), "-s", str(simulations),
-        "--arena-pair-stride", str(stride),
+        "--arena-pair-stride", str(stride), "--candidate-uses", uses,
     ]
     if incumbent is not None:
         cmd.extend(["--arena-incumbent", incumbent])
@@ -176,6 +182,11 @@ def main():
                         help="Which validation loss picks the exported epoch")
     parser.add_argument("--early-stop-patience", type=int, default=0,
                         help="Trainer early stop; 0 keeps the historical every-epoch behaviour")
+    parser.add_argument("--model-uses", choices=("both", "priors-only", "value-only"), default="both",
+                        help="Which halves of the network self-play seats, and the ablation the arena then "
+                             "gates the candidate with. 'priors-only' is the configuration ROADMAP Phase 2 "
+                             "§5 item 22 measured at 0.617 against the uniform search, where the whole "
+                             "network scored 0.359 and its value alone 0.141.")
     parser.add_argument("--skip-arena", action="store_true",
                         help="Promote every checkpoint unconditionally (the pre-gating behaviour)")
     args = parser.parse_args()
@@ -195,7 +206,13 @@ def main():
     for iter_idx in range(args.start_iter, args.iterations + 1):
         try:
             record = {"iter": iter_idx, "games": args.games_per_iter, "simulations": args.simulations,
-                      "incumbent": os.path.exists(latest_onnx), "engine": identity}
+                      "incumbent": os.path.exists(latest_onnx), "engine": identity,
+                      # What generated this iteration's games and what the
+                      # arena then gated: an iterations.log line has to say
+                      # which configuration a number belongs to, since
+                      # priors-only and whole-network runs are otherwise
+                      # indistinguishable in it.
+                      "model_uses": args.model_uses}
             iter_data_dir = os.path.join(args.data_dir, f"iter_{iter_idx:03d}")
             os.makedirs(iter_data_dir, exist_ok=True)
 
@@ -215,7 +232,11 @@ def main():
                     "--seed-offset", str((iter_idx - 1) * args.games_per_iter),
                 ]
                 if os.path.exists(latest_onnx):
-                    selfplay_cmd.extend(["-m", latest_onnx])
+                    # --model-uses only after there is a network to seat
+                    # halves of: self-play refuses the flag without -m
+                    # rather than silently producing a uniform corpus under
+                    # a label saying otherwise.
+                    selfplay_cmd.extend(["-m", latest_onnx, "--model-uses", args.model_uses])
                 run_cmd(
                     selfplay_cmd,
                     f"Iteration {iter_idx}/{args.iterations}: MCTS Self-Play ({args.games_per_iter} games)"
@@ -293,7 +314,7 @@ def main():
                     binary, iter_onnx, incumbent, args.arena_screen_games, args.simulations,
                     f"Iteration {iter_idx}/{args.iterations}: Arena screen vs {against} "
                     f"({args.arena_screen_games} games, stride {stride})",
-                    stride=stride,
+                    stride=stride, uses=args.model_uses,
                 )
                 record["arena_screen"] = screen
 
@@ -305,6 +326,7 @@ def main():
                     binary, iter_onnx, incumbent, args.arena_games, args.simulations,
                     f"Iteration {iter_idx}/{args.iterations}: Arena, candidate vs {against} "
                     f"({args.arena_games} games)",
+                    uses=args.model_uses,
                 )
                 record["arena_screened_out"] = False
             record["arena"] = summary
