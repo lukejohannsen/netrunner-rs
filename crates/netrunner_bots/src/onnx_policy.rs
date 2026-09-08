@@ -52,8 +52,40 @@ impl OnnxPolicyEvaluator {
     /// reported from, which `puct::simulate` requires to be fixed. It is
     /// not the perspective the network is asked from — that is per-node and
     /// comes from `evaluation_perspective`.
+    ///
+    /// **One thread per session, and it is not the speed-up it looks
+    /// like.** Every consumer here builds one session per side per game
+    /// and runs the games across a rayon pool, so ORT's default intra-op
+    /// pool — sized to the whole machine, and spin-waiting — was giving a
+    /// 20-core box 541 threads for 20 cores at load average 53. That
+    /// looked like the reason self-play costs 17x more with a network
+    /// seated than without (0.38 s/game against 6.25 at 128 simulations).
+    /// **It is not.** Measured on an idle box, 40 games at 128
+    /// simulations: 238.5 s with the default pools, 235.5 s with these —
+    /// 1.2%, inside noise, with the corpora byte-identical game for game.
+    ///
+    /// Kept anyway, for the smaller reasons rather than the headline one:
+    /// 9% less resident memory (411 MB → 375 MB) and, more usefully, a
+    /// session whose cost does not change shape on a machine with a
+    /// different core count. The default *would* be pathological on a
+    /// 96-core host; here it merely wasn't.
+    ///
+    /// The real cost is `batch = 1`. A decision is ~128 forward passes,
+    /// a game ~205 decisions, and each pass re-reads all 1,151,471
+    /// parameters — ~121 GB of weight traffic per game for 2.3 MFLOPs of
+    /// arithmetic per pass, which is memory-bandwidth bound and cannot be
+    /// threaded away. Batching the leaves (the four determinizations at a
+    /// root are independent trees) is the fix and changes search results,
+    /// so it needs the full strength bar (ROADMAP Phase 2 §5 item 25).
     pub fn new(model_path: &str, side: Side) -> Result<Self, OnnxPolicyError> {
-        let session = Session::builder()?.commit_from_file(model_path)?;
+        let mut builder = Session::builder()?;
+        // `map_err` rather than `?`: the builder methods return
+        // `ort::Error<SessionBuilder>`, which carries the builder back on
+        // failure and does not convert straight into `OnnxPolicyError`'s
+        // `#[from] ort::Error` (= `Error<()>`) in one `?` step.
+        builder = builder.with_intra_threads(1).map_err(ort::Error::from)?;
+        builder = builder.with_inter_threads(1).map_err(ort::Error::from)?;
+        let session = builder.commit_from_file(model_path)?;
         Ok(Self { session: Mutex::new(session), side })
     }
 
