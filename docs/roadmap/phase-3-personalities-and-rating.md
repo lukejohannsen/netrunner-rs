@@ -93,6 +93,33 @@ Area roadmap; the index is `ROADMAP.md`. Addresses: "Phase 3 §1", "§2".
 
   **Not shipped: the identities in the sample.** With both in the view, `determinize` could set `CorpState::identity` and `RunnerState::identity` instead of `None`, and every identity trigger would fire in the search's rollouts — the truth, and measured negative every time it was tried. Over the registry pool, both identities cost the PUCT Runner **0.516 → 0.406** (Corp point wins 78 → 97; the losses fell broadly — *Topan* 7 → 2 of 16, *Baz Wong* 9 → 4, and against both *Precision Design* decks 8 → 4 and 7 → 4). Over the decklist pool the effect shrinks into the band and splits additively: the Corp's identity alone 0.500 → 0.495, the Runner's own alone 0.484, both 0.469. The one-ply heuristic Runner *gained* inside a sigma (0.417 → 0.448 on the 192 seating; 96-game seeds mixed, Corp point wins 36/34/37/38/25 against 36/37/26/27/35), so it is the search that loses what one ply absorbs. The sample keeps `identity: None`, pinned by `identities_choose_the_pool_but_are_not_carried_into_the_sample` so re-enabling it is a measured change; a fidelity fix that costs strength is a lead about the search, and it is recorded here rather than pursued.
 
+- **Both leads measured, and one of them dissolves: seed 1 was carrying two claims it could not support** (`diag/breach-budget-and-identity-carry`, 8 September 2026). The two open leads above. Same seating as every number in the three bullets before it — the PUCT Runner against the fixed heuristic Corp, `--all-matchups` over the 192-deck cross product, one pinned binary per variant, `cli_out1`/`cli_out4`/`cli_ident`/`cli_s4` — and this time **seeds 1, 2 and 3 rather than seed 1 alone**, which is what changed the answer. At seed 1 all three recorded baselines reproduced *exactly*: `main` 0.500, the chance node at four outcomes 0.453, both identities carried 0.469, with remote runs 2,353, jack-outs 561, `AgendaScored` 359 and flatlines 17 matching the recorded profile digit for digit. Reproduction that exact is what made the next paragraph legible as noise rather than as disagreement.
+
+  **The chance node is real, and the budget was not its reason.** `BREACH_OUTCOMES` named the suspect itself: `iterations` is fixed, so each outcome child gets a shallower subtree below the door than the single committed sample. Quadrupling the budget, so four outcome children have between them what the one sample had at 128, recovers nothing.
+
+  | simulations | outcomes 1 | outcomes 4 | cost |
+  |---|---|---|---|
+  | 128, seeds 1 / 2 / 3 | 0.500 / 0.479 / 0.469 | 0.453 / 0.448 / 0.432 | **−0.038** (sd 0.008, same sign on all three) |
+  | 512, seed 1 | 0.500 | 0.443 | −0.057 |
+
+  The behaviour is the same at both budgets and is not subtle: jack-outs collapse (561 → 440 at 128, 632 → 365 at 512), the Runner runs more, and the Corp scores 10–13% more agendas while steals *fall* (485 → 440 at 512). The node does what it was built to do — it opens the door — and what comes through the door is not steals. **Four explanations for this node have now been measured away**: the registry pool's agenda density, the pool itself, single-sample certainty (`samples`), and now the budget. It stays at one outcome with a fourth set of numbers on it rather than a fifth suspect.
+
+  **The finding underneath it is larger: this search is not budget-bound.** 128 → 512 simulations moves the Runner 0.483 → 0.481 as a mean over the same three seeds (0.500 / 0.479 / 0.469 against 0.500 / 0.453 / 0.490) — four times the search for nothing. That is the same shape as the depth sweep taken before the root-relative fix (2 / 4 / 8 / 16 at 0.208 / 0.208 / 0.214 / 0.219), and it says that whatever limits this chair, more of the same search is not it. Any future lead here should be measured against that: a change that only spends more budget has a measured ceiling of zero.
+
+  **The identity carry does not survive a second seed, and the earlier bullet's claim is withdrawn.** "Measured negative every time it was tried" was true of every configuration tried — and every one of them was seed 1. Over three seeds the effect changes sign in two of the three configurations and its mean never leaves the seed-spread band:
+
+  | configuration | identities carried, seeds 1 / 2 / 3 | mean | band (no identity, same three seeds) |
+  |---|---|---|---|
+  | 128 sims, 1 sample | −0.031 / −0.026 / **+0.010** | −0.016 | 0.031 |
+  | 512 sims, 1 sample | −0.026 / **+0.031** / −0.010 | −0.002 | 0.047 |
+  | 512 sims, 4 samples | −0.016 / −0.026 / −0.005 | −0.016 | 0.026 |
+
+  So **there is no effect here to explain**, and the lead "find what the search does with an identity trigger that one ply does not" is closed as a question about a number that was not there. A depth-4 reading taken at seed 1 (−0.057, against −0.031 at depth 16) looked at the time like the mechanism — the shallower the search, the more it commits to one draw — and is recorded here only as the thing that prompted the seed check; on one seed it cannot be leaned on, and nothing above supports it.
+
+  **What is *not* withdrawn** is the shipped decision. `identity: None` stays, because the case for changing a default is a positive one and there isn't a measurement making the carry better either; `identities_choose_the_pool_but_are_not_carried_into_the_sample` keeps pinning it, and the reason on the comment is now fidelity-neutral rather than a strength claim. The registry-pool figure the old bullet leads with (0.516 → 0.406, −0.11) is also one seed, on a pool that no longer ships — treat it as unreplicated.
+
+  **The methodological point, since it cost two claims.** `AGENTS.md` already says reproducibility buys attribution and not significance. This is what that looks like in practice: the −0.031 identity number reproduced to the digit, on the binary and seed it was recorded on, and was still noise. The seating's own seed-spread band is **0.026–0.047 over 192 games**, so on this seating a single-seed delta under about 0.05 says nothing at all — which retires the identity carry, keeps the chance node (−0.038, sd 0.008, three seeds), and is the bar the next lead here has to clear.
+
 **Standing item:** Phật Gioan and AU Co. remain declined, both for the same reason and not the damage one: their offers park a *second* decision, and `pending_decision_upside` prices only `PendingDecision::ChooseCards`, never a nested `PendingPaidChoice`. Measured Response is a horizon problem — the damage lands two plies out, after the Runner declines. Not built: a `puct-onnx` personality; profiles that shape PUCT's priors. The PUCT Runner's remaining gap to the heuristic is the bullet above.
 
 ## 2. Rating & Elo Engine — DONE

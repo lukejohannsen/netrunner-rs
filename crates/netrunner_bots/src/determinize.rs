@@ -592,14 +592,17 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
     let corp = CorpState {
         // Deliberately not `view.corp.identity`, though the view carries
         // it. With the identity set, every identity trigger fires in the
-        // rollouts — which is the truth, and measured worse for the search
-        // (PUCT Runner against the fixed heuristic Corp, 192 games): over
-        // the registry pool both identities cost 0.516 → 0.406; over the
-        // decklist pool the Corp's cost 0.500 → 0.495, the Runner's own
-        // 0.484, both 0.469 — inside the band, negative every time, while
-        // the one-ply heuristic Runner *gained* 0.417 → 0.448. A sample
-        // that plays *Precision Design* as a blank card is the lesser
-        // error until the search's loss is understood (ROADMAP Phase 3 §1).
+        // rollouts — the truth, and once believed to cost the search
+        // (0.516 → 0.406 over the registry pool, 0.500 → 0.469 over the
+        // decklist one). **That reading was one seed.** Over seeds 1, 2
+        // and 3 the carry changes sign in two of three configurations and
+        // its mean never leaves the seating's seed-spread band: −0.016 at
+        // 128 simulations, −0.002 at 512, −0.016 at 512 over four
+        // samples, against a band of 0.026–0.047 (ROADMAP Phase 3 §1).
+        // So this is not a strength decision either way, and it stays
+        // `None` for the ordinary reason a default stays: nothing
+        // measured makes the carry better. `identities_choose_the_pool_
+        // but_are_not_carried_into_the_sample` keeps it a deliberate one.
         identity: None,
         bad_publicity: view.corp.bad_publicity,
         first_install_used_this_turn: false,
@@ -996,8 +999,9 @@ mod tests {
     }
 
     /// The identities reach the sample's *pool* (the decklist is chosen
-    /// by them) but not the sample's *state*: carrying them measured
-    /// worse for the search — see the comment on `determinize`'s
+    /// by them) but not the sample's *state*. Carrying them measures
+    /// inside the seed-spread band rather than worse, which is a
+    /// correction of what this comment used to claim — see `determinize`'s
     /// `identity: None`. This pins the decision so that re-enabling it is
     /// a deliberate, measured change rather than a drive-by.
     #[test]
