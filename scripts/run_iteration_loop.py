@@ -5,7 +5,10 @@ Each iteration plays `--games-per-iter` games with the incumbent network in
 the search (the uniform search until one is promoted), trains a fresh
 network on the replay window (masked policy objective unless
 `--unmasked-policy`), and promotes it only if it beats the incumbent in a
-384-game arena, both chairs. Every game of a run has a distinct seed
+384-game arena on the blend **and holds both chairs** -- neither may fall
+below `--promote-chair-floor`, because a blended score cannot tell a
+stronger network from one that traded the Runner seat for the Corp seat.
+Every game of a run has a distinct seed
 (`--seed-offset`), the iteration is resumable (an iteration directory that
 already holds its games is not replayed), and one JSON line per iteration
 goes to `<ckpt-dir>/iterations.log` with the timings and both summaries, so
@@ -172,6 +175,26 @@ def arena(binary, candidate, incumbent, games, simulations, description, stride=
     res = run_cmd(cmd, description, capture=True)
     return last_json_line(res.stdout, "arena")
 
+def chair_floor_failure(summary, floor):
+    """The name of the chair that fell below `floor`, or `None`.
+
+    A separate function because two callers want the same reading at
+    different thresholds -- the screen as a cost filter, the gate as the
+    verdict -- and because the answer that goes in the log is *which* chair
+    collapsed, not a boolean. The weaker chair is returned when both fail,
+    so the log names the one that decided it.
+
+    `floor` 0 disables the check, which is how a run reproduces a verdict
+    recorded before this existed.
+    """
+    if not floor:
+        return None
+    failed = [(summary[key]["score"], name)
+              for key, name in (("as_corp", "corp"), ("as_runner", "runner"))
+              if summary[key]["games"] and summary[key]["score"] < floor]
+    return min(failed)[1] if failed else None
+
+
 def main():
     parser = argparse.ArgumentParser(description="AlphaZero Continuous Self-Play & Training Loop")
     parser.add_argument("--iterations", "-i", type=int, default=100, help="Number of self-play/train iterations")
@@ -202,6 +225,21 @@ def main():
                              "support (the pre-item-15 objective; masked is the default)")
     parser.add_argument("--promote-threshold", type=float, default=0.55,
                         help="Candidate score (wins + draws/2, over arena games) needed to be promoted")
+    # The blend alone cannot tell "stronger" from "traded the Runner seat for
+    # the Corp seat". The fifth run's three candidates scored 0.688/0.234,
+    # 0.729/0.318 and 0.708/0.250 by chair (Phase 2 §5 item 26): a loop on
+    # that trajectory reaches 0.55 blended while one chair sits near 0.30,
+    # and the gate as written would have promoted it -- item 13's failure,
+    # still live in the gate that was supposed to have closed it.
+    #
+    # 0.45, not 0.50, because a chair is half the arena. At 192 games a
+    # chair score has sd 0.036, so a candidate genuinely at parity on its
+    # weak chair clears a 0.45 floor about 92 times in 100, while one
+    # genuinely at 0.30 is stopped at 4.2 sigma. Demanding 0.50 would
+    # reject an honest tie half the time.
+    parser.add_argument("--promote-chair-floor", type=float, default=0.45,
+                        help="Lowest per-chair score a promoted candidate may have. Stops a candidate that "
+                             "clears --promote-threshold by trading one seat for the other (0 disables)")
     parser.add_argument("--value-target-mix", type=float, default=0.5,
                         help="Passed to the trainer: share of the value target taken from the search's root value")
     parser.add_argument("--value-loss-weight", type=float, default=0.25,
@@ -212,6 +250,15 @@ def main():
     parser.add_argument("--arena-screen-threshold", type=float, default=0.45,
                         help="Skip the full arena when the screen scores below this. Sits well under "
                              "--promote-threshold so a real candidate is not screened out.")
+    # The same cost filter for the collapsed chair, and much further below
+    # its gate for the same reason the blended screen is: a screen chair is
+    # 48 games, sd 0.072. A floor of 0.30 is 2.8 sigma under parity, so an
+    # honest tie survives it 997 times in 1,000 while the fifth run's ~0.25
+    # Runner chair is stopped about three times in four -- 49 minutes of
+    # full arena saved per iteration, on the trajectory this run is on.
+    parser.add_argument("--arena-screen-chair-floor", type=float, default=0.30,
+                        help="Skip the full arena when either chair scores below this in the screen "
+                             "(0 disables). Sits well under --promote-chair-floor.")
     parser.add_argument("--value-target", default="mixed",
                         choices=("outcome", "mixed", "discounted", "discounted_unforeseeable"),
                         help="Which value-head target the trainer builds (see train_alpha_netrunner.py)")
@@ -370,7 +417,8 @@ def main():
                 )
                 record["arena_screen"] = screen
 
-            if screen is not None and screen["candidate_score"] < args.arena_screen_threshold:
+            if screen is not None and (screen["candidate_score"] < args.arena_screen_threshold
+                                       or chair_floor_failure(screen, args.arena_screen_chair_floor)):
                 summary = screen
                 record["arena_screened_out"] = True
             else:
@@ -386,8 +434,12 @@ def main():
             # A screened-out candidate never played the full arena, so it
             # cannot clear the gate — the screen's own score stands in the
             # log as the reason, flagged by `arena_screened_out`.
-            promoted = not record["arena_screened_out"] and summary["candidate_score"] >= args.promote_threshold
+            collapsed = chair_floor_failure(summary, args.promote_chair_floor)
+            promoted = (not record["arena_screened_out"]
+                        and summary["candidate_score"] >= args.promote_threshold
+                        and collapsed is None)
             record["promoted"] = promoted
+            record["chair_floor_failure"] = collapsed
             # Both chairs on the line, not only the blend. The blend hid the
             # whole story for three runs: a network broken as the Corp and
             # neutral-to-good as the Runner averaged to "a bit below the
@@ -399,7 +451,9 @@ def main():
                 f"losses={summary['incumbent_wins']} draws={summary['draws']} "
                 f"score={summary['candidate_score']:.3f} "
                 f"corp={chair(summary['as_corp'])} runner={chair(summary['as_runner'])} "
-                f"threshold={args.promote_threshold} promoted={promoted}"
+                f"threshold={args.promote_threshold} chair_floor={args.promote_chair_floor} "
+                + (f"collapsed={collapsed} " if collapsed else "")
+                + f"promoted={promoted}"
             )
             with open(os.path.join(args.ckpt_dir, "promotions.log"), "a", encoding="utf-8") as log:
                 log.write(verdict + "\n")
