@@ -291,6 +291,8 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **2.6×**, and memory fell because ~36 sessions (one per side per game, 165 MB of duplicated weights and 8.0 ms of graph parsing each) became a shared pool of four. `MAX_RUNNERS` is 4 on measurement: 8 runners cost 129 s and 16 cost 218 s, each runner being another live copy of the weights. Game threads are oversubscribed to 64 only when a network is seated, because they park on the queue rather than run, and a deeper queue is what lets a runner fill a batch; the uniform path keeps one thread per core.
 
+    **The byte-identity extends to the arena, measured after the fact** (9 September 2026, during item 29's screen). The equivalence quoted above was 40 self-play games; the chair-balance screen then had a freshly built batched binary replay a 384-game arena that the pre-batching pinned binary had recorded the night before, on a checkpoint that is byte-identical by sha256. It returned **184-200-0, Corp 136-56, Runner 48-144** — every count the same. Self-play and the arena share the evaluator but not the driver, so this is the second path checked rather than the same one twice.
+
     **Two bugs found in the building, both worth the entry.** A model whose outputs do not grow with the batch dimension — `onnx_fixture`'s `Constant` nodes, or any checkpoint exported with a static batch axis — would have been handed four rows and returned one row's answer four times; `probe_max_batch` runs one two-row probe at construction and turns batching off for such a model. And the first version let a panic inside a runner strand both its slot and every row queued behind it, converting a loud crash into a **silent hang** — the worst failure mode for an unattended overnight run. The runner now answers its batch with an error and returns its slot before re-raising, so inference failure stays exactly as loud as it was before rows shared a batch.
 
 28. **The promotion gate reads both chairs, not only the blend** (`feat/chair-aware-promotion-gate`, 9 September 2026). Item 26 left the gate holding a number that cannot express its own finding. `promoted = candidate_score >= 0.55` is a blend over both seats, and the fifth run's three candidates scored **0.688/0.234, 0.729/0.318 and 0.708/0.250** by chair. All three were rejected — but on the blend (0.461, 0.523, 0.479), which is luck, not judgement: a loop continuing along that Corp trajectory clears 0.55 blended with a Runner chair near 0.30, and the gate would have promoted a network that had *lost a seat*. That is item 13's failure verbatim, still live in the gate that was written to close it.
@@ -302,5 +304,41 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
     The cheap screen gained the same reading at a much lower floor (`--arena-screen-chair-floor`, default **0.30**) for the reason the blended screen sits at 0.45: a screen chair is 48 games, sd 0.072, so 0.30 is 2.8σ under parity — an honest tie survives 997 times in 1,000 while the fifth run's ~0.25 Runner chair is stopped about three times in four, saving the 49-minute full arena on exactly the trajectory this loop is on. Both floors take `0` to reproduce a verdict recorded before they existed.
 
     This is the gate half of ROADMAP "next" item 1. It does not fix the cause — priors-only self-play runs ~65% Corp against the engine's 54.8% — only the gate's blindness to it.
+
+29. **Chair-balanced training weights: the Runner chair moves, the seat trade does not close** (`feat/chair-balanced-objective`, 9 September 2026). The input half of ROADMAP "next" item 1, screened on the 7,200-game corpus item 26 kept for it — four training runs and four 384-game arena legs, ~2.5 h, no volume run.
+
+    **Measuring the corpus first changed the design, and would have saved the obvious version of this from doing nothing.** Item 1 proposed weighting seats. But the step split barely moves with the win rate:
+
+    | corpus | Corp wins | Corp steps | Corp steps on the winning side |
+    |---|---|---|---|
+    | `iter_001` (uniform search) | 54.8% | 44.4% | 64.6% |
+    | `iter_002` (priors-only) | 65.7% | 45.6% | 75.2% |
+    | `iter_003` | 64.9% | 45.8% | 75.6% |
+    | `iter_004` | 63.9% | 45.4% | 74.4% |
+
+    A seat reweight corrects 45/55 to 50/50 and leaves the distortion untouched. The imbalance is in the **outcome**: a Runner step carries a loss about three times in four. It is also larger than the win rate suggests — 65.7% of games but 75.2% of Corp steps sit on the winning side — and the same +9.5 gap appears in the *uniform* corpus (54.8% → 64.6%), so that amplification is a property of the game (a game the Corp wins carries proportionally more Corp decisions), not of the loop. So the cell is `(chair, sign of outcome)`, and flattening those six equalizes seat mass and outcome-within-seat mass together. `--chair-balance` weights by `(mean_count / count) ** strength` normalized to mean 1.0, the idiom `--segment-balance` already uses.
+
+    **The result, every leg trained on the identical corpus with one flag changed, each played against the same incumbent all three of item 26's verdicts were measured against, priors-only both sides:**
+
+    | `--chair-balance` | blended | Corp | Runner | chair gap | epoch shipped |
+    |---|---|---|---|---|---|
+    | 0 (control) | 0.4792 | 0.7083 | **0.2500** | 0.458 | 3 |
+    | 0.25 | 0.5182 | 0.7344 | **0.3021** | 0.432 | 2 |
+    | **0.5** | **0.5312** | 0.7396 | **0.3229** | **0.417** | 2 |
+    | 1.0 | 0.5208 | 0.7448 | **0.2969** | 0.448 | 7 |
+
+    **The control is exact, not approximate.** Training is seeded (`np.random.seed` / `torch.manual_seed`), so the control checkpoint is byte-identical by sha256 to `rejected_iter_004.onnx` and its arena leg reproduced item 26's iteration-4 verdict digit for digit (184-200-0, Corp 136-56, Runner 48-144). The treatment legs therefore differ in exactly one flag.
+
+    **The reading.** The Runner chair rises 0.250 → 0.302 → 0.323 and falls back at full inverse frequency, an interior maximum at 0.5 — the over-correction `segment_balance_weights` already warns of. The Runner move at 0.5 is +0.073, above the 0.026–0.047 seed-spread band (Phase 3 §1); the Corp moves (+0.026 / +0.031 / +0.037) sit inside or at it and are **not** claimed. Monotone-then-turnover over four points is the evidence here, not any single leg — there is no second arena seed schedule to average over, because arena seeds are fixed on purpose so verdicts stay comparable.
+
+    **What it does not do is close the trade.** The chair gap goes 0.458 → 0.417, a 9% dent. At the best setting the candidate is still 0.740 as the Corp and 0.323 as the Runner, and **both gates reject it** — 0.531 under the 0.55 threshold and 0.323 under item 28's 0.45 chair floor. Chair balance is a real but small correction to a large asymmetry, not a fix for it.
+
+    **The arena is priors-only, so this is a policy-head result.** `SplitEvaluator` seats the network's priors and the uniform evaluator's value, so the exported value head never plays; every number above is the policy head. It is reached through two paths that this screen cannot separate — the reweighted policy loss, and the reweighted value loss reshaping the shared trunk at `--value-loss-weight 0.25`. A `--value-loss-weight 0` leg would separate them and has not been run.
+
+    **A third training-log reading recorded as unreliable**, joining item 26's two. `best_val_loss` orders the legs 0.25 (1.2185) < control (1.2197) < 0.5 (1.2239) < 1.0 (1.2264); the arena orders them 0.5 > 1.0 > 0.25 > control. The criterion that picks the shipped epoch ranks the control *above* the leg that beats it by 0.052. The policy floor gap is flatter still — +0.1152, +0.1159, +0.1155, +0.1144 across an arena spread of 0.052 — which is item 26's finding again on a tighter case. And `mse_vs_outcome` anti-predicts outright: the 0.5 leg is the only one of the first three *worse* than the 0.780 chair null (0.788) and it is the best in the arena, because that null is precisely the base rate the objective was told not to fit. Under `--chair-balance`, `chair_baseline_mse` stops being the honest null and no weighted null has been put in its place.
+
+    Two confounds stated rather than controlled: early stop picked a different epoch per leg (3, 2, 2, 7), which is part of the pipeline but means the legs differ in more than the flag downstream of training; and `mean_pred_runner` moves −0.124 → −0.105 → −0.088 toward zero across 0 → 0.5, the mechanism visibly working, then jumps to −0.149 at 1.0 on that leg's quite different trajectory.
+
+    **Left off by default**, like `--segment-balance` and for the same reason: the visit-count target is a proper scoring rule whose optimum is the target distribution, and reweighting by an outcome the search did not know moves that optimum. The next volume run should carry `--chair-balance 0.5` explicitly, and item 28's gate is now able to see it if it stops working.
 
 **Standing open items:** no root Dirichlet noise in `puct.rs`; the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.

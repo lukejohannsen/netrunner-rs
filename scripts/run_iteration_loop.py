@@ -242,6 +242,9 @@ def main():
                              "clears --promote-threshold by trading one seat for the other (0 disables)")
     parser.add_argument("--value-target-mix", type=float, default=0.5,
                         help="Passed to the trainer: share of the value target taken from the search's root value")
+    parser.add_argument("--chair-balance", type=float, default=0.0,
+                        help="Passed to the trainer: inverse-frequency weight over (chair, result) cells. "
+                             "The input-side counterpart of --promote-chair-floor")
     parser.add_argument("--value-loss-weight", type=float, default=0.25,
                         help="Passed to the trainer: weight of the value loss against the policy loss")
     parser.add_argument("--arena-screen-games", type=int, default=96,
@@ -357,7 +360,8 @@ def main():
                               "--select-on", args.select_on,
                               "--early-stop-patience", str(args.early_stop_patience),
                               "--value-target-mix", str(args.value_target_mix),
-                              "--value-loss-weight", str(args.value_loss_weight)])
+                              "--value-loss-weight", str(args.value_loss_weight),
+                              "--chair-balance", str(args.chair_balance)])
             if not args.unmasked_policy:
                 train_cmd.append("--masked-policy")
             res = run_cmd(
