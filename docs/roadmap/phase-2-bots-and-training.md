@@ -234,4 +234,35 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **The run was reshaped rather than the code:** 1,200 games per iteration through iteration 7 instead of 2,400 through 12, ~3.0 h per iteration and ~16 h total. Iteration 2 keeps its 2,400-game corpus (already on disk; `run_iteration_loop.py:229` skips self-play when the directory holds its games), so it costs only training and the arena. 128 simulations is deliberately untouched — comparability with item 22's 0.617 is the point of the run. Five promotion decisions after iteration 2 is what "does a priors-only loop compound?" needs; twelve iterations was a budget, not the question.
 
+26. **The fifth run: a priors-only loop trades the Runner seat for the Corp seat, at parity** (8–9 September 2026, stopped at iteration 5 of 7 once the answer stopped changing). Item 22 found the priors alone scoring 0.617 against the uniform search with both chairs above baseline, and this run asked the only question that could follow: **does a priors-only loop compound?** It does not, and the way it fails is the finding.
+
+    **Three candidates, three rejections, and the blend hides what happened.**
+
+    | iter | corpus | screen | full arena | as Corp | as Runner |
+    |---|---|---|---|---|---|
+    | 2 | 4,800 | 0.469 | 0.461 | 0.688 | 0.234 |
+    | 3 | 6,000 | 0.542 | 0.523 | 0.729 | 0.318 |
+    | 4 | 7,200 | 0.490 | 0.479 | 0.708 | 0.250 |
+
+    **Pooled over all 1,152 arena games: 0.4878, which is −0.8σ from parity — while the Corp chair is 0.708 (+10.0σ) and the Runner chair 0.267 (−11.2σ).** The candidate is not a weak copy of the network that generated its data; it is violently different in both chairs and the two differences cancel. Every iteration reproduces the shape: about +0.21 as Corp, about −0.23 as Runner, net nothing. Both sides were seated `priors-only` (item 24), so 0.500 is the honest bar and this is priors against priors.
+
+    **Corpus size is not the variable.** 4,800 → 7,200 games moved the blended score 0.461 → 0.523 → 0.479: a per-iteration spread of sd 0.032 against the 0.026 that 384-game sampling noise alone produces. Two of those points briefly looked like a trend toward the 0.55 gate and were read that way in the session; the third showed it was a flat line. This is the same conclusion item 20 reached by a different route, and it is why the run was stopped at iteration 5 rather than played to 7 — iterations 5–7 could only add samples of a quantity already at 0.488 ± 0.015.
+
+    **The mechanism is on the self-play side, and it replicates.** Seating those priors on both seats moves the chair balance about ten points off the engine's own, over four disjoint seed ranges:
+
+    | corpus | seeds | Corp win |
+    |---|---|---|
+    | iter_001 (uniform search) | 0–2399 | 54.8% |
+    | iter_002 (priors-only) | 2400–4799 | 65.7% |
+    | iter_003 (priors-only) | 4800–5999 | 64.9% |
+    | iter_004 (priors-only) | 6000–7199 | 63.9% |
+
+    A network trained on a corpus where the Corp wins ~65% learns the Corp seat and loses the Runner seat, which is exactly what the arena then measures. **The loop's input and its output are the same distortion seen twice.**
+
+    **Two things the training logs got wrong about all this, both worth keeping.** The policy head's distance from its entropy floor is flat — **+0.124, +0.124, +0.125, +0.115** across 2,400 → 7,200 games — while the arena score moved 0.06 between two of those points, so **that loss gap does not track playing strength and should not be used to predict an arena result.** And the value head's raw MSE improved (0.863 → 0.772 → 0.762) while its edge over the chair null *collapsed* (0.048 → 0.095 → **0.018**), because a more chair-skewed corpus makes "predict the chair average" a better strategy and drags the null down with it. Quote the gap, never the MSE alone.
+
+    **What this hands to the gate.** Promotion is a blended score, so "genuinely stronger" and "traded one chair for the other" are indistinguishable to it — a candidate on this trajectory clears 0.55 the moment its Corp chair runs far enough ahead, and would be promoted with a Runner chair near 0.30. That is item 13's failure (a blended verdict concealing a broken chair) still live in the gate, now with a concrete mechanism that produces it. The open work is a promotion rule that reads both chairs, and a chair-weighted training objective — the trainer has `--segment-balance` for rare `ActionSpace` segments but nothing for seats. The 7,200-game corpus is kept for exactly that screen, which is one arena leg rather than another overnight run.
+
+    Also unanswered and now with a second run's worth of evidence behind it: **why a well-calibrated value head is worth nothing at a leaf in this search** (item 22).
+
 **Standing open items:** no root Dirichlet noise in `puct.rs`; the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
