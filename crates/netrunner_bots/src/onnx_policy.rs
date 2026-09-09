@@ -5,7 +5,8 @@
 //! none of which `PuctAgent`'s search machinery or the baseline evaluator
 //! need.
 
-use std::sync::Mutex;
+use std::collections::HashMap;
+use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use ort::session::Session;
 use ort::value::Tensor;
@@ -26,21 +27,249 @@ pub enum OnnxPolicyError {
     UnexpectedValueShape { actual: usize },
 }
 
+/// The most rows one `Session::run` may carry, and how many runs may be
+/// in flight at once.
+///
+/// **Both are measured, and the thing they are measured against is cache
+/// residency, not parallelism.** A batch-of-one forward pass reads all
+/// 1,151,471 parameters — 4.6 MB — end to end, and a real game does tree
+/// work between its leaf evaluations, so the weights are evicted before
+/// the next one. Aggregate throughput with 8 MB of unrelated traffic
+/// interleaved between calls, which is the regime self-play actually runs
+/// in:
+///
+/// ```text
+///           batch 1   batch 4   batch 8   batch 16   batch 32
+/// 1 runner    2,565     9,643    13,099     18,005     19,072
+/// 2 runners   2,565     9,984    16,779     22,677     26,197
+/// 4 runners   1,753     8,203    18,171     36,683     46,229  rows/s
+/// ```
+///
+/// Batch 1 is 1,753 rows/s where the same call with the weights hot is
+/// 15,631 — a 9x collapse — and adding threads does not help it at all
+/// (17 threads at batch 1 measured 1,700). Batching is the only lever
+/// that works, because it is the only one that amortizes a weight read
+/// over more than one row.
+///
+/// The queue self-sizes: a runner takes everything waiting, so with N
+/// game threads and few outstanding requests the batches are small, and
+/// they grow exactly when contention would otherwise be worst. Rejected:
+/// making runners *wait* to fill a batch, which trades latency for size
+/// and needs a timeout tuned per machine; the natural dynamics already
+/// equilibrate because a busy runner is what lets the queue build.
+const MAX_BATCH: usize = 32;
+const MAX_RUNNERS: usize = 4;
+
+/// What one evaluation returns: the raw policy logits and the scalar
+/// value, in `PolicyEvaluator::evaluate`'s order.
+type Answer = (Vec<f32>, f32);
+
+/// One caller's row, and the slot its answer comes back in.
+struct PendingRow {
+    obs: Vec<f32>,
+    /// `None` until a runner fills it. `Some(Err(()))` when the runner
+    /// panicked: inference failing must stay the loud crash it was before
+    /// rows shared a batch, and a waiter that is never answered would turn
+    /// it into a silent hang instead — the worst possible failure for an
+    /// unattended run.
+    answer: Mutex<Option<Result<Answer, ()>>>,
+    ready: Condvar,
+}
+
+struct BatchQueue {
+    waiting: Vec<Arc<PendingRow>>,
+    /// Session indices not currently held by a runner. A thread becomes a
+    /// runner only by taking one, which is what bounds concurrency.
+    free_runners: Vec<usize>,
+}
+
+/// One model, shared process-wide: a pool of `MAX_RUNNERS` sessions and
+/// the queue feeding them.
+///
+/// Sharing matters twice over. Self-play used to build a session per side
+/// per game — ~36 live at once on this machine, 165 MB of duplicated
+/// weights that guaranteed no copy ever stayed in cache, and 8.0 ms of
+/// graph parsing per game. And a shared queue is the only place rows from
+/// *different games* can meet, which is where the batching has to happen:
+/// one game's search evaluates strictly one leaf at a time.
+struct Batcher {
+    queue: Mutex<BatchQueue>,
+    sessions: Vec<Mutex<Session>>,
+    /// Rows per `Session::run`, `MAX_BATCH` for an ordinary exported
+    /// checkpoint and `1` for a model whose outputs do not grow with the
+    /// input's first dimension — see `probe_max_batch`.
+    max_batch: usize,
+}
+
+impl Batcher {
+    fn new(model_path: &str) -> Result<Self, OnnxPolicyError> {
+        let mut sessions = Vec::with_capacity(MAX_RUNNERS);
+        for _ in 0..MAX_RUNNERS {
+            let mut builder = Session::builder()?;
+            // One thread per session: the parallelism that matters here is
+            // across games, and ORT's default pool is sized to the whole
+            // machine and spin-waits. Measured worth 1.2% on wall time and
+            // 9% of resident memory, with byte-identical output.
+            builder = builder.with_intra_threads(1).map_err(ort::Error::from)?;
+            builder = builder.with_inter_threads(1).map_err(ort::Error::from)?;
+            sessions.push(Mutex::new(builder.commit_from_file(model_path)?));
+        }
+        let free_runners = (0..MAX_RUNNERS).collect();
+        let max_batch = probe_max_batch(&sessions[0]);
+        Ok(Batcher { queue: Mutex::new(BatchQueue { waiting: Vec::new(), free_runners }), sessions, max_batch })
+    }
+
+    /// Submits one row and blocks until its answer is filled in — either
+    /// by this thread acting as a runner, or by whichever thread is.
+    fn evaluate(&self, obs: Vec<f32>) -> Answer {
+        let row = Arc::new(PendingRow { obs, answer: Mutex::new(None), ready: Condvar::new() });
+
+        // Enqueueing and claiming a runner slot happen under one lock, so
+        // a row can never be left queued with every runner having just
+        // decided the queue was empty.
+        let slot = {
+            let mut queue = self.queue.lock().expect("batch queue mutex should never be poisoned");
+            queue.waiting.push(Arc::clone(&row));
+            queue.free_runners.pop()
+        };
+
+        if let Some(slot) = slot {
+            self.run_until_drained(slot);
+        }
+
+        let mut answer = row.answer.lock().expect("row mutex should never be poisoned");
+        while answer.is_none() {
+            answer = row.ready.wait(answer).expect("row mutex should never be poisoned");
+        }
+        match answer.take().expect("just waited for Some") {
+            Ok(answer) => answer,
+            Err(()) => panic!("ONNX inference failed on an already-loaded model"),
+        }
+    }
+
+    /// Runs batches on `slot` until nothing is waiting, then releases it.
+    fn run_until_drained(&self, slot: usize) {
+        loop {
+            let batch: Vec<Arc<PendingRow>> = {
+                let mut queue = self.queue.lock().expect("batch queue mutex should never be poisoned");
+                if queue.waiting.is_empty() {
+                    // Released under the same lock that guards `waiting`,
+                    // so a row enqueued after this check always finds a
+                    // free slot to claim.
+                    queue.free_runners.push(slot);
+                    return;
+                }
+                let take = queue.waiting.len().min(self.max_batch);
+                queue.waiting.drain(..take).collect()
+            };
+            // `catch_unwind` so a failed batch cannot strand either the
+            // runner slot or the rows waiting on it. The panic is still
+            // raised on this thread afterwards — the behaviour before
+            // batching, when a caller ran its own inference — but every
+            // other row in the batch is answered first.
+            let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.forward_batch(slot, &batch)));
+            match attempt {
+                Ok(answers) => {
+                    for (row, answer) in batch.iter().zip(answers) {
+                        *row.answer.lock().expect("row mutex should never be poisoned") = Some(Ok(answer));
+                        row.ready.notify_all();
+                    }
+                }
+                Err(payload) => {
+                    for row in &batch {
+                        *row.answer.lock().expect("row mutex should never be poisoned") = Some(Err(()));
+                        row.ready.notify_all();
+                    }
+                    self.queue.lock().expect("batch queue mutex should never be poisoned").free_runners.push(slot);
+                    std::panic::resume_unwind(payload);
+                }
+            }
+        }
+    }
+
+    /// One `Session::run` over `batch.len()` rows, split back into one
+    /// answer per row. A row's outputs do not depend on what else shares
+    /// its batch — verified bitwise against one-row calls — so batching
+    /// is invisible to every caller.
+    fn forward_batch(&self, slot: usize, batch: &[Arc<PendingRow>]) -> Vec<Answer> {
+        let rows = batch.len();
+        let mut flat = Vec::with_capacity(rows * OBS_SIZE);
+        for row in batch {
+            flat.extend_from_slice(&row.obs);
+        }
+        let input = ndarray::Array2::from_shape_vec((rows, OBS_SIZE), flat)
+            .expect("encode_observation always returns OBS_SIZE features");
+        let input_tensor = Tensor::from_array(input).expect("a [n, OBS_SIZE] f32 array is always a valid tensor");
+
+        let mut session = self.sessions[slot].lock().expect("ONNX session mutex should never be poisoned");
+        let outputs =
+            session.run(ort::inputs!["obs" => input_tensor]).expect("ONNX inference failed on an already-loaded model");
+
+        let (_, policy_logits) =
+            outputs["policy"].try_extract_tensor::<f32>().expect("model's \"policy\" output must be an f32 tensor");
+        assert_eq!(
+            policy_logits.len(),
+            rows * ActionSpace::SIZE,
+            "model's \"policy\" output must have ActionSpace::SIZE elements per row"
+        );
+        let (_, value_slice) =
+            outputs["value"].try_extract_tensor::<f32>().expect("model's \"value\" output must be an f32 tensor");
+        assert_eq!(value_slice.len(), rows, "model's \"value\" output must have exactly one element per row");
+
+        (0..rows)
+            .map(|i| (policy_logits[i * ActionSpace::SIZE..(i + 1) * ActionSpace::SIZE].to_vec(), value_slice[i]))
+            .collect()
+    }
+}
+
+/// Whether this model's outputs actually grow with the batch dimension.
+///
+/// Not every ONNX file does. `onnx_fixture`'s hand-built model answers
+/// from `Constant` nodes of fixed `[1, N]` shape whatever it is fed, and
+/// so would any checkpoint exported with a static batch axis. Batching
+/// such a model silently hands every row the first row's answer — or, as
+/// it did here first, trips the length assertion inside a runner and takes
+/// the queue down with it. One two-row probe at construction is cheap and
+/// turns "wrong answers or a crash" into "batching off for this model".
+fn probe_max_batch(session: &Mutex<Session>) -> usize {
+    let input = ndarray::Array2::<f32>::zeros((2, OBS_SIZE));
+    let Ok(tensor) = Tensor::from_array(input) else { return 1 };
+    let mut session = session.lock().expect("ONNX session mutex should never be poisoned");
+    let Ok(outputs) = session.run(ort::inputs!["obs" => tensor]) else { return 1 };
+    let policy_rows = outputs["policy"].try_extract_tensor::<f32>().is_ok_and(|(_, p)| p.len() == 2 * ActionSpace::SIZE);
+    let value_rows = outputs["value"].try_extract_tensor::<f32>().is_ok_and(|(_, v)| v.len() == 2);
+    if policy_rows && value_rows {
+        MAX_BATCH
+    } else {
+        1
+    }
+}
+
+/// One `Batcher` per model path, for the lifetime of the process.
+fn batcher_for(model_path: &str) -> Result<Arc<Batcher>, OnnxPolicyError> {
+    static BATCHERS: OnceLock<Mutex<HashMap<String, Arc<Batcher>>>> = OnceLock::new();
+    let map = BATCHERS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut map = map.lock().expect("batcher registry mutex should never be poisoned");
+    if let Some(existing) = map.get(model_path) {
+        return Ok(Arc::clone(existing));
+    }
+    let batcher = Arc::new(Batcher::new(model_path)?);
+    map.insert(model_path.to_string(), Arc::clone(&batcher));
+    Ok(batcher)
+}
+
 /// A `PolicyEvaluator` backed by a trained ONNX model: input `"obs"` shape
 /// `[1, OBS_SIZE]` (from `crate::observation::encode_observation`), outputs
 /// `"policy"` shape `[1, ActionSpace::SIZE]` (raw logits — see
 /// `masked_softmax`'s doc comment for why these aren't assumed
 /// pre-softmaxed) and `"value"` shape `[1, 1]`.
 pub struct OnnxPolicyEvaluator {
-    // `ort::Session::run` needs `&mut self`, but `PolicyEvaluator::
-    // evaluate` only gets `&self` (matching `UniformPolicyEvaluator` and
-    // every other evaluator — not being changed just for this one
-    // implementation). `Session` is already internally `Send + Sync` (a
-    // thread-safe C API handle), so this `Mutex` only bridges that
-    // `&self`/`&mut self` mismatch — it isn't adding any cross-thread
-    // safety concern beyond what calling into ONNX Runtime from multiple
-    // threads would already involve.
-    session: Mutex<Session>,
+    // Shared per model path rather than owned per evaluator. Every
+    // consumer builds one of these per side per game, so owning a session
+    // meant ~36 of them live during self-play; they now share a pool of
+    // `MAX_RUNNERS` sessions behind a queue that batches rows across
+    // games. See `Batcher`.
+    batcher: Arc<Batcher>,
     side: Side,
 }
 
@@ -78,38 +307,13 @@ impl OnnxPolicyEvaluator {
     /// root are independent trees) is the fix and changes search results,
     /// so it needs the full strength bar (ROADMAP Phase 2 §5 item 25).
     pub fn new(model_path: &str, side: Side) -> Result<Self, OnnxPolicyError> {
-        let mut builder = Session::builder()?;
-        // `map_err` rather than `?`: the builder methods return
-        // `ort::Error<SessionBuilder>`, which carries the builder back on
-        // failure and does not convert straight into `OnnxPolicyError`'s
-        // `#[from] ort::Error` (= `Error<()>`) in one `?` step.
-        builder = builder.with_intra_threads(1).map_err(ort::Error::from)?;
-        builder = builder.with_inter_threads(1).map_err(ort::Error::from)?;
-        let session = builder.commit_from_file(model_path)?;
-        Ok(Self { session: Mutex::new(session), side })
+        Ok(Self { batcher: batcher_for(model_path)?, side })
     }
 
     /// One forward pass over `obs`, returning the raw policy logits and the
     /// scalar value, both from whatever perspective `obs` was encoded from.
     fn forward(&self, obs: Vec<f32>) -> (Vec<f32>, f32) {
-        let input = ndarray::Array2::from_shape_vec((1, OBS_SIZE), obs).expect("encode_observation always returns OBS_SIZE features");
-        let input_tensor = Tensor::from_array(input).expect("a [1, OBS_SIZE] f32 array is always a valid tensor");
-
-        let mut session = self.session.lock().expect("ONNX session mutex should never be poisoned");
-        let outputs =
-            session.run(ort::inputs!["obs" => input_tensor]).expect("ONNX inference failed on an already-loaded model");
-
-        let (_, policy_logits) = outputs["policy"].try_extract_tensor::<f32>().expect("model's \"policy\" output must be an f32 tensor");
-        assert_eq!(
-            policy_logits.len(),
-            ActionSpace::SIZE,
-            "model's \"policy\" output must have exactly ActionSpace::SIZE elements"
-        );
-
-        let (_, value_slice) = outputs["value"].try_extract_tensor::<f32>().expect("model's \"value\" output must be an f32 tensor");
-        assert_eq!(value_slice.len(), 1, "model's \"value\" output must have exactly 1 element");
-
-        (policy_logits.to_vec(), value_slice[0])
+        self.batcher.evaluate(obs)
     }
 }
 
@@ -383,6 +587,71 @@ mod tests {
 
         assert!((corp_value - 0.25).abs() < 1e-5, "expected the fixture's +0.25, got {corp_value}");
         assert!((runner_value + 0.25).abs() < 1e-5, "expected the negation, got {runner_value}");
+    }
+
+    /// A model whose outputs do not grow with the batch dimension is
+    /// detected and served one row at a time, rather than being handed
+    /// four rows and returning one row's answer four times.
+    ///
+    /// `onnx_fixture`'s model answers from `Constant` nodes of fixed
+    /// `[1, N]` shape, so it is exactly that case, and it is the reason
+    /// `probe_max_batch` exists: the first version of this batcher asserted
+    /// its way out of the runner instead, which stranded every row waiting
+    /// behind it.
+    ///
+    /// The positive case — a batch of four coming back bitwise equal to
+    /// four single-row calls — was verified against the real 1,151,471
+    /// parameter checkpoint, on every one of 2 x 1,646 outputs. It cannot
+    /// be checked here, because a fixture that returns a constant would
+    /// pass whether or not batching worked.
+    #[test]
+    fn a_model_that_cannot_batch_is_detected_and_still_answered() {
+        let model_file = write_fixture_model();
+        let batcher = Batcher::new(model_file.path.to_str().unwrap()).expect("fixture model should load");
+        assert_eq!(batcher.max_batch, 1, "the fixture's constant outputs do not scale with the batch");
+
+        let (priors, value) = batcher.evaluate(vec![0.0; OBS_SIZE]);
+        assert_eq!(priors.len(), ActionSpace::SIZE);
+        assert!((value - 0.25).abs() < 1e-6, "expected the fixture's 0.25, got {value}");
+    }
+
+    /// Many threads through one batcher: every caller gets *its own* row's
+    /// answer, not a neighbour's. The queue hands results back by
+    /// `Arc<PendingRow>` rather than by position, and this is what would
+    /// catch that going wrong under real contention.
+    #[test]
+    fn concurrent_callers_each_get_their_own_row_back() {
+        let model_file = write_fixture_model();
+        let batcher = Arc::new(Batcher::new(model_file.path.to_str().unwrap()).expect("fixture model should load"));
+
+        // One distinctive row per thread, and its answer taken alone first.
+        let rows: Vec<Vec<f32>> = (0..16)
+            .map(|r| {
+                let mut obs = vec![0.0f32; OBS_SIZE];
+                obs[r * 7 % OBS_SIZE] = 1.0 + r as f32;
+                obs
+            })
+            .collect();
+        let expected: Vec<(Vec<f32>, f32)> = rows.iter().map(|obs| batcher.evaluate(obs.clone())).collect();
+
+        std::thread::scope(|scope| {
+            for (r, obs) in rows.iter().enumerate() {
+                let batcher = Arc::clone(&batcher);
+                let expected = &expected[r];
+                scope.spawn(move || {
+                    for _ in 0..8 {
+                        let got = batcher.evaluate(obs.clone());
+                        assert_eq!(got.1, expected.1, "thread {r} got another row's value");
+                        assert_eq!(got.0, expected.0, "thread {r} got another row's policy");
+                    }
+                });
+            }
+        });
+
+        // Every runner slot is back in the pool once the work is done.
+        let queue = batcher.queue.lock().unwrap();
+        assert!(queue.waiting.is_empty(), "queue should be drained");
+        assert_eq!(queue.free_runners.len(), MAX_RUNNERS, "every runner slot should have been released");
     }
 
     #[test]

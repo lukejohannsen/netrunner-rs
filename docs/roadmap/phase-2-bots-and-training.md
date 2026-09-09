@@ -230,7 +230,7 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **The cost is arithmetic, and nothing about the loop's threading can reach it.** A decision is ~128 forward passes, a game ~205 decisions (492,638 steps over 2,400 games), and each pass re-reads all **1,151,471 parameters** (trunk 2262→256→256, policy head → 1,646): **~121 GB of weight traffic per game for 2.3 MFLOPs of arithmetic per pass**, which is memory-bandwidth bound. Per-call cost is **3.85 ms**, not the ~2 ms recorded. Scaling agrees — 32 games at 32 / 64 / 128 simulations cost **2.0 / 3.7 / 5.96 s/game**. There is also **no tree reuse to exploit**: `puct.rs:520` builds a fresh tree per determinization per decision, which is correct rather than an oversight, because a tree built on an earlier sample of hidden state is not valid for a new one.
 
-    **The open lead is batching the leaves.** The four determinizations at a root are independent trees whose leaves could go through as one batch of four, cutting weight traffic ~4×; leaf parallelization with virtual loss would go further. Both change search results, so either needs the full strength bar and pinned before/after — not a launch-night patch, which is why the run was reshaped instead.
+    **The open lead is batching the leaves.** *(Corrected by item 27: the four-determinizations premise was wrong — `PuctConfig::samples` is 1 everywhere, so there are no sibling leaves in a search to batch. Batching across concurrent **games** is the route that exists, it needs no search change at all, and it was worth 2.6×. The claim below that this "cannot be threaded away" is also too strong: inference throughput peaks at four concurrent streams and collapses past it.)*
 
     **The run was reshaped rather than the code:** 1,200 games per iteration through iteration 7 instead of 2,400 through 12, ~3.0 h per iteration and ~16 h total. Iteration 2 keeps its 2,400-game corpus (already on disk; `run_iteration_loop.py:229` skips self-play when the directory holds its games), so it costs only training and the arena. 128 simulations is deliberately untouched — comparability with item 22's 0.617 is the point of the run. Five promotion decisions after iteration 2 is what "does a priors-only loop compound?" needs; twelve iterations was a budget, not the question.
 
@@ -264,5 +264,33 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
     **What this hands to the gate.** Promotion is a blended score, so "genuinely stronger" and "traded one chair for the other" are indistinguishable to it — a candidate on this trajectory clears 0.55 the moment its Corp chair runs far enough ahead, and would be promoted with a Runner chair near 0.30. That is item 13's failure (a blended verdict concealing a broken chair) still live in the gate, now with a concrete mechanism that produces it. The open work is a promotion rule that reads both chairs, and a chair-weighted training objective — the trainer has `--segment-balance` for rare `ActionSpace` segments but nothing for seats. The 7,200-game corpus is kept for exactly that screen, which is one arena leg rather than another overnight run.
 
     Also unanswered and now with a second run's worth of evidence behind it: **why a well-calibrated value head is worth nothing at a leaf in this search** (item 22).
+
+27. **Batching across games: self-play is 2.6× faster and the corpus is byte-identical** (`feat/batched-onnx-evaluation`, 9 September 2026). Item 25 named `batch = 1` as the cost and pointed at the four determinizations in a root as the leaves to batch. **That premise was wrong**: `PuctConfig::samples` is `1` in the default, in every test, and in every caller — its own doc comment says "Left in at `1`" — so `search`'s `into_par_iter` is a one-element loop and a search evaluates strictly one leaf at a time. There are no sibling leaves inside a search.
+
+    **The batching that does exist is across concurrent games**, and it needs no search change: self-play already runs one game per worker, each blocked on its own single-row inference, and rows from different games can share a `Session::run`. **A row's answer does not depend on what shares its batch** — verified bitwise against the real 1,151,471-parameter checkpoint on every one of 2 × 1,646 outputs — so this is invisible to every caller.
+
+    **What the cost actually is, measured rather than inferred.** Item 25's "3.85 ms per forward pass" was per-*thread latency under load*, not the cost of a call; single-threaded a call is 199 µs, and single-threaded self-play is 4.36 s/game uniform against 11.1 s/game with the network, which reconciles at ~26,240 evaluations × 257 µs. The real defect is scaling: **uniform self-play scales 11.4× across ~18 workers, the network path 1.87×**, because inference throughput does not scale at all — 5,029 rows/s at one thread, 5,391 at seventeen. It peaks at **four** concurrent streams (13,022 rows/s) and *falls below the single-threaded rate* beyond that, as more copies of the 4.6 MB weights leave L3.
+
+    **And capping concurrency does not fix it**, which is the measurement that found the real mechanism. A semaphore at four streams left wall time unchanged (237.9 s against 238.5 s) while dropping CPU from 1711% to 662%. The reason is cache residency, not parallelism: interleaving 8 MB of unrelated traffic between calls — what tree work does — collapses batch-1 throughput 9× and makes thread count irrelevant, while batching keeps paying:
+
+    | | batch 1 | batch 4 | batch 8 | batch 16 | batch 32 |
+    |---|---|---|---|---|---|
+    | 1 runner | 2,565 | 9,643 | 13,099 | 18,005 | 19,072 |
+    | 2 runners | 2,565 | 9,984 | 16,779 | 22,677 | 26,197 |
+    | 4 runners | 1,753 | 8,203 | 18,171 | 36,683 | 46,229 |
+
+    Batching is the only lever that works because it is the only one that amortizes a weight read over more than one row.
+
+    **The result, on 40 games at 128 simulations, byte-identical corpus throughout:**
+
+    | | wall | CPU | RSS |
+    |---|---|---|---|
+    | before | 238.5 s | 1711% | 411 MB |
+    | batched, default threads | 101.4 s | 894% | 124 MB |
+    | **batched, 64 game threads** | **92.5 s** | 919% | 175 MB |
+
+    **2.6×**, and memory fell because ~36 sessions (one per side per game, 165 MB of duplicated weights and 8.0 ms of graph parsing each) became a shared pool of four. `MAX_RUNNERS` is 4 on measurement: 8 runners cost 129 s and 16 cost 218 s, each runner being another live copy of the weights. Game threads are oversubscribed to 64 only when a network is seated, because they park on the queue rather than run, and a deeper queue is what lets a runner fill a batch; the uniform path keeps one thread per core.
+
+    **Two bugs found in the building, both worth the entry.** A model whose outputs do not grow with the batch dimension — `onnx_fixture`'s `Constant` nodes, or any checkpoint exported with a static batch axis — would have been handed four rows and returned one row's answer four times; `probe_max_batch` runs one two-row probe at construction and turns batching off for such a model. And the first version let a panic inside a runner strand both its slot and every row queued behind it, converting a loud crash into a **silent hang** — the worst failure mode for an unattended overnight run. The runner now answers its batch with an error and returns its slot before re-raising, so inference failure stays exactly as loud as it was before rows shared a batch.
 
 **Standing open items:** no root Dirichlet noise in `puct.rs`; the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
