@@ -48,12 +48,12 @@ class StageFailed(Exception):
         self.returncode = returncode
 
 
-def run_cmd(cmd, description, capture=False):
+def run_cmd(cmd, description, capture=False, env=None):
     print(f"\n==================================================")
     print(f"  {description}")
     print(f"==================================================")
     print(f"Running: {' '.join(cmd)}\n", flush=True)
-    res = subprocess.run(cmd, capture_output=capture, text=capture)
+    res = subprocess.run(cmd, capture_output=capture, text=capture, env=env)
     if res.returncode != 0:
         if capture:
             print(res.stdout)
@@ -272,15 +272,26 @@ def main():
                     "-o", iter_data_dir,
                     "--seed-offset", str(next_seed_offset(args.data_dir, iter_idx)),
                 ]
+                selfplay_env = None
                 if os.path.exists(latest_onnx):
                     # --model-uses only after there is a network to seat
                     # halves of: self-play refuses the flag without -m
                     # rather than silently producing a uniform corpus under
                     # a label saying otherwise.
                     selfplay_cmd.extend(["-m", latest_onnx, "--model-uses", args.model_uses])
+                    # More game threads than cores, but only with a network
+                    # seated. Those threads spend most of their time parked
+                    # on the inference queue rather than running, and the
+                    # deeper queue is what lets a runner assemble a full
+                    # batch: 40 games went 101.4 s at the default ~20
+                    # threads to 92.5 s at 64, flat to 128 (ROADMAP Phase 2
+                    # §5 item 27). The uniform path gets no queue and no
+                    # benefit, so it keeps one thread per core.
+                    selfplay_env = dict(os.environ, RAYON_NUM_THREADS="64")
                 run_cmd(
                     selfplay_cmd,
-                    f"Iteration {iter_idx}/{args.iterations}: MCTS Self-Play ({args.games_per_iter} games)"
+                    f"Iteration {iter_idx}/{args.iterations}: MCTS Self-Play ({args.games_per_iter} games)",
+                    env=selfplay_env,
                 )
             record["selfplay_seconds"] = time.time() - started
 
