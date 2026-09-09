@@ -481,6 +481,74 @@ def segment_balance_weights(corpus, strength: float):
     return (per_sample / per_sample.mean()).astype(np.float32), segment, counts
 
 
+def chair_balance_weights(corpus, strength: float):
+    """Per-sample weights that flatten the corpus over (chair, result).
+
+    **What the imbalance actually is.** The obvious reading — that a
+    Corp-favoured loop records more Corp decisions — is wrong, and measuring
+    it first is what kept this from being written as a step-count reweight
+    that would have done nothing. Over the fifth run's kept corpus:
+
+    | corpus | Corp wins | Corp steps | Corp steps on the winning side |
+    |---|---|---|---|
+    | `iter_001` (uniform search) | 54.8% | 44.4% | 64.6% |
+    | `iter_002` (priors-only) | 65.7% | 45.6% | 75.2% |
+    | `iter_003` | 64.9% | 45.8% | 75.6% |
+    | `iter_004` | 63.9% | 45.4% | 74.4% |
+
+    The step split barely moves — 44.4% to 45.6% as the win rate goes 54.8%
+    to 65.7% — so balancing *chairs* corrects a 45/55 to a 50/50 and leaves
+    the distortion untouched. The imbalance is in the **value target**: a
+    Runner step carries a losing outcome about three times in four.
+
+    It is also larger than the game-level win rate suggests. Corp wins 65.7%
+    of `iter_002`'s games but 75.2% of its Corp steps sit on the winning
+    side, and the same +9.5 gap appears in the uniform corpus (54.8% to
+    64.6%) — so it is a property of the game, not of the loop: a game the
+    Corp wins carries proportionally more Corp decisions than one it loses.
+    A chair-only reweight cannot see any of this.
+
+    So the cell is `(chair, sign of the outcome)`, and flattening those six
+    equalizes chair mass and outcome-within-chair mass in one move. Weight
+    `(mean_count / count) ** strength`, normalized to mean 1.0, exactly as
+    `segment_balance_weights` does — 0.0 uniform, 1.0 full inverse
+    frequency, 0.5 the usual compromise. On `iter_002`-`iter_004` pooled,
+    strength 0.5 gives Corp-win 0.89, Corp-loss 1.54, Runner-win 1.43,
+    Runner-loss 0.81 — a 1.9x spread, well short of the single-sample
+    gradients full inverse frequency hands a segment seen 430 times (the
+    same cells at strength 1.0 span 0.61 to 2.20).
+
+    **This biases both heads, and differently.** For the value head it is
+    close to a correction: the head's honest null is `chair_baseline_mse`
+    precisely because knowing only which chair is to move already scores
+    well, and flattening the cells removes most of what that null exploits,
+    so the head has to read the position rather than the seat. For the
+    policy head it is a distortion in the same sense `segment_balance` is —
+    the visit-count target is a proper scoring rule whose optimum is the
+    target distribution, and reweighting by an outcome the search did not
+    know moves that optimum. Off by default for that reason, and the
+    validation loss stays unweighted so selection sees the honest
+    distribution.
+
+    The cell reads the raw *outcome*, never the value target the run is
+    training on, so the weights do not move when `--value-target-mix`
+    does. The outcome is what carries the base rate; the search's root
+    value is an estimate of it and would fold the estimator's own bias
+    into the correction for that bias.
+    """
+    sides = corpus.active_sides.astype(np.int64)
+    result = np.sign(corpus.outcomes_by_sample).astype(np.int64) + 1  # 0 loss, 1 draw, 2 win
+    cell = sides * 3 + result
+    counts = np.bincount(cell, minlength=6).astype(np.float64)
+    seen = counts[counts > 0]
+    weights = np.where(counts > 0, (seen.mean() / np.maximum(counts, 1.0)) ** strength, 1.0)
+    per_sample = weights[cell]
+    return (per_sample / per_sample.mean()).astype(np.float32), cell, counts
+
+
+CHAIR_CELLS = ("corp loss", "corp draw", "corp win", "runner loss", "runner draw", "runner win")
+
+
 def run_epoch(model, corpus, rows, batch_size, device, optimizer=None, value_loss_weight=1.0,
               masked_policy=False, sample_weights=None):
     """One pass over `rows`; trains when `optimizer` is given, else evaluates.
@@ -613,6 +681,22 @@ def train(args):
         rarest = [i for i in np.argsort(counts) if counts[i] > 0][:3]
         print(f"Segment balance {args.segment_balance:g}: weights {sample_weights.min():.2f}-{sample_weights.max():.2f}; "
               f"most common {[SEGMENTS[i][0] for i in loudest]}, rarest {[SEGMENTS[i][0] for i in rarest]}")
+    if args.chair_balance > 0.0:
+        chair_weights, cell, chair_counts = chair_balance_weights(corpus, args.chair_balance)
+        # Multiplied rather than chosen between: the two answer different
+        # questions (which *action* is rare, which *seat and result* is
+        # rare) and a corpus can be skewed on both. Renormalized to mean
+        # 1.0 afterwards so the weighted loss stays on the unweighted
+        # scale whether one balance is on or both.
+        if sample_weights is None:
+            sample_weights = chair_weights
+        else:
+            sample_weights = sample_weights * chair_weights
+            sample_weights = (sample_weights / sample_weights.mean()).astype(np.float32)
+        shares = ", ".join(f"{CHAIR_CELLS[i]} {chair_counts[i] / max(1.0, chair_counts.sum()):.1%}"
+                           f" x{chair_weights[cell == i][0]:.2f}"
+                           for i in range(6) if chair_counts[i])
+        print(f"Chair balance {args.chair_balance:g}: {shares}")
     print(f"Policy objective: {'masked to the target support' if args.masked_policy else 'unmasked over all slots'}")
 
     model = AlphaNetrunnerNet(obs_dim=corpus.observation_size, action_dim=corpus.action_space_size).to(device)
@@ -690,6 +774,7 @@ def train(args):
         "mean_abs_value_target": float(np.mean(np.abs(corpus.values))),
         "value_loss_weight": args.value_loss_weight, "best_value_diagnostics": best_diag,
         "masked_policy": args.masked_policy, "segment_balance": args.segment_balance,
+        "chair_balance": args.chair_balance,
         "epochs": history, "seconds": time.time() - started,
     }
     print(json.dumps(summary))
@@ -725,6 +810,10 @@ if __name__ == "__main__":
                         help="Renormalize the policy softmax over the target's support instead of all "
                              "ActionSpace slots, matching what masked_softmax does at inference. Off by "
                              "default: the recorded runs were trained unmasked and a rerun must reproduce them.")
+    parser.add_argument("--chair-balance", type=float, default=0.0,
+                        help="Inverse-frequency weight over (chair, result) cells, 0 uniform and 1 full. "
+                             "Corrects a corpus whose Runner steps carry a losing outcome three times in "
+                             "four -- see chair_balance_weights. Biases the optimum; off by default.")
     parser.add_argument("--segment-balance", type=float, default=0.0,
                         help="Reweight samples by the inverse frequency of their target's ActionSpace segment, "
                              "raised to this power (0 = off, 0.5 = square root, 1 = full). Lifts rare decisive "
