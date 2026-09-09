@@ -27,6 +27,7 @@ import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -111,6 +112,39 @@ def run_identity(binary):
     return {"commit": git("rev-parse", "HEAD") or "unknown",
             "dirty": bool(git("status", "--porcelain")),
             "binary_sha256": digest}
+
+
+def next_seed_offset(data_dir, iter_idx):
+    """The first seed no game on disk has used, read off the corpora rather
+    than computed from `--games-per-iter`.
+
+    **This is a correction.** The offset used to be
+    `(iter_idx - 1) * games_per_iter`, which is right only while
+    `--games-per-iter` never changes. The fifth run resumed at iteration 3
+    with the size cut from 2,400 to 1,200 to fit the night, so iteration 3
+    was handed offset 2,400 — exactly where iteration 2 had started — and
+    regenerated 1,200 games byte-identical to iteration 2's first 1,200.
+    Two hours of self-play, and a "replication" that was the same games
+    twice. `NetrunnerCorpus` refused the duplicate seeds and stopped the
+    run, which is the guard doing precisely its job; this makes the guard
+    unnecessary rather than relying on it.
+
+    Reading the corpus is the only source that cannot drift: a flag says
+    what the *next* iteration intends, the files say what was actually
+    recorded. Only the first 256 bytes of each game are read — a
+    `GameTrajectory` puts `seed` before its `steps`, and the whole corpus
+    is several GB.
+
+    Returns 0 when nothing is on disk, which is what iteration 1 wants.
+    """
+    highest = -1
+    for path in glob.glob(os.path.join(data_dir, "iter_*", "game_*.jsonl")):
+        with open(path) as fh:
+            head = fh.read(256)
+        found = re.search(r'"seed":(\d+)', head)
+        if found:
+            highest = max(highest, int(found.group(1)))
+    return highest + 1
 
 
 def arena(binary, candidate, incumbent, games, simulations, description, stride=1, uses="both"):
@@ -222,9 +256,11 @@ def main():
             os.makedirs(iter_data_dir, exist_ok=True)
 
             # 1. Self-play with the incumbent network in the search, if there is
-            # one. Seeds are `(iter − 1) × games` onward: self-play is
-            # bit-reproducible, so without the offset every un-promoted
-            # iteration would replay the previous one's games exactly.
+            # one. Seeds continue past the highest one any corpus on disk
+            # already records: self-play is bit-reproducible, so a repeated
+            # offset does not merely risk overlap, it replays the earlier
+            # iteration's games exactly. See `next_seed_offset` for the run
+            # that proved it.
             started = time.time()
             if len(glob.glob(os.path.join(iter_data_dir, "game_*.jsonl"))) >= args.games_per_iter:
                 print(f"\nIteration {iter_idx}: '{iter_data_dir}' already holds its games, self-play skipped.")
@@ -234,7 +270,7 @@ def main():
                     "-n", str(args.games_per_iter),
                     "-s", str(args.simulations),
                     "-o", iter_data_dir,
-                    "--seed-offset", str((iter_idx - 1) * args.games_per_iter),
+                    "--seed-offset", str(next_seed_offset(args.data_dir, iter_idx)),
                 ]
                 if os.path.exists(latest_onnx):
                     # --model-uses only after there is a network to seat
