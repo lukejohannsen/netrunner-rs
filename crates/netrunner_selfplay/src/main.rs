@@ -49,7 +49,7 @@ struct Cli {
     simulations: usize,
     /// Directory to write one `game_NNNNN.jsonl` file per game into.
     /// Not used in arena mode.
-    #[arg(short = 'o', long = "output-dir", required_unless_present = "arena_candidate")]
+    #[arg(short = 'o', long = "output-dir", required_unless_present_any = ["arena_candidate", "arena_null"])]
     output_dir: Option<PathBuf>,
     /// Optional ONNX policy/value model to drive search priors/values with
     /// (requires building with `--features onnx`); omit for the
@@ -104,6 +104,28 @@ struct Cli {
     /// run is distilled from, and so the first thing it has to beat.
     #[arg(long = "arena-incumbent")]
     arena_incumbent: Option<PathBuf>,
+    /// Null-leg mode: seat `--arena-incumbent` (or the uniform search,
+    /// with no `--arena-incumbent`) in *both* chairs and report the same
+    /// summary an ordinary arena reports.
+    ///
+    /// This exists because a chair score has no meaning against 0.500.
+    /// The pairing is exact — games `2k` and `2k + 1` are one deal played
+    /// from both sides — so with identical players the blend is exactly
+    /// 0.5 while `as_corp` is **the pool's Corp win rate at this
+    /// configuration**, which is what a candidate's chair score must be
+    /// differenced against. Measured, that is 0.6823 for the fifth
+    /// volume run and 0.7135 for the sixth, against gate floors written
+    /// as if it were 0.500: the gate's Runner floor was asking for +0.13
+    /// over its own null and rejected six honest candidates (ROADMAP
+    /// Phase 2 §5 item 32, re-centred in item 33).
+    ///
+    /// A run with an incumbent could express this by passing the same
+    /// path to both flags, which is how item 32's two null legs were
+    /// taken. The flag exists for the case that cannot: the *first*
+    /// iteration of every run, where the bar is the uniform search and
+    /// there is no path to pass.
+    #[arg(long = "arena-null", conflicts_with = "arena_candidate")]
+    arena_null: bool,
     /// Which halves of the candidate's network to actually use, with the
     /// uniform evaluator supplying the other. `both` is an ordinary arena;
     /// the two ablations answer "is it the priors or the value that loses"
@@ -299,9 +321,22 @@ struct ArenaSummary {
     /// paired one per chair, so these two counts differ by at most one.
     as_corp: ChairSummary,
     as_runner: ChairSummary,
+    /// Whether both chairs held the same player (`--arena-null`, or the
+    /// same path passed to both flags). A null leg's `as_corp` is not a
+    /// verdict on anyone — it is the pool's Corp win rate at this
+    /// configuration, the number the other legs are differenced against —
+    /// and a summary that did not say so is indistinguishable in a log
+    /// from a candidate that went 131–61 as the Corp.
+    null_leg: bool,
 }
 
-fn summarize(games: &[ArenaGame], candidate_uses: NetworkUses, incumbent_uses: NetworkUses, prior_mix: f32) -> ArenaSummary {
+fn summarize(
+    games: &[ArenaGame],
+    candidate_uses: NetworkUses,
+    incumbent_uses: NetworkUses,
+    prior_mix: f32,
+    null_leg: bool,
+) -> ArenaSummary {
     let chair = |side: Option<Side>| -> ChairSummary {
         let rows: Vec<ArenaResult> =
             games.iter().filter(|g| side.is_none_or(|s| g.candidate_side == s)).map(|g| g.result).collect();
@@ -325,6 +360,7 @@ fn summarize(games: &[ArenaGame], candidate_uses: NetworkUses, incumbent_uses: N
         candidate_score: overall.score,
         as_corp: chair(Some(Side::Corp)),
         as_runner: chair(Some(Side::Runner)),
+        null_leg,
     }
 }
 
@@ -362,6 +398,35 @@ fn candidate_side(game_index: usize) -> Side {
 /// seats are the same searcher and a training corpus wants breadth.
 fn arena_matchup_index(game_index: usize) -> usize {
     game_index / 2
+}
+
+/// Who sits in the candidate's chair, and whether this leg is a null.
+///
+/// A null leg is an ordinary arena whose candidate *is* the incumbent,
+/// seated the same way, so its `as_corp` is the pool's Corp win rate at
+/// that configuration rather than a verdict on anyone. Resolving it here
+/// rather than in `play_arena_game` keeps the two seats' flags asymmetric
+/// everywhere else — `--incumbent-uses` defaults to `both` on purpose, so
+/// a diagnostic ablation moves one side against a fixed bar — while still
+/// making the printed summary say what was actually seated.
+///
+/// Ablating a `None` incumbent is a no-op, and unlike the self-play path
+/// (`ModelUsesWithoutModel`) that is deliberately not an error: a run
+/// whose first iteration gates a priors-only candidate against the
+/// uniform search wants its null labelled with the run's ablation even
+/// though the uniform bar has no halves to seat.
+fn arena_seating(cli: &mut Cli) -> (Option<PathBuf>, bool) {
+    let candidate = if cli.arena_null { cli.arena_incumbent.clone() } else { cli.arena_candidate.clone() };
+    if cli.arena_null {
+        cli.candidate_uses = cli.incumbent_uses;
+    }
+    // Not `--arena-null` alone: item 32's two null legs were taken by
+    // passing one path to both flags, and a summary should say what it is
+    // however it was asked for. Both seatings must match, since the same
+    // network under two ablations is two different players.
+    let null_leg = cli.arena_null
+        || (candidate.is_some() && candidate == cli.arena_incumbent && cli.candidate_uses == cli.incumbent_uses);
+    (candidate, null_leg)
 }
 
 /// One arena game. `candidate`/`incumbent` are model paths, `None` meaning
@@ -734,14 +799,17 @@ fn main() -> std::process::ExitCode {
 }
 
 fn run() -> Result<(), Box<dyn std::error::Error>> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
 
-    if cli.arena_candidate.is_some() {
+    if cli.arena_candidate.is_some() || cli.arena_null {
+        let (candidate, null_leg) = arena_seating(&mut cli);
         let results = (0..cli.num_games)
             .into_par_iter()
-            .map(|game_index| play_arena_game(game_index, &cli, &cli.arena_candidate, &cli.arena_incumbent))
+            .map(|game_index| play_arena_game(game_index, &cli, &candidate, &cli.arena_incumbent))
             .collect::<Result<Vec<_>, _>>()?;
-        println!("{}", serde_json::to_string(&summarize(&results, cli.candidate_uses, cli.incumbent_uses, cli.candidate_prior_mix))?);
+        let summary =
+            summarize(&results, cli.candidate_uses, cli.incumbent_uses, cli.candidate_prior_mix, null_leg);
+        println!("{}", serde_json::to_string(&summary)?);
         return Ok(());
     }
 
@@ -820,7 +888,7 @@ mod tests {
         ]);
         assert_eq!(run.candidate_uses, NetworkUses::PriorsOnly);
         assert_eq!(run.incumbent_uses, NetworkUses::PriorsOnly);
-        let json = serde_json::to_string(&summarize(&[], run.candidate_uses, run.incumbent_uses, 0.0)).unwrap();
+        let json = serde_json::to_string(&summarize(&[], run.candidate_uses, run.incumbent_uses, 0.0, false)).unwrap();
         assert!(json.contains(r#""incumbent_uses":"priors-only""#), "a verdict says how both sides were seated: {json}");
     }
 
@@ -925,7 +993,7 @@ mod tests {
             .enumerate()
             .map(|(index, &result)| ArenaGame { candidate_side: candidate_side(index), result })
             .collect();
-        let summary = summarize(&games, NetworkUses::Both, NetworkUses::Both, 0.0);
+        let summary = summarize(&games, NetworkUses::Both, NetworkUses::Both, 0.0, false);
         assert_eq!(
             summary,
             ArenaSummary {
@@ -941,9 +1009,10 @@ mod tests {
                 // 1 and 3 the Runner chair (two stalls).
                 as_corp: ChairSummary { games: 2, wins: 1, losses: 1, draws: 0, score: 0.5 },
                 as_runner: ChairSummary { games: 2, wins: 0, losses: 0, draws: 2, score: 0.5 },
+                null_leg: false,
             }
         );
-        assert_eq!(summarize(&[], NetworkUses::Both, NetworkUses::Both, 0.0).candidate_score, 0.0, "no games is not a pass");
+        assert_eq!(summarize(&[], NetworkUses::Both, NetworkUses::Both, 0.0, false).candidate_score, 0.0, "no games is not a pass");
     }
 
     /// An arena line has to say what it measured. Three runs of the same
@@ -953,12 +1022,12 @@ mod tests {
     fn an_arena_summary_names_the_ablation_it_ran() {
         let labels: Vec<&str> = [NetworkUses::Both, NetworkUses::ValueOnly, NetworkUses::PriorsOnly]
             .into_iter()
-            .map(|uses| summarize(&[], uses, NetworkUses::Both, 0.0).candidate_uses)
+            .map(|uses| summarize(&[], uses, NetworkUses::Both, 0.0, false).candidate_uses)
             .collect();
         assert_eq!(labels, ["both", "value-only", "priors-only"], "every variant is labelled, and distinctly");
 
         let one = [ArenaGame { candidate_side: Side::Corp, result: ArenaResult::CandidateWin }];
-        let json = serde_json::to_string(&summarize(&one, NetworkUses::PriorsOnly, NetworkUses::Both, 0.5)).unwrap();
+        let json = serde_json::to_string(&summarize(&one, NetworkUses::PriorsOnly, NetworkUses::Both, 0.5, false)).unwrap();
         assert!(json.contains("\"prior_mix\":0.5"), "a summary must say what dial produced it: {json}");
         assert!(json.contains(r#""candidate_uses":"priors-only""#), "the label reaches the printed line: {json}");
     }
@@ -1069,7 +1138,7 @@ mod tests {
         let games: Vec<ArenaGame> =
             (0..8).map(|index| play_arena_game(index, &cli, &None, &None).expect("arena game")).collect();
 
-        let summary = summarize(&games, NetworkUses::Both, NetworkUses::Both, 0.0);
+        let summary = summarize(&games, NetworkUses::Both, NetworkUses::Both, 0.0, false);
         assert_eq!(summary.candidate_score, 0.5, "a null candidate must score exactly parity: {summary:?}");
         assert_eq!(summary.as_corp.games, 4);
         assert_eq!(summary.as_runner.games, 4);
@@ -1161,11 +1230,53 @@ mod tests {
         let cli = Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "unused.onnx"]);
         let results: Vec<ArenaGame> =
             (0..2).map(|i| play_arena_game(i, &cli, &None, &None).expect("uniform arena game")).collect();
-        let summary = summarize(&results, NetworkUses::Both, NetworkUses::Both, 0.0);
+        let summary = summarize(&results, NetworkUses::Both, NetworkUses::Both, 0.0, false);
         assert_eq!(summary.games, 2);
         assert_eq!(summary.candidate_wins + summary.incumbent_wins + summary.draws, 2);
         let line = serde_json::to_string(&summary).unwrap();
         assert!(line.contains("\"candidate_score\""), "{line}");
         assert!(line.contains("\"as_corp\"") && line.contains("\"as_runner\""), "the chair split reaches the line: {line}");
+    }
+
+    /// `--arena-null` needs no candidate and copies the incumbent's
+    /// seating onto the empty chair, because a null leg where the two
+    /// seats are ablated differently is two different players and measures
+    /// the ablation rather than the pool.
+    #[test]
+    fn a_null_leg_seats_the_incumbent_in_both_chairs() {
+        let mut cli = Cli::parse_from([
+            "netrunner_selfplay", "-n", "2", "-s", "2", "--arena-null",
+            "--arena-incumbent", "i.onnx", "--incumbent-uses", "priors-only",
+        ]);
+        let (candidate, null_leg) = arena_seating(&mut cli);
+        assert_eq!(candidate, cli.arena_incumbent, "the candidate chair holds the incumbent");
+        assert_eq!(cli.candidate_uses, NetworkUses::PriorsOnly, "seated the way the run seats it");
+        assert!(null_leg);
+
+        // The shape item 32 used, before the flag existed.
+        let mut by_hand = Cli::parse_from([
+            "netrunner_selfplay", "-n", "2", "-s", "2",
+            "--arena-candidate", "i.onnx", "--arena-incumbent", "i.onnx",
+        ]);
+        assert!(arena_seating(&mut by_hand).1, "one path in both chairs is a null however it was asked for");
+
+        // And the same network under two ablations is not one.
+        let mut ablated = Cli::parse_from([
+            "netrunner_selfplay", "-n", "2", "-s", "2",
+            "--arena-candidate", "i.onnx", "--arena-incumbent", "i.onnx", "--candidate-uses", "priors-only",
+        ]);
+        assert!(!arena_seating(&mut ablated).1, "two seatings of one file are two players");
+
+        let mut ordinary =
+            Cli::parse_from(["netrunner_selfplay", "-n", "2", "-s", "2", "--arena-candidate", "c.onnx", "--arena-incumbent", "i.onnx"]);
+        assert!(!arena_seating(&mut ordinary).1, "an ordinary arena is not a null");
+
+        // The label has to reach the printed line: `as_corp` from a null
+        // leg is the pool's Corp win rate, not a 131–61 record, and
+        // `run_iteration_loop.py` checks the flag before it derives a
+        // floor from the number. That the score itself is *exactly* 0.5 is
+        // `a_candidate_identical_to_the_incumbent_scores_exactly_one_half`.
+        let line = serde_json::to_string(&summarize(&[], NetworkUses::Both, NetworkUses::Both, 0.0, true)).unwrap();
+        assert!(line.contains(r#""null_leg":true"#), "a null leg says it is not a verdict: {line}");
     }
 }
