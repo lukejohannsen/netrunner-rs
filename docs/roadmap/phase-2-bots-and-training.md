@@ -376,4 +376,32 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **Cost, for comparison with the fifth run's 4.2 h per iteration:** 0.58–0.60 h per iteration end to end, of which self-play was 0.40–0.46 h against the fifth run's 1.95 h for the same 1,200 games. Item 27's cross-game batching is doing better than the 2.6× it claimed, and item 28's screen chair floor skipped five full arenas at 0.31 h each.
 
-**Standing open items:** no root Dirichlet noise in `puct.rs`; the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
+31. **Root Dirichlet noise: the generator's chair balance moves about a quarter of the way, and the specification is not the reason it doesn't move further** (`feat/root-dirichlet-noise`, 10 September 2026). ROADMAP "next" item 1 and the last standing open item item 30 named — the one mechanism neither training-side run touched. **5,760 self-play games, ~3.3 h, no volume run and no training.**
+
+    **What landed.** `PuctConfig::dirichlet_epsilon`/`dirichlet_alpha` mix AlphaZero's `P' = (1 − ε)P + ε·η`, `η ~ Dir(α)`, into the root priors in `PuctNode::expand_root` and nowhere else, drawn per decision off a salted stream so the agent stays a pure function of its construction seed. **`ε` defaults to 0.0**, because noise is a property of a generator and not of a player: a bench or arena verdict taken with a noisy searcher scores the dice, and this repo's before/after attribution depends on a heuristic seating being byte-identical run to run. `netrunner_selfplay` is the only caller that turns it on, through `selfplay_config`; `arena_config` is a separate function so that stays a decision rather than a forgotten field. **Verified rather than argued:** a binary built from `main` and one built from this branch produce the same 16-game corpus at `ε = 0`, `sha256 50237a62…`.
+
+    **The screen.** Item 26's `iter_003` configuration exactly — `priors_only_v5/latest_policy.onnx` seated `priors-only`, 128 simulations, seeds from 4800 — with `--dirichlet-epsilon` the only variable. That control is published at **64.9% Corp** over 1,200 games and reproduces here at **64.1%** (384 games, seeds 4800–5183) and **64.8%** (1,536 games, seeds 5184–6719), z = +0.26 between the two blocks. The gap being hunted is the 10.1 points from there to the uniform search's own 54.8%.
+
+    | arm | games | Corp win | Corp steps | Corp share of winning steps |
+    |---|---|---|---|---|
+    | *uniform search (item 28's reference)* | *2,400* | *54.8%* | *44.4%* | *64.6%* |
+    | ε = 0 (control) | 1,920 | 64.6% | 45.7% | 72.6% |
+    | **every noise arm pooled** | **3,840** | **61.8%** | **46.6%** | **69.2%** |
+
+    **Pooled, root noise is worth −2.8 points of Corp win share, z = −2.08** — about a quarter of the gap, in the predicted direction, and too small to be the explanation. The other two columns move by the same fraction: the outcome-within-seat distortion item 28 named as the real one recovers 3.4 of its 8.0 points, and the seat split does not move at all (it drifts the wrong way, 45.7% → 46.6%).
+
+    **Neither dial reaches further.** `ε` saturates immediately — 0.25 and 0.5 are 59.1% and 59.4% on the same 384 games — and **α is not the reason either**, which is the result worth keeping. This game's roots are narrow: over 11,900 recorded decisions the median holds **2 candidates** and 59% hold three or fewer, only the tail being wide (p90 17, max 59). `Dir(0.3)` over two candidates is about `(0.95, 0.05)`, a coin-flip override rather than exploration pressure, where AlphaZero's own `α ≈ 10/n` rule asks for `α = 5` there — nearly uniform. So `dirichlet_alpha_scale` was added and run as a third arm on the same 1,536 seeds. **It lands on the fixed α's number:**
+
+    | arm (seeds 5184–6719) | games | Corp win | Corp share of winning steps |
+    |---|---|---|---|
+    | control | 1,536 | 64.8% | 72.5% |
+    | ε = 0.25, α = 0.3 | 1,536 | 62.6% (z −1.28) | 71.0% |
+    | ε = 0.25, α = 10/n | 1,536 | 62.4% (z −1.39) | 69.1% |
+
+    Two regimes that perturb opposite halves of the decision distribution — the fixed one mostly the wide tail, the scaled one mostly the narrow majority — agree to 0.2 points. The effect is a property of adding root exploration at all, not of how it is shaped.
+
+    **A 384-game block is not enough to price this and the session proved it the hard way.** The first noise arm read 59.1% against a 64.1% control, a 5.0-point move that on 4× the games became 2.2, and its winning-steps column read 65.6% — apparently back onto the uniform search's 64.6% — where the 1,536-game block reads 71.0%. **That reading was recorded in session and is withdrawn.** The control was stable across the same two block sizes, so the instability was entirely in the treatment arm. This is item 26's lesson again (two points that "looked like a trend"): at sd 2.4 points a 384-game block cannot resolve an effect smaller than about 7.
+
+    **What this closes, and what it hands on.** Root noise is implemented, priced and available for free to any future loop, and it is **not** the account of the Corp skew — a quarter of the gap at z = −2.08 is not a mechanism, it is a contribution. The sharper reading of the numbers is the one the screen makes unavoidable: **the uniform PUCT search's own corpus is chair-balanced at 54.8%, and the skew appears only once the priors distilled from it are seated (64.9%).** So the distortion enters at *distillation*, not in the search's shape — a policy head trained on a balanced corpus plays one seat much worse than the other. Item 22 measured that head's top-1 agreement with the search at 44.4% overall and never split it by chair; doing so is the next lead, and it is a diagnostic over an existing checkpoint and an existing corpus rather than a run. No stalls in any arm — every one of the 5,760 games ended (`agenda_threshold` ~90%, `flatline` ~9%, a handful of `deckout`), so the noise costs nothing in reachability.
+
+**Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
