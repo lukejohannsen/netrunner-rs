@@ -6,8 +6,22 @@ the search (the uniform search until one is promoted), trains a fresh
 network on the replay window (masked policy objective unless
 `--unmasked-policy`), and promotes it only if it beats the incumbent in a
 384-game arena on the blend **and holds both chairs** -- neither may fall
-below `--promote-chair-floor`, because a blended score cannot tell a
-stronger network from one that traded the Runner seat for the Corp seat.
+more than `--promote-chair-margin` below **its own measured null**, because
+a blended score cannot tell a stronger network from one that traded the
+Runner seat for the Corp seat.
+
+**A chair's parity is not 0.500 and never was.** This pool's Corp wins
+about two games in three under sharp play, so a null leg -- the incumbent
+in both chairs, `--arena-null` -- scores an exact 0.500 blended over
+`as_corp` 0.68-0.71 and `as_runner` 0.29-0.32. The floors used to be
+absolute numbers differenced against 0.5, which asked the Runner chair for
+about +0.13 over its own null (unreachable, ~4 sigma) and put the *screen*
+floor above it, rejecting an honest tie 57 times in 100. That is what the
+sixth volume run's "six rejections, all on the Runner chair" was
+(ROADMAP Phase 2 §5 item 32). The null is now measured once per incumbent
+per arena shape, cached in `<ckpt-dir>/chair_nulls.json`, and the floors
+are deltas from it.
+
 Every game of a run has a distinct seed
 (`--seed-offset`), the iteration is resumable (an iteration directory that
 already holds its games is not replayed), and one JSON line per iteration
@@ -97,6 +111,11 @@ def pin_binary(ckpt_dir):
     return pinned
 
 
+def sha256_of(path):
+    with open(path, "rb") as handle:
+        return hashlib.sha256(handle.read()).hexdigest()
+
+
 def run_identity(binary):
     """What produced this run's data: the commit, whether the tree was
     dirty when the binary was built, and the binary's own hash.
@@ -110,11 +129,9 @@ def run_identity(binary):
         except (subprocess.CalledProcessError, FileNotFoundError):
             return ""
 
-    with open(binary, "rb") as handle:
-        digest = hashlib.sha256(handle.read()).hexdigest()
     return {"commit": git("rev-parse", "HEAD") or "unknown",
             "dirty": bool(git("status", "--porcelain")),
-            "binary_sha256": digest}
+            "binary_sha256": sha256_of(binary)}
 
 
 def next_seed_offset(data_dir, iter_idx):
@@ -175,24 +192,104 @@ def arena(binary, candidate, incumbent, games, simulations, description, stride=
     res = run_cmd(cmd, description, capture=True)
     return last_json_line(res.stdout, "arena")
 
-def chair_floor_failure(summary, floor):
-    """The name of the chair that fell below `floor`, or `None`.
+def chair_null(binary, incumbent, games, simulations, uses, stride, cache_path):
+    """The chair scores of a player indistinguishable from the incumbent:
+    the incumbent seated in *both* chairs, at exactly the arena shape whose
+    verdicts it will be the baseline for.
+
+    **This is the number a chair score means anything against.** The arena
+    pairs its games -- `2k` and `2k + 1` are one deal played from both
+    sides -- so with identical players the blend is an exact 0.500 while
+    `as_corp` is the pool's Corp win rate at this configuration. Measured,
+    that is 0.6823 (fifth run) and 0.7135 (sixth); the floors that rejected
+    those runs' candidates were written against 0.500 (ROADMAP Phase 2 §5
+    item 32).
+
+    Measured once per (binary, incumbent, shape) and cached, because it is
+    a property of the pool and the players, not of the iteration: ~20 min
+    at the full 384 and ~5 at a 96-game screen, paid again only when a
+    promotion changes the incumbent -- which in six runs has happened once.
+
+    The shape is part of the key rather than something one null covers for
+    both. `decks::matchups()` is corp-major, so the screen's strided walk
+    is a *different* subset of the pool, and the pool is what is being
+    measured.
+
+    Refuses a null that is not an exact 0.500: that would mean the two
+    seats were not the same player after all -- a stride mismatch, a
+    non-deterministic evaluator -- and every floor derived from it would be
+    quietly wrong.
+    """
+    key = "|".join([sha256_of(binary)[:16],
+                    sha256_of(incumbent)[:16] if incumbent else "uniform",
+                    uses, str(games), str(stride), str(simulations)])
+    cache = {}
+    if os.path.exists(cache_path):
+        with open(cache_path, encoding="utf-8") as handle:
+            cache = json.load(handle)
+    if key in cache:
+        return cache[key]
+
+    cmd = [binary, "--arena-null", "-n", str(games), "-s", str(simulations),
+           "--arena-pair-stride", str(stride), "--incumbent-uses", uses]
+    if incumbent is not None:
+        cmd.extend(["--arena-incumbent", incumbent])
+    summary = last_json_line(
+        run_cmd(cmd, f"Chair null: {'incumbent' if incumbent else 'uniform search'} in both chairs "
+                     f"({games} games, stride {stride}, {uses})", capture=True).stdout,
+        "null leg")
+    if not summary.get("null_leg") or abs(summary["candidate_score"] - 0.5) > 1e-9:
+        print(f"FAILED: null leg scored {summary.get('candidate_score')}, not an exact 0.5: {summary}")
+        raise StageFailed("chair null", 1)
+    cache[key] = summary
+    with open(cache_path, "w", encoding="utf-8") as handle:
+        json.dump(cache, handle, indent=1, sort_keys=True)
+    return summary
+
+
+def chair_floors(null, margin):
+    """How low each chair may go: its own null, less `margin`.
+
+    Returns `None` when the check is off, which `chair_floor_failure`
+    passes through. The two chairs get *different* floors because their
+    nulls are complements of each other, not a shared 0.5 -- that was the
+    whole defect.
+    """
+    if margin is None:
+        return None
+    return {name: null[key]["score"] - margin
+            for key, name in (("as_corp", "corp"), ("as_runner", "runner"))}
+
+
+def chair_floor_failure(summary, floors):
+    """The name of the chair that fell below its floor, or `None`.
 
     A separate function because two callers want the same reading at
-    different thresholds -- the screen as a cost filter, the gate as the
+    different margins -- the screen as a cost filter, the gate as the
     verdict -- and because the answer that goes in the log is *which* chair
-    collapsed, not a boolean. The weaker chair is returned when both fail,
-    so the log names the one that decided it.
+    collapsed, not a boolean. The chair furthest under its own floor is
+    returned when both fail, so the log names the one that decided it.
 
-    `floor` 0 disables the check, which is how a run reproduces a verdict
-    recorded before this existed.
+    `floors` of `None` disables the check, which is how a run reproduces a
+    verdict recorded before this existed.
     """
-    if not floor:
+    if not floors:
         return None
-    failed = [(summary[key]["score"], name)
+    failed = [(summary[key]["score"] - floors[name], name)
               for key, name in (("as_corp", "corp"), ("as_runner", "runner"))
-              if summary[key]["games"] and summary[key]["score"] < floor]
+              if summary[key]["games"] and summary[key]["score"] < floors[name]]
     return min(failed)[1] if failed else None
+
+
+def margin(value):
+    """A chair margin: a float, or `off`.
+
+    Not `0 disables`, which is what the absolute floors used. Zero is now a
+    meaningful setting -- "may not fall below its null at all" -- and
+    silently reading it as "no check" is exactly the class of confusion
+    this branch is fixing.
+    """
+    return None if value.lower() == "off" else float(value)
 
 
 def main():
@@ -226,25 +323,36 @@ def main():
     parser.add_argument("--promote-threshold", type=float, default=0.55,
                         help="Candidate score (wins + draws/2, over arena games) needed to be promoted")
     # The blend alone cannot tell "stronger" from "traded the Runner seat for
-    # the Corp seat". The fifth run's three candidates scored 0.688/0.234,
-    # 0.729/0.318 and 0.708/0.250 by chair (Phase 2 §5 item 26): a loop on
-    # that trajectory reaches 0.55 blended while one chair sits near 0.30,
-    # and the gate as written would have promoted it -- item 13's failure,
-    # still live in the gate that was supposed to have closed it.
+    # the Corp seat", so each chair is held to a floor of its own. **The
+    # floor is a delta from that chair's measured null, not an absolute
+    # score.** This flag used to be `--promote-chair-floor 0.45`, an
+    # absolute number reasoned from a chair parity of 0.50 -- twenty lines
+    # under a comment in this same function that correctly recorded the
+    # baseline as 0.72/0.28. Against the measured nulls (0.6823/0.3177 and
+    # 0.7135/0.2865) that floor asked the Runner chair for +0.13 over its
+    # own parity: 3.7-4.5 sigma at 192 games, so an honest tie cleared it
+    # about once in 10,000 and the gate could not promote at all. Six of
+    # the sixth run's rejections were that (Phase 2 §5 item 32).
     #
-    # 0.45, not 0.50, because a chair is half the arena. At 192 games a
-    # chair score has sd 0.036, so a candidate genuinely at parity on its
-    # weak chair clears a 0.45 floor about 92 times in 100, while one
-    # genuinely at 0.30 is stopped at 4.2 sigma. Demanding 0.50 would
-    # reject an honest tie half the time.
-    parser.add_argument("--promote-chair-floor", type=float, default=0.45,
-                        help="Lowest per-chair score a promoted candidate may have. Stops a candidate that "
-                             "clears --promote-threshold by trading one seat for the other (0 disables)")
+    # 0.07 delivers what the old comment claimed. The sd that matters is
+    # the sd of the *difference*, because the null is measured too: a
+    # 192-game chair has sd ~0.034 at p = 0.32, and against a 192-game null
+    # chair of its own that is sqrt(2) x 0.034 = 0.047. So 0.07 is 1.5
+    # sigma -- a candidate genuinely at its null clears it 93 times in 100
+    # -- while the collapse this exists to catch, a Runner chair 0.15 under
+    # (0.17 against a null of 0.32), is stopped at 1.7 sigma, 95 times in
+    # 100. Reasoning from the chair's sd alone, as the old floor did in the
+    # other direction, would put 0.05 here and let only 85 honest ties
+    # through.
+    parser.add_argument("--promote-chair-margin", type=margin, default=0.07,
+                        help="How far below its own measured null a promoted candidate's weaker chair may sit. "
+                             "Stops a candidate that clears --promote-threshold by trading one seat for the "
+                             "other ('off' disables)")
     parser.add_argument("--value-target-mix", type=float, default=0.5,
                         help="Passed to the trainer: share of the value target taken from the search's root value")
     parser.add_argument("--chair-balance", type=float, default=0.0,
                         help="Passed to the trainer: inverse-frequency weight over (chair, result) cells. "
-                             "The input-side counterpart of --promote-chair-floor")
+                             "The input-side counterpart of --promote-chair-margin")
     parser.add_argument("--value-loss-weight", type=float, default=0.25,
                         help="Passed to the trainer: weight of the value loss against the policy loss")
     parser.add_argument("--arena-screen-games", type=int, default=96,
@@ -255,13 +363,21 @@ def main():
                              "--promote-threshold so a real candidate is not screened out.")
     # The same cost filter for the collapsed chair, and much further below
     # its gate for the same reason the blended screen is: a screen chair is
-    # 48 games, sd 0.072. A floor of 0.30 is 2.8 sigma under parity, so an
-    # honest tie survives it 997 times in 1,000 while the fifth run's ~0.25
-    # Runner chair is stopped about three times in four -- 49 minutes of
-    # full arena saved per iteration, on the trajectory this run is on.
-    parser.add_argument("--arena-screen-chair-floor", type=float, default=0.30,
-                        help="Skip the full arena when either chair scores below this in the screen "
-                             "(0 disables). Sits well under --promote-chair-floor.")
+    # 48 games against a 48-game null chair, sd of the difference ~0.095.
+    # A margin of 0.20 is 2.1 sigma, so an honest tie survives it 98 times
+    # in 100 and only a chair 0.30 under its null is reliably stopped --
+    # which is the whole job of a cost filter, since the verdict is the
+    # full arena's.
+    #
+    # The old `--arena-screen-chair-floor 0.30` was not a slack version of
+    # the gate at all: it sat *above* the sixth run's Runner null of
+    # 0.2865, so it rejected an honest tie 57 times in 100 and fired on
+    # five consecutive screens, three of which had cleared the blended cut.
+    # A cost filter that stops the median candidate is not saving time, it
+    # is deciding the run.
+    parser.add_argument("--arena-screen-chair-margin", type=margin, default=0.20,
+                        help="Skip the full arena when either chair sits this far below its own measured null "
+                             "in the screen ('off' disables). Much slacker than --promote-chair-margin.")
     parser.add_argument("--value-target", default="mixed",
                         choices=("outcome", "mixed", "discounted", "discounted_unforeseeable"),
                         help="Which value-head target the trainer builds (see train_alpha_netrunner.py)")
@@ -407,7 +523,14 @@ def main():
             # corp-major, so 48 pairs at stride 1 are the first four Corp
             # decks — a narrower arena, not a smaller one, and the reason the
             # first three runs' 48-game verdicts swung 0.22–0.48.
-            screen = None
+            #
+            # The null legs each arena shape is scored against. Measured
+            # lazily and cached per (binary, incumbent, shape): an
+            # iteration that never reaches the full arena never pays for
+            # the full null, and a run whose incumbent never changes pays
+            # for each shape once.
+            nulls = os.path.join(args.ckpt_dir, "chair_nulls.json")
+            screen, screen_floors = None, None
             if args.arena_screen_games and args.arena_screen_games < args.arena_games:
                 # The full arena walks every pairing once; the screen walks
                 # the same span in `stride` steps, so it spreads over the
@@ -420,10 +543,22 @@ def main():
                     stride=stride, uses=args.model_uses,
                 )
                 record["arena_screen"] = screen
+                screen_floors = chair_floors(
+                    chair_null(binary, incumbent, args.arena_screen_games, args.simulations,
+                               args.model_uses, stride, nulls),
+                    args.arena_screen_chair_margin,
+                ) if args.arena_screen_chair_margin is not None else None
+                record["arena_screen_chair_floors"] = screen_floors
 
             if screen is not None and (screen["candidate_score"] < args.arena_screen_threshold
-                                       or chair_floor_failure(screen, args.arena_screen_chair_floor)):
+                                       or chair_floor_failure(screen, screen_floors)):
                 summary = screen
+                # A screened-out candidate never played the full arena, so
+                # it cannot clear the gate — the screen's own score stands
+                # in the log as the reason. Its collapse is reported
+                # against the *screen's* floors, since those are the ones
+                # that stopped it.
+                floors = screen_floors
                 record["arena_screened_out"] = True
             else:
                 summary = arena(
@@ -432,13 +567,16 @@ def main():
                     f"({args.arena_games} games)",
                     uses=args.model_uses,
                 )
+                floors = chair_floors(
+                    chair_null(binary, incumbent, args.arena_games, args.simulations,
+                               args.model_uses, 1, nulls),
+                    args.promote_chair_margin,
+                ) if args.promote_chair_margin is not None else None
                 record["arena_screened_out"] = False
             record["arena"] = summary
+            record["arena_chair_floors"] = floors
             record["arena_seconds"] = time.time() - started
-            # A screened-out candidate never played the full arena, so it
-            # cannot clear the gate — the screen's own score stands in the
-            # log as the reason, flagged by `arena_screened_out`.
-            collapsed = chair_floor_failure(summary, args.promote_chair_floor)
+            collapsed = chair_floor_failure(summary, floors)
             promoted = (not record["arena_screened_out"]
                         and summary["candidate_score"] >= args.promote_threshold
                         and collapsed is None)
@@ -455,7 +593,13 @@ def main():
                 f"losses={summary['incumbent_wins']} draws={summary['draws']} "
                 f"score={summary['candidate_score']:.3f} "
                 f"corp={chair(summary['as_corp'])} runner={chair(summary['as_runner'])} "
-                f"threshold={args.promote_threshold} chair_floor={args.promote_chair_floor} "
+                f"threshold={args.promote_threshold} "
+                # The floors, not the margin: a reader months later has the
+                # log and not the nulls, and "runner fell under 0.268" is
+                # the sentence that can be checked. `none` means the check
+                # was off, which is how an old verdict is reproduced.
+                + (f"chair_floor=corp {floors['corp']:.3f}/runner {floors['runner']:.3f} " if floors
+                   else "chair_floor=none ")
                 + (f"collapsed={collapsed} " if collapsed else "")
                 + f"promoted={promoted}"
             )
