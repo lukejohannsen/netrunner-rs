@@ -492,4 +492,47 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **Cost and what is now unblocked.** One null leg per shape per incumbent — ~20 min at 384 games, ~5 at 96 — measured lazily (an iteration screened out never pays for the full null) and paid again only when a promotion changes the incumbent, which in six runs has happened once. The gate can promote again, so ROADMAP's "no loop should be gated again until this lands" is closed; the open question moves on to whether this pool is simply Corp-favoured as play sharpens (item 32).
 
+34. **The pool's Corp share is a function of search budget, and seating a policy head is not what moved it** (`diag/corp-share-vs-strength`, 10 September 2026). ROADMAP "next" item 1, run where it said to run it: `bench`, the deck pool and the heuristic ladder, no training loop and no network. A measurement branch — one Python analysis script (`scripts/corp_share_curve.py`), no behaviour change, ~2.5 h wall on 18 threads.
+
+    **`bench`'s self-pairing is the same chair null `--arena-null` measures, at a tenth the cost.** One bot in both chairs over the 192 sample matchups is exactly item 33's null leg; `bench` plays it in 10 s for the heuristic and 6 min for `puct@128`, against ~20 min for a 384-game `netrunner_selfplay` leg. That is what made a curve affordable at all.
+
+    | tier | n | corp share | corp flatline | corp agenda | runner agenda |
+    |---|---|---|---|---|---|
+    | `random` | 960 | 0.4771 ±0.0161 | **0.477** | **0.000** | 0.438 |
+    | `mcts@128` | 960 | **0.3490** ±0.0154 | 0.177 | 0.172 | 0.631 |
+    | `heuristic` | 2,112 | 0.5573 ±0.0108 | 0.183 | 0.374 | 0.441 |
+    | `puct@32` | 1,342 | 0.5492 ±0.0136 | 0.177 | 0.371 | 0.448 |
+    | `puct@128` | 1,344 | 0.5863 ±0.0134 | 0.124 | 0.463 | 0.412 |
+    | `puct@512` | 768 | **0.7031** ±0.0165 | 0.113 | 0.590 | 0.297 |
+    | `puct@1024` | 192 | 0.7135 ±0.0326 | 0.120 | 0.594 | 0.286 |
+    | `puct@2048` | 96 | 0.6875 ±0.0473 | 0.062 | 0.625 | 0.312 |
+
+    **The random baseline was never a balance reading.** At random-vs-random *every* Corp win is a flatline and the Corp scores an agenda in **zero games of 960** — a random Runner kills itself on net damage. Reading 0.477 there as "the pool starts balanced" was reading a damage clock.
+
+    **The ten points are search budget, with the same uniform evaluator and the same decks.** Within one agent family, holding everything but `--simulations`: **0.549 → 0.586 → 0.703**, saturating from 512 on (1024 and 2048 are 0.714 and 0.688, both inside their own sd of 0.703). `puct@512` vs `puct@128` is **+0.117, 5.5σ**. That is the whole of item 31's ten-point shift, reached with **no network in the process at all** — and it lands on the same number as the head's greedy legs, item 32's nulls of **0.6823 and 0.7135**. So the answer to "why does seating a policy head move the pool ten points toward the Corp" is: *because it plays like a deeper search, and a deeper search does that here.* No per-seat defect is needed to explain it, which is consistent with item 32 finding none.
+
+    **It is the Corp chair converting budget, and only the Corp chair.** The heuristic fixed on the other chair, 384 games a cell, all three runs on the same pairing offsets so the cells play the same games:
+
+    | budget | as Corp vs heuristic Runner | as Runner vs heuristic Corp |
+    |---|---|---|
+    | `puct@32` | 0.458 ±0.025 | 0.409 ±0.025 |
+    | `puct@128` | 0.581 ±0.025 | 0.513 ±0.026 |
+    | `puct@512` | **0.714** ±0.023 | **0.461** ±0.025 |
+
+    The control is exact: `heuristic` vs `heuristic` is **0.5625 in all three runs**, the flag not reaching a bot that has no search. The Corp chair gains +0.26 over the budget range and the Runner chair gains nothing past 128 — which is Phase 3's "the search is not budget-bound" (0.483 → 0.481 at 128 → 512) seen from the other side: that measurement was taken on the Runner chair, where it is true, and never taken on the Corp chair, where it is not.
+
+    **The shift is the whole pool, not two broken decks.** `heuristic` → `puct@512`, per deck: **15 of 16 Corp decks** move toward the Corp (only `hyper_velocity` falls, −0.092) and **12 of 12 Runner decks** do. The outcome mix moves with it — Corp agenda wins 0.374 → 0.590, flatlines 0.183 → 0.113 — so this is the Corp learning to score, not a damage clock reappearing.
+
+    **What this does not establish, and the lead it hands over.** 0.70 is an upper bound on how Corp-favoured the pool is, not its balance, because the Runner chair in that measurement is one we can already beat. Across families at 128 simulations, against the same fixed heuristic (pooled over three runs):
+
+    | bot | as Corp | as Runner |
+    |---|---|---|
+    | `heuristic` | 0.570 ±0.016 | 0.430 ±0.016 |
+    | `mcts@128` | **0.507** ±0.021 | **0.589** ±0.021 |
+    | `puct@128` | **0.597** ±0.016 | 0.511 ±0.016 |
+
+    **`mcts` is the pool's best Runner and its worst Corp** — as Runner it is **+0.077 over `puct@128` (2.95σ, n = 576/960)** and +0.159 over the heuristic, while as Corp it is 0.090 *behind* PUCT. Chair skew is a property of each agent family, not of strength: `mcts@128` self-paired sits at 0.349, twenty points *below* random, in the same pool where `puct@512` sits at 0.703. So "sharper play favours the Corp" is true of this search and not of search in general, and the honest form of the finding is that **PUCT's Runner chair is the binding constraint on every chair number this project has recorded** — including the 0.68/0.71 nulls the promotion gate is now centred on.
+
+    **What it validates.** Item 33's decision to measure a null *per incumbent per arena shape* rather than once: a chair null moves **0.55 → 0.70 on search budget alone**, same binary, same decks, same evaluator. A null carried across configurations would have been wrong by more than any effect the gate is trying to detect.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
