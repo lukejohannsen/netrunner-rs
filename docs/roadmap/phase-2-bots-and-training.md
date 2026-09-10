@@ -341,4 +341,39 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **Left off by default**, like `--segment-balance` and for the same reason: the visit-count target is a proper scoring rule whose optimum is the target distribution, and reweighting by an outcome the search did not know moves that optimum. The next volume run should carry `--chair-balance 0.5` explicitly, and item 28's gate is now able to see it if it stops working.
 
+30. **The sixth run: `--chair-balance` does not survive being put in a loop** (9–10 September 2026, six iterations, 3.9 h, no promotion). Item 29 measured `--chair-balance 0.5` worth +0.073 on the Runner chair in a single training pass on a fixed corpus. This run asked whether a *generator* carrying that correction compounds it. **It does not, and both halves of the mechanism moved the wrong way.**
+
+    **The run had to be bootstrapped to be a loop at all, and this is the correction to how the fifth run was described.** `--chair-balance` is a trainer flag: it changes the candidate, never the generator. The generator only advances on a promotion, and the fifth run never had one — `latest_policy.onnx` stayed item 22's iteration-1 network for all four iterations. So what item 26 called a loop was **one fixed generator with a growing corpus**, which is why "corpus size is not the variable" was the only thing it could have found. Running that shape again with `--chair-balance` would have re-measured item 29's cb05 leg five times: 0.531 blended, 0.323 on the Runner chair, and 0.323 cannot reach a 0.45 floor. So the incumbent was seated as item 29's cb05 checkpoint (sha256 `0bae34db…`) — **a bootstrap, not a promotion claim**; cb05 was rejected by both gates and stays rejected. Every promotion decision from iteration 5 on was gated normally, floors live.
+
+    **Six iterations, six rejections, every one on the Runner chair.** Only iteration 5 reached a full arena (0.438 / Corp 0.667 / Runner 0.208); the other five were stopped by item 28's screen chair floor, which is what took the run to 3.9 h.
+
+    | iter | window | corrected | blend | Corp | Runner | gap | floor gap | value edge |
+    |---|---|---|---|---|---|---|---|---|
+    | 5 | 6,000 | 1/4 | 0.469 | 0.604 | 0.333 | 0.271 | 0.1092 | −0.060 |
+    | 6 | 4,800 | 2/4 | 0.479 | 0.708 | 0.250 | 0.458 | 0.1093 | −0.099 |
+    | 7 | 4,800 | 3/4 | 0.396 | 0.604 | 0.188 | 0.417 | 0.1072 | −0.095 |
+    | 8 | 4,800 | 4/4 | 0.438 | 0.625 | 0.250 | 0.375 | 0.0995 | −0.055 |
+    | 9 | 4,800 | 4/4 | 0.500 | 0.750 | 0.250 | 0.500 | 0.0980 | −0.102 |
+    | 10 | 4,800 | 4/4 | 0.458 | 0.729 | 0.188 | 0.542 | 0.0979 | −0.050 |
+
+    **Pooled over all 576 screen games: 0.457 blended, Corp 0.670 (+5.8σ), Runner 0.243 (−8.7σ), chair gap 0.427.** Item 26's seat trade is intact and undiminished.
+
+    **The correction inverts on the self-play side.** Item 26's diagnosis was that the loop's input and output are the same distortion twice, the input being a ~65% Corp corpus against the engine's own 54.8%. A chair-balanced generator makes that **worse**:
+
+    | generator | games | Corp win |
+    |---|---|---|
+    | uniform search (`iter_001`) | 2,400 | 54.8% |
+    | uncorrected priors (`iter_002`–`004`) | 4,800 | 64.9% |
+    | **chair-balanced priors, cb05 (`iter_005`–`010`)** | **7,200** | **70.5%** |
+
+    Six disjoint 1,200-game seed ranges: 69.5 / 70.3 / 69.7 / 71.8 / 71.2 / 70.6. The +5.6-point move is 4.8σ and it replicates six times. **Narrowing the chair gap against a fixed opponent and reducing the seat asymmetry a network shows against itself are different quantities, and item 29 moved only the first.** Item 29's legs all rose on both chairs (Corp +0.031, Runner +0.073); in self-play what survives is the Corp seat improving relative to the network's own Runner seat.
+
+    **Replacing the training window with corrected data changes nothing, which is the cleanest result here.** `--window 4` was carried so the 7,200 pre-correction games could not dominate; the window went 1/4 → 4/4 corrected-generator over iterations 5–8, and **every column's observed sd is below its own sampling sd** — blend 0.036 against 0.051, Corp 0.066 against 0.068, Runner 0.054 against 0.062. Six iterations are six samples of one fixed quantity. A monotone Runner decline over iterations 5–7 (0.333 → 0.250 → 0.188) was read as a possible trend in session and **is withdrawn**: iteration 8 returned to 0.250 and the spread is pure 48-game sampling.
+
+    **The floor gap anti-predicted for a fourth time, and more sharply than before.** It *declined* monotonically after iteration 6 — 0.1093 → 0.1072 → 0.0995 → 0.0980 → 0.0979 — while the arena did not move at all, and `best_epoch` rose 2 → 4 → 5 → 5 → 5 → 6 alongside it. Items 26 and 29 found the gap flat across arena swings of 0.06 and 0.052; this run has it moving on its own while the arena stands still. **It is not a proxy for playing strength in either direction.** The value head's edge over its chair null was negative in all six iterations (−0.050 to −0.102), having been positive throughout the fifth run — though item 29's caveat holds and `chair_baseline_mse` is not an honest null under `--chair-balance`.
+
+    **What this closes.** `--chair-balance` is a one-shot correction against a fixed opponent, not a loop-stable one, and ROADMAP "next" item 1 is answered no. The seat asymmetry is not a training-objective problem: reweighting the objective moved the candidate 0.052 once (item 29) and moved the loop nothing. **The remaining suspect is the thing neither run touched — the search that generates the data.** A prior distilled from a uniform PUCT search inherits whatever chair bias that search has, and Phase 3 §1 already records the PUCT Runner chair as the weak one (0.516 against the Corp's 0.510 only after two fixes, and the heuristic Runner at 0.417). No root Dirichlet noise (standing open item) means self-play has no exploration pressure to find Runner lines the prior already discounts, which is a concrete mechanism for a loop that concentrates on one seat and a change that does not need another volume run to screen.
+
+    **Cost, for comparison with the fifth run's 4.2 h per iteration:** 0.58–0.60 h per iteration end to end, of which self-play was 0.40–0.46 h against the fifth run's 1.95 h for the same 1,200 games. Item 27's cross-game batching is doing better than the 2.6× it claimed, and item 28's screen chair floor skipped five full arenas at 0.31 h each.
+
 **Standing open items:** no root Dirichlet noise in `puct.rs`; the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
