@@ -25,6 +25,7 @@ use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
+use rand_distr::Gamma;
 use rayon::prelude::*;
 
 use netrunner_core::cards::CardRegistry;
@@ -113,12 +114,18 @@ impl PuctNode {
     /// A candidate that is illegal *in the sample* is kept, not dropped:
     /// `simulate`'s `step` failure path already turns it into a dead
     /// branch carrying a value, exactly as `MctsAgent` does.
+    ///
+    /// `noise`, when present, is mixed into every candidate's prior here
+    /// and nowhere else: root-only is what makes it exploration of the
+    /// *decision* rather than a corruption of the tree's own estimates.
+    /// See `RootNoise`.
     fn expand_root(
         &mut self,
         actions: &[PlayerAction],
         registry: &CardRegistry,
         evaluator: &dyn PolicyEvaluator,
         anchor: f32,
+        noise: Option<&RootNoise>,
     ) -> f32 {
         let (priors, value) = evaluator.evaluate_from(&self.state, registry, anchor);
         debug_assert_eq!(priors.len(), ActionSpace::SIZE, "PolicyEvaluator must return ActionSpace::SIZE priors");
@@ -129,9 +136,22 @@ impl PuctNode {
         let uniform_prior = 1.0 / actions.len().max(1) as f32;
         self.edges = actions
             .iter()
-            .map(|action| {
+            .enumerate()
+            .map(|(position, action)| {
                 let index = ActionSpace::index_of(&self.state, action);
                 let prior = index.map_or(uniform_prior, |index| priors[index]);
+                // The mix is per-edge and the result is not renormalised.
+                // Both halves already sum to about one over this candidate
+                // set — `eta` exactly, the priors approximately, since a
+                // candidate that doesn't encode contributes `uniform_prior`
+                // instead of its own mass — so the total is preserved to
+                // the same tolerance `expand_root` already lived with, and
+                // renormalising would silently rescale `c_puct` with the
+                // number of unencodable candidates.
+                let prior = match noise {
+                    Some(RootNoise { epsilon, eta }) => (1.0 - epsilon) * prior + epsilon * eta[position],
+                    None => prior,
+                };
                 Edge { index, action: action.clone(), prior, visits: 0, total_value: 0.0, child: None, outcomes: Vec::new() }
             })
             .collect();
@@ -174,6 +194,61 @@ impl PuctNode {
             .expect("select_edge is only called on an expanded node with at least one edge")
     }
 
+}
+
+/// One decision's root exploration noise: the mixing weight and one draw
+/// per root candidate, in `expand_root`'s candidate order.
+///
+/// AlphaZero's `P'(a) = (1 - eps) * P(a) + eps * eta_a`, `eta ~ Dir(alpha)`,
+/// applied at the root only and drawn fresh for every decision. **The
+/// point is not to make the agent play differently — it is to make the
+/// agent that *generates a corpus* stop concentrating on the lines its
+/// own prior already likes.** `puct_score`'s exploration term is linear
+/// in the prior, so an action the prior starves is never explored back
+/// (`policy::MixedPriorEvaluator`'s doc comment measures that from the
+/// other end: a checkpoint's peaky priors score 0.1745 where the uniform
+/// prior that starves nothing scores 0.4141). Six volume runs generated
+/// their corpora with no exploration pressure at all, and every one came
+/// out Corp-skewed — 64.9% and 70.5% Corp against the engine's 54.8%
+/// (ROADMAP Phase 2 §5 items 26, 30).
+///
+/// Rejected as the alternative: raising `c_puct`. That widens exploration
+/// at *every* node in proportion to the prior it is already scaled by, so
+/// it spends budget everywhere and still cannot lift an action the prior
+/// put near zero; the noise is at the root, is per-decision, and is
+/// additive rather than multiplicative, which is exactly the starvation
+/// case.
+struct RootNoise {
+    epsilon: f32,
+    eta: Vec<f32>,
+}
+
+/// `n` weights summing to 1, drawn from a symmetric `Dir(alpha)`.
+///
+/// A Dirichlet is `n` independent `Gamma(alpha, 1)` draws normalised, and
+/// that is what this is — `rand_distr::Gamma` rather than a hand-rolled
+/// Marsaglia–Tsang, because `alpha < 1` needs the boost transform and a
+/// silently-wrong sampler here would look exactly like a null result.
+/// `rand_distr::Dirichlet` itself is const-generic in `n` as of 0.5 and so
+/// cannot take a legal-action count known only at run time.
+///
+/// Falls back to uniform if the draw degenerates (every gamma underflowing
+/// to zero, reachable at very small `alpha`), so a caller never sees a
+/// NaN prior.
+fn dirichlet(alpha: f32, n: usize, rng: &mut StdRng) -> Vec<f32> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let uniform = || vec![1.0 / n as f32; n];
+    let Ok(gamma) = Gamma::new(alpha as f64, 1.0) else {
+        return uniform();
+    };
+    let draws: Vec<f64> = (0..n).map(|_| gamma.sample(rng)).collect();
+    let total: f64 = draws.iter().sum();
+    if total <= 0.0 || !total.is_finite() {
+        return uniform();
+    }
+    draws.iter().map(|draw| (draw / total) as f32).collect()
 }
 
 /// What one determinization contributes to the merged root stats: the
@@ -386,13 +461,72 @@ pub struct PuctConfig {
     /// one: one cached child, the breach valued as the one card the sample
     /// holds.
     pub breach_outcomes: usize,
+    /// How much root Dirichlet noise is mixed into the root priors, `0.0`
+    /// meaning none. See `RootNoise`.
+    ///
+    /// **Zero by default, and that is a decision rather than caution.**
+    /// Noise is a property of a *generator*, not of a player: AlphaZero
+    /// adds it in self-play and never in evaluation, and this repo's
+    /// measurements depend on it staying that way — every heuristic
+    /// seating is byte-identical run to run (ROADMAP Phase 2 §5), which is
+    /// what makes a 192-game before/after attributable at all, and a
+    /// bench or arena verdict taken with a noisy searcher would be
+    /// measuring the dice. `netrunner_selfplay` turns it on for corpus
+    /// generation; nothing else does.
+    pub dirichlet_epsilon: f32,
+    /// The symmetric Dirichlet concentration. See `DEFAULT_DIRICHLET_ALPHA`.
+    pub dirichlet_alpha: f32,
+    /// When above zero, `dirichlet_alpha` is ignored and the concentration
+    /// is this over the root's candidate count — AlphaZero's own rule of
+    /// thumb, `alpha ~ 10/n`, rather than one number for every decision.
+    ///
+    /// **This exists because a fixed alpha is misspecified for this game,
+    /// measured rather than assumed.** Over 11,900 recorded self-play
+    /// decisions the median root has **2** candidates and 59% have three
+    /// or fewer; only the tail is wide (p90 17, max 59). `Dir(0.3)` over
+    /// two candidates is about `(0.95, 0.05)` — not exploration pressure
+    /// but an occasional coin-flip override — where AlphaZero's rule would
+    /// ask for `alpha = 5` there, which is nearly uniform. The two dials
+    /// are therefore *not* a sweep of one quantity: the fixed one perturbs
+    /// mostly the wide nodes, the scaled one mostly the narrow ones.
+    pub dirichlet_alpha_scale: f32,
 }
 
 impl Default for PuctConfig {
     fn default() -> Self {
-        Self { c_puct: 1.5, iterations: 64, max_depth: 16, samples: 1, breach_outcomes: BREACH_OUTCOMES }
+        Self {
+            c_puct: 1.5,
+            iterations: 64,
+            max_depth: 16,
+            samples: 1,
+            breach_outcomes: BREACH_OUTCOMES,
+            dirichlet_epsilon: 0.0,
+            dirichlet_alpha: DEFAULT_DIRICHLET_ALPHA,
+            dirichlet_alpha_scale: 0.0,
+        }
     }
 }
+
+/// The symmetric Dirichlet concentration self-play draws its root noise
+/// from, when `PuctConfig::dirichlet_epsilon` turns it on.
+///
+/// 0.3, AlphaZero's chess value. Their rule of thumb scales it inversely
+/// with the branching factor (roughly `10/n`), and chess's ~35 legal moves
+/// is the closest of their three games to this one: a Netrunner decision
+/// offers a handful of options at a prompt and a few dozen in an open
+/// action window. Held **fixed** rather than scaled per node, deliberately
+/// — a per-node `10/n` would make the noise's concentration a function of
+/// how many cards happen to be installed, so a corpus difference could not
+/// be attributed to the noise as against the branching it tracked. Scaling
+/// is the obvious second dial if the fixed one moves anything.
+pub const DEFAULT_DIRICHLET_ALPHA: f32 = 0.3;
+
+/// Decorrelates the root-noise draws from the determinization stream (and
+/// from `BREACH_RNG_SALT`'s), all three of which share the agent's seed
+/// counter. Without it the noise would be a deterministic function of the
+/// same value that picked the sample, tying which hidden hand the search
+/// believes in to which actions it explores.
+const DIRICHLET_RNG_SALT: u64 = 0x9E37_79B9_7F4A_7C15;
 
 /// One: the breach valued as the one card the sample holds. The chance
 /// node (`Breach`) is built and tested, and every fan-out measured on the
@@ -445,6 +579,7 @@ impl PuctAgent {
             max_depth: config.max_depth.max(1),
             samples: config.samples.max(1),
             breach_outcomes: config.breach_outcomes.max(1),
+            dirichlet_epsilon: config.dirichlet_epsilon.clamp(0.0, 1.0),
             ..config
         };
         Self { side, seed, evaluator: Box::new(evaluator), config, cycle: CycleGuard::default() }
@@ -485,6 +620,8 @@ impl PuctAgent {
         let (side, c_puct, max_depth) = (self.side, self.config.c_puct, self.config.max_depth);
         let evaluator = self.evaluator.as_ref();
         let breach_outcomes = self.config.breach_outcomes;
+        let (dirichlet_epsilon, dirichlet_alpha) = (self.config.dirichlet_epsilon, self.config.dirichlet_alpha);
+        let dirichlet_alpha_scale = self.config.dirichlet_alpha_scale;
 
         let per_sample: Vec<SampleStats> = (0..samples)
             .into_par_iter()
@@ -517,8 +654,22 @@ impl PuctAgent {
                         draws: std::cell::Cell::new(0),
                     },
                 };
+                // Drawn per sample and per decision, off the salted stream
+                // so it is independent of the determinization this sample
+                // just took.
+                let noise = (dirichlet_epsilon > 0.0).then(|| {
+                    let mut rng = StdRng::seed_from_u64(
+                        base_seed.wrapping_add(sample_index as u64).wrapping_mul(DIRICHLET_RNG_SALT),
+                    );
+                    let alpha = if dirichlet_alpha_scale > 0.0 {
+                        dirichlet_alpha_scale / candidates.len().max(1) as f32
+                    } else {
+                        dirichlet_alpha
+                    };
+                    RootNoise { epsilon: dirichlet_epsilon, eta: dirichlet(alpha, candidates.len(), &mut rng) }
+                });
                 let mut root = PuctNode::new(sample);
-                root.expand_root(&candidates, registry, evaluator, anchor);
+                root.expand_root(&candidates, registry, evaluator, anchor, noise.as_ref());
                 root.visits = 1;
                 for _ in 0..per_sample_iterations {
                     simulate(&mut root, &search, max_depth);
@@ -911,7 +1062,7 @@ mod tests {
             side,
             99,
             UniformPolicyEvaluator::new(side),
-            PuctConfig { c_puct: 1.5, iterations: 40, max_depth: 8, samples: 1, breach_outcomes: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 40, max_depth: 8, ..PuctConfig::default() },
         )
     }
 
@@ -975,7 +1126,7 @@ mod tests {
             Side::Corp,
             123,
             UniformPolicyEvaluator::new(Side::Corp),
-            PuctConfig { c_puct: 1.5, iterations: 200, max_depth: 10, samples: 1, breach_outcomes: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 200, max_depth: 10, ..PuctConfig::default() },
         );
         let chosen = agent.select_action(&view, &registry);
         assert_eq!(chosen, PlayerAction::ScoreAgenda { target: InstallId(1) });
@@ -1045,6 +1196,7 @@ mod tests {
             &registry,
             &UniformPolicyEvaluator::new(Side::Corp),
             0.0,
+            None,
         );
 
         let edges: Vec<&PlayerAction> = root.edges.iter().map(|edge| &edge.action).collect();
@@ -1063,6 +1215,100 @@ mod tests {
     /// the sample agrees with reality — it cannot, that is the point of
     /// hiding the card — only that `search` still reports every action its
     /// caller is allowed to submit.
+    #[test]
+    fn a_dirichlet_draw_is_a_distribution_over_the_candidates() {
+        let mut rng = StdRng::seed_from_u64(11);
+        let eta = dirichlet(DEFAULT_DIRICHLET_ALPHA, 7, &mut rng);
+
+        assert_eq!(eta.len(), 7);
+        assert!(eta.iter().all(|weight| weight.is_finite() && *weight >= 0.0), "{eta:?}");
+        assert!((eta.iter().sum::<f32>() - 1.0).abs() < 1e-5, "{eta:?}");
+    }
+
+    /// The degenerate concentrations both callers can reach through a CLI
+    /// flag: a sampler that returns NaN here would poison every root prior
+    /// and show up only as a search that plays badly.
+    #[test]
+    fn a_dirichlet_draw_survives_a_degenerate_alpha() {
+        let mut rng = StdRng::seed_from_u64(3);
+        for alpha in [0.0, -1.0, f32::MIN_POSITIVE, 1e6] {
+            let eta = dirichlet(alpha, 5, &mut rng);
+            assert!(eta.iter().all(|w| w.is_finite() && *w >= 0.0), "alpha {alpha}: {eta:?}");
+            assert!((eta.iter().sum::<f32>() - 1.0).abs() < 1e-5, "alpha {alpha}: {eta:?}");
+        }
+    }
+
+    #[test]
+    fn root_noise_mixes_priors_toward_the_draw_and_leaves_the_rest_of_the_tree_alone() {
+        let registry = CardRegistry::new();
+        let mut state = GameState::new(0);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+
+        let candidates = legal_actions(&state, &registry);
+        let evaluator = UniformPolicyEvaluator::new(Side::Corp);
+
+        let mut clean = PuctNode::new(state.clone());
+        clean.expand_root(&candidates, &registry, &evaluator, 0.0, None);
+
+        // A one-hot draw at full strength: every prior must become exactly
+        // its own `eta`, which pins both the formula and the ordering of
+        // `eta` against the candidate list.
+        let mut eta = vec![0.0f32; candidates.len()];
+        eta[1] = 1.0;
+        let mut noisy = PuctNode::new(state);
+        noisy.expand_root(&candidates, &registry, &evaluator, 0.0, Some(&RootNoise { epsilon: 1.0, eta }));
+
+        assert_eq!(noisy.edges[1].prior, 1.0);
+        assert!(noisy.edges.iter().enumerate().all(|(i, edge)| i == 1 || edge.prior == 0.0));
+        assert!(clean.edges.iter().all(|edge| edge.prior > 0.0), "the unnoised root is untouched");
+    }
+
+    /// Noise is off unless a caller asks for it, so every bench, arena and
+    /// TUI seating stays the byte-identical searcher the repo's before/after
+    /// measurements assume. See `PuctConfig::dirichlet_epsilon`.
+    #[test]
+    fn noise_is_off_by_default_and_changes_the_search_when_it_is_on() {
+        let registry = CardRegistry::new();
+        let mut state = GameState::new(0);
+        state.corp = empty_corp();
+        state.runner = empty_runner();
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.resources.credits = Credits(5);
+        let view = build_client_view(&state, &registry, Side::Corp);
+
+        let with_epsilon = |epsilon: f32| {
+            let config = PuctConfig { iterations: 64, max_depth: 6, dirichlet_epsilon: epsilon, ..PuctConfig::default() };
+            let mut agent = PuctAgent::with_config(Side::Corp, 99, UniformPolicyEvaluator::new(Side::Corp), config);
+            agent.search(&view, &registry).visit_counts
+        };
+
+        assert_eq!(PuctConfig::default().dirichlet_epsilon, 0.0);
+        assert_eq!(with_epsilon(0.0), with_epsilon(0.0), "the search is a pure function of its seed");
+        assert_eq!(with_epsilon(1.0), with_epsilon(1.0), "and stays one with the noise on");
+        assert_ne!(with_epsilon(0.0), with_epsilon(1.0), "noise the search cannot feel is not exploration");
+    }
+
+    /// The scaled dial has to actually reach the narrow roots it exists for
+    /// — over half of them hold two candidates — so a scale of 10 there
+    /// must mean `alpha = 5`, near-uniform, and not `DEFAULT_DIRICHLET_ALPHA`.
+    #[test]
+    fn scaling_alpha_by_the_candidate_count_flattens_the_noise_at_a_narrow_root() {
+        let mut narrow = Vec::new();
+        let mut peaky = Vec::new();
+        for seed in 0..64u64 {
+            let mut rng = StdRng::seed_from_u64(seed);
+            narrow.push(dirichlet(10.0 / 2.0, 2, &mut rng).into_iter().fold(0.0f32, f32::max));
+            let mut rng = StdRng::seed_from_u64(seed);
+            peaky.push(dirichlet(DEFAULT_DIRICHLET_ALPHA, 2, &mut rng).into_iter().fold(0.0f32, f32::max));
+        }
+        let mean = |values: &[f32]| values.iter().sum::<f32>() / values.len() as f32;
+        assert!(mean(&narrow) < 0.75, "scaled noise over two candidates is near-uniform: {}", mean(&narrow));
+        assert!(mean(&peaky) > 0.85, "the fixed alpha all but picks one: {}", mean(&peaky));
+    }
+
     #[test]
     fn search_reports_every_legal_action_even_when_the_sample_disagrees() {
         let mut registry = CardRegistry::new();
@@ -1228,7 +1474,7 @@ mod tests {
                 Side::Runner,
                 seed,
                 UniformPolicyEvaluator::new(Side::Runner),
-                PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4, samples: 1, breach_outcomes: 1 },
+                PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 4, ..PuctConfig::default() },
             );
             let stats = agent.search(&view, &registry);
             let reported: Vec<&PlayerAction> = stats.actions.iter().map(|s| &s.action).collect();
@@ -1393,7 +1639,7 @@ mod tests {
             Side::Corp,
             7,
             AlwaysEndTurn,
-            PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 2, samples: 1, breach_outcomes: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 2, ..PuctConfig::default() },
         );
         for _ in 0..MAX_GREEDY_REPEATS + 1 {
             assert_eq!(agent.select_action(&view, &registry), PlayerAction::EndTurn, "greedy up to the bound");
@@ -1470,7 +1716,7 @@ mod tests {
             Side::Corp,
             5,
             UniformPolicyEvaluator::new(Side::Corp),
-            PuctConfig { c_puct: 1.5, iterations: 64, max_depth: 8, samples: 1, breach_outcomes: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 64, max_depth: 8, ..PuctConfig::default() },
         );
         let stats = agent.search(&view, &registry);
         let (value, visits) = stats.actions.iter().fold((0.0, 0u32), |(v, n), s| (v + s.total_value, n + s.visits));
@@ -1513,7 +1759,7 @@ mod tests {
             Side::Corp,
             5,
             UniformPolicyEvaluator::new(Side::Corp),
-            PuctConfig { c_puct: 1.5, iterations: 32, max_depth: 4, samples: 1, breach_outcomes: 1 },
+            PuctConfig { c_puct: 1.5, iterations: 32, max_depth: 4, ..PuctConfig::default() },
         );
         let stats = agent.search(&view, &registry);
 
@@ -1577,7 +1823,7 @@ mod tests {
             breach: Breach { view: &view, seed: 7, outcomes: 3, draws: std::cell::Cell::new(0) },
         };
         let mut root = PuctNode::new(sample);
-        root.expand_root(&view.legal_actions, &registry, &evaluator, anchor);
+        root.expand_root(&view.legal_actions, &registry, &evaluator, anchor, None);
         root.visits = 1;
         for _ in 0..40 {
             simulate(&mut root, &search, 6);
