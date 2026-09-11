@@ -614,4 +614,25 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     Scaffolding: `netrunner_cli diag leaf-sensitivity` (a `diag` subcommand group, so the next measurement has a home), `mcts::rollout` made `pub` with its reason on the function. No behaviour change — `cargo test --workspace` green and clippy silent, with nothing touched that a bot runs.
 
+37. **Every unrezzed ICE in a determinized sample was a toothless Barrier, and nothing downstream repaired it** (`fix/sampled-unrezzed-ice-is-toothless`, 11 September 2026). Found while starting ROADMAP "next" item 1, which asked for an evaluator that prices an unrezzed ICE from the determinization — and the determinization did not carry one to price.
+
+    `determinize_run` builds a masked `RunIce` by drawing the hidden card's identity from the already-sampled `corp.installed`, which is right, and then filling the rest of the struct with **`ice_type: IceType::Barrier` and `subroutines: Vec::new()`** regardless of what it drew. `run::engine::build_run_ice` — the engine's own constructor, and the standard `determinize_run`'s doc comment holds itself to ("a sample in which the two disagree about one install is a state the real game cannot be in") — seeds subtype, strength *and* subroutines from the card definition **whatever the rez state**. So the sample was a state the real game cannot be in.
+
+    **Nothing repaired it later, which is the part that matters.** `run::engine::reconcile_ice` keeps an existing `RunIce` whenever its `card_id` still matches the install and refreshes only the rez flag — and here it matches **by construction**, because the placeholder was built from the sampled install's own card. So a rollout that rezzed this ICE rezzed a Barrier with zero subroutines and walked straight through it. Every search, every sample, for as long as `determinize` has existed. A test now pins it: the ICE pool is made exclusively of Sentries with two subroutines, so the assertion cannot pass by drawing something that happens to match the placeholder — which is how the first version of the test passed and had to be rewritten.
+
+    **The strength effect is nil, and the cells that did not move are the evidence the change is confined where it should be.** 128 games per pairing at 128 simulations, `--seed 1`, before and after on pinned binaries, paired by (matchup, seed) so only discordant games carry signal:
+
+    | pairing (Corp win rate) | before | after | delta | paired z | discordant |
+    |---|---|---|---|---|---|
+    | `heuristic` vs `heuristic` | 0.523 | 0.523 | +0.000 | — | **0** |
+    | `puct@128` vs `heuristic` | 0.555 | 0.555 | +0.000 | — | **0** |
+    | `mcts@128` vs `heuristic` | 0.531 | 0.531 | +0.000 | — | **0** |
+    | `heuristic` vs `puct@128` | 0.539 | 0.555 | +0.016 | +0.58 | 12 |
+    | `heuristic` vs `mcts@128` | 0.383 | 0.367 | −0.016 | −1.41 | 2 |
+    | `mcts@128` vs `mcts@128` | 0.375 | 0.367 | −0.008 | −0.45 | 5 |
+
+    **Three cells are byte-identical, and predictably so.** A Corp is never masked from its own ICE, so the `Some(identity)` branch is the only one its samples take — both searches' Corp chairs are untouched to the game. And the `heuristic` is untouched *on either chair*, because its one-ply score reads `evaluate_state_with`, which item 36 showed is blind to an unrezzed ICE: `run_is_breakable` filters on `rezzed`, `strength_shortfall` fires only in `RunPhase::EncounterIce`. Only a seat that **searches past the rez** can notice, which is exactly the two cells that moved, and neither moved significantly. `--headless --all-matchups --games 132 --corp random --runner random` is byte-identical between the binaries, which is the check that the engine was not touched.
+
+    **This is a fidelity fix and is recorded as one** — the case for it is that the sample must be a state the game can reach, not that it wins more. It also revises what item 36's rollout numbers were measuring: the hidden-state sensitivity it found at 16 plies (+0.070 on the Runner chair) came from sampled HQ and R&D contents, *not* from what was behind the ICE, because what was behind the ICE was a Barrier with no subroutines in every sample. Whether the Runner's leaf should read the real ICE is still open and still item 1 — this only makes it possible to.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
