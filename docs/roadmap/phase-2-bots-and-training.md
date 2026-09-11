@@ -635,4 +635,34 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **This is a fidelity fix and is recorded as one** — the case for it is that the sample must be a state the game can reach, not that it wins more. It also revises what item 36's rollout numbers were measuring: the hidden-state sensitivity it found at 16 plies (+0.070 on the Runner chair) came from sampled HQ and R&D contents, *not* from what was behind the ICE, because what was behind the ICE was a Barrier with no subroutines in every sample. Whether the Runner's leaf should read the real ICE is still open and still item 1 — this only makes it possible to.
 
+38. **The Runner's leaf can read the hidden state now, and reading it this way is worth nothing** (`feat/runner-leaf-reads-unrezzed-ice`, 11 September 2026). ROADMAP "next" item 1, closed — negatively, and the negative is the useful part.
+
+    `unbreakable_unrezzed_ice` counts the unrezzed ICE still ahead of the Runner that the Corp could rez right now and no rig card could then break, subtracted from the Runner arm under `UNREZZED_THREAT_WEIGHT`. **A weighted term rather than a flip of `run_is_breakable`'s bool**, which the item originally proposed: folding unrezzed ICE into that predicate gates `active_run_weight` all-or-nothing and cannot be tuned or measured at strength zero. It counts unbreakable ICE rather than pricing a credit shortfall because `strength_shortfall` already prices the expensive case, for the ICE actually being encountered. Item 37 was its prerequisite — before that, every unrezzed ICE in a sample was a `Barrier` with no subroutines, so `cheapest_break_cost` returned `Some(0)` for all of them and this term would have counted zero at any weight.
+
+    **It does what item 36 said no term did.** `diag leaf-sensitivity`, same shape as item 36, with the weight at 1.5:
+
+    | Runner chair, depth 0 (PUCT's leaf) | item 36 | with the term |
+    |---|---|---|
+    | leaf bit-identical across all 16 samples | 0.924 | 0.857 |
+    | root argmax unanimous | 0.992 | 0.945 |
+    | root argmax agreement | 0.998 | 0.968 |
+    | paired hidden-state cost | +0.002 (z = +1.71) | **+0.032 (z = +4.49)** |
+
+    The Corp chair stays at exactly 1.000 identical and +0.000 cost, which is the control: the term is Runner-arm only, and a Corp is never masked from its own ICE.
+
+    **And it is worth nothing.** 192 games a pairing at 128 simulations, `--determinizations 1`, two seeds, pinned binaries, paired by (matchup, seed). `heuristic` Corp vs `puct` Runner is the binding cell **and the only one with a genuinely fixed opponent** — the term cannot move a Corp — so it is the chair measurement; the others move both sides and are reported as pool effects:
+
+    | Corp win rate | weight 0.0 | 0.6 | 1.5 |
+    |---|---|---|---|
+    | `heuristic` vs `puct@128`, seed 1 | 0.589 | 0.573 (z −0.48) | 0.625 (z +1.18) |
+    | `heuristic` vs `puct@128`, seed 2 | 0.557 | 0.547 (z −0.33) | 0.615 (z +1.76) |
+    | `heuristic` vs `heuristic`, seed 1 | 0.583 | 0.641 (z +1.64) | 0.635 (z +1.51) |
+    | `heuristic` vs `heuristic`, seed 2 | 0.583 | 0.646 (z +1.81) | 0.646 (z +1.81) |
+
+    At 0.6 PUCT's Runner chair gains **+0.016 and +0.010** — both below Phase 3's **0.026–0.047** seed-spread band and both far from significant. At 1.5 it **loses 0.036 and 0.057**. Meanwhile a one-ply Runner is hurt outright and consistently: four measurements of `heuristic` vs `heuristic` across two weights and two seeds, every one **+0.05 to +0.06 to the Corp**. The decision rule was written down before the legs landed and is followed here: nothing clears the band, so the weight ships at **0.0** and the term is apparatus, not behaviour. Landing it changes nothing — the 192-game seed-1 report is byte-identical to the weight-0.0 baseline's, because the term sits behind `if w.unrezzed_threat_weight != 0.0`.
+
+    **Why it fails is the part worth keeping.** The term treats an unrezzed ICE as certain to be rezzed the moment the Corp can afford it, and a real Corp frequently declines — so it systematically over-estimates the threat and makes the Runner passive, on the chair that is already the weak one. The information is there and the leaf can now see it; what is missing is a *probability*, not a *reading*.
+
+    **What this relocates.** Item 36 established that the leaf was blind and inferred that a leaf which could see would be worth something. The first half stands; **the second half is now measured and wrong**. Either the threat needs discounting by how likely the rez actually is — which nothing in a static evaluator knows, and which is the kind of thing a search or a learned value head estimates rather than a hand-weighted term — or PUCT's Runner chair is not leaf-bound at all and item 35's +0.125 for MCTS came from somewhere else entirely. Note that item 37 already moved that suspicion: MCTS's samples differ in HQ and R&D contents, not in what is behind the ICE, so the +0.125 was never about ICE. **The next thing to price is the Corp's rez decision, not the Runner's leaf.**
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.

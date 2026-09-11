@@ -309,6 +309,48 @@ const PENDING_DECISION_UPSIDE_WEIGHT: f64 = 1.5;
 /// of shortfall and comes out ahead; a pump past the ICE's strength is
 /// worth nothing.
 const STRENGTH_SHORTFALL_WEIGHT: f64 = 0.9;
+
+/// Each unrezzed ICE ahead of the Runner that the Corp can afford to rez
+/// and no rig card can break at any price.
+///
+/// **Zero, and that is the measurement result rather than a placeholder.**
+/// The term works — with it on, the Runner's static leaf stops being
+/// blind to the sample (`diag leaf-sensitivity` at depth 0: root argmax
+/// agreement across 16 determinizations 0.998 → 0.968, paired hidden-state
+/// cost +0.002 n.s. → **+0.032, z = +4.49**). It is simply not worth
+/// anything: over 192 games a pairing at 128 simulations against a fixed
+/// heuristic Corp — fixed for real, since this term is Runner-arm only —
+/// PUCT's Runner chair gains **+0.016 and +0.010** on two seeds at 0.6,
+/// both inside Phase 3's 0.026–0.047 seed-spread band and both n.s., and
+/// **loses 0.036 and 0.057** at 1.5. A one-ply Runner is hurt outright:
+/// `heuristic` vs `heuristic` moves +0.057/+0.062 to the Corp at both
+/// weights on both seeds. See ROADMAP Phase 2 §5 item 38 for why —
+/// the term prices an unrezzed ICE as certain to be rezzed, and a real
+/// Corp often declines.
+///
+/// This is the term ROADMAP "next" item 1 asked for. Item 36 showed the
+/// Runner's leaf cannot read a determinization at all: every term reads
+/// public counts, board state or the Runner's own zones, and
+/// `run_is_breakable` says outright that unrezzed ICE is treated as
+/// passable. So PUCT at four samples averages four identical numbers,
+/// and the hidden information the Runner most needs to integrate over —
+/// what is behind the ICE — is the one thing its evaluator declines to
+/// look at.
+///
+/// **A weighted term rather than a flip of `run_is_breakable`'s bool.**
+/// Folding unrezzed ICE into that predicate would gate `active_run_weight`
+/// on it, which is all-or-nothing and untunable; a term beside
+/// `strength_shortfall` can be measured at several strengths and set to
+/// zero if it loses. It counts unbreakable ICE rather than pricing the
+/// shortfall in credits because an ICE no rig card can break is a
+/// different thing from an expensive one — `strength_shortfall` already
+/// prices the expensive case, for the ICE actually being encountered.
+///
+/// Depends on ROADMAP Phase 2 §5 item 37: until that landed, every
+/// unrezzed ICE in a sample was a `Barrier` with no subroutines, so
+/// `cheapest_break_cost` returned `Some(0)` for all of them and this
+/// term would have counted zero however the ICE was set.
+const UNREZZED_THREAT_WEIGHT: f64 = 0.0;
 /// Each credit the Runner is short of the cheapest breaker in grip that
 /// would cover an ICE subtype the rig does not (`breaker_savings_shortfall`).
 /// A one-ply evaluator cannot see the install it is saving for, and once
@@ -408,6 +450,11 @@ pub struct Weights {
     pub unresolved_decision_weight: f64,
     pub pending_decision_upside_weight: f64,
     pub strength_shortfall_weight: f64,
+    /// Runner only: unbreakable unrezzed ICE ahead, subtracted. See
+    /// `UNREZZED_THREAT_WEIGHT` — this is the only term in the evaluator
+    /// that reads a determinized card, so it is also the only one a
+    /// search's extra hidden-state samples can disagree about.
+    pub unrezzed_threat_weight: f64,
     pub savings_shortfall_weight: f64,
     pub grip_shortfall_weight: f64,
     pub grip_floor: usize,
@@ -457,6 +504,7 @@ impl Default for Weights {
             unresolved_decision_weight: UNRESOLVED_DECISION_WEIGHT,
             pending_decision_upside_weight: PENDING_DECISION_UPSIDE_WEIGHT,
             strength_shortfall_weight: STRENGTH_SHORTFALL_WEIGHT,
+            unrezzed_threat_weight: UNREZZED_THREAT_WEIGHT,
             savings_shortfall_weight: SAVINGS_SHORTFALL_WEIGHT,
             grip_shortfall_weight: GRIP_SHORTFALL_WEIGHT,
             grip_floor: GRIP_FLOOR,
@@ -544,6 +592,9 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
                 }
                 score -= pending_subroutines(run) as f64 * w.pending_subroutine_weight;
                 score -= strength_shortfall(state, run, registry) as f64 * w.strength_shortfall_weight;
+                if w.unrezzed_threat_weight != 0.0 {
+                    score -= unbreakable_unrezzed_ice(state, run, registry) as f64 * w.unrezzed_threat_weight;
+                }
             }
         }
     }
@@ -564,6 +615,36 @@ fn run_is_breakable(state: &GameState, run: &RunState, registry: &CardRegistry) 
         total += cost;
     }
     total <= state.runner.resources.credits.0 + run.bad_publicity_credits
+}
+
+/// Unrezzed ICE still ahead of the Runner that the Corp could rez right
+/// now and no rig card could then break. The counterpart to
+/// `run_is_breakable`, which deliberately looks only at rezzed ICE — see
+/// `UNREZZED_THREAT_WEIGHT` for why this is a separate weighted term
+/// rather than a wider predicate.
+///
+/// **This is the evaluator's one window onto hidden information.** In a
+/// determinized state `ice.card_id` is the *sampled* card, so two samples
+/// that put different ICE behind the same install disagree here and
+/// nowhere else. In a real `GameState` it is the true card, which is
+/// correct for the Corp's own reasoning and is why the gym's shaped
+/// reward should not turn this on for a Runner it computes from the
+/// authoritative state.
+///
+/// Rez affordability is the printed cost against the Corp's credits,
+/// ignoring `ice_rez_cost_modifier` and any discount: over-estimating
+/// what the Corp can pay only makes the Runner one ICE more cautious,
+/// the same direction `breaker_savings_shortfall` already errs in.
+fn unbreakable_unrezzed_ice(state: &GameState, run: &RunState, registry: &CardRegistry) -> usize {
+    run.ice
+        .iter()
+        .skip(run.position)
+        .filter(|ice| !ice.rezzed)
+        .filter(|ice| {
+            let Some(definition) = registry.get(&ice.card_id) else { return false };
+            definition.cost <= state.corp.resources.credits.0 && cheapest_break_cost(state, ice, registry).is_none()
+        })
+        .count()
 }
 
 /// The fewest credits any rig card needs to pump up to `ice`'s strength
@@ -1751,9 +1832,59 @@ mod tests {
         assert_eq!((term * 1000.0).round() / 1000.0, ACTIVE_RUN_WEIGHT, "a bad-publicity credit closes the gap");
     }
 
+    /// The evaluator's one window onto hidden information. Everything
+    /// else it reads is public, the searching side's own zones, or a
+    /// count `determinize` preserves — see ROADMAP Phase 2 §5 item 36.
+    #[test]
+    fn unbreakable_unrezzed_ice_counts_what_the_corp_can_rez_and_the_rig_cannot_break() {
+        use netrunner_core::rules::ServerId;
+        fn ice_card(id: &str, ice_type: IceType, cost: u32) -> CardDefinition {
+            CardDefinition {
+                id: CardId(id.to_string()),
+                title: id.to_string(),
+                side: Side::Corp,
+                card_type: CardType::Ice(ice_type),
+                cost,
+                strength: Some(5),
+                ..CardDefinition::default()
+            }
+        }
+        let registry = CardRegistry::from_cards(vec![
+            ice_card("ice", IceType::Sentry, 4),
+            priced_breaker("carmen", Some(IceType::Sentry), (1, 2), (2, 1)),
+        ]);
+        let run = |rezzed, position| RunState {
+            server: ServerId::Hq,
+            ice: vec![run_ice(5, IceType::Sentry, 1, rezzed)],
+            position,
+            ..Default::default()
+        };
+
+        let mut state = GameState::new(0);
+        state.corp.resources.credits = Credits(4);
+        assert_eq!(unbreakable_unrezzed_ice(&state, &run(false, 0), &registry), 1, "rezzable and unbreakable");
+
+        state.corp.resources.credits = Credits(3);
+        assert_eq!(unbreakable_unrezzed_ice(&state, &run(false, 0), &registry), 0, "an ICE the Corp cannot pay to rez is not a threat");
+
+        state.corp.resources.credits = Credits(4);
+        assert_eq!(unbreakable_unrezzed_ice(&state, &run(true, 0), &registry), 0, "a rezzed ICE is `run_is_breakable`'s job, not this one");
+        assert_eq!(unbreakable_unrezzed_ice(&state, &run(false, 1), &registry), 0, "ICE the run has already passed is behind the Runner");
+
+        // A breaker that covers the subtype and can reach the strength
+        // makes it breakable at a price, so it stops being a threat.
+        state.runner.rig = vec![InstalledRunnerCard { base_strength: 5, ..rig_card("carmen") }];
+        assert_eq!(unbreakable_unrezzed_ice(&state, &run(false, 0), &registry), 0, "the rig covers it");
+
+        // The term is off by default, so none of this moves a score
+        // until a `Weights` says otherwise.
+        assert_eq!(Weights::default().unrezzed_threat_weight, 0.0);
+    }
+
     /// An unrezzed ICE's identity in a determinized sample is a guess the
     /// real Runner cannot see, so it never blocks the run term; nor does
-    /// ICE the run has already passed.
+    /// ICE the run has already passed. `unbreakable_unrezzed_ice` is the
+    /// term that may price it instead, and is weighted to zero here.
     #[test]
     fn unrezzed_and_already_passed_ice_never_block_the_run_term() {
         let registry = CardRegistry::new();
