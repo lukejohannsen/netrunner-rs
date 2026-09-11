@@ -325,6 +325,14 @@ pub enum Command {
         label: Option<String>,
     },
 
+    /// Measurements over the bots' internals whose product is a number
+    /// rather than a behaviour change. Each one answers an open ROADMAP
+    /// question and stays in the tree so the number can be re-taken.
+    Diag {
+        #[command(subcommand)]
+        action: DiagAction,
+    },
+
     /// List the matches the `netrunner_server --serve` daemon at
     /// `--server` is hosting, with the ids `--spectate` takes.
     Matches,
@@ -357,6 +365,53 @@ pub enum Command {
         /// Whose chair to watch from.
         #[arg(long, value_enum, default_value_t = SideArg::Corp)]
         side: SideArg,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DiagAction {
+    /// How much of a leaf evaluation is the hidden state? Draws N
+    /// determinizations of real decision positions and sweeps the
+    /// playout depth between the sample and `evaluate_state_with` — 0 is
+    /// `puct`'s leaf, 16 is `mcts`'s — reporting how far a sample moves
+    /// an action's score against how far apart the actions are, and
+    /// whether it ever changes which action looks best. ROADMAP Phase 2
+    /// §5 item 35's open question; no games are played to answer it.
+    LeafSensitivity {
+        /// Games to draw positions from; each plays a different matchup.
+        #[arg(long, default_value_t = 8)]
+        games: u32,
+        /// Positions kept per chair per game, spread evenly over that
+        /// chair's decisions rather than taken from the opening.
+        #[arg(long, default_value_t = 8)]
+        positions: usize,
+        /// Base seed; game n plays on `seed + n`, and every
+        /// determinization and rollout is seeded off the position, so a
+        /// re-run reproduces every number whatever the thread count.
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Samples of the hidden state per position — the dial item 35
+        /// measured in games, measured here without any.
+        #[arg(long, default_value_t = 16)]
+        determinizations: usize,
+        /// Rollouts per (determinization, action), to separate the
+        /// hidden state's effect from the playout's own noise. Ignored
+        /// at depth 0, which is deterministic.
+        #[arg(long, default_value_t = 4)]
+        rollouts: usize,
+        /// Playout plies between the sampled state and
+        /// `evaluate_state_with`, comma-separated. 0 is a static leaf.
+        #[arg(long, value_delimiter = ',', default_value = "0,2,4,8,16")]
+        depths: Vec<usize>,
+        /// Which bot plays the games the positions come from.
+        #[arg(long, default_value = "heuristic")]
+        source: BotSpec,
+        /// Worker threads. All cores if omitted.
+        #[arg(long)]
+        threads: Option<usize>,
+        /// Write the full per-chair, per-depth table as JSON here.
+        #[arg(long)]
+        report: Option<PathBuf>,
     },
 }
 

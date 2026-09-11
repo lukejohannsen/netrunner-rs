@@ -6,6 +6,7 @@ mod config;
 mod deck;
 mod deck_store;
 mod decks;
+mod diag;
 mod headless;
 mod learn;
 mod remote;
@@ -14,7 +15,7 @@ mod tui;
 
 use clap::Parser;
 
-use config::{Command, Config};
+use config::{Command, Config, DiagAction};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -27,6 +28,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let args =
                 bench::BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, threads, report, ratings, label };
             bench::run(&args, &config)
+        }
+        Some(Command::Diag {
+            action: DiagAction::LeafSensitivity { games, positions, seed, determinizations, rollouts, depths, source, threads, report },
+        }) => {
+            let args =
+                diag::LeafSensitivityArgs { games, positions, seed, determinizations, rollouts, depths, source, threads, report };
+            diag::run(&args, &config)
         }
         Some(Command::Matches) => remote::print_matches(&config.server).await,
         Some(Command::Cards { action }) => cards::run(action).await,

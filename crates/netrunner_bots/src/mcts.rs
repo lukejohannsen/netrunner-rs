@@ -311,7 +311,15 @@ fn pop_untried(untried: &mut Vec<PlayerAction>, rng: &mut StdRng) -> Option<Play
 /// evaluates the result. Deliberately cheaper than `HeuristicAgent`'s own
 /// one-ply lookahead (no per-step `apply_action`-and-evaluate over every
 /// candidate) since a rollout runs many times per expanded node.
-fn rollout(start: &GameState, registry: &CardRegistry, side: Side, mut depth_budget: usize, rng: &mut StdRng, w: &Weights) -> f64 {
+///
+/// `pub` for one reason: ROADMAP Phase 2 §5 item 36 asks what a
+/// determinization is worth to this leaf and nothing to PUCT's, and the
+/// two leaves differ *only* by the plies in between — both bottom out in
+/// `evaluate_state_with`. A diagnostic that reimplemented the walk would
+/// be measuring a copy, and the answer turns on the rollout policy being
+/// exactly this one. At `depth_budget` 0 it is PUCT's leaf; at 16 it is
+/// this search's.
+pub fn rollout(start: &GameState, registry: &CardRegistry, side: Side, mut depth_budget: usize, rng: &mut StdRng, w: &Weights) -> f64 {
     let mut state = start.clone();
     while depth_budget > 0 && !matches!(state.phase, GamePhase::GameOver(_)) {
         let legal = engine_legal_actions(&state, registry);
