@@ -36,10 +36,30 @@ pub const DECKS_DIR_ENV: &str = "NETRUNNER_DECKS_DIR";
 /// and would expect to keep, which is why this is the data directory rather
 /// than the config one.
 pub fn resolve_decks_dir(flag: Option<&Path>) -> Result<PathBuf, String> {
+    resolve_decks_dir_with(flag, std::env::var_os(DECKS_DIR_ENV))
+}
+
+/// The precedence rule itself, with the environment handed in rather than
+/// read, so it can be tested without a process-wide side effect.
+///
+/// This split exists because the tests that did not have it were racing.
+/// Three of them shared `NETRUNNER_DECKS_DIR`: two set it and cleared it
+/// again, and a third asserted the OS default, so whenever the harness ran
+/// them at the same time the third could observe the others' value and fail.
+/// That is what `unsafe { env::set_var }` means in a test module — the
+/// `// SAFETY: single-threaded test process` comment those calls carried was
+/// not true, since cargo's harness runs tests in parallel threads, and
+/// mutating the environment while another thread reads it is exactly the
+/// unsoundness the `unsafe` is there to flag.
+///
+/// The caller above is the only place the variable is read, which is the
+/// trade this makes: its one line is covered by inspection rather than by a
+/// test, in exchange for no test touching shared process state.
+fn resolve_decks_dir_with(flag: Option<&Path>, env: Option<std::ffi::OsString>) -> Result<PathBuf, String> {
     if let Some(dir) = flag {
         return Ok(dir.to_path_buf());
     }
-    if let Some(dir) = std::env::var_os(DECKS_DIR_ENV).filter(|value| !value.is_empty()) {
+    if let Some(dir) = env.filter(|value| !value.is_empty()) {
         return Ok(PathBuf::from(dir));
     }
     dirs::data_dir()
@@ -243,28 +263,34 @@ mod tests {
         deck
     }
 
+    fn env(value: &str) -> Option<std::ffi::OsString> {
+        Some(std::ffi::OsString::from(value))
+    }
+
     #[test]
     fn an_explicit_directory_outranks_the_environment() {
-        // SAFETY: single-threaded test process; the var is restored below.
-        unsafe { std::env::set_var(DECKS_DIR_ENV, "/from/env") };
-        let resolved = resolve_decks_dir(Some(Path::new("/from/flag"))).expect("flag resolves");
-        unsafe { std::env::remove_var(DECKS_DIR_ENV) };
-
+        let resolved = resolve_decks_dir_with(Some(Path::new("/from/flag")), env("/from/env")).expect("flag resolves");
         assert_eq!(resolved, PathBuf::from("/from/flag"));
     }
 
     #[test]
     fn the_environment_outranks_the_default() {
-        unsafe { std::env::set_var(DECKS_DIR_ENV, "/from/env") };
-        let resolved = resolve_decks_dir(None).expect("env resolves");
-        unsafe { std::env::remove_var(DECKS_DIR_ENV) };
-
+        let resolved = resolve_decks_dir_with(None, env("/from/env")).expect("env resolves");
         assert_eq!(resolved, PathBuf::from("/from/env"));
+    }
+
+    /// An empty value is treated as unset, so `NETRUNNER_DECKS_DIR=` in a
+    /// shell profile falls through to the default rather than resolving to
+    /// the current directory.
+    #[test]
+    fn an_empty_environment_value_falls_through_to_the_default() {
+        let resolved = resolve_decks_dir_with(None, env("")).expect("a data dir exists in the test environment");
+        assert!(resolved.ends_with("netrunner/decks"), "{resolved:?}");
     }
 
     #[test]
     fn the_default_lands_under_the_os_data_directory() {
-        let resolved = resolve_decks_dir(None).expect("a data dir exists in the test environment");
+        let resolved = resolve_decks_dir_with(None, None).expect("a data dir exists in the test environment");
         assert!(resolved.ends_with("netrunner/decks"), "{resolved:?}");
     }
 
