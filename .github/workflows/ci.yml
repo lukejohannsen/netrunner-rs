@@ -62,10 +62,13 @@ jobs:
   #
   # Clippy runs inside the matrix rather than as one Linux-only job so that
   # platform-gated code is linted on the platform where it compiles.
+  #
+  # Cold-cache durations from the first run, which is what the timeouts are
+  # sized against: ubuntu 4m26s, macos 8m13s, windows 9m43s.
   test:
     name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
+    timeout-minutes: 30
     strategy:
       # One platform failing is information about that platform; the others
       # should still report.
@@ -84,7 +87,7 @@ jobs:
   # about six weeks early, not a reason to stop a PR.
   beta:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     continue-on-error: true
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -102,7 +105,7 @@ jobs:
   # items (seven of which this job found on its first run) all fail here.
   docs:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     env:
       # broken_intra_doc_links is the one rustdoc lint allowed, and the reason
       # is the domain rather than laziness: Netrunner's printed symbols are
@@ -129,7 +132,7 @@ jobs:
   # a network dependency beyond crates.io.
   features:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -177,7 +180,7 @@ jobs:
   deny:
     name: deny (${{ matrix.checks }})
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
