@@ -136,6 +136,12 @@ Related mechanical gates, all of which must stay green:
 
 The bar for any change: `cargo test --workspace` fully green and `cargo clippy --workspace --all-targets` completely silent. Both hold today.
 
+**CI enforces that bar** (`.github/workflows/ci.yml`), and the `ci` aggregate check is **required on `main`** — a red run blocks the merge, so a branch is not landable until it is green. Every push and pull request runs both commands on Linux, Windows *and* macOS — three platforms, where the repo previously only ever built on one — plus `cargo doc` with warnings denied (one exception, below), each optional feature one crate at a time, `cargo-deny` (advisories, licenses, bans, sources — see `deny.toml`) and `cargo-machete`. The two 256-seed sweeps run weekly and on demand in `.github/workflows/deep-sweep.yml`; they are still the thing to run locally before merging engine-level work, because a weekly job is not a pre-merge gate.
+
+One rustdoc lint is allowed, and it is a domain collision rather than laziness: rustdoc reads Netrunner's printed symbols — `[click]`, `[c]`, `[credit]`, `[mu]`, `[trash]`, which these comments quote verbatim from card text — as intra-doc links, so `broken_intra_doc_links` is passed `-A` in the `docs` job. Every other rustdoc lint is denied, including `private_intra_doc_links`; **keep quoting card text, and do not escape the brackets.**
+
+**Two deliberate omissions, so neither reads as an oversight.** There is no `cargo fmt --check`: this codebase has never been rustfmt-formatted, `cargo fmt --all --check` reports about 3,860 diff hunks, and it is not a width setting — 2,088 hunks remain at `max_width = 200`. Gating on it means a mass-reformat commit that buries every `git blame` in the repo, which is a trade to make deliberately or not at all. And nothing anywhere uses `--all-features`: it would enable `netrunner_gym`'s `extension-module` (which by design does not link `libpython`, so the test binary cannot run) at the same time as `ort`'s build-time binary download.
+
 ---
 
 ## Core Cargo Commands
@@ -213,7 +219,10 @@ number moved, so the rules below are mostly about making that possible.
   `cargo test --workspace` green, `cargo clippy --workspace --all-targets`
   silent, and for engine-level work both 256-seed sweeps. A branch that claims
   a measured effect also carries the before/after numbers, taken on **pinned
-  binaries** — see the Testing Rule for why.
+  binaries** — see the Testing Rule for why. CI now checks the first two on
+  three platforms for you, but it runs the sweeps only at the default seed
+  count: **the 256-seed runs are still yours to do** before merging engine
+  work, and a green PR is not evidence they happened.
 - Never force-push `main` and never rewrite published history.
 
 ### Pull requests

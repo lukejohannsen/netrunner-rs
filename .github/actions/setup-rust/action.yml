@@ -1,0 +1,77 @@
+name: Set up Rust and Python
+description: >
+  Installs a Rust toolchain with a shared build cache, plus the Python
+  interpreter netrunner_gym has to link against. Factored out because four
+  jobs need the identical five steps, and the libpython wiring below is the
+  part most likely to need a fix in one place rather than four.
+
+inputs:
+  toolchain:
+    description: Rust toolchain to install (stable, beta, a version number).
+    required: false
+    default: stable
+  components:
+    description: Comma-separated extra rustup components.
+    required: false
+    default: clippy
+
+runs:
+  using: composite
+  steps:
+    # netrunner_gym depends on pyo3 unconditionally, and its
+    # `extension-module` feature is off by default, so the default build is
+    # PyO3's *embedding* mode: every `cargo build/test/clippy --workspace`
+    # links libpython. That makes an interpreter a hard requirement of this
+    # workspace on all three platforms, not just a convenience for the RL
+    # tooling.
+    #
+    # The version is pinned rather than tracking latest: pyo3 0.29 has an
+    # upper bound on the CPython it supports, and a runner-side Python bump
+    # should not be able to break the build without a commit here.
+    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: '3.12'
+
+    # Two different problems, one step.
+    #
+    # Link time: crates/netrunner_gym/build.rs finds libpython by asking
+    # sysconfig for LIBPL, which needs to be the *same* interpreter pyo3
+    # itself resolves — hence pinning PYO3_PYTHON to an absolute path instead
+    # of letting each build script search PATH.
+    #
+    # Run time: build.rs emits `rustc-link-search`, which satisfies the
+    # linker but adds no rpath, so the test binary still has to find
+    # libpython3.12.so when it starts. LIBDIR on the loader path is what
+    # makes `cargo test -p netrunner_gym` actually run. Windows needs
+    # neither — setup-python puts the DLL on PATH — and the `if` below is
+    # simply a no-op there, since LIBDIR is empty on Windows.
+    #
+    # zizmor's github-env audit fires on any GITHUB_ENV write, because a
+    # write derived from attacker-controlled text can inject an environment
+    # variable into later steps. Suppressed rather than worked around: every
+    # value below comes from the interpreter pinned in the step above, this
+    # action takes no input that reaches the script, and a composite action
+    # has no other way to hand an environment variable to the job's
+    # remaining steps.
+    - name: Point the linker and the loader at libpython
+      shell: bash
+      run: | # zizmor: ignore[github-env]
+        set -euo pipefail
+        python -c 'import sys; print(sys.version)'
+        echo "PYO3_PYTHON=$(python -c 'import sys; print(sys.executable)')" >> "$GITHUB_ENV"
+        libdir="$(python -c 'import sysconfig; print(sysconfig.get_config_var("LIBDIR") or "")')"
+        if [ -n "$libdir" ]; then
+          echo "LD_LIBRARY_PATH=${libdir}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}" >> "$GITHUB_ENV"
+          echo "DYLD_FALLBACK_LIBRARY_PATH=${libdir}${DYLD_FALLBACK_LIBRARY_PATH:+:${DYLD_FALLBACK_LIBRARY_PATH}}" >> "$GITHUB_ENV"
+        fi
+
+    - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        components: ${{ inputs.components }}
+
+    # Keyed on the toolchain so the beta job never shares artifacts with the
+    # stable one.
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        key: ${{ inputs.toolchain }}

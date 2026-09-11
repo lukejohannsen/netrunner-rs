@@ -1,0 +1,79 @@
+# cargo-deny configuration — the supply-chain half of CI.
+#
+# Four checks run in CI (see .github/workflows/ci.yml): `advisories` catches
+# known vulnerabilities and yanked crates, `licenses` enforces the allow-list
+# below, `bans` watches for duplicate and forbidden crates, and `sources`
+# keeps every dependency coming from crates.io. `cargo-audit` is deliberately
+# not also wired up: `advisories` reads the same RustSec database.
+
+[graph]
+# Resolve the graph with every feature enabled so the optional `onnx` path
+# (`ort`, `ndarray` and their transitive `ureq`/`webpki-roots` subtree) is
+# audited too. This only affects which crates are *considered* — cargo-deny
+# never builds anything, so enabling `netrunner_gym`'s `extension-module`
+# here costs nothing.
+all-features = true
+
+[advisories]
+# Anything yanked from crates.io is an error, not a warning: a yank is the
+# author saying "do not use this version", and `Cargo.lock` is committed so
+# the fix is always a deliberate update.
+yanked = "deny"
+# Restrict unmaintained-crate warnings to crates this workspace depends on
+# directly. A transitive crate going unmaintained is a real signal but not
+# something this repo can act on, and turning every PR red for it would
+# train us to ignore the check.
+unmaintained = "workspace"
+# Every entry here needs an advisory ID, a reason, and the date it was added,
+# so a stale exception is obvious on sight. Empty is the goal state.
+ignore = []
+
+[licenses]
+# An allow-list, not a deny-list: a new dependency under an unreviewed
+# license fails CI rather than sliding in. This project is GPL-3.0-or-later,
+# so permissive and weak-copyleft dependencies are fine in this direction —
+# the reverse would not be.
+#
+# Derived from `cargo deny --all-features list` against this lockfile, not
+# from a generic template. Crates offering a choice (`MIT OR Apache-2.0` and
+# friends) are satisfied by MIT or Apache-2.0 and need nothing further; the
+# entries below the first two exist because some crate has no alternative:
+allow = [
+    "MIT",
+    "Apache-2.0",
+    # target-lexicon (via pyo3-build-config) offers only this.
+    "Apache-2.0 WITH LLVM-exception",
+    # hmac-sha256 is ISC-only, and ring is `Apache-2.0 AND ISC` — both
+    # halves of that AND have to be allowed for ring to pass.
+    "ISC",
+    # subtle (via ring's dependents) is BSD-3-Clause-only.
+    "BSD-3-Clause",
+    # The 19 icu_* / zerovec / yoke crates under url's idna are Unicode-3.0
+    # only.
+    "Unicode-3.0",
+    # foldhash (via hashbrown) is Zlib-only.
+    "Zlib",
+    # option-ext, under `dirs`, is MPL-2.0-only. File-level copyleft and
+    # GPL-compatible.
+    "MPL-2.0",
+    # webpki-roots, under reqwest's rustls stack, is CDLA-Permissive-2.0.
+    "CDLA-Permissive-2.0",
+    # This workspace's own ten crates.
+    "GPL-3.0-or-later",
+]
+
+[bans]
+# A 282-package tree has genuine duplicate majors (three `windows-sys`, two
+# `rand`, two `syn`) that no change here can collapse — they come from
+# dependencies' own requirements. Warn so a duplicate we *can* fix is
+# visible, rather than denying and being ignored.
+multiple-versions = "warn"
+deny = []
+
+[sources]
+# There are no git dependencies today, and a git dependency is a supply-chain
+# surface with no crates.io audit trail. Keep it that way; adding one should
+# be a deliberate edit here.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

@@ -1,5 +1,9 @@
 # netrunner-rs
 
+[![CI](https://github.com/lukejohannsen/netrunner-rs/actions/workflows/ci.yml/badge.svg)](https://github.com/lukejohannsen/netrunner-rs/actions/workflows/ci.yml)
+[![Deep sweep](https://github.com/lukejohannsen/netrunner-rs/actions/workflows/deep-sweep.yml/badge.svg)](https://github.com/lukejohannsen/netrunner-rs/actions/workflows/deep-sweep.yml)
+[![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+
 A deterministic, data-driven engine for the **Netrunner** card game, written in Rust.
 
 The rules engine is a pure state machine with no I/O, no async runtime, and no rendering
@@ -77,6 +81,11 @@ scripts/venv/bin/python3 scripts/run_iteration_loop.py -g 2400 -s 64 --window 4
 cargo test --workspace
 cargo clippy --workspace --all-targets
 ```
+
+Both of those run in CI on Linux, Windows and macOS for every push and pull request, along
+with the dependency-hygiene checks (`cargo-deny`, `cargo-machete`) and a weekly 256-seed run
+of the two agent-driven sweeps. `.github/workflows/ci.yml` explains what each job is for and
+what is deliberately left out.
 
 ## Workspace layout
 

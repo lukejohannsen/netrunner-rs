@@ -117,8 +117,8 @@ fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
 
 /// End the active side's turn. Opens a `WindowCheckpoint::EndOfTurn { side }`
 /// paid ability window; closing it hands control to the other side via
-/// [`finish_end_turn`] (see that function's doc comment for what happens
-/// next — the hand-size/`Discard`/[`enter_start_of_turn`] logic this
+/// `finish_end_turn` (see that function's doc comment for what happens
+/// next — the hand-size/`Discard`/`enter_start_of_turn` logic this
 /// function used to run inline).
 ///
 /// Deliberately NOT modeled: card reactions to the end-of-turn *window*
@@ -142,7 +142,7 @@ fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
 /// clicks that should no longer exist — at any run checkpoint, either turn
 /// boundary, or a `WindowCheckpoint::PostAction`.
 ///
-/// Zeroed here rather than in [`enter_start_of_turn`] because clicks are
+/// Zeroed here rather than in `enter_start_of_turn` because clicks are
 /// lost when *this* turn ends, which is strictly earlier than when the
 /// opponent's begins — and the gap between the two is exactly the
 /// `EndOfTurn` window where they were spendable.
@@ -192,7 +192,7 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
 
 /// Resumes what [`end_turn`]'s `WindowCheckpoint::EndOfTurn` window was
 /// pausing: the hand-size check `end_turn` used to run inline. Hands control
-/// to the other side via [`enter_start_of_turn`] if `side`'s hand is within
+/// to the other side via `enter_start_of_turn` if `side`'s hand is within
 /// its max hand size (`CORP_MAX_HAND_SIZE`/`RUNNER_MAX_HAND_SIZE`); otherwise
 /// transitions to `GamePhase::Discard { side, required }` first — control
 /// only passes once `PlayerAction::DiscardCard` (via [`discard_card`])
@@ -244,7 +244,7 @@ pub(crate) fn finish_end_turn(
 /// [`end_turn`]). Errors with `RulesError::NotInDiscardPhase` outside
 /// `GamePhase::Discard`, or `RulesError::CardNotInHand` if the card isn't in
 /// the owing side's hand. Once the phase's `required` count reaches zero,
-/// hands control to the other side via [`enter_start_of_turn`] — the same
+/// hands control to the other side via `enter_start_of_turn` — the same
 /// handoff `end_turn` performs directly when no discard was owed at all.
 pub fn discard_card(
     state: &GameState,

@@ -16,4 +16,9 @@ env/
 
 # Local Claude Code state (per-machine agent settings and permissions)
 .claude/
+
+# The workflow audit's SARIF report. CI writes it in the workspace before
+# uploading it to the Security tab, so running that job's command locally
+# leaves one behind.
+zizmor.sarif
 __pycache__/

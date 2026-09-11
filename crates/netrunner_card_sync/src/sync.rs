@@ -195,18 +195,35 @@ mod tests {
     /// removes it on drop.
     mod tempfile_dir {
         use std::path::{Path, PathBuf};
+        use std::sync::atomic::{AtomicU64, Ordering};
 
         pub struct TempDir(PathBuf);
+
+        /// Distinguishes concurrent `TempDir`s *within* one test binary.
+        ///
+        /// Load-bearing: the pid and the timestamp together are not unique
+        /// here. `cargo test` runs these tests as parallel threads of a
+        /// single process, so `process::id()` is shared, and a clock coarser
+        /// than a nanosecond returns the same `as_nanos()` to two threads
+        /// that start together — which is not hypothetical, it is how this
+        /// was found. On macOS in CI two tests were handed the same
+        /// directory, and the first to finish removed it on drop while the
+        /// other was still writing: one test failed its assertion and the
+        /// other died in `atomic_write` with `NotFound`. A counter does not
+        /// depend on clock resolution at all; the timestamp stays because it
+        /// still separates one *run* of the binary from the next.
+        static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
         impl TempDir {
             pub fn new() -> Self {
                 let path = std::env::temp_dir().join(format!(
-                    "netrunner_card_sync_test_{}_{}",
+                    "netrunner_card_sync_test_{}_{}_{}",
                     std::process::id(),
                     std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .unwrap()
-                        .as_nanos()
+                        .as_nanos(),
+                    NEXT_ID.fetch_add(1, Ordering::Relaxed)
                 ));
                 std::fs::create_dir_all(&path).expect("create temp dir");
                 Self(path)
@@ -222,6 +239,22 @@ mod tests {
                 let _ = std::fs::remove_dir_all(&self.0);
             }
         }
+    }
+
+    /// Guards the uniqueness `sync_with_temp_cache` depends on, because a
+    /// green sweep is not evidence of it: the pid-plus-timestamp name this
+    /// replaced passed on Linux for as long as it existed and only failed
+    /// where the clock is coarse. A tight loop is the shape that catches it
+    /// — every duplicate name means two tests sharing a directory, and the
+    /// first `TempDir` dropped deletes the other's cache file mid-write.
+    #[test]
+    fn temp_dirs_made_in_a_tight_loop_are_all_distinct() {
+        let dirs: Vec<_> = (0..64).map(|_| tempfile_dir::TempDir::new()).collect();
+        let mut paths: Vec<_> = dirs.iter().map(|dir| dir.path().to_path_buf()).collect();
+        let created = paths.len();
+        paths.sort();
+        paths.dedup();
+        assert_eq!(paths.len(), created, "two temp dirs shared a path");
     }
 
     #[tokio::test]

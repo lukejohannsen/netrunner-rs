@@ -103,11 +103,18 @@ fn a_match_of_system_gateway_decks_plays_to_completion() {
 /// NETRUNNER_SWEEP_SEEDS=256 cargo test -p netrunner_single_player --release
 /// ```
 ///
-/// Deliberately one test body rather than a second `#[ignore]`d deep copy:
-/// this repo has no CI, so `cargo test --workspace` on a developer machine
-/// is the only gate, and an ignored slow test is coverage that never runs.
+/// Deliberately one test body rather than a second `#[ignore]`d deep copy,
+/// and the reason has changed without the conclusion changing. It used to
+/// be that this repo had no CI, so `cargo test --workspace` on a developer
+/// machine was the only gate. There is CI now: every push runs this sweep
+/// at the default seed count on Linux, Windows and macOS, and
+/// `.github/workflows/deep-sweep.yml` runs it at 256 weekly. An ignored
+/// deep copy would still be coverage that never runs — nothing in either
+/// workflow passes `--ignored`, and adding it would mean a second test
+/// whose failures nobody has ever seen.
 /// (The one `#[ignore]` precedent, `netrunner_card_sync`'s live sync, is
-/// gated on network access — an environmental reason, not merely speed.)
+/// gated on network access to a third-party API — an environmental reason,
+/// not merely speed.)
 fn sweep_seed_count() -> u64 {
     std::env::var("NETRUNNER_SWEEP_SEEDS").ok().and_then(|value| value.parse().ok()).unwrap_or(32)
 }
