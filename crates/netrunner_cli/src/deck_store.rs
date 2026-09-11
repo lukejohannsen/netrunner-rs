@@ -52,9 +52,12 @@ pub fn resolve_decks_dir(flag: Option<&Path>) -> Result<PathBuf, String> {
 /// mutating the environment while another thread reads it is exactly the
 /// unsoundness the `unsafe` is there to flag.
 ///
-/// The caller above is the only place the variable is read, which is the
-/// trade this makes: its one line is covered by inspection rather than by a
-/// test, in exchange for no test touching shared process state.
+/// The caller above is the only place the variable is read. It is exercised
+/// by `the_wrapper_reads_the_environment_and_still_honours_the_flag`, which
+/// pins the flag precedence without depending on the environment's value;
+/// what no test covers is the variable *winning*, since observing that would
+/// mean setting it. That is the trade: one uncovered branch in exchange for
+/// no test touching shared process state.
 fn resolve_decks_dir_with(flag: Option<&Path>, env: Option<std::ffi::OsString>) -> Result<PathBuf, String> {
     if let Some(dir) = flag {
         return Ok(dir.to_path_buf());
@@ -270,6 +273,23 @@ mod tests {
     #[test]
     fn an_explicit_directory_outranks_the_environment() {
         let resolved = resolve_decks_dir_with(Some(Path::new("/from/flag")), env("/from/env")).expect("flag resolves");
+        assert_eq!(resolved, PathBuf::from("/from/flag"));
+    }
+
+    /// Covers the wrapper itself, through the one path that does not depend
+    /// on the environment: an explicit flag outranks it, so this asserts the
+    /// same answer whatever `NETRUNNER_DECKS_DIR` happens to be.
+    ///
+    /// Load-bearing beyond the coverage. This module is path-included by
+    /// `tests/onnx_opponent.rs` (see the comment there: with no `lib.rs`,
+    /// the test binary is the crate root), and an integration target is
+    /// compiled with `--test`, so `cfg(test)` is on and this module's tests
+    /// come with it while `deck.rs`, `headless.rs` and `tui` — the wrapper's
+    /// real callers — do not. Without a test calling it here, the wrapper is
+    /// dead code in that build and `-D warnings` fails the `features` job.
+    #[test]
+    fn the_wrapper_reads_the_environment_and_still_honours_the_flag() {
+        let resolved = resolve_decks_dir(Some(Path::new("/from/flag"))).expect("flag resolves");
         assert_eq!(resolved, PathBuf::from("/from/flag"));
     }
 
