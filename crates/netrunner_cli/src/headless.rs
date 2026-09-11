@@ -97,15 +97,16 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
             let steps = history.len();
             (history, outcome, steps)
         } else {
-            let corp = bots::make_agent_with_model(corp_kind, Side::Corp, seed, config.simulations, &config.model, config.corp_personality)?
-                .expect("headless_kind never resolves to a kind without a BotAgent form");
+            let setup = bots::AgentSetup::new(config.simulations);
+            let corp =
+                bots::make_agent_with_model(corp_kind, Side::Corp, seed, setup.with_personality(config.corp_personality), &config.model)?
+                    .expect("headless_kind never resolves to a kind without a BotAgent form");
             let runner = bots::make_agent_with_model(
                 runner_kind,
                 Side::Runner,
                 seed.wrapping_add(1),
-                config.simulations,
+                setup.with_personality(config.runner_personality),
                 &config.model,
-                config.runner_personality,
             )?
             .expect("headless_kind never resolves to a kind without a BotAgent form");
             let mut session = Session::new(state, registry.clone(), Seat::Agent(corp), Seat::Agent(runner));

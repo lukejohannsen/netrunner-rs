@@ -289,6 +289,23 @@ pub enum Command {
         /// `puct-onnx`; part of those bots' participant ids (`puct@32`).
         #[arg(long, default_value_t = 32)]
         simulations: usize,
+        /// How many independent samples of the hidden state each
+        /// decision searches, the `--simulations` budget split evenly
+        /// across them: `mcts`'s root-parallel trees and `puct`'s
+        /// `samples`, which are one dial under two names. Omitted, each
+        /// search keeps its own default — and `mcts` reads its from the
+        /// rayon pool, so a run is only reproducible across machines if
+        /// this says a number. Ignored by `random` and `heuristic`; use
+        /// `--label` to keep two settings apart in a report.
+        #[arg(long)]
+        determinizations: Option<usize>,
+        /// `mcts` only: give every tree the same sample of the hidden
+        /// state, so they still search independently but stop disagreeing
+        /// about what is behind the ICE. Separates "more samples" from
+        /// "the same root action valued several times" — a diagnostic,
+        /// not a stronger setting.
+        #[arg(long)]
+        shared_sample: bool,
         /// Worker threads. All cores if omitted.
         #[arg(long)]
         threads: Option<usize>,

@@ -455,6 +455,17 @@ pub struct PuctConfig {
     /// noise is noise. Left in at `1` because it is the IS-MCTS shape
     /// `MctsAgent` already has, and so that the result is on the field
     /// rather than re-discovered (ROADMAP Phase 3 §1).
+    ///
+    /// **Re-measured at 384 paired games and it is worse than null**
+    /// (ROADMAP Phase 2 §5 item 35): Runner 0.513 → 0.411 (z = −3.22),
+    /// Corp 0.581 → 0.492 (z = −2.79) — and 0.411 is `puct@32`'s own
+    /// number, so four samples buy nothing here and the split budget is
+    /// simply lost. That is the *opposite* of `MctsAgent`'s trees, where
+    /// four samples are worth +0.125 on the same chair at the same total
+    /// budget, and the difference is the open question: a playout reads
+    /// the sampled hidden cards for 15 plies, and this evaluator may not
+    /// read them at all. Do not raise this default hoping for MCTS's
+    /// result until that is answered.
     pub samples: usize,
     /// How many redraws of the hidden cards a `CompleteRun` edge fans out
     /// over — see `Breach` and `BREACH_OUTCOMES` for why the default is

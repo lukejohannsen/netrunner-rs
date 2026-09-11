@@ -46,6 +46,16 @@ pub struct BenchArgs {
     pub games: u32,
     pub seed: Option<u64>,
     pub simulations: usize,
+    /// Hidden-state samples per decision — `mcts`'s trees, `puct`'s
+    /// `samples` — `None` for each agent's own default. Not part of
+    /// `participant_id`: two settings are told apart with `--label`,
+    /// which is what that flag is for, and a report records the number
+    /// once in `BenchReport::determinizations`.
+    pub determinizations: Option<usize>,
+    /// `mcts` only: every tree shares one sample of the hidden state.
+    /// Recorded in the report beside `determinizations`, for the same
+    /// reason.
+    pub shared_sample: bool,
     pub threads: Option<usize>,
     pub report: Option<PathBuf>,
     pub ratings: Option<PathBuf>,
@@ -90,6 +100,8 @@ pub struct BenchReport {
     pub games_per_pairing: u32,
     pub seed: u64,
     pub simulations: usize,
+    pub determinizations: Option<usize>,
+    pub shared_sample: bool,
     pub games: Vec<GameRecord>,
     pub pairings: Vec<PairingSummary>,
     pub ladder: Vec<LadderRow>,
@@ -204,6 +216,8 @@ pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::
             games_per_pairing: args.games,
             seed: base_seed,
             simulations: args.simulations,
+            determinizations: args.determinizations,
+            shared_sample: args.shared_sample,
             games,
             pairings,
             ladder,
@@ -224,15 +238,20 @@ fn play(
     let (corp_deck, runner_deck) = &matchups[job.index as usize % matchups.len()];
     let (state, _events) =
         GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), registry, job.seed).map_err(|e| format!("{e:?}"))?;
-    let corp = bots::make_agent_with_model(job.corp.kind, Side::Corp, job.seed, args.simulations, &config.model, job.corp.personality)?
+    let setup = |personality| bots::AgentSetup {
+        simulations: args.simulations,
+        determinizations: args.determinizations,
+        shared_sample: args.shared_sample,
+        personality,
+    };
+    let corp = bots::make_agent_with_model(job.corp.kind, Side::Corp, job.seed, setup(job.corp.personality), &config.model)?
         .expect("kinds without a BotAgent form were rejected up front");
     let runner = bots::make_agent_with_model(
         job.runner.kind,
         Side::Runner,
         job.seed.wrapping_add(1),
-        args.simulations,
+        setup(job.runner.personality),
         &config.model,
-        job.runner.personality,
     )?
     .expect("kinds without a BotAgent form were rejected up front");
     let mut session = Session::new(state, registry.clone(), Seat::Agent(corp), Seat::Agent(runner));
@@ -328,10 +347,12 @@ mod tests {
         let mut argv = vec!["netrunner_cli", "bench"];
         argv.extend_from_slice(extra);
         let mut config = Config::parse_from(argv);
-        let Some(Command::Bench { bots, games, seed, simulations, threads, report, ratings, label }) = config.command.take() else {
+        let Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, threads, report, ratings, label }) =
+            config.command.take()
+        else {
             panic!("parsed a bench command");
         };
-        (BenchArgs { bots, games, seed, simulations, threads, report, ratings, label }, config)
+        (BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, threads, report, ratings, label }, config)
     }
 
     /// Two kinds, one game a pairing, two threads: four games, every seat
