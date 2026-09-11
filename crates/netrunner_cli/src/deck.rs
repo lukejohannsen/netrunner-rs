@@ -267,11 +267,12 @@ fn render_markdown(source: &str) -> String {
     out
 }
 
-/// Bold via `crossterm`, which is already a dependency for the TUI. Falls
+/// Bold via `ratatui`'s re-exported `crossterm`, so the escape codes here
+/// come from the same version the TUI renders with. Falls
 /// back to plain text when stdout is not a terminal, so piping `deck show`
 /// into a file does not litter it with escape codes.
 fn bold(text: &str) -> String {
-    use crossterm::style::Stylize;
+    use ratatui::crossterm::style::Stylize;
     if std::io::IsTerminal::is_terminal(&std::io::stdout()) {
         text.to_string().bold().to_string()
     } else {

@@ -24,6 +24,14 @@ yanked = "deny"
 # something this repo can act on, and turning every PR red for it would
 # train us to ignore the check.
 unmaintained = "workspace"
+# Unsound advisories get the opposite treatment, and this is not a default:
+# `unsound` also ships as "workspace", which means an unsoundness anywhere in
+# the transitive tree is silently skipped. That is exactly what happened —
+# RUSTSEC-2026-0002 and RUSTSEC-2026-0253 (`lru`, both `memory-corruption`)
+# applied to this lockfile through `ratatui` while this check reported ok, and
+# GitHub's Dependabot found them instead. Unlike an unmaintained crate, an
+# unsound one is actionable: upgrade the dependent, which is what fixed these.
+unsound = "all"
 # Every entry here needs an advisory ID, a reason, and the date it was added,
 # so a stale exception is obvious on sight. Empty is the goal state.
 ignore = []

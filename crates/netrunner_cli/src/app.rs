@@ -11,7 +11,7 @@
 
 use std::time::{Duration, Instant};
 
-use crossterm::event::{KeyCode, KeyEvent};
+use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use netrunner_core::cards::CardRegistry;
@@ -1220,7 +1220,7 @@ mod tests {
 #[cfg(test)]
 mod connection_tests {
     use super::*;
-    use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
     use netrunner_core::rules::{GamePhase, GameState};
     use netrunner_core::view::build_client_view;
 
