@@ -48,9 +48,9 @@ use netrunner_core::decks::DeckFile;
 use netrunner_core::dsl::{CardDefinition, CardId, CardType};
 use netrunner_core::rules::{
     ArchivedCard,
-    AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, GameState, InstallSlot, InstalledCard,
-    InstalledRunnerCard, MaskedZone, MemoryUnits, PlayerResources, PublicAccessPhase,
-    RunIce, RunState, RunnerState, Side,
+    AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, GameState, InstallSlot,
+    InstalledCard, InstalledRunnerCard, MaskedZone, MemoryUnits, PlayerResources, PublicAccessPhase,
+    RunIce, RunState, RunnerState, Side, SubroutineStatus,
 };
 use netrunner_core::view::ClientView;
 
@@ -481,13 +481,46 @@ fn determinize_run(
                     .find(|c| c.install_id == ice.install_id)
                     .map(|c| c.card.clone())
                     .unwrap_or_else(|| pools.draw(Slot::CorpIce));
-                let strength = registry.get(&card_id).and_then(|c| c.strength).unwrap_or(0);
+                let definition = registry.get(&card_id);
+                let strength = definition.and_then(|c| c.strength).unwrap_or(0);
+                // Subtype and subroutines follow the card that was drawn,
+                // the way `run::engine::build_run_ice` seeds them — and it
+                // seeds them **whatever the rez state**, so a sample that
+                // left them blank was not a state the real game can be in.
+                //
+                // This used to hardcode `Barrier` with no subroutines, and
+                // nothing downstream repaired it: `run::engine::reconcile_ice`
+                // keeps an existing entry whenever its `card_id` still
+                // matches the install, and here it matches by construction.
+                // So a rollout that rezzed this ICE rezzed a toothless
+                // Barrier and walked through it, on every sample, for every
+                // search. See ROADMAP Phase 2 §5 item 37.
+                let ice_type = match definition.map(|c| &c.card_type) {
+                    Some(netrunner_core::dsl::CardType::Ice(ice_type)) => *ice_type,
+                    // The pool is type-constrained to ICE, so this is
+                    // unreachable for a registry that knows the card; the
+                    // placeholder is for a card it does not.
+                    _ => netrunner_core::dsl::IceType::Barrier,
+                };
+                let subroutines = definition
+                    .map(|c| {
+                        c.subroutines
+                            .iter()
+                            .enumerate()
+                            .map(|(id, definition)| EncounteredSubroutine {
+                                id,
+                                definition: definition.clone(),
+                                status: SubroutineStatus::Pending,
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
                 RunIce {
                     install_id: ice.install_id,
                     card_id,
                     current_strength: strength,
-                    ice_type: netrunner_core::dsl::IceType::Barrier,
-                    subroutines: Vec::new(),
+                    ice_type,
+                    subroutines,
                     rezzed: ice.rezzed,
                 }
             }
@@ -1366,6 +1399,86 @@ mod tests {
     /// The counterpart: an *unrezzed* Corp card's counters are masked
     /// precisely so they cannot leak its identity, so the sample must not
     /// invent them. `0` here is honest ignorance, not a dropped field.
+    /// The sample must be a state the real game could be in — the
+    /// `determinize_run` doc comment says exactly that. An unrezzed ICE
+    /// is masked from the Runner, so the sample draws its identity; the
+    /// question is whether the rest of the `RunIce` follows that
+    /// identity. `run::engine::build_run_ice` seeds `ice_type`,
+    /// `current_strength` and `subroutines` from the card definition
+    /// **whatever the rez state**, so a faithful sample must too.
+    ///
+    /// Every ICE the pool can draw is a Sentry with two subroutines, so
+    /// the assertion cannot pass by drawing something that happens to
+    /// match a placeholder — the fixture's default `Barrier` with an
+    /// empty subroutine list is exactly what this is hunting.
+    #[test]
+    fn a_sampled_unrezzed_ice_carries_its_cards_subtype_and_subroutines() {
+        let subroutine = || netrunner_core::dsl::SubroutineDef {
+            text: "End the run.".to_string(),
+            effect: netrunner_core::dsl::Effect::EndTheRun,
+            only_breakable_by: None,
+        };
+        let mut registry = CardRegistry::new();
+        for i in 0..5 {
+            let mut ice = blank_card(&format!("corp_ice_{i}"), Side::Corp, CardType::Ice(IceType::Sentry));
+            ice.subroutines = vec![subroutine(), subroutine()];
+            registry.insert(ice);
+            registry.insert(blank_card(&format!("runner_card_{i}"), Side::Runner, CardType::Event));
+        }
+
+        let mut state = CoreGameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("corp_ice_0".to_string()),
+            server: netrunner_core::rules::ServerId::RnD,
+            slot: CoreInstallSlot::Ice,
+            rezzed: false,
+            ..Default::default()
+        }];
+        state.active_run = Some(netrunner_core::rules::RunState {
+            server: netrunner_core::rules::ServerId::RnD,
+            phase: netrunner_core::rules::RunPhase::ApproachIce,
+            ice: vec![netrunner_core::rules::RunIce {
+                card_id: CardId("corp_ice_0".to_string()),
+                install_id: state.corp.installed[0].install_id,
+                current_strength: 2,
+                ice_type: IceType::Sentry,
+                subroutines: vec![
+                    netrunner_core::rules::EncounteredSubroutine {
+                        id: 0,
+                        definition: subroutine(),
+                        status: netrunner_core::rules::SubroutineStatus::Pending,
+                    },
+                    netrunner_core::rules::EncounteredSubroutine {
+                        id: 1,
+                        definition: subroutine(),
+                        status: netrunner_core::rules::SubroutineStatus::Pending,
+                    },
+                ],
+                rezzed: false,
+            }],
+            ..Default::default()
+        });
+
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(
+            view.active_run.as_ref().expect("the run is visible").ice[0].identity.is_none(),
+            "an unrezzed ICE must be masked from the Runner, or this test is measuring the wrong branch"
+        );
+
+        let mut rng = StdRng::seed_from_u64(7);
+        let sampled = determinize(&view, &registry, &mut rng);
+        let ice = &sampled.active_run.as_ref().expect("the run survives the sample").ice[0];
+
+        assert_eq!(ice.ice_type, IceType::Sentry, "the sample's subtype must follow the card it drew, not a placeholder");
+        assert_eq!(
+            ice.subroutines.len(),
+            2,
+            "an unrezzed ICE the sample later rezzes must already carry its subroutines: `reconcile_ice` keeps an \
+             entry whose `card_id` still matches, so an empty list is never repaired"
+        );
+    }
+
     #[test]
     fn an_unrezzed_corp_cards_counters_stay_hidden_from_the_runner() {
         let registry = registry();
