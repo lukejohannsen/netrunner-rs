@@ -197,11 +197,17 @@ jobs:
   # so they get linted (actionlint: YAML, runner labels, shellcheck over
   # `run:` blocks) and audited (zizmor: script injection, over-broad
   # permissions, unpinned actions).
+  #
+  # Step order is deliberate: the audit and its upload come first, then
+  # actionlint, then the step that fails the job. Both linters therefore run
+  # on every push regardless of what the other found, and a finding still
+  # reaches the Security tab when the *other* tool is the one that broke —
+  # which is not hypothetical, it is how the first version of this job failed.
   workflows:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    # The only job that needs more than the workflow's `contents: read`, and
-    # only for the SARIF upload below.
+    # The only job needing more than the workflow's `contents: read`, and only
+    # for the SARIF upload.
     permissions:
       contents: read
       security-events: write
@@ -209,43 +215,51 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The two linters disagree about one thing, and this flag is the whole
-      # of it: zizmor's self-repository audit wants local actions referenced
-      # as `$/...` (it resolves from the repository at this commit, so an
-      # earlier step cannot swap the action's contents on the runner's
-      # filesystem), while actionlint 1.7.12 does not know that syntax yet
-      # and rejects it as a malformed ref. The pattern is deliberately
-      # narrow — a genuinely ref-less `owner/repo` still errors — and this
-      # flag should be DELETED once actionlint learns `$/`.
-      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
-        with:
-          flags: -ignore 'specifying action "\$/'
       - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
         with:
           tool: zizmor
       # Offline: the online audits want a token with more reach than this job
       # needs. `low` rather than `medium` because five low findings sat in
-      # these workflows while this job was green — a gate should fail on what
-      # the tool actually reports, or the next five go unnoticed too.
+      # these workflows while this job reported green — a gate should fail on
+      # what the tool actually reports, or the next five go unnoticed too.
       #
-      # zizmor has no --output flag, so SARIF goes to stdout. continue-on-error
-      # because the upload must still happen when there are findings — those
-      # are precisely the ones worth having in the Security tab.
+      # zizmor has no --output flag, so SARIF goes to stdout and into a file.
+      # continue-on-error because the upload below must still happen when
+      # there are findings: those are the ones worth having in the Security
+      # tab. The job's verdict is the last step's, not this one's.
       - name: Audit workflows
         id: zizmor
         continue-on-error: true
         run: zizmor --no-online-audits --min-severity low --format sarif . > zizmor.sarif
-      # A PR from a fork gets a read-only token and could not upload, which is
-      # why this step never decides the job's outcome — the step below does.
+      # Guarded on the file existing rather than `always()` alone: if the
+      # audit cannot run at all, a missing-file error here would bury the
+      # real reason under a second failure. A fork PR's read-only token also
+      # cannot upload, which is the other reason this step never decides the
+      # job's outcome.
       - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
-        if: always()
+        if: always() && hashFiles('zizmor.sarif') != ''
         with:
           sarif_file: zizmor.sarif
           category: zizmor
-      # Only runs when there was something to say: re-runs the audit for
-      # human-readable output in the log, and exits non-zero as itself.
+      # The two linters disagree about exactly one thing, and this flag is
+      # the whole of it: zizmor's self-repository audit wants local actions
+      # referenced as `$/...`, while actionlint 1.7.12 does not know that
+      # syntax and rejects it as a malformed ref. Scoped to that one form —
+      # a genuinely ref-less `actions/checkout` still errors — and DELETE it
+      # once actionlint learns `$/`.
+      #
+      # No spaces and no double quotes in the pattern, deliberately: this
+      # action splits `flags` on whitespace honouring double quotes only
+      # (`/(?:[^\s"]+|"[^"]*")+/g`), so a quoted pattern containing spaces
+      # arrives as four separate arguments and actionlint fails on garbage.
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          flags: -ignore \$/\.github
+      # Last, so it cannot skip actionlint above, and `always()` so the audit
+      # still reports when actionlint was the failure. Re-runs the audit for
+      # readable log output, and exits non-zero as itself.
       - name: Report what the audit found
-        if: steps.zizmor.outcome == 'failure'
+        if: always() && steps.zizmor.outcome == 'failure'
         run: zizmor --no-online-audits --min-severity low .
 
   secrets:
