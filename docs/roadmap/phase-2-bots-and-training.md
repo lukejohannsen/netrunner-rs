@@ -535,4 +535,38 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **What it validates.** Item 33's decision to measure a null *per incumbent per arena shape* rather than once: a chair null moves **0.55 → 0.70 on search budget alone**, same binary, same decks, same evaluator. A null carried across configurations would have been wrong by more than any effect the gate is trying to detect.
 
+35. **The Runner chair is uncertainty-bound and the Corp chair is depth-bound, and that one fact explains both searches** (`diag/mcts-runner-chair`, 10 September 2026). ROADMAP "next" item 1. Every cell below is 384 games against the **same fixed heuristic** on the other chair, all runs the same two-kind shape on `--seed 1` so each cell plays the *identical* (matchup, seed) games — the `heuristic` vs `heuristic` control is **0.5625 in all nine runs**, which is how you know. Reported paired (McNemar over the discordant games) as well as raw, because pairing is worth about a full sigma here: the games differ enormously in how winnable a chair is, and that variance is common to both cells.
+
+    **The whole of MCTS's Runner-chair lead over PUCT is its determinization count.** Item 34 handed over `mcts@128` at +0.077 on the Runner chair and −0.090 on the Corp chair, and asked what the rollout was doing. It was doing nothing. `MctsAgent` runs `trees` root-parallel searches, each determinizing its own sample and splitting the budget (`iterations / trees`), and on this box that count is **read off `rayon::current_num_threads().clamp(1, 4)`** — so `mcts@128` was 4 × 32 all along, and was a *different bot on a machine with fewer cores*. Pin it to one tree and the lead is gone:
+
+    | Runner chair, 128 total simulations | score | paired vs `puct@128` |
+    |---|---|---|
+    | `mcts`, 4 trees (what item 34 measured) | **0.6354** | +0.1224, **z = +4.46** |
+    | `mcts`, 2 trees | 0.5755 | — |
+    | `mcts`, 1 tree | 0.5104 | −0.0026, **z = −0.09** |
+    | `puct@128` (1 sample) | 0.5130 | — |
+
+    At one sample the two searches land within 0.003 of each other while still differing in everything else they do — leaf evaluation (a 15-ply weighted-random playout against a static `evaluate_state_with`), exploration rule (UCT at `sqrt(2)` over unbounded values against PUCT over `tanh`-squashed ones), and backup convention. **None of it matters on this chair.** The rollout, which was the obvious suspect, is worth nothing.
+
+    **It is samples, not the depth they cost.** Splitting the budget confounds the two, and Phase 3 §1 already said this chair was not budget-bound, so the one-sample depth curve settles it — at *identical* per-tree depth of 32, one sample scores 0.4974 and four score 0.6354 (**−0.1380, z = −4.90**), while at one sample quadrupling depth 32 → 128 is worth nothing (0.4974 → 0.5104, z = −0.48):
+
+    | `mcts`, 1 sample | as Corp | as Runner |
+    |---|---|---|
+    | 16 iterations | 0.314 | 0.458 |
+    | 32 | 0.396 | 0.497 |
+    | 64 | 0.490 | 0.534 |
+    | 128 | 0.522 | 0.510 |
+
+    **The two chairs are bound by different resources.** Depth is worth **+0.208** to the Corp chair over that range and still climbing at 128 (item 34 took it to 512); it is worth +0.076 to the Runner chair and has **saturated by 64**. So trading depth for samples is nearly free for the Runner and expensive for the Corp, which is why the same budget split moves the two chairs in opposite directions (Corp 0.522 → 0.500, Runner 0.510 → 0.635). **This is item 34's whole budget curve from the inside**: raising simulations converts on one chair only, so the pool tilts Corp — and the tilt is a fact about what each chair's search is short of, not about the decks.
+
+    **And it is the diversity of the hidden information, not the extra valuations.** Four trees also re-value each root action four times, so the gain could have been variance reduction on a noisy playout rather than integration over the information set. `--shared-sample` separates them — four trees, one shared determinization, so the averaging survives and the disagreement about what is behind the ICE does not. It scores **0.5417**: **−0.0938 (z = −3.60)** against four independent samples and **+0.0312 (z = +1.14, not significant)** against one. Three quarters of the effect is the diversity. The prediction going in was the opposite, from the PUCT result below.
+
+    **PUCT's own knob does the reverse, which confirms Phase 3 §1 rather than overturning it.** `PuctConfig::samples` is the same dial under another name, and Phase 3 measured it twice at 192 games to nothing (0.219 → 0.219 absolute leaves, 0.411 → 0.406 relative). At 384 paired games it is not merely null, it is **negative on both chairs**: Runner 0.5130 → **0.4115** (−0.1016, z = −3.22), Corp 0.5807 → **0.4922** (−0.0885, z = −2.79). And 0.4115 is essentially item 34's `puct@32` (0.409) — **PUCT's four samples buy nothing at all and it simply pays the depth loss**, where MCTS's four buy +0.138 on top of paying the same loss.
+
+    **The lead that hands over, stated as a hypothesis and not a finding.** The searches differ in what a sample is worth to them, and the candidate explanation is what reads it: MCTS values a leaf by *playing the sampled hidden cards out* for 15 plies, while PUCT values one with `evaluate_state_with` a few plies down, which may barely read the hidden state at all. If the static evaluator is near-blind to what was sampled, then marginalizing over four samples is marginalizing over nothing and only the depth is lost. That is cheap to test without games — draw N determinizations of one `ClientView` and compare the spread of the static evaluation against the spread of the playout value — and it is the next thing to run.
+
+    **What this does not claim.** Nothing here makes `mcts` the better bot: its Corp chair is 0.500 against PUCT's 0.581 on the same games, and its self-pairing sits at 0.349 (item 34). The finding is about which resource each *chair* converts, which is why it bears on every chair number the project has recorded rather than on the bot ladder.
+
+    Scaffolding, all of it permanent and none of it a behaviour change: `bench --determinizations N` (one flag, because `mcts`'s `trees` and `puct`'s `samples` are one dial — and because `mcts`'s default is machine-dependent, a bench run was only reproducible by accident), `bench --shared-sample`, `MctsAgent::with_trees` / `with_shared_sample`, a `bots::AgentSetup` that groups the knobs rather than widening two argument lists past clippy's limit, and a `paired` mode in `scripts/corp_share_curve.py` that finally exploits the same-offset property the script already documented. The `--determinizations 1` leg re-ran the ladder's `puct@128` cell on the rebuilt binary and reproduced it exactly (0.581 / 0.513 / 0.562), which is the pinned-binary check across the refactor.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.

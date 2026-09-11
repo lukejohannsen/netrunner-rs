@@ -58,6 +58,18 @@ pub struct MctsAgent {
     /// Leaf and rollout evaluation terms — `Weights::default()` unless a
     /// `Personality` was asked for through `with_personality`.
     weights: Weights,
+    /// Whether every tree determinizes the *same* hidden state instead of
+    /// its own — the trees still search independently, they just stop
+    /// disagreeing about what is behind the ICE.
+    ///
+    /// This exists to separate two things `trees > 1` changes together,
+    /// because they have different fixes. More trees means more samples
+    /// of the hidden state, *and* it means a root action is re-evaluated
+    /// in several trees, so its value averages several noisy 15-ply
+    /// playouts instead of one. Sharing the sample keeps the averaging
+    /// and removes the diversity. See ROADMAP Phase 2 §5 item 35 for
+    /// which one the Runner chair was actually buying.
+    shared_sample: bool,
 }
 
 impl MctsAgent {
@@ -73,6 +85,18 @@ impl MctsAgent {
         Self::with_config(side, seed, iterations, DEFAULT_MAX_DEPTH, DEFAULT_EXPLORATION, trees)
     }
 
+    /// `with_iterations`, with the root-parallel tree count said out
+    /// loud instead of read off `rayon::current_num_threads()`. The total
+    /// budget is unchanged — `select_action` searches `iterations /
+    /// trees` per tree — so this trades *hidden-information samples*
+    /// against *depth per sample* at fixed cost, and nothing else. The
+    /// default is machine-dependent by construction, which is fine for a
+    /// bot seat and not fine for a measurement: see ROADMAP Phase 2 §5
+    /// item 35, which is exactly this dial.
+    pub fn with_trees(side: Side, seed: u64, iterations: usize, trees: usize) -> Self {
+        Self::with_config(side, seed, iterations, DEFAULT_MAX_DEPTH, DEFAULT_EXPLORATION, trees)
+    }
+
     pub fn with_config(side: Side, seed: u64, iterations: usize, max_depth: usize, exploration: f64, trees: usize) -> Self {
         Self {
             side,
@@ -83,6 +107,7 @@ impl MctsAgent {
             seed,
             cycle: CycleGuard::default(),
             weights: Weights::default(),
+            shared_sample: false,
         }
     }
 
@@ -90,6 +115,13 @@ impl MctsAgent {
     /// `personality.weights()`.
     pub fn with_personality(mut self, personality: Personality) -> Self {
         self.weights = personality.weights();
+        self
+    }
+
+    /// The same search with every tree determinizing one shared sample —
+    /// see `shared_sample`. A diagnostic setting, not a better one.
+    pub fn with_shared_sample(mut self, shared: bool) -> Self {
+        self.shared_sample = shared;
         self
     }
 }
@@ -108,13 +140,23 @@ impl BotAgent for MctsAgent {
         let per_tree_iterations = (self.iterations / trees).max(1);
         let weights = self.weights;
         let base_seed = self.seed;
+        let shared_sample = self.shared_sample;
         self.seed = self.seed.wrapping_add(trees as u64);
 
         let per_tree_stats: Vec<Vec<(PlayerAction, u32, f64)>> = (0..trees)
             .into_par_iter()
             .map(|tree_index| {
                 let mut rng = StdRng::seed_from_u64(base_seed.wrapping_add(tree_index as u64));
-                let sample = determinize(view, registry, &mut rng);
+                // Drawn from its own stream when shared, so every tree
+                // lands on tree 0's sample while still searching it with
+                // its own `rng` — the two roles of this seed are what
+                // `shared_sample` has to pull apart.
+                let sample = if shared_sample {
+                    let mut sample_rng = StdRng::seed_from_u64(base_seed);
+                    determinize(view, registry, &mut sample_rng)
+                } else {
+                    determinize(view, registry, &mut rng)
+                };
                 let mut root = Node::new_root(
                     sample,
                     crate::agent::progressive(&view.legal_actions, view.pending_decision.as_ref()),

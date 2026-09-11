@@ -36,17 +36,78 @@ use crate::config::BotKind;
 /// agents (`Mcts`, `Puct`); the others ignore it. `personality` biases
 /// the evaluator every kind but `Random` scores with (`Random` has no
 /// evaluator, and a network-backed `PuctOnnx` has its own value head).
-pub fn make_agent(kind: BotKind, side: Side, seed: u64, simulations: usize, personality: Personality) -> Option<Box<dyn BotAgent>> {
+///
+/// How a searching agent is configured, as one value rather than a
+/// widening argument list — `make_agent_with_model` was at clippy's limit
+/// with these spread out, and every knob here is one a *measurement*
+/// sets, so they travel together by nature.
+///
+/// [`make_driver`] deliberately does not take one: an index-based
+/// `netrunner_bots::Agent` has no determinization of its own to
+/// configure, and giving it a config it would ignore is worse than the
+/// asymmetry.
+#[derive(Debug, Clone, Copy)]
+pub struct AgentSetup {
+    /// Per-decision search budget for `Mcts` and the `Puct` kinds; the
+    /// others ignore it.
+    pub simulations: usize,
+    /// How many independent samples of the hidden state one decision
+    /// searches, the `simulations` budget split evenly across them.
+    /// **One field, because it is one dial** — `MctsAgent` calls it
+    /// `trees` (root-parallel searches) and `PuctConfig` calls it
+    /// `samples`, and the two searches disagreeing about what it is worth
+    /// is the whole of ROADMAP Phase 2 §5 item 35.
+    ///
+    /// `None` means each agent's own default, and for `Mcts` that default
+    /// is `rayon::current_num_threads().clamp(1, 4)` — so **`mcts`
+    /// behaves differently on a machine with fewer cores**, and a run is
+    /// only reproducible across boxes if this says a number.
+    pub determinizations: Option<usize>,
+    /// `Mcts` only: every tree searches one shared sample of the hidden
+    /// state instead of its own. Diagnostic — see
+    /// `MctsAgent::with_shared_sample` for what it separates.
+    pub shared_sample: bool,
+    /// Biases the evaluator every kind but `Random` scores with (`Random`
+    /// has no evaluator, and a network-backed `PuctOnnx` has its own
+    /// value head).
+    pub personality: Personality,
+}
+
+impl AgentSetup {
+    /// The defaults a seat gets when nobody is measuring anything: each
+    /// agent's own determinization count, no shared sample, balanced.
+    pub fn new(simulations: usize) -> Self {
+        Self { simulations, determinizations: None, shared_sample: false, personality: Personality::Balanced }
+    }
+
+    pub fn with_personality(mut self, personality: Personality) -> Self {
+        self.personality = personality;
+        self
+    }
+}
+
+pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Option<Box<dyn BotAgent>> {
+    let AgentSetup { simulations, determinizations, shared_sample, personality } = setup;
     match kind {
         BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
         BotKind::Heuristic => Some(Box::new(HeuristicAgent::with_personality(side, seed, personality))),
-        BotKind::Mcts => Some(Box::new(MctsAgent::with_iterations(side, seed, simulations).with_personality(personality))),
+        BotKind::Mcts => {
+            let agent = match determinizations {
+                Some(trees) => MctsAgent::with_trees(side, seed, simulations, trees),
+                None => MctsAgent::with_iterations(side, seed, simulations),
+            };
+            Some(Box::new(agent.with_personality(personality).with_shared_sample(shared_sample)))
+        }
         BotKind::Puct => Some(Box::new(PuctAgent::with_config(
             side,
             seed,
             UniformPolicyEvaluator::with_personality(side, personality),
-            PuctConfig { iterations: simulations, ..PuctConfig::default() },
+            PuctConfig {
+                iterations: simulations,
+                samples: determinizations.unwrap_or(PuctConfig::default().samples),
+                ..PuctConfig::default()
+            },
         ))),
     }
 }
@@ -60,26 +121,30 @@ pub fn make_agent_with_model(
     kind: BotKind,
     side: Side,
     seed: u64,
-    simulations: usize,
+    setup: AgentSetup,
     model_path: &str,
-    personality: Personality,
 ) -> Result<Option<Box<dyn BotAgent>>, String> {
     match kind {
-        BotKind::PuctOnnx => make_puct_onnx_agent(side, seed, simulations, model_path).map(Some),
-        _ => Ok(make_agent(kind, side, seed, simulations, personality)),
+        BotKind::PuctOnnx => make_puct_onnx_agent(side, seed, setup, model_path).map(Some),
+        _ => Ok(make_agent(kind, side, seed, setup)),
     }
 }
 
 #[cfg(feature = "onnx")]
-fn make_puct_onnx_agent(side: Side, seed: u64, simulations: usize, model_path: &str) -> Result<Box<dyn BotAgent>, String> {
+fn make_puct_onnx_agent(side: Side, seed: u64, setup: AgentSetup, model_path: &str) -> Result<Box<dyn BotAgent>, String> {
     use netrunner_bots::OnnxPolicyEvaluator;
 
     let evaluator = OnnxPolicyEvaluator::new(model_path, side).map_err(|e| onnx_load_error(model_path, &e))?;
-    Ok(Box::new(PuctAgent::with_config(side, seed, evaluator, PuctConfig { iterations: simulations, ..PuctConfig::default() })))
+    let config = PuctConfig {
+        iterations: setup.simulations,
+        samples: setup.determinizations.unwrap_or(PuctConfig::default().samples),
+        ..PuctConfig::default()
+    };
+    Ok(Box::new(PuctAgent::with_config(side, seed, evaluator, config)))
 }
 
 #[cfg(not(feature = "onnx"))]
-fn make_puct_onnx_agent(_side: Side, _seed: u64, _simulations: usize, _model_path: &str) -> Result<Box<dyn BotAgent>, String> {
+fn make_puct_onnx_agent(_side: Side, _seed: u64, _setup: AgentSetup, _model_path: &str) -> Result<Box<dyn BotAgent>, String> {
     Err(NO_ONNX_FEATURE.to_string())
 }
 
@@ -115,7 +180,7 @@ pub fn make_driver(
         BotKind::Human => Err("make_driver was asked for a bot driver for the human seat".to_string()),
         BotKind::Onnx => make_onnx_driver(side, model_path),
         _ => {
-            let agent = make_agent_with_model(kind, side, seed, simulations, model_path, personality)?
+            let agent = make_agent_with_model(kind, side, seed, AgentSetup::new(simulations).with_personality(personality), model_path)?
                 .expect("every kind but Human and Onnx yields a BotAgent");
             Ok(Box::new(BotAgentIndexAdapter::new(agent, side)))
         }
@@ -141,9 +206,10 @@ mod tests {
 
     #[test]
     fn human_and_onnx_have_no_bot_agent_form() {
-        assert!(make_agent(BotKind::Human, Side::Corp, 0, 8, Personality::Balanced).is_none());
-        assert!(make_agent(BotKind::Onnx, Side::Corp, 0, 8, Personality::Balanced).is_none());
-        assert!(make_agent(BotKind::PuctOnnx, Side::Corp, 0, 8, Personality::Balanced).is_none(), "needs a model path — see make_agent_with_model");
+        let setup = AgentSetup::new(8);
+        assert!(make_agent(BotKind::Human, Side::Corp, 0, setup).is_none());
+        assert!(make_agent(BotKind::Onnx, Side::Corp, 0, setup).is_none());
+        assert!(make_agent(BotKind::PuctOnnx, Side::Corp, 0, setup).is_none(), "needs a model path — see make_agent_with_model");
     }
 
     /// `puct-onnx` is the one kind whose `BotAgent` form can fail to build,
@@ -151,7 +217,7 @@ mod tests {
     /// or off.
     #[test]
     fn puct_onnx_without_a_model_is_a_readable_error() {
-        let Err(error) = make_agent_with_model(BotKind::PuctOnnx, Side::Corp, 0, 8, "/nonexistent/model.onnx", Personality::Balanced) else {
+        let Err(error) = make_agent_with_model(BotKind::PuctOnnx, Side::Corp, 0, AgentSetup::new(8), "/nonexistent/model.onnx") else {
             panic!("a missing model cannot produce an agent");
         };
         assert!(!error.is_empty());
@@ -159,6 +225,24 @@ mod tests {
             panic!("a missing model cannot produce a driver");
         };
         assert!(!error.is_empty());
+    }
+
+    /// The knobs exist so a measurement can pin what the defaults leave
+    /// loose — `mcts` reads its tree count off
+    /// `rayon::current_num_threads()`, so it is machine-dependent. The
+    /// guard here is only that both are accepted by every kind and both
+    /// sides, since neither is observable through `BotAgent`.
+    #[test]
+    fn every_kind_accepts_an_explicit_determinization_count() {
+        for kind in [BotKind::Random, BotKind::Heuristic, BotKind::Mcts, BotKind::Puct] {
+            for side in [Side::Corp, Side::Runner] {
+                for count in [1, 2, 4] {
+                    let setup = AgentSetup { determinizations: Some(count), ..AgentSetup::new(8) };
+                    assert!(make_agent(kind, side, 7, setup).is_some(), "{kind:?} {side:?}");
+                    assert!(make_agent(kind, side, 7, AgentSetup { shared_sample: true, ..setup }).is_some(), "{kind:?} {side:?}");
+                }
+            }
+        }
     }
 
     #[test]

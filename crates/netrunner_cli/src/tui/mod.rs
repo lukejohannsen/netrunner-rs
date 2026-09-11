@@ -200,7 +200,12 @@ pub fn run_starter_game(human_side: Side, corp: &DeckFile, runner: &DeckFile, co
     let seed = config.seed.unwrap_or_else(rand::random);
     let rules = corp.category.match_rules();
     let (state, _events) = GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled)?;
-    let bot = bots::make_agent(BotKind::Heuristic, human_side.other(), seed.wrapping_add(1), DEFAULT_SIMULATIONS, config.personality_for(human_side.other()))
+    let bot = bots::make_agent(
+        BotKind::Heuristic,
+        human_side.other(),
+        seed.wrapping_add(1),
+        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(config.personality_for(human_side.other())),
+    )
         .expect("the heuristic always has a BotAgent form");
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, Seat::Agent(bot)),
@@ -323,7 +328,8 @@ fn build_bot_seat(
     match kind {
         crate::config::BotKind::Onnx => Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, personality)?))),
         _ => {
-            let agent = bots::make_agent_with_model(kind, side, seed, DEFAULT_SIMULATIONS, model, personality)?
+            let agent =
+                bots::make_agent_with_model(kind, side, seed, bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality), model)?
                 .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
             Ok((Seat::Agent(agent), None))
         }
