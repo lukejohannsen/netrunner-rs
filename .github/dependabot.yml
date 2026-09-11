@@ -1,0 +1,48 @@
+# Two ecosystems, weekly.
+#
+# The github-actions one is what makes hash-pinned actions maintainable:
+# every `uses:` in this repo is pinned to a commit SHA with the tag in a
+# trailing comment (zizmor's unpinned-uses audit treats a tag as unpinned,
+# and it is right — a tag can be moved onto a different commit), and
+# Dependabot is what moves those SHAs forward and rewrites the comment.
+# Without it, hash pinning just means permanently stale actions.
+#
+# `cooldown` is the supply-chain half: a brand-new release is exactly when a
+# compromised one is still undetected, so nothing gets adopted the day it
+# ships. Majors wait longest because they need a human reading a changelog
+# anyway.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    # One PR for the routine churn, individual PRs for majors — a major bump
+    # in a 282-package tree usually wants its own CI run and its own commit
+    # message explaining what broke.
+    groups:
+      cargo-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    cooldown:
+      default-days: 7
+      semver-major-days: 30
+      semver-minor-days: 7
+      semver-patch-days: 3
+    groups:
+      github-actions:
+        patterns: ['*']

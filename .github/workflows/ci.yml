@@ -1,0 +1,256 @@
+# The merge bar from AGENTS.md, enforced by a machine instead of by memory:
+# `cargo test --workspace` green and `cargo clippy --workspace --all-targets`
+# silent — now on Linux, Windows and macOS rather than on one Linux box.
+#
+# Deliberately absent: `cargo fmt --check`. This codebase has never been
+# rustfmt-formatted (`cargo fmt --all --check` reports ~3,860 diff hunks, and
+# it is not a max_width mismatch — 2,088 hunks remain at max_width = 200), so
+# gating on it would mean a mass-reformat commit that buries every `git blame`
+# in the repo. That is a trade worth making deliberately or not at all; it is
+# not an oversight here.
+#
+# Also deliberately absent: `--all-features`. It would enable netrunner_gym's
+# `extension-module` (which by design does not link libpython, so the test
+# binary cannot run) at the same time as `ort`'s build-time binary download.
+# Optional features are exercised one crate at a time in the `features` job.
+#
+# Every checkout passes `persist-credentials: false` and every `uses:` is
+# pinned to a commit SHA (the tag is in the trailing comment, and Dependabot
+# moves both): no job here pushes anything, so nothing needs a credential
+# left behind in `.git/config`, and a tag can be moved onto a different
+# commit by whoever owns it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  # A weekly run catches what a quiet repo otherwise finds out late: a new
+  # RustSec advisory, a yanked crate, or a stable-compiler release that
+  # breaks the build with no commit of ours involved.
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+# Superseded PR runs are pointless; a superseded push to main is still
+# history worth having a result for.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Warnings are errors in CI but not locally, so an in-progress `todo!()`
+  # with an unused import does not fight you mid-edit.
+  RUSTFLAGS: -D warnings
+  # The two agent-driven sweeps play complete bot-vs-bot games with tree
+  # search on every move, which at opt-level 0 dominates the whole suite.
+  # Optimizing the dev profile keeps what release would throw away —
+  # debug_assertions and integer-overflow panics, the latter exactly the
+  # guard that matters for click/credit/counter arithmetic — and costs about
+  # a minute of extra compile.
+  CARGO_PROFILE_DEV_OPT_LEVEL: 2
+
+jobs:
+  # The load-bearing job: the first time this workspace has been built
+  # anywhere but Linux. Real platform surface here — `dirs` resolving OS data
+  # directories, crossterm/ratatui, the server tests binding loopback
+  # sockets, and pyo3 linking libpython three different ways.
+  #
+  # Clippy runs inside the matrix rather than as one Linux-only job so that
+  # platform-gated code is linted on the platform where it compiles.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      # One platform failing is information about that platform; the others
+      # should still report.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  # Non-blocking, on purpose: a new lint landing in beta is something to know
+  # about six weeks early, not a reason to stop a PR.
+  beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: beta
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  # Clippy does not check the doc comments themselves, and this codebase's
+  # comments carry its design decisions, so they are worth a gate of their
+  # own: bad HTML, unopenable code blocks, and public docs linking to private
+  # items (seven of which this job found on its first run) all fail here.
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # broken_intra_doc_links is the one rustdoc lint allowed, and the reason
+      # is the domain rather than laziness: Netrunner's printed symbols are
+      # written `[click]`, `[c]`, `[credit]`, `[mu]`, `[trash]`, this repo's
+      # comments quote card text verbatim as a matter of house style, and
+      # rustdoc reads every one of those as an intra-doc link — 42 of them
+      # today, across the DSL modules. The alternative is escaping each as
+      # `\[click\]` forever, which taxes the most distinctive habit in these
+      # comments to protect rendered docs that are not published anywhere.
+      # Every other rustdoc lint stays denied. Revisit if this project ever
+      # publishes its API docs, where a dead link would start costing a
+      # reader something.
+      RUSTDOCFLAGS: -D warnings -A rustdoc::broken_intra_doc_links
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - run: cargo doc --workspace --no-deps --locked
+
+  # Every optional feature, one crate at a time. Left off the main matrix
+  # because `ort`'s `download-binaries` fetches an ONNX Runtime shared
+  # library from a third-party CDN at build time, so this is the one job with
+  # a network dependency beyond crates.io.
+  features:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+      - name: netrunner_core with the external card-directory loader
+        run: cargo test -p netrunner_core --features fs-loader --locked
+      - name: netrunner_bots with the ONNX policy evaluator
+        run: cargo test -p netrunner_bots --features onnx --locked
+      # tests/onnx_opponent.rs is `#![cfg(feature = "onnx")]` and needs no
+      # checkpoint — it builds its model from netrunner_bots::onnx_fixture, a
+      # hand-encoded protobuf. Its header already claimed it "runs in CI
+      # without a training run"; this step is what makes that true.
+      - name: netrunner_cli with an ONNX opponent
+        run: cargo test -p netrunner_cli --features onnx --locked
+      - name: netrunner_selfplay with ONNX
+        run: cargo check -p netrunner_selfplay --features onnx --locked
+      # Check, not test, and deliberately: with `extension-module` PyO3 does
+      # not link libpython, so no runnable test binary exists by design. What
+      # this proves is that the maturin wheel path still compiles.
+      - name: netrunner_gym as a Python extension module
+        run: cargo check -p netrunner_gym --features extension-module --locked
+
+  # Unused dependencies. Found two on its first run (netrunner_gym carried
+  # serde and serde_json with no use site), which is the argument for it.
+  machete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
+        with:
+          tool: cargo-machete
+      # --with-metadata resolves the real dependency graph instead of
+      # grepping source, which is what keeps workspace path deps from
+      # reading as unused.
+      - run: cargo machete --with-metadata
+
+  # Advisories, licenses, duplicate/banned crates and registry sources. Split
+  # into two legs so a newly published CVE does not also hide a license
+  # regression, and vice versa. See deny.toml for the policy and why each
+  # allowed license is on the list.
+  deny:
+    name: deny (${{ matrix.checks }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        checks: [advisories, 'bans licenses sources']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check ${{ matrix.checks }}
+
+  # The workflows are themselves code that runs with repository credentials,
+  # so they get linted (actionlint: YAML, runner labels, shellcheck over
+  # `run:` blocks) and audited (zizmor: script injection, over-broad
+  # permissions, unpinned actions).
+  workflows:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
+        with:
+          tool: zizmor
+      # Offline: the online audits want a token with more reach than this
+      # job needs, and SARIF upload to the security tab would want
+      # `security-events: write`. Findings show up as annotations and a
+      # non-zero exit instead, keeping the whole workflow at `contents: read`.
+      - run: zizmor --no-online-audits --min-severity medium .
+
+  secrets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # Gitleaks scans history, not just the diff, so it needs all of it.
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No license key: gitleaks-action is free for personal accounts and
+          # only bills organizations.
+          #
+          # PR comments are off so this job needs no write scope; a finding
+          # fails the check, which is the signal that matters.
+          GITLEAKS_ENABLE_COMMENTS: false
+
+  # One stable check name to require in branch protection. The matrix job
+  # names above change whenever the matrix does, and `needs` alone would let
+  # a skipped or cancelled dependency pass for a success.
+  ci:
+    if: always()
+    needs: [test, docs, features, machete, deny, workflows, secrets]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fail unless every required job succeeded
+        if: >-
+          contains(needs.*.result, 'failure')
+          || contains(needs.*.result, 'cancelled')
+          || contains(needs.*.result, 'skipped')
+        # Through the environment rather than inlined into the script: a
+        # `${{ }}` expansion inside `run:` is textual substitution, and the
+        # habit of letting one become shell source is how injection bugs
+        # start, even where — as here — the value is trustworthy.
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          echo 'One or more required jobs did not succeed:'
+          echo "$NEEDS"
+          exit 1

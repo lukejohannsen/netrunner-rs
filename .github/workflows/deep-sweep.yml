@@ -1,0 +1,58 @@
+# The deep half of the Testing Rule in AGENTS.md, on a schedule instead of
+# on someone remembering.
+#
+# Both agent-driven sweeps scale their coverage with seed count: every
+# deadlock they have ever caught was one specific RNG path, and two of them
+# sat outside the then-committed range while CI-equivalent runs stayed green.
+# The rules-coverage gate's rare-action assertions are only demanded at the
+# deep count, so 256 seeds is not a bigger version of the 32-seed run in
+# ci.yml — it checks things the shallow run does not check at all.
+#
+# Release here is deliberate and matches the documented command: at 256 seeds
+# × 3 seatings × 2 sweeps, the dev profile's ~1 s per seed per seating is the
+# difference between minutes and hours, and the shallow sweeps in ci.yml
+# already cover the debug_assertions/overflow-check side on every push.
+name: Deep sweep
+
+on:
+  # An hour after the weekly CI run, so a failure here is never confused with
+  # a plain build break.
+  schedule:
+    - cron: '0 7 * * 1'
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: Seeds per sweep (256 is the documented pre-merge depth).
+        required: false
+        default: '256'
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    # Generous on purpose until the first real run gives us a number.
+    timeout-minutes: 180
+    env:
+      NETRUNNER_SWEEP_SEEDS: ${{ inputs.seeds || '256' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-rust
+        with:
+          components: ''
+      # The index-based seat: the ActionSpace round trip and the
+      # side-agnostic get_action_mask, i.e. the RL path.
+      - name: Sweep the index-based agent path
+        run: cargo test -p netrunner_single_player --release --locked
+      # The per-seat ClientView slice every real client gets. Not redundant
+      # with the above — both bugs behind Phase 1.5's "a run can outlive the
+      # game" were invisible to the index path.
+      - name: Sweep the view-based agent path
+        run: cargo test -p netrunner_session --release --locked

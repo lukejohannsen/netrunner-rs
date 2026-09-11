@@ -31,7 +31,7 @@
 //! report saturated at `0` (ROADMAP Rules Audit, Tier 2). Netrunner's rule
 //! is a checkpoint condition: while the Runner has more memory in use than
 //! available, they must trash installed programs of their choice until they
-//! are within the limit. [`enforce_limit`] is that checkpoint.
+//! are within the limit. `enforce_limit` is that checkpoint.
 
 use crate::cards::CardRegistry;
 use crate::dsl::{CardFilter, CardType, CardZoneRef, Effect};
@@ -47,7 +47,7 @@ pub const RUNNER_BASE_MEMORY_UNITS: u32 = 4;
 /// The Runner's memory ledger, signed: the base capacity plus every
 /// installed card's `memory_bonus`, minus every installed card's
 /// `memory_cost`. Negative exactly when more memory is in use than exists —
-/// the condition [`enforce_limit`] acts on, and the number [`available_memory`]
+/// the condition `enforce_limit` acts on, and the number [`available_memory`]
 /// clamps away.
 ///
 /// Summed over the whole rig rather than filtered by `CardType`: today only

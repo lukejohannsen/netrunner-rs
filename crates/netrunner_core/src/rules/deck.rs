@@ -25,9 +25,9 @@ pub struct Deck {
 /// the identity exists in the registry, is a `CardType::Identity`, and
 /// matches `side`; the total non-identity card count meets the identity's
 /// `min_deck_size`; every card exists in the registry, respects
-/// [`MAX_COPIES_PER_CARD`], matches `side`, and (Runner decks only) isn't
+/// `MAX_COPIES_PER_CARD`, matches `side`, and (Runner decks only) isn't
 /// an Agenda; and (Corp decks only) the deck's total agenda points fall
-/// within the size-derived legal range (see [`agenda_point_range`]).
+/// within the size-derived legal range (see `agenda_point_range`).
 pub fn validate_deck(deck: &Deck, side: Side, registry: &CardRegistry) -> Result<(), RulesError> {
     let identity = registry
         .get(&deck.identity)
