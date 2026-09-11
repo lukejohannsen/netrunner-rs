@@ -36,8 +36,12 @@ env:
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    # Generous on purpose until the first real run gives us a number.
-    timeout-minutes: 180
+    # Sized on a local rehearsal of these exact commands: at 32 seeds in
+    # release the two sweeps cost 7.8s and 4.8s, so 256 seeds is roughly
+    # 62s and 38s plus the release build. An hour is several times the
+    # expected cost on a runner and still kills a genuinely hung job well
+    # short of the six-hour ceiling.
+    timeout-minutes: 60
     env:
       NETRUNNER_SWEEP_SEEDS: ${{ inputs.seeds || '256' }}
     steps:
