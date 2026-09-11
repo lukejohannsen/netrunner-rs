@@ -79,7 +79,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-rust
+      - uses: $/.github/actions/setup-rust
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo test --workspace --locked
 
@@ -93,7 +93,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-rust
+      - uses: $/.github/actions/setup-rust
         with:
           toolchain: beta
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
@@ -123,7 +123,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-rust
+      - uses: $/.github/actions/setup-rust
       - run: cargo doc --workspace --no-deps --locked
 
   # Every optional feature, one crate at a time. Left off the main matrix
@@ -137,7 +137,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: ./.github/actions/setup-rust
+      - uses: $/.github/actions/setup-rust
       - name: netrunner_core with the external card-directory loader
         run: cargo test -p netrunner_core --features fs-loader --locked
       - name: netrunner_bots with the ONNX policy evaluator
@@ -200,19 +200,53 @@ jobs:
   workflows:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # The only job that needs more than the workflow's `contents: read`, and
+    # only for the SARIF upload below.
+    permissions:
+      contents: read
+      security-events: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # The two linters disagree about one thing, and this flag is the whole
+      # of it: zizmor's self-repository audit wants local actions referenced
+      # as `$/...` (it resolves from the repository at this commit, so an
+      # earlier step cannot swap the action's contents on the runner's
+      # filesystem), while actionlint 1.7.12 does not know that syntax yet
+      # and rejects it as a malformed ref. The pattern is deliberately
+      # narrow — a genuinely ref-less `owner/repo` still errors — and this
+      # flag should be DELETED once actionlint learns `$/`.
       - uses: raven-actions/actionlint@3d39aea434753780c3b3d4a1a31c854b4dbf49d7 # v2.2.0
+        with:
+          flags: -ignore 'specifying action "\$/'
       - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
         with:
           tool: zizmor
-      # Offline: the online audits want a token with more reach than this
-      # job needs, and SARIF upload to the security tab would want
-      # `security-events: write`. Findings show up as annotations and a
-      # non-zero exit instead, keeping the whole workflow at `contents: read`.
-      - run: zizmor --no-online-audits --min-severity medium .
+      # Offline: the online audits want a token with more reach than this job
+      # needs. `low` rather than `medium` because five low findings sat in
+      # these workflows while this job was green — a gate should fail on what
+      # the tool actually reports, or the next five go unnoticed too.
+      #
+      # zizmor has no --output flag, so SARIF goes to stdout. continue-on-error
+      # because the upload must still happen when there are findings — those
+      # are precisely the ones worth having in the Security tab.
+      - name: Audit workflows
+        id: zizmor
+        continue-on-error: true
+        run: zizmor --no-online-audits --min-severity low --format sarif . > zizmor.sarif
+      # A PR from a fork gets a read-only token and could not upload, which is
+      # why this step never decides the job's outcome — the step below does.
+      - uses: github/codeql-action/upload-sarif@b96794f015dfd88f77b49b1c93e0fa7110f94c63 # v4
+        if: always()
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+      # Only runs when there was something to say: re-runs the audit for
+      # human-readable output in the log, and exits non-zero as itself.
+      - name: Report what the audit found
+        if: steps.zizmor.outcome == 'failure'
+        run: zizmor --no-online-audits --min-severity low .
 
   secrets:
     runs-on: ubuntu-latest
