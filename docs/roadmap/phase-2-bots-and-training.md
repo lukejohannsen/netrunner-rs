@@ -569,4 +569,49 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     Scaffolding, all of it permanent and none of it a behaviour change: `bench --determinizations N` (one flag, because `mcts`'s `trees` and `puct`'s `samples` are one dial — and because `mcts`'s default is machine-dependent, a bench run was only reproducible by accident), `bench --shared-sample`, `MctsAgent::with_trees` / `with_shared_sample`, a `bots::AgentSetup` that groups the knobs rather than widening two argument lists past clippy's limit, and a `paired` mode in `scripts/corp_share_curve.py` that finally exploits the same-offset property the script already documented. The `--determinizations 1` leg re-ran the ladder's `puct@128` cell on the rebuilt binary and reproduced it exactly (0.581 / 0.513 / 0.562), which is the pinned-binary check across the refactor.
 
+36. **PUCT's leaf cannot read a determinization at all — not "barely", *at all* — and that is a property of `evaluate_state_with`** (`diag/leaf-hidden-state-sensitivity`, 10 September 2026). ROADMAP "next" item 1. Item 35 left a hypothesis: `mcts` values a leaf by playing the sampled hidden cards out for 16 plies while `puct` reads a static score a few plies down that may barely see them, in which case PUCT marginalizes over nothing and only pays the depth. It asked for the cheap version — draw N determinizations of one `ClientView` and compare the spread — and the answer came back stronger than a spread.
+
+    **The two leaves differ only by the plies in between.** `mcts::rollout` walks a weighted-random policy for `depth_budget` plies and then calls `evaluate_state_with`; `UniformPolicyEvaluator` calls `evaluate_state_with` directly. So one function with the depth swept from 0 gives both searches' leaves **on one scale**, and the comparison needs no normalization — which is why `diag leaf-sensitivity` measures through the real `rollout` (made `pub` for this) rather than a copy. It draws 16 determinizations of each of 768 real decision positions, applies every root action on each, and reports at 0, 1, 2, 4, 8 and 16 plies.
+
+    **Centred per determinization, and paired against a shared-sample control** — both corrections change the reading, so neither is optional. A sample that simply looks better shifts every leaf in its tree together, and *neither* search can use that: `PuctNode` scores leaves with `evaluate_from`, relative to that sample's own root, and `MctsAgent` merges root stats across trees by action, so a common per-sample offset cancels in both. What a sample must move to be worth anything is the **difference between root actions**. And past depth 0, two determinizations also disagree because a 16-ply random playout is noisy; the control is item 35's `--shared-sample` without the games — one determinization copied 16 times, the same rollout seeds — so all of *its* disagreement is dice, and the hidden state's contribution is the gap.
+
+    **At PUCT's leaf the sample is not merely weak, it is absent.**
+
+    | depth 0, the static leaf | Corp chair | Runner chair |
+    |---|---|---|
+    | leaf value **bit-identical** across all 16 samples | **1.000** | 0.924 |
+    | root argmax unanimous across all 16 samples | **1.000** | 0.992 |
+    | between-sample sd, against an action spread of | 0.000 / 95.3 | 0.023 / 36.3 |
+
+    In **every one of 384 Corp positions** the static evaluation of every root action is bit-identical under all sixteen determinizations. Averaging over samples cannot change the choice, because there is nothing to average. On positions drawn from `puct`'s own play the Runner's argmax agreement is **1.000** as well.
+
+    **It is structural, and an audit of `evaluate_state_with` says so in one pass.** Every term reads public counts, board state, or the *evaluating* side's own zones: the agenda-point difference and both credit totals; the Corp arm's bad publicity, own installs, scored agenda counters, protected-agenda ICE and `hq.len()`/`r_and_d.len()` — **lengths**, which `determinize` preserves by construction; the Runner arm's tags, `rig.len()`, memory, `breaker_coverage` and `breaker_savings_shortfall` (its *own* rig and grip, never hidden from it) and `grip.len()`. `strength_shortfall` fires only in `RunPhase::EncounterIce`, where the ICE is already rezzed. And `run_is_breakable`'s own doc comment says the quiet part: **"unrezzed ICE is treated as passable"** — at the one place the Runner most needs to integrate over what is behind the ICE, the evaluator declines to look. **Exactly one term can read a determinized card**: `pending_decision_upside` → `continuation_upside`, over the candidates of a parked `ChooseCards` on the evaluating side. That is the whole of the Runner's 7.6%, and it is why the Corp's figure is exactly 1.000 — a Corp choosing from its own HQ sees no sampled card, a Runner accessing R&D does.
+
+    **At MCTS's leaf the sample is worth something, on one chair.** The paired cost to argmax agreement (control minus independent, per position, over 384):
+
+    | playout plies | Corp chair | Runner chair |
+    |---|---|---|
+    | 0 | +0.000 (z +0.00) | +0.002 (z +1.71) |
+    | 1 | +0.012 (z +3.70) | +0.002 (z +0.78) |
+    | 2 | +0.010 (z +2.93) | +0.010 (z +2.13) |
+    | 4 | +0.006 (z +1.34) | +0.014 (z +3.10) |
+    | 8 | +0.011 (z +2.28) | +0.036 (z +5.09) |
+    | 16 | +0.007 (z +1.57) | **+0.070 (z +7.74)** |
+
+    **The Runner's curve is item 35's chair asymmetry, measured without a game.** It is flat to 2 plies, turns on at 4, and is still climbing at 16 — the Runner's own clicks come first and its own cards are not hidden from it, so nothing sampled is touched until the turn passes. The Corp's is flat, small, and at `mcts`'s actual depth **not significant**. Item 35 found four samples worth **+0.125** on the Runner chair and the same trade *negative* on the Corp chair; this says why, at the leaf: for the Corp, a determinization at 16 plies is indistinguishable from noise, so splitting the budget across four of them buys nothing and pays the depth — exactly its 0.522 → 0.500.
+
+    **Three position sets, one answer.** A second seed and a set drawn from `puct:balanced` self-play rather than the heuristic's (the position sets differ substantially — 9.7 root actions a Corp decision against 5.6):
+
+    | at 16 plies | Corp | Runner |
+    |---|---|---|
+    | heuristic, seed 1 | +0.007 (z +1.57) | +0.070 (z +7.74) |
+    | heuristic, seed 2 | +0.007 (z +1.50) | +0.071 (z +7.87) |
+    | `puct`, seed 1 | +0.019 (z +3.75) | +0.077 (z +7.76) |
+
+    The Corp's effect is small and only sometimes significant; the Runner's is four to ten times larger and never in doubt. Depth 0 is 1.000 Corp-unanimous in all three.
+
+    **What this hands over, and what it rules out.** The fix to PUCT's Runner chair is **a leaf that reads the sampled hidden state**, and the named place is `run_is_breakable`: pricing an unrezzed ICE from the determinization instead of assuming it passable. That is a behaviour change and wants the full strength bar — Phase 3's seed-spread band of **0.026–0.047 over 192 games** — and it is *not* a change that spends more budget, which was the constraint item 34 put on any answer here. What it rules out is the cheaper reading: PUCT's `samples` is not mistuned and does not want a different split, because at `samples` 4 it is averaging four identical numbers. Phase 3 §1 measured that dial to nothing twice and item 35 to −0.102; all three are the same fact.
+
+    Scaffolding: `netrunner_cli diag leaf-sensitivity` (a `diag` subcommand group, so the next measurement has a home), `mcts::rollout` made `pub` with its reason on the function. No behaviour change — `cargo test --workspace` green and clippy silent, with nothing touched that a bot runs.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
