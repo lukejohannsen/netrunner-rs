@@ -13,8 +13,11 @@ netrunner_session = { path = "../netrunner_session" }
 netrunner_single_player = { path = "../netrunner_single_player" }
 netrunner_card_sync = { path = "../netrunner_card_sync" }
 netrunner_rating = { path = "../netrunner_rating" }
-ratatui = "0.29"
-crossterm = "0.28"
+# The TUI, and the only crossterm in the tree: `ratatui::crossterm` is a
+# re-export of the exact version ratatui's own backend links, so there is
+# no second copy to drift. Declaring crossterm directly is what put 0.28
+# and 0.29 in the tree at once when ratatui moved to 0.29.
+ratatui = "0.30"
 clap = { version = "4", features = ["derive"] }
 # Resolves the OS-appropriate directory saved decks live in. Same version
 # netrunner_card_sync uses for the card cache, so there is one `dirs` in the
