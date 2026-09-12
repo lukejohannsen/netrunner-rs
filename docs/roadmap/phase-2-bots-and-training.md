@@ -731,4 +731,28 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     `scripts/paired_bench.py` is the apparatus and stays: two `bench --report` JSONs, matched game by game on (pairing, matchup, seed), McNemar's z over the discordant games only. Every leg above is paired, which is why a 0.016 move can be read at all — and it reproduces item 38's own recorded numbers from its reports exactly, which is how it was checked.
 
+41. **`mcts`'s tree count is a decision, not a core count** (`fix/mcts-tree-count-is-a-decision-not-a-core-count`, 12 September 2026). ROADMAP "next" item 2. `MctsAgent::with_iterations` took `rayon::current_num_threads().clamp(1, MAX_TREES)`, so the shipped bot's tree count came off the host. It is now `DEFAULT_TREES = 4`, a number with a measurement behind it.
+
+    **The expression read like a parallelism setting and was not one.** `select_action` splits the budget — `iterations / trees` — so the trees do not buy speed; they trade **hidden-information samples against depth per sample at fixed cost**, and item 35 measured those two going to *different chairs* (384 games a cell against a fixed heuristic, 128 total simulations):
+
+    | trees | as Corp | as Runner |
+    |---|---|---|
+    | 1 | 0.522 | 0.510 |
+    | 4 | 0.500 | **0.635** |
+
+    Four is therefore right on the merits — +0.125 on the Runner chair for −0.022 on the Corp's — and is already what every box with four or more cores got. The bug was never the number; it was that a *smaller* box silently got a different bot, weaker on exactly the chair item 34 named the binding constraint.
+
+    **It reached games through `--threads`, which is the part worth keeping.** Four legs, `bench --bots heuristic,mcts --games 48 --seed 1 --simulations 128`, two pinned binaries × two thread counts:
+
+    | Corp win rate | `--threads 2` | `--threads 18` |
+    |---|---|---|
+    | before | `heuristic` vs `mcts` **0.542**, `mcts` vs `heuristic` 0.500 | 0.312 / 0.458 |
+    | after | 0.312 / 0.458 | 0.312 / 0.458 |
+
+    **52 of 192 games differ** between the two thread counts on the old binary, and `mcts`'s Runner chair loses **0.230** to a flag that names a thread pool. After the fix the two thread counts are identical game for game, and `--threads 18` before equals `--threads 18` after — so **every number this project recorded on this machine stands unchanged**, which is the whole strength argument for a shipped-bot change that is a no-op wherever the numbers were taken. The `heuristic` vs `heuristic` control is 0.396 in all four legs.
+
+    **Two places it was doing quiet damage, both found by reading rather than by measuring.** `netrunner_server` seats `MctsAgent::new` for its `mcts` opponent and rates that seat on `Track::HumanVsBot` — so the hosted bot's *identity* depended on the daemon's host, and one Glicko rating pooled results from what were really different bots. And `netrunner_session/tests/puct_seat.rs` seats `MctsAgent::with_iterations(side, 7, 16)` inside an assertion about *how a bot chooses*; with CI now on three platforms, that test was exercising 4 × 4 on one runner and 16 × 1 on another. Neither is a failure anyone saw, and both are the same family as the `TempDir` clock bug the CI entry records: a latent cross-platform difference that a single-box history could not surface.
+
+    **Eight trees is not the default because nothing has measured eight.** The constant is `pub` so a caller can say what it is deviating from, and `with_trees` remains the way a measurement pins it.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.

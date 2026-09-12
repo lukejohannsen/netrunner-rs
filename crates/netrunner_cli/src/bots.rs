@@ -58,10 +58,14 @@ pub struct AgentSetup {
     /// `samples`, and the two searches disagreeing about what it is worth
     /// is the whole of ROADMAP Phase 2 §5 item 35.
     ///
-    /// `None` means each agent's own default, and for `Mcts` that default
-    /// is `rayon::current_num_threads().clamp(1, 4)` — so **`mcts`
-    /// behaves differently on a machine with fewer cores**, and a run is
-    /// only reproducible across boxes if this says a number.
+    /// `None` means each agent's own default — `MctsAgent::DEFAULT_TREES`
+    /// (4) and `PuctConfig::default().samples` (1), both fixed numbers.
+    /// Until ROADMAP Phase 2 §5 item 41 the `Mcts` default was
+    /// `rayon::current_num_threads().clamp(1, 4)`, so **`mcts` was a
+    /// different bot on a smaller box, and `--threads` changed it here**:
+    /// 52 of 192 games moved between `--threads 2` and `--threads 18` on
+    /// one seed. It no longer does, and this stays the way a measurement
+    /// pins the dial rather than the way a run becomes reproducible.
     pub determinizations: Option<usize>,
     /// `Mcts` only: every tree searches one shared sample of the hidden
     /// state instead of its own. Diagnostic — see
@@ -228,10 +232,11 @@ mod tests {
     }
 
     /// The knobs exist so a measurement can pin what the defaults leave
-    /// loose — `mcts` reads its tree count off
-    /// `rayon::current_num_threads()`, so it is machine-dependent. The
-    /// guard here is only that both are accepted by every kind and both
-    /// sides, since neither is observable through `BotAgent`.
+    /// loose — the tree/sample count is the dial ROADMAP Phase 2 §5 item
+    /// 35 measured. The guard here is only that both are accepted by
+    /// every kind and both sides, since neither is observable through
+    /// `BotAgent`; that the *default* no longer moves with the host is
+    /// `the_default_tree_count_does_not_move_with_the_host_pool`.
     #[test]
     fn every_kind_accepts_an_explicit_determinization_count() {
         for kind in [BotKind::Random, BotKind::Heuristic, BotKind::Mcts, BotKind::Puct] {
