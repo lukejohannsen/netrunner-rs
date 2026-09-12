@@ -665,4 +665,34 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **What this relocates.** Item 36 established that the leaf was blind and inferred that a leaf which could see would be worth something. The first half stands; **the second half is now measured and wrong**. Either the threat needs discounting by how likely the rez actually is — which nothing in a static evaluator knows, and which is the kind of thing a search or a learned value head estimates rather than a hand-weighted term — or PUCT's Runner chair is not leaf-bound at all and item 35's +0.125 for MCTS came from somewhere else entirely. Note that item 37 already moved that suspicion: MCTS's samples differ in HQ and R&D contents, not in what is behind the ICE, so the +0.125 was never about ICE. **The next thing to price is the Corp's rez decision, not the Runner's leaf.**
 
+39. **The Corp does rez it. The ICE just does not stop the run** (`diag/corp-rez-rate`, 12 September 2026). ROADMAP "next" item 1's cheap route, run — and it answers a different question than the one it asked. Item 38 explained its own null by saying the term "treats an unrezzed ICE as certain to be rezzed the moment the Corp can afford it, and a real Corp declines", concluding that "what is missing is a **probability**, not a **reading**". The first clause is measured and false for the Corp that was seated, and the conclusion inverts: what is missing is a reading, and it is printed on the card.
+
+    `diag rez-rate` plays games and records **one observation per approach to an unrezzed ICE** — the rez decision the Corp was actually handed — then reports what it did with it. Two design points carry the entry:
+
+    - **The denominator is the term's own predicate, not a copy.** `unbreakable_unrezzed_ice`'s filter is now `netrunner_bots::is_unrezzed_threat`, public for this caller, evaluated against the *authoritative* state rather than a determinized one. A re-implementation in the CLI would have been free to drift from the term it exists to price.
+    - **Completeness is checked, not assumed.** The engine can walk several run steps inside one applied action, so an approach nobody had a decision in could in principle never be a state the step loop observes. Every leg compares approach steps seen against `GameEvent::IceApproached` emitted: **1075/1075, 1289/1289, 1352/1352, 1054/1054, 1469/1469, 1397/1397** — six legs, no approach missed.
+
+    96 games a leg, the sample-deck matchup schedule, two seeds, three seatings.
+
+    | Corp vs Runner | seed | counted | rezzed | rate | stopped the run | ETR sub | no ETR sub |
+    |---|---|---|---|---|---|---|---|
+    | `heuristic` vs `heuristic` | 1 | 282 | 266 | 0.943 | 0.538 | **0.895** (152) | **0.061** (114) |
+    | `heuristic` vs `heuristic` | 2 | 308 | 282 | 0.916 | 0.532 | 0.926 (149) | 0.090 (133) |
+    | `heuristic` vs `puct@128` | 1 | 201 | 197 | 0.980 | 0.472 | 0.800 (110) | 0.057 (87) |
+    | `heuristic` vs `puct@128` | 2 | 241 | 222 | 0.921 | 0.550 | 0.925 (120) | 0.108 (102) |
+    | `puct@128` vs `heuristic` | 1 | 472 | 230 | 0.487 | 0.535 | 0.906 (128) | 0.069 (102) |
+    | `puct@128` vs `heuristic` | 2 | 340 | 195 | 0.574 | 0.533 | 0.970 (100) | 0.074 (95) |
+
+    "stopped the run" and the two ETR columns are over the approaches the Corp *did* rez, which is the conditional the term asserts.
+
+    **The rez rate is not the problem.** Against the `heuristic` Corp — the Corp in item 38's binding cell, and the only fixed opponent in it — the term's counted ICE are rezzed **967 of 1,032 times, 0.937 pooled**. Item 1's own decision rule was "if that rate is far from 1.0, discount the term by it"; 0.94 is not far from 1.0, and scaling a term that bought +0.016 by 0.94 cannot reach the 0.026–0.047 band. The declines are not even spread: the `heuristic` Corp rezzed **0 of 42** counted ICE at printed cost 8+ across both seeds, which is essentially the whole 6% miss. That route is closed for the reason item 1 named, and it is closed cheaply.
+
+    **The other half of the claim is where it fails, and it fails by half.** Of the counted ICE the Corp rezzed, the run stopped there only **0.47–0.55**. Split by whether any subroutine ends the run, the two halves are **0.904 and 0.077 pooled** (686/759 against 49/633) — and they are near enough an even split of what the term counts, **54.5% ETR to 45.5% not**. `cheapest_break_cost` returning `None` means *no rig card can break it*, which the term reads as "this stops you"; an ICE whose subroutines tag, do damage or drain credits stops nothing, and the Runner walks through it. **That is not a probability a static evaluator cannot know. It is `SubroutineDef::effect`, sitting in the card definition the term already looks up.**
+
+    **A searching Corp *does* decline, which is worth recording even though it is not the fix.** `puct@128` rezzes only **0.487 / 0.574** of the same counted approaches, and the decline is entirely a function of price: 0.99 at printed cost 0–2, 0.73–0.81 at 3–4, **0.08–0.09 at 5–7**. Item 38's premise is right about a Corp that searches and wrong about the one it measured against. Any future measurement of this term against a searching Corp has to expect a denominator half this one, and that is a reason to state which Corp a rez rate was taken over.
+
+    **One bug, found because a number was too good.** The first version resolved "the run got past it" only inside an approach step, so the *innermost* ICE of every run was never resolved — nothing is approached after it — and every run read as having been stopped there. It showed a Corp declining half its rezzes with a 0.98 stop rate, which is what made it obvious. Resolving on every run step instead, including the server step where `position` passes the last ICE, is the fix; `passing_the_innermost_ice_resolves_it_even_though_no_approach_follows` names the case.
+
+    **What this hands over.** Not a discount — a **filter**: count only unrezzed, affordable, unbreakable ICE that has an ETR subroutine, which halves what the term counts and removes the half that is measurably wrong. That is a behaviour change and wants the full strength bar, with item 38's own legs as the baseline (`target/diag/str-*.json`, `s2-*.json`, 192 games a pairing at 128 simulations, two seeds). If it still buys nothing, item 38's alternative stands unchallenged: PUCT's Runner chair is not leaf-bound at all, and item 35's +0.125 for MCTS came from the HQ and R&D contents its samples differ in — which item 37 already made the likelier story.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
