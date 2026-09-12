@@ -44,7 +44,7 @@ pub use agent::BotAgent;
 pub use agent_adapter::IndexedOnnxAgent;
 pub use agent_adapter::{Agent, BotAgentIndexAdapter, IndexedHeuristicAgent, IndexedRandomAgent};
 pub use determinize::determinize;
-pub use eval::{evaluate_state, evaluate_state_with, Weights};
+pub use eval::{evaluate_state, evaluate_state_with, is_unrezzed_threat, Weights};
 pub use heuristic::HeuristicAgent;
 pub use mcts::MctsAgent;
 #[cfg(feature = "onnx")]

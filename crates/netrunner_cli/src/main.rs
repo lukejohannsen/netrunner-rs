@@ -32,9 +32,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(Command::Diag {
             action: DiagAction::LeafSensitivity { games, positions, seed, determinizations, rollouts, depths, source, threads, report },
         }) => {
+            let args = diag::leaf_sensitivity::LeafSensitivityArgs {
+                games,
+                positions,
+                seed,
+                determinizations,
+                rollouts,
+                depths,
+                source,
+                threads,
+                report,
+            };
+            diag::leaf_sensitivity::run(&args, &config)
+        }
+        Some(Command::Diag {
+            action: DiagAction::RezRate { games, seed, corp, runner, simulations, determinizations, threads, report },
+        }) => {
             let args =
-                diag::LeafSensitivityArgs { games, positions, seed, determinizations, rollouts, depths, source, threads, report };
-            diag::run(&args, &config)
+                diag::rez_rate::RezRateArgs { corp, runner, games, seed, simulations, determinizations, threads, report };
+            diag::rez_rate::run(&args, &config)
         }
         Some(Command::Matches) => remote::print_matches(&config.server).await,
         Some(Command::Cards { action }) => cards::run(action).await,

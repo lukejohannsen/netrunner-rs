@@ -413,6 +413,40 @@ pub enum DiagAction {
         #[arg(long)]
         report: Option<PathBuf>,
     },
+
+    /// When the Runner approaches an ICE the Corp could rez, how often
+    /// does it? One observation per approach to an unrezzed ICE, counted
+    /// over the predicate `unbreakable_unrezzed_ice` itself uses, so the
+    /// answer is the discount that term is missing. ROADMAP Phase 2 §5
+    /// item 38: the term assumes the rate is 1.0.
+    RezRate {
+        /// Games to play; game n plays `matchups[n % len]` on `seed + n`.
+        #[arg(long, default_value_t = 96)]
+        games: u32,
+        /// Base seed.
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Which bot takes the Corp chair — the chair whose decision is
+        /// being measured.
+        #[arg(long, default_value = "heuristic")]
+        corp: BotSpec,
+        /// Which bot takes the Runner chair. It decides which approaches
+        /// ever happen, so it is part of the measurement, not a control.
+        #[arg(long, default_value = "heuristic")]
+        runner: BotSpec,
+        /// Search iterations for a searching bot in either chair.
+        #[arg(long, default_value_t = 128)]
+        simulations: usize,
+        /// Hidden-state samples per decision for a searching bot.
+        #[arg(long)]
+        determinizations: Option<usize>,
+        /// Worker threads. All cores if omitted.
+        #[arg(long)]
+        threads: Option<usize>,
+        /// Write every approach, and the rates over them, as JSON here.
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

@@ -636,15 +636,23 @@ fn run_is_breakable(state: &GameState, run: &RunState, registry: &CardRegistry) 
 /// what the Corp can pay only makes the Runner one ICE more cautious,
 /// the same direction `breaker_savings_shortfall` already errs in.
 fn unbreakable_unrezzed_ice(state: &GameState, run: &RunState, registry: &CardRegistry) -> usize {
-    run.ice
-        .iter()
-        .skip(run.position)
-        .filter(|ice| !ice.rezzed)
-        .filter(|ice| {
-            let Some(definition) = registry.get(&ice.card_id) else { return false };
-            definition.cost <= state.corp.resources.credits.0 && cheapest_break_cost(state, ice, registry).is_none()
-        })
-        .count()
+    run.ice.iter().skip(run.position).filter(|ice| is_unrezzed_threat(state, ice, registry)).count()
+}
+
+/// Whether this one ICE is what `unbreakable_unrezzed_ice` counts:
+/// unrezzed, affordable to the Corp at its printed cost, and breakable by
+/// nothing in the rig.
+///
+/// Public because `diag rez-rate` measures how often a real Corp rezzes
+/// exactly the ICE this predicate flags, and a copy of the predicate in
+/// the CLI would be free to drift from the one the evaluator uses — the
+/// whole point of that measurement is that it prices *this* term.
+pub fn is_unrezzed_threat(state: &GameState, ice: &RunIce, registry: &CardRegistry) -> bool {
+    if ice.rezzed {
+        return false;
+    }
+    let Some(definition) = registry.get(&ice.card_id) else { return false };
+    definition.cost <= state.corp.resources.credits.0 && cheapest_break_cost(state, ice, registry).is_none()
 }
 
 /// The fewest credits any rig card needs to pump up to `ice`'s strength
