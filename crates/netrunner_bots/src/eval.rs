@@ -350,6 +350,12 @@ const STRENGTH_SHORTFALL_WEIGHT: f64 = 0.9;
 /// unrezzed ICE in a sample was a `Barrier` with no subroutines, so
 /// `cheapest_break_cost` returned `Some(0)` for all of them and this
 /// term would have counted zero however the ICE was set.
+///
+/// Item 39 then narrowed what it counts to ICE with a subroutine that
+/// ends the run — see `is_unrezzed_threat`. The weight below is the
+/// term's strength *after* that narrowing, and the two are not
+/// comparable: the same number prices about half as many ICE as it did
+/// at item 38's measurement.
 const UNREZZED_THREAT_WEIGHT: f64 = 0.0;
 /// Each credit the Runner is short of the cheapest breaker in grip that
 /// would cover an ICE subtype the rig does not (`breaker_savings_shortfall`).
@@ -640,8 +646,20 @@ fn unbreakable_unrezzed_ice(state: &GameState, run: &RunState, registry: &CardRe
 }
 
 /// Whether this one ICE is what `unbreakable_unrezzed_ice` counts:
-/// unrezzed, affordable to the Corp at its printed cost, and breakable by
-/// nothing in the rig.
+/// unrezzed, affordable to the Corp at its printed cost, breakable by
+/// nothing in the rig, **and carrying a subroutine that ends the run**.
+///
+/// That last clause is ROADMAP Phase 2 §5 item 39 and it halves what the
+/// term counts. `cheapest_break_cost` returning `None` says no rig card
+/// can break the ICE, which is not the same claim as "it stops you": an
+/// ICE that tags, or does damage, or drains credits costs the Runner
+/// something and then lets the run continue. Measured over six 96-game
+/// legs, of the counted ICE the Corp rezzed, the run stopped there
+/// **0.904** of the time with an ETR subroutine and **0.077** without,
+/// and the two classes were an even split of what was counted. Item 38
+/// read that null as a missing *probability* — how likely the Corp is to
+/// rez — and item 39 measured the rez rate at 0.937 against the Corp
+/// actually seated, which left nothing to discount.
 ///
 /// Public because `diag rez-rate` measures how often a real Corp rezzes
 /// exactly the ICE this predicate flags, and a copy of the predicate in
@@ -652,7 +670,12 @@ pub fn is_unrezzed_threat(state: &GameState, ice: &RunIce, registry: &CardRegist
         return false;
     }
     let Some(definition) = registry.get(&ice.card_id) else { return false };
-    definition.cost <= state.corp.resources.credits.0 && cheapest_break_cost(state, ice, registry).is_none()
+    definition.cost <= state.corp.resources.credits.0
+        // Every subroutine of an unrezzed ICE is `Pending` by
+        // construction, so this reads the same set `cheapest_break_cost`
+        // prices.
+        && ice.subroutines.iter().any(|subroutine| subroutine.definition.effect.can_end_the_run())
+        && cheapest_break_cost(state, ice, registry).is_none()
 }
 
 /// The fewest credits any rig card needs to pump up to `ice`'s strength
@@ -1883,6 +1906,18 @@ mod tests {
         // makes it breakable at a price, so it stops being a threat.
         state.runner.rig = vec![InstalledRunnerCard { base_strength: 5, ..rig_card("carmen") }];
         assert_eq!(unbreakable_unrezzed_ice(&state, &run(false, 0), &registry), 0, "the rig covers it");
+
+        // ROADMAP Phase 2 §5 item 39: unbreakable is not the same claim
+        // as "it stops you". An ICE the rig cannot touch, that the Corp
+        // can afford, whose subroutine only tags, is a toll and not a
+        // wall — and counting it was half of what this term counted.
+        state.runner.rig = Vec::new();
+        let mut tagging = run(false, 0);
+        tagging.ice[0].subroutines[0].definition.effect = Effect::GiveTags(1);
+        assert_eq!(unbreakable_unrezzed_ice(&state, &tagging, &registry), 0, "no subroutine ends the run");
+        tagging.ice[0].subroutines[0].definition.effect =
+            Effect::Sequence(vec![Effect::GiveTags(1), Effect::EndTheRun]);
+        assert_eq!(unbreakable_unrezzed_ice(&state, &tagging, &registry), 1, "buried in a sequence still ends it");
 
         // The term is off by default, so none of this moves a score
         // until a `Weights` says otherwise.

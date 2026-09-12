@@ -45,7 +45,6 @@ use rayon::prelude::*;
 use serde::Serialize;
 
 use netrunner_bots::is_unrezzed_threat;
-use netrunner_core::dsl::Effect;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks as core_decks;
 use netrunner_core::rules::{GameEvent, GameState, PlayerAction, RunPhase, ServerId, Side, legal_actions_for};
@@ -91,9 +90,12 @@ pub struct Approach {
     pub threat: bool,
     /// The Corp rezzed it before the approach ended.
     pub rezzed: bool,
-    /// Any subroutine on the ICE ends the run. `unbreakable_unrezzed_ice`
-    /// does not ask: an ICE no rig card can break might only tag, or do
-    /// damage, or drain credits, and the Runner walks through it.
+    /// Any subroutine on the ICE ends the run — `Effect::can_end_the_run`,
+    /// the same call `is_unrezzed_threat` now makes. It reads as a split
+    /// of the counted approaches here because this measurement is what
+    /// put the clause in the term (ROADMAP Phase 2 §5 item 39); with the
+    /// clause in place the `no ETR sub` row is what the term *stopped*
+    /// counting, and re-running this is how that stays true.
     pub ends_the_run: bool,
     /// The run got no further than this ICE — it ended here rather than
     /// reaching the next position or the server. A jack-out counts: the
@@ -395,7 +397,7 @@ impl Watcher {
                     corp_credits: state.corp.resources.credits.0,
                     legal: legal(),
                     threat: is_unrezzed_threat(state, ice, registry),
-                    ends_the_run: ice.subroutines.iter().any(|sub| ends_the_run(&sub.definition.effect)),
+                    ends_the_run: ice.subroutines.iter().any(|sub| sub.definition.effect.can_end_the_run()),
                     rezzed: false,
                     run_stopped_here: false,
                 });
@@ -436,21 +438,6 @@ impl Watcher {
     }
 }
 
-/// Whether resolving `effect` can end the run, at any depth.
-///
-/// A scan of the serialized AST rather than a walk over `Effect`'s 74
-/// variants: `EndTheRun` nests inside `Sequence`, `EffectIf`,
-/// `PresentChoice` and `OfferPaidChoice`, and a hand-written walk in the
-/// CLI would silently stop finding it the day a new wrapper variant is
-/// added — the failure mode this measurement can least afford, since it
-/// would move the number rather than break the build. `Effect` is
-/// `Serialize` (it crosses a process boundary in every `GameEvent`), and
-/// `EndTheRun` is a unit variant, so the name appears in the JSON only
-/// where the effect itself does.
-fn ends_the_run(effect: &Effect) -> bool {
-    serde_json::to_string(effect).is_ok_and(|json| json.contains("EndTheRun"))
-}
-
 fn server_name(server: ServerId) -> String {
     match server {
         ServerId::Hq => "Hq".to_string(),
@@ -479,8 +466,16 @@ fn print_report(report: &RezRateReport) {
     println!("  {:>34}  {:>7}  {:>7}  {:>7}  {:>7}", "", "n", "stopped", "rate", "sd");
     print_rate("counted, and the run stopped there", &report.threat_stopped);
     print_rate("rezzed, and the run stopped there", &report.rezzed_stopped);
-    print_rate("  of those, with an ETR subroutine", &report.rezzed_stopped_etr);
-    print_rate("  of those, with none", &report.rezzed_stopped_no_etr);
+    // Degenerate once the term's own predicate requires an ETR
+    // subroutine, which is the state item 39 left it in — the split is
+    // kept because it is the measurement that put the clause there, and
+    // it comes back the moment the clause goes.
+    if report.rezzed_stopped_no_etr.opportunities > 0 {
+        print_rate("  of those, with an ETR subroutine", &report.rezzed_stopped_etr);
+        print_rate("  of those, with none", &report.rezzed_stopped_no_etr);
+    } else {
+        println!("  (every counted ICE ends the run: the term's own predicate now requires it)");
+    }
     for (name, rows) in [("server", &report.threat_by_server), ("printed cost", &report.threat_by_cost)] {
         println!("\n  counted, by {name}:");
         for (key, rate) in rows {
@@ -639,18 +634,6 @@ mod tests {
         let (approaches, _) = watcher.finish();
         assert_eq!(approaches.len(), 1);
         assert!(!approaches[0].run_stopped_here, "the run reached the server");
-    }
-
-    /// The distinction the term does not draw, and the reason the stop
-    /// rate is what it is. Nested because real card text nests: Palisade
-    /// ends the run outright, a bioroid offers a choice that ends it, and
-    /// a tagging ICE no rig card can break stops nothing at all.
-    #[test]
-    fn ending_the_run_is_found_at_any_depth_of_a_subroutine() {
-        assert!(ends_the_run(&Effect::EndTheRun));
-        assert!(ends_the_run(&Effect::Sequence(vec![Effect::GiveTags(1), Effect::EndTheRun])));
-        assert!(!ends_the_run(&Effect::GiveTags(1)));
-        assert!(!ends_the_run(&Effect::Sequence(vec![Effect::GiveTags(1)])));
     }
 
     #[test]
