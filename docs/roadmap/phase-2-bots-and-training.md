@@ -695,4 +695,40 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **What this hands over.** Not a discount — a **filter**: count only unrezzed, affordable, unbreakable ICE that has an ETR subroutine, which halves what the term counts and removes the half that is measurably wrong. That is a behaviour change and wants the full strength bar, with item 38's own legs as the baseline (`target/diag/str-*.json`, `s2-*.json`, 192 games a pairing at 128 simulations, two seeds). If it still buys nothing, item 38's alternative stands unchallenged: PUCT's Runner chair is not leaf-bound at all, and item 35's +0.125 for MCTS came from the HQ and R&D contents its samples differ in — which item 37 already made the likelier story.
 
+40. **The term counts the right ICE now, and it is still worth nothing** (`feat/unrezzed-threat-only-when-it-ends-the-run`, 12 September 2026). Item 39's filter, built and measured. The clause is right — it repairs damage that is visible at 2.7σ on the same games — and the repaired term still does not beat not having it, so `UNREZZED_THREAT_WEIGHT` ships at **0.0** for the second time. That second negative is the finding: a correctly specified unrezzed-threat term is worth nothing to PUCT's Runner chair, which is the chair item 34 named as the binding constraint on every chair number in this file.
+
+    `is_unrezzed_threat` gained one clause — the ICE must carry a subroutine that ends the run — expressed as `Effect::can_end_the_run` in `netrunner_core::dsl`, over the existing `for_each_effect` walk. **Over a walk rather than a top-level `matches!` because ICE rarely says it plainly**: a bioroid's subroutine is an `OfferPaidChoice` whose `if_declined` ends the run, and the walk's exhaustive match is what keeps a new nesting variant a compile error instead of a silently harmless subroutine. It sits in core rather than in `netrunner_bots` because "does this end the run" is a rules question two consumers ask — the evaluator and `diag rez-rate`, which must not answer it differently from the term it prices.
+
+    **The predicate is right, measured in its own currency on identical games.** `diag rez-rate`, `heuristic` vs `heuristic`, 96 games, two seeds — the same 1,469 and 1,397 approach steps item 39 saw, because at weight 0.0 no game moves:
+
+    | | item 39 (unfiltered) | with the clause |
+    |---|---|---|
+    | ICE counted | 282 / 308 | **152 / 149** |
+    | of those, rezzed | 0.943 / 0.916 | **1.000 / 1.000** |
+    | of those, the run stopped there | 0.538 / 0.532 | **0.895 / 0.926** |
+
+    The term counted 45% ICE that stopped nothing; it now counts none. What it dropped is exactly item 39's non-ETR column (114 and 133 approaches), and the rez rate rising to 1.000 says the `heuristic` Corp's only systematic declines — the printed-cost-8+ ICE — were all in that column too.
+
+    **And the clause repairs the damage item 38 measured.** Same weights, same seeds, same games, unfiltered binary against filtered (Corp win rate, so negative is the Runner gaining):
+
+    | pairing | 0.6 / seed 1 | 0.6 / seed 2 | 1.5 / seed 1 | 1.5 / seed 2 |
+    |---|---|---|---|---|
+    | `heuristic` vs `heuristic` | −0.052 (z −1.89) | **−0.078 (z −2.61)** | −0.052 (z −1.89) | **−0.083 (z −2.74)** |
+    | `heuristic` vs `puct@128` | +0.042 (z +1.51) | −0.016 (z −0.54) | −0.052 (z −1.89) | **−0.073 (z −2.47)** |
+
+    Item 38's clearest negative result was that a one-ply Runner is hurt outright by this term — four measurements, every one +0.05 to +0.06 to the Corp. **All four are now gone**: against the weight-0.0 baseline the same cell reads +0.005, −0.016, +0.000 and −0.021. The over-count *was* the harm, which is item 39's diagnosis confirmed rather than assumed.
+
+    **The verdict is still no, and the rule was written down first.** Against the weight-0.0 baseline the binding cell — `heuristic` Corp vs `puct@128` Runner, the only cell with a genuinely fixed opponent — reads:
+
+    | weight | seed 1 | seed 2 |
+    |---|---|---|
+    | 0.6 | 0.615 (**+0.026**, z +0.85) | 0.531 (**−0.026**, z −0.96) |
+    | 1.5 | 0.573 (**−0.016**, z −0.54) | 0.542 (**−0.016**, z −0.51) |
+
+    against 0.589 and 0.557. The rule was: clear Phase 3's 0.026–0.047 seed-spread band on **both** seeds at the **same** weight. At 0.6 the two seeds disagree in *sign*; at 1.5 both are −0.016, consistent and well inside the band. Nothing clears it, so the weight stays 0.0 — apparatus, not behaviour, and the weight-0.0 binary reproduces item 38's seed-1 baseline **game for game**, which is also the check that nothing on `main` drifted since.
+
+    **What this closes.** Item 38 left two alternatives: the threat needs discounting by how likely the rez is, or PUCT's Runner chair is not leaf-bound at all. Item 39 killed the first — the rez rate is 0.937 against the Corp actually seated — and this entry kills the strongest remaining form of the reading hypothesis, because the leaf now reads the hidden state *correctly* and a Runner that sees a real wall coming plays no better for it. **The Runner chair is not leaf-bound**, and item 35's +0.125 for `mcts` came from what item 37 said it did: samples that differ in HQ and R&D contents, never in what was behind the ICE. A search that marginalizes over the hidden state beats one that does not *there*, and no static term recovers it.
+
+    `scripts/paired_bench.py` is the apparatus and stays: two `bench --report` JSONs, matched game by game on (pairing, matchup, seed), McNemar's z over the discordant games only. Every leg above is paired, which is why a 0.016 move can be read at all — and it reproduces item 38's own recorded numbers from its reports exactly, which is how it was checked.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.

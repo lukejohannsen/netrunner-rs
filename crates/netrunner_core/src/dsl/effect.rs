@@ -1063,6 +1063,30 @@ impl Effect {
         }
     }
 
+    /// Whether resolving this effect can end the run, at any nesting
+    /// depth.
+    ///
+    /// Over `for_each_effect` rather than a `matches!` on the top level,
+    /// because ICE rarely says it plainly: a bioroid's subroutine is an
+    /// `OfferPaidChoice` whose `if_declined` ends the run, and a
+    /// conditional one is an `EffectIf`. The walk's exhaustive match is
+    /// what keeps that true as the DSL grows.
+    ///
+    /// Asked by `netrunner_bots::eval`, of an unrezzed ICE ahead of the
+    /// Runner: "no rig card can break it" is not the same claim as "it
+    /// stops you", and over 96-game legs the two came apart badly — an
+    /// unbreakable ICE with a subroutine that ends the run stopped 0.904
+    /// of the runs that reached it, one without stopped 0.077, and the
+    /// evaluator was counting both alike (ROADMAP Phase 2 §5 items 38,
+    /// 39). Prevention effects are deliberately not consulted: the
+    /// question is what the subroutine *does*, not whether this
+    /// particular Runner could answer it.
+    pub fn can_end_the_run(&self) -> bool {
+        let mut ends = false;
+        self.for_each_effect(&mut |effect| ends |= matches!(effect, Effect::EndTheRun));
+        ends
+    }
+
     /// The variant name of this effect — `"Sequence"`, `"GainCredits"` —
     /// taken from the `Debug` rendering up to its first payload delimiter.
     /// Used wherever variants are counted by name; adding a variant needs no
@@ -1151,6 +1175,30 @@ mod tests {
             r#"{"SetAccessReplacement":{"server":"Hq","effect":{"GainCredits":["Runner",8]}}}"#
         );
         assert_eq!(serde_json::from_str::<Effect>(&json).unwrap(), effect);
+    }
+
+    /// The bioroid shape is the one that matters: the ICE does not say
+    /// "end the run", it offers a payment and ends the run if the Runner
+    /// declines. A predicate that read only the top level would call that
+    /// subroutine harmless.
+    #[test]
+    fn ending_the_run_is_found_wherever_a_subroutine_buries_it() {
+        assert!(Effect::EndTheRun.can_end_the_run());
+        assert!(
+            Effect::OfferPaidChoice {
+                side: Side::Runner,
+                cost: crate::dsl::Cost::Credits(1),
+                if_paid: Box::new(Effect::GainCredits(Side::Runner, 1)),
+                if_declined: Box::new(Effect::EndTheRun),
+            }
+            .can_end_the_run()
+        );
+        assert!(Effect::Sequence(vec![Effect::GiveTags(1), Effect::EndTheRun]).can_end_the_run());
+        assert!(!Effect::GiveTags(1).can_end_the_run());
+        assert!(
+            !Effect::Sequence(vec![Effect::GiveTags(1), Effect::DealDamage(DamageType::Net, 1)]).can_end_the_run(),
+            "a tagging, damaging subroutine no breaker covers still lets the Runner through"
+        );
     }
 
     #[test]
