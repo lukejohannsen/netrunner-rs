@@ -53,8 +53,9 @@ struct Config {
     bot_runner: ServeBotKind,
 
     /// (serve mode) The bot's personality: `balanced`, or `rush`,
-    /// `glacier`, `trap` for a Corp bot and `aggressive`, `cautious` for
-    /// a Runner bot. See `netrunner_cli --corp-personality`.
+    /// `glacier`, `trap` for a Corp bot and `aggressive`, `cautious`,
+    /// `builder`, `wary` for a Runner bot. See `netrunner_cli
+    /// --corp-personality`.
     ///
     /// Unset means the bot plays the style its dealt deck names
     /// (`DeckFile::style`); `balanced` switches that off.

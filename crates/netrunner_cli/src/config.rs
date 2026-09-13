@@ -113,8 +113,9 @@ pub struct Config {
 
     /// The Runner bot's personality: `balanced`, or a Runner archetype —
     /// `aggressive` (runs are worth double, tags and subroutines cost
-    /// less) or `cautious` (a full rig before a run). See
-    /// `--corp-personality`; unset means the deck's own style.
+    /// less), `cautious` (a full rig before a run), `builder` (the rig
+    /// first, hand on the table) or `wary` (treats face-down ICE as
+    /// real). See `--corp-personality`; unset means the deck's own style.
     #[arg(long)]
     pub runner_personality: Option<Personality>,
 

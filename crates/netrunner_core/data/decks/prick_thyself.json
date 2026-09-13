@@ -3,7 +3,8 @@
   "name": "Prick Thyself",
   "side": "Runner",
   "category": "Sample",
-  "description": "Six connections and eight viruses: a balanced Topan list with draw to spare.",
+  "description": "Fifteen programs, eight viruses and eleven draw effects: Topan draws into a rig and installs it.",
+  "style": "builder",
   "identity": "topan",
   "cards": [
     {

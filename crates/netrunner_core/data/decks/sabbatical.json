@@ -3,7 +3,8 @@
   "name": "Sabbatical",
   "side": "Runner",
   "category": "Sample",
-  "description": "Eighteen events and fourteen credit effects: a balanced Magdalene list that earns before it runs.",
+  "description": "Two fracters in forty-five cards and fourteen credit effects: Magdalene respects face-down ICE and runs where it is known.",
+  "style": "wary",
   "identity": "magdalene_keino_chemutai",
   "cards": [
     {

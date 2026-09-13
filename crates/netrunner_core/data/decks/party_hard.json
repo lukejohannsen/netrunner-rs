@@ -3,7 +3,8 @@
   "name": "Party Hard",
   "side": "Runner",
   "category": "Sample",
-  "description": "Eight hardware and eight viruses: a balanced René list that installs and runs in equal measure.",
+  "description": "Eight hardware and fourteen programs: René builds the table first and runs off it.",
+  "style": "builder",
   "identity": "rene_loup_arcemont",
   "cards": [
     {

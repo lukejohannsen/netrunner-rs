@@ -63,16 +63,28 @@ pub enum Personality {
     /// saving for the breaker in hand, and a subroutine or a tag costs
     /// more.
     Cautious,
+    /// A builder Runner: the rig first. Board presence, memory in use and
+    /// a breaker for a new subtype are all worth more, so the hand goes
+    /// on the table before the runs start.
+    Builder,
+    /// A wary Runner: treats face-down ICE as real. The one term in the
+    /// evaluator that reads an unrezzed piece (`unrezzed_threat_weight`,
+    /// zero for balanced) is switched on, so a run into ICE the rig
+    /// cannot break is priced as the stop it probably is, and the Runner
+    /// goes where the ICE is known.
+    Wary,
 }
 
 impl Personality {
-    pub const ALL: [Personality; 6] = [
+    pub const ALL: [Personality; 8] = [
         Personality::Balanced,
         Personality::Rush,
         Personality::Glacier,
         Personality::Trap,
         Personality::Aggressive,
         Personality::Cautious,
+        Personality::Builder,
+        Personality::Wary,
     ];
 
     /// The chair this profile is written for; `None` for `Balanced`.
@@ -80,7 +92,7 @@ impl Personality {
         match self {
             Personality::Balanced => None,
             Personality::Rush | Personality::Glacier | Personality::Trap => Some(Side::Corp),
-            Personality::Aggressive | Personality::Cautious => Some(Side::Runner),
+            Personality::Aggressive | Personality::Cautious | Personality::Builder | Personality::Wary => Some(Side::Runner),
         }
     }
 
@@ -114,6 +126,8 @@ impl Personality {
             Personality::Trap => "trap",
             Personality::Aggressive => "aggressive",
             Personality::Cautious => "cautious",
+            Personality::Builder => "builder",
+            Personality::Wary => "wary",
         }
     }
 
@@ -218,6 +232,35 @@ impl Personality {
                 tag_weight: 6.0,
                 ..base
             },
+            Personality::Builder => Weights {
+                // Distinct from `Cautious`, which is about safety (grip
+                // floor, tags, savings): this is about installing. A rig
+                // card at 1.6 presence beats a credit click by four to
+                // one, a breaker for a new subtype is worth 4.0 and memory
+                // in use 0.8 a unit. **The grip floor stays at 3**: the
+                // first cut dropped it to 2 to empty a hand of programs
+                // onto the table, and the Runner was flatlined 18 → 26
+                // and 13 → 21 on two of three seeds for it, losing ten
+                // games of 96 on every seed. Installing from a thin grip
+                // is how a builder dies.
+                board_presence_weight: 1.6,
+                memory_weight: 0.8,
+                breaker_coverage_weight: 4.0,
+                ..base
+            },
+            Personality::Wary => Weights {
+                // One term, and it reads the cards: `unrezzed_threat_
+                // weight` counts unrezzed ICE ahead that no rig card
+                // could break *and* that would end the run (ROADMAP Phase
+                // 2 §5 items 38 and 40 built it for the search, where it
+                // bought nothing and ships at 0.0). At 1.5 such a piece
+                // costs more than an open run earns (0.6), so the Runner
+                // does not walk into it; a rezzed piece it can break is
+                // unchanged. `Cautious` is about the rig and the grip;
+                // this is about the ICE.
+                unrezzed_threat_weight: 1.5,
+                ..base
+            },
         }
     }
 }
@@ -287,6 +330,12 @@ mod tests {
         let cautious = Personality::Cautious.weights();
         assert!(cautious.active_run_weight < base.active_run_weight && cautious.pending_subroutine_weight > base.pending_subroutine_weight);
         assert!(cautious.breaker_coverage_weight > base.breaker_coverage_weight);
+        let builder = Personality::Builder.weights();
+        assert!(builder.board_presence_weight > base.board_presence_weight && builder.memory_weight > base.memory_weight);
+        assert_eq!(builder.grip_floor, base.grip_floor, "a builder that installs from a thin grip gets flatlined for it");
+        let wary = Personality::Wary.weights();
+        assert!(wary.unrezzed_threat_weight > base.unrezzed_threat_weight && base.unrezzed_threat_weight == 0.0);
+        assert_eq!(Weights { unrezzed_threat_weight: base.unrezzed_threat_weight, ..wary }, base, "Wary is its one term and nothing else");
     }
 
     /// The gate on `DeckFile::style`: the vocabulary lives here, the data
@@ -328,5 +377,8 @@ mod tests {
         assert_eq!(Personality::Aggressive.side(), Some(Side::Runner));
         assert_eq!(Personality::Cautious.side(), Some(Side::Runner));
         assert_eq!(Personality::Balanced.side(), None);
+        for runner in [Personality::Builder, Personality::Wary] {
+            assert_eq!(runner.side(), Some(Side::Runner));
+        }
     }
 }
