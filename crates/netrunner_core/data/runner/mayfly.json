@@ -26,7 +26,8 @@
           }
         ]
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break 1 subroutine. When this run ends, trash this program."
     },
     {
       "trigger": "Paid",
@@ -39,7 +40,8 @@
           "duration": "Encounter"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "1[credit]: +1 strength."
     }
   ],
   "triggers": [

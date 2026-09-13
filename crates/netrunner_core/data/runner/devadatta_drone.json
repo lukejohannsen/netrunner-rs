@@ -31,7 +31,8 @@
             },
             "if_declined": {
               "Sequence": []
-            }
+            },
+            "text": "you may remove 1 hosted power counter to access 1 additional card"
           }
         }
       ]

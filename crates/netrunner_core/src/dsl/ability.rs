@@ -17,6 +17,13 @@ use crate::rules::Side;
 #[serde(deny_unknown_fields)]
 pub struct AbilityDef {
     pub trigger: Trigger,
+    /// The printed line this ability implements, quoted from the card —
+    /// "3[credit]: +1 strength." — for a client to label it with the
+    /// card's own words; gated against the printed text by
+    /// `printed_clauses_are_quoted_from_the_card`. Never read by the
+    /// engine.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost: Option<Cost>,
     /// A precondition gating whether this ability may even be activated,
@@ -469,6 +476,7 @@ mod tests {
         assert_eq!(
             bundle.abilities[0],
             AbilityDef {
+                text: None,
                 trigger: Trigger::Paid,
                 cost: Some(Cost::Credits(3)),
                 requirement: None,
@@ -478,6 +486,7 @@ mod tests {
         assert_eq!(
             bundle.abilities[1],
             AbilityDef {
+                text: None,
                 trigger: Trigger::Paid,
                 cost: Some(Cost::TrashSelf),
                 requirement: None,

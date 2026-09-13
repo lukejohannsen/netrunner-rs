@@ -15,8 +15,9 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use netrunner_core::cards::CardRegistry;
+use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{
-    ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, Side, Viewer,
+    ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, ServerId, Side, Viewer,
 };
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
@@ -50,6 +51,10 @@ pub struct App {
     /// Whose decision is on the clock and when it runs out, from the last
     /// `ServerMessage::DecisionClock`; `None` on a host without a clock.
     pub decision_clock: Option<(Side, Instant)>,
+    /// A card's printed text, while the player is reading it.
+    pub modal: Option<Modal>,
+    /// The card inspector, while it is open.
+    pub card_picker: Option<CardPicker>,
 }
 
 /// Cap on retained log lines, shared by both TUI paths.
@@ -104,6 +109,8 @@ impl App {
             connection_lost: false,
             connection_notice: None,
             decision_clock: None,
+            modal: None,
+            card_picker: None,
         };
         app.drain_messages();
         app
@@ -195,11 +202,50 @@ impl App {
             return;
         }
 
+        // The same inspector keys as the local path (`tui::prompt_human`):
+        // a modal dismisses on Esc/Enter/Space, the picker moves on
+        // Up/Down and opens a card on Enter, and `c` opens the picker.
+        if self.modal.is_some() {
+            match key.code {
+                // Back to the list the card was chosen from, if there is one.
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Backspace | KeyCode::Left => self.modal = None,
+                KeyCode::Char('c') | KeyCode::Char('q') if self.card_picker.is_some() => {
+                    self.modal = None;
+                    self.card_picker = None;
+                }
+                _ => {}
+            }
+            return;
+        }
+        if let Some(picker) = &mut self.card_picker {
+            match key.code {
+                KeyCode::Char('q') | KeyCode::Char('c') => self.card_picker = None,
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => {
+                    if !picker.back() {
+                        self.card_picker = None;
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') => picker.move_selection(-1),
+                KeyCode::Down | KeyCode::Char('j') => picker.move_selection(1),
+                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
+                    if let Some(id) = picker.enter() {
+                        self.modal = Some(card_modal(&id, &self.registry));
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Enter | KeyCode::Char(' ') => self.submit_selected_action(),
+            KeyCode::Char('c') => {
+                if let Some(view) = &self.view {
+                    self.card_picker = Some(CardPicker::open(view, &self.registry));
+                }
+            }
             _ => {}
         }
     }
@@ -260,6 +306,10 @@ pub trait RenderableView {
     fn coaching(&self) -> Option<&Coaching> {
         None
     }
+    /// The card inspector's list, while it is open.
+    fn card_picker(&self) -> Option<&CardPicker> {
+        None
+    }
     /// An open popup, which owns the keyboard until dismissed.
     fn modal(&self) -> Option<&Modal> {
         None
@@ -276,6 +326,226 @@ pub struct Modal {
     pub title: String,
     pub body: String,
     pub footer: String,
+}
+
+/// The card inspector: the places the viewer may look, then the cards in
+/// the place they chose, then one card's printed text (`card_modal`).
+/// Two levels because a heap or a wide board is dozens of cards, and a
+/// person looks in a place before they look at a card — "what is in
+/// Archives?" is the question, and a flat list answers a different one.
+/// `back` retreats one level at a time so a reader can go from one
+/// card's text to the next without reopening anything; only `back` at the
+/// top level closes the inspector.
+///
+/// **Built from the `ClientView` and nothing else.** A card is listed only
+/// if the view names it — the viewer's own hand, a rezzed or owned
+/// install, a faceup archived card, the heap, a scored agenda — so the
+/// mask decides what can be inspected exactly as it decides what is
+/// drawn. An unrezzed opponent's card has no `CardId` in the view and
+/// therefore no entry here; a place with nothing to show is not listed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardPicker {
+    pub zones: Vec<CardZone>,
+    /// The highlighted place.
+    pub zone: usize,
+    /// The highlighted card within it, once the reader has stepped in;
+    /// `None` while they are still choosing a place.
+    pub card: Option<usize>,
+}
+
+/// One place on the table and the cards the viewer may see in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardZone {
+    pub name: String,
+    pub cards: Vec<(String, CardId)>,
+}
+
+impl CardPicker {
+    pub fn open(view: &ClientView, registry: &CardRegistry) -> Self {
+        Self { zones: visible_zones(view, registry), zone: 0, card: None }
+    }
+
+    pub fn current_zone(&self) -> Option<&CardZone> {
+        self.zones.get(self.zone)
+    }
+
+    /// Up/Down at whichever level the reader is on.
+    pub fn move_selection(&mut self, delta: i32) {
+        let step = |index: usize, len: usize| if len == 0 { 0 } else { (index as i32 + delta).rem_euclid(len as i32) as usize };
+        match self.card {
+            None => self.zone = step(self.zone, self.zones.len()),
+            Some(card) => self.card = Some(step(card, self.current_zone().map_or(0, |zone| zone.cards.len()))),
+        }
+    }
+
+    /// Enter: step into the highlighted place, or hand back the
+    /// highlighted card to be read. The list is left as it stands either
+    /// way, so `back` from the card's text lands on the same card.
+    pub fn enter(&mut self) -> Option<CardId> {
+        match self.card {
+            None => {
+                if self.current_zone().is_some_and(|zone| !zone.cards.is_empty()) {
+                    self.card = Some(0);
+                }
+                None
+            }
+            Some(card) => self.current_zone().and_then(|zone| zone.cards.get(card)).map(|(_, id)| id.clone()),
+        }
+    }
+
+    /// Esc: one level up. `false` when already at the top, which is the
+    /// caller's cue to close the inspector.
+    pub fn back(&mut self) -> bool {
+        if self.card.take().is_some() {
+            return true;
+        }
+        false
+    }
+
+    pub fn zone_labels(&self) -> Vec<String> {
+        self.zones.iter().map(|zone| format!("{} ({})", zone.name, zone.cards.len())).collect()
+    }
+
+    pub fn card_labels(&self) -> Vec<String> {
+        self.current_zone().map(|zone| zone.cards.iter().map(|(label, _)| label.clone()).collect()).unwrap_or_default()
+    }
+}
+
+/// Every place the view names a card in, in table order: the viewer's
+/// hand first, then identities, the Corp's board, scored agendas and
+/// Archives, the Runner's rig, stolen agendas and heap. A place with no
+/// visible card is left out, except the viewer's own hand.
+pub fn visible_zones(view: &ClientView, registry: &CardRegistry) -> Vec<CardZone> {
+    let title = |id: &CardId| registry.get(id).map_or_else(|| id.0.clone(), |card| card.title.clone());
+    let mut zones: Vec<CardZone> = Vec::new();
+    let plain = |ids: &[CardId]| ids.iter().map(|id| (title(id), id.clone())).collect::<Vec<_>>();
+
+    // The viewer's own hand is listed even when empty: it is the one
+    // place a player always wants to find, and "(0)" is an answer.
+    if let Some(cards) = &view.corp.hq_cards {
+        zones.push(CardZone { name: "Hand (HQ)".to_string(), cards: plain(cards) });
+    }
+    if let Some(cards) = &view.runner.grip_cards {
+        zones.push(CardZone { name: "Hand (grip)".to_string(), cards: plain(cards) });
+    }
+    let mut zone = |name: &str, cards: Vec<(String, CardId)>| {
+        if !cards.is_empty() {
+            zones.push(CardZone { name: name.to_string(), cards });
+        }
+    };
+    let identities: Vec<(String, CardId)> = [(&view.corp.identity, "Corp"), (&view.runner.identity, "Runner")]
+        .into_iter()
+        .filter_map(|(id, side)| id.as_ref().map(|id| (format!("{side}: {}", title(id)), id.clone())))
+        .collect();
+    zone("Identities", identities);
+    let mut board: Vec<(String, CardId)> = Vec::new();
+    for server in &view.corp.servers {
+        let place = match server.server {
+            ServerId::Hq => "HQ".to_string(),
+            ServerId::RnD => "R&D".to_string(),
+            ServerId::Archives => "Archives".to_string(),
+            ServerId::Remote(n) => format!("Remote {n}"),
+        };
+        for card in server.ice.iter().chain(server.root.iter()) {
+            if let Some(id) = &card.card {
+                let slot = if card.slot == InstallSlot::Ice { "ICE" } else { "root" };
+                let rez = if card.rezzed { "rezzed" } else { "unrezzed" };
+                board.push((format!("{place} {slot}: {} ({rez})", title(id)), id.clone()));
+            }
+        }
+    }
+    zone("Corp servers", board);
+    zone("Corp scored", view.corp.scored_agendas.iter().map(|agenda| (title(&agenda.card), agenda.card.clone())).collect());
+    zone("Archives", view.corp.archives.iter().filter_map(|archived| archived.card.as_ref()).map(|id| (title(id), id.clone())).collect());
+    zone("Runner rig", view.runner.rig.iter().map(|card| (title(&card.card), card.card.clone())).collect());
+    zone("Runner stolen", plain(&view.runner.scored_agendas));
+    zone("Heap", plain(&view.runner.heap));
+    zones
+}
+
+/// One card as a person reads it: the type line, the printed numbers,
+/// the printed text with its line breaks, the flavour. The engine's DSL is
+/// not shown — the printed text is what the DSL was written from, and it
+/// is the sentence a player can act on.
+pub fn card_modal(id: &CardId, registry: &CardRegistry) -> Modal {
+    let Some(card) = registry.get(id) else {
+        return Modal::new(&id.0, "This card is not in the registry.", "Esc to close");
+    };
+    let mut lines: Vec<String> = vec![card.type_line.clone().unwrap_or_else(|| format!("{:?}", card.card_type))];
+    let mut numbers: Vec<String> = vec![format!("Cost {}", card.cost)];
+    if let Some(strength) = card.strength {
+        numbers.push(format!("Strength {strength}"));
+    }
+    if let Some(required) = card.advancement_requirement {
+        numbers.push(format!("Advancement {required}"));
+    }
+    if let Some(points) = card.agenda_points {
+        numbers.push(format!("{points} agenda point{}", if points == 1 { "" } else { "s" }));
+    }
+    if let Some(trash) = card.trash_cost {
+        numbers.push(format!("Trash {trash}"));
+    }
+    if let Some(mu) = card.memory_cost {
+        numbers.push(format!("{mu} MU"));
+    }
+    if let Some(influence) = card.influence_cost {
+        numbers.push(format!("Influence {influence}"));
+    }
+    if card.unique {
+        numbers.push("Unique".to_string());
+    }
+    lines.push(numbers.join(" · "));
+    lines.push(String::new());
+    match &card.printed_text {
+        Some(text) => lines.extend(text.lines().map(str::to_string)),
+        None => lines.push("(no printed text on record)".to_string()),
+    }
+    if let Some(flavor) = &card.flavor {
+        lines.push(String::new());
+        lines.extend(flavor.lines().map(|line| format!("\"{line}\"")));
+    }
+    // What the engine will actually do, beside the words it was written
+    // from: each trigger, ability and subroutine as the engine reads it
+    // (`prose::describe_effect` over the DSL), and the printed clause the
+    // author linked to it where there is one. This is the troubleshooting
+    // view — a player who thinks the card is doing something its text does
+    // not say can see both here, and an erratum that changes the text
+    // shows up as a clause that no longer matches.
+    let engine = engine_reading(card, registry);
+    if !engine.is_empty() {
+        lines.push(String::new());
+        lines.push("Engine reads it as:".to_string());
+        lines.extend(engine);
+    }
+    Modal::new(&card.title, &lines.join("\n"), "Esc to close")
+}
+
+/// One line per trigger, ability and subroutine: `[when] clause → engine
+/// reading`. The clause is the printed text the author linked
+/// (`TriggeredEffect::text`, `AbilityDef::text`, `SubroutineDef::text`),
+/// and the reading is the DSL rendered by `prose`.
+pub fn engine_reading(card: &netrunner_core::dsl::CardDefinition, registry: &CardRegistry) -> Vec<String> {
+    let mut lines = Vec::new();
+    for trigger in &card.triggers {
+        let reading = trigger.effects.iter().map(|e| crate::prose::describe_effect(e, registry)).collect::<Vec<_>>().join("; ");
+        let when = crate::prose::humanize(format!("{:?}", trigger.trigger));
+        match &trigger.text {
+            Some(text) => lines.push(format!("• [{when}] \"{}\" → {reading}", text.trim_end_matches('.'))),
+            None => lines.push(format!("• [{when}] → {reading}")),
+        }
+    }
+    for ability in &card.abilities {
+        let reading = crate::prose::describe_effect(&ability.effect, registry);
+        let cost = ability.cost.as_ref().map(|c| format!("{}: ", crate::prose::describe_cost(c))).unwrap_or_default();
+        match &ability.text {
+            Some(text) => lines.push(format!("• [ability] \"{}\" → {cost}{reading}", text.trim_end_matches('.'))),
+            None => lines.push(format!("• [ability] → {cost}{reading}")),
+        }
+    }
+    for sub in &card.subroutines {
+        lines.push(format!("• [subroutine] \"{}\" → {}", sub.text.trim_end_matches('.'), crate::prose::describe_effect(&sub.effect, registry)));
+    }
+    lines
 }
 
 impl Modal {
@@ -342,6 +612,17 @@ impl RenderableView for App {
     fn decision_clock(&self) -> Option<(Side, Duration)> {
         self.decision_clock.map(|(side, deadline)| (side, deadline.saturating_duration_since(Instant::now())))
     }
+    fn modal(&self) -> Option<&Modal> {
+        self.modal.as_ref()
+    }
+    fn card_picker(&self) -> Option<&CardPicker> {
+        self.card_picker.as_ref()
+    }
+    /// The card that parked a decision names the pane: "Bigger Picture
+    /// asks — choose one".
+    fn actions_title(&self) -> Option<String> {
+        self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
+    }
 }
 
 /// Human-readable label for a `PlayerAction`, resolving `CardId`s to
@@ -390,6 +671,18 @@ pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&Clie
         Some(rig_card) => card_title(&rig_card.card, registry),
         None => format!("install #{}", id.0),
     }
+}
+
+/// The card an install id resolves to in the view, when the viewer may
+/// see it — a rezzed or own Corp install, or any rig card.
+pub fn installed_card_id(view: &ClientView, id: &InstallId) -> Option<netrunner_core::dsl::CardId> {
+    view.corp
+        .servers
+        .iter()
+        .flat_map(|server| server.ice.iter().chain(server.root.iter()))
+        .find(|card| card.install_id == *id)
+        .and_then(|card| card.card.clone())
+        .or_else(|| view.runner.rig.iter().find(|card| card.install_id == *id).map(|card| card.card.clone()))
 }
 
 /// Whether the entry's own action line already says what `event` says, so
@@ -609,15 +902,40 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::InstallProgramOnIce { card_id, host, .. } => {
             format!("Install {} onto {}", title(card_id), install_label(host))
         }
+        // The subroutine's own printed text, so the click is spent on
+        // "End the run" rather than on "subroutine 2".
         PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index } => {
-            format!("Break subroutine {subroutine_index} on {} (spend a click)", title(ice_id))
+            match registry.get(ice_id).and_then(|ice| ice.subroutines.get(*subroutine_index)) {
+                Some(sub) => format!("Break \"{}\" on {} (spend a click)", sub.text.trim_end_matches('.'), title(ice_id)),
+                None => format!("Break subroutine {} on {} (spend a click)", subroutine_index + 1, title(ice_id)),
+            }
         }
         PlayerAction::EndTurn => "End turn".to_string(),
         PlayerAction::DiscardCard { card_id } => format!("Discard {}", title(card_id)),
         PlayerAction::KeepHand => "Keep hand".to_string(),
         PlayerAction::TakeMulligan => "Mulligan".to_string(),
+        // The ability's printed line (`AbilityDef::text`), off the card the
+        // install resolves to in the view; a card with no clause linked
+        // falls back to the prose rendering of its cost and effect. The
+        // index alone names nothing.
         PlayerAction::ActivateAbility { target, ability_index } => {
-            format!("Activate ability {ability_index} on {}", install_label(target))
+            let ability = view
+                .and_then(|v| installed_card_id(v, target))
+                .and_then(|card| registry.get(&card))
+                .and_then(|def| def.abilities.get(*ability_index));
+            match ability {
+                Some(ability) => match &ability.text {
+                    Some(text) => format!("{}: {}", install_label(target), text.trim_end_matches('.')),
+                    None => {
+                        let effect = crate::prose::describe_effect(&ability.effect, registry);
+                        match &ability.cost {
+                            Some(cost) => format!("{}: {} — {effect}", install_label(target), crate::prose::describe_cost(cost)),
+                            None => format!("{}: {effect}", install_label(target)),
+                        }
+                    }
+                },
+                None => format!("Activate ability {ability_index} on {}", install_label(target)),
+            }
         }
         PlayerAction::AdvanceCard { target } => format!("Advance {}", install_label(target)),
         PlayerAction::ScoreAgenda { target } => format!("Score {}", install_label(target)),
@@ -635,10 +953,63 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::PassPriority { side } => format!("Pass priority ({side:?})"),
         PlayerAction::SubmitCorpTraceBid { amount } => format!("Bid {amount} (Corp trace)"),
         PlayerAction::SubmitRunnerTraceBid { amount } => format!("Bid {amount} (Runner trace)"),
-        PlayerAction::AcceptPendingPaidChoice { cost_option_index: None } => "Accept".to_string(),
-        PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(i) } => format!("Accept (option {i})"),
-        PlayerAction::DeclinePendingPaidChoice => "Decline".to_string(),
-        PlayerAction::ResolvePendingChoice { option_index } => format!("Choose option {option_index}"),
+        // A paid choice is a cost and a consequence. The card's own clause
+        // (`PendingPaidChoice::text`, quoted from the printed text) says
+        // both; the cost is spelled out beside it because a `[click]` and
+        // a credit read differently at the moment of paying. A card with
+        // no linked clause falls back to the prose rendering of the DSL.
+        PlayerAction::AcceptPendingPaidChoice { cost_option_index } => match view.and_then(|v| v.pending_paid_choice.as_ref()) {
+            Some(paid) => {
+                let cost = match (cost_option_index, &paid.cost) {
+                    (Some(i), netrunner_core::dsl::Cost::AnyOf(options)) => {
+                        options.get(*i).map(crate::prose::describe_cost).unwrap_or_else(|| crate::prose::describe_cost(&paid.cost))
+                    }
+                    _ => crate::prose::describe_cost(&paid.cost),
+                };
+                match &paid.text {
+                    Some(text) => format!("Pay {cost} — \"{}\"", text.trim_end_matches('.')),
+                    None => format!("Pay {cost}: {}", crate::prose::describe_effect(&paid.if_paid, registry)),
+                }
+            }
+            None => match cost_option_index {
+                Some(i) => format!("Accept (option {i})"),
+                None => "Accept".to_string(),
+            },
+        },
+        PlayerAction::DeclinePendingPaidChoice => match view.and_then(|v| v.pending_paid_choice.as_ref()) {
+            Some(paid) if matches!(&paid.if_declined, netrunner_core::dsl::Effect::Sequence(steps) if steps.is_empty()) => {
+                "Decline (nothing happens)".to_string()
+            }
+            Some(paid) => format!("Decline: {}", crate::prose::describe_effect(&paid.if_declined, registry)),
+            None => "Decline".to_string(),
+        },
+        // The option is an index into the parked `PresentChoice`. The
+        // card's own words for it (`option_texts`, quoted from the printed
+        // text) are the label; an empty clause marks the "may" declined;
+        // a card with no clauses linked falls back to the prose rendering
+        // of the effect. "Option 0 | Option 1" was a menu with no words on
+        // it.
+        PlayerAction::ResolvePendingChoice { option_index } => {
+            let parked = view.and_then(|v| match &v.pending_decision {
+                Some(PendingDecision::ChooseEffect { options, option_texts, .. }) => {
+                    Some((options.get(*option_index), option_texts.get(*option_index)))
+                }
+                _ => None,
+            });
+            let capitalised = |words: String| {
+                let mut words = words;
+                if let Some(first) = words.get(0..1) {
+                    words.replace_range(0..1, &first.to_uppercase());
+                }
+                words
+            };
+            match parked {
+                Some((_, Some(text))) if text.is_empty() => "Do not".to_string(),
+                Some((_, Some(text))) => capitalised(text.trim_end_matches('.').to_string()),
+                Some((Some(effect), None)) => capitalised(crate::prose::describe_effect(effect, registry)),
+                _ => format!("Choose option {}", option_index + 1),
+            }
+        }
         // A position, deliberately not resolved to a card: the zone it
         // indexes may hold cards this viewer cannot identify, and the
         // selection prompt renders the zone alongside this list anyway.
@@ -770,6 +1141,22 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The card modal is the printed card, not the DSL: type line, the
+    /// numbers, the text with its line breaks and symbols, the flavour.
+    #[test]
+    fn a_card_modal_is_the_printed_card() {
+        let registry = crate::decks::sample_deck_registry();
+        let modal = card_modal(&CardId("hedge_fund".to_string()), &registry);
+        assert_eq!(modal.title, "Hedge Fund");
+        assert!(modal.body.contains("Operation"), "{}", modal.body);
+        assert!(modal.body.contains("Cost 5"), "{}", modal.body);
+        assert!(modal.body.contains("Gain 9[credit]"), "{}", modal.body);
+        assert_eq!(modal.footer, "Esc to close");
+        let unknown = card_modal(&CardId("no_such_card".to_string()), &registry);
+        assert!(unknown.body.contains("not in the registry"));
+    }
+
     use netrunner_bots::RandomAgent;
     use netrunner_core::dsl::CardId;
     use netrunner_core::rules::ServerId;

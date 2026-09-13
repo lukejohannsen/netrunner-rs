@@ -1237,6 +1237,7 @@ mod tests {
             side: Side::Runner,
             card_type: CardType::Program,
             abilities: vec![AbilityDef {
+                text: None,
                 trigger: Trigger::Paid,
                 cost: None,
                 requirement: None,
@@ -1348,6 +1349,7 @@ mod tests {
         growing.card_type = CardType::Asset;
         growing.advancement_requirement = Some(0);
         growing.triggers = vec![TriggeredEffect {
+            text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamageAmount(DamageType::Net, Amount::HostedAdvancementTokens)],
             requirement: None,
@@ -1380,6 +1382,7 @@ mod tests {
         ambush.card_type = CardType::Asset;
         ambush.advancement_requirement = Some(0);
         ambush.triggers = vec![TriggeredEffect {
+            text: None,
             trigger: Trigger::OnTurnStart,
             effects: vec![Effect::DealDamageAmount(DamageType::Meat, Amount::HostedAdvancementTokens)],
             requirement: None,
@@ -1407,6 +1410,7 @@ mod tests {
         let mut ambush = ice("snare", 0);
         ambush.card_type = CardType::Asset;
         ambush.triggers = vec![TriggeredEffect {
+            text: None,
             trigger: Trigger::OnAccessed,
             effects: vec![Effect::DealDamage(DamageType::Net, 3)],
             requirement: None,
@@ -1682,6 +1686,7 @@ mod tests {
             Effect::PresentChoice {
                 chooser: Side::Corp,
                 options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())],
+                texts: Vec::new(),
             },
         ])));
 
@@ -1780,6 +1785,7 @@ mod tests {
         def.abilities[0].cost = Some(Cost::Credits(break_cost));
         def.abilities[0].effect = Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(break_count), restrict_to };
         def.abilities.push(AbilityDef {
+            text: None,
             trigger: Trigger::Paid,
             cost: Some(Cost::Credits(pump_cost)),
             requirement: None,

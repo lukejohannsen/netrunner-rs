@@ -24,6 +24,10 @@
               {
                 "RemoveTags": 2
               }
+            ],
+            "texts": [
+              "Draw 4 cards",
+              "Remove up to 2 tags"
             ]
           }
         }

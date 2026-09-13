@@ -205,6 +205,7 @@ mod tests {
             ..Default::default()
         };
         state.pending_paid_choice = Some(PendingPaidChoice {
+            text: None,
             side: Side::Corp,
             cost: Cost::Credits(1),
             if_paid: Effect::PromptChooseCards {
@@ -301,6 +302,7 @@ mod tests {
         cleaver.cost = 3;
         cleaver.memory_cost = Some(1);
         cleaver.abilities = vec![AbilityDef {
+            text: None,
             trigger: Trigger::Paid,
             cost: None,
             requirement: None,

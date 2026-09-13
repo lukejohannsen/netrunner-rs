@@ -1028,7 +1028,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            triggers: vec![TriggeredEffect { trigger, effects: vec![effect], requirement: None }],
+            triggers: vec![TriggeredEffect { text: None, trigger, effects: vec![effect], requirement: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -1303,6 +1303,7 @@ mod tests {
             Effect::PresentChoice {
                 chooser: Side::Runner,
                 options: vec![Effect::GainCredits(Side::Runner, 5), Effect::Sequence(Vec::new())],
+                texts: Vec::new(),
             },
         ));
         registry.insert(card_with_trigger(
@@ -1594,6 +1595,7 @@ mod tests {
             Effect::PresentChoice {
                 chooser: Side::Corp,
                 options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
+                texts: Vec::new(),
             },
         ));
         registry.insert(card_with_trigger(
