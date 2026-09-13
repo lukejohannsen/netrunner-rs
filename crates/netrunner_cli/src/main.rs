@@ -9,6 +9,7 @@ mod decks;
 mod diag;
 mod headless;
 mod learn;
+mod ratings;
 mod remote;
 mod replay;
 mod tui;
@@ -53,6 +54,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             diag::rez_rate::run(&args, &config)
         }
         Some(Command::Matches) => remote::print_matches(&config.server).await,
+        Some(Command::Ratings) => ratings::print(&config),
         Some(Command::Cards { action }) => cards::run(action).await,
         Some(Command::Deck { action }) => deck::run(action, &config),
         Some(Command::Learn { action }) => learn::run(action, &config),

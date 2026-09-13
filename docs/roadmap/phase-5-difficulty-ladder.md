@@ -143,4 +143,6 @@ Phase 3 §1.
 top steps; the server still offers `heuristic` and `mcts` rather than
 levels (`ServeBotKind`); nothing yet maps a human's own `HumanVsBot`
 rating to a suggested rung, which is what would make "up the challenge"
-self-service; local play records no rating at all.
+self-service; local play records no rating at all. *Both closed by
+`feat/local-rating` (Phase 3 §2): local games are rated, and the
+game-over modal names the next rung from the last five results.*
