@@ -112,6 +112,19 @@ pub struct BenchReport {
 /// different players), the personality when it is not `balanced`
 /// (`heuristic:rush`), and `--label` if given.
 pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> String {
+    // A rung rates under its own name, not the bot it happens to be
+    // built from: `elite` is `puct@512` on one chair and `mcts@128` on
+    // the other, and one id for both is exactly what the per-role rating
+    // book is for. Adding the budget here would give the two chairs two
+    // participants and hide that the ladder is one thing.
+    if let Some(level) = bot.level {
+        let mut id = format!("level:{}", level.name());
+        if let Some(label) = label {
+            id.push('#');
+            id.push_str(label);
+        }
+        return id;
+    }
     let name = bot.kind.to_possible_value().expect("every BotKind has a name").get_name().to_string();
     let mut id = match bot.kind {
         BotKind::Mcts | BotKind::Puct | BotKind::PuctOnnx => format!("{name}@{simulations}"),
@@ -137,7 +150,7 @@ struct Job {
 
 pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     for bot in &args.bots {
-        if matches!(bot.kind, BotKind::Human | BotKind::Onnx) {
+        if bot.level.is_none() && matches!(bot.kind, BotKind::Human | BotKind::Onnx) {
             return Err(format!("{:?} cannot be seated in a benchmark: it has no BotAgent form", bot.kind).into());
         }
     }
@@ -244,9 +257,11 @@ fn play(
         shared_sample: args.shared_sample,
         personality,
     };
-    let corp = bots::make_agent_with_model(job.corp.kind, Side::Corp, job.seed, setup(job.corp.personality), &config.model)?
-        .expect("kinds without a BotAgent form were rejected up front");
-    let runner = bots::make_agent_with_model(
+    let corp =
+        bots::make_seat_agent(job.corp.level, job.corp.kind, Side::Corp, job.seed, setup(job.corp.personality), &config.model)?
+            .expect("kinds without a BotAgent form were rejected up front");
+    let runner = bots::make_seat_agent(
+        job.runner.level,
         job.runner.kind,
         Side::Runner,
         job.seed.wrapping_add(1),

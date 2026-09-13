@@ -17,7 +17,7 @@
 //! has no `BotAgent` form to hand a `PlayerSlot::Bot`.
 
 use netrunner_bots::{
-    BotAgent, BotAgentIndexAdapter, HeuristicAgent, MctsAgent, Personality, PuctAgent, PuctConfig, RandomAgent,
+    BotAgent, BotAgentIndexAdapter, HeuristicAgent, Level, MctsAgent, Personality, PuctAgent, PuctConfig, RandomAgent,
     UniformPolicyEvaluator,
 };
 use netrunner_core::rules::Side;
@@ -87,6 +87,28 @@ impl AgentSetup {
     pub fn with_personality(mut self, personality: Personality) -> Self {
         self.personality = personality;
         self
+    }
+}
+
+/// The agent a seat asks for, with a difficulty rung taking precedence
+/// over everything else.
+///
+/// One function rather than a branch at each call site, because "a level
+/// overrides the kind, the personality *and* the simulation count" is a
+/// rule that has to hold identically in the TUI, the headless runner and
+/// the benchmark — a seat that honoured `--simulations` on top of a rung
+/// would not be the rung anyone calibrated.
+pub fn make_seat_agent(
+    level: Option<Level>,
+    kind: BotKind,
+    side: Side,
+    seed: u64,
+    setup: AgentSetup,
+    model_path: &str,
+) -> Result<Option<Box<dyn BotAgent>>, String> {
+    match level {
+        Some(level) => Ok(Some(level.spec(side).agent(seed))),
+        None => make_agent_with_model(kind, side, seed, setup, model_path),
     }
 }
 
