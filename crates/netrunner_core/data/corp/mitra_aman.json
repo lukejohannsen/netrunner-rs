@@ -72,6 +72,11 @@
                         {
                           "Sequence": []
                         }
+                      ],
+                      "texts": [
+                        "swap the ice being approached with a piece of ice from Archives or HQ — from HQ",
+                        "swap the ice being approached with a piece of ice from Archives or HQ — from Archives",
+                        ""
                       ]
                     }
                   }
@@ -80,6 +85,10 @@
               {
                 "Sequence": []
               }
+            ],
+            "texts": [
+              "trash this upgrade. If you do, gain 3[credit]",
+              ""
             ]
           }
         }

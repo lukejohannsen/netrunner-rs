@@ -51,7 +51,8 @@
           "destination": "OwnArchives",
           "then": "EndTheRun"
         }
-      }
+      },
+      "text": "Once per turn → Trash 1 rezzed bioroid card in the root of or protecting the attacked server: End the run."
     }
   ],
   "numeric_id": 35035,

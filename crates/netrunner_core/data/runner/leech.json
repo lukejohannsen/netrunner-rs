@@ -27,7 +27,8 @@
       "effect": {
         "ModifyStrength": -1
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Hosted virus counter: The ice you are encountering gets -1 strength for the remainder of this encounter."
     }
   ],
   "counter_kind": "Virus",

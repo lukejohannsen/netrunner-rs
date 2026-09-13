@@ -19,6 +19,8 @@ pub struct NetrunnerDbCardDto {
 
     #[serde(default)]
     pub text: Option<String>,
+    #[serde(default)]
+    pub flavor: Option<String>,
     /// A `" - "`-delimited string of subtypes/traits, e.g.
     /// `"Sentry - Bioroid - Destroyer"` or `"Virus - Trojan"`. Split into
     /// `CardDefinition::keywords` during conversion.

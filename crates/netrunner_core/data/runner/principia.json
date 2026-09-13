@@ -20,7 +20,8 @@
           "restrict_to": "Barrier"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break 1 barrier subroutine."
     },
     {
       "trigger": "Paid",
@@ -33,7 +34,8 @@
           "duration": "Encounter"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "2[credit]: +2 strength."
     }
   ],
   "memory_cost": 1,

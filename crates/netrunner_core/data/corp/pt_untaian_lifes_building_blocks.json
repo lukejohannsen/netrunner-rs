@@ -44,7 +44,8 @@
             },
             "if_declined": {
               "Sequence": []
-            }
+            },
+            "text": "you may pay 1[credit] to place 1 advancement counter on an unrezzed card you can advance"
           }
         }
       ]

@@ -36,7 +36,8 @@
             },
             "if_declined": {
               "Sequence": []
-            }
+            },
+            "text": "you may remove 1 hosted agenda counter to place 2 advancement counters on 1 installed card"
           }
         }
       ]

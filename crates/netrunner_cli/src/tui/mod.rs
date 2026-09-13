@@ -21,7 +21,7 @@ use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, StallReason, SubmitError};
 
-use crate::app::{describe_action, explain_action, push_log_line, App, Coaching, Modal, RenderableView};
+use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
 use crate::decks;
@@ -461,6 +461,12 @@ fn prompt_human(
         if event::poll(Duration::from_millis(100))?
             && let Ok(Event::Key(key)) = event::read()
         {
+            // The inspector owns its own modal (a card's text over its
+            // list); every other modal — a lesson's intro or outro — is
+            // dismissed here, and `q` on one of those quits.
+            if ui.inspector_key(key.code) {
+                continue;
+            }
             if ui.modal.is_some() {
                 match key.code {
                     KeyCode::Char('q') => return Ok(true),
@@ -545,6 +551,8 @@ struct LocalUiState {
     show_all: bool,
     coaching: Option<Coaching>,
     modal: Option<Modal>,
+    /// The card inspector, while it is open (`c`).
+    card_picker: Option<CardPicker>,
     last_rejection: Option<String>,
 }
 
@@ -560,8 +568,55 @@ impl LocalUiState {
             show_all: false,
             coaching: None,
             modal: None,
+            card_picker: None,
             last_rejection: None,
         }
+    }
+
+    /// One inspector keypress, shared by the live prompt and the tests:
+    /// `true` if the key was the inspector's — a modal or the picker was
+    /// open, or `c` opened it — so the caller does not also treat it as an
+    /// action-list key.
+    fn inspector_key(&mut self, key: KeyCode) -> bool {
+        if self.modal.is_some() && self.card_picker.is_some() {
+            // A card's text, opened from the list: Esc goes back to the
+            // list on the same card; `c` or `q` closes the whole inspector.
+            match key {
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Backspace | KeyCode::Left => self.modal = None,
+                KeyCode::Char('c') | KeyCode::Char('q') => {
+                    self.modal = None;
+                    self.card_picker = None;
+                }
+                _ => {}
+            }
+            return true;
+        }
+        if let Some(picker) = &mut self.card_picker {
+            match key {
+                KeyCode::Char('q') | KeyCode::Char('c') => self.card_picker = None,
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => {
+                    if !picker.back() {
+                        self.card_picker = None;
+                    }
+                }
+                KeyCode::Up | KeyCode::Char('k') => picker.move_selection(-1),
+                KeyCode::Down | KeyCode::Char('j') => picker.move_selection(1),
+                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
+                    if let Some(id) = picker.enter() {
+                        self.modal = Some(card_modal(&id, &self.registry));
+                    }
+                }
+                _ => {}
+            }
+            return true;
+        }
+        if key == KeyCode::Char('c')
+            && let Some(view) = &self.view
+        {
+            self.card_picker = Some(CardPicker::open(view, &self.registry));
+            return true;
+        }
+        false
     }
 
     /// Installs the view the session just handed us for a fresh human
@@ -569,6 +624,8 @@ impl LocalUiState {
     fn begin_decision(&mut self, view: ClientView) {
         self.view = Some(view);
         self.selected = 0;
+        // A list built from the last decision's view would be stale.
+        self.card_picker = None;
         self.allowed.clear();
         self.last_rejection = None;
     }
@@ -665,6 +722,12 @@ impl RenderableView for LocalUiState {
     fn modal(&self) -> Option<&Modal> {
         self.modal.as_ref()
     }
+    fn card_picker(&self) -> Option<&CardPicker> {
+        self.card_picker.as_ref()
+    }
+    fn actions_title(&self) -> Option<String> {
+        self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
+    }
 }
 
 /// The remote render loop. A lost connection is handled *here*, between
@@ -729,7 +792,43 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
         draw_modal(frame, &Modal::new("Game over", &body, "Press q to quit."));
     } else if let Some(modal) = ui.modal() {
         draw_modal(frame, modal);
+    } else if let Some(picker) = ui.card_picker() {
+        draw_card_picker(frame, picker);
     }
+}
+
+/// The inspector's list, centred over the board like a modal, with the
+/// same highlight as the actions pane.
+fn draw_card_picker(frame: &mut Frame, picker: &CardPicker) {
+    let area = centered_rect(72, 72, frame.area());
+    frame.render_widget(Clear, area);
+    let outer = Block::default()
+        .borders(Borders::ALL)
+        .title("Cards — Up/Down move, Enter opens, Esc backs out, c closes")
+        .style(Style::default().fg(Color::Yellow));
+    let inner = outer.inner(area);
+    frame.render_widget(outer, area);
+    if picker.zones.is_empty() {
+        frame.render_widget(Paragraph::new("Nothing to inspect yet."), inner);
+        return;
+    }
+    let [places, cards] = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+        .areas(inner);
+    let at_cards = picker.card.is_some();
+    let column = |title: &str, rows: Vec<String>, selected: Option<usize>, active: bool| {
+        let border = if active { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::DarkGray) };
+        let list = List::new(rows.into_iter().map(ListItem::new).collect::<Vec<_>>())
+            .block(Block::default().borders(Borders::ALL).title(title.to_string()).border_style(border))
+            .highlight_style(if active { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default().add_modifier(Modifier::BOLD) });
+        (list, ListState::default().with_selected(selected))
+    };
+    let (list, mut state) = column("Where", picker.zone_labels(), Some(picker.zone), !at_cards);
+    frame.render_stateful_widget(list, places, &mut state);
+    let zone_name = picker.current_zone().map(|zone| zone.name.clone()).unwrap_or_default();
+    let (list, mut state) = column(&zone_name, picker.card_labels(), picker.card, at_cards);
+    frame.render_stateful_widget(list, cards, &mut state);
 }
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
@@ -777,20 +876,61 @@ fn click_pool(current: u32, max: u32) -> String {
     (0..max).map(|i| if i < current { "[x]" } else { "[ ]" }).collect::<Vec<_>>().join("")
 }
 
+/// The viewer's own side is always the bottom block, the way a table is
+/// laid out: your cards nearest you, the opponent's across from you.
+/// The Corp block keeps the larger share wherever it sits, because it
+/// holds the servers and, during a run, the phase strip; a spectator or
+/// a not-yet-connected client sees the Corp on top. Returns the two
+/// areas as `(corp, runner)`.
+fn board_areas(area: Rect, viewer: Viewer) -> (Rect, Rect) {
+    let corp_on_top = !matches!(viewer, Viewer::Player(Side::Corp));
+    let (top, bottom) = if corp_on_top { (60, 40) } else { (40, 60) };
+    let [top_area, bottom_area] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(top), Constraint::Percentage(bottom)])
+        .areas(area);
+    if corp_on_top { (top_area, bottom_area) } else { (bottom_area, top_area) }
+}
+
+/// A block's title says whose it is, so a player who has just swapped
+/// chairs in a replay — or simply sat down — need not work it out from
+/// which block moved.
+fn board_title(side: Side, viewer: Viewer) -> String {
+    let what = match side {
+        Side::Corp => "Corp servers",
+        Side::Runner => "Runner rig",
+    };
+    match viewer {
+        Viewer::Player(mine) if mine == side => format!("You — {what}"),
+        Viewer::Player(_) => format!("Opponent — {what}"),
+        Viewer::Spectator => what.to_string(),
+    }
+}
+
 fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
-    let [corp_area, runner_area] =
-        Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(60), Constraint::Percentage(40)]).areas(area);
+    let viewer = app.viewer();
+    let (corp_area, runner_area) = board_areas(area, viewer);
+    let corp_title = board_title(Side::Corp, viewer);
+    let runner_title = board_title(Side::Runner, viewer);
 
     let Some(view) = app.view() else {
-        frame.render_widget(Block::default().borders(Borders::ALL).title("Corp servers"), corp_area);
-        frame.render_widget(Block::default().borders(Borders::ALL).title("Runner rig"), runner_area);
+        frame.render_widget(Block::default().borders(Borders::ALL).title(corp_title), corp_area);
+        frame.render_widget(Block::default().borders(Borders::ALL).title(runner_title), runner_area);
         return;
     };
 
     let mut corp_lines = vec![
         Line::from(format!("HQ: {} cards   R&D: {} cards   Archives: {} cards", view.corp.hq_count, view.corp.rd_count, view.corp.archives.len())),
-        Line::from(""),
     ];
+    // `Some` only for the viewer's own hand — the masking layer decided
+    // that, and this draws exactly what it handed over. Until this line
+    // existed the TUI printed the count and nothing else, so a human
+    // chose "keep or mulligan" over five cards they could not see, and
+    // the only way to learn what was in hand was to read the action list.
+    if let Some(cards) = &view.corp.hq_cards {
+        corp_lines.push(Line::from(hand_line(cards, app.registry())));
+    }
+    corp_lines.push(Line::from(""));
     for server in &view.corp.servers {
         corp_lines.push(Line::from(format_server(server, app.registry())));
     }
@@ -802,14 +942,17 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         }
     }
     frame.render_widget(
-        Paragraph::new(corp_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Corp servers")),
+        Paragraph::new(corp_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(corp_title)),
         corp_area,
     );
 
     let mut runner_lines = vec![
         Line::from(format!("Grip: {} cards   Stack: {} cards   Heap: {} cards", view.runner.grip_count, view.runner.stack_count, view.runner.heap.len())),
-        Line::from(""),
     ];
+    if let Some(cards) = &view.runner.grip_cards {
+        runner_lines.push(Line::from(hand_line(cards, app.registry())));
+    }
+    runner_lines.push(Line::from(""));
     if view.runner.rig.is_empty() {
         runner_lines.push(Line::from("(rig empty)"));
     } else {
@@ -819,9 +962,30 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         }));
     }
     frame.render_widget(
-        Paragraph::new(runner_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Runner rig")),
+        Paragraph::new(runner_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(runner_title)),
         runner_area,
     );
+}
+
+/// The viewer's own hand on one wrapped line: `Hand: Hedge Fund
+/// (Operation, 5c) · Palisade (Barrier ICE, 3c)`. One line rather than
+/// one per card because the Corp area also holds the servers and, during
+/// a run, the phase strip, inside 60% of a `Min(10)` board.
+fn hand_line(cards: &[CardId], registry: &CardRegistry) -> String {
+    if cards.is_empty() {
+        return "Hand: (empty)".to_string();
+    }
+    let describe = |id: &CardId| match registry.get(id) {
+        Some(card) => {
+            let kind = match &card.card_type {
+                netrunner_core::dsl::CardType::Ice(ice) => format!("{ice:?} ICE"),
+                other => format!("{other:?}"),
+            };
+            format!("{} ({kind}, {}c)", card.title, card.cost)
+        }
+        None => id.0.clone(),
+    };
+    format!("Hand: {}", cards.iter().map(describe).collect::<Vec<_>>().join(" · "))
 }
 
 fn format_server(server: &ServerView, registry: &CardRegistry) -> String {
@@ -908,9 +1072,9 @@ fn draw_actions(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     } else if labels.is_empty() {
         "Waiting for the other side...".to_string()
     } else if app.coaching().is_some() {
-        "Actions (Up/Down, Enter to act, a to show all, q to quit)".to_string()
+        "Actions (Up/Down, Enter to act, a to show all, c to read a card, q to quit)".to_string()
     } else {
-        "Legal actions (Up/Down, Enter to act, q to quit)".to_string()
+        "Legal actions (Up/Down, Enter to act, c to read a card, q to quit)".to_string()
     });
     if let Some(rejection) = app.last_rejection() {
         title.push_span(Span::styled(format!("  rejected: {rejection}"), Style::default().fg(Color::Red)));
@@ -1077,6 +1241,239 @@ mod tests {
         let rendered = format!("{:?}", terminal.backend().buffer());
         assert!(rendered.contains("rejected: NotYourTurn"), "the rejection line is drawn");
         assert!(rendered.contains("Showing every legal action"), "the escape hatch is announced");
+    }
+
+    /// The player's own hand is drawn, and only theirs: the same position
+    /// rendered from each chair shows that chair's cards and none of the
+    /// other's. Before this test the board printed the hand's *count* and
+    /// stopped, so the mulligan was decided over five unseen cards.
+    #[test]
+    fn the_board_draws_the_viewers_hand_and_never_the_opponents() {
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        assert!(matches!(state.phase, GamePhase::Mulligan(_)), "the opening decision");
+
+        let corp_view = build_client_view(&state, &registry, Side::Corp);
+        let corp_hand: Vec<String> = corp_view.corp.hq_cards.clone().expect("the Corp sees HQ").iter().map(|id| card_title(id, &registry)).collect();
+        let runner_view = build_client_view(&state, &registry, Side::Runner);
+        let runner_hand: Vec<String> =
+            runner_view.runner.grip_cards.clone().expect("the Runner sees the grip").iter().map(|id| card_title(id, &registry)).collect();
+        assert!(!corp_hand.is_empty() && !runner_hand.is_empty());
+
+        // The buffer as rows, so the test can say which block is *below*
+        // which and not only what is on screen.
+        let render = |ui: &LocalUiState| -> Vec<String> {
+            let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+            terminal.draw(|frame| draw_frame(frame, ui, None)).unwrap();
+            let buffer = terminal.backend().buffer();
+            (0..buffer.area.height)
+                .map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect::<String>())
+                .collect()
+        };
+        let row_of = |rows: &[String], needle: &str| rows.iter().position(|row| row.contains(needle)).unwrap_or_else(|| panic!("{needle:?} is drawn"));
+        let all = |rows: &[String]| rows.join("\n");
+
+        let mut as_corp = LocalUiState::new(registry.clone(), Side::Corp);
+        as_corp.begin_decision(corp_view);
+        let rows = render(&as_corp);
+        let rendered = all(&rows);
+        assert!(rendered.contains("Hand:"), "the hand line is drawn");
+        assert!(rendered.contains(&corp_hand[0]), "the Corp sees its own cards: {}", corp_hand[0]);
+        assert!(runner_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Corp never sees the grip");
+        // Your side is the bottom block, whichever chair you sit in.
+        assert!(row_of(&rows, "You — Corp servers") > row_of(&rows, "Opponent — Runner rig"), "the Corp's own block is below the Runner's");
+
+        let mut as_runner = LocalUiState::new(registry, Side::Runner);
+        as_runner.begin_decision(runner_view);
+        let rows = render(&as_runner);
+        let rendered = all(&rows);
+        assert!(rendered.contains(&runner_hand[0]), "the Runner sees its own cards: {}", runner_hand[0]);
+        assert!(corp_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Runner never sees HQ");
+        assert!(row_of(&rows, "You — Runner rig") > row_of(&rows, "Opponent — Corp servers"), "the Runner's own block is below the Corp's");
+    }
+
+    /// `c` lists the places the viewer may look — their hand, never the
+    /// other's — Enter steps into one and then reads a card, and Esc backs
+    /// out one level at a time so the next card is one keypress away. The
+    /// list is built from the view, so the mask that decides what is drawn
+    /// decides what can be inspected.
+    #[test]
+    fn the_inspector_lists_places_then_cards_and_escape_backs_out_one_level() {
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let hand = view.corp.hq_cards.clone().expect("the Corp sees HQ");
+
+        let mut ui = LocalUiState::new(registry.clone(), Side::Corp);
+        assert!(!ui.inspector_key(KeyCode::Char('c')), "nothing to inspect before a view arrives");
+        ui.begin_decision(view);
+        assert!(ui.inspector_key(KeyCode::Char('c')));
+        let picker = ui.card_picker.clone().expect("the picker opened");
+        let places = picker.zone_labels();
+        assert_eq!(places[0], format!("Hand (HQ) ({})", hand.len()), "{places:?}");
+        assert!(places.iter().all(|p| !p.starts_with("Hand (grip)")), "the Runner's hand is not the Corp's to read");
+        assert!(places.iter().any(|p| p.starts_with("Identities (2)")), "{places:?}");
+        assert!(picker.card.is_none(), "the reader starts at the places");
+
+        let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains("Where") && rendered.contains("Esc backs out"), "the two columns are drawn");
+
+        // Enter steps into the hand; Down and Enter read its second card.
+        assert!(ui.inspector_key(KeyCode::Enter));
+        assert_eq!(ui.card_picker.as_ref().unwrap().card, Some(0));
+        assert!(ui.inspector_key(KeyCode::Down));
+        assert!(ui.inspector_key(KeyCode::Enter));
+        let modal = ui.modal.clone().expect("the card's text is up");
+        let card = registry.get(&hand[1]).unwrap();
+        assert_eq!(modal.title, card.title);
+        let text = card.printed_text.as_deref().expect("every sample-deck card has printed text");
+        assert!(modal.body.contains(text.lines().next().unwrap()), "{}", modal.body);
+        assert!(ui.card_picker.is_some(), "the list stays open behind the text");
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains("Esc to close"), "the modal is drawn over the list");
+
+        // Esc: text -> the same card in the list -> the places -> closed.
+        assert!(ui.inspector_key(KeyCode::Esc));
+        assert!(ui.modal.is_none());
+        assert_eq!(ui.card_picker.as_ref().unwrap().card, Some(1), "back on the card that was read");
+        assert!(ui.inspector_key(KeyCode::Esc));
+        assert_eq!(ui.card_picker.as_ref().unwrap().card, None, "back at the places");
+        assert!(ui.inspector_key(KeyCode::Esc));
+        assert!(ui.card_picker.is_none(), "closed");
+
+        // `c` from a card's text closes the whole inspector at once.
+        ui.inspector_key(KeyCode::Char('c'));
+        ui.inspector_key(KeyCode::Enter);
+        ui.inspector_key(KeyCode::Enter);
+        assert!(ui.modal.is_some());
+        ui.inspector_key(KeyCode::Char('c'));
+        assert!(ui.modal.is_none() && ui.card_picker.is_none());
+    }
+
+    /// Mid-game the places fill up — installs, Archives, the heap — and
+    /// every card the inspector lists has printed text to show. Driven by
+    /// two random agents through the real `Session` so the view is one a
+    /// game actually reaches, not a fixture.
+    #[test]
+    fn mid_game_the_inspector_reaches_the_places_that_have_filled_up() {
+        use netrunner_bots::RandomAgent;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 11).unwrap();
+        let mut session = Session::new(
+            state,
+            registry.clone(),
+            Seat::Agent(Box::new(RandomAgent::new(1))),
+            Seat::Agent(Box::new(RandomAgent::new(2))),
+        );
+        for _ in 0..400 {
+            match session.step() {
+                SessionStep::Applied { .. } | SessionStep::Awaiting { .. } => {}
+                SessionStep::Ended { .. } | SessionStep::Stalled(_) => break,
+            }
+        }
+        assert!(session.state().turn >= 4, "the game got under way: turn {}", session.state().turn);
+
+        for side in [Side::Corp, Side::Runner] {
+            let picker = CardPicker::open(&session.view_for(side), &registry);
+            let places = picker.zone_labels();
+            let own_hand = if side == Side::Corp { "Hand (HQ)" } else { "Hand (grip)" };
+            let other_hand = if side == Side::Corp { "Hand (grip)" } else { "Hand (HQ)" };
+            assert!(places[0].starts_with(own_hand), "{side:?}: the own hand is always first, even empty: {places:?}");
+            assert!(places.iter().all(|p| !p.starts_with(other_hand)), "{side:?} must not see the other hand: {places:?}");
+            assert!(
+                places.iter().any(|p| p.starts_with("Corp servers") || p.starts_with("Archives") || p.starts_with("Heap") || p.starts_with("Runner rig")),
+                "{side:?}: after {} turns the table should have something on it: {places:?}",
+                session.state().turn
+            );
+            for zone in &picker.zones {
+                for (label, id) in &zone.cards {
+                    let card = registry.get(id).unwrap_or_else(|| panic!("{label} is not in the registry"));
+                    assert!(card.printed_text.is_some(), "{label} has no printed text");
+                    assert!(card_modal(id, &registry).body.contains(card.printed_text.as_deref().unwrap().lines().next().unwrap()));
+                }
+            }
+        }
+    }
+
+    /// A parked choice is labelled by what each option does and the pane
+    /// says which card is asking — "Option 0 | Option 1" was a menu with
+    /// no words on it, for a decision the card text explains.
+    #[test]
+    fn a_parked_choice_is_labelled_by_what_it_does_and_who_asks() {
+        use netrunner_core::dsl::{CardId, Effect};
+        use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (mut state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        // Bigger Picture's choice, parked the way `Effect::PresentChoice`
+        // parks it: give a tag, or take the Runner's credits per tag.
+        // Parked the way the engine parks it, clauses included: the
+        // label is the card's own words, and the empty clause is the
+        // "may" declined.
+        state.pending_decision = Some(PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: vec![Effect::GiveTags(1), Effect::Sequence(vec![])],
+            option_texts: vec!["Give the Runner 1 tag.".to_string(), String::new()],
+            source_card: Some(CardId("bigger_picture".to_string())),
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        let view = build_client_view(&state, &registry, Side::Corp);
+
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 0 }, &registry, Some(&view)), "Give the Runner 1 tag");
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 1 }, &registry, Some(&view)), "Do not");
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 0 }, &registry, None), "Choose option 1", "without a view the index is all there is");
+        // A card with no clauses linked falls back to the prose rendering.
+        let mut bare = state.clone();
+        if let Some(PendingDecision::ChooseEffect { option_texts, .. }) = &mut bare.pending_decision {
+            option_texts.clear();
+        }
+        let bare_view = build_client_view(&bare, &registry, Side::Corp);
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 1 }, &registry, Some(&bare_view)), "Do nothing");
+        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Bigger Picture asks — choose one"));
+
+        let mut ui = LocalUiState::new(registry, Side::Corp);
+        ui.begin_decision(view);
+        let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains("Bigger Picture asks"), "the pane is titled by the asking card");
+    }
+
+    /// The split follows the viewer: the Corp block keeps the larger share
+    /// wherever it sits, and a spectator sees the Corp on top.
+    #[test]
+    fn the_board_puts_the_viewers_side_at_the_bottom_and_gives_the_corp_the_room() {
+        let area = Rect::new(0, 0, 100, 30);
+        let (corp, runner) = board_areas(area, Viewer::Player(Side::Corp));
+        assert!(corp.y > runner.y, "the Corp player's block is below");
+        assert!(corp.height > runner.height, "and still the larger one");
+        let (corp, runner) = board_areas(area, Viewer::Player(Side::Runner));
+        assert!(runner.y > corp.y, "the Runner player's block is below");
+        assert!(corp.height > runner.height);
+        let (corp, runner) = board_areas(area, Viewer::Spectator);
+        assert!(corp.y < runner.y, "a spectator sees the Corp on top");
+        assert_eq!(board_title(Side::Corp, Viewer::Spectator), "Corp servers");
+        assert_eq!(board_title(Side::Runner, Viewer::Player(Side::Runner)), "You — Runner rig");
+        assert_eq!(board_title(Side::Runner, Viewer::Player(Side::Corp)), "Opponent — Runner rig");
     }
 
     /// The replay path through the shared renderer: the events pane title,

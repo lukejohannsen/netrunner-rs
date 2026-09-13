@@ -30,6 +30,10 @@
               }
             },
             "EndTheRun"
+          ],
+          "texts": [
+            "Trash 1 installed program",
+            "end the run"
           ]
         }
       }

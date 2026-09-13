@@ -29,6 +29,10 @@
                       3
                     ]
                   }
+                ],
+                "texts": [
+                  "Gain 3[credit]",
+                  "Draw 3 cards"
                 ]
               }
             }
@@ -69,6 +73,11 @@
                       }
                     ]
                   }
+                ],
+                "texts": [
+                  "Gain 3[credit]",
+                  "Draw 3 cards",
+                  "resolve both"
                 ]
               }
             }

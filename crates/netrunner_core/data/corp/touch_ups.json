@@ -85,6 +85,12 @@
                           "destination": "OpponentDeck"
                         }
                       }
+                    ],
+                    "texts": [
+                      "choose a card type: program",
+                      "choose a card type: hardware",
+                      "choose a card type: resource",
+                      "choose a card type: event"
                     ]
                   }
                 }

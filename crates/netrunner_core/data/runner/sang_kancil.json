@@ -21,7 +21,8 @@
           "restrict_to": "CodeGate"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine."
     },
     {
       "trigger": "Paid",
@@ -38,7 +39,8 @@
           "duration": "Encounter"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "3[credit]: +2 strength. If a run event is active, this ability costs 2[credit] less to use."
     }
   ],
   "numeric_id": 35020,

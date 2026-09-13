@@ -45,7 +45,8 @@
             }
           }
         ]
-      }
+      },
+      "text": "Once per turn → [click]: Take 3[credit] from this resource."
     }
   ],
   "numeric_id": 30027,

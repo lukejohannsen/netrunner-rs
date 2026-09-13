@@ -23,7 +23,8 @@
             "if_paid": "BypassEncounteredIce",
             "if_declined": {
               "Sequence": []
-            }
+            },
+            "text": "you may trash this resource to bypass that ice"
           }
         }
       ]
