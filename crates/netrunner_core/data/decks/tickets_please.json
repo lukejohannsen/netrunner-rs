@@ -3,6 +3,8 @@
   "name": "Tickets, please",
   "side": "Runner",
   "category": "Sample",
+  "description": "Ten run events and six jobs: Zahya runs on the Corp's money.",
+  "style": "aggressive",
   "identity": "zahya_sadeghi",
   "cards": [
     {

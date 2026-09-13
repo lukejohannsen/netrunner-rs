@@ -15,8 +15,9 @@
 use std::path::Path;
 
 use netrunner_core::cards::{self, CardRegistry};
+use netrunner_core::decks::DeckFile;
 use netrunner_core::format::NsgFormat;
-use netrunner_core::rules::{Deck, Side};
+use netrunner_core::rules::Side;
 
 use crate::deck_store;
 
@@ -43,20 +44,26 @@ pub fn sample_deck_registry() -> CardRegistry {
 /// `dir` is the saved-deck directory; names resolve through
 /// `deck_store::load_for_side`, so a built-in id, a saved deck name and a
 /// path all work.
+///
+/// Returns the authored `DeckFile`s rather than only the runtime `Deck`s
+/// because the seat that plays one needs more than its cards: the bot's
+/// personality comes off `DeckFile::style` when no flag names one
+/// (`Config::personality_for`). `DeckFile::to_deck` is the one-line step
+/// from here to `GameState::setup`.
 pub fn decks_for_match(
     dir: &Path,
     corp_name: &str,
     runner_name: &str,
     registry: &CardRegistry,
     format: NsgFormat,
-) -> Result<(Deck, Deck), String> {
-    let find = |name: &str, side: Side| -> Result<Deck, String> {
+) -> Result<(DeckFile, DeckFile), String> {
+    let find = |name: &str, side: Side| -> Result<DeckFile, String> {
         let stored = deck_store::load_for_side(dir, name, side)?;
         stored
             .deck
             .validate(registry, format)
             .map_err(|e| format!("deck {:?} cannot be played: {e}", stored.deck.id))?;
-        Ok(stored.deck.to_deck())
+        Ok(stored.deck)
     };
     Ok((find(corp_name, Side::Corp)?, find(runner_name, Side::Runner)?))
 }
@@ -65,7 +72,7 @@ pub fn decks_for_match(
 mod tests {
     use super::*;
     use netrunner_core::dsl::CardId;
-    use netrunner_core::rules::{validate_deck, GameState};
+    use netrunner_core::rules::{validate_deck, Deck, GameState};
 
     /// An empty directory that does not exist, so these tests resolve only
     /// built-in decks and never depend on what the developer has saved.
@@ -75,7 +82,7 @@ mod tests {
 
     fn resolve(corp: &str, runner: &str) -> Result<(Deck, Deck), String> {
         let registry = sample_deck_registry();
-        decks_for_match(&no_saved_decks(), corp, runner, &registry, NsgFormat::Startup)
+        decks_for_match(&no_saved_decks(), corp, runner, &registry, NsgFormat::Startup).map(|(corp, runner)| (corp.to_deck(), runner.to_deck()))
     }
 
     #[test]
@@ -128,7 +135,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
 
         let (corp_deck, runner_deck) = resolved.expect("a saved deck resolves like a built-in one");
-        assert!(GameState::setup(&corp_deck, &runner_deck, &registry, 7).is_ok());
+        assert!(GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 7).is_ok());
     }
 
     /// An illegal deck is refused *before* a match starts, not silently

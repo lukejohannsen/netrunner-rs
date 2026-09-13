@@ -3,6 +3,8 @@
   "name": "Quick and Dirty",
   "side": "Corp",
   "category": "Sample",
+  "description": "Seventeen operations, no assets, ten tag effects: the name is the plan — score before the Runner has a rig.",
+  "style": "rush",
   "identity": "weyland_consortium_built_to_last",
   "cards": [
     {

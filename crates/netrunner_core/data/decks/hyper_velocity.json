@@ -3,6 +3,8 @@
   "name": "Hyper Velocity",
   "side": "Corp",
   "category": "Sample",
+  "description": "Fourteen operations, cheap ICE (Ping, Whitespace, Tithe) and fifteen tag effects: score quickly and tax the Runner for looking.",
+  "style": "rush",
   "identity": "nbn_reality_plus",
   "cards": [
     {

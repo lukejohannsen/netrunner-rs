@@ -55,8 +55,11 @@ struct Config {
     /// (serve mode) The bot's personality: `balanced`, or `rush`,
     /// `glacier`, `trap` for a Corp bot and `aggressive`, `cautious` for
     /// a Runner bot. See `netrunner_cli --corp-personality`.
-    #[arg(long, default_value_t = netrunner_bots::Personality::Balanced)]
-    bot_personality: netrunner_bots::Personality,
+    ///
+    /// Unset means the bot plays the style its dealt deck names
+    /// (`DeckFile::style`); `balanced` switches that off.
+    #[arg(long)]
+    bot_personality: Option<netrunner_bots::Personality>,
 
     /// (serve mode) How many matches may run at once. A client connecting
     /// at the limit is refused rather than queued. Unlimited if omitted.

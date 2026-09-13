@@ -3,6 +3,8 @@
   "name": "Brick Stack",
   "side": "Corp",
   "category": "Sample",
+  "description": "Pharos, Ballista and Syailendra over eleven transactions: build a wall the Runner cannot afford, then score.",
+  "style": "glacier",
   "identity": "weyland_consortium_built_to_last",
   "cards": [
     {

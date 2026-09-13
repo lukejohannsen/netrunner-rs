@@ -3,6 +3,8 @@
   "name": "Advanced Yomi",
   "side": "Corp",
   "category": "Sample",
+  "description": "Six ambushes (Clearinghouse, Urtica Cipher) behind cheap ICE and fourteen damage effects: every face-down card is a threat, and the deck wants the Runner to find out which.",
+  "style": "trap",
   "identity": "jinteki_restoring_humanity",
   "cards": [
     {

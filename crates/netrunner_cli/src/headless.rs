@@ -23,8 +23,8 @@ use std::io::{self, Write};
 use std::path::Path;
 
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::decks as core_decks;
-use netrunner_core::rules::{Deck, GameState, MatchRules, Side};
+use netrunner_core::decks::{self as core_decks, DeckFile};
+use netrunner_core::rules::{GameState, MatchRules, Side};
 use netrunner_session::coverage::sample_pool_card_ids;
 use netrunner_session::{Coverage, MatchHistory, MatchRecordHeader, Seat, Session, SessionStep};
 use netrunner_single_player::SinglePlayerSession;
@@ -47,11 +47,11 @@ fn headless_kind(kind: BotKind) -> BotKind {
 /// `--runner-deck` pair, or — under `--all-matchups` — the sample matchup
 /// at `index % matchups.len()`, the cross-product rotation self-play and
 /// `bench` use (the sweeps play the deck-covering schedule instead).
-fn deck_pair(config: &Config, registry: &CardRegistry, index: u32) -> Result<(String, Deck, Deck), String> {
+fn deck_pair(config: &Config, registry: &CardRegistry, index: u32) -> Result<(String, DeckFile, DeckFile), String> {
     if config.all_matchups {
         let matchups = core_decks::matchups();
         let (corp, runner) = &matchups[index as usize % matchups.len()];
-        return Ok((format!("{}_vs_{}", corp.id, runner.id), corp.to_deck(), runner.to_deck()));
+        return Ok((format!("{}_vs_{}", corp.id, runner.id), corp.clone(), runner.clone()));
     }
     let decks_dir = crate::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
     let (corp, runner) =
@@ -87,7 +87,12 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     for game_index in 0..config.games {
         let seed = base_seed.wrapping_add(u64::from(game_index));
         let (matchup, corp_deck, runner_deck) = deck_pair(config, &registry, game_index)?;
-        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
+        let (state, _events) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed)?;
+        // The flag if given, else the deck's own style: a coverage run over
+        // `--all-matchups` plays every sample deck the way it is written
+        // unless a measurement pins both seats with `balanced`.
+        let corp_personality = config.personality_for(Side::Corp, &corp_deck)?;
+        let runner_personality = config.personality_for(Side::Runner, &runner_deck)?;
 
         let (history, outcome, steps) = if config.index_path {
             // A rung is a `BotAgent`, and this path drives the index-based
@@ -96,9 +101,9 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
             if config.level_for(Side::Corp).is_some() || config.level_for(Side::Runner).is_some() {
                 return Err("--corp-level/--runner-level cannot be seated on the index path (drop --index-path)".into());
             }
-            let corp = bots::make_driver(corp_kind, Side::Corp, seed, config.simulations, &config.model, config.corp_personality)?;
+            let corp = bots::make_driver(corp_kind, Side::Corp, seed, config.simulations, &config.model, corp_personality)?;
             let runner =
-                bots::make_driver(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations, &config.model, config.runner_personality)?;
+                bots::make_driver(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations, &config.model, runner_personality)?;
             let (_state, history, outcome) = SinglePlayerSession::new(state, registry.clone(), corp, runner).run_with_outcome();
             let steps = history.len();
             (history, outcome, steps)
@@ -109,7 +114,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 corp_kind,
                 Side::Corp,
                 seed,
-                setup.with_personality(config.corp_personality),
+                setup.with_personality(corp_personality),
                 &config.model,
             )?
             .expect("headless_kind never resolves to a kind without a BotAgent form");
@@ -118,7 +123,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
                 runner_kind,
                 Side::Runner,
                 seed.wrapping_add(1),
-                setup.with_personality(config.runner_personality),
+                setup.with_personality(runner_personality),
                 &config.model,
             )?
             .expect("headless_kind never resolves to a kind without a BotAgent form");
@@ -135,7 +140,7 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         if let Some(dir) = &config.record {
             // `GameState::setup` above is Standard rules and a shuffled
             // order, so the header says so.
-            let header = MatchRecordHeader { seed, corp_deck, runner_deck, rules: MatchRules::default() };
+            let header = MatchRecordHeader { seed, corp_deck: corp_deck.to_deck(), runner_deck: runner_deck.to_deck(), rules: MatchRules::default() };
             record_match(dir, game_index, &header, &history)?;
         }
         coverage.absorb_match(&history, &registry, &outcome);

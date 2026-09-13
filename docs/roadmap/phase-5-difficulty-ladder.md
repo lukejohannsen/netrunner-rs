@@ -131,8 +131,16 @@ headless runner and `bench` cannot disagree about what a rung is.
 than the bot it is built from, so both chairs feed one participant and
 the per-role rating book does what it was built for.
 
+**A rung keeps its style** (`feat/personality-crosses-the-ladder`, 13
+September 2026): `LevelSpec::with_personality` crosses the two axes, so
+`--corp-level 4` plays its deck's own style (`DeckFile::style`) or the
+`--corp-personality` given — until then a rung silently played
+`Balanced`. The calibration figures above are for `Balanced`; a style is
+a bias on the same evaluator and does not change the order. Recorded in
+Phase 3 §1.
+
 **Standing open items:** the 192-game calibration that would resolve the
 top steps; the server still offers `heuristic` and `mcts` rather than
 levels (`ServeBotKind`); nothing yet maps a human's own `HumanVsBot`
 rating to a suggested rung, which is what would make "up the challenge"
-self-service.
+self-service; local play records no rating at all.

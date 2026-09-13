@@ -12,6 +12,7 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 
+use netrunner_bots::Personality;
 use netrunner_core::decks;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
 use netrunner_core::view::ClientView;
@@ -398,6 +399,10 @@ async fn a_surrender_against_the_bot_is_rated_on_the_human_vs_bot_track() {
     let path = dir.join("ratings.json");
     let url = start_server(ServeOptions {
         bot_runner: ServeBotKind::Heuristic,
+        // Pinned, because unset means the dealt deck's own style and the
+        // id would then carry it (`bot:heuristic:aggressive`) — the next
+        // test is about that; this one is about the track.
+        bot_personality: Some(Personality::Balanced),
         seed: Some(1),
         ratings_file: Some(path.clone()),
         ..ServeOptions::default()
@@ -418,6 +423,42 @@ async fn a_surrender_against_the_bot_is_rated_on_the_human_vs_bot_track() {
     assert_eq!(bot.runner.wins, 1);
     assert!(bot.runner.rating.rating > 1500.0);
     assert!(book.standing(Track::HumanVsHuman, "quitter").is_none(), "the tracks never mix");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// With no personality pinned, the bot plays the style its dealt deck
+/// names, and its rating id says so — a rush Corp and a glacier Corp are
+/// different opponents on the ladder, so the deck's style has to reach
+/// the id the same way `--bot-personality` does.
+#[tokio::test]
+async fn an_unpinned_bot_plays_its_dealt_decks_style_and_is_rated_under_it() {
+    let dir = std::env::temp_dir().join(format!("netrunner_ratings_style_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("ratings.json");
+    // The first match of a daemon seeded at 1 is match seed 1, so the deal
+    // is `sample_decks_for_seed(1)` and the Runner deck's style is known.
+    let dealt = netrunner_server::fixtures::sample_decks_for_seed(1);
+    let runner_deck = decks::by_id(&dealt.runner_id).expect("the dealt deck is embedded");
+    let style = runner_deck.style.clone().expect("every sample deck names a style");
+    let url = start_server(ServeOptions {
+        bot_runner: ServeBotKind::Heuristic,
+        seed: Some(1),
+        ratings_file: Some(path.clone()),
+        ..ServeOptions::default()
+    })
+    .await;
+
+    let mut quitter = open(&url, connect("quitter", Some(Side::Corp))).await;
+    joined(next(&mut quitter).await);
+    state_update(next(&mut quitter).await);
+    send(&mut quitter, ClientMessage::Surrender).await;
+    assert!(matches!(next(&mut quitter).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
+
+    let book = wait_for_book(&path, |book| book.standing(Track::HumanVsBot, "quitter").is_some()).await;
+    let expected = format!("bot:heuristic:{style}");
+    let bot = book.standing(Track::HumanVsBot, &expected).unwrap_or_else(|| panic!("{expected} should be rated"));
+    assert_eq!(bot.runner.wins, 1);
+    assert!(book.standing(Track::HumanVsBot, "bot:heuristic").is_none(), "the styled bot is not also the balanced one");
     let _ = std::fs::remove_dir_all(&dir);
 }
 

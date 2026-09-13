@@ -241,6 +241,23 @@ impl std::str::FromStr for Level {
 }
 
 impl LevelSpec {
+    /// The same rung, played in `personality`'s style.
+    ///
+    /// Difficulty and style are two axes and this is where they cross.
+    /// `Level::spec` always hands back `Balanced` because every number in
+    /// the calibration (Phase 5 §2) was taken on `Balanced`, and a rung
+    /// that quietly changed its evaluator would not be the rung anyone
+    /// measured. A profile is a *bias* on the same evaluator — it ranks the
+    /// same legal moves differently, never more or less deeply — so the
+    /// rung's strength order survives it (a handicapped bot with a style
+    /// is still the same bot with less handicap at the rung above), and
+    /// only the exact calibration figures are for `Balanced`. Before this
+    /// existed, `--corp-level 4 --corp-personality rush` played `Balanced`
+    /// and said nothing about it.
+    pub fn with_personality(self, personality: Personality) -> Self {
+        Self { personality, ..self }
+    }
+
     /// The agent this rung seats.
     ///
     /// Built here rather than in the CLI because a rung is a *bot policy*
@@ -324,6 +341,28 @@ mod tests {
                 let _: Box<dyn BotAgent> = spec.agent(7);
                 assert!(spec.label().starts_with(level.name()));
                 assert!(!spec.describe().is_empty());
+            }
+        }
+    }
+
+    /// The style axis crosses the difficulty axis without touching it: a
+    /// rung with a personality is the same rung — kind, budget, handicap —
+    /// with a different evaluator bias, and a `Balanced` request is
+    /// exactly `Level::spec`.
+    #[test]
+    fn a_personality_changes_the_evaluator_and_nothing_else_about_a_rung() {
+        for side in [Side::Corp, Side::Runner] {
+            for level in Level::ALL {
+                let plain = level.spec(side);
+                assert_eq!(plain.personality, Personality::Balanced, "the calibrated rung is Balanced");
+                assert_eq!(plain.with_personality(Personality::Balanced), plain);
+                let styled = plain.with_personality(Personality::Rush);
+                assert_eq!(styled.personality, Personality::Rush);
+                assert_eq!(
+                    (styled.level, styled.side, styled.kind, styled.simulations, styled.samples, styled.epsilon),
+                    (plain.level, plain.side, plain.kind, plain.simulations, plain.samples, plain.epsilon)
+                );
+                let _: Box<dyn BotAgent> = styled.agent(3);
             }
         }
     }

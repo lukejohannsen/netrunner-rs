@@ -3,6 +3,8 @@
   "name": "Hidden Funds",
   "side": "Corp",
   "category": "Sample",
+  "description": "Brân 1.0, Empiricist and Mycoweb in multiples: expensive ICE paid for by eleven transactions, then Send a Message behind it.",
+  "style": "glacier",
   "identity": "jinteki_restoring_humanity",
   "cards": [
     {
