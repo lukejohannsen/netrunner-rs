@@ -3,7 +3,8 @@
   "name": "Planning Ahead",
   "side": "Runner",
   "category": "Sample",
-  "description": "Fourteen credit effects and five run events: a balanced Tāo list that plans its runs.",
+  "description": "Two fracters, fourteen credit effects and five run events: Tāo plans the run around the ICE it can see.",
+  "style": "wary",
   "identity": "tao_salonga",
   "cards": [
     {
