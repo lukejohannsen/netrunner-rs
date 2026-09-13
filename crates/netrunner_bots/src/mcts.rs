@@ -27,7 +27,29 @@ use crate::puct::{pick_action, ActionStat, CycleGuard, ESCAPE_RNG_SALT};
 const DEFAULT_ITERATIONS: usize = 64;
 const DEFAULT_MAX_DEPTH: usize = 16;
 const DEFAULT_EXPLORATION: f64 = std::f64::consts::SQRT_2;
-const MAX_TREES: usize = 4;
+/// Root-parallel searches a default-constructed agent runs, and the most
+/// any measurement has been taken at.
+///
+/// **A number, not `rayon::current_num_threads().clamp(1, 4)`, which is
+/// what this was until ROADMAP Phase 2 §5 item 41.** The tree count is
+/// not a parallelism setting — `select_action` splits the budget
+/// `iterations / trees`, so it trades *hidden-information samples*
+/// against *depth per sample at fixed cost*, and item 35 measured those
+/// two going to different chairs (384 games a cell against a fixed
+/// heuristic, 128 total simulations):
+///
+/// | trees | as Corp | as Runner |
+/// |---|---|---|
+/// | 1 | 0.522 | 0.510 |
+/// | 4 | 0.500 | **0.635** |
+///
+/// Four is therefore the right default and was already what any box with
+/// four or more cores got. What the old expression did was give a
+/// *smaller* box a materially different bot — 2 × 64 rather than 4 × 32,
+/// most of the Runner chair's strength traded away for depth that chair
+/// saturates by 64 — while reading like a performance detail. Eight is
+/// not the default because nothing has measured eight.
+pub const DEFAULT_TREES: usize = 4;
 
 /// Information Set MCTS over `netrunner_core`'s own `apply_action`/
 /// `legal_actions`: each of `trees` independent, single-threaded searches
@@ -81,18 +103,17 @@ impl MctsAgent {
     /// harness that wants many cheap games rather than a strong opponent,
     /// without restating (and then drifting from) the other defaults.
     pub fn with_iterations(side: Side, seed: u64, iterations: usize) -> Self {
-        let trees = rayon::current_num_threads().clamp(1, MAX_TREES);
-        Self::with_config(side, seed, iterations, DEFAULT_MAX_DEPTH, DEFAULT_EXPLORATION, trees)
+        Self::with_config(side, seed, iterations, DEFAULT_MAX_DEPTH, DEFAULT_EXPLORATION, DEFAULT_TREES)
     }
 
     /// `with_iterations`, with the root-parallel tree count said out
-    /// loud instead of read off `rayon::current_num_threads()`. The total
-    /// budget is unchanged — `select_action` searches `iterations /
-    /// trees` per tree — so this trades *hidden-information samples*
-    /// against *depth per sample* at fixed cost, and nothing else. The
-    /// default is machine-dependent by construction, which is fine for a
-    /// bot seat and not fine for a measurement: see ROADMAP Phase 2 §5
-    /// item 35, which is exactly this dial.
+    /// loud rather than left at `DEFAULT_TREES`. The total budget is
+    /// unchanged — `select_action` searches `iterations / trees` per
+    /// tree — so this trades *hidden-information samples* against *depth
+    /// per sample* at fixed cost, and nothing else. It is the dial
+    /// ROADMAP Phase 2 §5 item 35 measured, and the reason it exists is
+    /// that a measurement has to pin it; the default no longer moves
+    /// with the host's core count (item 41).
     pub fn with_trees(side: Side, seed: u64, iterations: usize, trees: usize) -> Self {
         Self::with_config(side, seed, iterations, DEFAULT_MAX_DEPTH, DEFAULT_EXPLORATION, trees)
     }
@@ -374,6 +395,30 @@ mod tests {
         WindowCheckpoint,
     };
     use netrunner_core::view::build_client_view;
+
+    /// The defect item 41 fixed, as a test rather than a comment.
+    ///
+    /// `with_iterations` read its tree count off
+    /// `rayon::current_num_threads().clamp(1, 4)`, so the shipped bot was
+    /// 4 x 32 on a four-core box and 2 x 64 on a two-core one — a
+    /// different bot, weaker on the chair the trees buy (item 35), and
+    /// silently so. A rayon pool of one thread is exactly what a small
+    /// box looks like to that expression, and the agent built inside one
+    /// must now be the same agent as everywhere else.
+    #[test]
+    fn the_default_tree_count_does_not_move_with_the_host_pool() {
+        let built = |threads: usize| {
+            rayon::ThreadPoolBuilder::new()
+                .num_threads(threads)
+                .build()
+                .expect("a rayon pool of the given size")
+                .install(|| MctsAgent::with_iterations(Side::Corp, 1, 128).trees)
+        };
+        assert_eq!(built(1), DEFAULT_TREES, "a one-thread host used to get one tree, and one tree is a different bot");
+        assert_eq!(built(2), DEFAULT_TREES);
+        assert_eq!(built(8), DEFAULT_TREES, "and a big host never got more than four anyway");
+        assert_eq!(MctsAgent::with_trees(Side::Corp, 1, 128, 2).trees, 2, "an explicit count is still honoured");
+    }
 
     fn blank_card(id: &str, card_type: CardType) -> CardDefinition {
         CardDefinition {
