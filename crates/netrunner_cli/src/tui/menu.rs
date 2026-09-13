@@ -1,14 +1,16 @@
 //! The main menu: what `netrunner_cli` opens with no arguments.
 //!
 //! Every way of playing is reachable from here without a flag — a game
-//! against the computer, the Learn to Play track, the deck builder, the
-//! ladder, the settings — and a finished game comes back here rather than
-//! to the shell. The flags still work and still skip it; they are what scripts
+//! against the computer, a game against a person over the network (hosted
+//! here or joined), the Learn to Play track, the deck builder, the ladder,
+//! the settings — and a finished game comes back here rather than to the
+//! shell. The flags still work and still skip it; they are what scripts
 //! and measurements use.
 //!
 //! **Nothing here plays a game.** A choice becomes a `Launch` carrying the
 //! `Config` the equivalent flags would have produced, and the loop hands it
-//! to the same `play_local` / `learn::play` the flag path calls. So there
+//! to the same `play_local` / `learn::play` / `play_remote` the flag path
+//! calls. So there
 //! is still one seating rule, one rating rule and one deck resolver; the
 //! menu is a way of filling in their inputs.
 //!
@@ -37,6 +39,7 @@ use netrunner_core::rules::Side;
 use netrunner_core::tutorial;
 
 use super::builder::{DeckKey, DeckScreen};
+use super::online::{OnlineScreen, OnlineStep};
 use super::start::{self, StartChoice, StartKey, StartMenu};
 use crate::config::{Config, FormatArg};
 use crate::decks;
@@ -48,6 +51,7 @@ use crate::settings::{self, Settings};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Entry {
     PlayComputer,
+    Online,
     Learn,
     Decks,
     Ratings,
@@ -56,11 +60,12 @@ pub enum Entry {
 }
 
 impl Entry {
-    const ALL: [Entry; 6] = [Entry::PlayComputer, Entry::Learn, Entry::Decks, Entry::Ratings, Entry::Settings, Entry::Quit];
+    const ALL: [Entry; 7] = [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Ratings, Entry::Settings, Entry::Quit];
 
     fn label(self) -> &'static str {
         match self {
             Entry::PlayComputer => "Play vs Computer",
+            Entry::Online => "Play Online",
             Entry::Learn => "Learn to Play",
             Entry::Decks => "Decks",
             Entry::Ratings => "Ratings",
@@ -72,6 +77,7 @@ impl Entry {
     fn blurb(self) -> &'static str {
         match self {
             Entry::PlayComputer => "Pick a side, a deck each, and the computer's strength and style",
+            Entry::Online => "Host a game for someone to join, join one by address, or watch",
             Entry::Learn => "Guided lessons for each side, then the starter game",
             Entry::Decks => "Build, copy and edit your own decks, or read the built-in ones",
             Entry::Ratings => "Your standing on the local ladder, and the rung to try next",
@@ -82,15 +88,34 @@ impl Entry {
 }
 
 /// Something for the loop to play on its terminal, with the config the
-/// equivalent flags would have produced.
-#[derive(Debug, Clone)]
+/// equivalent flags would have produced — or, online, the seat the
+/// connection already holds.
 pub enum Launch {
     Local { config: Box<Config> },
     Learn { pick: LearnPick, config: Box<Config> },
+    Remote { joined: Box<crate::remote::Joined>, url: String, brought: Option<String> },
+}
+
+/// Which kind of launch just came back, for `Menu::returned` — the
+/// launch itself is consumed by playing it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Played {
+    Local,
+    Learn,
+    Remote,
+}
+
+impl Launch {
+    fn kind(&self) -> Played {
+        match self {
+            Launch::Local { .. } => Played::Local,
+            Launch::Learn { .. } => Played::Learn,
+            Launch::Remote { .. } => Played::Remote,
+        }
+    }
 }
 
 /// What one key did.
-#[derive(Debug)]
 pub enum MenuStep {
     Continue,
     Launch(Launch),
@@ -258,6 +283,7 @@ enum Screen {
     NewGame(Box<StartMenu>),
     Learn(LearnMenu),
     Decks(Box<DeckScreen>),
+    Online(Box<OnlineScreen>),
     Ratings { lines: Vec<String>, scroll: u16 },
     Settings(SettingsForm),
 }
@@ -320,6 +346,15 @@ impl Menu {
     fn activate(&mut self) -> MenuStep {
         match self.entry() {
             Entry::PlayComputer => self.open_new_game(),
+            Entry::Online => {
+                let opened = crate::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref()).and_then(|dir| {
+                    OnlineScreen::open(&dir, &self.registry, self.base.format.into(), ratings::player_name(&self.base), self.base.server.clone())
+                });
+                match opened {
+                    Ok(screen) => self.screen = Screen::Online(Box::new(screen)),
+                    Err(error) => self.notice = Some(error),
+                }
+            }
             Entry::Learn => self.screen = Screen::Learn(LearnMenu::new()),
             // Opened on the format as it stands, so a format changed in
             // Settings changes the pool and the verdicts at once.
@@ -411,6 +446,10 @@ impl Menu {
                 }
                 MenuStep::Continue
             }
+            Screen::Online(online) => {
+                let step = online.key(key);
+                self.online_step(step)
+            }
             Screen::Ratings { scroll, .. } => {
                 match key {
                     KeyCode::Up | KeyCode::Char('k') => *scroll = scroll.saturating_sub(1),
@@ -435,14 +474,45 @@ impl Menu {
         }
     }
 
+    fn online_step(&mut self, step: OnlineStep) -> MenuStep {
+        match step {
+            OnlineStep::Continue => MenuStep::Continue,
+            OnlineStep::Back => {
+                self.screen = Screen::Main;
+                MenuStep::Continue
+            }
+            OnlineStep::Play { joined, url, brought } => MenuStep::Launch(Launch::Remote { joined, url, brought }),
+        }
+    }
+
+    /// Called every frame, key or no key: a connection in progress is
+    /// polled here, so the lobby wait draws and a seat is taken the moment
+    /// the server offers it.
+    pub fn tick(&mut self) -> MenuStep {
+        match &mut self.screen {
+            Screen::Online(online) => {
+                let step = online.tick();
+                self.online_step(step)
+            }
+            _ => MenuStep::Continue,
+        }
+    }
+
     /// Back from a launch. A game against the computer reopens the form on
-    /// the game just played; a lesson leaves the Learn screen where it was.
+    /// the game just played; a lesson leaves the Learn screen where it was;
+    /// an online game stops the server this player hosted, if they did.
     /// A game that stopped on an error — a deck that failed validation, a
     /// ratings file that would not open — says why under the screen instead
     /// of dropping the player out of the TUI.
-    pub fn returned(&mut self, launch: &Launch, error: Option<String>) {
-        if let Launch::Local { .. } = launch {
-            self.open_new_game();
+    pub fn returned(&mut self, played: Played, error: Option<String>) {
+        match played {
+            Played::Local => self.open_new_game(),
+            Played::Learn => {}
+            Played::Remote => {
+                if let Screen::Online(online) = &mut self.screen {
+                    online.returned();
+                }
+            }
         }
         if let Some(error) = error {
             self.notice = Some(format!("That game stopped: {error}"));
@@ -457,6 +527,7 @@ impl Menu {
             Screen::NewGame(form) => start::draw(frame, body, form),
             Screen::Learn(learn) => draw_learn(frame, body, learn),
             Screen::Decks(decks) => decks.draw(frame, body),
+            Screen::Online(online) => online.draw(frame, body),
             Screen::Ratings { lines, scroll } => draw_ratings(frame, body, lines, *scroll),
             Screen::Settings(form) => self.draw_settings(frame, body, form),
         }
@@ -589,24 +660,27 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 fn drive(terminal: &mut ratatui::DefaultTerminal, menu: &mut Menu) -> Result<(), Box<dyn std::error::Error>> {
     loop {
         terminal.draw(|frame| menu.draw(frame))?;
-        if !event::poll(Duration::from_millis(250))? {
-            continue;
-        }
-        // Press only: Windows reports a release for every key as well, and
-        // the menu would otherwise act twice on one keystroke.
-        let Event::Key(key) = event::read()? else { continue };
-        if key.kind != KeyEventKind::Press {
-            continue;
-        }
-        match menu.key(key.code) {
+        let step = if event::poll(Duration::from_millis(100))? {
+            // Press only: Windows reports a release for every key as well,
+            // and the menu would otherwise act twice on one keystroke.
+            match event::read()? {
+                Event::Key(key) if key.kind == KeyEventKind::Press => menu.key(key.code),
+                _ => MenuStep::Continue,
+            }
+        } else {
+            menu.tick()
+        };
+        match step {
             MenuStep::Continue => {}
             MenuStep::Quit => return Ok(()),
             MenuStep::Launch(launch) => {
-                let result = match &launch {
-                    Launch::Local { config } => super::play_local(terminal, config),
-                    Launch::Learn { pick, config } => learn::play(terminal, pick, config),
+                let played = launch.kind();
+                let result = match launch {
+                    Launch::Local { config } => super::play_local(terminal, &config),
+                    Launch::Learn { pick, config } => learn::play(terminal, &pick, &config),
+                    Launch::Remote { joined, url, brought } => super::play_remote(terminal, *joined, &url, brought.as_deref()),
                 };
-                menu.returned(&launch, result.err().map(|error| error.to_string()));
+                menu.returned(played, result.err().map(|error| error.to_string()));
             }
         }
     }
@@ -687,12 +761,12 @@ mod tests {
         go_to(&mut menu, Entry::PlayComputer);
         // The Runner chair, unrated.
         let MenuStep::Launch(launch) = press(&mut menu, &[KeyCode::Down, KeyCode::Char('r'), KeyCode::Enter]) else { panic!() };
-        menu.returned(&launch, None);
+        menu.returned(launch.kind(), None);
         let Screen::NewGame(form) = &menu.screen else { panic!("back on the form") };
         let again = form.choice().unwrap();
         assert_eq!((again.human, again.rated), (Side::Runner, false));
         assert!(menu.notice.is_none());
-        menu.returned(&launch, Some("deck is not legal".to_string()));
+        menu.returned(launch.kind(), Some("deck is not legal".to_string()));
         assert_eq!(menu.notice.as_deref(), Some("That game stopped: deck is not legal"));
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -773,7 +847,7 @@ mod tests {
 
     #[test]
     fn escape_from_every_screen_goes_back_to_the_main_menu() {
-        for entry in [Entry::PlayComputer, Entry::Learn, Entry::Decks, Entry::Ratings, Entry::Settings] {
+        for entry in [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Ratings, Entry::Settings] {
             let (mut menu, dir) = menu(&format!("esc_{entry:?}"));
             go_to(&mut menu, entry);
             assert!(!matches!(menu.screen, Screen::Main), "{entry:?} opens a screen");

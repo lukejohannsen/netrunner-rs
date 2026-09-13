@@ -25,6 +25,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
+use netrunner_core::decks::DeckFile;
 use netrunner_core::rules::{Side, Viewer};
 use netrunner_server::{ClientMessage, MatchSummary, ServerMessage};
 
@@ -37,6 +38,10 @@ pub struct Joined {
     pub session_token: Option<Uuid>,
     pub tx: mpsc::UnboundedSender<ClientMessage>,
     pub rx: mpsc::UnboundedReceiver<ServerMessage>,
+    /// The deck ids `MatchJoined` named, Corp then Runner; empty for a
+    /// spectator. A player who brought a deck compares against these,
+    /// because a daemon older than `Connect::deck` ignores it and deals.
+    pub decks: (String, String),
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -57,24 +62,80 @@ pub enum RemoteError {
     GaveUp(Duration),
 }
 
+/// The `Connect` a player sends: their name (the one they are rated
+/// under), a seat preference, a room, and the deck they bring, whose side
+/// is then their seat.
+pub fn connect_message(player_name: &str, preferred_side: Option<Side>, room: Option<String>, deck: Option<DeckFile>) -> ClientMessage {
+    ClientMessage::Connect { player_name: player_name.to_string(), preferred_side, room, deck: deck.map(Box::new) }
+}
+
 /// First connection: asks for a seat and waits for `MatchJoined`. Under a
 /// human-vs-human daemon that can mean waiting in the lobby; `Queued` is
 /// reported on stderr, which is fine because the TUI has not started yet
-/// — `run_remote` connects before `ratatui::init`. Resuming a *lobby*
-/// place after a drop is not attempted here: the token arrives before
+/// — `run_remote` connects before `ratatui::init`. The menu, which *has*
+/// a terminal, uses `spawn_connect` instead. Resuming a *lobby* place
+/// after a drop is not attempted here: the token arrives before
 /// `MatchJoined`, and the retry loop keys on a seat. Still open.
-pub async fn connect_remote(url: &str, preferred_side: Option<Side>, room: Option<String>) -> Result<Joined, RemoteError> {
-    open(url, ClientMessage::Connect { player_name: "CLI Player".into(), preferred_side, room }).await
+pub async fn connect_remote(url: &str, hello: ClientMessage) -> Result<Joined, RemoteError> {
+    open(url, hello, |position| eprintln!("Waiting in the lobby for another player ({position} waiting)...")).await
+}
+
+/// What a connection in progress has to say, for a caller that keeps
+/// drawing while it waits.
+pub enum ConnectEvent {
+    /// In the lobby at this position, waiting for an opponent.
+    Queued(usize),
+    Joined(Box<Joined>),
+    Failed(RemoteError),
+}
+
+/// A connection running in the background. Dropping it — or `cancel` —
+/// aborts the attempt, and the socket is closed with a `Close` frame, so a
+/// player who stops waiting leaves the daemon's lobby rather than sitting
+/// in it to be paired with someone after they have gone.
+pub struct Connecting {
+    pub events: mpsc::UnboundedReceiver<ConnectEvent>,
+    task: tokio::task::JoinHandle<()>,
+}
+
+impl Connecting {
+    pub fn cancel(&self) {
+        self.task.abort();
+    }
+}
+
+impl Drop for Connecting {
+    fn drop(&mut self) {
+        self.task.abort();
+    }
+}
+
+/// `connect_remote` (or `spectate_remote`) without blocking: the caller
+/// polls `events` between frames. Must be called inside a tokio runtime.
+pub fn spawn_connect(url: String, hello: ClientMessage) -> Connecting {
+    let (tx, events) = mpsc::unbounded_channel();
+    let task = tokio::spawn(async move {
+        let progress = tx.clone();
+        let result = open(&url, hello, move |position| {
+            let _ = progress.send(ConnectEvent::Queued(position));
+        })
+        .await;
+        let _ = tx.send(match result {
+            Ok(joined) => ConnectEvent::Joined(Box::new(joined)),
+            Err(error) => ConnectEvent::Failed(error),
+        });
+    });
+    Connecting { events, task }
 }
 
 /// Reconnection: presents the seat's token and waits for `MatchJoined`.
 pub async fn resume_remote(url: &str, session_token: Uuid) -> Result<Joined, RemoteError> {
-    open(url, ClientMessage::Resume { session_token }).await
+    open(url, ClientMessage::Resume { session_token }, |_| {}).await
 }
 
 /// Watching: asks for a match by id and waits for `Spectating`.
 pub async fn spectate_remote(url: &str, match_id: Uuid) -> Result<Joined, RemoteError> {
-    open(url, ClientMessage::Spectate { match_id }).await
+    open(url, ClientMessage::Spectate { match_id }, |_| {}).await
 }
 
 /// One `ListMatches` round trip on its own socket, closed afterwards.
@@ -123,20 +184,26 @@ pub async fn print_matches(url: &str) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
-async fn open(url: &str, hello: ClientMessage) -> Result<Joined, RemoteError> {
+async fn open(url: &str, hello: ClientMessage, mut on_queued: impl FnMut(usize) + Send) -> Result<Joined, RemoteError> {
     let (ws_stream, _) = tokio_tungstenite::connect_async(url).await.map_err(|error| RemoteError::Transport(Box::new(error)))?;
     let (mut ws_writer, mut ws_reader) = ws_stream.split();
 
     let (tx_to_server, mut rx_to_server) = mpsc::unbounded_channel::<ClientMessage>();
     let (tx_from_server, mut rx_from_server) = mpsc::unbounded_channel::<ServerMessage>();
 
+    // Ends when every sender is gone — the `App` quit, or a connection
+    // was abandoned in the lobby — and says so with a `Close` frame. Just
+    // dropping this half would leave the socket open for as long as the
+    // reader half waits for a frame, which in the lobby is until an
+    // opponent arrives: the daemon would pair them with nobody.
     tokio::spawn(async move {
         while let Some(msg) = rx_to_server.recv().await {
             let Ok(json) = serde_json::to_string(&msg) else { continue };
             if ws_writer.send(WsMessage::Text(json)).await.is_err() {
-                break;
+                return;
             }
         }
+        let _ = ws_writer.close().await;
     });
 
     // Ends — closing `tx_from_server`, which is how `App` learns the
@@ -162,23 +229,28 @@ async fn open(url: &str, hello: ClientMessage) -> Result<Joined, RemoteError> {
 
     loop {
         match rx_from_server.recv().await {
-            Some(ServerMessage::MatchJoined { assigned_side, session_token, .. }) => {
+            Some(ServerMessage::MatchJoined { assigned_side, session_token, corp_deck, runner_deck, .. }) => {
                 return Ok(Joined {
                     viewer: Viewer::Player(assigned_side),
                     session_token: Some(session_token),
                     tx: tx_to_server,
                     rx: rx_from_server,
+                    decks: (corp_deck, runner_deck),
                 });
             }
             Some(ServerMessage::Spectating { .. }) => {
-                return Ok(Joined { viewer: Viewer::Spectator, session_token: None, tx: tx_to_server, rx: rx_from_server });
+                return Ok(Joined {
+                    viewer: Viewer::Spectator,
+                    session_token: None,
+                    tx: tx_to_server,
+                    rx: rx_from_server,
+                    decks: (String::new(), String::new()),
+                });
             }
             Some(ServerMessage::ResumeRejected { reason } | ServerMessage::ConnectRejected { reason }) => {
                 return Err(RemoteError::Rejected(reason));
             }
-            Some(ServerMessage::Queued { position, .. }) => {
-                eprintln!("Waiting in the lobby for another player ({position} waiting)...");
-            }
+            Some(ServerMessage::Queued { position, .. }) => on_queued(position),
             Some(_) => continue,
             None => return Err(RemoteError::ClosedBeforeSeat),
         }
@@ -284,7 +356,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn the_reconnector_takes_the_seat_back_after_the_socket_drops() {
         let url = start_server().await;
-        let joined = connect_remote(&url, Some(Side::Corp), None).await.unwrap();
+        let joined = connect_remote(&url, connect_message("tester", Some(Side::Corp), None, None)).await.unwrap();
         assert_eq!(joined.viewer, Viewer::Player(Side::Corp));
         let Joined { session_token, tx, mut rx, .. } = joined;
         let session_token = session_token.expect("a seat has a token");

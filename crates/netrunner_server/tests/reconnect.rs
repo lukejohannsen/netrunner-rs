@@ -63,7 +63,7 @@ fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
 async fn a_dropped_client_resumes_its_seat_with_the_session_token() {
     let url = start_server(Duration::from_secs(30)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None }).await;
+    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None, deck: None }).await;
     let (match_id, side, token) = joined(next(&mut first).await);
     assert_eq!(side, Side::Corp);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
@@ -95,7 +95,7 @@ async fn a_token_nobody_issued_is_refused() {
 async fn a_seat_forfeited_for_staying_away_cannot_resume() {
     let url = start_server(Duration::from_millis(200)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None }).await;
+    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None, deck: None }).await;
     let (_, _, token) = joined(next(&mut first).await);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
     first.close(None).await.unwrap();
@@ -113,7 +113,7 @@ async fn a_seat_forfeited_for_staying_away_cannot_resume() {
 async fn the_newest_connection_wins_the_seat() {
     let url = start_server(Duration::from_secs(30)).await;
 
-    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None }).await;
+    let mut first = open(&url, ClientMessage::Connect { player_name: "first".into(), preferred_side: Some(Side::Corp), room: None, deck: None }).await;
     let (_, _, token) = joined(next(&mut first).await);
     assert!(matches!(next(&mut first).await, ServerMessage::StateUpdate(_)));
 
@@ -141,7 +141,7 @@ async fn the_newest_connection_wins_the_seat() {
 async fn a_client_that_sits_on_its_mulligan_is_timed_out() {
     let url = start_server_with(ServeOptions { turn_timeout: Some(Duration::from_millis(200)), ..ServeOptions::default() }).await;
 
-    let mut idle = open(&url, ClientMessage::Connect { player_name: "idle".into(), preferred_side: Some(Side::Corp), room: None }).await;
+    let mut idle = open(&url, ClientMessage::Connect { player_name: "idle".into(), preferred_side: Some(Side::Corp), room: None, deck: None }).await;
     let (_, _, token) = joined(next(&mut idle).await);
     assert!(matches!(next(&mut idle).await, ServerMessage::StateUpdate(_)));
     assert!(matches!(next(&mut idle).await, ServerMessage::DecisionClock { side: Side::Corp, .. }));

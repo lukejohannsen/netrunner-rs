@@ -184,6 +184,13 @@ pub struct Config {
     #[arg(long)]
     pub room: Option<String>,
 
+    /// (remote mode) Bring this deck — a built-in id, a saved deck's name,
+    /// or a path — instead of being dealt one. Its side is your seat, so
+    /// `--side` may be left off (and must agree if given). The server
+    /// checks it against its own format and refuses an illegal one.
+    #[arg(long)]
+    pub deck: Option<String>,
+
     /// (remote mode) Watch a running match instead of playing: an id from
     /// `netrunner_cli matches`. A spectator sees what both players can
     /// see and nothing either keeps hidden, and has nothing to submit.
