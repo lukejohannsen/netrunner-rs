@@ -90,6 +90,12 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
 
         let (history, outcome, steps) = if config.index_path {
+            // A rung is a `BotAgent`, and this path drives the index-based
+            // `Agent` shape; silently ignoring the flag would hand back a
+            // measurement of a bot nobody asked for.
+            if config.level_for(Side::Corp).is_some() || config.level_for(Side::Runner).is_some() {
+                return Err("--corp-level/--runner-level cannot be seated on the index path (drop --index-path)".into());
+            }
             let corp = bots::make_driver(corp_kind, Side::Corp, seed, config.simulations, &config.model, config.corp_personality)?;
             let runner =
                 bots::make_driver(runner_kind, Side::Runner, seed.wrapping_add(1), config.simulations, &config.model, config.runner_personality)?;
@@ -98,10 +104,17 @@ pub fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
             (history, outcome, steps)
         } else {
             let setup = bots::AgentSetup::new(config.simulations);
-            let corp =
-                bots::make_agent_with_model(corp_kind, Side::Corp, seed, setup.with_personality(config.corp_personality), &config.model)?
-                    .expect("headless_kind never resolves to a kind without a BotAgent form");
-            let runner = bots::make_agent_with_model(
+            let corp = bots::make_seat_agent(
+                config.level_for(Side::Corp),
+                corp_kind,
+                Side::Corp,
+                seed,
+                setup.with_personality(config.corp_personality),
+                &config.model,
+            )?
+            .expect("headless_kind never resolves to a kind without a BotAgent form");
+            let runner = bots::make_seat_agent(
+                config.level_for(Side::Runner),
                 runner_kind,
                 Side::Runner,
                 seed.wrapping_add(1),

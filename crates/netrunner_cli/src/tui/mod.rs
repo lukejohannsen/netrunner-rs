@@ -99,7 +99,14 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 
     let bot_side = human_side.other();
     let bot_kind = if human_side == Side::Corp { config.runner } else { config.corp };
-    let (bot_seat, mut indexed_bot) = build_bot_seat(bot_kind, bot_side, seed.wrapping_add(1), &config.model, config.personality_for(bot_side))?;
+    let (bot_seat, mut indexed_bot) = build_bot_seat(
+        config.level_for(bot_side),
+        bot_kind,
+        bot_side,
+        seed.wrapping_add(1),
+        &config.model,
+        config.personality_for(bot_side),
+    )?;
 
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, bot_seat),
@@ -319,17 +326,23 @@ fn stall_message(reason: StallReason) -> String {
 /// and is pumped through the index-based adapter like the RL path. Giving it
 /// a view-based form would delete this branch — see `bots::make_agent`.
 fn build_bot_seat(
+    level: Option<netrunner_bots::Level>,
     kind: crate::config::BotKind,
     side: Side,
     seed: u64,
     model: &str,
     personality: Personality,
 ) -> Result<(Seat, Option<Box<dyn netrunner_bots::Agent>>), String> {
+    // A rung is always a `Seat::Agent`: the ladder is built from the four
+    // view-based searches, and deliberately excludes the one kind that
+    // needs the index path.
     match kind {
-        crate::config::BotKind::Onnx => Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, personality)?))),
+        crate::config::BotKind::Onnx if level.is_none() => {
+            Ok((Seat::External, Some(bots::make_driver(kind, side, seed, DEFAULT_SIMULATIONS, model, personality)?)))
+        }
         _ => {
-            let agent =
-                bots::make_agent_with_model(kind, side, seed, bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality), model)?
+            let setup = bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality);
+            let agent = bots::make_seat_agent(level, kind, side, seed, setup, model)?
                 .ok_or_else(|| "interactive mode needs a bot on the non-human side".to_string())?;
             Ok((Seat::Agent(agent), None))
         }

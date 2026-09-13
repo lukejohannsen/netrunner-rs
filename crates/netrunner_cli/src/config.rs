@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use netrunner_bots::Personality;
+use netrunner_bots::{Level, Personality};
 use clap::{Parser, Subcommand, ValueEnum};
 
 use netrunner_core::format::NsgFormat;
@@ -111,6 +111,26 @@ pub struct Config {
     /// `--corp-personality`.
     #[arg(long, default_value_t = Personality::Balanced)]
     pub runner_personality: Personality,
+
+    /// Seat the Corp as a rung of the difficulty ladder — `novice`,
+    /// `apprentice`, `operator`, `veteran`, `elite`, or `1`-`5` — instead
+    /// of assembling one out of `--corp`, `--corp-personality` and
+    /// `--simulations`, all three of which it overrides.
+    ///
+    /// A rung is a *calibrated* opponent and the three flags are not:
+    /// they let you build combinations nobody has measured, which is
+    /// right for a measurement and wrong for "give me something I can
+    /// nearly beat". The two chairs are separate ladders, because the
+    /// same rung is a different bot on each side — see
+    /// `netrunner_bots::difficulty`.
+    #[arg(long)]
+    pub corp_level: Option<Level>,
+
+    /// Seat the Runner as a rung of the difficulty ladder. See
+    /// `--corp-level`; the Runner ladder tops out lower, which is a fact
+    /// about the bots and is stated in `netrunner_bots::difficulty`.
+    #[arg(long)]
+    pub runner_level: Option<Level>,
 
     /// `Local` runs the match in this process: interactive play on a
     /// `netrunner_session::Session` (`tui::run_local`), `--headless` on
@@ -237,12 +257,26 @@ pub enum BotKind {
 pub struct BotSpec {
     pub kind: BotKind,
     pub personality: Personality,
+    /// A difficulty rung instead of a hand-assembled bot, spelled
+    /// `level:elite` or `level:3`. `Some` overrides `kind` and
+    /// `personality`, and the rung resolves differently on each chair —
+    /// which is the point of benchmarking one: `elite` as Corp and
+    /// `elite` as Runner are different bots, and the rating book already
+    /// rates the two roles separately.
+    pub level: Option<Level>,
 }
 
 impl std::str::FromStr for BotSpec {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(level) = s.strip_prefix("level:") {
+            return Ok(BotSpec {
+                kind: BotKind::Heuristic,
+                personality: Personality::Balanced,
+                level: Some(level.parse::<Level>()?),
+            });
+        }
         let (kind, personality) = match s.split_once(':') {
             Some((kind, personality)) => (kind, personality.parse::<Personality>()?),
             None => (s, Personality::Balanced),
@@ -251,7 +285,7 @@ impl std::str::FromStr for BotSpec {
             let names: Vec<&str> = BotKind::value_variants().iter().filter_map(|k| k.to_possible_value()).map(|v| v.get_name().to_string()).collect::<Vec<_>>().leak().iter().map(String::as_str).collect();
             format!("unknown bot kind {kind:?}; one of {}", names.join(", "))
         })?;
-        Ok(BotSpec { kind, personality })
+        Ok(BotSpec { kind, personality, level: None })
     }
 }
 
@@ -275,6 +309,11 @@ pub enum Command {
         /// itself included — that pairing is what says whether the Corp
         /// or the Runner chair is the stronger one for a given bot.
         /// `human` and `onnx` cannot be seated here.
+        ///
+        /// `level:elite` (or `level:5`) seats a rung of the difficulty
+        /// ladder instead, which is how the ladder is calibrated: the
+        /// rung ignores `--simulations`, and resolves to a different bot
+        /// on each chair.
         #[arg(long, value_delimiter = ',', default_value = "random,heuristic")]
         bots: Vec<BotSpec>,
         /// Games per ordered pairing, rotating through the sample-deck
@@ -554,6 +593,15 @@ impl Config {
         match side {
             Side::Corp => self.corp_personality,
             Side::Runner => self.runner_personality,
+        }
+    }
+
+    /// The ladder rung asked for on `side`, if any. `Some` overrides the
+    /// kind, personality and simulation count for that seat.
+    pub fn level_for(&self, side: Side) -> Option<Level> {
+        match side {
+            Side::Corp => self.corp_level,
+            Side::Runner => self.runner_level,
         }
     }
 }

@@ -24,7 +24,9 @@ pub mod action_space;
 pub mod agent;
 pub mod agent_adapter;
 pub mod determinize;
+pub mod difficulty;
 pub mod eval;
+pub mod handicap;
 pub mod heuristic;
 pub mod mcts;
 #[cfg(feature = "onnx")]
@@ -44,7 +46,9 @@ pub use agent::BotAgent;
 pub use agent_adapter::IndexedOnnxAgent;
 pub use agent_adapter::{Agent, BotAgentIndexAdapter, IndexedHeuristicAgent, IndexedRandomAgent};
 pub use determinize::determinize;
+pub use difficulty::{Level, LevelKind, LevelSpec};
 pub use eval::{evaluate_state, evaluate_state_with, is_unrezzed_threat, Weights};
+pub use handicap::HandicapAgent;
 pub use heuristic::HeuristicAgent;
 pub use mcts::MctsAgent;
 #[cfg(feature = "onnx")]
