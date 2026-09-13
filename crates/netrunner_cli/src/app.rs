@@ -206,20 +206,30 @@ impl App {
         // a modal dismisses on Esc/Enter/Space, the picker moves on
         // Up/Down and opens a card on Enter, and `c` opens the picker.
         if self.modal.is_some() {
-            if matches!(key.code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('c')) {
-                self.modal = None;
+            match key.code {
+                // Back to the list the card was chosen from, if there is one.
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Backspace | KeyCode::Left => self.modal = None,
+                KeyCode::Char('c') | KeyCode::Char('q') if self.card_picker.is_some() => {
+                    self.modal = None;
+                    self.card_picker = None;
+                }
+                _ => {}
             }
             return;
         }
         if let Some(picker) = &mut self.card_picker {
             match key.code {
-                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('c') => self.card_picker = None,
+                KeyCode::Char('q') | KeyCode::Char('c') => self.card_picker = None,
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => {
+                    if !picker.back() {
+                        self.card_picker = None;
+                    }
+                }
                 KeyCode::Up | KeyCode::Char('k') => picker.move_selection(-1),
                 KeyCode::Down | KeyCode::Char('j') => picker.move_selection(1),
-                KeyCode::Enter | KeyCode::Char(' ') => {
-                    if let Some(id) = picker.selected_card().cloned() {
+                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
+                    if let Some(id) = picker.enter() {
                         self.modal = Some(card_modal(&id, &self.registry));
-                        self.card_picker = None;
                     }
                 }
                 _ => {}
@@ -318,65 +328,117 @@ pub struct Modal {
     pub footer: String,
 }
 
-/// The card inspector's first stage: every card the viewer may see, by
-/// zone, with a highlight. `Enter` turns the highlighted one into a
-/// `Modal` of its printed text (`card_modal`). A list of its own rather
-/// than a `Modal` because a `Modal` is prose to dismiss and this is a
-/// choice to make — the same reason the actions pane is a `List`.
+/// The card inspector: the places the viewer may look, then the cards in
+/// the place they chose, then one card's printed text (`card_modal`).
+/// Two levels because a heap or a wide board is dozens of cards, and a
+/// person looks in a place before they look at a card — "what is in
+/// Archives?" is the question, and a flat list answers a different one.
+/// `back` retreats one level at a time so a reader can go from one
+/// card's text to the next without reopening anything; only `back` at the
+/// top level closes the inspector.
 ///
 /// **Built from the `ClientView` and nothing else.** A card is listed only
 /// if the view names it — the viewer's own hand, a rezzed or owned
 /// install, a faceup archived card, the heap, a scored agenda — so the
 /// mask decides what can be inspected exactly as it decides what is
 /// drawn. An unrezzed opponent's card has no `CardId` in the view and
-/// therefore no entry here.
+/// therefore no entry here; a place with nothing to show is not listed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardPicker {
-    pub entries: Vec<(String, CardId)>,
-    pub selected: usize,
+    pub zones: Vec<CardZone>,
+    /// The highlighted place.
+    pub zone: usize,
+    /// The highlighted card within it, once the reader has stepped in;
+    /// `None` while they are still choosing a place.
+    pub card: Option<usize>,
+}
+
+/// One place on the table and the cards the viewer may see in it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardZone {
+    pub name: String,
+    pub cards: Vec<(String, CardId)>,
 }
 
 impl CardPicker {
     pub fn open(view: &ClientView, registry: &CardRegistry) -> Self {
-        Self { entries: visible_cards(view, registry), selected: 0 }
+        Self { zones: visible_zones(view, registry), zone: 0, card: None }
     }
 
+    pub fn current_zone(&self) -> Option<&CardZone> {
+        self.zones.get(self.zone)
+    }
+
+    /// Up/Down at whichever level the reader is on.
     pub fn move_selection(&mut self, delta: i32) {
-        let len = self.entries.len();
-        if len == 0 {
-            return;
+        let step = |index: usize, len: usize| if len == 0 { 0 } else { (index as i32 + delta).rem_euclid(len as i32) as usize };
+        match self.card {
+            None => self.zone = step(self.zone, self.zones.len()),
+            Some(card) => self.card = Some(step(card, self.current_zone().map_or(0, |zone| zone.cards.len()))),
         }
-        self.selected = (self.selected as i32 + delta).rem_euclid(len as i32) as usize;
     }
 
-    pub fn selected_card(&self) -> Option<&CardId> {
-        self.entries.get(self.selected).map(|(_, id)| id)
+    /// Enter: step into the highlighted place, or hand back the
+    /// highlighted card to be read. The list is left as it stands either
+    /// way, so `back` from the card's text lands on the same card.
+    pub fn enter(&mut self) -> Option<CardId> {
+        match self.card {
+            None => {
+                if self.current_zone().is_some_and(|zone| !zone.cards.is_empty()) {
+                    self.card = Some(0);
+                }
+                None
+            }
+            Some(card) => self.current_zone().and_then(|zone| zone.cards.get(card)).map(|(_, id)| id.clone()),
+        }
     }
 
-    pub fn labels(&self) -> Vec<String> {
-        self.entries.iter().map(|(label, _)| label.clone()).collect()
+    /// Esc: one level up. `false` when already at the top, which is the
+    /// caller's cue to close the inspector.
+    pub fn back(&mut self) -> bool {
+        if self.card.take().is_some() {
+            return true;
+        }
+        false
+    }
+
+    pub fn zone_labels(&self) -> Vec<String> {
+        self.zones.iter().map(|zone| format!("{} ({})", zone.name, zone.cards.len())).collect()
+    }
+
+    pub fn card_labels(&self) -> Vec<String> {
+        self.current_zone().map(|zone| zone.cards.iter().map(|(label, _)| label.clone()).collect()).unwrap_or_default()
     }
 }
 
-/// Every card the view names, labelled by where it is, in table order:
-/// the viewer's hand first (the cards a decision is usually about), then
-/// each side's identity, board, scored agendas and discard.
-pub fn visible_cards(view: &ClientView, registry: &CardRegistry) -> Vec<(String, CardId)> {
+/// Every place the view names a card in, in table order: the viewer's
+/// hand first, then identities, the Corp's board, scored agendas and
+/// Archives, the Runner's rig, stolen agendas and heap. A place with no
+/// visible card is left out, except the viewer's own hand.
+pub fn visible_zones(view: &ClientView, registry: &CardRegistry) -> Vec<CardZone> {
     let title = |id: &CardId| registry.get(id).map_or_else(|| id.0.clone(), |card| card.title.clone());
-    let mut out: Vec<(String, CardId)> = Vec::new();
-    let mut push = |zone: &str, id: &CardId| out.push((format!("{zone}: {}", title(id)), id.clone()));
+    let mut zones: Vec<CardZone> = Vec::new();
+    let plain = |ids: &[CardId]| ids.iter().map(|id| (title(id), id.clone())).collect::<Vec<_>>();
 
-    // The hand, whichever side's the view carries — `Some` only for the
-    // viewer's own.
-    for id in view.corp.hq_cards.iter().flatten() {
-        push("Hand (HQ)", id);
+    // The viewer's own hand is listed even when empty: it is the one
+    // place a player always wants to find, and "(0)" is an answer.
+    if let Some(cards) = &view.corp.hq_cards {
+        zones.push(CardZone { name: "Hand (HQ)".to_string(), cards: plain(cards) });
     }
-    for id in view.runner.grip_cards.iter().flatten() {
-        push("Hand (grip)", id);
+    if let Some(cards) = &view.runner.grip_cards {
+        zones.push(CardZone { name: "Hand (grip)".to_string(), cards: plain(cards) });
     }
-    if let Some(id) = &view.corp.identity {
-        push("Corp identity", id);
-    }
+    let mut zone = |name: &str, cards: Vec<(String, CardId)>| {
+        if !cards.is_empty() {
+            zones.push(CardZone { name: name.to_string(), cards });
+        }
+    };
+    let identities: Vec<(String, CardId)> = [(&view.corp.identity, "Corp"), (&view.runner.identity, "Runner")]
+        .into_iter()
+        .filter_map(|(id, side)| id.as_ref().map(|id| (format!("{side}: {}", title(id)), id.clone())))
+        .collect();
+    zone("Identities", identities);
+    let mut board: Vec<(String, CardId)> = Vec::new();
     for server in &view.corp.servers {
         let place = match server.server {
             ServerId::Hq => "HQ".to_string(),
@@ -386,32 +448,19 @@ pub fn visible_cards(view: &ClientView, registry: &CardRegistry) -> Vec<(String,
         };
         for card in server.ice.iter().chain(server.root.iter()) {
             if let Some(id) = &card.card {
+                let slot = if card.slot == InstallSlot::Ice { "ICE" } else { "root" };
                 let rez = if card.rezzed { "rezzed" } else { "unrezzed" };
-                push(&format!("{place} ({rez})"), id);
+                board.push((format!("{place} {slot}: {} ({rez})", title(id)), id.clone()));
             }
         }
     }
-    for agenda in &view.corp.scored_agendas {
-        push("Corp scored", &agenda.card);
-    }
-    for archived in &view.corp.archives {
-        if let Some(id) = &archived.card {
-            push("Archives", id);
-        }
-    }
-    if let Some(id) = &view.runner.identity {
-        push("Runner identity", id);
-    }
-    for card in &view.runner.rig {
-        push("Rig", &card.card);
-    }
-    for id in &view.runner.scored_agendas {
-        push("Runner stolen", id);
-    }
-    for id in &view.runner.heap {
-        push("Heap", id);
-    }
-    out
+    zone("Corp servers", board);
+    zone("Corp scored", view.corp.scored_agendas.iter().map(|agenda| (title(&agenda.card), agenda.card.clone())).collect());
+    zone("Archives", view.corp.archives.iter().filter_map(|archived| archived.card.as_ref()).map(|id| (title(id), id.clone())).collect());
+    zone("Runner rig", view.runner.rig.iter().map(|card| (title(&card.card), card.card.clone())).collect());
+    zone("Runner stolen", plain(&view.runner.scored_agendas));
+    zone("Heap", plain(&view.runner.heap));
+    zones
 }
 
 /// One card as a person reads it: the type line, the printed numbers,

@@ -440,15 +440,18 @@ fn prompt_human(
         if event::poll(Duration::from_millis(100))?
             && let Ok(Event::Key(key)) = event::read()
         {
+            // The inspector owns its own modal (a card's text over its
+            // list); every other modal — a lesson's intro or outro — is
+            // dismissed here, and `q` on one of those quits.
+            if ui.inspector_key(key.code) {
+                continue;
+            }
             if ui.modal.is_some() {
                 match key.code {
                     KeyCode::Char('q') => return Ok(true),
-                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('c') => ui.modal = None,
+                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc => ui.modal = None,
                     _ => {}
                 }
-                continue;
-            }
-            if ui.inspector_key(key.code) {
                 continue;
             }
             match key.code {
@@ -549,15 +552,32 @@ impl LocalUiState {
     /// open, or `c` opened it — so the caller does not also treat it as an
     /// action-list key.
     fn inspector_key(&mut self, key: KeyCode) -> bool {
+        if self.modal.is_some() && self.card_picker.is_some() {
+            // A card's text, opened from the list: Esc goes back to the
+            // list on the same card; `c` or `q` closes the whole inspector.
+            match key {
+                KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Backspace | KeyCode::Left => self.modal = None,
+                KeyCode::Char('c') | KeyCode::Char('q') => {
+                    self.modal = None;
+                    self.card_picker = None;
+                }
+                _ => {}
+            }
+            return true;
+        }
         if let Some(picker) = &mut self.card_picker {
             match key {
-                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('c') => self.card_picker = None,
+                KeyCode::Char('q') | KeyCode::Char('c') => self.card_picker = None,
+                KeyCode::Esc | KeyCode::Left | KeyCode::Char('h') | KeyCode::Backspace => {
+                    if !picker.back() {
+                        self.card_picker = None;
+                    }
+                }
                 KeyCode::Up | KeyCode::Char('k') => picker.move_selection(-1),
                 KeyCode::Down | KeyCode::Char('j') => picker.move_selection(1),
-                KeyCode::Enter | KeyCode::Char(' ') => {
-                    if let Some(id) = picker.selected_card().cloned() {
+                KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Right | KeyCode::Char('l') => {
+                    if let Some(id) = picker.enter() {
                         self.modal = Some(card_modal(&id, &self.registry));
-                        self.card_picker = None;
                     }
                 }
                 _ => {}
@@ -578,6 +598,8 @@ impl LocalUiState {
     fn begin_decision(&mut self, view: ClientView) {
         self.view = Some(view);
         self.selected = 0;
+        // A list built from the last decision's view would be stale.
+        self.card_picker = None;
         self.allowed.clear();
         self.last_rejection = None;
     }
@@ -745,21 +767,35 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
 /// The inspector's list, centred over the board like a modal, with the
 /// same highlight as the actions pane.
 fn draw_card_picker(frame: &mut Frame, picker: &CardPicker) {
-    let area = centered_rect(60, 70, frame.area());
-    let items: Vec<ListItem> = picker.labels().into_iter().map(ListItem::new).collect();
-    let title = if items.is_empty() { "Cards (nothing to inspect yet — Esc to close)" } else { "Cards (Up/Down, Enter to read, Esc to close)" };
-    let mut state = ListState::default();
-    if !items.is_empty() {
-        state.select(Some(picker.selected));
-    }
+    let area = centered_rect(72, 72, frame.area());
     frame.render_widget(Clear, area);
-    frame.render_stateful_widget(
-        List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(title).style(Style::default().fg(Color::Yellow)))
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
-        area,
-        &mut state,
-    );
+    let outer = Block::default()
+        .borders(Borders::ALL)
+        .title("Cards — Up/Down move, Enter opens, Esc backs out, c closes")
+        .style(Style::default().fg(Color::Yellow));
+    let inner = outer.inner(area);
+    frame.render_widget(outer, area);
+    if picker.zones.is_empty() {
+        frame.render_widget(Paragraph::new("Nothing to inspect yet."), inner);
+        return;
+    }
+    let [places, cards] = Layout::default()
+        .direction(Direction::Horizontal)
+        .constraints([Constraint::Percentage(35), Constraint::Percentage(65)])
+        .areas(inner);
+    let at_cards = picker.card.is_some();
+    let column = |title: &str, rows: Vec<String>, selected: Option<usize>, active: bool| {
+        let border = if active { Style::default().fg(Color::Yellow) } else { Style::default().fg(Color::DarkGray) };
+        let list = List::new(rows.into_iter().map(ListItem::new).collect::<Vec<_>>())
+            .block(Block::default().borders(Borders::ALL).title(title.to_string()).border_style(border))
+            .highlight_style(if active { Style::default().add_modifier(Modifier::REVERSED) } else { Style::default().add_modifier(Modifier::BOLD) });
+        (list, ListState::default().with_selected(selected))
+    };
+    let (list, mut state) = column("Where", picker.zone_labels(), Some(picker.zone), !at_cards);
+    frame.render_stateful_widget(list, places, &mut state);
+    let zone_name = picker.current_zone().map(|zone| zone.name.clone()).unwrap_or_default();
+    let (list, mut state) = column(&zone_name, picker.card_labels(), picker.card, at_cards);
+    frame.render_stateful_widget(list, cards, &mut state);
 }
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
@@ -1227,12 +1263,13 @@ mod tests {
         assert!(row_of(&rows, "You — Runner rig") > row_of(&rows, "Opponent — Corp servers"), "the Runner's own block is below the Corp's");
     }
 
-    /// `c` lists what the viewer may see — their hand, never the other's
-    /// — and Enter reads one card's printed text. The list is built from
-    /// the view, so the mask that decides what is drawn decides what can
-    /// be inspected.
+    /// `c` lists the places the viewer may look — their hand, never the
+    /// other's — Enter steps into one and then reads a card, and Esc backs
+    /// out one level at a time so the next card is one keypress away. The
+    /// list is built from the view, so the mask that decides what is drawn
+    /// decides what can be inspected.
     #[test]
-    fn the_inspector_lists_what_the_viewer_may_see_and_reads_a_cards_text() {
+    fn the_inspector_lists_places_then_cards_and_escape_backs_out_one_level() {
         use netrunner_core::view::build_client_view;
 
         let registry = decks::sample_deck_registry();
@@ -1247,34 +1284,96 @@ mod tests {
         ui.begin_decision(view);
         assert!(ui.inspector_key(KeyCode::Char('c')));
         let picker = ui.card_picker.clone().expect("the picker opened");
-        assert!(picker.labels().iter().filter(|l| l.starts_with("Hand (HQ):")).count() == hand.len(), "{:?}", picker.labels());
-        assert!(picker.labels().iter().all(|l| !l.starts_with("Hand (grip)")), "the Runner's hand is not the Corp's to read");
-        assert!(picker.labels().iter().any(|l| l.starts_with("Corp identity:")));
+        let places = picker.zone_labels();
+        assert_eq!(places[0], format!("Hand (HQ) ({})", hand.len()), "{places:?}");
+        assert!(places.iter().all(|p| !p.starts_with("Hand (grip)")), "the Runner's hand is not the Corp's to read");
+        assert!(places.iter().any(|p| p.starts_with("Identities (2)")), "{places:?}");
+        assert!(picker.card.is_none(), "the reader starts at the places");
 
         let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
         terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
         let rendered = format!("{:?}", terminal.backend().buffer());
-        assert!(rendered.contains("Cards (Up/Down"), "the picker is drawn");
+        assert!(rendered.contains("Where") && rendered.contains("Esc backs out"), "the two columns are drawn");
 
+        // Enter steps into the hand; Down and Enter read its second card.
+        assert!(ui.inspector_key(KeyCode::Enter));
+        assert_eq!(ui.card_picker.as_ref().unwrap().card, Some(0));
         assert!(ui.inspector_key(KeyCode::Down));
         assert!(ui.inspector_key(KeyCode::Enter));
-        assert!(ui.card_picker.is_none(), "reading a card closes the list");
         let modal = ui.modal.clone().expect("the card's text is up");
         let card = registry.get(&hand[1]).unwrap();
         assert_eq!(modal.title, card.title);
         let text = card.printed_text.as_deref().expect("every sample-deck card has printed text");
         assert!(modal.body.contains(text.lines().next().unwrap()), "{}", modal.body);
+        assert!(ui.card_picker.is_some(), "the list stays open behind the text");
         terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
         let rendered = format!("{:?}", terminal.backend().buffer());
-        assert!(rendered.contains("Esc to close"), "the modal is drawn");
+        assert!(rendered.contains("Esc to close"), "the modal is drawn over the list");
 
-        // Esc closes the picker without reading; `c` with the picker open
-        // closes it too, so the key is a toggle.
-        ui.modal = None;
+        // Esc: text -> the same card in the list -> the places -> closed.
+        assert!(ui.inspector_key(KeyCode::Esc));
+        assert!(ui.modal.is_none());
+        assert_eq!(ui.card_picker.as_ref().unwrap().card, Some(1), "back on the card that was read");
+        assert!(ui.inspector_key(KeyCode::Esc));
+        assert_eq!(ui.card_picker.as_ref().unwrap().card, None, "back at the places");
+        assert!(ui.inspector_key(KeyCode::Esc));
+        assert!(ui.card_picker.is_none(), "closed");
+
+        // `c` from a card's text closes the whole inspector at once.
         ui.inspector_key(KeyCode::Char('c'));
-        assert!(ui.card_picker.is_some());
+        ui.inspector_key(KeyCode::Enter);
+        ui.inspector_key(KeyCode::Enter);
+        assert!(ui.modal.is_some());
         ui.inspector_key(KeyCode::Char('c'));
-        assert!(ui.card_picker.is_none());
+        assert!(ui.modal.is_none() && ui.card_picker.is_none());
+    }
+
+    /// Mid-game the places fill up — installs, Archives, the heap — and
+    /// every card the inspector lists has printed text to show. Driven by
+    /// two random agents through the real `Session` so the view is one a
+    /// game actually reaches, not a fixture.
+    #[test]
+    fn mid_game_the_inspector_reaches_the_places_that_have_filled_up() {
+        use netrunner_bots::RandomAgent;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 11).unwrap();
+        let mut session = Session::new(
+            state,
+            registry.clone(),
+            Seat::Agent(Box::new(RandomAgent::new(1))),
+            Seat::Agent(Box::new(RandomAgent::new(2))),
+        );
+        for _ in 0..400 {
+            match session.step() {
+                SessionStep::Applied { .. } | SessionStep::Awaiting { .. } => {}
+                SessionStep::Ended { .. } | SessionStep::Stalled(_) => break,
+            }
+        }
+        assert!(session.state().turn >= 4, "the game got under way: turn {}", session.state().turn);
+
+        for side in [Side::Corp, Side::Runner] {
+            let picker = CardPicker::open(&session.view_for(side), &registry);
+            let places = picker.zone_labels();
+            let own_hand = if side == Side::Corp { "Hand (HQ)" } else { "Hand (grip)" };
+            let other_hand = if side == Side::Corp { "Hand (grip)" } else { "Hand (HQ)" };
+            assert!(places[0].starts_with(own_hand), "{side:?}: the own hand is always first, even empty: {places:?}");
+            assert!(places.iter().all(|p| !p.starts_with(other_hand)), "{side:?} must not see the other hand: {places:?}");
+            assert!(
+                places.iter().any(|p| p.starts_with("Corp servers") || p.starts_with("Archives") || p.starts_with("Heap") || p.starts_with("Runner rig")),
+                "{side:?}: after {} turns the table should have something on it: {places:?}",
+                session.state().turn
+            );
+            for zone in &picker.zones {
+                for (label, id) in &zone.cards {
+                    let card = registry.get(id).unwrap_or_else(|| panic!("{label} is not in the registry"));
+                    assert!(card.printed_text.is_some(), "{label} has no printed text");
+                    assert!(card_modal(id, &registry).body.contains(card.printed_text.as_deref().unwrap().lines().next().unwrap()));
+                }
+            }
+        }
     }
 
     /// The split follows the viewer: the Corp block keeps the larger share
