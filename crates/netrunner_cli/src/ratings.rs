@@ -400,32 +400,42 @@ impl SeatRating {
 /// `netrunner_cli ratings`: the player's standing on both chairs, their
 /// record against every opponent, and the rung to try next.
 pub fn print(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    for line in standing_lines(config)? {
+        println!("{line}");
+    }
+    Ok(())
+}
+
+/// What `ratings` prints, as lines — the subcommand prints them and the
+/// main menu's Ratings screen draws them, so the two cannot drift.
+pub fn standing_lines(config: &Config) -> Result<Vec<String>, String> {
     let path = resolve_ratings_file(config.ratings_file.as_deref())?;
     let ratings = LocalRatings::load(&path)?;
     let player = player_name(config);
-    println!("{} — {}", player, path.display());
+    let mut lines = vec![format!("{} — {}", player, path.display())];
     let Some(standing) = ratings.book.standing(Track::HumanVsBot, &player) else {
-        println!("no rated games yet; play one with `netrunner_cli --runner-level 3` (or --corp-level) to start");
-        return Ok(());
+        lines.push("no rated games yet; play one against the computer (or --runner-level 3 / --corp-level) to start".to_string());
+        return Ok(lines);
     };
     for side in [Side::Corp, Side::Runner] {
         let record = standing.role(role_of(side));
-        println!(
-            "\nAs {side:?}: {:.0} ± {:.0}  ({}–{}–{})",
+        lines.push(String::new());
+        lines.push(format!(
+            "As {side:?}: {:.0} ± {:.0}  ({}–{}–{})",
             record.rating.rating, record.rating.deviation, record.wins, record.draws, record.losses
-        );
+        ));
         let mut opponents: Vec<&str> =
             ratings.games.iter().filter(|g| g.player == player && g.side == side).map(|g| g.opponent.as_str()).collect();
         opponents.sort_unstable();
         opponents.dedup();
         for opponent in opponents {
             let (w, d, l) = ratings.record_against(&player, side, opponent);
-            println!("  vs {:<16} {w}–{d}–{l}", short_opponent(opponent));
+            lines.push(format!("  vs {:<16} {w}–{d}–{l}", short_opponent(opponent)));
         }
         let next = ratings.suggest(&player, side);
-        println!("  next: {} ({}) — {}", next.name(), next.rung(), next.spec(side).describe());
+        lines.push(format!("  next: {} ({}) — {}", next.name(), next.rung(), next.spec(side).describe()));
     }
-    Ok(())
+    Ok(lines)
 }
 
 #[cfg(test)]

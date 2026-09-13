@@ -7,7 +7,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Debug, Clone)]
 #[command(name = "netrunner_cli", about = "Ratatui TUI game harness and headless simulator for netrunner_core")]
 pub struct Config {
     /// Manage the local NetrunnerDB card catalog cache instead of playing a
@@ -83,8 +83,10 @@ pub struct Config {
     /// `Human` is the default for both sides. In `--headless` mode, where a
     /// `Human` agent can't make progress, `Human` is treated as `Random`
     /// instead (see `headless::run`). Interactive (non-headless) mode
-    /// requires exactly one of `--corp`/`--runner` to be `Human` — the CLI
-    /// only ever hosts one human seat; the other side must be a bot.
+    /// with exactly one side a bot plays that game straight away; with
+    /// neither set it opens the main menu (`tui::menu`), where every
+    /// choice these flags make is made in the TUI instead. The CLI only
+    /// ever hosts one human seat locally.
     ///
     /// Local interactive play pumps a `netrunner_session::Session`
     /// synchronously — no `MatchSession`, no channel, no background task
@@ -227,7 +229,8 @@ pub struct Config {
 /// A separate enum rather than `ValueEnum` on `netrunner_core::format::NsgFormat`
 /// itself: deriving it there would put a `clap` dependency in the engine,
 /// which AGENTS.md's decoupled-engine rule forbids.
-#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum FormatArg {
     Startup,
     Standard,
@@ -321,7 +324,7 @@ pub enum Mode {
     Remote,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum Command {
     /// Play every seating of a set of bots against each other, in
     /// parallel, and rate them on the bot-benchmark track (Glicko-2, a
@@ -437,7 +440,7 @@ pub enum Command {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum DiagAction {
     /// How much of a leaf evaluation is the hidden state? Draws N
     /// determinizations of real decision positions and sweeps the
@@ -518,7 +521,7 @@ pub enum DiagAction {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum LearnAction {
     /// List both lesson tracks.
     List,
@@ -545,7 +548,7 @@ pub enum LearnAction {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum DeckAction {
     /// List every deck, built-in and saved.
     List,
@@ -594,7 +597,7 @@ pub enum DeckAction {
     },
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand, Debug, Clone)]
 pub enum CardsAction {
     /// List NetrunnerDB sets (packs) available to sync.
     ListSets,
@@ -636,6 +639,19 @@ impl Config {
             Some(personality) => Ok(personality),
             None => Personality::for_deck(deck),
         }
+    }
+
+    /// Whether `side`'s chair is a bot: a bot kind, or a rung — which
+    /// overrides the kind, so `--runner-level 3` alone seats a Runner bot
+    /// and leaves the Corp to the human, as its doc says. Reading only the
+    /// kind here once sent that invocation to the start screen, where the
+    /// rung was silently dropped.
+    pub fn seats_bot(&self, side: Side) -> bool {
+        let kind = match side {
+            Side::Corp => self.corp,
+            Side::Runner => self.runner,
+        };
+        kind != BotKind::Human || self.level_for(side).is_some()
     }
 
     /// The ladder rung asked for on `side`, if any. `Some` overrides the

@@ -164,6 +164,11 @@ rule, the rating rule and the deck resolver stay singular. Any side flag
 skips the screen, so every existing invocation is unchanged. The state
 machine is a plain struct with `key(KeyCode)`, tested without a terminal
 the way `replay_key` is; not driven by hand in this session.
+**Superseded as the entry point** (same day, Phase 6 §1): tested by hand,
+the client was "driven too much by switches", and the screen played one
+game and exited. It is now the main menu's Play vs Computer form, reopened
+after every game with the rung moved to the new suggestion; the fold into
+`Config` is unchanged.
 
 **Standing open items:** the 192-game calibration that would resolve the
 top steps. *Closed:* the server offers levels; local play is rated and

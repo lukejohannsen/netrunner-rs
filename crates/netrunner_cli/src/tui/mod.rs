@@ -1,4 +1,5 @@
 pub mod layout;
+pub mod menu;
 pub mod start;
 
 use std::time::Duration;
@@ -43,17 +44,12 @@ pub async fn run(config: &mut Config) -> Result<(), Box<dyn std::error::Error>> 
         Mode::Local => {
             // No side flag at all means the player has not chosen an
             // opponent, which used to be an error ("both --corp and
-            // --runner are human"). Now it is the start screen, whose
-            // choices are folded back into `config` so `run_local` runs
-            // the flag path and no other. Any side flag skips it.
-            if config.corp == BotKind::Human && config.runner == BotKind::Human {
-                let registry = decks::sample_deck_registry();
-                let mut menu = start::StartMenu::open(config, &registry)?;
-                let mut terminal = ratatui::init();
-                let choice = start::run(&mut terminal, &mut menu);
-                ratatui::restore();
-                let Some(choice) = choice? else { return Ok(()) };
-                choice.apply(config);
+            // --runner are human") and then a one-shot start screen. Now
+            // it is the main menu, which folds each choice back into a
+            // copy of `config` so a game it launches runs the flag path
+            // and no other. Any side flag skips it.
+            if !config.seats_bot(Side::Corp) && !config.seats_bot(Side::Runner) {
+                return menu::run(config);
             }
             run_local(config)
         }
@@ -99,13 +95,22 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 /// the `process::exit` that quitting mid-prompt required, and redraws the
 /// board after *bot* moves rather than only at human decision points.
 fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let human_side = match (config.corp, config.runner) {
-        (crate::config::BotKind::Human, crate::config::BotKind::Human) => {
+    let mut terminal = ratatui::init();
+    let result = play_local(&mut terminal, config);
+    ratatui::restore();
+    result
+}
+
+/// `run_local` on a terminal the caller owns — the main menu's, so a
+/// finished game returns to it rather than to the shell.
+pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+    let human_side = match (config.seats_bot(Side::Corp), config.seats_bot(Side::Runner)) {
+        (false, false) => {
             return Err("interactive mode requires exactly one human-controlled side (both --corp and --runner are human)".into());
         }
-        (crate::config::BotKind::Human, _) => Side::Corp,
-        (_, crate::config::BotKind::Human) => Side::Runner,
-        _ => return Err("interactive mode requires exactly one human-controlled side (neither --corp nor --runner is human)".into()),
+        (false, true) => Side::Corp,
+        (true, false) => Side::Runner,
+        (true, true) => return Err("interactive mode requires exactly one human-controlled side (neither --corp nor --runner is human)".into()),
     };
 
     let registry = decks::sample_deck_registry();
@@ -131,10 +136,7 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat);
 
     let mut ui = LocalUiState::new(registry, human_side);
-    let mut terminal = ratatui::init();
-    let result = drive_local(&mut terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side, rating);
-    ratatui::restore();
-    result
+    drive_local(terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side, rating)
 }
 
 /// How a lesson (or a run of lessons) ended, for the caller to decide
@@ -147,27 +149,21 @@ pub enum LessonOutcome {
     Stopped,
 }
 
-/// Plays `lessons` in order in one terminal session, stopping at the first
+/// Plays `lessons` in order on the caller's terminal, stopping at the first
 /// the player does not complete. Returns `Completed` only if every lesson
 /// was — which is what lets `learn track` hand a graduate the starter game.
-pub fn run_lessons(lessons: &[Lesson], registry: &CardRegistry, seed: u64) -> Result<LessonOutcome, Box<dyn std::error::Error>> {
-    let mut terminal = ratatui::init();
-    let mut outcome = LessonOutcome::Completed;
+pub fn play_lessons(
+    terminal: &mut ratatui::DefaultTerminal,
+    lessons: &[Lesson],
+    registry: &CardRegistry,
+    seed: u64,
+) -> Result<LessonOutcome, Box<dyn std::error::Error>> {
     for lesson in lessons {
-        match run_lesson(&mut terminal, lesson, registry, seed) {
-            Ok(LessonOutcome::Completed) => continue,
-            Ok(LessonOutcome::Stopped) => {
-                outcome = LessonOutcome::Stopped;
-                break;
-            }
-            Err(error) => {
-                ratatui::restore();
-                return Err(error);
-            }
+        if run_lesson(terminal, lesson, registry, seed)? == LessonOutcome::Stopped {
+            return Ok(LessonOutcome::Stopped);
         }
     }
-    ratatui::restore();
-    Ok(outcome)
+    Ok(LessonOutcome::Completed)
 }
 
 /// Steps through a recorded match in one terminal session. Nothing is
@@ -218,7 +214,16 @@ fn replay_key(replay: &mut Replay, key: KeyCode) -> bool {
 /// `--corp-deck the_syndicate_starter` play uses Standard rules, because a
 /// saved deck carries no category and guessing one from a name would be
 /// the kind of client-side rule the crate map forbids.
-pub fn run_starter_game(human_side: Side, corp: &DeckFile, runner: &DeckFile, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+///
+/// Draws on the caller's terminal: `learn` owns one for the subcommand, the
+/// main menu owns one for everything it launches.
+pub fn play_starter_game(
+    terminal: &mut ratatui::DefaultTerminal,
+    human_side: Side,
+    corp: &DeckFile,
+    runner: &DeckFile,
+    config: &Config,
+) -> Result<(), Box<dyn std::error::Error>> {
     let registry = decks::sample_deck_registry();
     let seed = config.seed.unwrap_or_else(rand::random);
     let rules = corp.category.match_rules();
@@ -242,10 +247,7 @@ pub fn run_starter_game(human_side: Side, corp: &DeckFile, runner: &DeckFile, co
     };
     let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat);
     let mut ui = LocalUiState::new(registry, human_side);
-    let mut terminal = ratatui::init();
-    let result = drive_local(&mut terminal, &mut session, &mut ui, None, human_side, rating);
-    ratatui::restore();
-    result
+    drive_local(terminal, &mut session, &mut ui, None, human_side, rating)
 }
 
 /// One lesson: intro modal, gated prompts with coaching, outro modal.
@@ -806,7 +808,7 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
             Some(note) => format!("{winner:?} wins! ({reason:?})\n\n{note}"),
             None => format!("{winner:?} wins! ({reason:?})"),
         };
-        draw_modal(frame, &Modal::new("Game over", &body, "Press q to quit."));
+        draw_modal(frame, &Modal::new("Game over", &body, "Press q or Esc to leave the table."));
     } else if let Some(modal) = ui.modal() {
         draw_modal(frame, modal);
     } else if let Some(picker) = ui.card_picker() {

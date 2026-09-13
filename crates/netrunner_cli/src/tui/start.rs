@@ -1,26 +1,27 @@
-//! The start screen: chair, rung, style and decks chosen in the TUI, for
-//! a player who never touches a flag.
+//! The new-game form: chair, rung, style and decks chosen in the TUI, for
+//! a player who never touches a flag. The main menu's Play vs Computer
+//! opens it, and a game it starts returns to it.
 //!
 //! **It is the flag path, not a second one.** Every choice here is folded
 //! back into the `Config` the flags would have produced
 //! (`StartChoice::apply`), and `run_local` then runs exactly as it does
 //! for `--runner-level 3 --corp-deck brick_stack`. There is one seating
 //! rule, one rating rule and one deck resolver, and the screen is a way
-//! of filling in their inputs — which is also why the screen opens only
+//! of filling in their inputs — which is also why the menu opens only
 //! when no side flag was given: an invocation that names a side has
 //! already made these choices.
 //!
 //! **The state machine is a plain struct and the keys are a function**,
 //! the way `replay_key` is, so the whole thing is tested without a
-//! terminal; `draw` and `run` are the thin layer over it.
+//! terminal; `draw` is the thin layer over it, and the menu's loop owns
+//! the terminal.
 
-use ratatui::crossterm::event::{self, Event, KeyCode};
+use ratatui::crossterm::event::KeyCode;
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, List, ListItem, ListState, Paragraph};
 use ratatui::Frame;
-use std::time::Duration;
 
 use netrunner_bots::{Level, Personality};
 use netrunner_core::cards::CardRegistry;
@@ -84,6 +85,8 @@ pub struct StartChoice {
     pub style: Option<Personality>,
     pub corp_deck: String,
     pub runner_deck: String,
+    /// `false` is `--unrated`.
+    pub rated: bool,
 }
 
 impl StartChoice {
@@ -101,6 +104,7 @@ impl StartChoice {
         config.runner_personality = if bot == Side::Runner { self.style } else { None };
         config.corp_deck = self.corp_deck.clone();
         config.runner_deck = self.runner_deck.clone();
+        config.unrated = !self.rated;
     }
 }
 
@@ -109,7 +113,8 @@ impl StartChoice {
 pub enum StartKey {
     Continue,
     Start(StartChoice),
-    Quit,
+    /// Back to the main menu.
+    Back,
 }
 
 /// The screen's state: a cursor per pane and the lists they move over.
@@ -130,6 +135,8 @@ pub struct StartMenu {
     /// The default deck ids from the flags, so the deck cursors start on
     /// what a flag-less run would have played.
     defaults: [String; 2],
+    /// Whether the game counts — `r` toggles it. Starts from `--unrated`.
+    pub rated: bool,
 }
 
 const SIDES: [Side; 2] = [Side::Corp, Side::Runner];
@@ -164,12 +171,27 @@ impl StartMenu {
             Ok(book) => SIDES.map(|side| book.suggest(&player, side)),
             Err(_) => [Level::Operator, Level::Operator],
         };
-        Ok(Self::with_decks(decks, suggested, [config.corp_deck.clone(), config.runner_deck.clone()]))
+        let mut menu = Self::with_decks(decks, suggested, [config.corp_deck.clone(), config.runner_deck.clone()]);
+        menu.rated = !config.unrated;
+        Ok(menu)
+    }
+
+    /// Puts the cursors back on a game just played — same chair, decks,
+    /// style and rated setting — except the rung, which goes to the
+    /// suggestion re-read after that game. So after a game Enter is "play
+    /// again", and it is at the rung the game-over modal just named.
+    pub fn resume_from(&mut self, last: &StartChoice) {
+        self.chair = side_index(last.human);
+        self.defaults = [last.corp_deck.clone(), last.runner_deck.clone()];
+        self.reset_for_chair();
+        self.style = self.styles().iter().position(|style| *style == last.style).unwrap_or(0);
+        self.rated = last.rated;
     }
 
     /// The state without the filesystem, for tests and for `open`.
     pub fn with_decks(decks: [Vec<DeckRow>; 2], suggested: [Level; 2], defaults: [String; 2]) -> Self {
-        let mut menu = Self { pane: Pane::Chair, chair: 0, level: 0, style: 0, opponent_deck: 0, own_deck: 0, decks, suggested, defaults };
+        let mut menu =
+            Self { pane: Pane::Chair, chair: 0, level: 0, style: 0, opponent_deck: 0, own_deck: 0, decks, suggested, defaults, rated: true };
         menu.reset_for_chair();
         menu
     }
@@ -252,14 +274,19 @@ impl StartMenu {
             Side::Corp => (own.id.clone(), opponent.id.clone()),
             Side::Runner => (opponent.id.clone(), own.id.clone()),
         };
-        Some(StartChoice { human: self.human(), level: self.level(), style: self.style(), corp_deck, runner_deck })
+        Some(StartChoice { human: self.human(), level: self.level(), style: self.style(), corp_deck, runner_deck, rated: self.rated })
     }
 
     /// One keypress. Tab and the arrows move between panes, Up/Down
-    /// within one, Enter starts from any pane, Esc or `q` quits.
+    /// within one, `r` toggles rated, Enter starts from any pane, Esc or
+    /// `q` goes back to the menu.
     pub fn key(&mut self, key: KeyCode) -> StartKey {
         match key {
-            KeyCode::Esc | KeyCode::Char('q') => StartKey::Quit,
+            KeyCode::Esc | KeyCode::Char('q') => StartKey::Back,
+            KeyCode::Char('r') => {
+                self.rated = !self.rated;
+                StartKey::Continue
+            }
             KeyCode::Enter => self.choice().map_or(StartKey::Continue, StartKey::Start),
             KeyCode::Tab | KeyCode::Right | KeyCode::Char('l') => {
                 self.pane = self.pane.next();
@@ -313,31 +340,20 @@ impl StartMenu {
     }
 }
 
-/// Runs the screen until the player starts or quits.
-pub fn run(terminal: &mut ratatui::DefaultTerminal, menu: &mut StartMenu) -> Result<Option<StartChoice>, Box<dyn std::error::Error>> {
-    loop {
-        terminal.draw(|frame| draw(frame, menu))?;
-        if event::poll(Duration::from_millis(100))?
-            && let Ok(Event::Key(key)) = event::read()
-        {
-            match menu.key(key.code) {
-                StartKey::Continue => {}
-                StartKey::Start(choice) => return Ok(Some(choice)),
-                StartKey::Quit => return Ok(None),
-            }
-        }
-    }
-}
-
-fn draw(frame: &mut Frame, menu: &StartMenu) {
+pub fn draw(frame: &mut Frame, area: Rect, menu: &StartMenu) {
     let [header, body] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([Constraint::Length(2), Constraint::Min(0)])
-        .areas(frame.area());
+        .areas(area);
+    let rated = if menu.rated {
+        "Rated — the result goes on your ladder (r: unrated)"
+    } else {
+        "Unrated — the result is not recorded (r: rated)"
+    };
     frame.render_widget(
         Paragraph::new(vec![
-            Line::from("New game — Tab/arrows move between panes, Up/Down choose, Enter plays, Esc quits"),
-            Line::from(""),
+            Line::from("Play vs Computer — Tab/arrows move between panes, Up/Down choose, Enter plays, Esc goes back"),
+            Line::from(rated),
         ]),
         header,
     );
@@ -420,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn enter_starts_from_any_pane_and_escape_quits() {
+    fn enter_starts_from_any_pane_and_escape_goes_back() {
         let mut menu = menu();
         menu.key(KeyCode::Tab);
         assert_eq!(menu.pane, Pane::Level);
@@ -439,8 +455,33 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        assert_eq!(menu.key(KeyCode::Esc), StartKey::Quit);
-        assert_eq!(menu.key(KeyCode::Char('q')), StartKey::Quit);
+        assert_eq!(menu.key(KeyCode::Esc), StartKey::Back);
+        assert_eq!(menu.key(KeyCode::Char('q')), StartKey::Back);
+    }
+
+    #[test]
+    fn r_toggles_rated_and_the_choice_carries_it() {
+        let mut menu = menu();
+        assert!(menu.choice().unwrap().rated, "rated unless asked otherwise");
+        menu.key(KeyCode::Char('r'));
+        assert!(!menu.choice().unwrap().rated);
+    }
+
+    #[test]
+    fn resuming_keeps_the_game_just_played_but_takes_the_new_suggestion() {
+        let mut menu = menu();
+        let last = StartChoice {
+            human: Side::Runner,
+            level: Level::Novice,
+            style: Some(Personality::Glacier),
+            corp_deck: "brick_stack".to_string(),
+            runner_deck: "dashing_mad".to_string(),
+            rated: false,
+        };
+        menu.resume_from(&last);
+        let choice = menu.choice().unwrap();
+        assert_eq!(choice.level, Level::Veteran, "the suggestion, not the rung last played");
+        assert_eq!(choice, StartChoice { level: Level::Veteran, ..last });
     }
 
     #[test]
@@ -477,9 +518,11 @@ mod tests {
             style: Some(Personality::Glacier),
             corp_deck: "brick_stack".to_string(),
             runner_deck: "dashing_mad".to_string(),
+            rated: false,
         };
         let mut config = Config::try_parse_from(["netrunner_cli"]).unwrap();
         choice.apply(&mut config);
+        assert!(config.unrated, "an unrated choice is --unrated");
         assert_eq!((config.corp, config.runner), (BotKind::Heuristic, BotKind::Human));
         assert_eq!((config.corp_level, config.runner_level), (Some(Level::Veteran), None));
         assert_eq!((config.corp_personality, config.runner_personality), (Some(Personality::Glacier), None));

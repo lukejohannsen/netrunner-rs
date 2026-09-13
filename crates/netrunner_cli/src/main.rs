@@ -13,15 +13,26 @@ mod prose;
 mod ratings;
 mod remote;
 mod replay;
+mod settings;
 mod tui;
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 
 use config::{Command, Config, DiagAction};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut config = Config::parse();
+    let matches = Config::command().get_matches();
+    let mut config = Config::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
+    // What the player set in the menu's Settings, under any flag they typed.
+    // A settings file that will not parse is reported and ignored rather
+    // than fatal: it holds defaults, and every flag still works without it.
+    if settings::applies_to(&config) {
+        match settings::resolve_settings_file().and_then(|path| settings::Settings::load(&path)) {
+            Ok(saved) => saved.apply(&mut config, |id| settings::was_flagged(&matches, id)),
+            Err(error) => eprintln!("warning: settings ignored: {error}"),
+        }
+    }
     // Taken out of `config` rather than matched in place, so the subcommand
     // arms can still borrow the global flags (`--decks-dir`, `--format`)
     // alongside their own action.
