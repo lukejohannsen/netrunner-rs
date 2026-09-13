@@ -140,6 +140,24 @@ pub struct Config {
     #[arg(long)]
     pub runner_level: Option<Level>,
 
+    /// The name your local games are rated under (`ratings.json` in the
+    /// OS data directory, beside the saved decks). Defaults to your login
+    /// name.
+    #[arg(long, global = true)]
+    pub player: Option<String>,
+
+    /// Where the local rating book lives; defaults to
+    /// `<data dir>/netrunner/ratings.json`, or `NETRUNNER_RATINGS_FILE`.
+    #[arg(long, global = true)]
+    pub ratings_file: Option<PathBuf>,
+
+    /// Play without recording the result. Every local game against a bot
+    /// is otherwise rated on the human-vs-bot track — and a quit after the
+    /// first turn is a forfeit, so this is the flag for a game you do not
+    /// mean to count.
+    #[arg(long)]
+    pub unrated: bool,
+
     /// `Local` runs the match in this process: interactive play on a
     /// `netrunner_session::Session` (`tui::run_local`), `--headless` on
     /// the same `Session` driving two bots and counting what the rules
@@ -383,6 +401,10 @@ pub enum Command {
     /// List the matches the `netrunner_server --serve` daemon at
     /// `--server` is hosting, with the ids `--spectate` takes.
     Matches,
+
+    /// Your standing on the local human-vs-bot ladder: a rating per
+    /// chair, your record against every rung, and the rung to try next.
+    Ratings,
 
     /// List or fetch NetrunnerDB card sets into the local cache.
     Cards {

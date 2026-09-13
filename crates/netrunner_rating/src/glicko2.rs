@@ -97,6 +97,17 @@ impl Default for Glicko2 {
 const EPSILON: f64 = 0.000_001;
 
 impl Glicko2 {
+    /// The score `player` is expected to take from one game against
+    /// `opponent`, on the paper's `E` with the opponent's deviation
+    /// folded in by `g` — so a 1700 against an uncertain 1500 expects a
+    /// little less than against a certain one. This is what a difficulty
+    /// ladder reads to say "you are ready for the next rung": the number
+    /// the update already computes, made public rather than re-derived
+    /// by a consumer with its own copy of the constants.
+    pub fn expected_score(&self, player: Rating, opponent: Rating) -> f64 {
+        expected(player.mu(), opponent.mu(), opponent.phi())
+    }
+
     /// `player` after one rating period against `results`: each entry is
     /// an opponent's rating *at the start of the period* and the score
     /// against them. An empty period (no games) leaves the rating and
@@ -191,6 +202,19 @@ mod tests {
 
     fn rating(rating: f64, deviation: f64) -> Rating {
         Rating { rating, deviation, volatility: 0.06 }
+    }
+
+    #[test]
+    fn expected_score_is_even_between_equals_and_favours_the_higher_rating() {
+        let system = Glicko2::default();
+        assert!((system.expected_score(Rating::default(), Rating::default()) - 0.5).abs() < 1e-12);
+        let strong = rating(1700.0, 50.0);
+        let weak = rating(1500.0, 50.0);
+        assert!(system.expected_score(strong, weak) > 0.7);
+        assert!(system.expected_score(weak, strong) < 0.3);
+        // An uncertain opponent pulls the expectation toward even: the
+        // paper's g(φ) shrinks the rating gap by the opponent's deviation.
+        assert!(system.expected_score(strong, rating(1500.0, 350.0)) < system.expected_score(strong, weak));
     }
 
     /// The worked example from the paper (Glickman, "Example of the

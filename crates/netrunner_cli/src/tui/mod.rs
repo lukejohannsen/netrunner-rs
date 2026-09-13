@@ -25,6 +25,7 @@ use crate::app::{card_modal, describe_action, explain_action, push_log_line, App
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
 use crate::decks;
+use crate::ratings::{self, SeatRating};
 use crate::remote;
 use crate::replay::Replay;
 
@@ -99,14 +100,12 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 
     let bot_side = human_side.other();
     let (bot_kind, bot_deck) = if human_side == Side::Corp { (config.runner, &runner_deck) } else { (config.corp, &corp_deck) };
-    let (bot_seat, mut indexed_bot) = build_bot_seat(
-        config.level_for(bot_side),
-        bot_kind,
-        bot_side,
-        seed.wrapping_add(1),
-        &config.model,
-        config.personality_for(bot_side, bot_deck)?,
-    )?;
+    let personality = config.personality_for(bot_side, bot_deck)?;
+    let (bot_seat, mut indexed_bot) =
+        build_bot_seat(config.level_for(bot_side), bot_kind, bot_side, seed.wrapping_add(1), &config.model, personality)?;
+    // Opened before the game so a bad ratings file fails here, not after
+    // an hour of play.
+    let rating = SeatRating::open(config, human_side, config.level_for(bot_side), bot_kind, personality, seed, &corp_deck.id, &runner_deck.id)?;
 
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, bot_seat),
@@ -116,7 +115,7 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
 
     let mut ui = LocalUiState::new(registry, human_side);
     let mut terminal = ratatui::init();
-    let result = drive_local(&mut terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side);
+    let result = drive_local(&mut terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side, rating);
     ratatui::restore();
     result
 }
@@ -208,13 +207,18 @@ pub fn run_starter_game(human_side: Side, corp: &DeckFile, runner: &DeckFile, co
     let rules = corp.category.match_rules();
     let (state, _events) = GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled)?;
     let bot_deck = if human_side == Side::Corp { runner } else { corp };
+    let personality = config.personality_for(human_side.other(), bot_deck)?;
     let bot = bots::make_agent(
         BotKind::Heuristic,
         human_side.other(),
         seed.wrapping_add(1),
-        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(config.personality_for(human_side.other(), bot_deck)?),
+        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality),
     )
         .expect("the heuristic always has a BotAgent form");
+    // Rated like any other local game: the starter game is a person's
+    // first real opponent, and its result is the first point on their
+    // ladder.
+    let rating = SeatRating::open(config, human_side, None, BotKind::Heuristic, personality, seed, &corp.id, &runner.id)?;
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, Seat::Agent(bot)),
         Side::Runner => (Seat::Agent(bot), Seat::External),
@@ -222,7 +226,7 @@ pub fn run_starter_game(human_side: Side, corp: &DeckFile, runner: &DeckFile, co
     let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat);
     let mut ui = LocalUiState::new(registry, human_side);
     let mut terminal = ratatui::init();
-    let result = drive_local(&mut terminal, &mut session, &mut ui, None, human_side);
+    let result = drive_local(&mut terminal, &mut session, &mut ui, None, human_side, rating);
     ratatui::restore();
     result
 }
@@ -280,7 +284,7 @@ fn run_lesson(
             LessonStep::Ended { winner, reason } => {
                 ui.finish(session.session().view_for(lesson.side));
                 ui.coaching = None;
-                show_game_over(terminal, &ui, winner, reason)?;
+                show_game_over(terminal, &ui, winner, reason, None)?;
                 return Ok(LessonOutcome::Stopped);
             }
             LessonStep::Stalled(reason) => return Err(stall_message(reason).into()),
@@ -352,13 +356,20 @@ fn build_bot_seat(
 
 /// The pull loop: step the session, render whatever it reports, and block
 /// on keyboard input only when the *human* seat is the one being asked.
+///
+/// `rating` is `None` for an unrated game. A finished game is recorded
+/// before the game-over modal is drawn, so the modal can show what it did;
+/// a quit records a forfeit from `ratings::FORFEIT_FROM_TURN` on and
+/// nothing before it; a stall records nothing.
 fn drive_local(
     terminal: &mut ratatui::DefaultTerminal,
     session: &mut Session,
     ui: &mut LocalUiState,
     mut indexed_bot: Option<&mut Box<dyn netrunner_bots::Agent>>,
     human_side: Side,
+    rating: Option<SeatRating>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let mut rating = rating;
     loop {
         // Pumped one `step` at a time rather than through `run`, which
         // swallows the bot seat's `Applied` steps: each log line is the
@@ -378,6 +389,11 @@ fn drive_local(
             SessionStep::Awaiting { side, view } if side == human_side => {
                 ui.begin_decision(*view);
                 if prompt_human(terminal, ui, |action| session.submit(action))? {
+                    if let Some(rating) = rating.take()
+                        && let Some(outcome) = ratings::quit_outcome(session.state().turn, human_side)
+                    {
+                        rating.finish(outcome)?;
+                    }
                     return Ok(());
                 }
                 log_last(session, ui, human_side);
@@ -397,7 +413,11 @@ fn drive_local(
             }
             SessionStep::Ended { winner, reason } => {
                 ui.finish(session.view_for(human_side));
-                return show_game_over(terminal, ui, winner, reason);
+                let report = match rating.take() {
+                    Some(rating) => Some(rating.finish(ratings::outcome_of(winner))?),
+                    None => None,
+                };
+                return show_game_over(terminal, ui, winner, reason, report.as_ref().map(|r| r.lines().join("\n")));
             }
             SessionStep::Stalled(reason) => return Err(stall_message(reason).into()),
             SessionStep::Applied { .. } => unreachable!("the inner loop only breaks once it can no longer apply"),
@@ -478,14 +498,19 @@ fn prompt_human(
 }
 
 /// Holds the end-of-match summary on screen until the player dismisses it.
+///
+/// `note` is appended to the summary — the rating lines for a rated local
+/// game — and is `None` on the remote path, where the daemon keeps the
+/// book and tells the client nothing about it yet.
 fn show_game_over(
     terminal: &mut ratatui::DefaultTerminal,
     ui: &LocalUiState,
     winner: Side,
     reason: GameEndReason,
+    note: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
-        terminal.draw(|frame| draw_frame(frame, ui, Some((winner, reason))))?;
+        terminal.draw(|frame| draw_frame(frame, ui, Some((winner, reason, note.as_deref()))))?;
         if event::poll(Duration::from_millis(100))?
             && let Ok(Event::Key(key)) = event::read()
             && matches!(key.code, KeyCode::Char('q') | KeyCode::Esc)
@@ -736,7 +761,7 @@ fn run_event_loop(
                 None => app.connection_notice = Some("Connection lost — spectate again to rejoin. Press q to quit.".to_string()),
             }
         }
-        terminal.draw(|frame| draw_frame(frame, app, app.game_ended))?;
+        terminal.draw(|frame| draw_frame(frame, app, app.game_ended.map(|(winner, reason)| (winner, reason, None))))?;
         if event::poll(Duration::from_millis(100))?
             && let Event::Key(key) = event::read()?
         {
@@ -750,7 +775,7 @@ fn run_event_loop(
 /// three-region `build_layout` purely because it had no log to show; now
 /// that `ServerMessage::ActionLog` feeds `App::action_log`, both sides
 /// render the same four regions.
-fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Side, GameEndReason)>) {
+fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Side, GameEndReason, Option<&str>)>) {
     let regions = layout::build_layout(frame.area(), ui.coaching().is_some());
     draw_header(frame, regions.header, ui);
     draw_board(frame, regions.board, ui);
@@ -759,8 +784,12 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
     }
     draw_actions(frame, regions.actions, ui);
     draw_action_log(frame, regions.log, ui.action_log());
-    if let Some((winner, reason)) = game_over {
-        draw_modal(frame, &Modal::new("Game over", &format!("{winner:?} wins! ({reason:?})"), "Press q to quit."));
+    if let Some((winner, reason, note)) = game_over {
+        let body = match note {
+            Some(note) => format!("{winner:?} wins! ({reason:?})\n\n{note}"),
+            None => format!("{winner:?} wins! ({reason:?})"),
+        };
+        draw_modal(frame, &Modal::new("Game over", &body, "Press q to quit."));
     } else if let Some(modal) = ui.modal() {
         draw_modal(frame, modal);
     } else if let Some(picker) = ui.card_picker() {
