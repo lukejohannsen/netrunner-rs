@@ -1394,9 +1394,13 @@ mod tests {
         let (mut state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
         // Bigger Picture's choice, parked the way `Effect::PresentChoice`
         // parks it: give a tag, or take the Runner's credits per tag.
+        // Parked the way the engine parks it, clauses included: the
+        // label is the card's own words, and the empty clause is the
+        // "may" declined.
         state.pending_decision = Some(PendingDecision::ChooseEffect {
             chooser: Side::Corp,
             options: vec![Effect::GiveTags(1), Effect::Sequence(vec![])],
+            option_texts: vec!["Give the Runner 1 tag.".to_string(), String::new()],
             source_card: Some(CardId("bigger_picture".to_string())),
             prompting_card: None,
             source_install: None,
@@ -1405,8 +1409,15 @@ mod tests {
         let view = build_client_view(&state, &registry, Side::Corp);
 
         assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 0 }, &registry, Some(&view)), "Give the Runner 1 tag");
-        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 1 }, &registry, Some(&view)), "Do nothing");
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 1 }, &registry, Some(&view)), "Do not");
         assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 0 }, &registry, None), "Choose option 1", "without a view the index is all there is");
+        // A card with no clauses linked falls back to the prose rendering.
+        let mut bare = state.clone();
+        if let Some(PendingDecision::ChooseEffect { option_texts, .. }) = &mut bare.pending_decision {
+            option_texts.clear();
+        }
+        let bare_view = build_client_view(&bare, &registry, Side::Corp);
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 1 }, &registry, Some(&bare_view)), "Do nothing");
         assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Bigger Picture asks — choose one"));
 
         let mut ui = LocalUiState::new(registry, Side::Corp);

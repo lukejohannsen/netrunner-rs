@@ -8,15 +8,24 @@
 //! does, `describe_cost` what it costs, and `decision_prompt` names the
 //! card asking and what it asks, for the actions pane's title.
 //!
+//! **The printed card is the authority; this is the engine's reading of
+//! it, and the fallback.** Where a card author has linked a DSL node to
+//! the printed clause it implements (`PresentChoice::texts`,
+//! `OfferPaidChoice::text`, `AbilityDef::text`, `SubroutineDef::text`),
+//! the client shows the card's own words and never this module's. This
+//! module is used in two places only: as the label for a card that has
+//! no clause linked (homebrew, a test fixture), and in the card
+//! inspector's "Engine reads it as" section, where the DSL's rendering
+//! sits beside the printed clause so a person can see whether the two
+//! agree — which is how a card whose implementation has drifted from its
+//! text, by a bug or by an erratum, gets noticed at the table.
+//!
 //! **Prose, not a second rules engine.** Every function here reads the
 //! DSL and produces a string; none decides anything. Where a variant's
 //! meaning depends on state the client cannot see, the string says what
 //! the card *would* do ("gain credits per counter"), not what will
 //! happen. A variant with no sentence yet falls back to its debug form,
-//! which is still a word rather than a number — the fallback is what
-//! keeps this table honest about its coverage, and the test that no
-//! sample-deck card's choices reach it is what keeps it complete for
-//! the decks people play.
+//! which is still a word rather than a number.
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
@@ -188,19 +197,19 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
         Effect::RefillCountersTo(n) => format!("refill to {}", plural(*n, "counter", "counters")),
         Effect::EffectIf { condition, effect } => format!("if {}: {}", humanize(format!("{condition:?}")), describe_effect(effect, registry)),
-        Effect::OfferPaidChoice { side, cost, if_paid, if_declined } => format!(
+        Effect::OfferPaidChoice { side, cost, if_paid, if_declined, .. } => format!(
             "{} may pay {} to {}; otherwise {}",
             who(*side),
             describe_cost(cost),
             describe_effect(if_paid, registry),
             describe_effect(if_declined, registry)
         ),
-        Effect::PresentChoice { chooser, options } => format!(
+        Effect::PresentChoice { chooser, options, .. } => format!(
             "{} chooses: {}",
             who(*chooser),
             options.iter().map(|option| describe_effect(option, registry)).collect::<Vec<_>>().join(" / ")
         ),
-        Effect::ResolveSomeOf { chooser, count, options } => format!(
+        Effect::ResolveSomeOf { chooser, count, options, .. } => format!(
             "{} chooses {} of: {}",
             who(*chooser),
             count,
@@ -337,6 +346,7 @@ mod tests {
                 cost: Cost::Credits(8),
                 if_paid: Box::new(Effect::Sequence(vec![])),
                 if_declined: Box::new(Effect::GiveTags(1)),
+                text: None,
             }),
             "the Runner may pay 8 credits to do nothing; otherwise give the Runner 1 tag"
         );

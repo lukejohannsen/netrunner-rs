@@ -34,7 +34,8 @@
           "restrict_to": "Sentry"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break 1 sentry subroutine."
     },
     {
       "trigger": "Paid",
@@ -47,7 +48,8 @@
           "duration": "Encounter"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Hosted virus counter: +2 strength."
     }
   ],
   "numeric_id": 35008,

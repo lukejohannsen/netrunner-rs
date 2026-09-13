@@ -305,6 +305,134 @@ mod catalog_join_tests {
     /// Card files no longer restate what the catalog owns; the join is what
     /// puts it back. If the join regressed, every card would silently lose its
     /// faction/influence/artist and deckbuilding legality checks would go quiet.
+    /// Cards whose choice texts are not quotes of the printed text, each
+    /// with the reason: the words the choice needs are not on the card.
+    const CLAUSE_QUOTE_EXEMPT: &[(&str, &str)] = &[
+        // "choose a card type" — the four types are the choice and the
+        // card never prints their names.
+        ("touch_ups", "the options are card-type names the card does not print"),
+    ];
+
+    /// Every linked clause is a quote of the card. The point of linking a
+    /// DSL node to the printed text it implements is that a person can
+    /// check the one against the other; a clause that is not on the card
+    /// is a second rendering, which is what the link exists to avoid —
+    /// and a clause that *was* on the card until an erratum or a catalog
+    /// update changed the wording is the drift this catches. Compared
+    /// with case, whitespace and punctuation dropped, so `[credit]` and
+    /// "1[credit]." match however the quote was typed.
+    ///
+    /// **Every sample-deck card that presents a choice, offers a paid
+    /// choice or has a paid ability must carry the clause.** Triggers may
+    /// (`TriggeredEffect::text`) and are not gated. A clause may end in
+    /// ` — <note>` to tell two options apart that one printed phrase
+    /// covers ("install 1 card from HQ or Archives — from Archives"); only
+    /// the part before the dash has to be the quote.
+    #[test]
+    fn printed_clauses_are_quoted_from_the_card() {
+        use crate::dsl::Effect;
+
+        fn normalise(text: &str) -> String {
+            text.chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| c.to_ascii_lowercase()).collect()
+        }
+        fn walk<'a>(effect: &'a Effect, out: &mut Vec<&'a Effect>) {
+            out.push(effect);
+            match effect {
+                Effect::Sequence(steps) => steps.iter().for_each(|e| walk(e, out)),
+                Effect::PresentChoice { options, .. } | Effect::ResolveSomeOf { options, .. } => {
+                    options.iter().for_each(|e| walk(e, out))
+                }
+                Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
+                    walk(if_paid, out);
+                    walk(if_declined, out);
+                }
+                Effect::EffectIf { effect, .. }
+                | Effect::Trace { on_success: effect, .. }
+                | Effect::SetAccessReplacement { effect, .. }
+                | Effect::SetRunEndedEffect(effect) => walk(effect, out),
+                Effect::PromptChooseCards { then: Some(then), .. } => walk(then, out),
+                Effect::PromptChooseServer { on_success, on_start, .. } => {
+                    on_success.iter().for_each(|e| walk(e, out));
+                    on_start.iter().for_each(|e| walk(e, out));
+                }
+                _ => {}
+            }
+        }
+
+        let mut registry = crate::cards::CardRegistry::new();
+        crate::cards::register_playable_cards(&mut registry);
+        let mut pool: Vec<crate::dsl::CardId> = Vec::new();
+        for deck in crate::decks::embedded_decks() {
+            pool.push(deck.identity.clone());
+            pool.extend(deck.cards.iter().map(|entry| entry.card.clone()));
+        }
+        pool.sort();
+        pool.dedup();
+
+        let mut failures: Vec<String> = Vec::new();
+        let mut checked = 0;
+        for id in &pool {
+            let card = registry.get(id).unwrap_or_else(|| panic!("{} is in a sample deck", id.0));
+            let printed = normalise(card.printed_text.as_deref().unwrap_or_default());
+            let exempt = CLAUSE_QUOTE_EXEMPT.iter().any(|(exempt, _)| *exempt == id.0);
+            // `Some(failure)` when the clause is not a quote of the card.
+            let quote = |what: &str, clause: &str| -> Option<String> {
+                let quoted = clause.rsplit_once(" — ").map_or(clause, |(quote, _note)| quote);
+                (!exempt && !printed.contains(&normalise(quoted)))
+                    .then(|| format!("{} — {what}: {clause:?} is not on the card", card.title))
+            };
+            for (index, ability) in card.abilities.iter().enumerate() {
+                match &ability.text {
+                    Some(text) => {
+                        checked += 1;
+                        failures.extend(quote(&format!("ability {index}"), text));
+                    }
+                    None => failures.push(format!("{} — ability {index} has no printed clause", card.title)),
+                }
+            }
+            for trigger in &card.triggers {
+                if let Some(text) = &trigger.text {
+                    checked += 1;
+                    failures.extend(quote("trigger", text));
+                }
+            }
+            let mut effects = Vec::new();
+            card.triggers.iter().flat_map(|t| t.effects.iter()).for_each(|e| walk(e, &mut effects));
+            card.abilities.iter().for_each(|a| walk(&a.effect, &mut effects));
+            card.subroutines.iter().for_each(|s| walk(&s.effect, &mut effects));
+            for effect in effects {
+                match effect {
+                    Effect::PresentChoice { options, texts, .. } | Effect::ResolveSomeOf { options, texts, .. } => {
+                        if texts.len() != options.len() {
+                            failures.push(format!("{} — a choice has {} options and {} clauses", card.title, options.len(), texts.len()));
+                            continue;
+                        }
+                        for (option, text) in options.iter().zip(texts) {
+                            if text.is_empty() {
+                                if !matches!(option, Effect::Sequence(steps) if steps.is_empty()) {
+                                    failures.push(format!("{} — an empty clause on an option that does something", card.title));
+                                }
+                                continue;
+                            }
+                            checked += 1;
+                            failures.extend(quote("choice option", text));
+                        }
+                    }
+                    Effect::OfferPaidChoice { text, .. } => match text {
+                        Some(text) => {
+                            checked += 1;
+                            failures.extend(quote("paid choice", text));
+                        }
+                        None => failures.push(format!("{} — a paid choice has no printed clause", card.title)),
+                    },
+                    _ => {}
+                }
+            }
+        }
+        assert!(failures.is_empty(), "{} clause(s) are not quotes of their card:\n  {}", failures.len(), failures.join("\n  "));
+        assert!(checked > 100, "{checked} clauses checked");
+    }
+
     #[test]
     fn catalog_metadata_is_filled_in_from_the_join() {
         let tithe = embedded_playable_cards()

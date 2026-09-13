@@ -952,6 +952,9 @@ pub struct PendingPaidChoice {
     pub cost: Cost,
     pub if_paid: Effect,
     pub if_declined: Effect,
+    /// `OfferPaidChoice::text`, carried for the client.
+    #[serde(default)]
+    pub text: Option<String>,
     /// CardDefinition whose effect offered this choice — same role as
     /// `TraceState::initiating_card`.
     pub source_card: Option<CardId>,
@@ -1020,6 +1023,11 @@ pub enum PendingDecision {
     ChooseEffect {
         chooser: Side,
         options: Vec<Effect>,
+        /// `PresentChoice::texts`, carried so the client can label each
+        /// option with the card's printed words. Empty when the card has
+        /// none linked.
+        #[serde(default)]
+        option_texts: Vec<String>,
         source_card: Option<CardId>,
         /// See `ChooseCards::prompting_card`.
         #[serde(default)]

@@ -785,6 +785,7 @@ mod tests {
             card_type: CardType::Operation,
             cost: 5,
             triggers: vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
                 requirement: None,
@@ -803,12 +804,14 @@ mod tests {
             cost: 2,
             abilities: vec![
                 AbilityDef {
+                    text: None,
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     requirement: None,
                     effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::BoostDuration::Encounter },
                     cost_discount_if: None, used_by: None },
                 AbilityDef {
+                    text: None,
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     requirement: None,
@@ -1182,6 +1185,7 @@ mod tests {
     fn pending_paid_choice_roundtrips_and_matches_mask() {
         let mut state = base_state();
         state.pending_paid_choice = Some(crate::rules::state::PendingPaidChoice {
+            text: None,
             side: Side::Corp,
             cost: Cost::AnyOf(vec![Cost::Clicks(2), Cost::Credits(5)]),
             if_paid: Effect::Sequence(Vec::new()),
@@ -1207,6 +1211,7 @@ mod tests {
     fn pending_decision_roundtrips_and_matches_mask() {
         let mut state = base_state();
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
+            option_texts: Vec::new(),
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
             source_card: None,
@@ -1449,6 +1454,7 @@ mod tests {
         let mut state = GameState::new(0);
         state.phase = GamePhase::Action(Side::Corp);
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
+            option_texts: Vec::new(),
             chooser: Side::Corp,
             options: vec![
                 crate::dsl::Effect::GainCredits(Side::Corp, 1),

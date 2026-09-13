@@ -766,7 +766,7 @@ fn rez_ice(
             0 => return Err(RulesError::NotEnoughCredits { side, available: wallet, requested: cheapest }),
             // One way to pay is not a choice; resolve it rather than ask.
             1 => options.into_iter().next().expect("length checked"),
-            _ => Effect::PresentChoice { chooser: side, options },
+            _ => Effect::PresentChoice { chooser: side, options, texts: Vec::new() },
         };
         let mut ctx = ability::ResolutionContext::for_card(Some(&ice_id));
         let events = ability::evaluate_effect(&mut next, &effect, &mut ctx, registry)?;
@@ -3290,7 +3290,7 @@ mod tests {
             title: "Anoetic Void".to_string(),
             side: Side::Corp,
             card_type: CardType::Upgrade,
-            triggers: vec![TriggeredEffect { trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
+            triggers: vec![TriggeredEffect { text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
             is_playable: true,
             ..Default::default()
         };
@@ -3300,6 +3300,7 @@ mod tests {
             side: Side::Runner,
             card_type: CardType::Resource,
             triggers: vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnSuccessfulRun,
                 effects: vec![Effect::GainCredits(Side::Runner, 1)],
                 requirement: None,
@@ -4023,6 +4024,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sure_gamble", Side::Runner, CardType::Event, 5, None);
         card.triggers = vec![TriggeredEffect {
+            text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Runner, 9)],
             requirement: None,
@@ -4118,6 +4120,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("hedge_fund", Side::Corp, CardType::Operation, 5, None);
         card.triggers = vec![TriggeredEffect {
+            text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Corp, 9)],
             requirement: None,
@@ -4261,6 +4264,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sea_source", Side::Corp, CardType::Operation, 0, None);
         card.triggers = vec![TriggeredEffect {
+            text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) }],
             requirement: None,
@@ -4762,7 +4766,7 @@ mod tests {
             title: card_id.to_string(),
             side,
             card_type: CardType::Program,
-            abilities: vec![AbilityDef { trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None }],
+            abilities: vec![AbilityDef { text: None, trigger, cost, requirement: None, effect, cost_discount_if: None, used_by: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -5678,10 +5682,12 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::PresentChoice {
                     chooser: Side::Corp,
                     options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
+                    texts: Vec::new(),
                 }],
                 requirement: None,
             }],
@@ -5689,6 +5695,7 @@ mod tests {
         });
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, 1)],
                 requirement: None,
@@ -5711,6 +5718,7 @@ mod tests {
             continuation: None,
         }];
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
+            option_texts: Vec::new(),
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 5), Effect::Sequence(Vec::new())],
             source_card: Some(CardId("parks_a_choice".to_string())),
@@ -5743,6 +5751,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
                 requirement: None,
@@ -5822,6 +5831,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
                 requirement: None,
@@ -5896,11 +5906,13 @@ mod tests {
         registry.insert(CardDefinition {
             triggers: vec![
                 TriggeredEffect {
+                    text: None,
                     trigger: Trigger::OnSuccessfulRun,
                     effects: vec![Effect::GainCredits(Side::Runner, 1)],
                     requirement: None,
                 },
                 TriggeredEffect {
+                    text: None,
                     trigger: Trigger::OnSuccessfulRunOnHq,
                     effects: vec![Effect::GainCredits(Side::Runner, 3)],
                     requirement: None,
@@ -6021,6 +6033,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(CardDefinition {
             abilities: vec![AbilityDef {
+                text: None,
                 trigger: Trigger::Paid,
                 cost: Some(Cost::Credits(1)),
                 requirement: None,
@@ -6741,6 +6754,7 @@ mod tests {
             Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
         );
         card.abilities.push(AbilityDef {
+            text: None,
             trigger: Trigger::Paid,
             cost: Some(Cost::Credits(1)),
             requirement: None,

@@ -444,6 +444,7 @@ mod tests {
             id: CardId("identity_with_paid_ability".to_string()),
             card_type: crate::dsl::CardType::Identity,
             abilities: vec![crate::dsl::AbilityDef {
+                text: None,
                 trigger: Trigger::Paid,
                 cost: None,
                 requirement: None,
@@ -775,6 +776,7 @@ mod tests {
             side: Side::Runner,
             card_type: crate::dsl::CardType::Program,
             triggers: vec![crate::dsl::TriggeredEffect {
+                text: None,
                 trigger: crate::dsl::Trigger::OnRunEnded,
                 effects: vec![crate::dsl::Effect::GainCredits(Side::Runner, 1)],
                 requirement: None,

@@ -504,7 +504,48 @@ pub fn card_modal(id: &CardId, registry: &CardRegistry) -> Modal {
         lines.push(String::new());
         lines.extend(flavor.lines().map(|line| format!("\"{line}\"")));
     }
+    // What the engine will actually do, beside the words it was written
+    // from: each trigger, ability and subroutine as the engine reads it
+    // (`prose::describe_effect` over the DSL), and the printed clause the
+    // author linked to it where there is one. This is the troubleshooting
+    // view — a player who thinks the card is doing something its text does
+    // not say can see both here, and an erratum that changes the text
+    // shows up as a clause that no longer matches.
+    let engine = engine_reading(card, registry);
+    if !engine.is_empty() {
+        lines.push(String::new());
+        lines.push("Engine reads it as:".to_string());
+        lines.extend(engine);
+    }
     Modal::new(&card.title, &lines.join("\n"), "Esc to close")
+}
+
+/// One line per trigger, ability and subroutine: `[when] clause → engine
+/// reading`. The clause is the printed text the author linked
+/// (`TriggeredEffect::text`, `AbilityDef::text`, `SubroutineDef::text`),
+/// and the reading is the DSL rendered by `prose`.
+pub fn engine_reading(card: &netrunner_core::dsl::CardDefinition, registry: &CardRegistry) -> Vec<String> {
+    let mut lines = Vec::new();
+    for trigger in &card.triggers {
+        let reading = trigger.effects.iter().map(|e| crate::prose::describe_effect(e, registry)).collect::<Vec<_>>().join("; ");
+        let when = crate::prose::humanize(format!("{:?}", trigger.trigger));
+        match &trigger.text {
+            Some(text) => lines.push(format!("• [{when}] \"{}\" → {reading}", text.trim_end_matches('.'))),
+            None => lines.push(format!("• [{when}] → {reading}")),
+        }
+    }
+    for ability in &card.abilities {
+        let reading = crate::prose::describe_effect(&ability.effect, registry);
+        let cost = ability.cost.as_ref().map(|c| format!("{}: ", crate::prose::describe_cost(c))).unwrap_or_default();
+        match &ability.text {
+            Some(text) => lines.push(format!("• [ability] \"{}\" → {cost}{reading}", text.trim_end_matches('.'))),
+            None => lines.push(format!("• [ability] → {cost}{reading}")),
+        }
+    }
+    for sub in &card.subroutines {
+        lines.push(format!("• [subroutine] \"{}\" → {}", sub.text.trim_end_matches('.'), crate::prose::describe_effect(&sub.effect, registry)));
+    }
+    lines
 }
 
 impl Modal {
@@ -873,21 +914,26 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::DiscardCard { card_id } => format!("Discard {}", title(card_id)),
         PlayerAction::KeepHand => "Keep hand".to_string(),
         PlayerAction::TakeMulligan => "Mulligan".to_string(),
-        // The ability's cost and effect in words, off the card the install
-        // resolves to in the view; the index alone names nothing.
+        // The ability's printed line (`AbilityDef::text`), off the card the
+        // install resolves to in the view; a card with no clause linked
+        // falls back to the prose rendering of its cost and effect. The
+        // index alone names nothing.
         PlayerAction::ActivateAbility { target, ability_index } => {
             let ability = view
                 .and_then(|v| installed_card_id(v, target))
                 .and_then(|card| registry.get(&card))
                 .and_then(|def| def.abilities.get(*ability_index));
             match ability {
-                Some(ability) => {
-                    let effect = crate::prose::describe_effect(&ability.effect, registry);
-                    match &ability.cost {
-                        Some(cost) => format!("{}: {} — {effect}", install_label(target), crate::prose::describe_cost(cost)),
-                        None => format!("{}: {effect}", install_label(target)),
+                Some(ability) => match &ability.text {
+                    Some(text) => format!("{}: {}", install_label(target), text.trim_end_matches('.')),
+                    None => {
+                        let effect = crate::prose::describe_effect(&ability.effect, registry);
+                        match &ability.cost {
+                            Some(cost) => format!("{}: {} — {effect}", install_label(target), crate::prose::describe_cost(cost)),
+                            None => format!("{}: {effect}", install_label(target)),
+                        }
                     }
-                }
+                },
                 None => format!("Activate ability {ability_index} on {}", install_label(target)),
             }
         }
@@ -907,8 +953,11 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::PassPriority { side } => format!("Pass priority ({side:?})"),
         PlayerAction::SubmitCorpTraceBid { amount } => format!("Bid {amount} (Corp trace)"),
         PlayerAction::SubmitRunnerTraceBid { amount } => format!("Bid {amount} (Runner trace)"),
-        // A paid choice is a cost and a consequence; both are in the view's
-        // `pending_paid_choice`, and "Accept" alone says neither.
+        // A paid choice is a cost and a consequence. The card's own clause
+        // (`PendingPaidChoice::text`, quoted from the printed text) says
+        // both; the cost is spelled out beside it because a `[click]` and
+        // a credit read differently at the moment of paying. A card with
+        // no linked clause falls back to the prose rendering of the DSL.
         PlayerAction::AcceptPendingPaidChoice { cost_option_index } => match view.and_then(|v| v.pending_paid_choice.as_ref()) {
             Some(paid) => {
                 let cost = match (cost_option_index, &paid.cost) {
@@ -917,7 +966,10 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
                     }
                     _ => crate::prose::describe_cost(&paid.cost),
                 };
-                format!("Pay {cost}: {}", crate::prose::describe_effect(&paid.if_paid, registry))
+                match &paid.text {
+                    Some(text) => format!("Pay {cost} — \"{}\"", text.trim_end_matches('.')),
+                    None => format!("Pay {cost}: {}", crate::prose::describe_effect(&paid.if_paid, registry)),
+                }
             }
             None => match cost_option_index {
                 Some(i) => format!("Accept (option {i})"),
@@ -925,26 +977,37 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
             },
         },
         PlayerAction::DeclinePendingPaidChoice => match view.and_then(|v| v.pending_paid_choice.as_ref()) {
+            Some(paid) if matches!(&paid.if_declined, netrunner_core::dsl::Effect::Sequence(steps) if steps.is_empty()) => {
+                "Decline (nothing happens)".to_string()
+            }
             Some(paid) => format!("Decline: {}", crate::prose::describe_effect(&paid.if_declined, registry)),
             None => "Decline".to_string(),
         },
-        // The option is an index into the parked `PresentChoice`'s effects;
-        // the effect is in the view, so the label can say what it does.
-        // "Option 0 | Option 1" was a menu with no words on it.
+        // The option is an index into the parked `PresentChoice`. The
+        // card's own words for it (`option_texts`, quoted from the printed
+        // text) are the label; an empty clause marks the "may" declined;
+        // a card with no clauses linked falls back to the prose rendering
+        // of the effect. "Option 0 | Option 1" was a menu with no words on
+        // it.
         PlayerAction::ResolvePendingChoice { option_index } => {
-            let option = view.and_then(|v| match &v.pending_decision {
-                Some(PendingDecision::ChooseEffect { options, .. }) => options.get(*option_index),
+            let parked = view.and_then(|v| match &v.pending_decision {
+                Some(PendingDecision::ChooseEffect { options, option_texts, .. }) => {
+                    Some((options.get(*option_index), option_texts.get(*option_index)))
+                }
                 _ => None,
             });
-            match option {
-                Some(effect) => {
-                    let mut words = crate::prose::describe_effect(effect, registry);
-                    if let Some(first) = words.get(0..1) {
-                        words.replace_range(0..1, &first.to_uppercase());
-                    }
-                    words
+            let capitalised = |words: String| {
+                let mut words = words;
+                if let Some(first) = words.get(0..1) {
+                    words.replace_range(0..1, &first.to_uppercase());
                 }
-                None => format!("Choose option {}", option_index + 1),
+                words
+            };
+            match parked {
+                Some((_, Some(text))) if text.is_empty() => "Do not".to_string(),
+                Some((_, Some(text))) => capitalised(text.trim_end_matches('.').to_string()),
+                Some((Some(effect), None)) => capitalised(crate::prose::describe_effect(effect, registry)),
+                _ => format!("Choose option {}", option_index + 1),
             }
         }
         // A position, deliberately not resolved to a card: the zone it

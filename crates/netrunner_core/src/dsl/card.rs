@@ -134,6 +134,11 @@ pub enum CardType {
 #[serde(deny_unknown_fields)]
 pub struct TriggeredEffect {
     pub trigger: Trigger,
+    /// The printed sentence this trigger implements, quoted from the
+    /// card, when a card author has linked it; optional and ungated —
+    /// see `AbilityDef::text` for the linked-clause idea.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
     pub effects: Vec<Effect>,
     /// A *soft* precondition: if unmet, `ability::process_card_triggers`
     /// silently skips this entry (no error, no `RulesError` surfaced) and
@@ -843,6 +848,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
                 requirement: None,
@@ -863,6 +869,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
                 requirement: None,
@@ -906,6 +913,7 @@ mod tests {
             card.abilities,
             vec![
                 AbilityDef {
+                    text: None,
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     // Every icebreaker ability carries this — real
@@ -914,6 +922,7 @@ mod tests {
                     effect: Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
                     cost_discount_if: None, used_by: None },
                 AbilityDef {
+                    text: None,
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     // Every icebreaker ability carries this — real

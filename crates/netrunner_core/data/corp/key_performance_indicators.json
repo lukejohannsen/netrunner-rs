@@ -79,6 +79,12 @@
                   2
                 ]
               }
+            ],
+            "texts": [
+              "Draw 1 card. Shuffle 1 card from HQ into R&D",
+              "Install 1 piece of ice from HQ, ignoring all costs",
+              "Place 1 advancement counter on an installed card you can advance",
+              "Gain 2[credit]"
             ]
           }
         }

@@ -48,7 +48,8 @@
             },
             "if_declined": {
               "Sequence": []
-            }
+            },
+            "text": "you may remove 1 hosted agenda counter to install 1 card from Archives, ignoring all costs"
           }
         }
       ]

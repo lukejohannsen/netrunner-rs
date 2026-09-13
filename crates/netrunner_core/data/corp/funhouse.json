@@ -20,7 +20,8 @@
             "if_paid": {
               "Sequence": []
             },
-            "if_declined": "EndTheRun"
+            "if_declined": "EndTheRun",
+            "text": "end the run unless the Runner takes 1 tag"
           }
         }
       ]
@@ -40,7 +41,8 @@
           },
           "if_declined": {
             "GiveTags": 1
-          }
+          },
+          "text": "Give the Runner 1 tag unless they pay 4[credit]"
         }
       }
     }

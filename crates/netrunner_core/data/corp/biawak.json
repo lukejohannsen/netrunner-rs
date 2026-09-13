@@ -59,6 +59,10 @@
                       }
                     },
                     "EndTheRun"
+                  ],
+                  "texts": [
+                    "Trash 1 installed program",
+                    "end the run"
                   ]
                 }
               }
@@ -117,6 +121,10 @@
                       }
                     },
                     "EndTheRun"
+                  ],
+                  "texts": [
+                    "Trash 1 installed resource",
+                    "end the run"
                   ]
                 }
               }
