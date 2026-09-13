@@ -41,7 +41,8 @@
           },
           "if_declined": {
             "GiveTags": 1
-          }
+          },
+          "text": "Give the Runner 1 tag unless they pay 3[credit]"
         }
       }
     },

@@ -484,7 +484,7 @@ pub(crate) fn resolve_choice(
     registry: &CardRegistry,
     option_index: usize,
 ) -> Result<Vec<GameEvent>, RulesError> {
-    let PendingDecision::ChooseEffect { chooser, options, source_card, prompting_card, source_install, resume } =
+    let PendingDecision::ChooseEffect { chooser, options, source_card, prompting_card, source_install, resume, .. } =
         state.pending_decision.take().ok_or(RulesError::NoPendingDecision)?
     else {
         return Err(RulesError::NoPendingDecision);
@@ -1135,7 +1135,7 @@ mod tests {
             destination: None,
             then: Some(Box::new(Effect::Sequence(vec![
                 Effect::AddAdvancementTokens(2),
-                Effect::PresentChoice { chooser: Side::Corp, options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())] },
+                Effect::PresentChoice { chooser: Side::Corp, options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())], texts: Vec::new() },
             ]))),
             selected: Vec::new(),
             source_card: Some(CardId("touch_ups".to_string())),
@@ -1165,6 +1165,7 @@ mod tests {
     fn accept_pays_the_cost_and_resolves_if_paid() {
         let mut state = game_state();
         state.pending_paid_choice = Some(crate::rules::state::PendingPaidChoice {
+            text: None,
             side: Side::Runner,
             cost: Cost::Credits(4),
             if_paid: Effect::Sequence(Vec::new()),
@@ -1187,6 +1188,7 @@ mod tests {
     fn decline_pays_nothing_and_resolves_if_declined() {
         let mut state = game_state();
         state.pending_paid_choice = Some(crate::rules::state::PendingPaidChoice {
+            text: None,
             side: Side::Runner,
             cost: Cost::Credits(4),
             if_paid: Effect::Sequence(Vec::new()),
@@ -1209,6 +1211,7 @@ mod tests {
     fn accept_any_of_pays_the_selected_option() {
         let mut state = game_state();
         state.pending_paid_choice = Some(crate::rules::state::PendingPaidChoice {
+            text: None,
             side: Side::Runner,
             cost: Cost::AnyOf(vec![Cost::Clicks(2), Cost::Credits(5)]),
             if_paid: Effect::Sequence(Vec::new()),
@@ -1229,6 +1232,7 @@ mod tests {
     fn accept_any_of_without_an_index_errors() {
         let mut state = game_state();
         state.pending_paid_choice = Some(crate::rules::state::PendingPaidChoice {
+            text: None,
             side: Side::Runner,
             cost: Cost::AnyOf(vec![Cost::Clicks(2), Cost::Credits(5)]),
             if_paid: Effect::Sequence(Vec::new()),
@@ -1248,6 +1252,7 @@ mod tests {
     fn resolve_choice_evaluates_the_selected_option() {
         let mut state = game_state();
         state.pending_decision = Some(PendingDecision::ChooseEffect {
+            option_texts: Vec::new(),
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
             source_card: None,
@@ -1267,6 +1272,7 @@ mod tests {
     fn resolve_choice_out_of_range_errors() {
         let mut state = game_state();
         state.pending_decision = Some(PendingDecision::ChooseEffect {
+            option_texts: Vec::new(),
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2)],
             source_card: None,
@@ -1284,6 +1290,7 @@ mod tests {
     fn apply_action_blocks_unrelated_actions_while_a_paid_choice_is_pending() {
         let mut state = game_state();
         state.pending_paid_choice = Some(crate::rules::state::PendingPaidChoice {
+            text: None,
             side: Side::Runner,
             cost: Cost::Credits(4),
             if_paid: Effect::Sequence(Vec::new()),

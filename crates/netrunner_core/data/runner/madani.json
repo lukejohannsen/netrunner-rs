@@ -28,7 +28,8 @@
           "shuffle_after": false,
           "destination": "HostedOnSource"
         }
-      }
+      },
+      "text": "[click]: Host any number of programs from your grip faceup on this hardware. (They are not installed.)"
     },
     {
       "trigger": "Paid",
@@ -49,7 +50,8 @@
           "shuffle_after": false,
           "then": "InstallRunnerCardFromHost"
         }
-      }
+      },
+      "text": "Once per turn → 0[credit]: Install 1 hosted program (paying its install cost)."
     }
   ],
   "numeric_id": 35028,

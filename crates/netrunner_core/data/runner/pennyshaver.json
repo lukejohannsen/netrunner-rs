@@ -29,7 +29,8 @@
             "TakeAllCountersAsCredits": "Runner"
           }
         ]
-      }
+      },
+      "text": "[click]: Place 1[credit] on this hardware, then take all credits from it."
     }
   ],
   "memory_bonus": 1,

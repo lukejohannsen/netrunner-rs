@@ -21,7 +21,8 @@
           "restrict_to": "CodeGate"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break up to 2 code gate subroutines."
     },
     {
       "trigger": "Paid",
@@ -34,7 +35,8 @@
           "duration": "Encounter"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "3[credit]: +1 strength."
     }
   ],
   "numeric_id": 30005,

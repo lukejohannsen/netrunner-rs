@@ -37,7 +37,8 @@
                 },
                 "if_declined": {
                   "Sequence": []
-                }
+                },
+                "text": "you may pay 2[credit] and trash 2 cards from HQ. If you do, end the run"
               }
             }
           }

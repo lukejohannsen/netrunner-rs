@@ -87,6 +87,11 @@
             {
               "Sequence": []
             }
+          ],
+          "texts": [
+            "install 1 card from HQ or Archives — from HQ",
+            "install 1 card from HQ or Archives — from Archives",
+            ""
           ]
         }
       }

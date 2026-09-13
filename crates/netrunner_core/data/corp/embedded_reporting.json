@@ -36,7 +36,8 @@
             },
             "if_declined": {
               "Sequence": []
-            }
+            },
+            "text": "you may remove 1 hosted agenda counter to search R&D for 1 operation and reveal it"
           }
         }
       ]

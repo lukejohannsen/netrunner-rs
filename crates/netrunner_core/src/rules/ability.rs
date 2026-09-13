@@ -320,6 +320,7 @@ pub fn evaluate_effect(
                                     cost: Cost::TrashRandomFromHq(root_count),
                                     if_paid: Box::new(Effect::EndTheRun),
                                     if_declined: Box::new(Effect::Sequence(Vec::new())),
+                                    text: None,
                                 },
                                 ctx,
                                 registry,
@@ -984,23 +985,31 @@ pub fn evaluate_effect(
 
         // Rewritten into the `PresentChoice` it is shorthand for: each option
         // followed by the same offer over the rest, one fewer to resolve.
-        Effect::ResolveSomeOf { chooser, count, options } => {
+        Effect::ResolveSomeOf { chooser, count, options, texts } => {
             if *count == 0 || options.is_empty() {
                 return Ok(Vec::new());
             }
+            let text_of = |index: usize| texts.get(index).cloned();
             let expanded: Vec<Effect> = options
                 .iter()
                 .enumerate()
                 .map(|(index, option)| {
                     let remaining: Vec<Effect> =
                         options.iter().enumerate().filter(|(other, _)| *other != index).map(|(_, e)| e.clone()).collect();
+                    let remaining_texts: Vec<String> =
+                        (0..options.len()).filter(|other| *other != index).filter_map(text_of).collect();
                     Effect::Sequence(vec![
                         option.clone(),
-                        Effect::ResolveSomeOf { chooser: *chooser, count: count - 1, options: remaining },
+                        Effect::ResolveSomeOf { chooser: *chooser, count: count - 1, options: remaining, texts: remaining_texts },
                     ])
                 })
                 .collect();
-            evaluate_effect(state, &Effect::PresentChoice { chooser: *chooser, options: expanded }, ctx, registry)
+            // The printed clauses ride along one level: the option chosen
+            // now is labelled by its own clause, the rest re-offered with
+            // theirs.
+            let expanded_texts: Vec<String> = (0..options.len()).map(|i| text_of(i).unwrap_or_default()).collect();
+            let expanded_texts = if texts.is_empty() { Vec::new() } else { expanded_texts };
+            evaluate_effect(state, &Effect::PresentChoice { chooser: *chooser, options: expanded, texts: expanded_texts }, ctx, registry)
         }
 
         Effect::LoseClicks(amount) => {
@@ -1038,12 +1047,13 @@ pub fn evaluate_effect(
             }
         }
 
-        Effect::OfferPaidChoice { side, cost, if_paid, if_declined } => {
+        Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
             state.pending_paid_choice = Some(PendingPaidChoice {
                 side: *side,
                 cost: cost.clone(),
                 if_paid: (**if_paid).clone(),
                 if_declined: (**if_declined).clone(),
+                text: text.clone(),
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
@@ -1052,10 +1062,11 @@ pub fn evaluate_effect(
             Ok(vec![GameEvent::PendingPaidChoiceOffered { side: *side }])
         }
 
-        Effect::PresentChoice { chooser, options } => {
+        Effect::PresentChoice { chooser, options, texts } => {
             state.pending_decision = Some(PendingDecision::ChooseEffect {
                 chooser: *chooser,
                 options: options.clone(),
+                option_texts: texts.clone(),
                 source_card: acting_card.cloned(),
                 prompting_card: ctx.attributed_card(),
                 source_install: ctx.acting_install,
@@ -1293,7 +1304,7 @@ pub fn evaluate_effect(
                 let only = only.clone();
                 return evaluate_effect(state, &only, ctx, registry);
             }
-            evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Corp, options }, ctx, registry)
+            evaluate_effect(state, &Effect::PresentChoice { chooser: Side::Corp, options, texts: Vec::new() }, ctx, registry)
         }
 
         Effect::GainClicksNextTurn(side, amount) => {
@@ -3010,7 +3021,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            abilities: vec![AbilityDef { trigger: Trigger::Paid, cost: None, requirement: None, effect, cost_discount_if: None, used_by: None }],
+            abilities: vec![AbilityDef { text: None, trigger: Trigger::Paid, cost: None, requirement: None, effect, cost_discount_if: None, used_by: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -3895,6 +3906,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(1), Effect::GainCredits(Side::Corp, 2)],
                 requirement: None,
@@ -3928,6 +3940,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
                 requirement: None,
@@ -4486,6 +4499,7 @@ mod tests {
             cost: Cost::Credits(4),
             if_paid: Box::new(Effect::Sequence(Vec::new())),
             if_declined: Box::new(Effect::GiveTags(1)),
+            text: None,
         };
 
         let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
@@ -4504,6 +4518,7 @@ mod tests {
         let effect = Effect::PresentChoice {
             chooser: Side::Corp,
             options: vec![Effect::GainCredits(Side::Corp, 2), Effect::DrawCards(Side::Corp, 2)],
+            texts: Vec::new(),
         };
 
         let events = evaluate_effect(&mut state, &effect, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();

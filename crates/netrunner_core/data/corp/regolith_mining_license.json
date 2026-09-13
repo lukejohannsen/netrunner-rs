@@ -42,7 +42,8 @@
             }
           }
         ]
-      }
+      },
+      "text": "[click]: Take 3[credit] from this asset."
     }
   ],
   "trash_cost": 3,

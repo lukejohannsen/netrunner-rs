@@ -466,6 +466,7 @@ mod tests {
             side: Side::Corp,
             card_type: crate::dsl::CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
+                text: None,
                 trigger: crate::dsl::Trigger::OnDiscardPhaseEnd,
                 effects: vec![crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
                 requirement: None,
@@ -597,6 +598,7 @@ mod tests {
             side: Side::Corp,
             card_type: CardType::Asset,
             abilities: vec![AbilityDef {
+                text: None,
                 trigger: Trigger::Paid,
                 cost: Some(Cost::Clicks(1)),
                 requirement: None,

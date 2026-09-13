@@ -38,7 +38,8 @@
                 },
                 "if_declined": {
                   "Sequence": []
-                }
+                },
+                "text": "you may trash this hardware to derez 1 installed Corp card"
               }
             }
           }

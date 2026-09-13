@@ -44,7 +44,8 @@
             "TrashCard": "ThisCard"
           }
         ]
-      }
+      },
+      "text": "[click], [trash]: Gain 2[credit] for each hosted virus counter."
     }
   ],
   "counter_kind": "Virus",
