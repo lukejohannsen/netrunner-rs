@@ -22,6 +22,10 @@
               {
                 "Sequence": []
               }
+            ],
+            "texts": [
+              "place 1 virus counter on this program",
+              ""
             ]
           }
         }
@@ -46,7 +50,8 @@
             }
           }
         ]
-      }
+      },
+      "text": "[click]: Run R&D. If successful, access X additional cards when you breach R&D. X is equal to the number of hosted virus counters."
     }
   ],
   "counter_kind": "Virus",

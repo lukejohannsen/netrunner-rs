@@ -28,6 +28,10 @@
                   2
                 ]
               }
+            ],
+            "texts": [
+              "gain 2[credit]",
+              "draw 2 cards"
             ]
           }
         }

@@ -41,7 +41,8 @@
       },
       "effect": {
         "AddCounters": 3
-      }
+      },
+      "text": "[click]: Place 3[credit] on this resource."
     }
   ],
   "numeric_id": 30033,

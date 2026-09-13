@@ -24,7 +24,8 @@
             "if_paid": {
               "Sequence": []
             },
-            "if_declined": "EndTheRun"
+            "if_declined": "EndTheRun",
+            "text": "end the run unless they either spend [click][click] or pay 5[credit]"
           }
         }
       ]

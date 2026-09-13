@@ -21,7 +21,8 @@
           "restrict_to": "CodeGate"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break 1 code gate subroutine."
     },
     {
       "trigger": "Paid",
@@ -34,7 +35,8 @@
           "duration": "Encounter"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "1[credit]: +X strength. X is equal to the number of installed icebreakers (including this one)."
     }
   ],
   "numeric_id": 30026,

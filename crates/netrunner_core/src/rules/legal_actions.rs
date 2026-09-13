@@ -949,6 +949,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut breaker = blank_card("corroder", CardType::Program);
         breaker.abilities = vec![AbilityDef {
+            text: None,
             trigger: Trigger::Paid,
             cost: Some(Cost::Credits(1)),
             requirement: None,
@@ -1283,6 +1284,7 @@ mod tests {
         // (`EffectRequirement::DuringEncounter`), which would make the
         // action illegal here for reasons unrelated to what is asserted.
         breaker.abilities = vec![AbilityDef {
+            text: None,
             trigger: Trigger::Paid,
             cost: Some(Cost::Credits(1)),
             requirement: None,

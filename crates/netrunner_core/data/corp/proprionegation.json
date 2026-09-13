@@ -25,7 +25,8 @@
       "requirement": "DuringRun",
       "effect": {
         "MoveRunToOutermost": "Archives"
-      }
+      },
+      "text": "Hosted agenda counter: The Runner moves to the outermost position of Archives. (They approach any ice in that position.) Use this ability only during a run."
     }
   ],
   "numeric_id": 35048,

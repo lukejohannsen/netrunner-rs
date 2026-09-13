@@ -46,7 +46,8 @@
             },
             "if_declined": {
               "Sequence": []
-            }
+            },
+            "text": "you may remove 2 hosted power counters to sabotage 3"
           }
         }
       ]

@@ -361,6 +361,7 @@ fn try_replace_access(
         // stands at `RunPhase::Success`, and the owner's next
         // `CompleteRun` breaches normally.
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
+            option_texts: Vec::new(),
             chooser: Side::Runner,
             options: vec![
                 crate::dsl::Effect::Sequence(vec![effect, crate::dsl::Effect::EndTheRun]),
@@ -1038,7 +1039,7 @@ mod tests {
     /// `OnAccessed` trigger firing `effects` — Snare!/Fetal AI-style traps.
     fn card_with_on_accessed(id: &str, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { text: None, trigger: Trigger::OnAccessed, effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }
@@ -1048,7 +1049,7 @@ mod tests {
     /// `OnTrashedFromAccess` trigger firing `effects` — Shock!-style.
     fn trashable_card_with_on_trashed_from_access(id: &str, trash_cost: u32, effects: Vec<Effect>) -> CardDefinition {
         CardDefinition {
-            triggers: vec![TriggeredEffect { trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
+            triggers: vec![TriggeredEffect { text: None, trigger: Trigger::OnTrashedFromAccess, effects, requirement: None }],
             ..trashable_card(id, trash_cost)
         }
     }
@@ -1715,6 +1716,7 @@ mod tests {
             side: Side::Corp,
             card_type: CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
+                text: None,
                 trigger: crate::dsl::Trigger::OnAgendaStolen,
                 effects: vec![Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
                 requirement: None,
@@ -2747,7 +2749,7 @@ mod tests {
     ) -> CardDefinition {
         CardDefinition {
             interactive_on_access: Some(InteractiveOnAccess { cost, effects: avoided_effects, interaction: AccessInteraction::default(), requirement: None }),
-            triggers: vec![TriggeredEffect { trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
+            triggers: vec![TriggeredEffect { text: None, trigger: Trigger::OnAccessed, effects: on_accessed_effects, requirement: None }],
             trash_cost: None,
             ..trashable_card(id, 0)
         }

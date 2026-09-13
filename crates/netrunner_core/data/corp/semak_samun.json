@@ -23,6 +23,10 @@
               ]
             },
             "EndTheRun"
+          ],
+          "texts": [
+            "suffers 3 net damage",
+            "End the run"
           ]
         }
       }

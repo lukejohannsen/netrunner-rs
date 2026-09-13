@@ -293,14 +293,37 @@ pub enum Effect {
     /// converge on the same "park state, block unrelated actions, resume
     /// via dedicated `PlayerAction`s" idiom `TraceState`/`PendingPrevention`
     /// already established.
-    OfferPaidChoice { side: Side, cost: Cost, if_paid: Box<Effect>, if_declined: Box<Effect> },
+    OfferPaidChoice {
+        side: Side,
+        cost: Cost,
+        if_paid: Box<Effect>,
+        if_declined: Box<Effect>,
+        /// The printed clause this offer implements, quoted from the
+        /// card's text — "you may pay 2[credit] and trash 2 cards from HQ.
+        /// If you do, end the run." — so a client can put the card's own
+        /// words on Accept/Decline instead of a rendering of this DSL,
+        /// and so `printed_clauses_are_quoted_from_the_card` can check
+        /// that the words still appear on the card after an erratum or a
+        /// catalog update. Never read by the engine.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        text: Option<String>,
+    },
     /// Presents `chooser` with a choice of which one `Effect` among
     /// `options` resolves — e.g. Wildcat Strike ("resolve 1 of the
     /// following of the Corp's choice"), NBN: Reality Plus ("gain 2
     /// credits or draw 2 cards"). Parks a `state::PendingDecision::
     /// ChooseEffect` and returns immediately, resolved via `PlayerAction::
     /// ResolvePendingChoice`.
-    PresentChoice { chooser: Side, options: Vec<Effect> },
+    PresentChoice {
+        chooser: Side,
+        options: Vec<Effect>,
+        /// One printed clause per option, quoted from the card's text, for
+        /// a client to label the choice with the card's own words; an empty
+        /// string marks the option that is the card's "may" declined
+        /// (always an empty `Sequence`). See `OfferPaidChoice::text`.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        texts: Vec<String>,
+    },
     /// Grants `side` 1 credit for each card accessed during the just-ended
     /// run (`GameState::last_completed_run`) — e.g. Zahya Sadeghi's "gain 1
     /// credit for each time you accessed a card during that run." A
@@ -681,7 +704,14 @@ pub enum Effect {
     /// with this wording would repeat the expansion. Resolves by
     /// rewriting itself into a `PresentChoice`, so it parks and resumes
     /// exactly as one does.
-    ResolveSomeOf { chooser: Side, count: u32, options: Vec<Effect> },
+    ResolveSomeOf {
+        chooser: Side,
+        count: u32,
+        options: Vec<Effect>,
+        /// See `PresentChoice::texts`; carried through the rewrite.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        texts: Vec<String>,
+    },
     /// Flips the Runner's identity to its other side
     /// (`RunnerState::identity_flipped`) — Dewi Subrotoputri. A flag rather
     /// than swapping the identity card: one card, two sides, and every
@@ -1190,6 +1220,7 @@ mod tests {
                 cost: crate::dsl::Cost::Credits(1),
                 if_paid: Box::new(Effect::GainCredits(Side::Runner, 1)),
                 if_declined: Box::new(Effect::EndTheRun),
+                text: None,
             }
             .can_end_the_run()
         );
@@ -1211,6 +1242,7 @@ mod tests {
                     cost: crate::dsl::Cost::Credits(1),
                     if_paid: Box::new(Effect::GainCredits(Side::Runner, 1)),
                     if_declined: Box::new(Effect::EndTheRun),
+                    text: None,
                 }),
             },
             Effect::PresentChoice {
@@ -1219,6 +1251,7 @@ mod tests {
                     Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) },
                     Effect::SetAccessReplacement { server: ServerId::Hq, effect: Box::new(Effect::DrawCards(Side::Runner, 1)), optional: false },
                 ],
+                texts: Vec::new(),
             },
         ]);
 

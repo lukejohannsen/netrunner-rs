@@ -1,6 +1,6 @@
 {
   "id": "barry_baz_wong",
-  "title": "Barry \u201cBaz\u201d Wong: Tri-Maf Veteran",
+  "title": "Barry “Baz” Wong: Tri-Maf Veteran",
   "side": "Runner",
   "card_type": "Identity",
   "cost": 0,
@@ -64,6 +64,10 @@
                   {
                     "Sequence": []
                   }
+                ],
+                "texts": [
+                  "install 1 resource or piece of hardware from your grip",
+                  ""
                 ]
               }
             }

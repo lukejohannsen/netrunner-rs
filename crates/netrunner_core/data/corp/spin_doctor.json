@@ -33,7 +33,8 @@
           "shuffle_after": true,
           "destination": "OwnRAndD"
         }
-      }
+      },
+      "text": "Remove this asset from the game: Shuffle up to 2 cards from Archives into R&D."
     }
   ],
   "numeric_id": 30053,
