@@ -71,11 +71,11 @@ async fn closed_by_server(socket: &mut Socket) -> bool {
 }
 
 fn connect(name: &str, preferred_side: Option<Side>) -> ClientMessage {
-    ClientMessage::Connect { player_name: name.into(), preferred_side, room: None }
+    ClientMessage::Connect { player_name: name.into(), preferred_side, room: None, deck: None }
 }
 
 fn connect_in_room(name: &str, room: &str) -> ClientMessage {
-    ClientMessage::Connect { player_name: name.into(), preferred_side: None, room: Some(room.into()) }
+    ClientMessage::Connect { player_name: name.into(), preferred_side: None, room: Some(room.into()), deck: None }
 }
 
 fn joined(message: ServerMessage) -> (Uuid, Side, Uuid) {
@@ -523,4 +523,83 @@ async fn human_matches_are_rated_on_their_own_track_and_the_book_survives_a_rest
         assert!(book.standing(Track::HumanVsBot, "ann").is_none());
     }
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// A published list under a new id, as a player's saved copy of it would
+/// be: legal, and recognisably not what the rotation would have dealt.
+fn brought(published: &str, id: &str) -> Box<decks::DeckFile> {
+    let mut deck = decks::by_id(published).expect("an embedded deck");
+    deck.id = id.to_string();
+    deck.name = format!("{id} (brought)");
+    Box::new(deck)
+}
+
+fn connect_with_deck(name: &str, preferred_side: Option<Side>, deck: Box<decks::DeckFile>) -> ClientMessage {
+    ClientMessage::Connect { player_name: name.into(), preferred_side, room: None, deck: Some(deck) }
+}
+
+fn refused(message: ServerMessage) -> String {
+    match message {
+        ServerMessage::ConnectRejected { reason } => reason,
+        other => panic!("expected ConnectRejected, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_brought_deck_decides_the_seat_and_is_the_deck_played() {
+    let url = human_daemon().await;
+    // The first player prefers nothing and brings a Runner deck; the second
+    // asks for the Runner seat. Without the deck the first would be Corp
+    // and the second's preference would lose; the deck is a requirement.
+    let mut first = open(&url, connect_with_deck("first", None, brought("stolen_goods", "my_runner"))).await;
+    queued(next(&mut first).await);
+    let mut second = open(&url, connect("second", Some(Side::Runner))).await;
+    let (_, second_side, _, corp_deck, runner_deck) = joined_with_decks(next(&mut second).await);
+    let (_, first_side, _) = joined(next(&mut first).await);
+    assert_eq!((first_side, second_side), (Side::Runner, Side::Corp));
+    assert_eq!(runner_deck, "my_runner", "the brought deck, not the rotation's");
+    assert!(decks::by_id(&corp_deck).is_some(), "the seat nobody brought a deck to is dealt one: {corp_deck}");
+    let view = state_update(next(&mut first).await);
+    assert_eq!(view.runner.identity.as_ref(), Some(&decks::by_id("stolen_goods").unwrap().identity), "Stolen Goods' identity");
+}
+
+#[tokio::test]
+async fn an_illegal_or_contradictory_brought_deck_is_refused_at_the_door() {
+    let url = human_daemon().await;
+
+    let mut thin = brought("brick_stack", "thin");
+    thin.cards.truncate(2);
+    let mut socket = open(&url, connect_with_deck("thin", None, thin)).await;
+    let reason = refused(next(&mut socket).await);
+    assert!(reason.contains("not legal in Startup"), "{reason}");
+    assert!(closed_by_server(&mut socket).await);
+
+    let mut socket = open(&url, connect_with_deck("confused", Some(Side::Runner), brought("brick_stack", "corp_deck"))).await;
+    let reason = refused(next(&mut socket).await);
+    assert!(reason.contains("Runner seat") && reason.contains("Corp deck"), "{reason}");
+
+    assert_eq!(list_matches(&url).await.1, 0, "neither refusal reached the lobby");
+}
+
+#[tokio::test]
+async fn two_decks_for_the_same_side_never_pair() {
+    let url = human_daemon().await;
+    let mut first = open(&url, connect_with_deck("first", None, brought("brick_stack", "corp_a"))).await;
+    queued(next(&mut first).await);
+    let mut second = open(&url, connect_with_deck("second", None, brought("fine_print", "corp_b"))).await;
+    let (_, position) = queued(next(&mut second).await);
+    assert_eq!(position, 2, "a second Corp deck waits rather than being seated as the Runner");
+
+    let mut third = open(&url, connect_with_deck("third", None, brought("dashing_mad", "runner_c"))).await;
+    let (_, _, _, corp_deck, runner_deck) = joined_with_decks(next(&mut third).await);
+    assert_eq!((corp_deck.as_str(), runner_deck.as_str()), ("corp_a", "runner_c"), "the first compatible waiter");
+    assert_eq!(list_matches(&url).await.1, 1, "the second Corp deck is still waiting");
+}
+
+#[tokio::test]
+async fn a_bot_daemon_plays_the_deck_the_human_brought() {
+    let url = start_server(ServeOptions { seed: Some(1), ..ServeOptions::default() }).await;
+    let mut socket = open(&url, connect_with_deck("solo", None, brought("fine_print", "my_corp"))).await;
+    let (_, side, _, corp_deck, _) = joined_with_decks(next(&mut socket).await);
+    assert_eq!((side, corp_deck.as_str()), (Side::Corp, "my_corp"));
 }

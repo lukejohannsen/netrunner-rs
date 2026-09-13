@@ -1,6 +1,7 @@
 pub mod builder;
 pub mod layout;
 pub mod menu;
+pub mod online;
 pub mod start;
 
 use std::time::Duration;
@@ -59,24 +60,62 @@ pub async fn run(config: &mut Config) -> Result<(), Box<dyn std::error::Error>> 
 }
 
 async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    // The wire protocol never transmits a `CardRegistry`, so the client
-    // builds one locally to resolve card titles. It needs no agreement
-    // with the host beyond the embedded pool: the daemon deals published
-    // sample decks, whose cards are exactly `register_playable_cards`.
-    // While it dealt a filler-padded fixture, this had to be a hand-kept
-    // copy of the host's synthetic card ids.
-    let registry = decks::sample_deck_registry();
+    let brought = match &config.deck {
+        Some(name) => {
+            let dir = crate::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
+            Some(crate::deck_store::load(&dir, name)?.deck)
+        }
+        None => None,
+    };
+    let brought_id = brought.as_ref().map(|deck| deck.id.clone());
     let joined = match config.spectate {
         Some(match_id) => remote::spectate_remote(&config.server, match_id).await?,
-        None => remote::connect_remote(&config.server, config.side.map(Into::into), config.room.clone()).await?,
+        None => {
+            let hello =
+                remote::connect_message(&ratings::player_name(config), config.side.map(Into::into), config.room.clone(), brought);
+            remote::connect_remote(&config.server, hello).await?
+        }
     };
-    let session_token = joined.session_token;
-    let mut app = App::new(registry, joined.viewer, joined.tx, joined.rx);
-
     let mut terminal = ratatui::init();
-    let result = run_event_loop(&mut terminal, &mut app, &config.server, session_token);
+    let result = play_remote(&mut terminal, joined, &config.server, brought_id.as_deref());
     ratatui::restore();
     result
+}
+
+/// A seat or a spectator's place at a server's match, played on the
+/// caller's terminal until the player leaves. `--mode remote` and the
+/// menu's Play Online both end here.
+///
+/// The wire protocol never transmits a `CardRegistry`, so the client
+/// builds one locally to resolve card titles. It needs no agreement with
+/// the host beyond the embedded pool: every deck the daemon deals or
+/// accepts is validated against it, whose cards are exactly
+/// `register_playable_cards`.
+///
+/// `brought` is the id of the deck this player sent, if any. A daemon
+/// older than `Connect::deck` ignores the field and deals, so the dealt id
+/// is checked and a mismatch is said on the header rather than discovered
+/// by drawing someone else's cards.
+pub fn play_remote(
+    terminal: &mut ratatui::DefaultTerminal,
+    joined: remote::Joined,
+    server_url: &str,
+    brought: Option<&str>,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let registry = decks::sample_deck_registry();
+    let session_token = joined.session_token;
+    let dealt = match joined.viewer {
+        Viewer::Player(Side::Corp) => Some(joined.decks.0.clone()),
+        Viewer::Player(Side::Runner) => Some(joined.decks.1.clone()),
+        Viewer::Spectator => None,
+    };
+    let mut app = App::new(registry, joined.viewer, joined.tx, joined.rx);
+    if let (Some(brought), Some(dealt)) = (brought, dealt)
+        && brought != dealt
+    {
+        app.connection_notice = Some(format!("This server dealt you {dealt:?} instead of your deck — it predates bringing your own"));
+    }
+    run_event_loop(terminal, &mut app, server_url, session_token)
 }
 
 /// Local, offline human-vs-bot play, pumping a `netrunner_session::Session`

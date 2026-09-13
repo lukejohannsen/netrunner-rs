@@ -9,6 +9,7 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use netrunner_core::decks::DeckFile;
 use netrunner_core::rules::{PlayerAction, Side};
 use netrunner_core::view::ClientView;
 
@@ -28,11 +29,23 @@ pub enum ClientMessage {
     /// under a human-vs-human daemon: `None` is the public queue, a name
     /// pairs only with the same name. `serde(default)` so a client built
     /// before rooms existed still connects.
+    ///
+    /// `deck` is the decklist this player brings. **A brought deck decides
+    /// the seat** — its side is the side they play, so `preferred_side`
+    /// must agree or be `None` — and it is checked against the daemon's
+    /// format before anything else happens, refused with `ConnectRejected`
+    /// if either validator objects. `None` is the old behaviour: the daemon
+    /// deals that seat a deck, pinned or rotating. `serde(default)` so a
+    /// client built before this still connects. A daemon built before it
+    /// ignores the field and deals as it always did, which is why a client
+    /// that brought a deck checks `MatchJoined`'s deck ids.
     Connect {
         player_name: String,
         preferred_side: Option<Side>,
         #[serde(default)]
         room: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        deck: Option<Box<DeckFile>>,
     },
     /// Take a seat back after the socket that held it dropped. The token is
     /// the one `MatchJoined` issued for that seat, and it is the *only*

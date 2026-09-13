@@ -54,7 +54,7 @@ use uuid::Uuid;
 
 use netrunner_bots::{BotAgent, HeuristicAgent, Level, MctsAgent, Personality};
 use netrunner_core::cards::CardRegistry;
-use netrunner_core::decks::{self, DeckCategory};
+use netrunner_core::decks::{self, DeckCategory, DeckFile};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::{Deck, GameState, Side};
 use netrunner_rating::{Outcome, RatingBook, Track};
@@ -288,14 +288,29 @@ struct PendingHuman {
     player_name: String,
     preferred_side: Option<Side>,
     room: Option<String>,
+    /// The deck this player brought, already checked at `Connect`. Its
+    /// side is a requirement where `preferred_side` is only a preference.
+    deck: Option<Box<DeckFile>>,
     tx: mpsc::UnboundedSender<ServerMessage>,
     slot: PlayerSlot,
 }
 
 impl PendingHuman {
     fn seated(self) -> SeatedPlayer {
-        SeatedPlayer { rating_id: self.player_name.clone(), name: self.player_name, token: self.token, slot: self.slot }
+        SeatedPlayer { rating_id: self.player_name.clone(), name: self.player_name, token: self.token, slot: self.slot, deck: self.deck }
     }
+
+    /// The side this player must play, if their deck fixes one.
+    fn deck_side(&self) -> Option<Side> {
+        self.deck.as_ref().map(|deck| deck.side)
+    }
+}
+
+/// Whether two waiters can be one match: not if both brought decks for the
+/// same side. Preferences alone never make a pair impossible — the first
+/// preference wins (`assign_sides`) — but a brought deck is the side.
+fn compatible(a: &PendingHuman, b: &PendingHuman) -> bool {
+    !matches!((a.deck_side(), b.deck_side()), (Some(x), Some(y)) if x == y)
 }
 
 /// A player about to be seated: the name `MatchList` will show, the id
@@ -310,6 +325,9 @@ struct SeatedPlayer {
     rating_id: String,
     token: Uuid,
     slot: PlayerSlot,
+    /// A deck the player brought, which replaces whatever the daemon would
+    /// have dealt their side. Always `None` for a bot.
+    deck: Option<Box<DeckFile>>,
 }
 
 impl SeatedPlayer {
@@ -527,7 +545,7 @@ impl Server {
 /// answered inline without leaving this loop, so a client can look before
 /// it joins; anything else is skipped until one of these arrives.
 enum Handshake {
-    Connect { player_name: String, preferred_side: Option<Side>, room: Option<String> },
+    Connect { player_name: String, preferred_side: Option<Side>, room: Option<String>, deck: Option<Box<DeckFile>> },
     Resume { session_token: Uuid },
     Spectate { match_id: Uuid },
 }
@@ -538,8 +556,8 @@ async fn handle_connection(stream: TcpStream, shared: Shared) -> Result<(), Box<
     let handshake = loop {
         match ws_stream.next().await {
             Some(Ok(WsMessage::Text(text))) => match serde_json::from_str::<ClientMessage>(&text) {
-                Ok(ClientMessage::Connect { player_name, preferred_side, room }) => {
-                    break Handshake::Connect { player_name, preferred_side, room };
+                Ok(ClientMessage::Connect { player_name, preferred_side, room, deck }) => {
+                    break Handshake::Connect { player_name, preferred_side, room, deck };
                 }
                 Ok(ClientMessage::Resume { session_token }) => break Handshake::Resume { session_token },
                 Ok(ClientMessage::Spectate { match_id }) => break Handshake::Spectate { match_id },
@@ -554,16 +572,30 @@ async fn handle_connection(stream: TcpStream, shared: Shared) -> Result<(), Box<
     };
 
     match handshake {
-        Handshake::Connect { player_name, preferred_side, room } => {
-            tracing::info!(%player_name, ?preferred_side, ?room, "client connected");
+        Handshake::Connect { player_name, preferred_side, room, deck } => {
+            tracing::info!(%player_name, ?preferred_side, ?room, deck = deck.as_ref().map(|deck| deck.id.as_str()), "client connected");
             let (session_tx, bridge_rx) = mpsc::unbounded_channel::<ServerMessage>();
             let (bridge_tx, session_rx) = mpsc::unbounded_channel::<ClientMessage>();
             tokio::spawn(net::bridge_websocket(ws_stream, bridge_tx, bridge_rx));
+            // Checked before the player reaches the lobby or a bot, so an
+            // illegal deck is a refusal at the door rather than a match that
+            // fails to set up in front of an opponent who waited for it.
+            let preferred_side = match &deck {
+                Some(deck) => match check_brought_deck(deck, preferred_side, &shared) {
+                    Ok(side) => Some(side),
+                    Err(reason) => {
+                        tracing::info!(%player_name, deck = %deck.id, %reason, "brought deck refused");
+                        refuse(&session_tx, &reason);
+                        return Ok(());
+                    }
+                },
+                None => preferred_side,
+            };
             let slot = PlayerSlot::Channel { tx: session_tx.clone(), rx: session_rx };
 
             match shared.options.bot_runner {
-                ServeBotKind::None => enqueue_or_pair(&shared, player_name, preferred_side, room, session_tx, slot),
-                kind => seat_vs_bot(&shared, kind, player_name, preferred_side, session_tx, slot),
+                ServeBotKind::None => enqueue_or_pair(&shared, player_name, preferred_side, room, deck, session_tx, slot),
+                kind => seat_vs_bot(&shared, kind, player_name, preferred_side, deck, session_tx, slot),
             }
         }
         Handshake::Resume { session_token } => {
@@ -657,6 +689,21 @@ async fn handle_connection(stream: TcpStream, shared: Shared) -> Result<(), Box<
 
 const AT_CAP: &str = "the host is at its match limit";
 
+/// A brought deck's side, or why the daemon will not seat it: a side that
+/// contradicts `preferred_side`, or a deck either validator refuses in the
+/// daemon's format — the same `DeckFile::validate` a pinned deck and a
+/// local game go through, so "legal" means one thing on both ends.
+fn check_brought_deck(deck: &DeckFile, preferred_side: Option<Side>, shared: &Shared) -> Result<Side, String> {
+    if let Some(preferred) = preferred_side
+        && preferred != deck.side
+    {
+        return Err(format!("you asked for the {preferred:?} seat but brought a {:?} deck", deck.side));
+    }
+    let format = shared.options.format;
+    deck.validate(&shared.cards, format).map_err(|error| format!("your deck {:?} is not legal in {format:?}: {error}", deck.name))?;
+    Ok(deck.side)
+}
+
 /// A `Connect` the daemon will not honour. Dropping the caller's channel
 /// halves afterwards is what closes the socket: the bridge's send task
 /// ends when every sender is gone and closes the stream with a `Close`
@@ -671,6 +718,7 @@ fn seat_vs_bot(
     kind: ServeBotKind,
     player_name: String,
     preferred_side: Option<Side>,
+    deck: Option<Box<DeckFile>>,
     tx: mpsc::UnboundedSender<ServerMessage>,
     slot: PlayerSlot,
 ) {
@@ -682,7 +730,7 @@ fn seat_vs_bot(
     let (match_id, seed) = registry.allocate(shared.base_seed);
 
     let human_side = preferred_side.unwrap_or(Side::Corp);
-    let human = SeatedPlayer { rating_id: player_name.clone(), name: player_name, token: Uuid::new_v4(), slot };
+    let human = SeatedPlayer { rating_id: player_name.clone(), name: player_name, token: Uuid::new_v4(), slot, deck };
     // The same deal `start_match` will make — `decks_for` is a function of
     // the seed — so the bot's style can come off the deck it is about to
     // play. A pinned deck is an embedded id (`pin_deck`), so `by_id`
@@ -707,6 +755,7 @@ fn seat_vs_bot(
             rating_id: level.rating_id(),
             token: Uuid::new_v4(),
             slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed)),
+            deck: None,
         },
         None => SeatedPlayer {
             name: kind.seat_name().to_string(),
@@ -716,6 +765,7 @@ fn seat_vs_bot(
             },
             token: Uuid::new_v4(),
             slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality)),
+            deck: None,
         },
     };
     let (corp, runner) = match human_side {
@@ -736,6 +786,7 @@ fn enqueue_or_pair(
     player_name: String,
     preferred_side: Option<Side>,
     room: Option<String>,
+    deck: Option<Box<DeckFile>>,
     tx: mpsc::UnboundedSender<ServerMessage>,
     slot: PlayerSlot,
 ) {
@@ -745,9 +796,11 @@ fn enqueue_or_pair(
         refuse(&tx, AT_CAP);
         return;
     }
-    let newcomer = PendingHuman { token: Uuid::new_v4(), player_name, preferred_side, room, tx, slot };
+    let newcomer = PendingHuman { token: Uuid::new_v4(), player_name, preferred_side, room, deck, tx, slot };
 
-    let Some(index) = registry.lobby.iter().position(|waiter| waiter.room == newcomer.room) else {
+    // The first waiter in the room who can sit opposite: two Corp decks
+    // skip each other and both wait for a Runner.
+    let Some(index) = registry.lobby.iter().position(|waiter| waiter.room == newcomer.room && compatible(waiter, &newcomer)) else {
         let (token, tx) = (newcomer.token, newcomer.tx.clone());
         registry.lobby.push(newcomer);
         let position = registry.lobby.len();
@@ -769,7 +822,18 @@ fn enqueue_or_pair(
 /// the caller's registry lock so the cap it was admitted under still
 /// holds when the entry lands.
 fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u64, corp: SeatedPlayer, runner: SeatedPlayer) {
-    let dealt = shared.decks_for(seed);
+    let mut dealt = shared.decks_for(seed);
+    // A brought deck replaces the deal for its side, pinned or rotating:
+    // the player chose it, and the operator's pin is the default for a
+    // seat nobody brought a deck to.
+    if let Some(deck) = &corp.deck {
+        dealt.corp_id = deck.id.clone();
+        dealt.corp = deck.to_deck();
+    }
+    if let Some(deck) = &runner.deck {
+        dealt.runner_id = deck.id.clone();
+        dealt.runner = deck.to_deck();
+    }
     let (corp_deck_id, runner_deck_id) = (dealt.corp_id, dealt.runner_id);
     let state = match GameState::setup(&dealt.corp, &dealt.runner, &shared.cards, seed) {
         Ok((state, _events)) => state,
@@ -848,9 +912,15 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
     });
 }
 
-/// First player's explicit side preference wins; otherwise the second
-/// player's; otherwise the first connection defaults to Corp.
+/// A brought deck's side first — `compatible` has already ruled out two
+/// for the same side — then the first player's explicit side preference,
+/// then the second player's; otherwise the first connection is the Corp.
 fn assign_sides(a: PendingHuman, b: PendingHuman) -> (PendingHuman, PendingHuman) {
+    match (a.deck_side(), b.deck_side()) {
+        (Some(Side::Corp), _) | (_, Some(Side::Runner)) => return (a, b),
+        (Some(Side::Runner), _) | (_, Some(Side::Corp)) => return (b, a),
+        (None, None) => {}
+    }
     match (a.preferred_side, b.preferred_side) {
         (Some(Side::Corp), _) => (a, b),
         (Some(Side::Runner), _) => (b, a),

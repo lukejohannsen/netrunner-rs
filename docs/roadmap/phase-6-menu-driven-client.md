@@ -139,23 +139,65 @@ identity and name; search, add to the copy limit, card text; copy of
 *Brick Stack* (44/40 cards, 15/15 influence, 18 of 18–20 points, legal in
 startup); back to the list; delete.
 
-## 3. Network play from the menu — OPEN
+## 3. Network play from the menu — DONE (13 September 2026)
 
-Two decisions taken with the user (13 September 2026):
+`feat/online-from-the-menu`, stacked on §2. The main menu gains **Play
+Online**, with the two decisions taken with the user carried out:
 
-- **A player brings their own deck.** `ClientMessage::Connect` has no deck
-  today — the daemon deals both, pinned by its flags or rotating the
-  sample pool — so a deck built in §2 could not be played online.
-  `Connect` gains an optional deck (`serde(default)`, so an older client
-  still connects and is dealt one as now), validated at the server against
-  its `--format` and the embedded card pool and refused with
-  `ConnectRejected` if illegal. Rejected: server-dealt decks only, which
-  needs no protocol change but makes the deck builder local-only.
-- **Host and Join, both from the menu.** *Host* runs a human-vs-human
-  `netrunner_server::Server` inside the TUI process on a chosen port and
-  shows the address to share; the host then joins its own server over
-  loopback like any client, so it gets a masked `ClientView` and nothing
-  more. *Join* takes an address, an optional room, a preferred side and a
-  deck. *Browse* lists the daemon's matches (`ListMatches`) and spectates
-  one. Rejected: join-only, which still needs someone to start a daemon
-  with flags.
+- **A player brings their own deck.** `ClientMessage::Connect` carries an
+  optional deck (`serde(default)`, so an older client still connects and
+  is dealt one), and **the deck is the seat**: its side overrides a
+  preference and a contradicting one is refused. The server validates it
+  against its own `--format` at the door, and `start_match` deals it in
+  place of the pin or the rotation for that side. Two Corp decks never
+  pair — each waits for a Runner. The protocol record is Phase 4 §3.
+  Rejected: server-dealt decks only, which would have left §2's decks
+  local.
+- **Host and Join, both from the menu.** *Host* binds a human-vs-human
+  `netrunner_server::Server` in this process — on the whole network by
+  default, or this machine only — shows the address to hand over
+  (`ws://<the routed LAN address>:port`, found by asking the routing
+  table, nothing sent), and **joins its own server over loopback**, so
+  the host plays through a masked `ClientView` like their opponent and
+  the real `GameState` lives in the server task, not the screen. *Join*
+  takes an address (`ws://` and `:8080` filled in when left off), an
+  optional room and a deck — or "let the host deal", for either side or
+  a preferred one. *Watch* lists a server's matches and spectates one.
+  Rejected: join-only, which still needs someone to start a daemon with
+  flags.
+
+**Nothing waits on the network with the keyboard dead.** A connection is
+a task (`remote::spawn_connect`) the menu polls every frame (`Menu::tick`),
+so the lobby wait draws — the host's line keeps the address to share —
+and Esc abandons it. **Abandoning had to close the socket**: dropping the
+client's writer half left the reader waiting for a frame that, in the
+lobby, only comes when an opponent arrives, so the daemon would have
+paired that opponent with someone who had gone. The writer now closes
+with a `Close` frame when its sender goes
+(`abandoning_the_wait_leaves_the_lobby`). Binding the port and one
+`ListMatches` are the only blocking calls, bounded at 3 s under
+`block_in_place`, the pattern `Reconnector` set. A hosted server stops
+with the game, or when the host stops waiting.
+
+The flag path gained the same: `--deck` brings a deck in `--mode remote`,
+the player's own name goes over the wire rather than `"CLI Player"`, and
+both paths play through one `tui::play_remote`, which warns on the header
+when an older daemon ignored the brought deck. Hosted games are unrated —
+the local book is the human-vs-bot ladder.
+
+**Verified over real sockets** — `a_host_and_a_joiner_are_seated_with_the_decks_they_brought`
+drives two `OnlineScreen`s through the keys a person presses: one hosts
+with *Stolen Goods*, one joins by address with *Brick Stack*, both are
+seated on their decks' sides with their decks, a third lists the match
+(under the players' own names) and spectates it. Four lobby tests on the
+server (a brought deck decides the seat; illegal or contradictory is
+refused at the door; same-side decks never pair; a bot daemon plays it).
+**Driven by hand** with two TUIs in tmux: host on a loopback port with
+*Stolen Goods*, join from the second with *Brick Stack* — R&D 39 (44 − 5),
+both keep, the log agrees on both screens — quit on each lands on Play
+Online, and the port is closed afterwards; Esc while hosting stops the
+server too.
+
+**Open:** hosted games are unrated; a lobby place still cannot be resumed
+from the client (Phase 4 §3); the last-used server address is not
+remembered between sessions.
