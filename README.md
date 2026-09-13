@@ -55,14 +55,17 @@ a reinforcement-learning environment — is a consumer of that one engine.
 Requires a Rust toolchain supporting edition 2024 (1.85+).
 
 ```bash
-# Play a local match in the terminal against a bot
+# Open the main menu: play the computer, learn to play, ratings, settings
 cargo run -p netrunner_cli
+
+# Or skip the menu with flags, e.g. a rated game as the Runner against rung 3
+cargo run -p netrunner_cli -- --runner human --corp-level 3
 
 # Build a deck of your own, then play it
 cargo run -p netrunner_cli -- deck new my_hb --side corp --identity haas_bioroid_precision_design
 cargo run -p netrunner_cli -- deck add my_hb "Hedge Fund" 3
 cargo run -p netrunner_cli -- deck list
-cargo run -p netrunner_cli -- --corp-deck my_hb --runner-deck stolen_goods
+cargo run -p netrunner_cli -- --corp-deck my_hb --runner-deck stolen_goods   # the menu's form starts on these
 
 # Run bot-vs-bot games with no UI
 cargo run -p netrunner_cli -- --headless --games 20

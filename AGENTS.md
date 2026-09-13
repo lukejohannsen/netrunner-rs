@@ -152,7 +152,7 @@ One rustdoc lint is allowed, and it is a domain collision rather than laziness: 
 
 ### Build & Run
 - `cargo build --workspace`: Build the entire monorepo.
-- `cargo run -p netrunner_cli`: Run the TUI client (local match vs. a bot).
+- `cargo run -p netrunner_cli`: Run the TUI client — the main menu (Phase 6); side flags such as `--runner human --corp-level 3` skip straight to a game.
 - `cargo run -p netrunner_server -- --serve`: Run the standalone headless WebSocket server.
 - `cargo run -p netrunner_selfplay`: Generate self-play training data.
 - `cargo run --release -p netrunner_cli -- bench --bots random,heuristic,puct --games 12 --seed 1`: Rate every seating of a set of bots on the Glicko-2 benchmark ladder (`--report` for JSON, `--bots puct,puct-onnx --model X` to place a trained policy on it).
