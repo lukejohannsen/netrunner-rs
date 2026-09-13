@@ -25,7 +25,8 @@
           "restrict_to": "Sentry"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Interface → 1[credit]: Break 1 sentry subroutine."
     },
     {
       "trigger": "Paid",
@@ -38,7 +39,8 @@
           "duration": "Encounter"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "2[credit]: +3 strength."
     }
   ],
   "numeric_id": 30015,

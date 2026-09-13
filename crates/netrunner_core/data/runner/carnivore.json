@@ -38,7 +38,8 @@
           "destination": "OwnHeap",
           "then": "TrashCurrentlyAccessedCard"
         }
-      }
+      },
+      "text": "Access, once per turn → Trash 2 cards from your grip: Trash the card you are accessing."
     }
   ],
   "memory_bonus": 1,

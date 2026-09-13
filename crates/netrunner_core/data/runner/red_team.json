@@ -55,7 +55,8 @@
           },
           "exclude_servers_run_this_turn": true
         }
-      }
+      },
+      "text": "[click]: Run a central server you have not run this turn. If successful, take 3[credit] from this resource."
     }
   ],
   "numeric_id": 30018,

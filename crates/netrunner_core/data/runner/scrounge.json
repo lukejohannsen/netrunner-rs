@@ -51,6 +51,10 @@
                       {
                         "Sequence": []
                       }
+                    ],
+                    "texts": [
+                      "add 1 program from your heap to the bottom of your stack",
+                      ""
                     ]
                   }
                 }

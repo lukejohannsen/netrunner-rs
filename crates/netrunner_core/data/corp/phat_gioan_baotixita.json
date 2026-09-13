@@ -45,7 +45,8 @@
                     "Net",
                     2
                   ]
-                }
+                },
+                "text": "you may remove up to 2 hosted power counters. Do 1 net damage plus 1 net damage for each power counter removed this way"
               }
             },
             "if_declined": {
@@ -53,7 +54,8 @@
                 "Net",
                 1
               ]
-            }
+            },
+            "text": "you may remove up to 2 hosted power counters. Do 1 net damage plus 1 net damage for each power counter removed this way"
           }
         }
       ]
@@ -87,7 +89,8 @@
                     "Net",
                     2
                   ]
-                }
+                },
+                "text": "you may remove up to 2 hosted power counters. Do 1 net damage plus 1 net damage for each power counter removed this way"
               }
             },
             "if_declined": {
@@ -95,7 +98,8 @@
                 "Net",
                 1
               ]
-            }
+            },
+            "text": "you may remove up to 2 hosted power counters. Do 1 net damage plus 1 net damage for each power counter removed this way"
           }
         }
       ]

@@ -41,7 +41,8 @@
             "Fixed": 1
           }
         }
-      }
+      },
+      "text": "Hosted virus counter: Break 1 subroutine on host ice."
     }
   ],
   "counter_kind": "Virus",

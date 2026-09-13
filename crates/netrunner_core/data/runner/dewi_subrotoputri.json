@@ -35,6 +35,10 @@
               {
                 "Sequence": []
               }
+            ],
+            "texts": [
+              "flip this identity and gain 1[credit]",
+              ""
             ]
           }
         }
@@ -69,6 +73,10 @@
               {
                 "Sequence": []
               }
+            ],
+            "texts": [
+              "flip this identity and draw 1 card",
+              ""
             ]
           }
         }

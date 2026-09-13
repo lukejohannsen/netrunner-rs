@@ -134,6 +134,11 @@ pub enum CardType {
 #[serde(deny_unknown_fields)]
 pub struct TriggeredEffect {
     pub trigger: Trigger,
+    /// The printed sentence this trigger implements, quoted from the
+    /// card, when a card author has linked it; optional and ungated —
+    /// see `AbilityDef::text` for the linked-clause idea.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
     pub effects: Vec<Effect>,
     /// A *soft* precondition: if unmet, `ability::process_card_triggers`
     /// silently skips this entry (no error, no `RulesError` surfaced) and
@@ -518,6 +523,19 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artist: Option<String>,
 
+    /// The card's printed rules text, plain (NetrunnerDB's
+    /// `stripped_text`), for a client to show a person. **Never read by
+    /// the engine**: the rules a card runs on are `triggers`, `abilities`
+    /// and `subroutines`, and this is the sentence they were written from.
+    /// Joined from the catalog like `artist`, so card files do not restate
+    /// it and cannot drift from what was printed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printed_text: Option<String>,
+
+    /// Flavour text, for the same reader. NetrunnerDB's `flavor`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flavor: Option<String>,
+
     /// True placeholder — always `None` today; no fetch/derivation logic
     /// exists yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -755,6 +773,8 @@ impl Default for CardDefinition {
             deck_limit: None,
             unlimited_influence: false,
             artist: None,
+            printed_text: None,
+            flavor: None,
             image_url: None,
             is_playable: false,
             persistent_after_trash: false, root_asset_trash_cost_bonus: 0,
@@ -828,6 +848,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
                 requirement: None,
@@ -848,6 +869,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
+                text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
                 requirement: None,
@@ -891,6 +913,7 @@ mod tests {
             card.abilities,
             vec![
                 AbilityDef {
+                    text: None,
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     // Every icebreaker ability carries this — real
@@ -899,6 +922,7 @@ mod tests {
                     effect: Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
                     cost_discount_if: None, used_by: None },
                 AbilityDef {
+                    text: None,
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     // Every icebreaker ability carries this — real

@@ -25,7 +25,8 @@
           "restrict_to": "Barrier"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "Interface → 2[credit]: Break 1 barrier subroutine. If you made a successful run this turn, this ability costs 1[credit] less to use."
     },
     {
       "trigger": "Paid",
@@ -38,7 +39,8 @@
           "duration": "Encounter"
         }
       },
-      "requirement": "DuringEncounter"
+      "requirement": "DuringEncounter",
+      "text": "1[credit]: +1 strength."
     }
   ],
   "numeric_id": 30016,

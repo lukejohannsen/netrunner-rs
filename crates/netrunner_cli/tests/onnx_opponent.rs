@@ -57,7 +57,7 @@ fn a_trained_policy_can_play_a_full_single_player_game() {
         netrunner_core::format::NsgFormat::Startup,
     )
     .expect("built-in decks resolve");
-    let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 11).expect("setup");
+    let (state, _events) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 11).expect("setup");
 
     // The ONNX policy takes the Corp seat; a scripted agent takes the
     // Runner's, standing in for the human.
