@@ -9,6 +9,7 @@ mod decks;
 mod diag;
 mod headless;
 mod learn;
+mod prose;
 mod remote;
 mod replay;
 mod tui;

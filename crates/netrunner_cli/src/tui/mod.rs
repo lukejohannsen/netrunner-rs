@@ -699,6 +699,9 @@ impl RenderableView for LocalUiState {
     fn card_picker(&self) -> Option<&CardPicker> {
         self.card_picker.as_ref()
     }
+    fn actions_title(&self) -> Option<String> {
+        self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
+    }
 }
 
 /// The remote render loop. A lost connection is handled *here*, between
@@ -1374,6 +1377,44 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A parked choice is labelled by what each option does and the pane
+    /// says which card is asking — "Option 0 | Option 1" was a menu with
+    /// no words on it, for a decision the card text explains.
+    #[test]
+    fn a_parked_choice_is_labelled_by_what_it_does_and_who_asks() {
+        use netrunner_core::dsl::{CardId, Effect};
+        use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (mut state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        // Bigger Picture's choice, parked the way `Effect::PresentChoice`
+        // parks it: give a tag, or take the Runner's credits per tag.
+        state.pending_decision = Some(PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: vec![Effect::GiveTags(1), Effect::Sequence(vec![])],
+            source_card: Some(CardId("bigger_picture".to_string())),
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        let view = build_client_view(&state, &registry, Side::Corp);
+
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 0 }, &registry, Some(&view)), "Give the Runner 1 tag");
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 1 }, &registry, Some(&view)), "Do nothing");
+        assert_eq!(describe_action(&PlayerAction::ResolvePendingChoice { option_index: 0 }, &registry, None), "Choose option 1", "without a view the index is all there is");
+        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Bigger Picture asks — choose one"));
+
+        let mut ui = LocalUiState::new(registry, Side::Corp);
+        ui.begin_decision(view);
+        let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains("Bigger Picture asks"), "the pane is titled by the asking card");
     }
 
     /// The split follows the viewer: the Corp block keeps the larger share

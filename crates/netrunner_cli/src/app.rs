@@ -577,6 +577,11 @@ impl RenderableView for App {
     fn card_picker(&self) -> Option<&CardPicker> {
         self.card_picker.as_ref()
     }
+    /// The card that parked a decision names the pane: "Bigger Picture
+    /// asks — choose one".
+    fn actions_title(&self) -> Option<String> {
+        self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
+    }
 }
 
 /// Human-readable label for a `PlayerAction`, resolving `CardId`s to
@@ -625,6 +630,18 @@ pub fn install_label(id: &InstallId, registry: &CardRegistry, view: Option<&Clie
         Some(rig_card) => card_title(&rig_card.card, registry),
         None => format!("install #{}", id.0),
     }
+}
+
+/// The card an install id resolves to in the view, when the viewer may
+/// see it — a rezzed or own Corp install, or any rig card.
+pub fn installed_card_id(view: &ClientView, id: &InstallId) -> Option<netrunner_core::dsl::CardId> {
+    view.corp
+        .servers
+        .iter()
+        .flat_map(|server| server.ice.iter().chain(server.root.iter()))
+        .find(|card| card.install_id == *id)
+        .and_then(|card| card.card.clone())
+        .or_else(|| view.runner.rig.iter().find(|card| card.install_id == *id).map(|card| card.card.clone()))
 }
 
 /// Whether the entry's own action line already says what `event` says, so
@@ -844,15 +861,35 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::InstallProgramOnIce { card_id, host, .. } => {
             format!("Install {} onto {}", title(card_id), install_label(host))
         }
+        // The subroutine's own printed text, so the click is spent on
+        // "End the run" rather than on "subroutine 2".
         PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index } => {
-            format!("Break subroutine {subroutine_index} on {} (spend a click)", title(ice_id))
+            match registry.get(ice_id).and_then(|ice| ice.subroutines.get(*subroutine_index)) {
+                Some(sub) => format!("Break \"{}\" on {} (spend a click)", sub.text.trim_end_matches('.'), title(ice_id)),
+                None => format!("Break subroutine {} on {} (spend a click)", subroutine_index + 1, title(ice_id)),
+            }
         }
         PlayerAction::EndTurn => "End turn".to_string(),
         PlayerAction::DiscardCard { card_id } => format!("Discard {}", title(card_id)),
         PlayerAction::KeepHand => "Keep hand".to_string(),
         PlayerAction::TakeMulligan => "Mulligan".to_string(),
+        // The ability's cost and effect in words, off the card the install
+        // resolves to in the view; the index alone names nothing.
         PlayerAction::ActivateAbility { target, ability_index } => {
-            format!("Activate ability {ability_index} on {}", install_label(target))
+            let ability = view
+                .and_then(|v| installed_card_id(v, target))
+                .and_then(|card| registry.get(&card))
+                .and_then(|def| def.abilities.get(*ability_index));
+            match ability {
+                Some(ability) => {
+                    let effect = crate::prose::describe_effect(&ability.effect, registry);
+                    match &ability.cost {
+                        Some(cost) => format!("{}: {} — {effect}", install_label(target), crate::prose::describe_cost(cost)),
+                        None => format!("{}: {effect}", install_label(target)),
+                    }
+                }
+                None => format!("Activate ability {ability_index} on {}", install_label(target)),
+            }
         }
         PlayerAction::AdvanceCard { target } => format!("Advance {}", install_label(target)),
         PlayerAction::ScoreAgenda { target } => format!("Score {}", install_label(target)),
@@ -870,10 +907,46 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::PassPriority { side } => format!("Pass priority ({side:?})"),
         PlayerAction::SubmitCorpTraceBid { amount } => format!("Bid {amount} (Corp trace)"),
         PlayerAction::SubmitRunnerTraceBid { amount } => format!("Bid {amount} (Runner trace)"),
-        PlayerAction::AcceptPendingPaidChoice { cost_option_index: None } => "Accept".to_string(),
-        PlayerAction::AcceptPendingPaidChoice { cost_option_index: Some(i) } => format!("Accept (option {i})"),
-        PlayerAction::DeclinePendingPaidChoice => "Decline".to_string(),
-        PlayerAction::ResolvePendingChoice { option_index } => format!("Choose option {option_index}"),
+        // A paid choice is a cost and a consequence; both are in the view's
+        // `pending_paid_choice`, and "Accept" alone says neither.
+        PlayerAction::AcceptPendingPaidChoice { cost_option_index } => match view.and_then(|v| v.pending_paid_choice.as_ref()) {
+            Some(paid) => {
+                let cost = match (cost_option_index, &paid.cost) {
+                    (Some(i), netrunner_core::dsl::Cost::AnyOf(options)) => {
+                        options.get(*i).map(crate::prose::describe_cost).unwrap_or_else(|| crate::prose::describe_cost(&paid.cost))
+                    }
+                    _ => crate::prose::describe_cost(&paid.cost),
+                };
+                format!("Pay {cost}: {}", crate::prose::describe_effect(&paid.if_paid, registry))
+            }
+            None => match cost_option_index {
+                Some(i) => format!("Accept (option {i})"),
+                None => "Accept".to_string(),
+            },
+        },
+        PlayerAction::DeclinePendingPaidChoice => match view.and_then(|v| v.pending_paid_choice.as_ref()) {
+            Some(paid) => format!("Decline: {}", crate::prose::describe_effect(&paid.if_declined, registry)),
+            None => "Decline".to_string(),
+        },
+        // The option is an index into the parked `PresentChoice`'s effects;
+        // the effect is in the view, so the label can say what it does.
+        // "Option 0 | Option 1" was a menu with no words on it.
+        PlayerAction::ResolvePendingChoice { option_index } => {
+            let option = view.and_then(|v| match &v.pending_decision {
+                Some(PendingDecision::ChooseEffect { options, .. }) => options.get(*option_index),
+                _ => None,
+            });
+            match option {
+                Some(effect) => {
+                    let mut words = crate::prose::describe_effect(effect, registry);
+                    if let Some(first) = words.get(0..1) {
+                        words.replace_range(0..1, &first.to_uppercase());
+                    }
+                    words
+                }
+                None => format!("Choose option {}", option_index + 1),
+            }
+        }
         // A position, deliberately not resolved to a card: the zone it
         // indexes may hold cards this viewer cannot identify, and the
         // selection prompt renders the zone alongside this list anyway.
