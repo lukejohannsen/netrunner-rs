@@ -759,8 +759,16 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
 
     let mut corp_lines = vec![
         Line::from(format!("HQ: {} cards   R&D: {} cards   Archives: {} cards", view.corp.hq_count, view.corp.rd_count, view.corp.archives.len())),
-        Line::from(""),
     ];
+    // `Some` only for the viewer's own hand — the masking layer decided
+    // that, and this draws exactly what it handed over. Until this line
+    // existed the TUI printed the count and nothing else, so a human
+    // chose "keep or mulligan" over five cards they could not see, and
+    // the only way to learn what was in hand was to read the action list.
+    if let Some(cards) = &view.corp.hq_cards {
+        corp_lines.push(Line::from(hand_line(cards, app.registry())));
+    }
+    corp_lines.push(Line::from(""));
     for server in &view.corp.servers {
         corp_lines.push(Line::from(format_server(server, app.registry())));
     }
@@ -778,8 +786,11 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
 
     let mut runner_lines = vec![
         Line::from(format!("Grip: {} cards   Stack: {} cards   Heap: {} cards", view.runner.grip_count, view.runner.stack_count, view.runner.heap.len())),
-        Line::from(""),
     ];
+    if let Some(cards) = &view.runner.grip_cards {
+        runner_lines.push(Line::from(hand_line(cards, app.registry())));
+    }
+    runner_lines.push(Line::from(""));
     if view.runner.rig.is_empty() {
         runner_lines.push(Line::from("(rig empty)"));
     } else {
@@ -792,6 +803,27 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         Paragraph::new(runner_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Runner rig")),
         runner_area,
     );
+}
+
+/// The viewer's own hand on one wrapped line: `Hand: Hedge Fund
+/// (Operation, 5c) · Palisade (Barrier ICE, 3c)`. One line rather than
+/// one per card because the Corp area also holds the servers and, during
+/// a run, the phase strip, inside 60% of a `Min(10)` board.
+fn hand_line(cards: &[CardId], registry: &CardRegistry) -> String {
+    if cards.is_empty() {
+        return "Hand: (empty)".to_string();
+    }
+    let describe = |id: &CardId| match registry.get(id) {
+        Some(card) => {
+            let kind = match &card.card_type {
+                netrunner_core::dsl::CardType::Ice(ice) => format!("{ice:?} ICE"),
+                other => format!("{other:?}"),
+            };
+            format!("{} ({kind}, {}c)", card.title, card.cost)
+        }
+        None => id.0.clone(),
+    };
+    format!("Hand: {}", cards.iter().map(describe).collect::<Vec<_>>().join(" · "))
 }
 
 fn format_server(server: &ServerView, registry: &CardRegistry) -> String {
@@ -1047,6 +1079,47 @@ mod tests {
         let rendered = format!("{:?}", terminal.backend().buffer());
         assert!(rendered.contains("rejected: NotYourTurn"), "the rejection line is drawn");
         assert!(rendered.contains("Showing every legal action"), "the escape hatch is announced");
+    }
+
+    /// The player's own hand is drawn, and only theirs: the same position
+    /// rendered from each chair shows that chair's cards and none of the
+    /// other's. Before this test the board printed the hand's *count* and
+    /// stopped, so the mulligan was decided over five unseen cards.
+    #[test]
+    fn the_board_draws_the_viewers_hand_and_never_the_opponents() {
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        assert!(matches!(state.phase, GamePhase::Mulligan(_)), "the opening decision");
+
+        let corp_view = build_client_view(&state, &registry, Side::Corp);
+        let corp_hand: Vec<String> = corp_view.corp.hq_cards.clone().expect("the Corp sees HQ").iter().map(|id| card_title(id, &registry)).collect();
+        let runner_view = build_client_view(&state, &registry, Side::Runner);
+        let runner_hand: Vec<String> =
+            runner_view.runner.grip_cards.clone().expect("the Runner sees the grip").iter().map(|id| card_title(id, &registry)).collect();
+        assert!(!corp_hand.is_empty() && !runner_hand.is_empty());
+
+        let render = |ui: &LocalUiState| {
+            let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+            terminal.draw(|frame| draw_frame(frame, ui, None)).unwrap();
+            format!("{:?}", terminal.backend().buffer())
+        };
+
+        let mut as_corp = LocalUiState::new(registry.clone(), Side::Corp);
+        as_corp.begin_decision(corp_view);
+        let rendered = render(&as_corp);
+        assert!(rendered.contains("Hand:"), "the hand line is drawn");
+        assert!(rendered.contains(&corp_hand[0]), "the Corp sees its own cards: {}", corp_hand[0]);
+        assert!(runner_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Corp never sees the grip");
+
+        let mut as_runner = LocalUiState::new(registry, Side::Runner);
+        as_runner.begin_decision(runner_view);
+        let rendered = render(&as_runner);
+        assert!(rendered.contains(&runner_hand[0]), "the Runner sees its own cards: {}", runner_hand[0]);
+        assert!(corp_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Runner never sees HQ");
     }
 
     /// The replay path through the shared renderer: the events pane title,
