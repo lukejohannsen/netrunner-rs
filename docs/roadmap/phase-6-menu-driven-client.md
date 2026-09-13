@@ -131,7 +131,8 @@ Weyland *Above the Law* in a Haas-Bioroid deck costs 0 and the deck
 validates — the builder showed it at 0 influence and "Legal" once the
 deck was full. Netrunner forbids an agenda from another faction outright
 (neutral agendas excepted). Every published sample deck is unaffected;
-the fix is a validator rule in `netrunner_core`, its own PR.
+the fix is a validator rule in `netrunner_core`, landed on its own as
+#19 (`DeckValidationError::OutOfFactionAgenda`; Rules Audit, last section).
 
 Seven builder tests and one deck-store test, without a terminal; driven
 by hand in tmux against a scratch data directory — new deck through side,
