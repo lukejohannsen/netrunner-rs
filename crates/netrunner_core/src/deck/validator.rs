@@ -58,6 +58,13 @@ pub enum DeckValidationError {
     #[error("runner decks may not include agendas (card {0:?})")]
     RunnerDeckContainsAgenda(CardId),
 
+    /// A Corp deck may include only its own faction's agendas and neutral
+    /// ones. A separate rule rather than an influence charge because
+    /// agendas print no influence: priced through the influence check, an
+    /// out-of-faction agenda cost 0 and the deck validated.
+    #[error("agenda {card:?} is {faction:?}; a {identity_faction:?} deck may include only its own faction's agendas and neutral ones")]
+    OutOfFactionAgenda { card: CardId, faction: Faction, identity_faction: Faction },
+
     #[error("card {card:?} is banned in {format:?}")]
     BannedCardIncluded { card: CardId, format: NsgFormat },
 
@@ -155,6 +162,12 @@ pub fn validate_deck_with_rules(
         }
         if identity.side == Side::Runner && card.card_type == CardType::Agenda {
             return Err(DeckValidationError::RunnerDeckContainsAgenda(card_id));
+        }
+        if card.card_type == CardType::Agenda {
+            let faction = card.faction.unwrap_or(Faction::NeutralCorp);
+            if faction != identity_faction && !is_neutral(faction) {
+                return Err(DeckValidationError::OutOfFactionAgenda { card: card_id, faction, identity_faction });
+            }
         }
 
         check_format_legality(card_id, card, format, rules)?;
@@ -580,6 +593,40 @@ mod tests {
         registry.insert(card(1, Side::Corp, Faction::WeylandConsortium, CardType::Asset, None, "sg"));
         let deck = Decklist { identity: CardId(1), cards: HashMap::new() };
         assert_eq!(validate_deck(&deck, &registry, NsgFormat::Standard), Err(DeckValidationError::NotAnIdentity(CardId(1))));
+    }
+
+    #[test]
+    fn an_agenda_from_another_faction_is_rejected_and_a_neutral_one_is_not() {
+        // The fixture's four agendas are neutral, and it validates.
+        let (registry, deck) = valid_corp_registry_and_deck();
+        validate_deck(&deck, &registry, NsgFormat::Startup).expect("neutral agendas are legal in any Corp deck");
+
+        // Swap one for a 5-point Jinteki agenda in the Weyland deck: same
+        // points, same size, no influence printed — only the faction rule
+        // can refuse it.
+        let (mut registry, mut deck) = valid_corp_registry_and_deck();
+        let mut foreign = card(900, Side::Corp, Faction::Jinteki, CardType::Agenda, None, "sg");
+        foreign.agenda_points = Some(5);
+        registry.insert(foreign);
+        deck.cards.remove(&CardId(100));
+        deck.cards.insert(CardId(900), 1);
+        assert_eq!(
+            validate_deck(&deck, &registry, NsgFormat::Startup),
+            Err(DeckValidationError::OutOfFactionAgenda {
+                card: CardId(900),
+                faction: Faction::Jinteki,
+                identity_faction: Faction::WeylandConsortium
+            })
+        );
+
+        // And in faction it is fine.
+        let (mut registry, mut deck) = valid_corp_registry_and_deck();
+        let mut own = card(901, Side::Corp, Faction::WeylandConsortium, CardType::Agenda, None, "sg");
+        own.agenda_points = Some(5);
+        registry.insert(own);
+        deck.cards.remove(&CardId(100));
+        deck.cards.insert(CardId(901), 1);
+        validate_deck(&deck, &registry, NsgFormat::Startup).expect("an in-faction agenda is legal");
     }
 
     #[test]
