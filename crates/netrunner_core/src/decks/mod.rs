@@ -223,6 +223,12 @@ impl DeckFile {
         crate::rules::deck::validate_deck(&self.to_deck(), self.side, registry)?;
         Ok(crate::deck::validate_deck(&self.to_decklist(registry)?, registry, format)?)
     }
+
+    /// Running totals against the identity's limits, for a deck still being
+    /// built — see `deck::DeckTally`. Not a legality check: `validate` is.
+    pub fn tally(&self, registry: &CardRegistry) -> Result<crate::deck::DeckTally, DeckError> {
+        Ok(crate::deck::tally_deck(&self.to_decklist(registry)?, registry)?)
+    }
 }
 
 /// Why a `DeckFile` could not be converted or validated.
@@ -323,6 +329,30 @@ mod tests {
             deck.validate(&registry, NsgFormat::Startup)
                 .unwrap_or_else(|e| panic!("sample deck {:?} ({}) is not legal: {e}", deck.id, deck.name));
         }
+    }
+
+    /// The builder's running totals are the gate's numbers: on every legal
+    /// embedded deck the tally agrees with the validator's report, and on a
+    /// half-built one it still reports where the list stands.
+    #[test]
+    fn a_tally_agrees_with_the_validator_and_survives_an_illegal_deck() {
+        let registry = registry();
+        for deck in embedded_decks() {
+            let report = deck.validate(&registry, NsgFormat::Startup).unwrap();
+            let tally = deck.tally(&registry).unwrap();
+            assert_eq!(tally.size, report.deck_size, "{}", deck.id);
+            assert_eq!(tally.influence_spent, report.influence_spent, "{}", deck.id);
+            assert_eq!(tally.agenda.map(|agenda| agenda.points), report.agenda_points, "{}", deck.id);
+            assert!(tally.size >= tally.min_size, "{}", deck.id);
+        }
+        let mut half = by_id("brick_stack").unwrap();
+        half.cards.truncate(3);
+        assert!(half.validate(&registry, NsgFormat::Startup).is_err(), "too small to be legal");
+        let tally = half.tally(&registry).unwrap();
+        assert_eq!(tally.size, half.size());
+        assert_eq!(tally.min_size, 40);
+        assert!(tally.agenda.is_some(), "a Corp deck reports its agenda range");
+        assert_eq!(tally.influence_limit, Some(15));
     }
 
     /// Every published sample decklist this crate embeds, pinned to what

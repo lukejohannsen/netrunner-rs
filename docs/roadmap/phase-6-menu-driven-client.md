@@ -83,17 +83,61 @@ player as Corp; an empty saved deck reports "deck has
 0 card(s) but its identity requires at least 40" under the form. No
 rules change; nothing outside `netrunner_cli`.
 
-## 2. A deck builder in the TUI — OPEN
+## 2. A deck builder in the TUI — DONE (13 September 2026)
 
-Today deck building is `deck new/add/remove/show/validate` on the command
-line. The menu gains **Decks**: list every deck (built-in and saved),
-open one to read it, **create** (side → identity → name) or **copy** an
-existing deck as a starting point, then edit in a card browser filtered by
-type, faction and a search, with copies added and removed, card text in
-the existing inspector (`app::card_modal`), and legality re-checked as the
-list changes against the format in Settings. Save, rename, delete. Built-in
-decks stay read-only — `deck_store` already refuses to overwrite one,
-because they are published lists.
+`feat/tui-deck-builder`, stacked on §1. The main menu gains **Decks**:
+every deck, the player's saved ones first, each marked legal or not in
+the Settings format. A built-in deck opens **read-only** (list, notes,
+how to play) with `c` to copy it; a saved one opens in the **editor**.
+`n` starts a deck from side → identity (the format's, with each
+identity's minimum size and influence) → name; `c` copies any deck,
+keeping its list, notes and style as `Custom`; `d` deletes a saved deck
+after a `y`. The id is a slug of the name made unique (`brick_stack_copy`),
+because it is the filename and what `--corp-deck` takes.
+
+The editor is the deck on the left and the card pool on the right:
+Enter/`+` adds, `-` removes, Tab switches lists, `/` searches titles and
+type lines, `t` and `f` cycle a type and a faction filter, `i` opens the
+card's text in the game's inspector modal (`app::card_modal`, "Engine
+reads it as" included), `r` renames, `y` cycles the bot style
+(`DeckFile::style`, so a saved deck plays in the style its builder chose).
+**Every edit is saved as it is made**, as `deck add` does — a deck under
+construction is legitimately illegal, so there is no "valid enough to
+save" moment to wait for.
+
+- **Legality is the validators', and the running totals are the core's.**
+  The verdict line is `DeckFile::validate`, both validators, exactly what
+  starting a game runs. The totals — cards against the identity's
+  minimum, influence against its budget, agenda points against the range
+  for the current size — are a new `netrunner_core::deck::tally_deck` /
+  `DeckFile::tally`, which never fails on a rule. It shares one
+  `influence_per_copy` with the validator, so the builder's influence
+  number is the gate's; `a_tally_agrees_with_the_validator_and_survives_an_illegal_deck`
+  pins that over all 28 embedded decks. Copying the arithmetic into the
+  client was rejected: it is the kind of rule re-derivation the client
+  contract forbids, and two copies drift.
+- **The one rule the builder applies itself is the copy limit on `+`**,
+  read off the card (`deck_limit`, else the validator's
+  `MAX_COPIES_PER_CARD`) — letting a fourth copy in only to flag it would
+  be a worse builder, and the validator still decides.
+- **The pool is the format's**: only cards whose pack the format allows
+  and that are not banned, so a Startup player never sees a Core Set card
+  the validator would refuse (`the_pool_is_the_decks_side_in_the_format_and_filters_narrow_it`).
+- `deck_store::delete` refuses a built-in id and a missing file.
+
+**Found while building it, fixed separately:** the deckbuilding validator
+has **no out-of-faction agenda rule**. Agendas print no influence, so a
+Weyland *Above the Law* in a Haas-Bioroid deck costs 0 and the deck
+validates — the builder showed it at 0 influence and "Legal" once the
+deck was full. Netrunner forbids an agenda from another faction outright
+(neutral agendas excepted). Every published sample deck is unaffected;
+the fix is a validator rule in `netrunner_core`, its own PR.
+
+Seven builder tests and one deck-store test, without a terminal; driven
+by hand in tmux against a scratch data directory — new deck through side,
+identity and name; search, add to the copy limit, card text; copy of
+*Brick Stack* (44/40 cards, 15/15 influence, 18 of 18–20 points, legal in
+startup); back to the list; delete.
 
 ## 3. Network play from the menu — OPEN
 
