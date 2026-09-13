@@ -17,7 +17,13 @@ use netrunner_bots::{onnx_fixture, Personality};
 use netrunner_core::rules::{GamePhase, GameState, Side};
 use netrunner_single_player::SinglePlayerSession;
 
+// Path-included like `config` below, and `dead_code`-allowed for the same
+// reason: this test binary is its own crate root, so anything in `bots`
+// the ONNX path does not call — `make_seat_agent`, which the difficulty
+// ladder uses — is unused *here* and nowhere else. CI builds with
+// `-D warnings`, so the allow is what keeps that from being an error.
 #[path = "../src/bots.rs"]
+#[allow(dead_code)]
 mod bots;
 #[path = "../src/config.rs"]
 // Path-included, so the binary sees all of `config` while using only
