@@ -52,7 +52,7 @@ use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use uuid::Uuid;
 
-use netrunner_bots::{BotAgent, HeuristicAgent, MctsAgent, Personality};
+use netrunner_bots::{BotAgent, HeuristicAgent, Level, MctsAgent, Personality};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::{self, DeckCategory};
 use netrunner_core::format::NsgFormat;
@@ -108,6 +108,13 @@ pub struct ServeOptions {
     /// Bot opponent seated against every connecting client; `None` pairs
     /// humans instead.
     pub bot_runner: ServeBotKind,
+    /// Seat a rung of the difficulty ladder instead of `bot_runner`'s
+    /// kind — the same override `netrunner_cli --corp-level` makes, so a
+    /// daemon's `veteran` and a local `veteran` are the same bot and are
+    /// rated under the same id (`Level::rating_id`, `bot:veteran`). The
+    /// personality still crosses it. Meaningless with `ServeBotKind::None`,
+    /// which `bind` refuses.
+    pub bot_level: Option<Level>,
     /// The bot's `Personality`, or `None` for the style its dealt deck
     /// names (`DeckFile::style`, balanced when the deck names none). Part
     /// of its rating id when not balanced, so a rush Corp and a glacier
@@ -153,6 +160,7 @@ impl Default for ServeOptions {
     fn default() -> Self {
         ServeOptions {
             bot_runner: ServeBotKind::Heuristic,
+            bot_level: None,
             bot_personality: None,
             seed: None,
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
@@ -465,6 +473,9 @@ impl Server {
     /// Binds `addr` (`host:port`; port 0 for an ephemeral one — see
     /// `local_addr`). Accepting starts in `run`.
     pub async fn bind(addr: &str, options: ServeOptions) -> std::io::Result<Self> {
+        if options.bot_level.is_some() && options.bot_runner == ServeBotKind::None {
+            return Err(std::io::Error::other("--bot-level seats a bot, but --bot-runner none pairs humans; drop one of them"));
+        }
         let listener = TcpListener::bind(addr).await?;
         let base_seed = options.seed.unwrap_or_else(rand::random);
         let ratings = match &options.ratings_file {
@@ -684,14 +695,28 @@ fn seat_vs_bot(
         };
         decks::by_id(bot_deck_id).and_then(|deck| Personality::for_deck(&deck).ok()).unwrap_or_default()
     });
-    let bot = SeatedPlayer {
-        name: kind.seat_name().to_string(),
-        rating_id: match personality {
-            Personality::Balanced => kind.rating_id().to_string(),
-            personality => format!("{}:{personality}", kind.rating_id()),
+    let bot_side = human_side.other();
+    let bot_seed = seed.wrapping_add(1);
+    let bot = match shared.options.bot_level {
+        // A rung is rated by its name alone, style or no style — the rung
+        // is the strength claim, and a person's rating against it should
+        // span the styles it plays. `netrunner_cli::ratings` makes the
+        // same choice, so the two books agree.
+        Some(level) => SeatedPlayer {
+            name: format!("{} bot", level.name()),
+            rating_id: level.rating_id(),
+            token: Uuid::new_v4(),
+            slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed)),
         },
-        token: Uuid::new_v4(),
-        slot: PlayerSlot::Bot(make_serve_agent(kind, human_side.other(), seed.wrapping_add(1), personality)),
+        None => SeatedPlayer {
+            name: kind.seat_name().to_string(),
+            rating_id: match personality {
+                Personality::Balanced => kind.rating_id().to_string(),
+                personality => format!("{}:{personality}", kind.rating_id()),
+            },
+            token: Uuid::new_v4(),
+            slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality)),
+        },
     };
     let (corp, runner) = match human_side {
         Side::Corp => (human, bot),

@@ -139,10 +139,17 @@ September 2026): `LevelSpec::with_personality` crosses the two axes, so
 a bias on the same evaluator and does not change the order. Recorded in
 Phase 3 §1.
 
+**The daemon seats a rung** (`feat/serve-levels`, 13 September 2026):
+`netrunner_server --serve --bot-level veteran` seats
+`Level::spec(side).with_personality(..).agent(seed)` — the same bot the
+TUI seats for `--corp-level veteran`, rated under the same id
+(`bot:veteran`, `Level::rating_id`), so a daemon's book and a local
+`ratings.json` describe one participant. An `Option<Level>` on
+`ServeOptions` beside `bot_runner` rather than a `ServeBotKind`
+variant, because that enum is a clap `ValueEnum` and a rung carries a
+value; `--bot-level` with `--bot-runner none` is refused at `bind`.
+
 **Standing open items:** the 192-game calibration that would resolve the
-top steps; the server still offers `heuristic` and `mcts` rather than
-levels (`ServeBotKind`); nothing yet maps a human's own `HumanVsBot`
-rating to a suggested rung, which is what would make "up the challenge"
-self-service; local play records no rating at all. *Both closed by
-`feat/local-rating` (Phase 3 §2): local games are rated, and the
-game-over modal names the next rung from the last five results.*
+top steps; a start screen (ROADMAP "next"). *Closed:* the server offers
+levels; local play is rated and the modal names the next rung
+(`feat/local-rating`, Phase 3 §2).

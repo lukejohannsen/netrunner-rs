@@ -462,6 +462,35 @@ async fn an_unpinned_bot_plays_its_dealt_decks_style_and_is_rated_under_it() {
     let _ = std::fs::remove_dir_all(&dir);
 }
 
+/// `--bot-level` seats a rung under the rung's own id, so a daemon's
+/// `operator` and a local `operator` are one participant on the ladder.
+#[tokio::test]
+async fn a_daemon_seating_a_rung_rates_it_by_the_rungs_name() {
+    let dir = std::env::temp_dir().join(format!("netrunner_ratings_level_{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("ratings.json");
+    let url = start_server(ServeOptions {
+        bot_runner: ServeBotKind::Heuristic,
+        bot_level: Some(netrunner_bots::Level::Operator),
+        seed: Some(1),
+        ratings_file: Some(path.clone()),
+        ..ServeOptions::default()
+    })
+    .await;
+
+    let mut quitter = open(&url, connect("quitter", Some(Side::Corp))).await;
+    joined(next(&mut quitter).await);
+    state_update(next(&mut quitter).await);
+    send(&mut quitter, ClientMessage::Surrender).await;
+    assert!(matches!(next(&mut quitter).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
+
+    let book = wait_for_book(&path, |book| book.standing(Track::HumanVsBot, "quitter").is_some()).await;
+    let bot = book.standing(Track::HumanVsBot, "bot:operator").expect("the rung is rated by its name");
+    assert_eq!(bot.runner.wins, 1);
+    assert!(book.standing(Track::HumanVsBot, "bot:heuristic").is_none(), "not also by its kind");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
 /// Two humans, one surrenders; then the daemon is restarted on the same
 /// file and a second match adds to the same standings.
 #[tokio::test]

@@ -52,6 +52,14 @@ struct Config {
     #[arg(long, value_enum, default_value_t = ServeBotKind::Heuristic)]
     bot_runner: ServeBotKind,
 
+    /// (serve mode) Seat a rung of the difficulty ladder — `novice`,
+    /// `apprentice`, `operator`, `veteran`, `elite`, or `1`-`5` — instead
+    /// of `--bot-runner`'s kind. The same bot, and the same rating id
+    /// (`bot:veteran`), as `netrunner_cli --corp-level`; the personality
+    /// still applies.
+    #[arg(long)]
+    bot_level: Option<netrunner_bots::Level>,
+
     /// (serve mode) The bot's personality: `balanced`, or `rush`,
     /// `glacier`, `trap` for a Corp bot and `aggressive`, `cautious`,
     /// `builder`, `wary` for a Runner bot. See `netrunner_cli
@@ -195,6 +203,7 @@ async fn run_serve(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     let options = ServeOptions {
         bot_runner: config.bot_runner,
+        bot_level: config.bot_level,
         bot_personality: config.bot_personality,
         seed: config.seed,
         reconnect_grace: Duration::from_secs(config.reconnect_grace_secs),
