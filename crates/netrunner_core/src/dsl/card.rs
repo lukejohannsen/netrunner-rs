@@ -518,6 +518,19 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artist: Option<String>,
 
+    /// The card's printed rules text, plain (NetrunnerDB's
+    /// `stripped_text`), for a client to show a person. **Never read by
+    /// the engine**: the rules a card runs on are `triggers`, `abilities`
+    /// and `subroutines`, and this is the sentence they were written from.
+    /// Joined from the catalog like `artist`, so card files do not restate
+    /// it and cannot drift from what was printed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub printed_text: Option<String>,
+
+    /// Flavour text, for the same reader. NetrunnerDB's `flavor`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flavor: Option<String>,
+
     /// True placeholder — always `None` today; no fetch/derivation logic
     /// exists yet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -755,6 +768,8 @@ impl Default for CardDefinition {
             deck_limit: None,
             unlimited_influence: false,
             artist: None,
+            printed_text: None,
+            flavor: None,
             image_url: None,
             is_playable: false,
             persistent_after_trash: false, root_asset_trash_cost_bonus: 0,

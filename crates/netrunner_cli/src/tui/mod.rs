@@ -21,7 +21,7 @@ use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, StallReason, SubmitError};
 
-use crate::app::{describe_action, explain_action, push_log_line, App, Coaching, Modal, RenderableView};
+use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
 use crate::decks;
@@ -443,9 +443,12 @@ fn prompt_human(
             if ui.modal.is_some() {
                 match key.code {
                     KeyCode::Char('q') => return Ok(true),
-                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc => ui.modal = None,
+                    KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc | KeyCode::Char('c') => ui.modal = None,
                     _ => {}
                 }
+                continue;
+            }
+            if ui.inspector_key(key.code) {
                 continue;
             }
             match key.code {
@@ -519,6 +522,8 @@ struct LocalUiState {
     show_all: bool,
     coaching: Option<Coaching>,
     modal: Option<Modal>,
+    /// The card inspector, while it is open (`c`).
+    card_picker: Option<CardPicker>,
     last_rejection: Option<String>,
 }
 
@@ -534,8 +539,38 @@ impl LocalUiState {
             show_all: false,
             coaching: None,
             modal: None,
+            card_picker: None,
             last_rejection: None,
         }
+    }
+
+    /// One inspector keypress, shared by the live prompt and the tests:
+    /// `true` if the key was the inspector's — a modal or the picker was
+    /// open, or `c` opened it — so the caller does not also treat it as an
+    /// action-list key.
+    fn inspector_key(&mut self, key: KeyCode) -> bool {
+        if let Some(picker) = &mut self.card_picker {
+            match key {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('c') => self.card_picker = None,
+                KeyCode::Up | KeyCode::Char('k') => picker.move_selection(-1),
+                KeyCode::Down | KeyCode::Char('j') => picker.move_selection(1),
+                KeyCode::Enter | KeyCode::Char(' ') => {
+                    if let Some(id) = picker.selected_card().cloned() {
+                        self.modal = Some(card_modal(&id, &self.registry));
+                        self.card_picker = None;
+                    }
+                }
+                _ => {}
+            }
+            return true;
+        }
+        if key == KeyCode::Char('c')
+            && let Some(view) = &self.view
+        {
+            self.card_picker = Some(CardPicker::open(view, &self.registry));
+            return true;
+        }
+        false
     }
 
     /// Installs the view the session just handed us for a fresh human
@@ -639,6 +674,9 @@ impl RenderableView for LocalUiState {
     fn modal(&self) -> Option<&Modal> {
         self.modal.as_ref()
     }
+    fn card_picker(&self) -> Option<&CardPicker> {
+        self.card_picker.as_ref()
+    }
 }
 
 /// The remote render loop. A lost connection is handled *here*, between
@@ -699,7 +737,29 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
         draw_modal(frame, &Modal::new("Game over", &format!("{winner:?} wins! ({reason:?})"), "Press q to quit."));
     } else if let Some(modal) = ui.modal() {
         draw_modal(frame, modal);
+    } else if let Some(picker) = ui.card_picker() {
+        draw_card_picker(frame, picker);
     }
+}
+
+/// The inspector's list, centred over the board like a modal, with the
+/// same highlight as the actions pane.
+fn draw_card_picker(frame: &mut Frame, picker: &CardPicker) {
+    let area = centered_rect(60, 70, frame.area());
+    let items: Vec<ListItem> = picker.labels().into_iter().map(ListItem::new).collect();
+    let title = if items.is_empty() { "Cards (nothing to inspect yet — Esc to close)" } else { "Cards (Up/Down, Enter to read, Esc to close)" };
+    let mut state = ListState::default();
+    if !items.is_empty() {
+        state.select(Some(picker.selected));
+    }
+    frame.render_widget(Clear, area);
+    frame.render_stateful_widget(
+        List::new(items)
+            .block(Block::default().borders(Borders::ALL).title(title).style(Style::default().fg(Color::Yellow)))
+            .highlight_style(Style::default().add_modifier(Modifier::REVERSED)),
+        area,
+        &mut state,
+    );
 }
 
 fn draw_header(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
@@ -943,9 +1003,9 @@ fn draw_actions(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     } else if labels.is_empty() {
         "Waiting for the other side...".to_string()
     } else if app.coaching().is_some() {
-        "Actions (Up/Down, Enter to act, a to show all, q to quit)".to_string()
+        "Actions (Up/Down, Enter to act, a to show all, c to read a card, q to quit)".to_string()
     } else {
-        "Legal actions (Up/Down, Enter to act, q to quit)".to_string()
+        "Legal actions (Up/Down, Enter to act, c to read a card, q to quit)".to_string()
     });
     if let Some(rejection) = app.last_rejection() {
         title.push_span(Span::styled(format!("  rejected: {rejection}"), Style::default().fg(Color::Red)));
@@ -1165,6 +1225,56 @@ mod tests {
         assert!(rendered.contains(&runner_hand[0]), "the Runner sees its own cards: {}", runner_hand[0]);
         assert!(corp_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Runner never sees HQ");
         assert!(row_of(&rows, "You — Runner rig") > row_of(&rows, "Opponent — Corp servers"), "the Runner's own block is below the Corp's");
+    }
+
+    /// `c` lists what the viewer may see — their hand, never the other's
+    /// — and Enter reads one card's printed text. The list is built from
+    /// the view, so the mask that decides what is drawn decides what can
+    /// be inspected.
+    #[test]
+    fn the_inspector_lists_what_the_viewer_may_see_and_reads_a_cards_text() {
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let hand = view.corp.hq_cards.clone().expect("the Corp sees HQ");
+
+        let mut ui = LocalUiState::new(registry.clone(), Side::Corp);
+        assert!(!ui.inspector_key(KeyCode::Char('c')), "nothing to inspect before a view arrives");
+        ui.begin_decision(view);
+        assert!(ui.inspector_key(KeyCode::Char('c')));
+        let picker = ui.card_picker.clone().expect("the picker opened");
+        assert!(picker.labels().iter().filter(|l| l.starts_with("Hand (HQ):")).count() == hand.len(), "{:?}", picker.labels());
+        assert!(picker.labels().iter().all(|l| !l.starts_with("Hand (grip)")), "the Runner's hand is not the Corp's to read");
+        assert!(picker.labels().iter().any(|l| l.starts_with("Corp identity:")));
+
+        let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains("Cards (Up/Down"), "the picker is drawn");
+
+        assert!(ui.inspector_key(KeyCode::Down));
+        assert!(ui.inspector_key(KeyCode::Enter));
+        assert!(ui.card_picker.is_none(), "reading a card closes the list");
+        let modal = ui.modal.clone().expect("the card's text is up");
+        let card = registry.get(&hand[1]).unwrap();
+        assert_eq!(modal.title, card.title);
+        let text = card.printed_text.as_deref().expect("every sample-deck card has printed text");
+        assert!(modal.body.contains(text.lines().next().unwrap()), "{}", modal.body);
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains("Esc to close"), "the modal is drawn");
+
+        // Esc closes the picker without reading; `c` with the picker open
+        // closes it too, so the key is a toggle.
+        ui.modal = None;
+        ui.inspector_key(KeyCode::Char('c'));
+        assert!(ui.card_picker.is_some());
+        ui.inspector_key(KeyCode::Char('c'));
+        assert!(ui.card_picker.is_none());
     }
 
     /// The split follows the viewer: the Corp block keeps the larger share

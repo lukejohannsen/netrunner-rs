@@ -130,6 +130,25 @@ fn build_type_line(card_type: &CardType, keywords: &[String]) -> String {
     }
 }
 
+/// NetrunnerDB's `text` with its HTML tags removed and everything else
+/// kept: the line breaks, and the `[subroutine]`, `[click]`, `[credit]`
+/// symbols this codebase quotes verbatim. Preferred over the API's own
+/// `stripped_text`, which flattens `[subroutine]` to the word "Subroutine"
+/// and joins every line into one — fine for search, wrong for reading.
+fn strip_markup(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_tag = false;
+    for ch in text.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' if in_tag => in_tag = false,
+            _ if !in_tag => out.push(ch),
+            _ => {}
+        }
+    }
+    out
+}
+
 fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversionError> {
     let numeric_id =
         dto.code.parse::<u32>().map(CardId).map_err(|_| CardConversionError::InvalidCardCode(dto.code.clone()))?;
@@ -172,6 +191,8 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         influence_limit: dto.influence_limit.and_then(|limit| u32::try_from(limit).ok()),
         deck_limit: non_negative("deck_limit", dto.deck_limit)?,
         artist: dto.illustrator,
+        printed_text: dto.text.as_deref().map(strip_markup),
+        flavor: dto.flavor.as_deref().map(strip_markup),
         image_url: None,
         memory_bonus: None,
         max_hand_size_bonus: None,
@@ -253,6 +274,13 @@ fn is_unmodelable(code: &str) -> bool {
 mod tests {
     use super::*;
 
+    #[test]
+    fn markup_is_stripped_and_the_symbols_and_line_breaks_are_kept() {
+        assert_eq!(strip_markup("Whenever you install a <strong>virus</strong> program"), "Whenever you install a virus program");
+        assert_eq!(strip_markup("[subroutine] Do 1 net damage.\n[subroutine] Gain 1[credit]."), "[subroutine] Do 1 net damage.\n[subroutine] Gain 1[credit].");
+        assert_eq!(strip_markup("a < b"), "a ", "a stray angle bracket swallows to the end, which no card text has");
+    }
+
     fn base_dto() -> NetrunnerDbCardDto {
         NetrunnerDbCardDto {
             code: "30038".to_string(),
@@ -274,6 +302,7 @@ mod tests {
             base_link: None,
             uniqueness: Some(false),
             illustrator: Some("Some Artist".to_string()),
+            flavor: None,
             deck_limit: Some(3),
             influence_limit: None,
         }
@@ -387,6 +416,7 @@ mod tests {
             base_link: None,
             uniqueness: None,
             illustrator: None,
+            flavor: None,
             deck_limit: None,
             influence_limit: None,
         };

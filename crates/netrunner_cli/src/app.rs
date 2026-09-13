@@ -15,8 +15,9 @@ use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
 use netrunner_core::cards::CardRegistry;
+use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{
-    ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, Side, Viewer,
+    ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, ServerId, Side, Viewer,
 };
 use netrunner_core::view::ClientView;
 use netrunner_server::protocol::GameEndReason;
@@ -50,6 +51,10 @@ pub struct App {
     /// Whose decision is on the clock and when it runs out, from the last
     /// `ServerMessage::DecisionClock`; `None` on a host without a clock.
     pub decision_clock: Option<(Side, Instant)>,
+    /// A card's printed text, while the player is reading it.
+    pub modal: Option<Modal>,
+    /// The card inspector, while it is open.
+    pub card_picker: Option<CardPicker>,
 }
 
 /// Cap on retained log lines, shared by both TUI paths.
@@ -104,6 +109,8 @@ impl App {
             connection_lost: false,
             connection_notice: None,
             decision_clock: None,
+            modal: None,
+            card_picker: None,
         };
         app.drain_messages();
         app
@@ -195,11 +202,40 @@ impl App {
             return;
         }
 
+        // The same inspector keys as the local path (`tui::prompt_human`):
+        // a modal dismisses on Esc/Enter/Space, the picker moves on
+        // Up/Down and opens a card on Enter, and `c` opens the picker.
+        if self.modal.is_some() {
+            if matches!(key.code, KeyCode::Esc | KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Char('c')) {
+                self.modal = None;
+            }
+            return;
+        }
+        if let Some(picker) = &mut self.card_picker {
+            match key.code {
+                KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('c') => self.card_picker = None,
+                KeyCode::Up | KeyCode::Char('k') => picker.move_selection(-1),
+                KeyCode::Down | KeyCode::Char('j') => picker.move_selection(1),
+                KeyCode::Enter | KeyCode::Char(' ') => {
+                    if let Some(id) = picker.selected_card().cloned() {
+                        self.modal = Some(card_modal(&id, &self.registry));
+                        self.card_picker = None;
+                    }
+                }
+                _ => {}
+            }
+            return;
+        }
         match key.code {
             KeyCode::Char('q') | KeyCode::Esc => self.should_quit = true,
             KeyCode::Up | KeyCode::Char('k') => self.move_selection(-1),
             KeyCode::Down | KeyCode::Char('j') => self.move_selection(1),
             KeyCode::Enter | KeyCode::Char(' ') => self.submit_selected_action(),
+            KeyCode::Char('c') => {
+                if let Some(view) = &self.view {
+                    self.card_picker = Some(CardPicker::open(view, &self.registry));
+                }
+            }
             _ => {}
         }
     }
@@ -260,6 +296,10 @@ pub trait RenderableView {
     fn coaching(&self) -> Option<&Coaching> {
         None
     }
+    /// The card inspector's list, while it is open.
+    fn card_picker(&self) -> Option<&CardPicker> {
+        None
+    }
     /// An open popup, which owns the keyboard until dismissed.
     fn modal(&self) -> Option<&Modal> {
         None
@@ -276,6 +316,146 @@ pub struct Modal {
     pub title: String,
     pub body: String,
     pub footer: String,
+}
+
+/// The card inspector's first stage: every card the viewer may see, by
+/// zone, with a highlight. `Enter` turns the highlighted one into a
+/// `Modal` of its printed text (`card_modal`). A list of its own rather
+/// than a `Modal` because a `Modal` is prose to dismiss and this is a
+/// choice to make — the same reason the actions pane is a `List`.
+///
+/// **Built from the `ClientView` and nothing else.** A card is listed only
+/// if the view names it — the viewer's own hand, a rezzed or owned
+/// install, a faceup archived card, the heap, a scored agenda — so the
+/// mask decides what can be inspected exactly as it decides what is
+/// drawn. An unrezzed opponent's card has no `CardId` in the view and
+/// therefore no entry here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CardPicker {
+    pub entries: Vec<(String, CardId)>,
+    pub selected: usize,
+}
+
+impl CardPicker {
+    pub fn open(view: &ClientView, registry: &CardRegistry) -> Self {
+        Self { entries: visible_cards(view, registry), selected: 0 }
+    }
+
+    pub fn move_selection(&mut self, delta: i32) {
+        let len = self.entries.len();
+        if len == 0 {
+            return;
+        }
+        self.selected = (self.selected as i32 + delta).rem_euclid(len as i32) as usize;
+    }
+
+    pub fn selected_card(&self) -> Option<&CardId> {
+        self.entries.get(self.selected).map(|(_, id)| id)
+    }
+
+    pub fn labels(&self) -> Vec<String> {
+        self.entries.iter().map(|(label, _)| label.clone()).collect()
+    }
+}
+
+/// Every card the view names, labelled by where it is, in table order:
+/// the viewer's hand first (the cards a decision is usually about), then
+/// each side's identity, board, scored agendas and discard.
+pub fn visible_cards(view: &ClientView, registry: &CardRegistry) -> Vec<(String, CardId)> {
+    let title = |id: &CardId| registry.get(id).map_or_else(|| id.0.clone(), |card| card.title.clone());
+    let mut out: Vec<(String, CardId)> = Vec::new();
+    let mut push = |zone: &str, id: &CardId| out.push((format!("{zone}: {}", title(id)), id.clone()));
+
+    // The hand, whichever side's the view carries — `Some` only for the
+    // viewer's own.
+    for id in view.corp.hq_cards.iter().flatten() {
+        push("Hand (HQ)", id);
+    }
+    for id in view.runner.grip_cards.iter().flatten() {
+        push("Hand (grip)", id);
+    }
+    if let Some(id) = &view.corp.identity {
+        push("Corp identity", id);
+    }
+    for server in &view.corp.servers {
+        let place = match server.server {
+            ServerId::Hq => "HQ".to_string(),
+            ServerId::RnD => "R&D".to_string(),
+            ServerId::Archives => "Archives".to_string(),
+            ServerId::Remote(n) => format!("Remote {n}"),
+        };
+        for card in server.ice.iter().chain(server.root.iter()) {
+            if let Some(id) = &card.card {
+                let rez = if card.rezzed { "rezzed" } else { "unrezzed" };
+                push(&format!("{place} ({rez})"), id);
+            }
+        }
+    }
+    for agenda in &view.corp.scored_agendas {
+        push("Corp scored", &agenda.card);
+    }
+    for archived in &view.corp.archives {
+        if let Some(id) = &archived.card {
+            push("Archives", id);
+        }
+    }
+    if let Some(id) = &view.runner.identity {
+        push("Runner identity", id);
+    }
+    for card in &view.runner.rig {
+        push("Rig", &card.card);
+    }
+    for id in &view.runner.scored_agendas {
+        push("Runner stolen", id);
+    }
+    for id in &view.runner.heap {
+        push("Heap", id);
+    }
+    out
+}
+
+/// One card as a person reads it: the type line, the printed numbers,
+/// the printed text with its line breaks, the flavour. The engine's DSL is
+/// not shown — the printed text is what the DSL was written from, and it
+/// is the sentence a player can act on.
+pub fn card_modal(id: &CardId, registry: &CardRegistry) -> Modal {
+    let Some(card) = registry.get(id) else {
+        return Modal::new(&id.0, "This card is not in the registry.", "Esc to close");
+    };
+    let mut lines: Vec<String> = vec![card.type_line.clone().unwrap_or_else(|| format!("{:?}", card.card_type))];
+    let mut numbers: Vec<String> = vec![format!("Cost {}", card.cost)];
+    if let Some(strength) = card.strength {
+        numbers.push(format!("Strength {strength}"));
+    }
+    if let Some(required) = card.advancement_requirement {
+        numbers.push(format!("Advancement {required}"));
+    }
+    if let Some(points) = card.agenda_points {
+        numbers.push(format!("{points} agenda point{}", if points == 1 { "" } else { "s" }));
+    }
+    if let Some(trash) = card.trash_cost {
+        numbers.push(format!("Trash {trash}"));
+    }
+    if let Some(mu) = card.memory_cost {
+        numbers.push(format!("{mu} MU"));
+    }
+    if let Some(influence) = card.influence_cost {
+        numbers.push(format!("Influence {influence}"));
+    }
+    if card.unique {
+        numbers.push("Unique".to_string());
+    }
+    lines.push(numbers.join(" · "));
+    lines.push(String::new());
+    match &card.printed_text {
+        Some(text) => lines.extend(text.lines().map(str::to_string)),
+        None => lines.push("(no printed text on record)".to_string()),
+    }
+    if let Some(flavor) = &card.flavor {
+        lines.push(String::new());
+        lines.extend(flavor.lines().map(|line| format!("\"{line}\"")));
+    }
+    Modal::new(&card.title, &lines.join("\n"), "Esc to close")
 }
 
 impl Modal {
@@ -341,6 +521,12 @@ impl RenderableView for App {
     }
     fn decision_clock(&self) -> Option<(Side, Duration)> {
         self.decision_clock.map(|(side, deadline)| (side, deadline.saturating_duration_since(Instant::now())))
+    }
+    fn modal(&self) -> Option<&Modal> {
+        self.modal.as_ref()
+    }
+    fn card_picker(&self) -> Option<&CardPicker> {
+        self.card_picker.as_ref()
     }
 }
 
@@ -770,6 +956,22 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The card modal is the printed card, not the DSL: type line, the
+    /// numbers, the text with its line breaks and symbols, the flavour.
+    #[test]
+    fn a_card_modal_is_the_printed_card() {
+        let registry = crate::decks::sample_deck_registry();
+        let modal = card_modal(&CardId("hedge_fund".to_string()), &registry);
+        assert_eq!(modal.title, "Hedge Fund");
+        assert!(modal.body.contains("Operation"), "{}", modal.body);
+        assert!(modal.body.contains("Cost 5"), "{}", modal.body);
+        assert!(modal.body.contains("Gain 9[credit]"), "{}", modal.body);
+        assert_eq!(modal.footer, "Esc to close");
+        let unknown = card_modal(&CardId("no_such_card".to_string()), &registry);
+        assert!(unknown.body.contains("not in the registry"));
+    }
+
     use netrunner_bots::RandomAgent;
     use netrunner_core::dsl::CardId;
     use netrunner_core::rules::ServerId;

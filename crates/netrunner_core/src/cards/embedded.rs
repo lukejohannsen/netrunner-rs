@@ -29,7 +29,8 @@ fn parse_side(json: &str, side: &str) -> Vec<CardDefinition> {
 /// Fills each card's printed metadata from the NetrunnerDB catalog, joined on
 /// `numeric_id`.
 ///
-/// These fields — faction, keywords, influence, deck limit, artist, set —
+/// These fields — faction, keywords, influence, deck limit, artist, set,
+/// the printed text and flavour —
 /// are NetrunnerDB's to state, so card files don't restate them: doing so
 /// invited silent drift (a corrected influence cost upstream, a mistyped
 /// artist) between two copies of the same fact. Card files own the join key
@@ -54,6 +55,8 @@ fn fill_catalog_metadata(cards: &mut [CardDefinition]) {
         card.deck_limit = entry.deck_limit;
         card.influence_limit = entry.influence_limit;
         card.artist.clone_from(&entry.artist);
+        card.printed_text.clone_from(&entry.printed_text);
+        card.flavor.clone_from(&entry.flavor);
         card.image_url.clone_from(&entry.image_url);
         card.unique = entry.unique;
         card.base_link = entry.base_link;
@@ -315,5 +318,9 @@ mod catalog_join_tests {
         assert_eq!(tithe.deck_limit, Some(3));
         assert_eq!(tithe.artist.as_deref(), Some("Scott Uminga"));
         assert!(tithe.keywords.iter().any(|k| k == "Sentry"), "keywords should come from the catalog");
+        // The printed text rides the same join: a client shows it, the
+        // engine never reads it.
+        let text = tithe.printed_text.as_deref().expect("the catalog carries Tithe's text");
+        assert_eq!(text, "[subroutine] Do 1 net damage.\n[subroutine] Gain 1[credit].");
     }
 }
