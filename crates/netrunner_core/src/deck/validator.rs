@@ -82,6 +82,77 @@ pub struct ValidationReport {
     pub agenda_points: Option<u32>,
 }
 
+/// A deck's running totals against its identity's limits — what a deck
+/// builder shows while the list is still illegal.
+///
+/// `validate_deck` answers "may this be played?" and stops at the first
+/// rule broken, which is right for a gate and no help mid-build: a
+/// 30-card deck is "below the minimum" and says nothing about its
+/// influence. This never fails on a rule, only on a card it cannot find,
+/// and it shares the validator's influence rule (`influence_per_copy`) and
+/// agenda range (`agenda_point_range`), so the numbers a builder shows are
+/// the numbers the gate will check. A client reads legality from
+/// `validate_deck`, never from these — they are progress, not a verdict.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeckTally {
+    pub size: u32,
+    pub min_size: u32,
+    pub influence_spent: u32,
+    /// `None` for an identity with no influence budget (the starter
+    /// identities' `unlimited_influence`).
+    pub influence_limit: Option<u32>,
+    /// Corp decks only.
+    pub agenda: Option<AgendaTally>,
+}
+
+/// A Corp deck's agenda points and the legal range for its current size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AgendaTally {
+    pub points: u32,
+    pub min: u32,
+    pub max: u32,
+}
+
+/// See `DeckTally`.
+pub fn tally_deck(deck: &Decklist, registry: &CardRegistry) -> Result<DeckTally, DeckValidationError> {
+    let identity =
+        registry.get_by_numeric_id(deck.identity).ok_or(DeckValidationError::IdentityNotFound(deck.identity))?;
+    if identity.card_type != CardType::Identity {
+        return Err(DeckValidationError::NotAnIdentity(deck.identity));
+    }
+    let size: u32 = deck.cards.values().sum();
+    let mut influence_spent = 0u32;
+    let mut points = 0u32;
+    for (&card_id, &count) in &deck.cards {
+        let card = registry.get_by_numeric_id(card_id).ok_or(DeckValidationError::CardNotFound(card_id))?;
+        influence_spent += influence_per_copy(card, identity) * count;
+        if card.card_type == CardType::Agenda {
+            points += card.agenda_points.unwrap_or(0) * count;
+        }
+    }
+    let agenda = (identity.side == Side::Corp).then(|| {
+        let (min, max) = crate::rules::deck::agenda_point_range(size);
+        AgendaTally { points, min, max }
+    });
+    Ok(DeckTally {
+        size,
+        min_size: identity.min_deck_size.unwrap_or(0),
+        influence_spent,
+        influence_limit: (!identity.unlimited_influence).then(|| identity.influence_limit.unwrap_or(DEFAULT_INFLUENCE_LIMIT)),
+        agenda,
+    })
+}
+
+/// What one copy of `card` costs `identity` in influence: its printed
+/// cost when it is out of faction, nothing when it is in faction or
+/// neutral. The one statement of that rule, for the gate, the tally and a
+/// deck builder pricing a card before it is added.
+pub fn influence_per_copy(card: &CardDefinition, identity: &CardDefinition) -> u32 {
+    let identity_faction = identity.faction.unwrap_or(Faction::NeutralCorp);
+    let card_faction = card.faction.unwrap_or(Faction::NeutralCorp);
+    if card_faction != identity_faction && !is_neutral(card_faction) { card.influence_cost.unwrap_or(0) } else { 0 }
+}
+
 /// Validates `deck` against `registry` for `format`, checking in order:
 /// identity exists, is an `Identity`, and is format-legal; total deck size
 /// meets the identity's minimum; every card exists, matches the identity's
@@ -170,10 +241,7 @@ pub fn validate_deck_with_rules(
         // Once per distinct card, whatever the count.
         restriction_spent = restriction_spent.saturating_add(rules.restriction_points.get(&card_id).copied().unwrap_or(0));
 
-        let card_faction = card.faction.unwrap_or(Faction::NeutralCorp);
-        if card_faction != identity_faction && !is_neutral(card_faction) {
-            influence_spent += card.influence_cost.unwrap_or(0) * count;
-        }
+        influence_spent += influence_per_copy(card, identity) * count;
         if card.card_type == CardType::Agenda {
             agenda_points += card.agenda_points.unwrap_or(0) * count;
         }

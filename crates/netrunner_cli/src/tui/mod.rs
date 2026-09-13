@@ -1,3 +1,4 @@
+pub mod builder;
 pub mod layout;
 pub mod menu;
 pub mod start;
@@ -1153,7 +1154,7 @@ fn draw_action_log(frame: &mut Frame, area: Rect, log: &[String]) {
 
 /// A centered popup over whatever is underneath. Sized to the body: a
 /// two-line game-over notice gets a small box, a lesson intro a large one.
-fn draw_modal(frame: &mut Frame, modal: &Modal) {
+pub(crate) fn draw_modal(frame: &mut Frame, modal: &Modal) {
     let long = modal.body.len() > 120;
     let area = centered_rect(if long { 70 } else { 40 }, if long { 60 } else { 20 }, frame.area());
     let mut text = Vec::new();

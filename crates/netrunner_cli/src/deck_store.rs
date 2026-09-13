@@ -227,6 +227,17 @@ pub fn save(dir: &Path, deck: &DeckFile) -> Result<PathBuf, String> {
     Ok(target)
 }
 
+/// Deletes the saved deck `id` — the file `save` wrote for it. Refuses a
+/// built-in id for the reason `save` does, and a missing file is an error
+/// rather than a no-op, so a deck list that has gone stale says so.
+pub fn delete(dir: &Path, id: &str) -> Result<(), String> {
+    if decks::by_id(id).is_some() {
+        return Err(format!("deck id {id:?} belongs to a built-in deck; built-in decks cannot be deleted"));
+    }
+    let target = dir.join(format!("{id}.json"));
+    std::fs::remove_file(&target).map_err(|e| format!("cannot delete {}: {e}", target.display()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,6 +279,16 @@ mod tests {
 
     fn env(value: &str) -> Option<std::ffi::OsString> {
         Some(std::ffi::OsString::from(value))
+    }
+
+    #[test]
+    fn delete_removes_a_saved_deck_and_refuses_a_built_in_or_missing_one() {
+        let dir = TempDir::new();
+        save(dir.path(), &custom_deck("mine")).unwrap();
+        delete(dir.path(), "mine").unwrap();
+        assert!(read_dir(dir.path()).unwrap().is_empty());
+        assert!(delete(dir.path(), "mine").is_err(), "already gone");
+        assert!(delete(dir.path(), "party_hard").unwrap_err().contains("built-in"));
     }
 
     #[test]

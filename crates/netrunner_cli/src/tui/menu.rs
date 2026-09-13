@@ -1,9 +1,9 @@
 //! The main menu: what `netrunner_cli` opens with no arguments.
 //!
 //! Every way of playing is reachable from here without a flag — a game
-//! against the computer, the Learn to Play track, the ladder, the
-//! settings — and a finished game comes back here rather than to the
-//! shell. The flags still work and still skip it; they are what scripts
+//! against the computer, the Learn to Play track, the deck builder, the
+//! ladder, the settings — and a finished game comes back here rather than
+//! to the shell. The flags still work and still skip it; they are what scripts
 //! and measurements use.
 //!
 //! **Nothing here plays a game.** A choice becomes a `Launch` carrying the
@@ -36,6 +36,7 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::Side;
 use netrunner_core::tutorial;
 
+use super::builder::{DeckKey, DeckScreen};
 use super::start::{self, StartChoice, StartKey, StartMenu};
 use crate::config::{Config, FormatArg};
 use crate::decks;
@@ -48,18 +49,20 @@ use crate::settings::{self, Settings};
 pub enum Entry {
     PlayComputer,
     Learn,
+    Decks,
     Ratings,
     Settings,
     Quit,
 }
 
 impl Entry {
-    const ALL: [Entry; 5] = [Entry::PlayComputer, Entry::Learn, Entry::Ratings, Entry::Settings, Entry::Quit];
+    const ALL: [Entry; 6] = [Entry::PlayComputer, Entry::Learn, Entry::Decks, Entry::Ratings, Entry::Settings, Entry::Quit];
 
     fn label(self) -> &'static str {
         match self {
             Entry::PlayComputer => "Play vs Computer",
             Entry::Learn => "Learn to Play",
+            Entry::Decks => "Decks",
             Entry::Ratings => "Ratings",
             Entry::Settings => "Settings",
             Entry::Quit => "Quit",
@@ -70,6 +73,7 @@ impl Entry {
         match self {
             Entry::PlayComputer => "Pick a side, a deck each, and the computer's strength and style",
             Entry::Learn => "Guided lessons for each side, then the starter game",
+            Entry::Decks => "Build, copy and edit your own decks, or read the built-in ones",
             Entry::Ratings => "Your standing on the local ladder, and the rung to try next",
             Entry::Settings => "Your name and the format decks are checked against",
             Entry::Quit => "Back to the shell",
@@ -253,6 +257,7 @@ enum Screen {
     Main,
     NewGame(Box<StartMenu>),
     Learn(LearnMenu),
+    Decks(Box<DeckScreen>),
     Ratings { lines: Vec<String>, scroll: u16 },
     Settings(SettingsForm),
 }
@@ -316,6 +321,16 @@ impl Menu {
         match self.entry() {
             Entry::PlayComputer => self.open_new_game(),
             Entry::Learn => self.screen = Screen::Learn(LearnMenu::new()),
+            // Opened on the format as it stands, so a format changed in
+            // Settings changes the pool and the verdicts at once.
+            Entry::Decks => {
+                let opened = crate::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref())
+                    .and_then(|dir| DeckScreen::open(dir, self.registry.clone(), self.base.format.into()));
+                match opened {
+                    Ok(screen) => self.screen = Screen::Decks(Box::new(screen)),
+                    Err(error) => self.notice = Some(error),
+                }
+            }
             Entry::Ratings => {
                 let lines = ratings::standing_lines(&self.base).unwrap_or_else(|error| vec![format!("Could not read the ratings: {error}")]);
                 self.screen = Screen::Ratings { lines, scroll: 0 };
@@ -390,6 +405,12 @@ impl Menu {
                 }
                 _ => MenuStep::Continue,
             },
+            Screen::Decks(decks) => {
+                if decks.key(key) == DeckKey::Back {
+                    self.screen = Screen::Main;
+                }
+                MenuStep::Continue
+            }
             Screen::Ratings { scroll, .. } => {
                 match key {
                     KeyCode::Up | KeyCode::Char('k') => *scroll = scroll.saturating_sub(1),
@@ -435,6 +456,7 @@ impl Menu {
             Screen::Main => self.draw_main(frame, body),
             Screen::NewGame(form) => start::draw(frame, body, form),
             Screen::Learn(learn) => draw_learn(frame, body, learn),
+            Screen::Decks(decks) => decks.draw(frame, body),
             Screen::Ratings { lines, scroll } => draw_ratings(frame, body, lines, *scroll),
             Screen::Settings(form) => self.draw_settings(frame, body, form),
         }
@@ -751,7 +773,7 @@ mod tests {
 
     #[test]
     fn escape_from_every_screen_goes_back_to_the_main_menu() {
-        for entry in [Entry::PlayComputer, Entry::Learn, Entry::Ratings, Entry::Settings] {
+        for entry in [Entry::PlayComputer, Entry::Learn, Entry::Decks, Entry::Ratings, Entry::Settings] {
             let (mut menu, dir) = menu(&format!("esc_{entry:?}"));
             go_to(&mut menu, entry);
             assert!(!matches!(menu.screen, Screen::Main), "{entry:?} opens a screen");
