@@ -747,13 +747,46 @@ fn click_pool(current: u32, max: u32) -> String {
     (0..max).map(|i| if i < current { "[x]" } else { "[ ]" }).collect::<Vec<_>>().join("")
 }
 
+/// The viewer's own side is always the bottom block, the way a table is
+/// laid out: your cards nearest you, the opponent's across from you.
+/// The Corp block keeps the larger share wherever it sits, because it
+/// holds the servers and, during a run, the phase strip; a spectator or
+/// a not-yet-connected client sees the Corp on top. Returns the two
+/// areas as `(corp, runner)`.
+fn board_areas(area: Rect, viewer: Viewer) -> (Rect, Rect) {
+    let corp_on_top = !matches!(viewer, Viewer::Player(Side::Corp));
+    let (top, bottom) = if corp_on_top { (60, 40) } else { (40, 60) };
+    let [top_area, bottom_area] = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Percentage(top), Constraint::Percentage(bottom)])
+        .areas(area);
+    if corp_on_top { (top_area, bottom_area) } else { (bottom_area, top_area) }
+}
+
+/// A block's title says whose it is, so a player who has just swapped
+/// chairs in a replay — or simply sat down — need not work it out from
+/// which block moved.
+fn board_title(side: Side, viewer: Viewer) -> String {
+    let what = match side {
+        Side::Corp => "Corp servers",
+        Side::Runner => "Runner rig",
+    };
+    match viewer {
+        Viewer::Player(mine) if mine == side => format!("You — {what}"),
+        Viewer::Player(_) => format!("Opponent — {what}"),
+        Viewer::Spectator => what.to_string(),
+    }
+}
+
 fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
-    let [corp_area, runner_area] =
-        Layout::default().direction(Direction::Vertical).constraints([Constraint::Percentage(60), Constraint::Percentage(40)]).areas(area);
+    let viewer = app.viewer();
+    let (corp_area, runner_area) = board_areas(area, viewer);
+    let corp_title = board_title(Side::Corp, viewer);
+    let runner_title = board_title(Side::Runner, viewer);
 
     let Some(view) = app.view() else {
-        frame.render_widget(Block::default().borders(Borders::ALL).title("Corp servers"), corp_area);
-        frame.render_widget(Block::default().borders(Borders::ALL).title("Runner rig"), runner_area);
+        frame.render_widget(Block::default().borders(Borders::ALL).title(corp_title), corp_area);
+        frame.render_widget(Block::default().borders(Borders::ALL).title(runner_title), runner_area);
         return;
     };
 
@@ -780,7 +813,7 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         }
     }
     frame.render_widget(
-        Paragraph::new(corp_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Corp servers")),
+        Paragraph::new(corp_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(corp_title)),
         corp_area,
     );
 
@@ -800,7 +833,7 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         }));
     }
     frame.render_widget(
-        Paragraph::new(runner_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title("Runner rig")),
+        Paragraph::new(runner_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(runner_title)),
         runner_area,
     );
 }
@@ -1102,24 +1135,54 @@ mod tests {
             runner_view.runner.grip_cards.clone().expect("the Runner sees the grip").iter().map(|id| card_title(id, &registry)).collect();
         assert!(!corp_hand.is_empty() && !runner_hand.is_empty());
 
-        let render = |ui: &LocalUiState| {
+        // The buffer as rows, so the test can say which block is *below*
+        // which and not only what is on screen.
+        let render = |ui: &LocalUiState| -> Vec<String> {
             let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
             terminal.draw(|frame| draw_frame(frame, ui, None)).unwrap();
-            format!("{:?}", terminal.backend().buffer())
+            let buffer = terminal.backend().buffer();
+            (0..buffer.area.height)
+                .map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect::<String>())
+                .collect()
         };
+        let row_of = |rows: &[String], needle: &str| rows.iter().position(|row| row.contains(needle)).unwrap_or_else(|| panic!("{needle:?} is drawn"));
+        let all = |rows: &[String]| rows.join("\n");
 
         let mut as_corp = LocalUiState::new(registry.clone(), Side::Corp);
         as_corp.begin_decision(corp_view);
-        let rendered = render(&as_corp);
+        let rows = render(&as_corp);
+        let rendered = all(&rows);
         assert!(rendered.contains("Hand:"), "the hand line is drawn");
         assert!(rendered.contains(&corp_hand[0]), "the Corp sees its own cards: {}", corp_hand[0]);
         assert!(runner_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Corp never sees the grip");
+        // Your side is the bottom block, whichever chair you sit in.
+        assert!(row_of(&rows, "You — Corp servers") > row_of(&rows, "Opponent — Runner rig"), "the Corp's own block is below the Runner's");
 
         let mut as_runner = LocalUiState::new(registry, Side::Runner);
         as_runner.begin_decision(runner_view);
-        let rendered = render(&as_runner);
+        let rows = render(&as_runner);
+        let rendered = all(&rows);
         assert!(rendered.contains(&runner_hand[0]), "the Runner sees its own cards: {}", runner_hand[0]);
         assert!(corp_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Runner never sees HQ");
+        assert!(row_of(&rows, "You — Runner rig") > row_of(&rows, "Opponent — Corp servers"), "the Runner's own block is below the Corp's");
+    }
+
+    /// The split follows the viewer: the Corp block keeps the larger share
+    /// wherever it sits, and a spectator sees the Corp on top.
+    #[test]
+    fn the_board_puts_the_viewers_side_at_the_bottom_and_gives_the_corp_the_room() {
+        let area = Rect::new(0, 0, 100, 30);
+        let (corp, runner) = board_areas(area, Viewer::Player(Side::Corp));
+        assert!(corp.y > runner.y, "the Corp player's block is below");
+        assert!(corp.height > runner.height, "and still the larger one");
+        let (corp, runner) = board_areas(area, Viewer::Player(Side::Runner));
+        assert!(runner.y > corp.y, "the Runner player's block is below");
+        assert!(corp.height > runner.height);
+        let (corp, runner) = board_areas(area, Viewer::Spectator);
+        assert!(corp.y < runner.y, "a spectator sees the Corp on top");
+        assert_eq!(board_title(Side::Corp, Viewer::Spectator), "Corp servers");
+        assert_eq!(board_title(Side::Runner, Viewer::Player(Side::Runner)), "You — Runner rig");
+        assert_eq!(board_title(Side::Runner, Viewer::Player(Side::Corp)), "Opponent — Runner rig");
     }
 
     /// The replay path through the shared renderer: the events pane title,
