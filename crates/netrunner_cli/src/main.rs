@@ -66,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             if config.headless {
                 headless::run(&config)
             } else {
-                tui::run(&config).await
+                tui::run(&mut config).await
             }
         }
     }

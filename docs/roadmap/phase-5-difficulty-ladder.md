@@ -149,7 +149,23 @@ TUI seats for `--corp-level veteran`, rated under the same id
 variant, because that enum is a clap `ValueEnum` and a rung carries a
 value; `--bot-level` with `--bot-runner none` is refused at `bind`.
 
+**A start screen** (`feat/start-screen`, 13 September 2026): with no
+`--corp`/`--runner` flag the TUI opens a picker instead of the old
+"both sides are human" error — chair, rung (each row is
+`LevelSpec::describe`, and the one `ratings::LocalRatings::suggest`
+points at is marked and pre-selected), style (the deck's own, or any
+profile written for the bot's chair, or balanced), the opponent's deck
+and your own (name · style · identity, saved decks included). **It is the
+flag path, not a second one**: `StartChoice::apply` folds the choices
+into the `Config` the flags would have produced, pinned by a test that
+the folded form equals `--corp heuristic --corp-level veteran
+--corp-personality glacier --corp-deck brick_stack ...`, so the seating
+rule, the rating rule and the deck resolver stay singular. Any side flag
+skips the screen, so every existing invocation is unchanged. The state
+machine is a plain struct with `key(KeyCode)`, tested without a terminal
+the way `replay_key` is; not driven by hand in this session.
+
 **Standing open items:** the 192-game calibration that would resolve the
-top steps; a start screen (ROADMAP "next"). *Closed:* the server offers
-levels; local play is rated and the modal names the next rung
-(`feat/local-rating`, Phase 3 §2).
+top steps. *Closed:* the server offers levels; local play is rated and
+the modal names the next rung (`feat/local-rating`, Phase 3 §2); the
+start screen.

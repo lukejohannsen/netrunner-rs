@@ -1,4 +1,5 @@
 pub mod layout;
+pub mod start;
 
 use std::time::Duration;
 
@@ -37,9 +38,25 @@ const RUNNER_MAX_CLICKS: u32 = 4;
 /// opponent gets the full-strength bot.
 const DEFAULT_SIMULATIONS: usize = 64;
 
-pub async fn run(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run(config: &mut Config) -> Result<(), Box<dyn std::error::Error>> {
     match config.mode {
-        Mode::Local => run_local(config),
+        Mode::Local => {
+            // No side flag at all means the player has not chosen an
+            // opponent, which used to be an error ("both --corp and
+            // --runner are human"). Now it is the start screen, whose
+            // choices are folded back into `config` so `run_local` runs
+            // the flag path and no other. Any side flag skips it.
+            if config.corp == BotKind::Human && config.runner == BotKind::Human {
+                let registry = decks::sample_deck_registry();
+                let mut menu = start::StartMenu::open(config, &registry)?;
+                let mut terminal = ratatui::init();
+                let choice = start::run(&mut terminal, &mut menu);
+                ratatui::restore();
+                let Some(choice) = choice? else { return Ok(()) };
+                choice.apply(config);
+            }
+            run_local(config)
+        }
         Mode::Remote => run_remote(config).await,
     }
 }
