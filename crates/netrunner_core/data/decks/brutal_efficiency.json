@@ -3,6 +3,8 @@
   "name": "Brutal Efficiency",
   "side": "Corp",
   "category": "Sample",
+  "description": "Nine upgrades and cheap ICE around three-advancement agendas: score fast, and let Precision Design refill the hand.",
+  "style": "rush",
   "identity": "haas_bioroid_precision_design",
   "cards": [
     {

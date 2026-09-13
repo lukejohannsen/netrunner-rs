@@ -91,13 +91,20 @@ impl AgentSetup {
 }
 
 /// The agent a seat asks for, with a difficulty rung taking precedence
-/// over everything else.
+/// over the kind and the search budget.
 ///
 /// One function rather than a branch at each call site, because "a level
-/// overrides the kind, the personality *and* the simulation count" is a
-/// rule that has to hold identically in the TUI, the headless runner and
-/// the benchmark — a seat that honoured `--simulations` on top of a rung
-/// would not be the rung anyone calibrated.
+/// overrides the kind and the simulation count" is a rule that has to
+/// hold identically in the TUI, the headless runner and the benchmark — a
+/// seat that honoured `--simulations` on top of a rung would not be the
+/// rung anyone calibrated.
+///
+/// **The personality is the one setting a rung keeps.** Style and
+/// difficulty are two axes (`LevelSpec::with_personality` says why the
+/// order survives the cross), and until this passed it through,
+/// `--corp-level 4 --corp-personality rush` played `Balanced` without
+/// saying so — which also meant a deck's own style (`DeckFile::style`)
+/// could never reach a rung.
 pub fn make_seat_agent(
     level: Option<Level>,
     kind: BotKind,
@@ -107,7 +114,7 @@ pub fn make_seat_agent(
     model_path: &str,
 ) -> Result<Option<Box<dyn BotAgent>>, String> {
     match level {
-        Some(level) => Ok(Some(level.spec(side).agent(seed))),
+        Some(level) => Ok(Some(level.spec(side).with_personality(setup.personality).agent(seed))),
         None => make_agent_with_model(kind, side, seed, setup, model_path),
     }
 }

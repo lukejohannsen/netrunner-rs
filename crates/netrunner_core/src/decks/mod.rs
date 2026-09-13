@@ -130,6 +130,26 @@ pub struct DeckFile {
     /// lists survive being displayed raw.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub how_to_play: Option<String>,
+    /// How a bot should play this list: the name of a
+    /// `netrunner_bots::Personality` (`rush`, `glacier`, `trap`,
+    /// `aggressive`, `cautious`, ...) written for the deck's side. `None`
+    /// is balanced play.
+    ///
+    /// A string rather than the enum because this crate is the bottom of
+    /// the dependency graph and `Personality` lives in `netrunner_bots`,
+    /// which is where the vocabulary belongs — a style is a bias on the
+    /// bot's evaluator, not a property the rules know. `netrunner_bots`
+    /// carries the test that every embedded deck's style parses and is for
+    /// the right chair, so a typo here fails a build rather than seating a
+    /// balanced bot under a rush deck's name. A saved deck may omit it.
+    ///
+    /// On the deck rather than the identity because two of these lists
+    /// share an identity and play differently (*Discretion Advised* and
+    /// *Brutal Efficiency* are both *Precision Design*), and because a
+    /// player who builds a deck knows how it wants to be played better
+    /// than a table keyed on the identity could.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub style: Option<String>,
     pub identity: CardId,
     pub cards: Vec<DeckEntry>,
 }

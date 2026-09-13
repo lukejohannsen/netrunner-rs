@@ -3,6 +3,8 @@
   "name": "Flow and Ebb",
   "side": "Runner",
   "category": "Sample",
+  "description": "Seven run events and six jobs: Tāo runs early and moves the ICE out of the way.",
+  "style": "aggressive",
   "identity": "tao_salonga",
   "cards": [
     {

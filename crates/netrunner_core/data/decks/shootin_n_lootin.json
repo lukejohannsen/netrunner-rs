@@ -3,6 +3,8 @@
   "name": "Shootin' 'n' Lootin'",
   "side": "Runner",
   "category": "Sample",
+  "description": "Eighteen run events in twenty-five: MuslihaT runs every turn and profits on the way through.",
+  "style": "aggressive",
   "identity": "muslihat",
   "cards": [
     {

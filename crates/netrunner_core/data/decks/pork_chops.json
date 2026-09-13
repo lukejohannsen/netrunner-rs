@@ -3,6 +3,8 @@
   "name": "Pork Chops",
   "side": "Corp",
   "category": "Sample",
+  "description": "Pharos, Syailendra and Biawak in front of sixteen damage effects: BANGUN builds the fort and punishes the run into it.",
+  "style": "glacier",
   "identity": "bangun_when_disaster_strikes",
   "cards": [
     {

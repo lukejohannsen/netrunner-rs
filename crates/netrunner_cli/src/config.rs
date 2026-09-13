@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use netrunner_bots::{Level, Personality};
+use netrunner_core::decks::DeckFile;
 use clap::{Parser, Subcommand, ValueEnum};
 
 use netrunner_core::format::NsgFormat;
@@ -102,27 +103,33 @@ pub struct Config {
     /// first), `trap` (wants the Runner's grip thin). A bias on the
     /// evaluator `heuristic`, `mcts` and `puct` share; `random` and a
     /// network-backed `puct-onnx` ignore it.
-    #[arg(long, default_value_t = Personality::Balanced)]
-    pub corp_personality: Personality,
+    ///
+    /// **Unset means the deck's own style** (`DeckFile::style` — every
+    /// sample deck names one, and a saved deck may), so the bot playing
+    /// *Brick Stack* plays like a glacier without being told to. Pass
+    /// `balanced` explicitly to override a deck's style with none.
+    #[arg(long)]
+    pub corp_personality: Option<Personality>,
 
     /// The Runner bot's personality: `balanced`, or a Runner archetype —
     /// `aggressive` (runs are worth double, tags and subroutines cost
     /// less) or `cautious` (a full rig before a run). See
-    /// `--corp-personality`.
-    #[arg(long, default_value_t = Personality::Balanced)]
-    pub runner_personality: Personality,
+    /// `--corp-personality`; unset means the deck's own style.
+    #[arg(long)]
+    pub runner_personality: Option<Personality>,
 
     /// Seat the Corp as a rung of the difficulty ladder — `novice`,
     /// `apprentice`, `operator`, `veteran`, `elite`, or `1`-`5` — instead
-    /// of assembling one out of `--corp`, `--corp-personality` and
-    /// `--simulations`, all three of which it overrides.
+    /// of assembling one out of `--corp` and `--simulations`, both of
+    /// which it overrides. The personality is kept: a rung is a strength
+    /// and a style is a style, and the two cross (`--corp-level 4
+    /// --corp-personality rush`, or a rung playing its deck's own style).
     ///
-    /// A rung is a *calibrated* opponent and the three flags are not:
-    /// they let you build combinations nobody has measured, which is
-    /// right for a measurement and wrong for "give me something I can
-    /// nearly beat". The two chairs are separate ladders, because the
-    /// same rung is a different bot on each side — see
-    /// `netrunner_bots::difficulty`.
+    /// A rung is a *calibrated* opponent and the flags are not: they let
+    /// you build combinations nobody has measured, which is right for a
+    /// measurement and wrong for "give me something I can nearly beat".
+    /// The two chairs are separate ladders, because the same rung is a
+    /// different bot on each side — see `netrunner_bots::difficulty`.
     #[arg(long)]
     pub corp_level: Option<Level>,
 
@@ -588,16 +595,28 @@ pub enum SideArg {
 }
 
 impl Config {
-    /// The personality the bot in `side`'s chair plays with.
-    pub fn personality_for(&self, side: Side) -> Personality {
-        match side {
+    /// The personality the bot in `side`'s chair plays with: the flag if
+    /// one was given, else the style its deck names, else balanced.
+    ///
+    /// One resolver rather than a branch at each seat, so the TUI, the
+    /// starter game, the headless runner and (by the same rule, in its own
+    /// crate) the daemon cannot disagree about which wins. The flag wins
+    /// because it is the more specific request — a deck's style is a
+    /// default, and `--corp-personality balanced` has to be able to switch
+    /// it off for a measurement.
+    pub fn personality_for(&self, side: Side, deck: &DeckFile) -> Result<Personality, String> {
+        let flag = match side {
             Side::Corp => self.corp_personality,
             Side::Runner => self.runner_personality,
+        };
+        match flag {
+            Some(personality) => Ok(personality),
+            None => Personality::for_deck(deck),
         }
     }
 
     /// The ladder rung asked for on `side`, if any. `Some` overrides the
-    /// kind, personality and simulation count for that seat.
+    /// kind and simulation count for that seat; the personality crosses it.
     pub fn level_for(&self, side: Side) -> Option<Level> {
         match side {
             Side::Corp => self.corp_level,

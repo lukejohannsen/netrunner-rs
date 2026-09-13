@@ -108,10 +108,11 @@ pub struct ServeOptions {
     /// Bot opponent seated against every connecting client; `None` pairs
     /// humans instead.
     pub bot_runner: ServeBotKind,
-    /// The bot's `Personality`; part of its rating id when not balanced,
-    /// so a rush Corp and a glacier Corp are different opponents on the
-    /// human-vs-bot ladder.
-    pub bot_personality: Personality,
+    /// The bot's `Personality`, or `None` for the style its dealt deck
+    /// names (`DeckFile::style`, balanced when the deck names none). Part
+    /// of its rating id when not balanced, so a rush Corp and a glacier
+    /// Corp are different opponents on the human-vs-bot ladder.
+    pub bot_personality: Option<Personality>,
     /// Base seed every match's seed is derived from (`base + match
     /// index`, the headless driver's policy). `None` picks one at random.
     pub seed: Option<u64>,
@@ -152,7 +153,7 @@ impl Default for ServeOptions {
     fn default() -> Self {
         ServeOptions {
             bot_runner: ServeBotKind::Heuristic,
-            bot_personality: Personality::Balanced,
+            bot_personality: None,
             seed: None,
             reconnect_grace: DEFAULT_RECONNECT_GRACE,
             max_matches: None,
@@ -671,14 +672,26 @@ fn seat_vs_bot(
 
     let human_side = preferred_side.unwrap_or(Side::Corp);
     let human = SeatedPlayer { rating_id: player_name.clone(), name: player_name, token: Uuid::new_v4(), slot };
+    // The same deal `start_match` will make — `decks_for` is a function of
+    // the seed — so the bot's style can come off the deck it is about to
+    // play. A pinned deck is an embedded id (`pin_deck`), so `by_id`
+    // always resolves; the fallback is only for a future pool that is not.
+    let personality = shared.options.bot_personality.unwrap_or_else(|| {
+        let dealt = shared.decks_for(seed);
+        let bot_deck_id = match human_side {
+            Side::Corp => &dealt.runner_id,
+            Side::Runner => &dealt.corp_id,
+        };
+        decks::by_id(bot_deck_id).and_then(|deck| Personality::for_deck(&deck).ok()).unwrap_or_default()
+    });
     let bot = SeatedPlayer {
         name: kind.seat_name().to_string(),
-        rating_id: match shared.options.bot_personality {
+        rating_id: match personality {
             Personality::Balanced => kind.rating_id().to_string(),
             personality => format!("{}:{personality}", kind.rating_id()),
         },
         token: Uuid::new_v4(),
-        slot: PlayerSlot::Bot(make_serve_agent(kind, human_side.other(), seed.wrapping_add(1), shared.options.bot_personality)),
+        slot: PlayerSlot::Bot(make_serve_agent(kind, human_side.other(), seed.wrapping_add(1), personality)),
     };
     let (corp, runner) = match human_side {
         Side::Corp => (human, bot),

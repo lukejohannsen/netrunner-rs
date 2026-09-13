@@ -32,6 +32,7 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
+use netrunner_core::decks::DeckFile;
 use netrunner_core::rules::Side;
 
 use crate::eval::Weights;
@@ -80,6 +81,28 @@ impl Personality {
             Personality::Balanced => None,
             Personality::Rush | Personality::Glacier | Personality::Trap => Some(Side::Corp),
             Personality::Aggressive | Personality::Cautious => Some(Side::Runner),
+        }
+    }
+
+    /// The style a deck asks to be played in — `DeckFile::style` parsed
+    /// against this vocabulary, `Balanced` when the deck names none.
+    ///
+    /// `Err` for a name that is not a profile, and for a profile written
+    /// for the other chair: a Runner archetype under a Corp deck "touches
+    /// only the shared terms, which is harmless and useless" (module
+    /// docs), so it would seat a balanced bot under a misleading name.
+    /// Every embedded deck is checked by
+    /// `every_embedded_deck_style_is_a_personality_for_its_side`; this is
+    /// the runtime check for a deck someone saved.
+    pub fn for_deck(deck: &DeckFile) -> Result<Personality, String> {
+        let Some(style) = deck.style.as_deref() else { return Ok(Personality::Balanced) };
+        let personality: Personality = style.parse().map_err(|error| format!("deck {:?}: {error}", deck.id))?;
+        match personality.side() {
+            Some(side) if side != deck.side => Err(format!(
+                "deck {:?} is a {:?} deck but its style {style:?} is a {side:?} archetype",
+                deck.id, deck.side
+            )),
+            _ => Ok(personality),
         }
     }
 
@@ -264,6 +287,37 @@ mod tests {
         let cautious = Personality::Cautious.weights();
         assert!(cautious.active_run_weight < base.active_run_weight && cautious.pending_subroutine_weight > base.pending_subroutine_weight);
         assert!(cautious.breaker_coverage_weight > base.breaker_coverage_weight);
+    }
+
+    /// The gate on `DeckFile::style`: the vocabulary lives here, the data
+    /// lives in `netrunner_core`, and this is the one place both are in
+    /// scope. A typo in a deck file fails the build rather than seating a
+    /// balanced bot under a rush deck's name.
+    #[test]
+    fn every_embedded_deck_style_is_a_personality_for_its_side() {
+        let mut styled = 0;
+        for deck in netrunner_core::decks::embedded_decks() {
+            let personality = Personality::for_deck(&deck).unwrap_or_else(|error| panic!("{error}"));
+            if deck.style.is_some() {
+                styled += 1;
+                assert_ne!(personality, Personality::Balanced, "{}: a deck that names a style should not name balanced", deck.id);
+            }
+        }
+        assert!(styled >= 12, "the sample decks carry styles; only {styled} do");
+    }
+
+    #[test]
+    fn a_deck_style_is_parsed_and_checked_against_the_chair() {
+        let mut deck = netrunner_core::decks::by_id("stolen_goods").expect("embedded");
+        deck.style = None;
+        assert_eq!(Personality::for_deck(&deck).unwrap(), Personality::Balanced);
+        deck.style = Some("Aggressive".to_string());
+        assert_eq!(Personality::for_deck(&deck).unwrap(), Personality::Aggressive);
+        deck.style = Some("rush".to_string());
+        let error = Personality::for_deck(&deck).unwrap_err();
+        assert!(error.contains("Corp archetype"), "{error}");
+        deck.style = Some("berserk".to_string());
+        assert!(Personality::for_deck(&deck).unwrap_err().contains("unknown personality"));
     }
 
     #[test]

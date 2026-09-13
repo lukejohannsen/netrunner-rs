@@ -95,17 +95,17 @@ fn run_local(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let (corp_deck, runner_deck) =
         decks::decks_for_match(&decks_dir, &config.corp_deck, &config.runner_deck, &registry, config.format.into())?;
     let seed = config.seed.unwrap_or_else(rand::random);
-    let (state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, seed)?;
+    let (state, _events) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed)?;
 
     let bot_side = human_side.other();
-    let bot_kind = if human_side == Side::Corp { config.runner } else { config.corp };
+    let (bot_kind, bot_deck) = if human_side == Side::Corp { (config.runner, &runner_deck) } else { (config.corp, &corp_deck) };
     let (bot_seat, mut indexed_bot) = build_bot_seat(
         config.level_for(bot_side),
         bot_kind,
         bot_side,
         seed.wrapping_add(1),
         &config.model,
-        config.personality_for(bot_side),
+        config.personality_for(bot_side, bot_deck)?,
     )?;
 
     let (corp_seat, runner_seat) = match human_side {
@@ -207,11 +207,12 @@ pub fn run_starter_game(human_side: Side, corp: &DeckFile, runner: &DeckFile, co
     let seed = config.seed.unwrap_or_else(rand::random);
     let rules = corp.category.match_rules();
     let (state, _events) = GameState::setup_with(&corp.to_deck(), &runner.to_deck(), &registry, seed, rules, DeckOrder::Shuffled)?;
+    let bot_deck = if human_side == Side::Corp { runner } else { corp };
     let bot = bots::make_agent(
         BotKind::Heuristic,
         human_side.other(),
         seed.wrapping_add(1),
-        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(config.personality_for(human_side.other())),
+        bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(config.personality_for(human_side.other(), bot_deck)?),
     )
         .expect("the heuristic always has a BotAgent form");
     let (corp_seat, runner_seat) = match human_side {

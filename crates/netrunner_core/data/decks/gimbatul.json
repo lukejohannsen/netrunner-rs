@@ -3,6 +3,7 @@
   "name": "Gimbatul",
   "side": "Corp",
   "category": "Sample",
+  "description": "Seventeen tag effects over N-Pot, Funhouse and Doomscroll, with damage behind the tags: a balanced Synapse control list.",
   "identity": "synapse_global_faster_than_thought",
   "cards": [
     {

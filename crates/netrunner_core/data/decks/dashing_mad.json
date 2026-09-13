@@ -3,6 +3,8 @@
   "name": "Dashing Mad",
   "side": "Runner",
   "category": "Sample",
+  "description": "Ten run events in eighteen: Ryō runs, and runs again out of the heap.",
+  "style": "aggressive",
   "identity": "ryo_phoenix_ono",
   "cards": [
     {
