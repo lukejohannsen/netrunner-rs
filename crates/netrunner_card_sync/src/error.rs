@@ -27,4 +27,10 @@ pub enum SyncError {
 
     #[error("failed to load embedded default core sets: {0}")]
     EmbeddedSets(#[from] netrunner_core::cards::EmbeddedSetsError),
+
+    #[error("NetrunnerDB answered {status} for the image of card {code}")]
+    ImageDownload { code: u32, status: u16 },
+
+    #[error("failed to write card image {path:?}: {source}")]
+    ImageWrite { path: PathBuf, source: std::io::Error },
 }

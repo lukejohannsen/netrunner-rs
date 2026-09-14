@@ -39,7 +39,7 @@ use netrunner_session::{GameEndReason, Seat, Session, SessionStep};
 
 use crate::bots;
 use crate::config::{BenchPairing, BotKind, BotSpec, Config};
-use crate::decks;
+use netrunner_client::decks;
 
 pub struct BenchArgs {
     pub bots: Vec<BotSpec>,

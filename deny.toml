@@ -66,6 +66,14 @@ allow = [
     "MPL-2.0",
     # webpki-roots, under reqwest's rustls stack, is CDLA-Permissive-2.0.
     "CDLA-Permissive-2.0",
+    # The three Bevy's tree adds, each forced by one crate with no
+    # alternative: arrayref (under tiny-skia, sctk-adwaita, winit) is
+    # BSD-2-Clause-only; encase and its two derive crates (under
+    # bevy_color and everything that renders) are MIT-0-only; hexf-parse
+    # (under naga, the shader compiler) is CC0-1.0-only.
+    "BSD-2-Clause",
+    "MIT-0",
+    "CC0-1.0",
     # This workspace's own ten crates.
     "GPL-3.0-or-later",
 ]

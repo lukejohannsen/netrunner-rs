@@ -49,7 +49,7 @@ pub fn run(action: LearnAction, config: &Config) -> Result<(), Box<dyn std::erro
 
 /// Plays `pick` on the caller's terminal.
 pub fn play(terminal: &mut ratatui::DefaultTerminal, pick: &LearnPick, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
-    let registry = crate::decks::sample_deck_registry();
+    let registry = netrunner_client::decks::sample_deck_registry();
     match pick {
         LearnPick::Lesson(id) => {
             let lesson = tutorial::by_id(id).ok_or_else(|| format!("no lesson with id {id:?} — see `learn list`"))?;

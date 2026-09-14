@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn effects_read_as_sentences() {
-        let registry = crate::decks::sample_deck_registry();
+        let registry = netrunner_client::decks::sample_deck_registry();
         let d = |effect: &Effect| describe_effect(effect, &registry);
         assert_eq!(d(&Effect::GiveTags(1)), "give the Runner 1 tag");
         assert_eq!(d(&Effect::Sequence(vec![])), "do nothing");
@@ -368,7 +368,7 @@ mod tests {
     /// option on a deck people play falls back to its debug form.
     #[test]
     fn every_sample_deck_choice_has_words() {
-        let registry = crate::decks::sample_deck_registry();
+        let registry = netrunner_client::decks::sample_deck_registry();
         let mut checked = 0;
         for deck in netrunner_core::decks::embedded_decks() {
             for entry in &deck.cards {

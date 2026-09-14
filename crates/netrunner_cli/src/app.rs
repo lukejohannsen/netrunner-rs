@@ -1146,7 +1146,7 @@ mod tests {
     /// numbers, the text with its line breaks and symbols, the flavour.
     #[test]
     fn a_card_modal_is_the_printed_card() {
-        let registry = crate::decks::sample_deck_registry();
+        let registry = netrunner_client::decks::sample_deck_registry();
         let modal = card_modal(&CardId("hedge_fund".to_string()), &registry);
         assert_eq!(modal.title, "Hedge Fund");
         assert!(modal.body.contains("Operation"), "{}", modal.body);
@@ -1513,7 +1513,7 @@ mod tests {
     use netrunner_core::rules::GameState;
     use netrunner_server::{MatchSession, PlayerSlot};
 
-    use crate::decks;
+    use netrunner_client::decks;
 
     fn setup() -> (GameState, CardRegistry) {
         let registry = decks::sample_deck_registry();
@@ -1612,7 +1612,7 @@ mod connection_tests {
     use netrunner_core::view::build_client_view;
 
     fn app_with_channels() -> (App, mpsc::UnboundedSender<ServerMessage>, mpsc::UnboundedReceiver<ClientMessage>) {
-        let registry = crate::decks::sample_deck_registry();
+        let registry = netrunner_client::decks::sample_deck_registry();
         let (server_tx, rx) = mpsc::unbounded_channel();
         let (tx, client_rx) = mpsc::unbounded_channel();
         (App::new(registry, Side::Corp, tx, rx), server_tx, client_rx)

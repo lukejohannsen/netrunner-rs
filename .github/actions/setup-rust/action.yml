@@ -14,6 +14,12 @@ inputs:
     description: Comma-separated extra rustup components.
     required: false
     default: clippy
+  cache-key:
+    description: >
+      Extra cache key, for a job whose dependency tree should not share a
+      cache with the engine jobs (the desktop job's Bevy build).
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -71,7 +77,8 @@ runs:
         components: ${{ inputs.components }}
 
     # Keyed on the toolchain so the beta job never shares artifacts with the
-    # stable one.
+    # stable one, and on `cache-key` so the desktop job's Bevy tree never
+    # evicts the engine's.
     - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       with:
-        key: ${{ inputs.toolchain }}
+        key: ${{ inputs.toolchain }}${{ inputs.cache-key && '-' || '' }}${{ inputs.cache-key }}

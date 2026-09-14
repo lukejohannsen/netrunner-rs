@@ -43,7 +43,7 @@ use netrunner_core::rules::Side;
 use netrunner_server::serve::{ServeBotKind, ServeOptions, Server};
 use netrunner_server::{ClientMessage, MatchSummary};
 
-use crate::deck_store;
+use netrunner_client::deck_store;
 use crate::remote::{self, ConnectEvent, Connecting, Joined};
 
 /// The port a host offers by default, and the one a joined address gets
@@ -636,7 +636,7 @@ mod tests {
     fn screen(name: &str) -> (OnlineScreen, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("netrunner_online_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let screen = OnlineScreen::open(&dir, &crate::decks::sample_deck_registry(), NsgFormat::Startup, name.to_string(), "ws://127.0.0.1:8080".into())
+        let screen = OnlineScreen::open(&dir, &netrunner_client::decks::sample_deck_registry(), NsgFormat::Startup, name.to_string(), "ws://127.0.0.1:8080".into())
             .unwrap();
         (screen, dir)
     }

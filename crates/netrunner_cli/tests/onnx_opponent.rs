@@ -14,6 +14,7 @@
 #![cfg(feature = "onnx")]
 
 use netrunner_bots::{onnx_fixture, Personality};
+use netrunner_client::decks;
 use netrunner_core::rules::{GamePhase, GameState, Side};
 use netrunner_single_player::SinglePlayerSession;
 
@@ -30,13 +31,6 @@ mod bots;
 // `BotKind`; the rest would be dead code here and nowhere else.
 #[allow(dead_code)]
 mod config;
-// Included because `decks` refers to it as `crate::deck_store`, and with no
-// `lib.rs` in this crate the test binary *is* the crate root — so every
-// module a path-included module reaches for has to be declared here too.
-#[path = "../src/deck_store.rs"]
-mod deck_store;
-#[path = "../src/decks.rs"]
-mod decks;
 
 use config::BotKind;
 

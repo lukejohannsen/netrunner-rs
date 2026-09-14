@@ -80,8 +80,45 @@ jobs:
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-rust
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --exclude netrunner_desktop --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --exclude netrunner_desktop --locked
+
+  # The graphical client, on its own. `--exclude netrunner_desktop` above
+  # and this job exist for one reason: Bevy is several hundred crates and
+  # minutes of cold compile, and folding it into `test` would slow the
+  # engine's signal on every push and evict the engine's build cache with
+  # Bevy's. The two share nothing but `netrunner_client`, which is small
+  # and engine-shaped and stays in `test` so the terminal client's lift is
+  # checked on all three platforms at engine speed.
+  #
+  # Linux needs the ALSA and udev headers at build time (bevy_audio and
+  # bevy_gilrs link them through pkg-config); Windows and macOS need
+  # nothing. The tests run without a window or a GPU — `MinimalPlugins`
+  # and the pure `models/` — so no virtual display is set up.
+  desktop:
+    name: desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Bevy's Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - uses: $/.github/actions/setup-rust
+        with:
+          cache-key: desktop
+      - run: cargo clippy -p netrunner_desktop -p netrunner_client --all-targets --locked -- -D warnings
+      - run: cargo test -p netrunner_desktop -p netrunner_client --locked
+      - run: cargo check -p netrunner_desktop --features onnx --locked
+      - run: cargo doc -p netrunner_desktop --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings -A rustdoc::broken_intra_doc_links
 
   # Non-blocking, on purpose: a new lint landing in beta is something to know
   # about six weeks early, not a reason to stop a PR.
@@ -96,8 +133,8 @@ jobs:
       - uses: $/.github/actions/setup-rust
         with:
           toolchain: beta
-      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - run: cargo test --workspace --locked
+      - run: cargo clippy --workspace --exclude netrunner_desktop --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --exclude netrunner_desktop --locked
 
   # Clippy does not check the doc comments themselves, and this codebase's
   # comments carry its design decisions, so they are worth a gate of their
@@ -124,7 +161,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: $/.github/actions/setup-rust
-      - run: cargo doc --workspace --no-deps --locked
+      # The desktop crate's docs are built in its own job, where Bevy is
+      # already compiled.
+      - run: cargo doc --workspace --exclude netrunner_desktop --no-deps --locked
 
   # Every optional feature, one crate at a time. Left off the main matrix
   # because `ort`'s `download-binaries` fetches an ONNX Runtime shared
@@ -286,7 +325,7 @@ jobs:
   # a skipped or cancelled dependency pass for a success.
   ci:
     if: always()
-    needs: [test, docs, features, machete, deny, workflows, secrets]
+    needs: [test, desktop, docs, features, machete, deny, workflows, secrets]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
