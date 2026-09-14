@@ -28,7 +28,7 @@ use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session,
 use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
-use crate::decks;
+use netrunner_client::decks;
 use crate::ratings::{self, SeatRating};
 use crate::remote;
 use crate::replay::Replay;
@@ -62,8 +62,8 @@ pub async fn run(config: &mut Config) -> Result<(), Box<dyn std::error::Error>> 
 async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let brought = match &config.deck {
         Some(name) => {
-            let dir = crate::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
-            Some(crate::deck_store::load(&dir, name)?.deck)
+            let dir = netrunner_client::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
+            Some(netrunner_client::deck_store::load(&dir, name)?.deck)
         }
         None => None,
     };
@@ -154,7 +154,7 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
     };
 
     let registry = decks::sample_deck_registry();
-    let decks_dir = crate::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
+    let decks_dir = netrunner_client::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
     let (corp_deck, runner_deck) =
         decks::decks_for_match(&decks_dir, &config.corp_deck, &config.runner_deck, &registry, config.format.into())?;
     let seed = config.seed.unwrap_or_else(rand::random);
@@ -167,7 +167,7 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
         build_bot_seat(config.level_for(bot_side), bot_kind, bot_side, seed.wrapping_add(1), &config.model, personality)?;
     // Opened before the game so a bad ratings file fails here, not after
     // an hour of play.
-    let rating = SeatRating::open(config, human_side, config.level_for(bot_side), bot_kind, personality, seed, &corp_deck.id, &runner_deck.id)?;
+    let rating = ratings::seat_rating(config, human_side, config.level_for(bot_side), bot_kind, personality, seed, &corp_deck.id, &runner_deck.id)?;
 
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, bot_seat),
@@ -280,7 +280,7 @@ pub fn play_starter_game(
     // Rated like any other local game: the starter game is a person's
     // first real opponent, and its result is the first point on their
     // ladder.
-    let rating = SeatRating::open(config, human_side, None, BotKind::Heuristic, personality, seed, &corp.id, &runner.id)?;
+    let rating = ratings::seat_rating(config, human_side, None, BotKind::Heuristic, personality, seed, &corp.id, &runner.id)?;
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, Seat::Agent(bot)),
         Side::Runner => (Seat::Agent(bot), Seat::External),

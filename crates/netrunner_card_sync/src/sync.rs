@@ -8,8 +8,20 @@ use netrunner_core::cards::{convert_dtos_lenient, load_embedded_netrunnerdb_sets
 use crate::cache_path::resolve_cache_file;
 use crate::error::SyncError;
 
-const NETRUNNERDB_CARDS_URL: &str = "https://netrunnerdb.com/api/2.0/public/cards";
+pub(crate) const NETRUNNERDB_CARDS_URL: &str = "https://netrunnerdb.com/api/2.0/public/cards";
 const NETRUNNERDB_PACKS_URL: &str = "https://netrunnerdb.com/api/2.0/public/packs";
+
+/// One HTTP client shape for everything this crate fetches. NetrunnerDB
+/// asks API consumers to identify themselves, and a request with no
+/// timeout can hang a `cards sync` or an image download forever on a
+/// dropped connection; the first version of this crate had neither.
+pub(crate) fn http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .user_agent(concat!("netrunner-rs/", env!("CARGO_PKG_VERSION"), " (+https://github.com/lukejohannsen/netrunner-rs)"))
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .expect("a client with a user agent and a timeout builds")
+}
 
 /// NetrunnerDB wraps every public API list response in a
 /// `{"success": bool, "data": [...]}` envelope rather than returning a bare
@@ -17,8 +29,13 @@ const NETRUNNERDB_PACKS_URL: &str = "https://netrunnerdb.com/api/2.0/public/pack
 /// directly (see `netrunner_core::cards::netrunnerdb`), so this envelope is
 /// only needed when talking to the live API.
 #[derive(Debug, Deserialize)]
-struct NetrunnerDbEnvelope<T> {
-    data: Vec<T>,
+pub(crate) struct NetrunnerDbEnvelope<T> {
+    pub(crate) data: Vec<T>,
+    /// Where NetrunnerDB serves card images: a URL with `{code}` in it.
+    /// Absent from the packs envelope and from any fixture, so optional;
+    /// the image cache reads it off a cards response and keeps it.
+    #[serde(default, rename = "imageUrlTemplate")]
+    pub(crate) image_url_template: Option<String>,
 }
 
 /// Which sets a sync operation should apply to. `Sets` holds NetrunnerDB
@@ -45,17 +62,17 @@ pub struct NetrunnerDbSync {
 }
 
 impl NetrunnerDbSync {
-    /// Resolves the OS cache path via `resolve_cache_file()` and builds a
-    /// default `reqwest::Client`.
+    /// Resolves the OS cache path via `resolve_cache_file()` and builds
+    /// the crate's `reqwest::Client`.
     pub fn new() -> Result<Self, SyncError> {
-        Ok(Self { http_client: reqwest::Client::new(), cache_file: resolve_cache_file()? })
+        Ok(Self { http_client: http_client(), cache_file: resolve_cache_file()? })
     }
 
     /// Same as `new()` but with an explicit cache file path — the seam
     /// tests use to point at a temp directory instead of the real OS cache
     /// dir.
     pub fn with_cache_file(cache_file: PathBuf) -> Self {
-        Self { http_client: reqwest::Client::new(), cache_file }
+        Self { http_client: http_client(), cache_file }
     }
 
     /// Builds the in-memory registry WITHOUT any network call: embedded
@@ -146,7 +163,7 @@ impl NetrunnerDbSync {
     }
 }
 
-fn temp_file_path(target: &Path) -> PathBuf {
+pub(crate) fn temp_file_path(target: &Path) -> PathBuf {
     let file_name = target.file_name().and_then(|n| n.to_str()).unwrap_or("cards.json");
     let temp_name = format!("{file_name}.tmp.{}", std::process::id());
     target.with_file_name(temp_name)

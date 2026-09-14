@@ -42,7 +42,7 @@ use super::builder::{DeckKey, DeckScreen};
 use super::online::{OnlineScreen, OnlineStep};
 use super::start::{self, StartChoice, StartKey, StartMenu};
 use crate::config::{Config, FormatArg};
-use crate::decks;
+use netrunner_client::decks;
 use crate::learn::{self, LearnPick};
 use crate::ratings;
 use crate::settings::{self, Settings};
@@ -220,13 +220,13 @@ impl SettingsForm {
     }
 
     fn format(&self) -> FormatArg {
-        self.settings.format.unwrap_or(FormatArg::Startup)
+        self.settings.format.map_or(FormatArg::Startup, FormatArg::from)
     }
 
     fn cycle_format(&mut self, delta: i32) {
         let all = FormatArg::value_variants();
         let index = all.iter().position(|format| *format == self.format()).unwrap_or(0) as i32;
-        self.settings.format = Some(all[(index + delta).rem_euclid(all.len() as i32) as usize]);
+        self.settings.format = Some(all[(index + delta).rem_euclid(all.len() as i32) as usize].into());
     }
 
     /// While the name is open every printable key is text — `q` included,
@@ -347,7 +347,7 @@ impl Menu {
         match self.entry() {
             Entry::PlayComputer => self.open_new_game(),
             Entry::Online => {
-                let opened = crate::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref()).and_then(|dir| {
+                let opened = netrunner_client::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref()).and_then(|dir| {
                     OnlineScreen::open(&dir, &self.registry, self.base.format.into(), ratings::player_name(&self.base), self.base.server.clone())
                 });
                 match opened {
@@ -359,7 +359,7 @@ impl Menu {
             // Opened on the format as it stands, so a format changed in
             // Settings changes the pool and the verdicts at once.
             Entry::Decks => {
-                let opened = crate::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref())
+                let opened = netrunner_client::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref())
                     .and_then(|dir| DeckScreen::open(dir, self.registry.clone(), self.base.format.into()));
                 match opened {
                     Ok(screen) => self.screen = Screen::Decks(Box::new(screen)),
@@ -383,7 +383,7 @@ impl Menu {
     /// more specific request of the two.
     fn settings_changed(&mut self, settings: Settings) {
         self.base.player = settings.player.clone();
-        self.base.format = settings.format.unwrap_or(FormatArg::Startup);
+        self.base.format = settings.format.map_or(FormatArg::Startup, FormatArg::from);
         self.notice = match &self.settings_path {
             Some(path) => settings.save(path).err().map(|error| format!("Not saved: {error}")),
             None => Some("No data directory, so this lasts until you quit".to_string()),
@@ -594,7 +594,7 @@ impl Menu {
             Line::from("Startup is System Gateway and Elevation, the pool this game ships; the Core Set needs Eternal."),
             Line::from(""),
             Line::from(format!("Settings     {}", self.settings_path.as_ref().map_or_else(|| "not saved".to_string(), |p| p.display().to_string()))),
-            Line::from(format!("Saved decks  {}", path(crate::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref())))),
+            Line::from(format!("Saved decks  {}", path(netrunner_client::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref())))),
             Line::from(format!("Ratings      {}", path(ratings::resolve_ratings_file(self.base.ratings_file.as_deref())))),
         ];
         frame.render_widget(Paragraph::new(about_lines).wrap(Wrap { trim: false }), about);
@@ -691,6 +691,7 @@ mod tests {
     use super::*;
     use clap::Parser;
     use netrunner_bots::Personality;
+    use netrunner_core::format::NsgFormat;
 
     use crate::config::BotKind;
 
@@ -841,7 +842,7 @@ mod tests {
         assert_eq!(menu.base.format, FormatArg::Standard);
         press(&mut menu, &[KeyCode::Left, KeyCode::Left]);
         assert_eq!(menu.base.format, FormatArg::Snapshot, "wraps backwards");
-        assert_eq!(Settings::load(&dir.join("settings.json")).unwrap().format, Some(FormatArg::Snapshot));
+        assert_eq!(Settings::load(&dir.join("settings.json")).unwrap().format, Some(NsgFormat::Snapshot));
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -1,0 +1,29 @@
+[package]
+name = "netrunner_desktop"
+version = "0.1.0"
+edition = "2024"
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+netrunner_core = { path = "../netrunner_core" }
+netrunner_client = { path = "../netrunner_client" }
+netrunner_card_sync = { path = "../netrunner_card_sync" }
+# A feature subset, not the defaults: `ui` is the flexbox layer every
+# screen and the board are built from (it brings the windowing, rendering,
+# picking and text it needs), `audio` the sound bank, `png`/`jpeg` the card
+# images. Nothing 3D — no PBR, glTF or lighting — so the build carries only
+# what a 2D card game draws. `default_font` rides in with `ui`; the themed
+# font under `assets/fonts` sits on top of it.
+bevy = { version = "0.19", default-features = false, features = ["ui", "audio", "png", "jpeg"] }
+# The runtime `netrunner_card_sync` and the remote client run on. Bevy has
+# task pools of its own, but the network code is tokio's, and a runtime
+# living in a resource on its own thread is the one place the two meet.
+tokio = { workspace = true }
+
+[features]
+# Enables the policy-network opponent, through the client crate.
+onnx = ["netrunner_client/onnx"]
+# Development only: links Bevy as a shared library so an edit rebuilds in
+# seconds rather than minutes. Never for a release build.
+dynamic_linking = ["bevy/dynamic_linking"]

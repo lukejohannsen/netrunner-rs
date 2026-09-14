@@ -31,7 +31,7 @@ use netrunner_single_player::SinglePlayerSession;
 
 use crate::bots;
 use crate::config::{BotKind, Config};
-use crate::decks;
+use netrunner_client::decks;
 
 /// A `Human` agent can't drive a headless game forward on its own, so it
 /// falls back to `Random` here — see `config::Config::corp`'s doc comment.
@@ -53,7 +53,7 @@ fn deck_pair(config: &Config, registry: &CardRegistry, index: u32) -> Result<(St
         let (corp, runner) = &matchups[index as usize % matchups.len()];
         return Ok((format!("{}_vs_{}", corp.id, runner.id), corp.clone(), runner.clone()));
     }
-    let decks_dir = crate::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
+    let decks_dir = netrunner_client::deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;
     let (corp, runner) =
         decks::decks_for_match(&decks_dir, &config.corp_deck, &config.runner_deck, registry, config.format.into())?;
     Ok((format!("{}_vs_{}", config.corp_deck, config.runner_deck), corp, runner))

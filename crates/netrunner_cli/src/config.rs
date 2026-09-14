@@ -256,6 +256,20 @@ impl From<FormatArg> for NsgFormat {
     }
 }
 
+/// The settings file stores an `NsgFormat` (it is shared with the desktop
+/// client, which has no `FormatArg`); applying it to the command line
+/// needs the way back.
+impl From<NsgFormat> for FormatArg {
+    fn from(format: NsgFormat) -> Self {
+        match format {
+            NsgFormat::Startup => FormatArg::Startup,
+            NsgFormat::Standard => FormatArg::Standard,
+            NsgFormat::Eternal => FormatArg::Eternal,
+            NsgFormat::Snapshot => FormatArg::Snapshot,
+        }
+    }
+}
+
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BotKind {
     Human,
@@ -285,6 +299,23 @@ pub enum BotKind {
     /// fill a `netrunner_session::Seat::Agent`. See `bots::make_agent`,
     /// which returns `None` for this kind.
     Onnx,
+}
+
+/// The rating id a seat is recorded under is decided by
+/// `netrunner_client::ratings::opponent_id`, over its own flag-free kind.
+impl From<BotKind> for netrunner_client::ratings::BotKind {
+    fn from(kind: BotKind) -> Self {
+        use netrunner_client::ratings::BotKind as Rated;
+        match kind {
+            BotKind::Human => Rated::Human,
+            BotKind::Random => Rated::Random,
+            BotKind::Heuristic => Rated::Heuristic,
+            BotKind::Mcts => Rated::Mcts,
+            BotKind::Puct => Rated::Puct,
+            BotKind::PuctOnnx => Rated::PuctOnnx,
+            BotKind::Onnx => Rated::Onnx,
+        }
+    }
 }
 
 /// A bot for the benchmark: a kind and the personality it plays with,

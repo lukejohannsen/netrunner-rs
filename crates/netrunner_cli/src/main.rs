@@ -4,8 +4,6 @@ mod bots;
 mod cards;
 mod config;
 mod deck;
-mod deck_store;
-mod decks;
 mod diag;
 mod headless;
 mod learn;
@@ -17,6 +15,7 @@ mod settings;
 mod tui;
 
 use clap::{CommandFactory, FromArgMatches};
+use netrunner_client::decks;
 
 use config::{Command, Config, DiagAction};
 
@@ -29,7 +28,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // than fatal: it holds defaults, and every flag still works without it.
     if settings::applies_to(&config) {
         match settings::resolve_settings_file().and_then(|path| settings::Settings::load(&path)) {
-            Ok(saved) => saved.apply(&mut config, |id| settings::was_flagged(&matches, id)),
+            Ok(saved) => settings::apply(&saved, &mut config, |id| settings::was_flagged(&matches, id)),
             Err(error) => eprintln!("warning: settings ignored: {error}"),
         }
     }

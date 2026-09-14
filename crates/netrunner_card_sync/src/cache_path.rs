@@ -19,6 +19,14 @@ pub fn resolve_cache_file() -> Result<PathBuf, SyncError> {
     resolve_cache_dir().map(|dir| dir.join("cards.json"))
 }
 
+/// Where downloaded card images live: `resolve_cache_dir()/images`, one
+/// `<code>.jpg` per NetrunnerDB printing. Under the *cache* directory,
+/// not the data one, because every file in it can be fetched again and
+/// none of it is the player's own.
+pub fn resolve_images_dir() -> Result<PathBuf, SyncError> {
+    resolve_cache_dir().map(|dir| dir.join("images"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -27,6 +35,12 @@ mod tests {
     fn cache_dir_ends_with_netrunner() {
         let dir = resolve_cache_dir().expect("cache dir should resolve in test environment");
         assert_eq!(dir.file_name().and_then(|n| n.to_str()), Some("netrunner"));
+    }
+
+    #[test]
+    fn images_dir_is_under_the_cache_dir() {
+        let dir = resolve_images_dir().expect("cache dir should resolve in test environment");
+        assert!(dir.ends_with("netrunner/images"), "{dir:?}");
     }
 
     #[test]

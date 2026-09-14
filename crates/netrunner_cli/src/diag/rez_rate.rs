@@ -52,7 +52,7 @@ use netrunner_session::{Seat, Session, SessionStep};
 
 use crate::bots;
 use crate::config::{BotSpec, Config};
-use crate::decks;
+use netrunner_client::decks;
 
 pub struct RezRateArgs {
     pub corp: BotSpec,

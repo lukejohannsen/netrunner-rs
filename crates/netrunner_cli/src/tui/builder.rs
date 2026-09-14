@@ -44,11 +44,12 @@ use netrunner_core::deck::validator::MAX_COPIES_PER_CARD;
 use netrunner_core::deck::{influence_per_copy, DeckTally};
 use netrunner_core::decks::{DeckCategory, DeckEntry, DeckFile};
 use netrunner_core::dsl::{CardDefinition, CardId, CardType};
-use netrunner_core::format::{FormatRules, NsgFormat};
+use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 use crate::app::{card_modal, Modal};
-use crate::deck_store::{self, Origin, StoredDeck};
+use netrunner_client::cards::legal_in;
+use netrunner_client::deck_store::{self, Origin, StoredDeck};
 
 /// What one key did, for the menu.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -874,15 +875,6 @@ fn sorted_entries(deck: &DeckFile, registry: &CardRegistry) -> Vec<(CardId, u32)
     rows
 }
 
-/// Whether the format's tables allow `card`: its pack, and not banned. The
-/// validator makes the same two checks and is still what decides; this
-/// only keeps cards it would refuse out of the pool.
-fn legal_in(card: &CardDefinition, rules: &FormatRules) -> bool {
-    let Some(code) = card.numeric_id else { return false };
-    !rules.banned.contains(&code)
-        && rules.allowed_packs.as_ref().is_none_or(|packs| packs.contains(card.set_code.as_deref().unwrap_or("")))
-}
-
 /// Ice of every subtype is one group: a builder filters by "ICE", not by
 /// "Barrier".
 fn type_group(card_type: &CardType) -> &'static str {
@@ -984,7 +976,7 @@ mod tests {
     }
 
     fn screen(dir: &Scratch, format: NsgFormat) -> DeckScreen {
-        DeckScreen::open(dir.0.clone(), crate::decks::sample_deck_registry(), format).unwrap()
+        DeckScreen::open(dir.0.clone(), netrunner_client::decks::sample_deck_registry(), format).unwrap()
     }
 
     fn press(screen: &mut DeckScreen, keys: &[KeyCode]) {
@@ -1099,7 +1091,7 @@ mod tests {
     #[test]
     fn the_pool_is_the_decks_side_in_the_format_and_filters_narrow_it() {
         let dir = Scratch::new("pool");
-        let registry = crate::decks::sample_deck_registry();
+        let registry = netrunner_client::decks::sample_deck_registry();
         let deck = netrunner_core::decks::by_id("brick_stack").unwrap();
         let startup = Editor::new(deck.clone(), &registry, NsgFormat::Startup);
         let eternal = Editor::new(deck.clone(), &registry, NsgFormat::Eternal);

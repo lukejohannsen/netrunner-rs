@@ -10,6 +10,8 @@ members = [
     "crates/netrunner_session",
     "crates/netrunner_single_player",
     "crates/netrunner_rating",
+    "crates/netrunner_client",
+    "crates/netrunner_desktop",
 ]
 resolver = "3"
 

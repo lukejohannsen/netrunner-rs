@@ -13,7 +13,7 @@ use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 use crate::config::{Config, DeckAction};
-use crate::deck_store::{self, Origin, StoredDeck};
+use netrunner_client::deck_store::{self, Origin, StoredDeck};
 
 pub fn run(action: DeckAction, config: &Config) -> Result<(), Box<dyn std::error::Error>> {
     let dir = deck_store::resolve_decks_dir(config.decks_dir.as_deref())?;

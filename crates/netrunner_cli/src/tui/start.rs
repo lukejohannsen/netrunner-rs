@@ -28,7 +28,7 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::Side;
 
 use crate::config::{BotKind, Config};
-use crate::deck_store::{self, Origin};
+use netrunner_client::deck_store::{self, Origin};
 use crate::ratings::{self, LocalRatings};
 
 /// One deck the screen can offer, with what a player needs to tell decks

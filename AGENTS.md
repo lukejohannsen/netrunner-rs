@@ -33,7 +33,7 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 - A client NEVER touches `GameState`, NEVER re-derives legality, and NEVER mutates rules state directly.
 - Anything a client needs to display must be reachable from `ClientView`. If it isn't, extend the masking layer with an explicit rule about who may see it — do not reach around it.
 
-`netrunner_cli` (ratatui TUI) is the current reference client and the one to imitate.
+`netrunner_cli` (ratatui TUI) is the reference client for the *contract*; `netrunner_desktop` (Bevy) is the graphical one, and both stand on `netrunner_client` — see §5 for what that shares and the conventions the desktop follows.
 
 ### 4. Crate Map
 
@@ -47,10 +47,25 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 | `netrunner_cli` | Reference client: ratatui TUI, headless runner, local and remote modes, card/deck subcommands. |
 | `netrunner_gym` | PyO3 RL environment over the fixed `ActionSpace`. |
 | `netrunner_selfplay` | High-volume self-play data generation for training. |
-| `netrunner_card_sync` | Async NetrunnerDB API sync and cross-platform disk caching — the only crate doing network I/O for card data. |
+| `netrunner_card_sync` | Async NetrunnerDB API sync and cross-platform disk caching, and the card-image cache (`CardImageStore`) — the only crate doing network I/O for card data. |
 | `netrunner_rating` | Pure, engine-free Glicko-2 ratings: a `RatingBook` of one rating per track (human-vs-human, human-vs-bot, bot benchmark), participant and role, serializable whole. No I/O; the CLI's `bench` and the server own their files. |
+| `netrunner_client` | The toolkit-agnostic client core both clients stand on: the settings file (one struct, so neither client drops the other's fields), the saved-deck store, the local rating book and its rung suggestion, and the format's card pool. Later phases add the narration, the `ActionMap`, the view-diff `Transition`s and the one `MatchHandle` every game screen consumes. No rendering, no rules. |
+| `netrunner_desktop` | The Bevy graphical client. Renders `ClientView` only; a plugin per screen; consumes `netrunner_client`. Its own CI job, because Bevy is several hundred crates. |
 
 Bot *logic* belongs in `netrunner_bots`, not in `netrunner_gym` or `netrunner_selfplay`; those are harnesses. `netrunner_session` is a **driver**, not a harness and not a rules authority — it owns the loop, never a rule.
+
+### 5. Desktop Client Conventions (`netrunner_desktop`)
+
+The graphical client is built so that the next screen looks like the last one. These are the rules a screen follows; `crates/netrunner_desktop/src/lib.rs` restates them where the code is.
+
+- **One `States` variant and one `Plugin` per screen.** `OnEnter(AppScreen::X)` spawns the screen under `nav::screen_root(AppScreen::X, ..)`, whose `DespawnOnExit` takes the whole tree down; `Update` systems run under `run_if(in_state(AppScreen::X))`. A screen never sets `NextState` itself — it writes `nav::Navigate`, so Escape and Back are one rule in one place (`nav::back_from`). Nothing is spawned outside the root.
+- **No rules and no `GameState`.** The board renders a `ClientView` and submits through `netrunner_client`'s `MatchHandle::submit`, which never filters by `legal_actions` (the Session Rule). Anything a screen needs to *know* comes from `netrunner_client`; anything it needs to *decide* is not its to decide.
+- **Animations come from `netrunner_client::board::diff`'s `Transition`s**, computed from two consecutive views and the masked history entry — never inferred inside a system from what it sees on screen.
+- **Every legal action is reachable from the flat action panel.** Clicking a card or a server is a second route to the same `PlayerAction`, never the only one, so a card the layout cannot place is still playable.
+- **Screen state that can be tested lives in `models/`**, as a plain struct driven by an `Intent` enum — the terminal client's state-struct-plus-`key()` pattern minus the key codes. The Bevy systems translate input into intents and draw the result. `tests/navigation.rs` drives the real plugin set under `MinimalPlugins`, so nothing in the test suite needs a window or a GPU, and CI sets up no display.
+- **Bevy runs on the main thread.** A bot's search, a socket, an image download: each runs on `core::TokioRuntime` or a thread and reaches a system through a channel it `try_recv`s. `block_in_place` and `Handle::current()` panic off a tokio worker, which is why the terminal client's blocking `Reconnector` stays in the terminal client.
+- **Assets come in three tiers.** A procedural or synthesized tier that always works (drawn card backs, synthesized sounds, the text card face), an optional file under `assets/` that is prettier, and a user override under `<data dir>/netrunner/assets/`. Card fronts are the exception with no first tier — they are downloaded from NetrunnerDB into the cache directory on request and **never committed**; nor is anything else whose license is not the project's to give (the Noto font ships under its OFL notice, and that is the bar).
+- **The renderer asks for the low-power adapter** unless `WGPU_POWER_PREF` is set (`main.rs`): on a two-GPU laptop the discrete adapter can enumerate and then fail to present to the compositor's surface, and a card game does not need it.
 
 ### Session Rule
 
@@ -168,7 +183,7 @@ One rustdoc lint is allowed, and it is a domain collision rather than laziness: 
 
 - When editing game engine rules or mechanics, operate strictly inside `crates/netrunner_core/`.
 - When editing card behavior, prefer `crates/netrunner_core/data/{corp,runner}/*.json` over Rust — that is the point of the DSL.
-- When building UI, restrict context to `crates/netrunner_cli/`.
+- When building UI, restrict context to the client crate you are editing — `crates/netrunner_cli/` or `crates/netrunner_desktop/` — plus `crates/netrunner_client/` for what both share.
 - Do not add rendering or I/O dependencies to `netrunner_core` or `netrunner_server`.
 
 ---
