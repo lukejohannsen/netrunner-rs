@@ -325,6 +325,24 @@ impl std::str::FromStr for BotSpec {
     }
 }
 
+/// One ordered benchmark pairing, spelled `CORP/RUNNER` — `heuristic/mcts`,
+/// `level:operator/level:elite`. A slash rather than the comma or colon
+/// because both of those are already inside a `BotSpec`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct BenchPairing {
+    pub corp: BotSpec,
+    pub runner: BotSpec,
+}
+
+impl std::str::FromStr for BenchPairing {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (corp, runner) = s.split_once('/').ok_or_else(|| format!("a pairing is CORP/RUNNER, got {s:?}"))?;
+        Ok(BenchPairing { corp: corp.parse()?, runner: runner.parse()? })
+    }
+}
+
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Local,
@@ -368,10 +386,11 @@ pub enum Command {
         /// decision searches, the `--simulations` budget split evenly
         /// across them: `mcts`'s root-parallel trees and `puct`'s
         /// `samples`, which are one dial under two names. Omitted, each
-        /// search keeps its own default — and `mcts` reads its from the
-        /// rayon pool, so a run is only reproducible across machines if
-        /// this says a number. Ignored by `random` and `heuristic`; use
-        /// `--label` to keep two settings apart in a report.
+        /// search keeps its own default (`mcts` four trees, `puct` one
+        /// sample) — a fixed number since ROADMAP Phase 2 §5 item 41,
+        /// when `mcts`'s stopped coming off the rayon pool. Ignored by
+        /// `random` and `heuristic`; use `--label` to keep two settings
+        /// apart in a report.
         #[arg(long)]
         determinizations: Option<usize>,
         /// `mcts` only: give every tree the same sample of the hidden
@@ -381,6 +400,22 @@ pub enum Command {
         /// not a stronger setting.
         #[arg(long)]
         shared_sample: bool,
+        /// `mcts` only: plies from the root to where a playout stops and
+        /// is scored, tree descent included (the agent's own is 16). The
+        /// reach of a playout into the other side's turn, which is where
+        /// a sample of the hidden state starts to matter — see ROADMAP
+        /// Phase 2 §5 item 36. Use `--label` to keep two settings apart.
+        #[arg(long)]
+        mcts_depth: Option<usize>,
+        /// Play only this ordered pairing, `CORP/RUNNER` (repeatable),
+        /// each side one of `--bots`. **Every game keeps the index and
+        /// seed it has in the full cross product**, so a filtered game is
+        /// the same game an unfiltered run plays and the two reports pair
+        /// game for game; what is skipped is only the cost. A one-chair
+        /// measurement — `--bots heuristic,mcts --pairing heuristic/mcts`
+        /// — is a quarter of the work of the whole square.
+        #[arg(long = "pairing")]
+        pairings: Vec<BenchPairing>,
         /// Worker threads. All cores if omitted.
         #[arg(long)]
         threads: Option<usize>,

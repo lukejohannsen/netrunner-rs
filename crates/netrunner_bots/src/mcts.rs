@@ -26,10 +26,17 @@ use crate::puct::{pick_action, ActionStat, CycleGuard, ESCAPE_RNG_SALT};
 // debug build; `with_config` is there for callers (e.g. a future gym) that
 // want to trade wall-clock for search strength deliberately.
 const DEFAULT_ITERATIONS: usize = 64;
+/// Plies from the root to where a playout stops and is scored, tree
+/// descent included. **Sixteen is the measured peak, not a guess** (ROADMAP
+/// Phase 2 §5 item 43, Runner chair, 4 x 32): 8 plies score 0.440, 16
+/// score 0.604, 32 score 0.547 and 48 score 0.487. A playout that reaches
+/// further into the Corp's turn makes a hidden-state sample worth more,
+/// as item 36 predicted — sixteen trees at 32 plies recover 0.635 — but
+/// the weighted-random moves it takes to get there cost about as much as
+/// the samples buy back, at four times the trees.
 const DEFAULT_MAX_DEPTH: usize = 16;
 const DEFAULT_EXPLORATION: f64 = std::f64::consts::SQRT_2;
-/// Root-parallel searches a default-constructed agent runs, and the most
-/// any measurement has been taken at.
+/// Root-parallel searches a default-constructed agent runs.
 ///
 /// **A number, not `rayon::current_num_threads().clamp(1, 4)`, which is
 /// what this was until ROADMAP Phase 2 §5 item 41.** The tree count is
@@ -48,8 +55,16 @@ const DEFAULT_EXPLORATION: f64 = std::f64::consts::SQRT_2;
 /// four or more cores got. What the old expression did was give a
 /// *smaller* box a materially different bot — 2 × 64 rather than 4 × 32,
 /// most of the Runner chair's strength traded away for depth that chair
-/// saturates by 64 — while reading like a performance detail. Eight is
-/// not the default because nothing has measured eight.
+/// saturates by 64 — while reading like a performance detail.
+///
+/// **And past four the samples are worth nothing more** (item 43, 384
+/// Runner-chair games a cell, 32 iterations a tree, default depth): 8,
+/// 16 and 32 trees score 0.609, 0.622 and 0.604 against four's 0.604,
+/// every step inside the noise, while each costs the whole budget again.
+/// Item 35's rise from one tree bends at four, so four stays the default
+/// on the merits and not for want of a measurement. (With playouts twice
+/// as deep, samples keep paying to sixteen trees — but only back up to
+/// this same strength; see `DEFAULT_MAX_DEPTH`.)
 pub const DEFAULT_TREES: usize = 4;
 
 /// Information Set MCTS over `netrunner_core`'s own `apply_action`/
@@ -137,6 +152,18 @@ impl MctsAgent {
     /// `personality.weights()`.
     pub fn with_personality(mut self, personality: Personality) -> Self {
         self.weights = personality.weights();
+        self
+    }
+
+    /// The same search with playouts cut off `max_depth` plies below the
+    /// root (tree descent and rollout together) instead of
+    /// `DEFAULT_MAX_DEPTH`. A measurement dial: ROADMAP Phase 2 §5 item
+    /// 36 found the Runner's leaf still growing more sensitive to the
+    /// sampled hidden state at 16 plies, which is where the default stops
+    /// every playout, so how much a sample is worth may be set by how far
+    /// the playout reaches into the Corp's turn.
+    pub fn with_max_depth(mut self, max_depth: usize) -> Self {
+        self.max_depth = max_depth.max(1);
         self
     }
 

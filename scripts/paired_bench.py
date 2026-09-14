@@ -25,8 +25,15 @@ A delta also has to beat Phase 3's seed-spread band (0.026-0.047 over 192
 games) before it means anything: the pairing removes sampling noise from
 deck and seed, not the trajectory drift any code change re-rolls.
 
+`--by-kind` keys each seat on the bot's *kind* -- `mcts@512#t16` pairs with
+`mcts@128` -- so two cells taken at different `--simulations` or `--label`
+still line up on the same games. `bench` puts the budget in the
+participant id, which is right for a rating book and wrong for asking
+"what did 16 trees buy over 4 on these games". It is only honest when
+both reports seat one bot family in the same place in the square.
+
 Usage:
-    scripts/paired_bench.py before.json after.json [--label NAME]
+    scripts/paired_bench.py before.json after.json [--label NAME] [--by-kind]
 """
 import argparse
 import json
@@ -34,7 +41,16 @@ import math
 import sys
 
 
-def games(path):
+def kind(participant):
+    """`mcts@512:rush#t16` -> `mcts:rush`: the budget and the label go,
+    the personality stays, because it changes what the bot is."""
+    base, _, _ = participant.partition("#")
+    name, _, rest = base.partition("@")
+    personality = rest.partition(":")[2] if rest else ""
+    return f"{name}:{personality}" if personality else name
+
+
+def games(path, by_kind=False):
     """Games keyed by what identifies one trial: the pairing, the deck
     matchup and the seed. Keyed rather than zipped by index so a report
     taken with a different `--bots` order still lines up, and so a
@@ -42,7 +58,10 @@ def games(path):
     report = json.load(open(path))
     keyed = {}
     for game in report["games"]:
-        key = (game["corp"], game["runner"], game["matchup"], game["seed"])
+        corp, runner = game["corp"], game["runner"]
+        if by_kind:
+            corp, runner = kind(corp), kind(runner)
+        key = (corp, runner, game["matchup"], game["seed"])
         if key in keyed:
             sys.exit(f"{path}: two games share {key}; nothing can be paired on it")
         keyed[key] = game["winner"]
@@ -54,9 +73,10 @@ def main():
     parser.add_argument("before")
     parser.add_argument("after")
     parser.add_argument("--label", default="")
+    parser.add_argument("--by-kind", action="store_true", help="pair seats on the bot kind, ignoring @budget and #label")
     args = parser.parse_args()
 
-    before, after = games(args.before), games(args.after)
+    before, after = games(args.before, args.by_kind), games(args.after, args.by_kind)
     shared = before.keys() & after.keys()
     if not shared:
         sys.exit("the two reports share no games: check --games/--seed/--simulations match")

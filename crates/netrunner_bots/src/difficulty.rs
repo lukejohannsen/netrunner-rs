@@ -41,10 +41,16 @@
 //! two rungs in. Nothing in this workspace makes a Runner much stronger
 //! than `mcts@128`: five roadmap entries (36, 38 and 40 negatively; 34
 //! and 35 positively) put that chair's ceiling in hidden-information
-//! sampling, which no deeper search or better leaf has yet recovered. So
+//! sampling, which no deeper search or better leaf has yet recovered.
+//! **Item 43 then took the sampling itself as far as it goes and it is
+//! not the ceiling either** — which corrects this paragraph's earlier
+//! reading that more of it was the way up: 4 → 32 trees and 128 → 1,024
+//! simulations all land between 0.604 and 0.622 against a fixed one-ply
+//! Corp, and a deeper playout is *worse* (0.547 at 32 plies). So
 //! `veteran` and `elite` are about 0.06 apart as Runners against 0.19 as
-//! Corps, and closing that is Phase 2 §5's Runner-chair work, not a
-//! spacing problem this table can solve.
+//! Corps. What is left to try is the playout policy rather than a bigger
+//! search, and that is Phase 2 §5's Runner-chair work, not a spacing
+//! problem this table can solve.
 //!
 //! **Personality is not the difficulty dial, and deliberately so.** The
 //! six `Personality` profiles are a *style* axis, and each is written for

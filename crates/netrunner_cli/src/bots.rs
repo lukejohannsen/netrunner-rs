@@ -71,6 +71,10 @@ pub struct AgentSetup {
     /// state instead of its own. Diagnostic — see
     /// `MctsAgent::with_shared_sample` for what it separates.
     pub shared_sample: bool,
+    /// `Mcts` only: plies from the root to where a playout stops and is
+    /// scored, tree descent included — `MctsAgent::with_max_depth`.
+    /// `None` is the agent's own 16.
+    pub mcts_depth: Option<usize>,
     /// Biases the evaluator every kind but `Random` scores with (`Random`
     /// has no evaluator, and a network-backed `PuctOnnx` has its own
     /// value head).
@@ -81,7 +85,7 @@ impl AgentSetup {
     /// The defaults a seat gets when nobody is measuring anything: each
     /// agent's own determinization count, no shared sample, balanced.
     pub fn new(simulations: usize) -> Self {
-        Self { simulations, determinizations: None, shared_sample: false, personality: Personality::Balanced }
+        Self { simulations, determinizations: None, shared_sample: false, mcts_depth: None, personality: Personality::Balanced }
     }
 
     pub fn with_personality(mut self, personality: Personality) -> Self {
@@ -120,16 +124,19 @@ pub fn make_seat_agent(
 }
 
 pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Option<Box<dyn BotAgent>> {
-    let AgentSetup { simulations, determinizations, shared_sample, personality } = setup;
+    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, personality } = setup;
     match kind {
         BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
         BotKind::Heuristic => Some(Box::new(HeuristicAgent::with_personality(side, seed, personality))),
         BotKind::Mcts => {
-            let agent = match determinizations {
+            let mut agent = match determinizations {
                 Some(trees) => MctsAgent::with_trees(side, seed, simulations, trees),
                 None => MctsAgent::with_iterations(side, seed, simulations),
             };
+            if let Some(depth) = mcts_depth {
+                agent = agent.with_max_depth(depth);
+            }
             Some(Box::new(agent.with_personality(personality).with_shared_sample(shared_sample)))
         }
         BotKind::Puct => Some(Box::new(PuctAgent::with_config(
@@ -274,6 +281,7 @@ mod tests {
                     let setup = AgentSetup { determinizations: Some(count), ..AgentSetup::new(8) };
                     assert!(make_agent(kind, side, 7, setup).is_some(), "{kind:?} {side:?}");
                     assert!(make_agent(kind, side, 7, AgentSetup { shared_sample: true, ..setup }).is_some(), "{kind:?} {side:?}");
+                    assert!(make_agent(kind, side, 7, AgentSetup { mcts_depth: Some(32), ..setup }).is_some(), "{kind:?} {side:?}");
                 }
             }
         }

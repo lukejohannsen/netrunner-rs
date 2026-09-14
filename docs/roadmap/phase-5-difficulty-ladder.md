@@ -123,6 +123,15 @@ worth nothing; it can read it *correctly* and that is worth nothing
 either). **That work is now the blocker on half of this phase**, which is
 the first time it has had a user-facing consequence.
 
+**A wider `elite` Runner was measured and it is not stronger** (Phase 2
+§5 item 43, 13 September 2026). The obvious candidate was more of what
+`elite` already is — item 35's samples were still rising at four trees —
+and it plateaus: 4 → 32 trees, 128 → 1,024 simulations and playouts of
+16 → 32 plies all land at 0.60–0.64 against a one-ply Corp, the best
+cell (16 × 32 at 32 plies) +0.031 over `elite` at z +1.12 and eight times
+its cost. So the Runner rungs stay as calibrated, and the cap is now
+measured from the search side as well as the leaf side.
+
 **How a player reaches it.** `--corp-level` / `--runner-level` take a
 name or a rung number and override the kind, the personality *and*
 `--simulations` — one shared `bots::make_seat_agent`, so the TUI, the
