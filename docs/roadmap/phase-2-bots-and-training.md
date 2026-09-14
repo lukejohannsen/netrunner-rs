@@ -779,4 +779,42 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     Nothing significant, every delta inside the 0.026–0.047 band or at its edge, and the directions disagree across chairs — a re-roll of one policy, which is what a changed random stream is. The before leg also re-measures item 35's cell on today's engine: **0.641** for `mcts@128`×4 as Runner against its recorded 0.635, item 37's repaired ICE sitting between the two. The random-vs-random report (192 games, seed 1) is **byte-identical** — neither `random` nor `heuristic` rolls out — and both 256-seed sweeps are green. `puct` has no rollout and is untouched; `diag leaf-sensitivity`'s playout columns re-roll with the stream.
 
+43. **The Runner chair's plateau is not samples, not budget and not playout depth** (`diag/runner-chair-samples-and-depth`, 13 September 2026). Opened to build a stronger `elite` Runner: item 35's 1 → 2 → 4 trees (0.510 → 0.576 → 0.635) was still rising, `DEFAULT_TREES`' own doc said nothing had measured eight, and Phase 5's Runner ladder is capped by its best Runner (a 0.104 span against the Corp's 0.229). On item 42's cheaper rollouts the wider search was measured as far as 32 trees and 1,024 simulations. **It is not stronger, so the ladder is unchanged**; what is kept is the measurement and the dials that took it.
+
+    **Method.** Every cell is 384 games of the one-ply `heuristic` Corp against `mcts` as Runner: `bench --bots heuristic,mcts --pairing heuristic/mcts --games 384 --seed 1 --threads 18`. `--pairing` is new here and keeps each game's index from the whole square, so every cell plays the identical (matchup, seed) games, and item 42's after-leg supplies the 4 × 32 reference game for game. Comparisons are paired (`scripts/paired_bench.py --by-kind`, also new: it keys a seat on the bot's kind so `mcts@1024` pairs with `mcts@128`). Scores are the Runner's.
+
+    | trees × iterations a tree | total | Runner | paired vs 4 × 32 |
+    |---|---|---|---|
+    | 4 × 32 (the `elite` Runner) | 128 | **0.604** | — |
+    | 8 × 32 | 256 | 0.609 | +0.005 (z +0.20) |
+    | 16 × 32 | 512 | 0.622 | +0.018 (z +0.68) |
+    | 32 × 32 | 1,024 | 0.604 | 0.000 (z 0.00) |
+    | 4 × 128 | 512 | 0.615 | +0.010 (z +0.41) |
+
+    **Samples saturate at four.** Item 35's curve bends exactly where it stopped measuring, and at 512 simulations it makes no difference whether the budget buys samples (16 × 32) or depth per sample (4 × 128) — 0.622 against 0.615, the paired gap −0.008 (z −0.31). Eight times the search buys nothing on this chair.
+
+    **Playout depth** (`--mcts-depth`, new: plies from the root to where a playout stops and is scored, tree descent included; the default is 16):
+
+    | | 8 plies | 16 | 32 | 48 |
+    |---|---|---|---|---|
+    | 1 × 32 | — | 0.531 | **0.406** (−0.125, z −4.18) | — |
+    | 4 × 32 | **0.440** (−0.164, z −5.31) | 0.604 | 0.547 (−0.057, z −1.93) | **0.487** (−0.117, z −3.96) |
+    | 16 × 32 | — | 0.622 | 0.635 (+0.013, z +0.46) | — |
+
+    **Sixteen is a peak, on every tree count measured**: shorter playouts never reach the Corp's turn, and longer ones lose more to their own weighted-random moves than they gain in reach. **Depth and samples are complements, which is item 36's prediction confirmed in games** — one to four trees is worth +0.073 (z +2.69) at 16 plies and **+0.141 (z +4.56)** at 32, and at 32 plies the curve is still climbing at sixteen trees (0.406 → 0.547 → 0.635) where at 16 it had flattened. But the best cell measured, 16 × 32 at 32 plies, lands on the `elite` rather than above it: +0.031 over it on this binary (z +1.12, 114 discordant) and −0.005 against the same cell on the binary before item 42 (0.641). **That 0.037 gap between two measurements of one policy is the noise floor here, and no cell clears it.** Its cost is four times the trees and twice the playout.
+
+    **What deeper, wider search does change is how the Runner loses.** Games the Corp won, of 384:
+
+    | cell | flatlines | Corp agenda wins |
+    |---|---|---|
+    | 4 × 32, 16 plies | 55 | 97 |
+    | 16 × 32, 16 plies | 41 | 104 |
+    | 16 × 32, 32 plies | **26** | **114** |
+
+    Long playouts over many samples see the Corp's damage coming and the Runner stops dying to it, then gives the same games back in agenda races. That is a real change of style at no change of strength, which is worth knowing if a future rung wants a Runner that plays differently rather than better.
+
+    **What this hands over.** The Runner plateau against a one-ply Corp is **0.60–0.64 across samples 4–32, budget 128–1,024 and depth 16–32**. So ROADMAP "next" item 1 — making PUCT marginalize over hidden state that varies — is bounded above by what this search already does: `mcts` *is* a search whose leaf varies with the sample, and it sits on this plateau, so the best that item could deliver is a PUCT Runner as strong as the `mcts` Runner the ladder already seats. Everything the plateau's cells have in common is the **playout policy** (`mcts::action_weight`, seven weights playing both chairs) and the static leaf. The depth curve is evidence against the playout — its moves cost more than its reach buys past 16 plies — but that is a hypothesis about the next lever, not a finding.
+
+    Scaffolding, permanent, no behaviour change: `bench --pairing CORP/RUNNER` (a filtered game is byte-identical to that game in the whole square, pinned by a test), `bench --mcts-depth` with `MctsAgent::with_max_depth`, `AgentSetup::mcts_depth`, and `paired_bench.py --by-kind`. The `--determinizations` help text also stopped saying `mcts` reads its tree count off the rayon pool, which item 41 ended.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.

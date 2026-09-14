@@ -38,7 +38,7 @@ use netrunner_rating::{Outcome, RatingBook, Standing, Track};
 use netrunner_session::{GameEndReason, Seat, Session, SessionStep};
 
 use crate::bots;
-use crate::config::{BotKind, BotSpec, Config};
+use crate::config::{BenchPairing, BotKind, BotSpec, Config};
 use crate::decks;
 
 pub struct BenchArgs {
@@ -56,6 +56,15 @@ pub struct BenchArgs {
     /// Recorded in the report beside `determinizations`, for the same
     /// reason.
     pub shared_sample: bool,
+    /// `mcts` only: playout cut-off below the root, `None` for the
+    /// agent's own. Recorded in the report beside `determinizations`,
+    /// and like it not part of `participant_id` — `--label` separates two
+    /// settings.
+    pub mcts_depth: Option<usize>,
+    /// Ordered pairings to play, empty for the whole square. A filtered
+    /// run keeps every game's index — and so its seed and matchup — from
+    /// the unfiltered one; see the flag's doc comment.
+    pub pairings: Vec<BenchPairing>,
     pub threads: Option<usize>,
     pub report: Option<PathBuf>,
     pub ratings: Option<PathBuf>,
@@ -102,6 +111,7 @@ pub struct BenchReport {
     pub simulations: usize,
     pub determinizations: Option<usize>,
     pub shared_sample: bool,
+    pub mcts_depth: Option<usize>,
     pub games: Vec<GameRecord>,
     pub pairings: Vec<PairingSummary>,
     pub ladder: Vec<LadderRow>,
@@ -162,12 +172,27 @@ pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::
     let base_seed = args.seed.unwrap_or_else(rand::random);
     let matchups = core_decks::matchups();
 
+    for pairing in &args.pairings {
+        if !args.bots.contains(&pairing.corp) || !args.bots.contains(&pairing.runner) {
+            return Err("every --pairing side must be one of --bots: the pairing keeps its place in that square".into());
+        }
+    }
+    let wanted = |corp: &BotSpec, runner: &BotSpec| {
+        args.pairings.is_empty() || args.pairings.iter().any(|pairing| pairing.corp == *corp && pairing.runner == *runner)
+    };
+
+    // Indexed over the whole square even when `--pairing` skips most of
+    // it: the index is the seed offset and the matchup, so numbering only
+    // the games played would make a filtered game a different game.
     let mut jobs = Vec::new();
+    let mut index = 0u32;
     for corp in &args.bots {
         for runner in &args.bots {
             for _ in 0..args.games {
-                let index = jobs.len() as u32;
-                jobs.push(Job { index, seed: base_seed.wrapping_add(u64::from(index)), corp: *corp, runner: *runner });
+                if wanted(corp, runner) {
+                    jobs.push(Job { index, seed: base_seed.wrapping_add(u64::from(index)), corp: *corp, runner: *runner });
+                }
+                index += 1;
             }
         }
     }
@@ -208,7 +233,7 @@ pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::
 
     println!(
         "Bot benchmark: {} pairings × {} games = {} games, seed {base_seed}, {} simulations, {threads} threads, {:.1}s",
-        args.bots.len() * args.bots.len(),
+        pairings.len(),
         args.games,
         games.len(),
         args.simulations,
@@ -231,6 +256,7 @@ pub fn run(args: &BenchArgs, config: &Config) -> Result<(), Box<dyn std::error::
             simulations: args.simulations,
             determinizations: args.determinizations,
             shared_sample: args.shared_sample,
+            mcts_depth: args.mcts_depth,
             games,
             pairings,
             ladder,
@@ -255,6 +281,7 @@ fn play(
         simulations: args.simulations,
         determinizations: args.determinizations,
         shared_sample: args.shared_sample,
+        mcts_depth: args.mcts_depth,
         personality,
     };
     let corp =
@@ -299,12 +326,16 @@ fn summarize_pairings(games: &[GameRecord], args: &BenchArgs) -> Vec<PairingSumm
             let corp_id = participant_id(*corp, args.simulations, args.label.as_deref());
             let runner_id = participant_id(*runner, args.simulations, args.label.as_deref());
             let played: Vec<&GameRecord> = games.iter().filter(|g| g.corp == corp_id && g.runner == runner_id).collect();
+            // A pairing `--pairing` skipped is absent, not a row of zeros.
+            if played.is_empty() {
+                continue;
+            }
             let steps: u64 = played.iter().map(|g| u64::from(g.steps)).sum();
             pairings.push(PairingSummary {
                 corp_wins: played.iter().filter(|g| g.winner == Some(Side::Corp)).count() as u32,
                 runner_wins: played.iter().filter(|g| g.winner == Some(Side::Runner)).count() as u32,
                 stalls: played.iter().filter(|g| g.winner.is_none()).count() as u32,
-                mean_steps: if played.is_empty() { 0.0 } else { steps as f64 / played.len() as f64 },
+                mean_steps: steps as f64 / played.len() as f64,
                 corp: corp_id,
                 runner: runner_id,
             });
@@ -362,12 +393,12 @@ mod tests {
         let mut argv = vec!["netrunner_cli", "bench"];
         argv.extend_from_slice(extra);
         let mut config = Config::parse_from(argv);
-        let Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, threads, report, ratings, label }) =
+        let Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label }) =
             config.command.take()
         else {
             panic!("parsed a bench command");
         };
-        (BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, threads, report, ratings, label }, config)
+        (BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label }, config)
     }
 
     /// Two kinds, one game a pairing, two threads: four games, every seat
@@ -407,6 +438,36 @@ mod tests {
         run(&args, &config).unwrap();
         let second_book = RatingBook::from_json(&fs::read_to_string(&fresh).unwrap()).unwrap();
         assert_eq!(first_book, second_book);
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `--pairing` skips games without renumbering the rest, so a
+    /// filtered game is the same trial — index, seed, matchup, result —
+    /// as that game in the whole square. That is what lets a one-chair
+    /// cell pair game for game against a full run.
+    #[test]
+    fn a_filtered_bench_plays_the_same_games_the_whole_square_plays() {
+        let dir = std::env::temp_dir().join(format!("netrunner_bench_pairing_test_{}", std::process::id()));
+        fs::create_dir_all(&dir).unwrap();
+        let report = |extra: &[&str], name: &str| {
+            let path = dir.join(name);
+            let mut argv = vec!["--bots", "random,heuristic", "--games", "2", "--seed", "11", "--threads", "2", "--report", path.to_str().unwrap()];
+            argv.extend_from_slice(extra);
+            let (args, config) = parse(&argv);
+            run(&args, &config).unwrap();
+            let report: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+            report["games"].as_array().unwrap().clone()
+        };
+        let whole = report(&[], "whole.json");
+        let filtered = report(&["--pairing", "heuristic/random"], "filtered.json");
+
+        assert_eq!(filtered.len(), 2);
+        let same_pairing: Vec<_> = whole.iter().filter(|g| g["corp"] == "heuristic" && g["runner"] == "random").cloned().collect();
+        assert_eq!(filtered, same_pairing, "a filtered game is that game in the whole square");
+        assert_eq!(filtered[0]["index"], 4, "the index counts the skipped pairings, so the seed does too");
+
+        let (args, config) = parse(&["--bots", "random", "--pairing", "heuristic/random"]);
+        assert!(run(&args, &config).is_err(), "a pairing side outside --bots has no place in the square");
         let _ = fs::remove_dir_all(&dir);
     }
 

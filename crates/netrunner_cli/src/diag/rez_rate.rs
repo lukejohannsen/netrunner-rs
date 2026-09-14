@@ -260,6 +260,7 @@ fn play(
         simulations: args.simulations,
         determinizations: args.determinizations,
         shared_sample: false,
+        mcts_depth: None,
         personality: spec.personality,
     };
     let corp = bots::make_agent_with_model(args.corp.kind, Side::Corp, seed, setup(args.corp), &config.model)?
