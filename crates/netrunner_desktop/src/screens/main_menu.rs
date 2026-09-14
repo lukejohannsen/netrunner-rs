@@ -83,9 +83,16 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, notic
     commands.spawn((screen_root(AppScreen::MainMenu, theme.background), children![
         widgets::title(&theme, "NETRUNNER"),
         widgets::dim(&theme, format!("Playing as {} · {format} format", core.player_name())),
-        (widgets::panel(&theme, px(420)), Children::spawn(SpawnIter(Entry::ALL.into_iter().map({
+        (widgets::panel(&theme, px(760)), Children::spawn(SpawnIter(Entry::ALL.into_iter().map({
             let theme = theme.clone();
-            move |entry| (widgets::row(12.0), children![widgets::button(&theme, entry.label(), px(220), entry), widgets::dim(&theme, entry.blurb())])
+            move |entry| {
+                (widgets::row(12.0), children![
+                    widgets::button(&theme, entry.label(), px(220), entry),
+                    // The blurb takes whatever the row has left and wraps
+                    // there, rather than pushing on the button.
+                    (widgets::dim(&theme, entry.blurb()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }),
+                ])
+            }
         })))),
         widgets::notice(&theme, notices.latest().unwrap_or(""), ()),
     ]));

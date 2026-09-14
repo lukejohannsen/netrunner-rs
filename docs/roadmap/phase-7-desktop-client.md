@@ -130,6 +130,12 @@ leads back, a text field captures Escape until it closes.
   so a widget constructor taking `&Theme` had to declare `+ use<T, M>`
   to return an owned bundle.
 - `netrunner_cli` no longer used `dirs`; `cargo-machete` said so.
+- **A Bevy node shrinks by default.** The first build the user tried had
+  every main-menu button at a different width: each row overflowed its
+  panel and flex shrink squeezed each button by the length of its own
+  blurb, Quit alone keeping its full width for having none. A button's
+  `Node` now sets `flex_shrink: 0`, in the shared helper, and the blurb
+  is the flexible thing in the row.
 
 **Repo.** `Cargo.lock` 358 → 740 packages. `deny.toml` allows three more
 licenses, each with its forcing crate: BSD-2-Clause (`arrayref`, under

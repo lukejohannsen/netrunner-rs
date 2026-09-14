@@ -79,6 +79,12 @@ pub fn button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, width: Val, ma
         marker,
         Node {
             width,
+            // A node shrinks by default when its row overflows, by an amount
+            // that depends on its neighbours — which put every main-menu
+            // button at a different width, each squeezed by the length of
+            // its own blurb. A button's width is a decision, never a
+            // neighbour's to take.
+            flex_shrink: 0.0,
             padding: UiRect::axes(px(18), px(10)),
             justify_content: JustifyContent::Center,
             align_items: AlignItems::Center,
