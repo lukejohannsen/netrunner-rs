@@ -4,7 +4,8 @@ use rayon::prelude::*;
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{
-    apply_action, current_actor, legal_actions as engine_legal_actions, GamePhase, GameState, PlayerAction, Side,
+    apply_action, apply_sampled_legal_action, current_actor, legal_actions as engine_legal_actions, GamePhase, GameState,
+    PlayerAction, Side,
 };
 use netrunner_core::view::ClientView;
 
@@ -342,15 +343,16 @@ fn pop_untried(untried: &mut Vec<PlayerAction>, rng: &mut StdRng) -> Option<Play
 /// this search's.
 pub fn rollout(start: &GameState, registry: &CardRegistry, side: Side, mut depth_budget: usize, rng: &mut StdRng, w: &Weights) -> f64 {
     let mut state = start.clone();
+    // One call that validates only what it lands on, rather than
+    // `legal_actions` (every candidate applied to a clone) and then the
+    // chosen move applied again. Same weighted distribution over the same
+    // legal set, at 18.0 `apply_action` calls a ply against 38.1 (most
+    // candidates are moves the engine refuses, so a weighted draw still
+    // lands on some) and 39% less CPU a game — ROADMAP Phase 2 §5 item 42.
     while depth_budget > 0 && !matches!(state.phase, GamePhase::GameOver(_)) {
-        let legal = engine_legal_actions(&state, registry);
-        if legal.is_empty() {
-            break;
-        }
-        let action = &legal[weighted_index(&legal, rng)];
-        match apply_action(&state, registry, action.clone()) {
-            Ok((next, _events)) => state = next,
-            Err(_) => break,
+        match apply_sampled_legal_action(&state, registry, |offered| weighted_index(offered, rng)) {
+            Some((_action, next, _events)) => state = next,
+            None => break,
         }
         depth_budget -= 1;
     }

@@ -20,6 +20,7 @@ use crate::cards::CardRegistry;
 use crate::dsl::{CardId, CardType, Trigger};
 use crate::rules::action::PlayerAction;
 use crate::rules::apply_action;
+use crate::rules::event::GameEvent;
 use crate::rules::run::{AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{GamePhase, GameState, InstallId, InstallSlot, Side};
 
@@ -52,6 +53,63 @@ pub fn legal_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
         }
     }
     seen
+}
+
+/// Plays one legal action chosen by `pick`, validating only the candidates
+/// `pick` actually lands on: the rollout-shaped query "some legal move,
+/// weighted my way, applied", at roughly one `apply_action` instead of one
+/// per candidate plus one.
+///
+/// **Why it exists: `legal_actions` is the cost of a random playout.**
+/// `legal_actions` proves every candidate by applying it to a clone, and a
+/// caller that then plays one of them applies it again, so a playout ply
+/// that wants *one* move pays for all of them — 38.1 `apply_action` calls
+/// a ply, and 39% of `mcts`'s CPU came back when its rollout stopped
+/// paying them (ROADMAP Phase 2 §5 item 42). Here `pick` chooses
+/// among the not-yet-rejected candidates, the choice is applied, and a
+/// rejection removes that candidate and asks again; the applied result is
+/// returned rather than thrown away.
+///
+/// **It draws from exactly the distribution a caller would get by picking
+/// from `legal_actions`**, provided `pick` depends only on the slice it is
+/// shown (a weight per action, say): `legal_actions` *is* the deduplicated
+/// candidates `apply_action` accepts, and conditioning a draw over the
+/// candidates on acceptance is a draw over that set. Only the random
+/// stream a caller consumes changes, so a playout re-rolls without its
+/// policy moving. The slice's order is not `legal_actions`' order after a
+/// rejection (`swap_remove`), which a `pick` that reads positions rather
+/// than actions would notice.
+///
+/// Rejected: making `candidate_actions` public and letting a bot do this
+/// itself. The candidate list is an unvalidated superset with duplicates,
+/// and every caller that saw it would have to know both; this is the one
+/// place that knows. A closure rather than an RNG because this crate has
+/// no `rand` and its only randomness is `GameState`'s own.
+///
+/// `None` exactly when `legal_actions(state, registry)` is empty. `pick`
+/// must return an index into the slice it is given, which is never empty.
+pub fn apply_sampled_legal_action(
+    state: &GameState,
+    registry: &CardRegistry,
+    mut pick: impl FnMut(&[PlayerAction]) -> usize,
+) -> Option<(PlayerAction, GameState, Vec<GameEvent>)> {
+    // Deduplicated first, for the reason `legal_actions` gives: a hand is
+    // a multiset, and three copies of one card are one move, not three
+    // chances to be drawn.
+    let mut candidates: Vec<PlayerAction> = Vec::new();
+    for action in candidate_actions(state, registry) {
+        if !candidates.contains(&action) {
+            candidates.push(action);
+        }
+    }
+    while !candidates.is_empty() {
+        let index = pick(&candidates);
+        let action = candidates.swap_remove(index);
+        if let Ok((next, events)) = apply_action(state, registry, action.clone()) {
+            return Some((action, next, events));
+        }
+    }
+    None
 }
 
 /// Whose decision is actually pending right now, if anyone's. `GameState::
@@ -774,6 +832,44 @@ mod tests {
             is_playable: true,
             ..Default::default()
         }
+    }
+
+    /// `apply_sampled_legal_action` is only a cheaper `legal_actions` if
+    /// the two agree on every position, so this walks real sample-deck
+    /// games and, for each legal action, drives a `pick` that tries every
+    /// *illegal* candidate first. That forces the whole rejection path, and
+    /// the target must still be on offer at the end — a rejection that
+    /// removed a legal move would change the distribution — and must come
+    /// back applied exactly as `apply_action` applies it.
+    #[test]
+    fn a_sampled_action_is_a_legal_action_applied_and_every_legal_action_can_be_sampled() {
+        let mut registry = CardRegistry::new();
+        crate::cards::register_playable_cards(&mut registry);
+        let mut positions = 0;
+        for (game, (corp, runner)) in crate::decks::matchups().into_iter().step_by(37).enumerate() {
+            let (mut state, _) = GameState::setup(&corp.to_deck(), &runner.to_deck(), &registry, 7 + game as u64).unwrap();
+            for step in 0..400 {
+                let legal = legal_actions(&state, &registry);
+                if legal.is_empty() {
+                    assert!(apply_sampled_legal_action(&state, &registry, |_| 0).is_none(), "nothing legal, nothing sampled");
+                    break;
+                }
+                positions += 1;
+                for target in &legal {
+                    let pick = |offered: &[PlayerAction]| {
+                        offered.iter().position(|action| !legal.contains(action)).unwrap_or_else(|| {
+                            offered.iter().position(|action| action == target).expect("a rejection removed a legal action")
+                        })
+                    };
+                    let (action, next, events) = apply_sampled_legal_action(&state, &registry, pick).expect("a legal action exists");
+                    assert_eq!(&action, target);
+                    assert_eq!((next, events), apply_action(&state, &registry, target.clone()).unwrap());
+                }
+                let chosen = legal[(step * 7 + game) % legal.len()].clone();
+                state = apply_action(&state, &registry, chosen).unwrap().0;
+            }
+        }
+        assert!(positions > 500, "only {positions} positions checked");
     }
 
     #[test]

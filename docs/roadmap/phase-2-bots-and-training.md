@@ -755,4 +755,28 @@ Net: 0.7 → 1.3 programs a game, 86 / 1,006 → 199 / 519 broken / fired, 58 �
 
     **Eight trees is not the default because nothing has measured eight.** The constant is `pub` so a caller can say what it is deviating from, and `with_trees` remains the way a measurement pins it.
 
+42. **A random playout validates only the move it plays** (`feat/rollouts-validate-only-the-action-they-play`, 13 September 2026). The prerequisite for measuring `mcts` past four samples, which is where item 35 left the Runner chair: 1 → 2 → 4 trees scored 0.510 → 0.576 → 0.635 and the curve was still rising, but a tree costs its whole budget again, so every step up doubles the price of a decision. An engineering change whose product is speed; the policy does not move.
+
+    **Most of a rollout ply was spent proving moves it would not play.** `mcts::rollout` called `legal_actions` each ply, which applies *every* candidate to a clone to keep the ones the engine accepts, and then applied its weighted choice a second time. Counted over 5,866 plies of ordinary sample-deck play: **38.1 `apply_action` calls a ply** — the candidate list is mostly moves the engine refuses (both sides' clicks, every card at every server).
+
+    **`rules::apply_sampled_legal_action(state, registry, pick)`** dedups the candidates the way `legal_actions` does, lets `pick` choose among those not yet refused, applies the choice and returns the result; a refusal removes that candidate and asks again. `legal_actions` *is* the deduplicated candidates `apply_action` accepts, so conditioning a draw over the candidates on acceptance draws from exactly the distribution a caller got by picking from `legal_actions` — only the random stream consumed changes. A closure rather than an RNG, because core has no `rand`; `candidate_actions` stays private, because a public unvalidated superset is a trap for every other caller. A core test walks six sample-deck games and, for every legal action at every position, forces every refused candidate first and checks the target is still on offer and comes back applied exactly as `apply_action` applies it.
+
+    | `bench --bots mcts --games 48 --seed 1 --simulations 128 --determinizations 4 --threads 18`, idle box, two runs each | CPU | wall |
+    |---|---|---|
+    | before | 1,537 s / 1,545 s | 97.2 s / 98.0 s |
+    | after | 941 s / 930 s | 59.4 s / 64.1 s |
+
+    **18.0 calls a ply against 38.1, and 39% less CPU a game** (1.65×). The draw still lands on refused candidates, since they outnumber the legal ones; filtering them without applying them would need the rules the probe exists not to duplicate.
+
+    **The same bot at equal simulations**, paired over 384 games a pairing on `--seed 1` (`scripts/paired_bench.py`, McNemar over the discordant games):
+
+    | Corp win rate | before | after | delta | z | discordant |
+    |---|---|---|---|---|---|
+    | `heuristic` vs `mcts@128` (Runner chair) | 0.359 | 0.396 | +0.036 | +1.46 | 92 |
+    | `mcts@128` vs `heuristic` (Corp chair) | 0.500 | 0.516 | +0.016 | +0.51 | 138 |
+    | `mcts@128` vs `mcts@128` | 0.336 | 0.307 | −0.029 | −0.98 | 125 |
+    | `heuristic` vs `heuristic` | 0.5625 | 0.5625 | 0 | — | 0 |
+
+    Nothing significant, every delta inside the 0.026–0.047 band or at its edge, and the directions disagree across chairs — a re-roll of one policy, which is what a changed random stream is. The before leg also re-measures item 35's cell on today's engine: **0.641** for `mcts@128`×4 as Runner against its recorded 0.635, item 37's repaired ICE sitting between the two. The random-vs-random report (192 games, seed 1) is **byte-identical** — neither `random` nor `heuristic` rolls out — and both 256-seed sweeps are green. `puct` has no rollout and is untouched; `diag leaf-sensitivity`'s playout columns re-roll with the stream.
+
 **Standing open items:** the masked objective trains a never-visited legal action as illegal (record the true mask if simulations drop); `netrunner_gym` can still toggle-loop (no `progressive` filter on that path); the coverage card gate is inert at default seeds for decks the sweep has not played eight times; `t400_memory_diamond` was never installed by PUCT.
