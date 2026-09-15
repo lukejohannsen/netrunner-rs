@@ -16,12 +16,33 @@ use netrunner_core::cards::{self, CardRegistry};
 use netrunner_core::dsl::{CardDefinition, CardType};
 use netrunner_core::format::{FormatRules, NsgFormat};
 
+use crate::settings::FORMATS;
+
 /// Whether the format's tables allow `card`: its pack, and not banned. The
 /// validator makes the same two checks and is still what decides.
 pub fn legal_in(card: &CardDefinition, rules: &FormatRules) -> bool {
     let Some(code) = card.numeric_id else { return false };
     !rules.banned.contains(&code)
         && rules.allowed_packs.as_ref().is_none_or(|packs| packs.contains(card.set_code.as_deref().unwrap_or("")))
+}
+
+/// The formats whose tables allow `card`, in the order the settings
+/// screen lists them — what an inspector prints under "Legal in". A card
+/// with no NetrunnerDB code is legal nowhere, as `legal_in` says.
+pub fn legal_formats(card: &CardDefinition) -> Vec<NsgFormat> {
+    FORMATS.into_iter().filter(|format| legal_in(card, &format.rules())).collect()
+}
+
+/// The name a set is listed under, for the pack codes the embedded
+/// catalog carries; a code this does not know is shown as itself, which
+/// is what NetrunnerDB's pack list would replace it with.
+pub fn set_name(set_code: &str) -> &str {
+    match set_code {
+        "core" => "Core Set",
+        "sg" => "System Gateway",
+        "elev" => "Elevation",
+        other => other,
+    }
 }
 
 /// Every card in `registry` the format allows, in registry order. Callers
@@ -138,6 +159,20 @@ mod tests {
         assert_eq!(eternal.len(), registry.iter().filter(|card| card.numeric_id.is_some()).count());
         assert!(!startup.iter().any(|card| card.id.0 == "ice_wall"), "Ice Wall is Core Set");
         assert!(eternal.iter().any(|card| card.id.0 == "ice_wall"));
+    }
+
+    /// A Core Set card is outside the two pack-scoped formats and inside
+    /// the two open ones; a System Gateway card is in all four.
+    #[test]
+    fn a_cards_legal_formats_follow_its_pack() {
+        let registry = playable();
+        let catalog = catalog(&registry);
+        let ice_wall = catalog.iter().find(|card| card.title == "Ice Wall" && card.set_code.as_deref() == Some("core")).unwrap();
+        assert_eq!(legal_formats(ice_wall), vec![NsgFormat::Standard, NsgFormat::Eternal]);
+        let tithe = catalog.iter().find(|card| card.title == "Tithe").unwrap();
+        assert_eq!(legal_formats(tithe), FORMATS.to_vec());
+        assert_eq!(set_name("sg"), "System Gateway");
+        assert_eq!(set_name("xyz"), "xyz");
     }
 
     /// The catalog is every printing, the playable card standing in for

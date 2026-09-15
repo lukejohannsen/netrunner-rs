@@ -285,8 +285,89 @@ at both sizes and reads each body back span by span), clippy silent
 with one new crate-level allow (`too_many_arguments`: a system's
 parameters are what it reads, and a `SystemParam` struct moves the list
 rather than shortening it), `cargo machete` clean. Still to be driven by
-hand: the picture download end to end on this box, wheel scrolling on
-the grid, and the drop-in backs.
+hand at that point: the picture download end to end on this box, wheel
+scrolling on the grid, and the drop-in backs.
+
+**Driven by hand (15 September 2026), a second commit on the branch.**
+The download ran end to end (271 scans cached) and the drop-in backs
+are untried. Everything else the hand found is below, with what was
+done about it.
+
+- **The grid did not scroll.** Not the input: a new dev hook
+  (`NETRUNNER_SCROLL=x,y,lines` puts the pointer at a window position
+  and turns the wheel through the same `WindowEvent`s winit sends, then
+  logs every scrolling node's size, content size and position) showed
+  the wheel reaching the grid's `ScrollArea` observer, and the grid
+  reporting its scrollable content as **one thumb** — 140×196 for 271
+  of them — so the scroll range was zero. taffy 0.10 measures each grid
+  item's content contribution from its *own grid area*
+  (`align_and_position_item`: `Point { x: x - grid_area.left, y: y -
+  grid_area.top }`), and the maximum over the items is one cell. The
+  grid is no longer the scroll container: it sits inside a flex column
+  that is, whose content is the grid's full height (11,220 px; three
+  wheel lines move it 300). A first guess — that `ScrollAreaPlugin` was
+  never added — was wrong twice over: `DefaultPlugins` brings it with
+  the `ui` feature (adding it again is a panic at start-up), and the
+  headless app now adds it and `ScrollbarPlugin` only where absent, so
+  the tests run the same observers.
+- **A scrollbar** beside the grid and one beside the inspector
+  (`widgets::scrollbar`, Bevy's `Scrollbar`/`ScrollbarThumb`: the thumb
+  is sized and placed by the plugin, and a drag or a click on the track
+  moves the target).
+- **The keyboard moves the selection**: the arrows by one or by a row
+  (the column count read off the grid's laid-out width), Page Up and
+  Down by three rows, Home and End to the ends — `Intent::Step(n)` on
+  the model, clamped to the visible list, so a key can never open a
+  card the grid does not show. The grid scrolls to keep a key-moved
+  selection in view and never after a click. A selection change moves
+  the outline and respawns the inspector only; respawning the grid for
+  a held key was a slideshow.
+- **The inspector's face grew** from 300×420 to 380×532 and the panel
+  scrolls under it.
+- **Drop-downs instead of chips** (`widgets::dropdown`: a head that
+  reads "Label: choice ▾", a list spawned under it on press and lifted
+  above the grid with `GlobalZIndex`, closed by a choice, a click
+  elsewhere or Escape). Five filters in one toolbar row where the chips
+  took a rail. Escape now has three claimants — an open list, the search
+  field, the screen — and `nav::Captures` is the system set that orders
+  them: the flag is reset at the start of `Update`, the widgets set it
+  from inside the set (a list before the field, so one Escape closes
+  the list and leaves the search alone), and the Escape rule reads it
+  after. A keystroke in the search respawns the grid but not the
+  drop-downs, so a list left open stays open while the grid narrows.
+- **Set and format filters**, and a **"Legal in Startup · Standard ·
+  Eternal · Snapshot"** line in the inspector (`cards::legal_formats`,
+  by the same tables `legal_in` reads; `cards::set_name` for the three
+  pack codes the catalog carries).
+- **NetrunnerDB's icon font, fetched to the cache.** The site draws the
+  factions, the sets and the printed symbols with one 38 KB TrueType
+  face (`netrunnerfont.css`; code points U+E900–U+E935, its whole
+  character map). Its repository is MIT but the marks are Null Signal
+  Games' and its predecessor's, so it is treated as the scans are:
+  `CardImageStore::download_icon_font` fetches it on the same opt-in as
+  the pictures, checks for a TrueType header before keeping it (a CDN
+  error page would load as a font and fail silently), and never ships
+  it. `icon_font.rs` loads it from bytes (`Font::from_bytes`, what the
+  asset loader does) and `Theme::symbol` is now the three tiers in one
+  place: the icon font's glyph, else Noto Sans Symbols 2's, else the
+  Latin-1 fallback. `card_text::faction_icon` / `set_icon` and
+  `Symbol::icon` are the code points, tested to be distinct and inside
+  the map; the faction's mark sits in its drop-down entry, on the
+  inspector's faction line and in the text face's bottom row.
+- **`rodio::stream` errors are filtered** (`main.rs`): the audio plugin
+  opens the output stream at start-up and holds it idle, and on this box
+  (PipeWire behind ALSA) the idle stream logged `alsa::poll() returned
+  POLLERR` at random, as an ERROR line, over and over. A stream nothing
+  has written to cannot have failed in a way a player would notice.
+  `RUST_LOG` still overrides the whole filter; §4's sound bank revisits
+  it if a playing stream shows the same.
+- **The download button** moved to the status row beside its progress
+  bar; with it in the toolbar the row wrapped and stranded Back.
+- **"Engine reads it as" drew a box** where the prose joins a clause to
+  its reading with `→` — the arrows block is in neither bundled font,
+  as §2 already recorded for the subroutine. The inspector draws `›`
+  there; the prose itself is unchanged, since the terminal has the
+  arrow.
 
 **Open, for §3 onward:** the `Sfx`/audio and tween modules exist only in
 the plan; the stubs name the phase that replaces them. The board will

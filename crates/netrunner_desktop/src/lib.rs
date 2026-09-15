@@ -47,6 +47,7 @@ pub mod card_images;
 pub mod core;
 pub mod dev;
 pub mod downloads;
+pub mod icon_font;
 pub mod models;
 pub mod nav;
 pub mod screens;
@@ -56,6 +57,25 @@ pub mod widgets;
 pub use screens::AppScreen;
 
 pub const WINDOW_TITLE: &str = "Netrunner";
+
+/// The observers behind `ScrollArea` and `Scrollbar`, for an app built
+/// without `DefaultPlugins`. With them (the `ui` feature brings
+/// `bevy_ui_widgets`, and `DefaultPlugins` adds its plugin group) they
+/// are already there, and adding a plugin twice is a panic at start-up;
+/// without them — the headless tests — the components would be inert
+/// markers. So: added only where absent.
+struct ScrollPlugins;
+
+impl Plugin for ScrollPlugins {
+    fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<bevy::ui_widgets::ScrollAreaPlugin>() {
+            app.add_plugins(bevy::ui_widgets::ScrollAreaPlugin);
+        }
+        if !app.is_plugin_added::<bevy::ui_widgets::ScrollbarPlugin>() {
+            app.add_plugins(bevy::ui_widgets::ScrollbarPlugin);
+        }
+    }
+}
 
 /// Every plugin the client is made of, in one group, so `main` and a
 /// headless test build the same application.
@@ -69,8 +89,10 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(theme::ThemePlugin)
             .add(nav::NavPlugin)
             .add(widgets::WidgetsPlugin)
+            .add(ScrollPlugins)
             .add(card_images::CardImagesPlugin)
             .add(downloads::DownloadsPlugin)
+            .add(icon_font::IconFontPlugin)
             .add(screens::boot::BootPlugin)
             .add(screens::main_menu::MainMenuPlugin)
             .add(screens::profile::ProfilePlugin)

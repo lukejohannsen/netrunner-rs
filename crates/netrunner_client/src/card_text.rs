@@ -17,6 +17,18 @@
 //! loaded: Latin-1 where a glyph reads as the icon (`¢`, `»`), a short
 //! word where none does. Both are strings rather than `char`s because a
 //! recurring credit is two glyphs.
+//!
+//! **The real icons, when the player has fetched them.** NetrunnerDB's
+//! own icon font (`netrunner_card_sync::ICON_FONT_URL`, cached by the
+//! image store on the same opt-in as the scans) draws every printed
+//! symbol as the card prints it, plus each faction's mark and each set's.
+//! [`Symbol::icon`], [`faction_icon`] and [`set_icon`] are its code
+//! points, read off the site's `netrunnerfont.css` (private-use block
+//! U+E900–U+E935, the whole of the font's character map). A face draws
+//! these when the font is loaded, the Noto glyphs when it is not, and
+//! the fallbacks when neither font is.
+
+use netrunner_core::card::Faction;
 
 /// An icon Netrunner prints inline with its rules text.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -76,6 +88,23 @@ impl Symbol {
         }
     }
 
+    /// The glyph in NetrunnerDB's icon font: `.icon-subroutine` is
+    /// U+E900, `.icon-mu` U+E904, `.icon-trash` U+E905, `.icon-link`
+    /// U+E908, `.icon-click` U+E909, `.icon-recurring-credit` U+E90A,
+    /// `.icon-credit` U+E90B, `.icon-interrupt` U+E92B.
+    pub fn icon(self) -> char {
+        match self {
+            Symbol::Credit => '\u{e90b}',
+            Symbol::Click => '\u{e909}',
+            Symbol::Subroutine => '\u{e900}',
+            Symbol::Trash => '\u{e905}',
+            Symbol::Mu => '\u{e904}',
+            Symbol::RecurringCredit => '\u{e90a}',
+            Symbol::Link => '\u{e908}',
+            Symbol::Interrupt => '\u{e92b}',
+        }
+    }
+
     /// What to draw with only Noto Sans: Latin-1 where it reads as the
     /// icon, a word where it does not.
     pub fn fallback(self) -> &'static str {
@@ -93,6 +122,39 @@ impl Symbol {
 
     fn from_token(token: &str) -> Option<Symbol> {
         Symbol::ALL.into_iter().find(|symbol| symbol.token() == token)
+    }
+}
+
+/// A faction's mark in NetrunnerDB's icon font. Both neutrals are the
+/// one Null Signal Games mark, as the site draws them (`.icon-neutral-corp`
+/// and `.icon-neutral-runner` are the same code point).
+pub fn faction_icon(faction: Faction) -> char {
+    match faction {
+        Faction::Anarch => '\u{e91a}',
+        Faction::Criminal => '\u{e919}',
+        Faction::Shaper => '\u{e91b}',
+        Faction::HaasBioroid => '\u{e918}',
+        Faction::Jinteki => '\u{e916}',
+        Faction::Nbn => '\u{e915}',
+        Faction::WeylandConsortium => '\u{e917}',
+        Faction::NeutralCorp | Faction::NeutralRunner => '\u{e92f}',
+    }
+}
+
+/// A set's mark in NetrunnerDB's icon font, for the pack codes the
+/// embedded catalog carries (`core`, `sg`, `elev`) and the two other
+/// codes that name their icon outright (`core2`, `sc19`). The font has
+/// a mark per *cycle*, and a pack code that is not a cycle name needs a
+/// table this crate does not have, so a set it cannot place gets none
+/// rather than a guess.
+pub fn set_icon(set_code: &str) -> Option<char> {
+    match set_code {
+        "core" => Some('\u{e914}'),
+        "core2" => Some('\u{e924}'),
+        "sc19" => Some('\u{e928}'),
+        "sg" => Some('\u{e92d}'),
+        "elev" => Some('\u{e934}'),
+        _ => None,
     }
 }
 
@@ -183,6 +245,28 @@ pub fn render(segments: &[Segment], glyphs: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every icon is inside the font's character map (U+E900–U+E935,
+    /// per `fc-query`), the symbols are distinct from one another and
+    /// from the factions, and the two neutrals share one mark.
+    #[test]
+    fn the_icons_are_inside_the_fonts_map_and_distinct() {
+        let in_map = |c: char| ('\u{e900}'..='\u{e935}').contains(&c);
+        let mut seen = std::collections::HashSet::new();
+        for symbol in Symbol::ALL {
+            assert!(in_map(symbol.icon()), "{symbol:?}");
+            assert!(seen.insert(symbol.icon()), "{symbol:?} shares an icon");
+        }
+        for faction in [Faction::Anarch, Faction::Criminal, Faction::Shaper, Faction::HaasBioroid, Faction::Jinteki, Faction::Nbn, Faction::WeylandConsortium, Faction::NeutralCorp] {
+            assert!(in_map(faction_icon(faction)), "{faction:?}");
+            assert!(seen.insert(faction_icon(faction)), "{faction:?} shares an icon");
+        }
+        assert_eq!(faction_icon(Faction::NeutralRunner), faction_icon(Faction::NeutralCorp));
+        for set in ["core", "sg", "elev"] {
+            assert!(set_icon(set).is_some_and(in_map), "{set}");
+        }
+        assert_eq!(set_icon("homebrew"), None);
+    }
 
     #[test]
     fn tithe_splits_into_symbols_text_and_a_break() {

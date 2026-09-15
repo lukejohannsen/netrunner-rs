@@ -8,7 +8,10 @@
 //! is the procedural tier that always works — every card the engine can
 //! name has one from the first frame — and the picture, when the store
 //! has it, is put in its place by `card_images::poll_decoded`, which is
-//! why a text face carries `WantsImage`.
+//! why a text face carries `WantsImage`. Which glyph a symbol is drawn
+//! with is the theme's decision (`Theme::symbol`): NetrunnerDB's icon
+//! font when it is cached, Noto Sans Symbols 2 when not, a word or a
+//! Latin-1 stand-in when neither is loaded.
 
 use bevy::prelude::*;
 
@@ -31,7 +34,7 @@ impl FaceSize {
     pub fn width(self) -> f32 {
         match self {
             FaceSize::Thumb => 140.0,
-            FaceSize::Large => 300.0,
+            FaceSize::Large => 380.0,
         }
     }
 
@@ -42,35 +45,35 @@ impl FaceSize {
     fn title(self) -> f32 {
         match self {
             FaceSize::Thumb => 11.0,
-            FaceSize::Large => 18.0,
+            FaceSize::Large => 21.0,
         }
     }
 
     fn small(self) -> f32 {
         match self {
             FaceSize::Thumb => 8.0,
-            FaceSize::Large => 12.0,
+            FaceSize::Large => 14.0,
         }
     }
 
     fn body(self) -> f32 {
         match self {
             FaceSize::Thumb => 8.5,
-            FaceSize::Large => 13.0,
+            FaceSize::Large => 15.0,
         }
     }
 
     fn number(self) -> f32 {
         match self {
             FaceSize::Thumb => 11.0,
-            FaceSize::Large => 16.0,
+            FaceSize::Large => 19.0,
         }
     }
 
     fn padding(self) -> f32 {
         match self {
             FaceSize::Thumb => 5.0,
-            FaceSize::Large => 10.0,
+            FaceSize::Large => 12.0,
         }
     }
 }
@@ -137,8 +140,8 @@ pub fn spawn_face(parent: &mut ChildSpawnerCommands, theme: &Theme, face: &Face,
                                 spans.spawn((TextSpan::new(text.clone()), theme.font(size.body()), TextColor(theme.text)));
                             }
                             Segment::Symbol(symbol) => {
-                                let glyph = if glyphs { symbol.glyph() } else { symbol.fallback() };
-                                spans.spawn((TextSpan::new(glyph), theme.symbol_font(size.body()), TextColor(theme.accent)));
+                                let (glyph, font) = theme.symbol(*symbol, size.body());
+                                spans.spawn((TextSpan::new(glyph), font, TextColor(theme.accent)));
                             }
                             Segment::Superscript(n) => {
                                 spans.spawn((TextSpan::new(superscript(*n)), theme.font(size.body()), TextColor(theme.text)));
@@ -161,8 +164,8 @@ pub fn spawn_face(parent: &mut ChildSpawnerCommands, theme: &Theme, face: &Face,
                 ));
             }
         });
-        // The bottom row: strength or points left, pips in the middle,
-        // trash cost, memory, limits right.
+        // The bottom row: strength or points left, the faction's mark and
+        // the pips in the middle, trash cost, memory, limits right.
         card.spawn((Node {
             flex_direction: FlexDirection::Row,
             align_items: AlignItems::Center,
@@ -174,16 +177,21 @@ pub fn spawn_face(parent: &mut ChildSpawnerCommands, theme: &Theme, face: &Face,
         .with_children(|row| {
             row.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(3), ..default() },)).with_children(|left| {
                 if let Some(slot) = face.bottom_left {
-                    left.spawn(chip(theme, faction, slot, size, glyphs));
+                    left.spawn(chip(theme, faction, slot, size));
                 }
             });
-            if let Some(influence) = face.influence.filter(|n| *n > 0) {
-                let pip = if glyphs { "●" } else { "•" };
-                row.spawn((Text::new(pip.repeat(influence as usize)), theme.symbol_font(size.small()), TextColor(faction)));
-            }
+            row.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(4), ..default() },)).with_children(|middle| {
+                if let Some((mark, font)) = face.faction.and_then(|f| theme.faction_icon(f, size.number())) {
+                    middle.spawn((Text::new(mark), font, TextColor(faction)));
+                }
+                if let Some(influence) = face.influence.filter(|n| *n > 0) {
+                    let pip = if glyphs { "●" } else { "•" };
+                    middle.spawn((Text::new(pip.repeat(influence as usize)), theme.symbol_font(size.small()), TextColor(faction)));
+                }
+            });
             row.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(3), ..default() },)).with_children(|right| {
                 for slot in &face.bottom_right {
-                    right.spawn(chip(theme, faction, *slot, size, glyphs));
+                    right.spawn(chip(theme, faction, *slot, size));
                 }
             });
         });
@@ -215,21 +223,20 @@ fn circle(theme: &Theme, faction: Color, value: &str, size: FaceSize) -> impl Bu
 
 /// A number with its icon, or its caption where there is no icon: the
 /// memory and trash icons the card prints, a word for the rest.
-fn chip(theme: &Theme, faction: Color, slot: Slot, size: FaceSize, glyphs: bool) -> impl Bundle {
+fn chip(theme: &Theme, faction: Color, slot: Slot, size: FaceSize) -> impl Bundle {
     let icon = match slot {
         Slot::Memory(_) => Some(Symbol::Mu),
         Slot::TrashCost(_) => Some(Symbol::Trash),
         Slot::Link(_) => Some(Symbol::Link),
         _ => None,
     };
-    let label = match icon {
-        Some(symbol) => (if glyphs { symbol.glyph() } else { symbol.fallback() }).to_string(),
+    let (label, label_font) = match icon {
+        Some(symbol) => theme.symbol(symbol, size.small()),
         None => match slot {
-            Slot::Strength(_) | Slot::AgendaPoints(_) | Slot::Cost(_) | Slot::Advancement(_) => String::new(),
-            _ => slot.caption().to_string(),
+            Slot::Strength(_) | Slot::AgendaPoints(_) | Slot::Cost(_) | Slot::Advancement(_) => (String::new(), theme.font(size.small())),
+            _ => (slot.caption().to_string(), theme.font(size.small())),
         },
     };
-    let label_font = if icon.is_some() { theme.symbol_font(size.small()) } else { theme.font(size.small()) };
     (
         Node {
             flex_direction: FlexDirection::Row,

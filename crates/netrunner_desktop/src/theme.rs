@@ -7,6 +7,7 @@
 
 use bevy::prelude::*;
 
+use netrunner_client::card_text::{self, Symbol};
 use netrunner_core::card::Faction;
 use netrunner_core::rules::Side;
 
@@ -38,6 +39,11 @@ pub struct Theme {
     /// `None` until boot loads it, and in a headless test; a face then
     /// draws `Symbol::fallback` instead of `Symbol::glyph`.
     pub symbol_font: Option<Handle<Font>>,
+    /// NetrunnerDB's icon font, once `icon_font` has fetched and loaded
+    /// it: the printed symbols as the card prints them, the factions'
+    /// marks and the sets'. `None` until then, and for a player who has
+    /// not opted into downloads — the two fonts above then do.
+    pub icon_font: Option<Handle<Font>>,
     pub background: Color,
     pub panel: Color,
     pub panel_border: Color,
@@ -57,6 +63,7 @@ impl Default for Theme {
         Self {
             font: None,
             symbol_font: None,
+            icon_font: None,
             background: Color::srgb(0.06, 0.07, 0.09),
             panel: Color::srgb(0.10, 0.11, 0.14),
             panel_border: Color::srgb(0.22, 0.24, 0.30),
@@ -127,5 +134,48 @@ impl Theme {
     /// Whether a face may draw `Symbol::glyph`.
     pub fn has_symbols(&self) -> bool {
         self.symbol_font.is_some()
+    }
+
+    /// A `TextFont` in NetrunnerDB's icon face at `size`, or the text
+    /// face when it is not loaded — callers check `has_icons` and draw
+    /// words instead.
+    pub fn icon_font(&self, size: f32) -> TextFont {
+        let mut font = TextFont { font_size: FontSize::Px(size), ..default() };
+        if let Some(handle) = self.icon_font.as_ref().or(self.font.as_ref()) {
+            font.font = handle.clone().into();
+        }
+        font
+    }
+
+    pub fn has_icons(&self) -> bool {
+        self.icon_font.is_some()
+    }
+
+    /// What a printed symbol is drawn as, and in which face: the icon
+    /// font's glyph when it is loaded, Noto Sans Symbols 2's when that
+    /// is, the Latin-1 fallback otherwise. The three tiers of the asset
+    /// rule, decided once.
+    pub fn symbol(&self, symbol: Symbol, size: f32) -> (String, TextFont) {
+        if self.has_icons() {
+            (symbol.icon().to_string(), self.icon_font(size))
+        } else if self.has_symbols() {
+            (symbol.glyph().to_string(), self.symbol_font(size))
+        } else {
+            (symbol.fallback().to_string(), self.font(size))
+        }
+    }
+
+    /// A faction's mark in the icon font, or nothing without it.
+    pub fn faction_icon(&self, faction: Faction, size: f32) -> Option<(String, TextFont)> {
+        self.has_icons().then(|| (card_text::faction_icon(faction).to_string(), self.icon_font(size)))
+    }
+
+    /// A set's mark in the icon font, or nothing without it or for a
+    /// set the font has no mark for.
+    pub fn set_icon(&self, set_code: &str, size: f32) -> Option<(String, TextFont)> {
+        if !self.has_icons() {
+            return None;
+        }
+        card_text::set_icon(set_code).map(|icon| (icon.to_string(), self.icon_font(size)))
     }
 }

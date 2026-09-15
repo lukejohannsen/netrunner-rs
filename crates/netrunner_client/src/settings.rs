@@ -45,6 +45,17 @@ pub fn format_name(format: NsgFormat) -> &'static str {
     }
 }
 
+/// The name a format is shown under in a list: [`format_name`] with a
+/// capital, so a screen never spells it twice.
+pub fn format_label(format: NsgFormat) -> &'static str {
+    match format {
+        NsgFormat::Startup => "Startup",
+        NsgFormat::Standard => "Standard",
+        NsgFormat::Eternal => "Eternal",
+        NsgFormat::Snapshot => "Snapshot",
+    }
+}
+
 /// The inverse of [`format_name`], case-insensitive.
 pub fn parse_format(name: &str) -> Option<NsgFormat> {
     FORMATS.into_iter().find(|format| format_name(*format).eq_ignore_ascii_case(name))

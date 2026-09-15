@@ -33,7 +33,10 @@ pub enum TextFieldEvent {
 
 /// Feeds key presses into every [`TextField`] and mirrors the text into
 /// its first `Text` child. Holds [`InputCaptured`] while a field exists,
-/// so Escape cancels the edit rather than leaving the screen.
+/// so Escape cancels the edit rather than leaving the screen. An Escape
+/// a widget earlier in `nav::Captures` has already taken — an open
+/// drop-down closing — is not also a cancel, or one key would do two
+/// things.
 pub fn edit_text_fields(
     mut commands: Commands,
     mut keys: MessageReader<KeyboardInput>,
@@ -41,7 +44,10 @@ pub fn edit_text_fields(
     mut texts: Query<&mut Text>,
     mut captured: ResMut<InputCaptured>,
 ) {
-    captured.0 = !fields.is_empty();
+    let escape_taken = captured.0;
+    if !fields.is_empty() {
+        captured.0 = true;
+    }
     let presses: Vec<Key> = keys.read().filter(|key| key.state == ButtonState::Pressed).map(|key| key.logical_key.clone()).collect();
     for (entity, mut field, children) in &mut fields {
         for key in &presses {
@@ -49,6 +55,7 @@ pub fn edit_text_fields(
                 Key::Enter => {
                     commands.entity(entity).insert(TextFieldEvent::Committed(field.text.trim().to_string()));
                 }
+                Key::Escape if escape_taken => {}
                 Key::Escape => {
                     commands.entity(entity).insert(TextFieldEvent::Cancelled);
                 }

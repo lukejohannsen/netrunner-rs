@@ -2,9 +2,10 @@
 //!
 //! A screen never sets the next state itself; it writes a [`Navigate`]
 //! and this module applies it, so that "what Escape does" and "what a
-//! Back button does" are one rule in one place. A screen that must
-//! intercept Escape — a text field being edited, a modal — sets
-//! [`InputCaptured`] for the frame, and the rule stands down.
+//! Back button does" are one rule in one place. A widget that must
+//! intercept Escape — a text field being edited, an open drop-down —
+//! sets [`InputCaptured`] for the frame from inside the [`Captures`]
+//! set, and the rule stands down.
 
 use bevy::prelude::*;
 
@@ -16,18 +17,32 @@ impl Plugin for NavPlugin {
     fn build(&self, app: &mut App) {
         app.add_message::<Navigate>()
             .init_resource::<InputCaptured>()
-            .add_systems(Update, (escape_goes_back, apply_navigation).chain());
+            .configure_sets(Update, Captures.after(reset_captured).before(escape_goes_back))
+            .add_systems(Update, (reset_captured, escape_goes_back, apply_navigation).chain());
     }
 }
+
+/// Where the systems that may capture input run: after the flag is
+/// reset for the frame and before Escape is read, so a capture is seen
+/// the frame it is set whatever order the widgets' systems land in.
+/// Two widgets that both capture simply both set the flag; the first
+/// to run also sees whether an earlier one already has.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Captures;
 
 /// "Go to this screen." Applied at the end of the frame it is written in.
 #[derive(Message, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Navigate(pub AppScreen);
 
-/// Set by a screen that is consuming keys itself this frame, so Escape
-/// does not also leave the screen. Cleared every frame by whoever set it.
+/// Set by a widget that is consuming keys itself this frame, so Escape
+/// does not also leave the screen. Reset at the start of every frame
+/// here; set only from inside [`Captures`].
 #[derive(Resource, Default, Debug)]
 pub struct InputCaptured(pub bool);
+
+fn reset_captured(mut captured: ResMut<InputCaptured>) {
+    captured.0 = false;
+}
 
 /// The root every screen spawns under: fills the window, stacks
 /// vertically, and is despawned with its whole subtree when the screen
