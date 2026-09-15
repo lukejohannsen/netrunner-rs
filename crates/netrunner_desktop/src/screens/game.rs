@@ -83,7 +83,7 @@ use bevy::ui::FocusPolicy;
 use bevy::window::PrimaryWindow;
 
 use netrunner_client::board::action_map::server_name;
-use netrunner_client::board::{Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Transition, Zone};
+use netrunner_client::board::{facts, Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Transition, Zone};
 use netrunner_client::card_face::Face;
 use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, RunPhase, ServerId, Side, SubroutineStatus};
@@ -147,6 +147,9 @@ pub struct RunLane;
 /// A server's column, for a test that reads what a column holds.
 #[derive(Component)]
 pub struct ServerColumn(pub ServerId);
+/// One line of an install's state on its sheet, for a test to read.
+#[derive(Component)]
+pub struct InstallFact;
 
 /// The pacer the match's messages go through.
 #[derive(Resource)]
@@ -447,6 +450,15 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
             // The card's own box, as the click would have read it.
             let over = nodes.iter().find(|(click, _, _)| **click == Click::Target(target.clone())).map_or_else(Anchor::default, |(_, node, transform)| anchor_of(node, transform));
             pending.0.push(Intent::Menu { target, over });
+        }
+    }
+    if dev.sheet && model.0.awaiting && dev.autoplayed >= dev.autoplay {
+        dev.sheet = false;
+        // The first Corp install on the board, ice before root, in the
+        // engine's order: the tile's own sheet.
+        let first = model.0.view.as_ref().and_then(|view| view.corp.servers.iter().flat_map(|s| s.ice.iter().chain(s.root.iter())).map(|c| c.install_id).next());
+        if let Some(id) = first {
+            pending.0.push(Intent::Click(Target::Install(id)));
         }
     }
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
@@ -991,8 +1003,8 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     for piece in layout::column_top_down(game.side) {
                         match piece {
                             layout::Piece::Header => spawn_server_header(column, theme, view, server.server),
-                            layout::Piece::Ice => spawn_server_ice(column, theme, core, server, game.side, encountered, lit, size),
-                            layout::Piece::Root => spawn_server_root(column, theme, core, server, lit, size),
+                            layout::Piece::Ice => spawn_server_ice(column, theme, core, view, server, game.side, encountered, lit, size),
+                            layout::Piece::Root => spawn_server_root(column, theme, core, view, server, lit, size),
                         }
                     }
                 });
@@ -1042,43 +1054,33 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
     tile.id()
 }
 
-/// A server's ice as tiles: the title when it can be named, its
-/// strength when rezzed, and the run's marker on the piece being
-/// approached.
+/// A server's ice as tiles, labelled by `board::facts::tile_label` —
+/// the title when it may be named, rezzed or unrezzed, its strength
+/// now, its tokens — with the run's marker on the piece being approached.
 #[allow(clippy::too_many_arguments)]
-fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize) {
+fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, view: &ClientView, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize) {
     for ice in layout::ice_top_down(&server.ice, chair) {
-        let title = ice.card.as_ref().and_then(|id| core.registry.get(id));
-        // The title when it may be named and the strength when
-        // rezzed; an unrezzed tile is told by its dim border
-        // and text, not a suffix that would wrap the tile.
-        let label = match (ice.rezzed, title) {
-            (true, Some(card)) => format!("{}  {}", card.title, card.strength.map_or(String::new(), |s| s.to_string())),
-            (false, Some(card)) => card.title.clone(),
-            (_, None) => "ICE".to_string(),
-        };
-        let colour = if ice.rezzed { theme.faction(title.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
+        let def = ice.card.as_ref().and_then(|id| core.registry.get(id));
+        let label = facts::tile_label(view, ice.install_id, &core.registry);
+        let colour = if ice.rezzed { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
         let text_colour = if ice.rezzed { theme.text } else { theme.text_dim };
         let is_lit = encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id);
         spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size);
     }
 }
 
-/// The cards in a server's root as tiles, with their counters in the
-/// label: advancement is public, so a face-down card the viewer cannot
-/// name still reads "Card · 2 adv".
-fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, server: &ServerView, lit: &Lit, size: FaceSize) {
+/// The cards in a server's root as tiles, labelled by
+/// `board::facts::tile_label`: rezzed or unrezzed for an asset or an
+/// upgrade, `2/3 adv` for an agenda the viewer knows, `face down` with
+/// its tokens for a card the viewer cannot name (advancement is public).
+/// An agenda's border is its faction's: it has no rez to wait for.
+fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, view: &ClientView, server: &ServerView, lit: &Lit, size: FaceSize) {
     for card in &server.root {
         let def = card.card.as_ref().and_then(|id| core.registry.get(id));
-        let mut label = def.map_or_else(|| "Card".to_string(), |def| def.title.clone());
-        if card.advancement_tokens > 0 {
-            label.push_str(&format!(" · {} adv", card.advancement_tokens));
-        }
-        if let Some(counters) = card.counters.filter(|n| *n > 0) {
-            label.push_str(&format!(" · {counters} ctr"));
-        }
-        let colour = if card.rezzed { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
-        let text_colour = if card.rezzed { theme.text } else { theme.text_dim };
+        let label = facts::tile_label(view, card.install_id, &core.registry);
+        let face_up = card.rezzed || def.is_some_and(|d| d.card_type == CardType::Agenda);
+        let colour = if face_up { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
+        let text_colour = if face_up { theme.text } else { theme.text_dim };
         spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size);
     }
 }
@@ -1492,7 +1494,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     // the sheets are wider than the prompts.
     let width = if game.finished() || game.confirm_quit || game.options_open {
         px(560)
-    } else if game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| game.card_of(&s.target).is_some()) {
+    } else if game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| matches!(s.target, Target::Install(_)) || game.card_of(&s.target).is_some()) {
         px(800)
     } else {
         px(960)
@@ -1557,9 +1559,10 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     // nothing to do with it from here.
                     card_sheet(panel, theme, core, images, game, id, &[]);
                 } else if let Some(sheet) = &game.sheet {
-                    match game.card_of(&sheet.target) {
-                        Some(id) => card_sheet(panel, theme, core, images, game, &id, &sheet.entries),
-                        None => zone_sheet(panel, theme, core, images, game, &sheet.target, &sheet.entries),
+                    match (&sheet.target, game.card_of(&sheet.target)) {
+                        (Target::Install(id), card) => install_sheet(panel, theme, core, images, game, *id, card.as_ref(), &sheet.entries),
+                        (_, Some(id)) => card_sheet(panel, theme, core, images, game, &id, &sheet.entries),
+                        (_, None) => zone_sheet(panel, theme, core, images, game, &sheet.target, &sheet.entries),
                     }
                 }
             });
@@ -1581,6 +1584,50 @@ fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
         row.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
             column.spawn((Text::new(Face::of(def).body_text(false)), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            if entries.is_empty() {
+                column.spawn(widgets::dim(theme, if game.awaiting { "Nothing to do with this card right now." } else { "Not your decision right now." }));
+            } else {
+                column.spawn(widgets::label(theme, "Actions"));
+                for index in entries {
+                    entry_button(column, theme, game, *index);
+                }
+            }
+        });
+    });
+    panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+}
+
+/// An installed card: the face (or the back, for a card the viewer
+/// cannot name) beside its state — `board::facts::install_facts`: where
+/// it sits and in what order it is met, rezzed or not and the cost of a
+/// rez, strength now and printed, each subroutine with its status in an
+/// encounter, tokens, counters, trash cost, what it hosts — then its
+/// text and its actions. The state is on the sheet because a person
+/// reads it off the table to decide what to do, and a tile has no room.
+#[allow(clippy::too_many_arguments)]
+fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, id: InstallId, card: Option<&CardId>, entries: &[usize]) {
+    let Some(view) = &game.view else { return };
+    let def = card.and_then(|c| core.registry.get(c));
+    let heading = def.map_or_else(|| facts::hidden_title(view, id), |d| d.title.clone());
+    panel.spawn(widgets::heading(theme, heading));
+    panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
+        match def {
+            Some(def) => {
+                let image = def.numeric_id.and_then(|code| images.face(code));
+                spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
+            }
+            None => {
+                spawn_back(row, theme, images.back(Side::Corp), Side::Corp, FaceSize::Large, ());
+            }
+        }
+        row.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
+            column.spawn(widgets::label(theme, "State"));
+            for line in facts::install_facts(view, id, &core.registry).unwrap_or_default() {
+                column.spawn((InstallFact, Text::new(line), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            }
+            if let Some(def) = def {
+                column.spawn((Text::new(Face::of(def).body_text(false)), theme.font(size::SMALL), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            }
             if entries.is_empty() {
                 column.spawn(widgets::dim(theme, if game.awaiting { "Nothing to do with this card right now." } else { "Not your decision right now." }));
             } else {

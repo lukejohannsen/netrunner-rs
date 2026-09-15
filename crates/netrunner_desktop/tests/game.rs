@@ -23,7 +23,8 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, InstallFact, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
 use netrunner_desktop::screens::settings::Control as SettingsControl;
@@ -123,6 +124,12 @@ fn to_the_runners_turn(app: &mut App) {
     wait_for(app, "the first decision", |app| click_entry_count(app) > 0);
     let keep = button_labelled(app, "Keep hand").expect("Keep hand is a decision");
     press_entity(app, keep);
+    until_the_runners_turn(app);
+}
+
+/// Waits for the Runner's own action phase, passing priority whenever
+/// asked to during the Corp's turn.
+fn until_the_runners_turn(app: &mut App) {
     wait_for(app, "the Runner's turn", |app| {
         let model = &app.world().resource::<Model>().0;
         if !model.awaiting {
@@ -622,4 +629,50 @@ fn the_form_has_a_drop_down_per_pane_and_start_opens_the_board() {
     assert!(app.world().contains_resource::<ActiveMatch>());
     // Operator, the default suggestion, answers within the bound too.
     wait_for(&mut app, "the first decision at the suggested rung", |app| click_entry_count(app) > 0);
+}
+
+/// A tile says whether its card is rezzed — or face down, from the
+/// chair that cannot name it — and its sheet lists the card's state:
+/// where it sits, rezzed or not, its tokens. Played from the Runner's
+/// chair until the Corp has installed something.
+#[test]
+fn a_tile_says_its_rez_state_and_its_sheet_lists_the_facts() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let mut installs: Vec<InstallId> = Vec::new();
+    for _ in 0..6 {
+        until_the_runners_turn(&mut app);
+        installs = app.world().resource::<Model>().0.view.as_ref().map_or(Vec::new(), |v| v.corp.servers.iter().flat_map(|s| s.ice.iter().chain(s.root.iter())).map(|c| c.install_id).collect());
+        if !installs.is_empty() {
+            break;
+        }
+        let (end, disabled) = control_button(&mut app, Control::EndTurn);
+        assert!(!disabled);
+        press_entity(&mut app, end);
+        wait_for(&mut app, "the turn to end", |app| app.world().resource::<Model>().0.view.as_ref().is_some_and(|v| !matches!(v.phase, GamePhase::Action(Side::Runner)) || v.paid_ability_window.is_some()));
+    }
+    let id = *installs.first().expect("the Corp installed something within six turns");
+    app.update();
+    // The tile's words: a face-down card, or unrezzed ice, since the
+    // Runner cannot name an unrezzed Corp card.
+    let tile = entity_with(&mut app, &Click::Target(Target::Install(id))).expect("the install has a tile");
+    let world = app.world_mut();
+    let children = world.get::<Children>(tile).expect("a tile has a text").iter().collect::<Vec<_>>();
+    let words: String = children.iter().filter_map(|c| world.get::<Text>(*c).map(|t| t.0.clone())).collect();
+    let view = world.resource::<Model>().0.view.clone().unwrap();
+    let card = view.corp.servers.iter().flat_map(|s| s.ice.iter().chain(s.root.iter())).find(|c| c.install_id == id).unwrap().clone();
+    let expected = if card.rezzed { "rezzed" } else if card.slot == netrunner_core::rules::InstallSlot::Ice { "unrezzed" } else { "face down" };
+    assert!(words.contains(expected), "the tile reads {words:?}, expected {expected:?}");
+    // Its sheet: the state lines, then Close.
+    press_entity(&mut app, tile);
+    let facts: Vec<String> = {
+        let world = app.world_mut();
+        world.query_filtered::<&Text, With<InstallFact>>().iter(world).map(|t| t.0.clone()).collect()
+    };
+    assert!(!facts.is_empty(), "the sheet lists the install's state");
+    assert!(facts[0].starts_with("Ice protecting") || facts[0].starts_with("In the root of"), "{facts:?}");
+    assert!(facts.iter().any(|l| l == "Rezzed" || l.starts_with("Unrezzed") || l.starts_with("Face down")), "{facts:?}");
+    assert_eq!(overlays(&mut app), 1);
+    assert_eq!(app.world().resource::<Model>().0.applied, app.world().resource::<Model>().0.applied, "nothing was submitted");
 }

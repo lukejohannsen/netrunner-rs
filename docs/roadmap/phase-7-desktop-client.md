@@ -949,6 +949,28 @@ when the bot ran, with nothing to say what it had done to the Corp.
   after the run until the next run or the next turn, so the Corp sees
   the whole run and what it did rather than a lane that emptied the
   instant it was over.
+- **A tile says its rez state, and its sheet lists the card's facts.**
+  The person's second look: a rezzable tile must say whether it is
+  rezzed, tokens must show, and a click must give the state a person
+  reasons from. `netrunner_client::board::facts` is the one place the
+  words come from — `tile_label` for the tile (`Ansel 1.0 · unrezzed`,
+  `Whitespace · rezzed · str 0`, `Superconducting Hub · 2/3 adv`, and
+  from the chair that cannot name it `ICE · unrezzed` or `Card · face
+  down · 4 adv`; an agenda is never "unrezzed") and `install_facts` for
+  the sheet: where it sits and in what order the Runner meets it,
+  rezzed or the rez cost, strength now and printed, each subroutine
+  with its status in an encounter, tokens against the agenda's
+  requirement, counters by kind, trash cost, what it hosts and what it
+  is hosted on; a rig card gets its strength, counters and hosts the
+  same way. The sheet is `install_sheet` for every install, known or
+  hidden — a hidden one shows the back at the large size under
+  "Face-down card" or "Unrezzed ice" with the facts the mask allows.
+  Tested over real games as both viewers: every install on the board
+  has a label with its state and facts starting with its place, a
+  hidden card is never named, an ice met in a run says its strength
+  now and its subroutines. `NETRUNNER_SHEET=1` opens the first Corp
+  install's sheet for a screenshot. One glyph found: the bundled font
+  has no `↳`, so a subroutine line uses the `»` the card text uses.
 - **A line from the lane to the column was drawn and dropped.** The
   first cut placed an absolute 2 px node, rotated with `UiTransform`,
   from the lane's server chip to the column under run, off the laid-out
@@ -971,12 +993,13 @@ when the bot ran, with nothing to say what it had done to the Corp.
 encounter or server approach and the autoplay counts as done, so
 `NETRUNNER_SCREENSHOT` catches the lane with a run in flight.
 
-**Verified.** `cargo test --workspace` green (`netrunner_client` 81 —
-two of them `trail`'s; `netrunner_desktop` 28 in the library — two
-`pace`'s, the `layout` invariants over five rows — and 11 in
-`tests/game.rs`, one new: a run from R&D's sheet fills the lane with one
-chip per ice in the trail's order, a server column holds no card face,
-and the trail stays with its outcome once the run is over), clippy
+**Verified.** `cargo test --workspace` green (`netrunner_client` 82 —
+two of them `trail`'s, one `facts`'; `netrunner_desktop` 28 in the
+library — two `pace`'s, the `layout` invariants over five rows — and
+12 in `tests/game.rs`, two new: a run from R&D's sheet fills the lane
+with one chip per ice in the trail's order, a server column holds no
+card face, and the trail stays with its outcome once the run is over;
+a tile says its rez state and its sheet lists the facts), clippy
 silent. Screenshotted on a 2560×1600 screen as both chairs forty
 decisions in and held mid-run: tile stacks in one column with the ice,
 the lane at `Run on Remote 0 › Palisade · encounter ○ › Remote 0` with
