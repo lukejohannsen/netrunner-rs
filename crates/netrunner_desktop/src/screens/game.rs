@@ -347,6 +347,12 @@ fn poll(active: Option<ResMut<ActiveMatch>>, model: Option<ResMut<Model>>, mut d
 /// ignored, for a person.
 fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut pending: ResMut<Pending>) {
     let (Some(mut dev), Some(model)) = (dev, model) else { return };
+    if dev.options && model.0.awaiting && dev.autoplayed >= dev.autoplay {
+        // The gear, pressed once the board has settled.
+        dev.options = false;
+        pending.0.push(Intent::ToggleOptions);
+        return;
+    }
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
         return;
     }

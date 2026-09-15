@@ -15,6 +15,9 @@
 //!   legal action by itself, `n` times, cycling through the list so the
 //!   game develops (installs, runs, rezzes) — how a board forty actions
 //!   in is looked at without a hand on it. Never set for a person.
+//! - `NETRUNNER_OPTIONS=1` — on the board, the gear menu is opened once
+//!   the person's first decision has arrived, so the options window can
+//!   be looked at over a real board.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -60,6 +63,8 @@ pub struct Dev {
     /// How many decisions the board takes by itself, and how many it has.
     pub autoplay: u32,
     pub autoplayed: u32,
+    /// Open the options window on the board, once.
+    pub options: bool,
     pub screenshot: Option<PathBuf>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
@@ -82,6 +87,7 @@ impl Dev {
             game,
             autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
             autoplayed: 0,
+            options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,
             frames: 0,

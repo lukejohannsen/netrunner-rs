@@ -68,14 +68,22 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
 
 /// One row per entry of `rows`: the label, the value, and its control
 /// carrying the `Intent` a press means.
+///
+/// A row is as wide as its panel: the label takes what the value and
+/// the control leave, and the value wraps rather than pushing the
+/// control out. The first cut gave the label and the value fixed
+/// widths sized for the Settings screen's 720 px panel, and in the
+/// board's 560 px options window the toggles landed outside it.
 pub fn spawn_rows(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, rows: &[Row]) {
     let login = player_name(None);
     for &row in rows {
         let value = model::value(&core.settings, row, &login);
-        parent.spawn((widgets::row(12.0), children![
-            (widgets::label(theme, row.label()), Node { width: px(220), ..default() }),
-            (widgets::label(theme, value), Node { width: px(260), ..default() }),
-        ])).with_children(|controls| {
+        let mut node = parent.spawn((widgets::row(12.0), children![
+            (widgets::label(theme, row.label()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }, TextLayout::new(Justify::Left, LineBreak::WordBoundary)),
+            (widgets::label(theme, value), Node { width: px(170), flex_shrink: 0.0, ..default() }, TextLayout::new(Justify::Left, LineBreak::WordBoundary)),
+        ]));
+        node.entry::<Node>().and_modify(|mut node| node.width = percent(100));
+        node.with_children(|controls| {
             if row.is_stepped() {
                 controls.spawn(widgets::button(theme, "<", px(44), Control::Intent(Intent::Step(row, -1))));
                 controls.spawn(widgets::button(theme, ">", px(44), Control::Intent(Intent::Step(row, 1))));
