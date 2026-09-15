@@ -41,6 +41,7 @@ use netrunner_core::view::ClientView;
 
 use crate::actions::{card_title, describe_action, explain_action};
 use crate::prose;
+use crate::placement::Placement;
 use crate::selection::Selection;
 
 /// The thing on the board an entry belongs to.
@@ -246,7 +247,10 @@ impl ActionMap {
     /// plus the selection positions, which the board does not place
     /// (a `ChooseCards` prompt's zone is not drawn as clickable cards yet),
     /// less the ones a button for an identical copy already stands for, and
-    /// in the order a selection reads (`Selection::rank`).
+    /// in the order a selection reads (`Selection::rank`) — and a card
+    /// effect's choice of server, which is on a server column too but is
+    /// the answer to the prompt, and whose one free option, a new remote,
+    /// has no column to click.
     pub fn decisions(&self) -> Vec<usize> {
         let mut decisions: Vec<usize> = self
             .entries
@@ -256,6 +260,7 @@ impl ActionMap {
                 // `all` is vacuously true of no targets, hence the guard.
                 (entry.targets.is_empty() && !Control::any_matches(&entry.action))
                     || (!entry.targets.is_empty() && entry.targets.iter().all(|t| matches!(t, Target::Position(_))) && !self.is_collapsed(*i))
+                    || matches!(entry.action, PlayerAction::ChooseServerForPendingDecision { .. })
             })
             .map(|(i, _)| i)
             .collect();
@@ -358,9 +363,11 @@ impl Prompt {
                     Prompt { title: format!("{}: choose {range} card{}", asked_by(prompting_card, source_card), if *max == 1 { "" } else { "s" }), detail }
                 }
                 PendingDecision::ChooseTriggerOrder { .. } => Prompt { title: "Choose which triggers first".to_string(), detail: String::new() },
-                PendingDecision::ChooseServer { source_card, prompting_card, .. } => {
-                    Prompt { title: format!("{}: choose a server", asked_by(prompting_card, source_card)), detail: String::new() }
-                }
+                PendingDecision::ChooseServer { source_card, prompting_card, install, .. } => match Placement::of(view, registry) {
+                    Some(placement) => Prompt { title: format!("{}: {}", asked_by(prompting_card, source_card), placement.question()), detail: placement.detail() },
+                    None if install.is_some() => Prompt { title: format!("{}: installing a card", asked_by(prompting_card, source_card)), detail: String::new() },
+                    None => Prompt { title: format!("{}: choose a server to run", asked_by(prompting_card, source_card)), detail: String::new() },
+                },
             });
         }
         if let Some(paid) = &view.pending_paid_choice {

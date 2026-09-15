@@ -464,9 +464,14 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
         return;
     }
-    // Held at a card-selection prompt for a screenshot: the autoplay is
-    // done, and the pop-up is what is shot.
-    if dev.hold_selection && model.0.view.as_ref().is_some_and(|view| matches!(view.pending_decision, Some(PendingDecision::ChooseCards { .. }))) {
+    // Held at a card-selection prompt, or a card's install, for a
+    // screenshot: the autoplay is done, and the pop-up is what is shot.
+    let held = model.0.view.as_ref().is_some_and(|view| match view.pending_decision {
+        Some(PendingDecision::ChooseCards { .. }) => dev.hold_selection,
+        Some(PendingDecision::ChooseServer { install: Some(_), .. }) => dev.hold_install,
+        _ => false,
+    });
+    if held {
         dev.autoplayed = dev.autoplay;
         return;
     }

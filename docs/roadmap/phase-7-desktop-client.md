@@ -1114,3 +1114,83 @@ branch binaries. Screenshotted as the Corp with
 `NETRUNNER_HOLD_SELECTION`, 2560×1600: Seamless Launch's pop-up reads
 `Nothing selected yet` over `Select Whitespace`, `Select Ansel 1.0`,
 `Select Palisade`, and no scroll area is the board.
+
+### 4d. Where a card a card installs may go — DONE (15 September 2026)
+
+`feat/where-to-install`, stacked on §4c. The person, as the Corp, saw the
+Runner hit Scatter Field, chose a card from HQ for "You may install 1 card
+from HQ", and could not tell where it could go. They already had a remote
+with a rezzed asset making them credits, and it looked as if the only
+choice was to install over it. They asked whether the rules allowed a new
+remote, and for a way back.
+
+**The rules, checked against the engine.** Scatter Field's subroutine is
+optional (`min: 0`) and offers any installable card: ice (the filter's
+`Ice: Barrier` is a placeholder; `CardType(Ice(_))` matches every
+subtype), agenda, asset or upgrade, never an operation. It pays the
+install cost, so ice pays 1 credit per piece already protecting the
+server. `engine::corp_install_destinations` offers every existing remote
+*and a new one* (centrals too for ice and upgrades, up to
+`MAX_REMOTE_SERVERS`), and installing an agenda or asset into a remote
+that already holds one trashes the one there (Rules Audit T5). All of it
+is Null Signal Games' rule. **The engine was right and the clients hid
+it.** The labels read `Choose Remote(0)` and `Choose Remote(1)`, with
+nothing to say that Remote 1 did not exist yet or what Remote 0 would
+lose. The desktop drew the choice on server columns only, and a server
+that does not exist yet has no column, so the one free option was
+reachable only from the play helper, which is off by default.
+
+**Decisions taken, with the alternative rejected.**
+
+- **Every destination says what it is and what it costs.**
+  `netrunner_client::placement` reads the masked view: which card is
+  going in (by its position in HQ or Archives; R&D's is not in the view,
+  so it is "the card"), whether a remote is new, what an agenda or asset
+  installed over would trash, and the ice tax (less Mercia B4LL4RD's
+  discount, none when the card installs "ignoring all costs"). The
+  labels: `Install in a new remote server`, `Install in Remote 0 —
+  trashes Nico Campaign`, `Install protecting HQ — costs 1 credit`,
+  `Install in the root of HQ` for an upgrade. The prompt:
+  `Scatter Field: where to install PAD Campaign?` over `A new remote
+  server is an option.` and, where it applies, the one-per-remote rule
+  in a sentence. A server choice that starts a run reads `Run on HQ`.
+- **A card effect's choice of server is under the prompt.**
+  `ActionMap::decisions` now includes `ChooseServerForPendingDecision`,
+  so the pop-up lists every destination. The server column still takes
+  a click, but it is no longer the only way in.
+- **No back-out to the card choice, the person's call.** Under the
+  rules the card and its place are one act of installing, so a Back to
+  the selection would be faithful. The engine cannot offer one: once the
+  card is confirmed, the only legal actions are the servers. It would
+  take a new `PlayerAction`, `ActionSpace` 1646 → 1647 and the exported
+  policies with it. With the new remote always shown, installing over a
+  card is a choice a person sees the price of, never a forced one, so
+  the person chose words over the engine change.
+
+**Found on the way.** Key Performance Indicators installs "ignoring all
+costs", and the first cut of the prompt told the Corp ice would cost a
+credit per piece; the detail now says the costs are ignored instead.
+
+**Dev hooks.** `NETRUNNER_HOLD_INSTALL=1` stops the autoplay at the first
+server choice a card's text installs into. `NETRUNNER_CORP_DECK=<id>` /
+`NETRUNNER_RUNNER_DECK=<id>` replace the dev game's decks, because the
+default Corp deck's one such card, Ansel 1.0, fires too rarely for an
+autoplay to reach it.
+
+**Verified.** `cargo test --workspace` green, clippy silent. New tests:
+two in `placement` over installs the engine itself parks, from a real
+selection confirmed through `apply_action` (an asset beside a rezzed
+Nico Campaign is offered Remote 0 with what it trashes and a new remote
+called new, ice names its tax, an upgrade trashes nothing, and the
+terminal's pane title asks where); one over 32 random-vs-random games
+that checks 25 card-effect installs as the Corp reads them (every choice
+under the prompt and starting `Install`, none an engine name like
+`Remote(1)`, every new remote called new, and at least one install-over
+naming what it trashes); one in the desktop model (the pop-up's two
+buttons and its heading). No engine file changed. Screenshotted as the
+Corp on Fashion Lab (`NETRUNNER_CORP_DECK=fashion_lab
+NETRUNNER_HOLD_INSTALL=1`, 2560×1600): Scatter Field fired on a run on
+Archives, and the pop-up reads `Scatter Field: where to install Scatter
+Field?` over `Install protecting HQ`, `… R&D`, `… Archives — costs 1
+credit`, `… Remote 0 — costs 1 credit` and `Install protecting a new
+remote server`; no scroll area is the board.

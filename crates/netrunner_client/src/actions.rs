@@ -508,7 +508,17 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
             .and_then(|view| crate::selection::Selection::of(view, registry))
             .map(|selection| selection.confirm_label())
             .unwrap_or_else(|| "Confirm selection".to_string()),
-        PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?}"),
+        // An install a card's text offers says what each destination is
+        // and costs — a new remote as new, an install-over with what it
+        // trashes (`placement`); a server choice that starts a run is a
+        // run. "Choose Remote(1)" said neither.
+        PlayerAction::ChooseServerForPendingDecision { server } => match view.and_then(|view| crate::placement::Placement::of(view, registry)) {
+            Some(placement) => placement.label(*server),
+            None if matches!(view.and_then(|v| v.pending_decision.as_ref()), Some(PendingDecision::ChooseServer { install: None, .. })) => {
+                format!("Run on {}", crate::board::action_map::server_name(*server))
+            }
+            None => format!("Choose {}", crate::board::action_map::server_name(*server)),
+        },
         // The action is a position into the parked trigger list, so the
         // card and trigger it names come from the view's `pending_decision`
         // — which is pass-through for this variant and holds only the
@@ -646,7 +656,7 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::ResolvePendingChoice { .. } => "Pick this option for the card that is asking you to choose.".to_string(),
         PlayerAction::ToggleCardSelection { .. } => "Add this card to the cards a card effect is asking you to choose, or take it back out to choose a different one.".to_string(),
         PlayerAction::ConfirmCardSelection => "Confirm the cards you selected: the card effect goes ahead with them.".to_string(),
-        PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?} as the server this card effect applies to."),
+        PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?} as the server this card effect applies to: where the card it installs goes, or the server it runs."),
     }
 }
 
@@ -1039,6 +1049,70 @@ mod tests {
             }
         }
         assert!(prompts > 0, "no game parked a selection, so nothing was checked");
+    }
+
+    /// Every "where does this card go?" a real game asks the Corp — Scatter
+    /// Field, Ansel 1.0, Peer Review — worded as the Corp reads it and
+    /// listed under the prompt: each choice says it installs, a remote that
+    /// does not exist yet says it is new, an install-over says what it
+    /// trashes, and every choice is a decision the pop-up draws. The
+    /// person's report was a Scatter Field install whose only visible
+    /// choice was overwriting the asset earning them credits; the new
+    /// remote was offered and could not be seen.
+    #[test]
+    fn every_card_effect_install_names_where_it_goes_and_offers_it_under_the_prompt() {
+        use crate::board::{ActionMap, Prompt};
+        use netrunner_bots::BotAgent;
+        use netrunner_core::cards::register_playable_cards;
+        use netrunner_core::rules::GameState;
+        use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
+
+        let (mut installs, mut new_remotes, mut overs) = (0, 0, 0);
+        for seed in 0..32 {
+            let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
+            let mut registry = CardRegistry::new();
+            register_playable_cards(&mut registry);
+            let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).expect("sample decks are legal");
+            let mut session = Session::new(state, registry, Seat::External, Seat::External);
+            let mut agents = [RandomAgent::new(seed), RandomAgent::new(seed + 1000)];
+            loop {
+                match session.step() {
+                    SessionStep::Awaiting { side, view } => {
+                        if matches!(view.pending_decision, Some(PendingDecision::ChooseServer { install: Some(_), chooser, .. }) if chooser == side) {
+                            installs += 1;
+                            let registry = session.registry();
+                            let map = ActionMap::build(&view, registry);
+                            let prompt = Prompt::of(&view, registry).expect("an install is a prompt");
+                            assert!(prompt.title.contains("where to install"), "seed {seed}: {prompt:?}");
+                            let decisions = map.decisions();
+                            for (index, entry) in map.entries.iter().enumerate() {
+                                let PlayerAction::ChooseServerForPendingDecision { server } = entry.action else { continue };
+                                let label = &entry.label;
+                                assert!(decisions.contains(&index), "seed {seed}: {label:?} is not under the prompt");
+                                assert!(label.starts_with("Install "), "seed {seed}: {label:?}");
+                                assert!(!label.contains("Remote("), "seed {seed}: an engine name in {label:?}");
+                                let exists = view.corp.servers.iter().any(|s| s.server == server);
+                                if matches!(server, ServerId::Remote(_)) && !exists {
+                                    new_remotes += 1;
+                                    assert!(label.contains("a new remote server"), "seed {seed}: the new remote is not called new: {label:?}");
+                                }
+                                if label.contains(" — trashes ") {
+                                    overs += 1;
+                                }
+                            }
+                        }
+                        let index = if side == Side::Corp { 0 } else { 1 };
+                        let action = agents[index].select_action(&view, session.registry());
+                        session.submit(action).expect("a legal action");
+                    }
+                    SessionStep::Applied { .. } => {}
+                    SessionStep::Ended { .. } => break,
+                    SessionStep::Stalled(reason) => panic!("seed {seed} stalled: {reason:?}"),
+                }
+            }
+        }
+        assert!(installs > 0 && new_remotes > 0, "{installs} installs, {new_remotes} new remotes: nothing was checked");
+        assert!(overs > 0, "no install-over was ever offered, so its warning was never checked");
     }
 
     /// One instance per variant, mirroring `PlayerAction::VARIANT_NAMES`'

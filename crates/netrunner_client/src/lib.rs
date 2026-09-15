@@ -20,7 +20,8 @@
 //! persistence, the pool a format allows, the words for the engine's DSL
 //! (`prose`), the printed card as a face lays it out (`card_face`,
 //! `card_text`), the words on an action and in the log (`actions`), the
-//! words on a card-selection prompt (`selection`), the
+//! words on a card-selection prompt (`selection`) and on where a card a
+//! card's text installs may go (`placement`), the
 //! new-game form's state (`start`) — and the match: `play::MatchHandle`
 //! is the one match-driving interface every game screen consumes,
 //! `board::ActionMap` says what a click on the board means, and
@@ -33,6 +34,7 @@ pub mod card_face;
 pub mod card_text;
 pub mod cards;
 pub mod deck_store;
+pub mod placement;
 pub mod play;
 pub mod decks;
 pub mod prose;

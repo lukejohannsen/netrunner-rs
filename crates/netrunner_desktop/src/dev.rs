@@ -11,6 +11,8 @@
 //!   default decks against the middle rung, the person in that chair,
 //!   and goes to the board (unless `NETRUNNER_SCREEN` says elsewhere) —
 //!   how the board is looked at without a hand on the form.
+//!   `NETRUNNER_CORP_DECK=<id>` and `NETRUNNER_RUNNER_DECK=<id>` replace
+//!   either default deck, so a card the default decks lack can be reached.
 //! - `NETRUNNER_AUTOPLAY=<n>` — on the board, the person's seat takes a
 //!   legal action by itself, `n` times, cycling through the list so the
 //!   game develops (installs, runs, rezzes) — how a board forty actions
@@ -33,6 +35,9 @@
 //! - `NETRUNNER_HOLD_SELECTION=1` — on the board, the autoplay stops at
 //!   the first card-selection prompt the person is asked, so the
 //!   screenshot catches the pop-up's buttons naming the cards.
+//! - `NETRUNNER_HOLD_INSTALL=1` — the same at the first server choice a
+//!   card's text installs into (Scatter Field, Ansel 1.0), so the
+//!   screenshot catches where the card may go.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -75,6 +80,9 @@ pub struct Dev {
     pub screen: Option<AppScreen>,
     /// The chair a dev game seats the person in.
     pub game: Option<netrunner_core::rules::Side>,
+    /// The dev game's decks, by id, when not the defaults.
+    pub corp_deck: Option<String>,
+    pub runner_deck: Option<String>,
     /// How many decisions the board takes by itself, and how many it has.
     pub autoplay: u32,
     pub autoplayed: u32,
@@ -86,6 +94,8 @@ pub struct Dev {
     pub hold_run: bool,
     /// Stop the autoplay at the first card-selection prompt.
     pub hold_selection: bool,
+    /// Stop the autoplay at the first "where to install" a card asks.
+    pub hold_install: bool,
     /// Open the sheet of the first installed Corp card, once.
     pub sheet: bool,
     pub screenshot: Option<PathBuf>,
@@ -108,12 +118,15 @@ impl Dev {
         Dev {
             screen: std::env::var("NETRUNNER_SCREEN").ok().and_then(|name| AppScreen::from_name(&name)),
             game,
+            corp_deck: std::env::var("NETRUNNER_CORP_DECK").ok().filter(|id| !id.trim().is_empty()),
+            runner_deck: std::env::var("NETRUNNER_RUNNER_DECK").ok().filter(|id| !id.trim().is_empty()),
             autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
             autoplayed: 0,
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
+            hold_install: std::env::var_os("NETRUNNER_HOLD_INSTALL").is_some_and(|v| !v.is_empty()),
             sheet: std::env::var_os("NETRUNNER_SHEET").is_some_and(|v| !v.is_empty()),
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,
