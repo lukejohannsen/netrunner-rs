@@ -1,7 +1,9 @@
-//! The board: the human's masked view of the match, drawn; every legal
-//! action on a panel; a click on a card or a server as a second route to
-//! the same action; the match log; and the overlays — a popup of what a
-//! click could mean, a card's text, the quit prompt, the end of the game.
+//! The board: the human's masked view of the match, drawn; a control bar
+//! of the basic actions, greyed when the engine does not list them; the
+//! cards and the zones as the way into everything else — a click opens a
+//! sheet of what may be done there, and never acts by itself; the
+//! prompt's decisions under the prompt; and, when the person turns them
+//! on, the flat panel of every legal action and the match log.
 //!
 //! **Where the match is.** On its own thread, behind the [`ActiveMatch`]
 //! the new-game form left: `poll` drains its messages once a frame into
@@ -10,16 +12,29 @@
 //! `GameState` and never re-derives legality; it draws the view and
 //! hands back what the person chose from the engine's own list.
 //!
-//! **Layout.** The opponent's strip and area across the top, the
-//! person's area, hand and strip across the bottom; the Corp's servers
-//! are columns — ICE as bars above the root, the way ICE lies on a
-//! table, since a rotated `UiTransform` is laid out as its unrotated box
-//! and would overlap its neighbours — and the Runner's rig is three
-//! labelled rows. The right rail is the prompt (`board::Prompt`, the
-//! card's own words), the action panel, and the log. Everything under
+//! **Layout.** The top bar (the status line, Quit, the gear), the
+//! control bar (`board::Control::for_side`, one button each, always in
+//! the same place), then the board beside the rail. On the board: the
+//! opponent's strip and area across the top, the person's area, hand
+//! and strip across the bottom; the Corp's servers are columns — ICE as
+//! bars above the root, the way ICE lies on a table, since a rotated
+//! `UiTransform` is laid out as its unrotated box and would overlap its
+//! neighbours — and the Runner's rig is three labelled rows, with the
+//! stack and the heap as buttons in the Runner's strip. The rail is the
+//! prompt (`board::Prompt`, the card's own words), the decisions the
+//! prompt is asking (`ActionMap::decisions`), the flat panel if the play
+//! helper is on, and the log if the play history is. Everything under
 //! the board root is respawned when the view moves, which is at most
-//! once per applied action; the overlay and the rail are respawned on
-//! their own, so a popup opening does not redraw the board.
+//! once per applied action; the bar, the rail and the overlay are
+//! respawned on their own, so a sheet opening does not redraw the board.
+//!
+//! **Sheets.** A card's sheet is the Large face, its text and its legal
+//! actions as buttons; a zone's sheet is its actions and its contents
+//! where the viewer may see them — Archives as every card for the Corp
+//! and as the face-up ones with backs for the rest for the Runner, the
+//! heap, the Corp's own HQ, a remote's ICE and root — each face a button
+//! that reads the card over the sheet. R&D and the stack are backs and a
+//! count: a deck's order is never shown, even to its owner.
 //!
 //! **Highlights come from `board::diff`.** After a redraw, every install
 //! and hand card a `Transition` names is outlined for that redraw, and
@@ -29,7 +44,7 @@
 use bevy::prelude::*;
 
 use netrunner_client::board::action_map::server_name;
-use netrunner_client::board::{Target, Transition, Zone};
+use netrunner_client::board::{Control, Pile, Target, Transition, Zone};
 use netrunner_client::card_face::Face;
 use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, RunPhase, ServerId, Side};
@@ -38,8 +53,10 @@ use netrunner_core::view::{ClientView, ServerView};
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, Notices};
 use crate::models::game::{Game, Intent, MatchMessageRef, Outcome};
+use crate::models::settings::{self as settings_model, Row};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::{ActiveMatch, LastGame};
+use crate::screens::settings::{self as settings_screen, Control as SettingsControl};
 use crate::screens::AppScreen;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_back, spawn_face, FaceSize};
@@ -62,6 +79,12 @@ pub enum Click {
     Target(Target),
     /// An entry of the action map.
     Entry(usize),
+    /// A control-bar button.
+    Control(Control),
+    /// A face in a zone sheet: read the card over the sheet.
+    Inspect(CardId),
+    /// The gear.
+    Options,
     CloseOverlay,
     ConfirmQuit,
     CancelQuit,
@@ -75,10 +98,14 @@ pub enum Click {
 /// The board, respawned when the view moves.
 #[derive(Component)]
 pub struct Board;
-/// The prompt and the action panel, respawned when the view moves or a
-/// submit closes it.
+/// The prompt, its decisions and the flat panel, respawned when the view
+/// moves or a submit closes it.
 #[derive(Component)]
 pub struct Rail;
+/// The control bar, respawned with the rail: it is a function of the
+/// action map.
+#[derive(Component)]
+pub struct ControlBar;
 /// The action panel's scroll column, inside the rail.
 #[derive(Component)]
 struct ActionList;
@@ -86,6 +113,10 @@ struct ActionList;
 struct LogList;
 #[derive(Component)]
 struct LogScroll;
+/// The log and its scrollbar; shown or hidden by the play history
+/// preference, never despawned.
+#[derive(Component)]
+pub struct LogRow;
 /// The full-window overlay, when one is up.
 #[derive(Component)]
 pub struct Overlay;
@@ -117,7 +148,7 @@ impl Dirty {
 #[derive(Resource, Default)]
 struct Pending(Vec<Intent>);
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, active: Option<Res<ActiveMatch>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, active: Option<Res<ActiveMatch>>, mut images: Option<ResMut<Assets<Image>>>) {
     commands.init_resource::<Dirty>();
     let Some(active) = active else {
         commands.spawn((screen_root(AppScreen::Game, theme.background), children![
@@ -151,7 +182,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
         })
         .id();
     let log_row = commands
-        .spawn((Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Row, column_gap: px(4), height: px(200), ..default() },))
+        .spawn((LogRow, Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Row, column_gap: px(4), height: px(200), ..default() }))
         .add_child(log_scroll)
         .with_children(|parent| {
             parent.spawn(widgets::scrollbar(&theme, log_scroll));
@@ -174,15 +205,18 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
             parent.spawn((StatusLine, widgets::dim(&theme, "Setting up…")));
             let mut quit = parent.spawn(widgets::button(&theme, "Quit", Val::Auto, Click::Quit));
             quit.entry::<Node>().and_modify(|mut node| node.margin = UiRect::left(Val::Auto));
+            // The gear in the corner, where a person looks for options.
+            parent.spawn(widgets::gear_button(&theme, images.as_deref_mut(), Click::Options));
         })
         .id();
+    let bar = commands.spawn((ControlBar, Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(8), row_gap: px(6), ..default() })).id();
     let mut root = commands.spawn(screen_root(AppScreen::Game, theme.background));
     root.entry::<Node>().and_modify(|mut node| {
         node.align_items = AlignItems::Stretch;
         node.padding = UiRect::all(px(12));
         node.row_gap = px(8);
     });
-    root.add_child(top).add_child(body);
+    root.add_child(top).add_child(bar).add_child(body);
     commands.insert_resource(Model(game));
     let mut dirty = Dirty::default();
     dirty.all();
@@ -239,6 +273,8 @@ fn controls(
     faces: Query<(&Interaction, &Click), (Changed<Interaction>, Without<widgets::Themed>)>,
     mut pending: ResMut<Pending>,
     marks: Query<&Click>,
+    settings_marks: Query<&SettingsControl>,
+    mut core: ResMut<ClientCore>,
     model: Option<ResMut<Model>>,
     active: Option<Res<ActiveMatch>>,
     mut dirty: ResMut<Dirty>,
@@ -258,9 +294,26 @@ fn controls(
         }
     }
     for Pressed(entity) in pressed.read() {
+        // A row of the options menu: the settings model applies it and
+        // the file is saved, as on the settings screen; the rail and the
+        // log follow the new value on the next redraw.
+        if let Ok(SettingsControl::Intent(intent)) = settings_marks.get(*entity) {
+            if settings_model::apply(&mut core.settings, intent.clone()) {
+                if let Err(error) = core.save_settings() {
+                    notices.push(format!("Settings not saved: {error}"));
+                }
+                dirty.rail = true;
+                dirty.log = true;
+                dirty.overlay = true;
+            }
+            continue;
+        }
         match marks.get(*entity) {
             Ok(Click::Target(target)) => intents.push(Intent::Click(target.clone())),
             Ok(Click::Entry(index)) => intents.push(Intent::Choose(*index)),
+            Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
+            Ok(Click::Inspect(card)) => intents.push(Intent::Inspect(Some(card.clone()))),
+            Ok(Click::Options) => intents.push(Intent::ToggleOptions),
             Ok(Click::CloseOverlay) => intents.push(Intent::Back),
             Ok(Click::ConfirmQuit) => intents.push(Intent::ConfirmQuit),
             Ok(Click::CancelQuit) => intents.push(Intent::CancelQuit),
@@ -303,7 +356,9 @@ fn redraw(
     model: Option<ResMut<Model>>,
     board: Query<Entity, With<Board>>,
     rail: Query<Entity, With<Rail>>,
+    bar: Query<Entity, With<ControlBar>>,
     log: Query<Entity, With<LogList>>,
+    mut log_row: Query<&mut Node, With<LogRow>>,
     mut log_scroll: Query<&mut ScrollPosition, With<LogScroll>>,
     overlays: Query<Entity, With<Overlay>>,
     roots: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
@@ -327,19 +382,30 @@ fn redraw(
             text.0 = status_line(game);
         }
     }
-    if rerail && let Ok(rail) = rail.single() {
-        commands.entity(rail).despawn_children().with_children(|parent| spawn_rail(parent, &theme, game));
+    let prefs = &core.settings.desktop;
+    if rerail {
+        if let Ok(rail) = rail.single() {
+            commands.entity(rail).despawn_children().with_children(|parent| spawn_rail(parent, &theme, game, prefs.play_helper));
+        }
+        if let Ok(bar) = bar.single() {
+            commands.entity(bar).despawn_children().with_children(|parent| spawn_control_bar(parent, &theme, game));
+        }
     }
-    if relog && let Ok(log) = log.single() {
-        commands.entity(log).despawn_children().with_children(|parent| {
-            for line in game.log.iter().rev().take(80).rev() {
-                parent.spawn((widgets::dim(&theme, line.trim().to_string()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    if relog {
+        for mut node in &mut log_row {
+            node.display = if prefs.play_history { Display::Flex } else { Display::None };
+        }
+        if prefs.play_history && let Ok(log) = log.single() {
+            commands.entity(log).despawn_children().with_children(|parent| {
+                for line in game.log.iter().rev().take(80).rev() {
+                    parent.spawn((widgets::dim(&theme, line.trim().to_string()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
+            });
+            // The newest line is the one to read; the layout clamps this to
+            // the real range.
+            for mut position in &mut log_scroll {
+                position.y = 1.0e6;
             }
-        });
-        // The newest line is the one to read; the layout clamps this to
-        // the real range.
-        for mut position in &mut log_scroll {
-            position.y = 1.0e6;
         }
     }
     if reoverlay {
@@ -367,7 +433,7 @@ fn status_line(game: &Game) -> String {
 }
 
 fn overlay_needed(game: &Game) -> bool {
-    game.finished() || game.confirm_quit || game.popup.is_some() || game.inspecting.is_some()
+    game.finished() || game.confirm_quit || game.options_open || game.sheet.is_some() || game.inspecting.is_some()
 }
 
 // ---- the board ----
@@ -458,8 +524,41 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                 for line in strip_lines(view, side) {
                     column.spawn((widgets::label(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 }
+                // The Runner's piles are zones a click opens — the stack
+                // for its draw, the heap for what is in it — as the
+                // Corp's centrals are through their server headers.
+                if side == Side::Runner {
+                    column.spawn(widgets::row(6.0)).with_children(|piles| {
+                        compact_button(piles, theme, format!("Stack · {}", view.runner.stack_count), Click::Target(Target::Pile(Pile::Stack)));
+                        compact_button(piles, theme, format!("Heap · {}", view.runner.heap.len()), Click::Target(Target::Pile(Pile::Heap)));
+                    });
+                }
             });
         });
+}
+
+/// A button in the small size: seven server headers have to fit across
+/// the board, and the shared button's body-size text does not.
+fn compact_button(parent: &mut ChildSpawnerCommands, theme: &Theme, text: String, click: Click) -> Entity {
+    parent
+        .spawn((
+            Button,
+            widgets::Themed,
+            click,
+            Node {
+                flex_shrink: 0.0,
+                padding: UiRect::axes(px(10), px(6)),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(6)),
+                ..default()
+            },
+            BackgroundColor(theme.button),
+            BorderColor::all(theme.panel_border),
+            children![(Text::new(text), theme.font(size::SMALL), TextColor(theme.text))],
+        ))
+        .id()
 }
 
 fn strip_lines(view: &ClientView, side: Side) -> Vec<String> {
@@ -561,25 +660,7 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     ServerId::Archives => format!(" · {}", view.corp.archives.len()),
                     ServerId::Remote(_) => String::new(),
                 };
-                // A compact button: seven columns have to fit across the
-                // board, and the shared button's body-size text does not.
-                column.spawn((
-                    Button,
-                    widgets::Themed,
-                    Click::Target(Target::Server(server.server)),
-                    Node {
-                        flex_shrink: 0.0,
-                        padding: UiRect::axes(px(10), px(6)),
-                        justify_content: JustifyContent::Center,
-                        align_items: AlignItems::Center,
-                        border: UiRect::all(px(1)),
-                        border_radius: BorderRadius::all(px(6)),
-                        ..default()
-                    },
-                    BackgroundColor(theme.button),
-                    BorderColor::all(theme.panel_border),
-                    children![(Text::new(format!("{}{count}", server_name(server.server))), theme.font(size::SMALL), TextColor(theme.text))],
-                ));
+                compact_button(column, theme, format!("{}{count}", server_name(server.server)), Click::Target(Target::Server(server.server)));
                 // ICE, outermost at the top: a bar with the title when it
                 // can be named, its strength, and the run's marker.
                 for ice in server.ice.iter().rev() {
@@ -715,9 +796,26 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     });
 }
 
-// ---- the rail ----
+// ---- the control bar and the rail ----
 
-fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
+/// One button per control of the person's side, in the bar's fixed
+/// order; enabled when the engine lists what it means and the person
+/// may act, greyed otherwise. Greyed rather than absent so "End turn"
+/// is always in the same place.
+fn spawn_control_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
+    for control in Control::for_side(game.side) {
+        let offered = game.awaiting && game.actions.for_control(*control).is_some();
+        if offered {
+            parent.spawn(widgets::button(theme, control.label(), Val::Auto, Click::Control(*control)));
+        } else {
+            parent.spawn(widgets::disabled_button(theme, control.label(), Val::Auto, Click::Control(*control)));
+        }
+    }
+}
+
+/// The prompt, the decisions it is asking, and — with the play helper on
+/// — every legal action in the engine's order.
+fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, helper: bool) {
     if let Some(prompt) = &game.prompt {
         parent.spawn((widgets::label(theme, prompt.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         if !prompt.detail.is_empty() {
@@ -739,7 +837,21 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
         parent.spawn(widgets::dim(theme, if game.view.is_some() { "Opponent is thinking…" } else { "Setting up…" }));
         return;
     }
-    parent.spawn(widgets::label(theme, "Your actions"));
+    let decisions = game.actions.decisions();
+    if !decisions.is_empty() {
+        parent.spawn((Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: px(4), ..default() },)).with_children(|list| {
+            for index in decisions {
+                entry_button(list, theme, game, index);
+            }
+        });
+    }
+    if !helper {
+        if game.prompt.is_none() {
+            parent.spawn((widgets::dim(theme, "Your turn: click a card or a zone, or use the bar above."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        }
+        return;
+    }
+    parent.spawn(widgets::label(theme, "Every action"));
     let list = parent
         .spawn((
             ActionList,
@@ -747,12 +859,8 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
             Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Column, row_gap: px(4), overflow: Overflow::scroll_y(), ..default() },
         ))
         .with_children(|list| {
-            for (index, entry) in game.actions.entries.iter().enumerate() {
-                let mut button = list.spawn(widgets::button(theme, entry.label.clone(), percent(100), Click::Entry(index)));
-                button.entry::<Node>().and_modify(|mut node| {
-                    node.justify_content = JustifyContent::FlexStart;
-                    node.padding = UiRect::axes(px(10), px(6));
-                });
+            for index in 0..game.actions.entries.len() {
+                entry_button(list, theme, game, index);
             }
         })
         .id();
@@ -761,9 +869,28 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
     });
 }
 
+/// A full-width button for entry `index`, its label left-aligned.
+fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, index: usize) {
+    let Some(entry) = game.actions.entries.get(index) else { return };
+    let mut button = parent.spawn(widgets::button(theme, entry.label.clone(), percent(100), Click::Entry(index)));
+    button.entry::<Node>().and_modify(|mut node| {
+        node.justify_content = JustifyContent::FlexStart;
+        node.padding = UiRect::axes(px(10), px(6));
+    });
+}
+
 // ---- the overlays ----
 
 fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game) {
+    // The card read over a zone sheet is wider than a sheet's panel;
+    // the sheets are wider than the prompts.
+    let width = if game.finished() || game.confirm_quit || game.options_open {
+        px(560)
+    } else if game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| game.card_of(&s.target).is_some()) {
+        px(800)
+    } else {
+        px(960)
+    };
     parent
         .spawn((
             Overlay,
@@ -781,7 +908,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
             BackgroundColor(theme.background.with_alpha(0.75)),
         ))
         .with_children(|screen| {
-            screen.spawn(widgets::panel(theme, px(520))).with_children(|panel| {
+            screen.spawn(widgets::panel(theme, width)).with_children(|panel| {
                 if let Some(reason) = &game.stalled {
                     panel.spawn(widgets::heading(theme, "The match stopped"));
                     panel.spawn((widgets::dim(theme, reason.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -815,32 +942,138 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                         row.spawn(widgets::button(theme, "Quit", Val::Auto, Click::ConfirmQuit));
                         row.spawn(widgets::button(theme, "Keep playing", Val::Auto, Click::CancelQuit));
                     });
-                } else if let Some(popup) = &game.popup {
-                    panel.spawn(widgets::heading(theme, target_title(game, &popup.target)));
-                    for index in &popup.entries {
-                        if let Some(entry) = game.actions.entries.get(*index) {
-                            let mut button = panel.spawn(widgets::button(theme, entry.label.clone(), percent(100), Click::Entry(*index)));
-                            button.entry::<Node>().and_modify(|mut node| node.justify_content = JustifyContent::FlexStart);
-                        }
-                    }
-                    panel.spawn(widgets::button(theme, "Cancel", Val::Auto, Click::CloseOverlay));
-                } else if let Some(id) = &game.inspecting {
-                    match core.registry.get(id) {
-                        Some(def) => {
-                            let image = def.numeric_id.and_then(|code| images.face(code));
-                            panel.spawn((Node { justify_content: JustifyContent::Center, ..default() },)).with_children(|centre| {
-                                spawn_face(centre, theme, &Face::of(def), FaceSize::Large, image, ());
-                            });
-                            panel.spawn((Text::new(Face::of(def).body_text(false)), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                        }
-                        None => {
-                            panel.spawn(widgets::dim(theme, format!("{} is not in the registry", id.0)));
-                        }
-                    }
+                } else if game.options_open {
+                    panel.spawn(widgets::heading(theme, "Game options"));
+                    settings_screen::spawn_rows(panel, theme, core, &Row::GAME);
                     panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+                } else if let Some(id) = &game.inspecting {
+                    // A card read out of a pile: the face and its text,
+                    // nothing to do with it from here.
+                    card_sheet(panel, theme, core, images, game, id, &[]);
+                } else if let Some(sheet) = &game.sheet {
+                    match game.card_of(&sheet.target) {
+                        Some(id) => card_sheet(panel, theme, core, images, game, &id, &sheet.entries),
+                        None => zone_sheet(panel, theme, core, images, game, &sheet.target, &sheet.entries),
+                    }
                 }
             });
         });
+}
+
+/// The card large, its text beside it, and its legal actions under the
+/// text — the deliberate second click. With no entries it is the
+/// inspector.
+fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, id: &CardId, entries: &[usize]) {
+    let Some(def) = core.registry.get(id) else {
+        panel.spawn(widgets::dim(theme, format!("{} is not in the registry", id.0)));
+        panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+        return;
+    };
+    panel.spawn(widgets::heading(theme, def.title.clone()));
+    panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
+        let image = def.numeric_id.and_then(|code| images.face(code));
+        spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
+        row.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
+            column.spawn((Text::new(Face::of(def).body_text(false)), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            if entries.is_empty() {
+                column.spawn(widgets::dim(theme, if game.awaiting { "Nothing to do with this card right now." } else { "Not your decision right now." }));
+            } else {
+                column.spawn(widgets::label(theme, "Actions"));
+                for index in entries {
+                    entry_button(column, theme, game, *index);
+                }
+            }
+        });
+    });
+    panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+}
+
+/// A zone: its actions, then what is in it as far as the viewer may
+/// see. Every visible card is a button that reads it over the sheet.
+fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, target: &Target, entries: &[usize]) {
+    let Some(view) = &game.view else { return };
+    panel.spawn(widgets::heading(theme, target_title(game, target)));
+    if entries.is_empty() {
+        panel.spawn(widgets::dim(theme, if game.awaiting { "Nothing to do here right now." } else { "Not your decision right now." }));
+    } else {
+        // The install entries name the card and the server both; the row
+        // wraps when a hand of installs is offered to one remote.
+        panel.spawn(wrap_row()).with_children(|row| {
+            for index in entries {
+                if let Some(entry) = game.actions.entries.get(*index) {
+                    row.spawn(widgets::button(theme, entry.label.clone(), Val::Auto, Click::Entry(*index)));
+                }
+            }
+        });
+    }
+    // What the zone holds, for the viewer.
+    enum Shown {
+        Card(CardId),
+        Back(Side),
+    }
+    let (caption, shown): (String, Vec<Shown>) = match target {
+        Target::Server(ServerId::Archives) => {
+            let cards: Vec<Shown> = view.corp.archives.iter().map(|c| c.card.clone().map_or(Shown::Back(Side::Corp), Shown::Card)).collect();
+            let facedown = view.corp.archives.iter().filter(|c| c.facedown).count();
+            let caption = match (game.side, facedown) {
+                (_, 0) => format!("{} cards", cards.len()),
+                (Side::Corp, n) => format!("{} cards, {n} face down — the Runner has not seen those", cards.len()),
+                (Side::Runner, n) => format!("{} cards, {n} face down", cards.len()),
+            };
+            (caption, cards)
+        }
+        Target::Server(ServerId::RnD) => (format!("{} cards, in an order nobody is shown", view.corp.rd_count), (0..view.corp.rd_count.min(5)).map(|_| Shown::Back(Side::Corp)).collect()),
+        Target::Server(ServerId::Hq) => match &view.corp.hq_cards {
+            Some(hand) => (format!("{} cards in hand", hand.len()), hand.iter().cloned().map(Shown::Card).collect()),
+            None => (format!("{} cards, hidden", view.corp.hq_count), (0..view.corp.hq_count.min(8)).map(|_| Shown::Back(Side::Corp)).collect()),
+        },
+        Target::Server(server @ ServerId::Remote(_)) => {
+            let cards: Vec<Shown> = view
+                .corp
+                .servers
+                .iter()
+                .filter(|s| s.server == *server)
+                .flat_map(|s| s.ice.iter().chain(s.root.iter()))
+                .map(|c| c.card.clone().map_or(Shown::Back(Side::Corp), Shown::Card))
+                .collect();
+            (if cards.is_empty() { "Nothing installed".to_string() } else { format!("{} cards, ICE first", cards.len()) }, cards)
+        }
+        Target::Pile(Pile::Stack) => (format!("{} cards, in an order nobody is shown", view.runner.stack_count), (0..view.runner.stack_count.min(5)).map(|_| Shown::Back(Side::Runner)).collect()),
+        Target::Pile(Pile::Heap) => (format!("{} cards, all face up", view.runner.heap.len()), view.runner.heap.iter().cloned().map(Shown::Card).collect()),
+        Target::HandCard(_) | Target::Install(_) | Target::Identity(_) | Target::Position(_) => (String::new(), Vec::new()),
+    };
+    panel.spawn(widgets::dim(theme, caption));
+    if !shown.is_empty() {
+        // A wrapping row inside a column that scrolls: a pile of forty
+        // is five rows of faces, and the wheel reaches them all.
+        let scroll = panel
+            .spawn((
+                bevy::ui_widgets::ScrollArea,
+                Node { width: percent(100), max_height: px(460), flex_direction: FlexDirection::Column, overflow: Overflow::scroll_y(), ..default() },
+            ))
+            .with_children(|column| {
+                column.spawn(wrap_row()).with_children(|row| {
+                    for item in shown {
+                        match item {
+                            Shown::Card(id) => {
+                                if let Some(def) = core.registry.get(&id) {
+                                    let image = def.numeric_id.and_then(|code| images.face(code));
+                                    spawn_face(row, theme, &Face::of(def), FaceSize::Thumb, image, (Button, Click::Inspect(id.clone())));
+                                }
+                            }
+                            Shown::Back(side) => {
+                                spawn_back(row, theme, images.back(side), side, FaceSize::Thumb, ());
+                            }
+                        }
+                    }
+                });
+            })
+            .id();
+        panel.spawn((Node { width: percent(100), flex_direction: FlexDirection::Row, column_gap: px(4), ..default() },)).add_child(scroll).with_children(|row| {
+            row.spawn(widgets::scrollbar(theme, scroll));
+        });
+    }
+    panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
 }
 
 fn target_title(game: &Game, target: &Target) -> String {
@@ -851,6 +1084,7 @@ fn target_title(game: &Game, target: &Target) -> String {
         Target::Server(server) => server_name(*server),
         Target::Identity(side) => format!("{side:?} identity"),
         Target::Position(position) => format!("Card {position}"),
+        Target::Pile(pile) => pile.name().to_string(),
     }
 }
 

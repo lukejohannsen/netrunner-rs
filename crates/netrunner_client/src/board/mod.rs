@@ -7,5 +7,5 @@
 pub mod action_map;
 pub mod diff;
 
-pub use action_map::{ActionEntry, ActionMap, Prompt, Target};
+pub use action_map::{ActionEntry, ActionMap, Control, Pile, Prompt, Target};
 pub use diff::{transitions, Transition, Zone};

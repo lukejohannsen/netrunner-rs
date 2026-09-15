@@ -95,11 +95,21 @@ pub struct DesktopPrefs {
     pub download_images: bool,
     /// The window size last saved, if the player resized it.
     pub window_size: Option<(u32, u32)>,
+    /// Whether the board lists every legal action on a flat panel — the
+    /// "play helper". Off by default: the board is played from the cards,
+    /// the zones and the control bar, and the first people to play read
+    /// the panel as a help menu. Every legal action is reachable without
+    /// it; it is an aid, not the contract.
+    pub play_helper: bool,
+    /// Whether the board shows the match log — the "play history". Off by
+    /// default for the same reason: the transitions and the prompt say
+    /// what happened, and the log is for reading back.
+    pub play_history: bool,
 }
 
 impl Default for DesktopPrefs {
     fn default() -> Self {
-        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None }
+        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false }
     }
 }
 
@@ -210,6 +220,7 @@ mod tests {
         assert_eq!(settings.format, Some(NsgFormat::Eternal));
         assert_eq!(settings.desktop.sfx_volume, 0.1);
         assert_eq!(settings.desktop.animation_speed, 1.0, "unnamed fields take their defaults");
+        assert!(!settings.desktop.play_helper && !settings.desktop.play_history, "the board's aids are off until turned on");
         assert!(serde_json::from_str::<Settings>(r#"{"format":"modern"}"#).is_err(), "an unknown format is an error, not a default");
     }
 

@@ -10,15 +10,20 @@
 //! it. The model never decides an action is legal — it lists what the
 //! engine said was.
 //!
-//! **One click, one route.** A card or a server with exactly one entry
-//! submits it; with several, opens a popup of them; with none, opens the
-//! card in the inspector. The flat panel lists every entry regardless,
-//! so nothing depends on a card being placed on the board.
+//! **A click never acts; it opens.** A card or a zone clicked opens its
+//! [`Sheet`] — the card large with its legal actions beside it, or the
+//! zone's contents with what may be done there — and a press on one of
+//! those submits. The first cut submitted a card's single action on the
+//! click meant to examine it and lost a game to it (Phase 7 §3, item 8);
+//! the sheet is the deliberate second click. The basic actions live on
+//! a fixed control bar (`board::Control`) and the prompt's decisions
+//! under the prompt, so nothing depends on the flat panel, which is an
+//! aid a person turns on (`DesktopPrefs::play_helper`).
 
 use std::sync::Arc;
 
 use netrunner_client::actions::push_log_line;
-use netrunner_client::board::{transitions, ActionMap, Prompt, Target, Transition};
+use netrunner_client::board::{transitions, ActionMap, Control, Prompt, Target, Transition};
 use netrunner_client::play::{GameEndReason, MatchMessage};
 use netrunner_client::ratings::RatingReport;
 use netrunner_core::cards::CardRegistry;
@@ -29,13 +34,20 @@ use netrunner_core::view::ClientView;
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
     Message(MatchMessageRef),
+    /// A card or a zone on the board: opens its sheet.
     Click(Target),
-    /// An entry of the action map, by index — from the panel or a popup.
+    /// An entry of the action map, by index — from a sheet, the rail or
+    /// the flat panel.
     Choose(usize),
-    /// Open a card's text, or close it with `None`.
+    /// A control-bar button: the entry it means, if the engine lists one.
+    Control(Control),
+    /// Open a card's text over whatever is open (a face in a zone sheet),
+    /// or close it with `None`.
     Inspect(Option<CardId>),
-    /// Escape: closes the popup, the inspector or the quit prompt, else
-    /// asks to quit.
+    /// The gear: open or close the game options.
+    ToggleOptions,
+    /// Escape: closes the options, the inspector, the sheet or the quit
+    /// prompt, in that order, else asks to quit.
     Back,
     RequestQuit,
     ConfirmQuit,
@@ -72,9 +84,14 @@ pub enum Outcome {
     Quit,
 }
 
-/// A popup listing the entries a click on `target` could mean.
+/// What a click opened: the target and the entries a press there could
+/// mean. A card target is drawn as the card with its actions; a zone
+/// target as the zone's contents with its actions. `entries` is empty
+/// while the person is not awaiting and is rebuilt on the next
+/// `Awaiting`, so a sheet left open while the opponent acts stays open
+/// and offers the new list.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Popup {
+pub struct Sheet {
     pub target: Target,
     pub entries: Vec<usize>,
 }
@@ -102,8 +119,10 @@ pub struct Game {
     /// submitted since. Off while the opponent thinks or a submit is in
     /// flight, so a double click cannot send two actions.
     pub awaiting: bool,
-    pub popup: Option<Popup>,
+    pub sheet: Option<Sheet>,
+    /// A card's text over the sheet (a face in a pile), or alone.
     pub inspecting: Option<CardId>,
+    pub options_open: bool,
     pub rejection: Option<String>,
     pub over: Option<Over>,
     pub stalled: Option<String>,
@@ -124,8 +143,9 @@ impl Game {
             log: Vec::new(),
             transitions: Vec::new(),
             awaiting: false,
-            popup: None,
+            sheet: None,
             inspecting: None,
+            options_open: false,
             rejection: None,
             over: None,
             stalled: None,
@@ -147,12 +167,29 @@ impl Game {
         std::mem::take(&mut self.transitions)
     }
 
+    /// The entries a press on `target` could mean, now: none while the
+    /// person is not awaiting.
+    pub fn entries_for(&self, target: &Target) -> Vec<usize> {
+        if !self.awaiting {
+            return Vec::new();
+        }
+        match target {
+            Target::HandCard(card) => self.actions.for_hand_card(card),
+            Target::Install(id) => self.actions.for_install(*id),
+            Target::Server(server) => self.actions.for_server(*server),
+            Target::Identity(side) => self.actions.for_identity(*side),
+            Target::Position(position) => self.actions.for_position(*position),
+            Target::Pile(pile) => self.actions.for_pile(*pile),
+        }
+    }
+
     pub fn apply(&mut self, intent: Intent) -> Outcome {
         match intent {
             Intent::Message(MatchMessageRef(message)) => self.message(message),
             Intent::Click(target) => self.click(target),
             Intent::Choose(index) => {
-                self.popup = None;
+                self.sheet = None;
+                self.inspecting = None;
                 match self.actions.entries.get(index) {
                     Some(entry) if self.awaiting => {
                         self.awaiting = false;
@@ -162,12 +199,23 @@ impl Game {
                     _ => Outcome::Nothing,
                 }
             }
+            Intent::Control(control) => match self.actions.for_control(control) {
+                Some(index) if self.awaiting => self.apply(Intent::Choose(index)),
+                _ => Outcome::Nothing,
+            },
             Intent::Inspect(card) => {
                 self.inspecting = card;
                 Outcome::Redraw
             }
+            Intent::ToggleOptions => {
+                self.options_open = !self.options_open;
+                Outcome::Redraw
+            }
             Intent::Back => {
-                if self.popup.take().is_some() || self.inspecting.take().is_some() {
+                if self.options_open {
+                    self.options_open = false;
+                    Outcome::Redraw
+                } else if self.inspecting.take().is_some() || self.sheet.take().is_some() {
                     Outcome::Redraw
                 } else if self.confirm_quit {
                     self.confirm_quit = false;
@@ -201,12 +249,15 @@ impl Game {
                 push_log_line(&mut self.log, &entry, &self.registry, Some(&view));
                 self.view = Some(*view);
                 self.applied += 1;
-                // The board moved under any popup, and a click on it now
-                // would mean something else.
-                self.popup = None;
                 self.awaiting = false;
                 self.actions = ActionMap::default();
                 self.prompt = None;
+                // The board moved under any open sheet: its entries are
+                // stale until the next decision, but what it shows —
+                // Archives, a card — is still worth reading.
+                if let Some(sheet) = &mut self.sheet {
+                    sheet.entries.clear();
+                }
                 Outcome::Redraw
             }
             MatchMessage::Awaiting { view } => {
@@ -214,6 +265,10 @@ impl Game {
                 self.prompt = Prompt::of(&view, &self.registry);
                 self.view = Some(*view);
                 self.awaiting = true;
+                if let Some(target) = self.sheet.as_ref().map(|s| s.target.clone()) {
+                    let entries = self.entries_for(&target);
+                    self.sheet = Some(Sheet { target, entries });
+                }
                 Outcome::Redraw
             }
             MatchMessage::Rejected { reason } => {
@@ -226,7 +281,9 @@ impl Game {
                 self.awaiting = false;
                 self.actions = ActionMap::default();
                 self.prompt = None;
-                self.popup = None;
+                self.sheet = None;
+                self.inspecting = None;
+                self.options_open = false;
                 self.confirm_quit = false;
                 self.over = Some(Over { winner, reason, report, notice });
                 Outcome::Redraw
@@ -240,47 +297,39 @@ impl Game {
         }
     }
 
+    /// Opens the target's sheet. A selection position is the exception:
+    /// it is a toggle on a card the prompt lists, not a card to read, so
+    /// its one entry is submitted as the rail's button would.
     fn click(&mut self, target: Target) -> Outcome {
-        let entries: Vec<usize> = if self.awaiting {
-            match &target {
-                Target::HandCard(card) => self.actions.for_hand_card(card),
-                Target::Install(id) => self.actions.for_install(*id),
-                Target::Server(server) => self.actions.for_server(*server),
-                Target::Identity(side) => self.actions.for_identity(*side),
-                Target::Position(position) => self.actions.for_position(*position),
-            }
-        } else {
-            Vec::new()
-        };
-        match entries.len() {
-            0 => {
-                // Nothing to do with it: read it, if it is a card the
-                // viewer can see.
-                let card = match &target {
-                    Target::HandCard(card) => Some(card.clone()),
-                    Target::Install(id) => self.view.as_ref().and_then(|view| netrunner_client::actions::installed_card_id(view, id)),
-                    Target::Identity(side) => self.view.as_ref().and_then(|view| match side {
-                        Side::Corp => view.corp.identity.clone(),
-                        Side::Runner => view.runner.identity.clone(),
-                    }),
-                    Target::Server(_) | Target::Position(_) => None,
-                };
-                match card {
-                    Some(card) => self.apply(Intent::Inspect(Some(card))),
-                    None => Outcome::Nothing,
-                }
-            }
-            1 => self.apply(Intent::Choose(entries[0])),
-            _ => {
-                self.popup = Some(Popup { target, entries });
-                Outcome::Redraw
-            }
+        let entries = self.entries_for(&target);
+        if let Target::Position(_) = target {
+            return match entries.as_slice() {
+                [index] => self.apply(Intent::Choose(*index)),
+                _ => Outcome::Nothing,
+            };
         }
+        self.inspecting = None;
+        self.sheet = Some(Sheet { target, entries });
+        Outcome::Redraw
     }
 
     /// The card at an install, when the viewer may see it.
     pub fn card_at(&self, id: InstallId) -> Option<CardId> {
         self.view.as_ref().and_then(|view| netrunner_client::actions::installed_card_id(view, &id))
+    }
+
+    /// The card a sheet's target shows, when the viewer may see it: a
+    /// hand card, a visible install, an identity. A zone has none.
+    pub fn card_of(&self, target: &Target) -> Option<CardId> {
+        match target {
+            Target::HandCard(card) => Some(card.clone()),
+            Target::Install(id) => self.card_at(*id),
+            Target::Identity(side) => self.view.as_ref().and_then(|view| match side {
+                Side::Corp => view.corp.identity.clone(),
+                Side::Runner => view.runner.identity.clone(),
+            }),
+            Target::Server(_) | Target::Position(_) | Target::Pile(_) => None,
+        }
     }
 
     /// Whether `server` is the one under run.
@@ -341,10 +390,20 @@ mod tests {
         handle.join();
     }
 
+    /// A click never submits: a hand card opens its sheet with its entries,
+    /// a press on one of those submits, a zone opens its sheet even with
+    /// nothing to do there, the bar submits what the engine lists and
+    /// nothing else, and Escape closes things in order.
     #[test]
-    fn a_click_submits_one_entry_pops_up_several_and_inspects_none() {
+    fn a_click_opens_a_sheet_and_never_submits() {
         let (mut game, mut handle) = game(Side::Corp);
         until_awaiting(&mut game, &mut handle);
+        // At the mulligan the bar has nothing: keep and mulligan are the
+        // prompt's decisions, not controls.
+        assert_eq!(game.apply(Intent::Control(Control::EndTurn)), Outcome::Nothing);
+        assert!(game.awaiting, "a control with no entry submits nothing");
+        let decisions = game.actions.decisions();
+        assert_eq!(decisions.len(), 2, "keep and mulligan: {:?}", game.actions.entries);
         // Keep, and let the Runner keep, until the Corp's action phase.
         loop {
             let view = game.view.as_ref().unwrap();
@@ -358,44 +417,59 @@ mod tests {
         }
         let view = game.view.clone().unwrap();
         let hand = view.corp.hq_cards.clone().unwrap();
-        // A hand card: one entry submits, several pop up, none inspects.
-        let mut seen = (false, false, false);
+        let mut pressed_one = false;
         for card in &hand {
             let entries = game.actions.for_hand_card(card);
             let outcome = game.apply(Intent::Click(Target::HandCard(card.clone())));
-            match entries.len() {
-                0 => {
-                    assert_eq!(outcome, Outcome::Redraw);
-                    assert_eq!(game.inspecting, Some(card.clone()));
-                    game.apply(Intent::Back);
-                    seen.0 = true;
-                }
-                1 => {
-                    assert!(matches!(outcome, Outcome::Submit(_)));
-                    // Undo the in-flight state for the rest of the loop.
-                    game.awaiting = true;
-                    seen.1 = true;
-                }
-                _ => {
-                    assert_eq!(outcome, Outcome::Redraw);
-                    assert_eq!(game.popup.as_ref().map(|p| p.entries.len()), Some(entries.len()));
-                    assert_eq!(game.apply(Intent::Back), Outcome::Redraw, "Escape closes the popup");
-                    assert!(game.popup.is_none());
-                    seen.2 = true;
-                }
+            assert_eq!(outcome, Outcome::Redraw, "a click opens, whatever the card can do");
+            assert_eq!(game.sheet, Some(Sheet { target: Target::HandCard(card.clone()), entries: entries.clone() }));
+            assert_eq!(game.card_of(&Target::HandCard(card.clone())).as_ref(), Some(card));
+            assert!(game.awaiting, "nothing was sent");
+            if let (Some(first), false) = (entries.first(), pressed_one) {
+                let Outcome::Submit(action) = game.apply(Intent::Choose(*first)) else { panic!("the sheet's button submits") };
+                assert_eq!(&action, &game.actions.entries[*first].action);
+                assert!(game.sheet.is_none() && !game.awaiting);
+                // Undo the in-flight state for the rest of the loop.
+                game.awaiting = true;
+                pressed_one = true;
+            } else {
+                assert_eq!(game.apply(Intent::Back), Outcome::Redraw, "Escape closes the sheet");
+                assert!(game.sheet.is_none());
             }
         }
-        assert!(seen.1 || seen.2, "an opening Corp hand has something playable");
-        // A server: HQ can always be run by a Runner but not by the Corp,
-        // and an install into a new remote is offered from the server.
-        let remote = game.actions.entries.iter().find_map(|e| match &e.action {
-            PlayerAction::InstallCard { zone, .. } => Some(*zone),
-            _ => None,
-        });
-        if let Some(server) = remote {
-            assert!(!game.actions.for_server(server).is_empty());
-        }
-        // Quitting mid-game asks first; Escape again withdraws.
+        assert!(pressed_one, "an opening Corp hand has something playable");
+        // R&D: the sheet offers the draw, and no zone click ever draws.
+        let before = game.applied;
+        game.apply(Intent::Click(Target::Server(ServerId::RnD)));
+        let sheet = game.sheet.clone().unwrap();
+        assert!(sheet.entries.iter().any(|i| matches!(game.actions.entries[*i].action, PlayerAction::DrawCardClick { .. })));
+        assert!(game.card_of(&sheet.target).is_none(), "a zone is not a card");
+        assert!(game.awaiting && game.applied == before);
+        // Archives offers the installs into it and nothing else; a zone
+        // with nothing to do still opens (the identity, say).
+        game.apply(Intent::Click(Target::Server(ServerId::Archives)));
+        assert_eq!(game.sheet.as_ref().map(|s| s.entries.clone()), Some(game.actions.for_server(ServerId::Archives)));
+        game.apply(Intent::Click(Target::Identity(Side::Runner)));
+        assert_eq!(game.sheet.as_ref().map(|s| s.entries.len()), Some(0), "the opponent's identity has nothing to do");
+        assert!(game.card_of(&Target::Identity(Side::Runner)).is_some(), "but is a card to read");
+        // A face in the pile reads over the sheet; Escape closes the
+        // reading first, then the sheet.
+        game.apply(Intent::Inspect(Some(hand[0].clone())));
+        assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
+        assert!(game.inspecting.is_none() && game.sheet.is_some());
+        game.apply(Intent::Back);
+        assert!(game.sheet.is_none());
+        // The bar: End turn is listed and submits; Jack out is the
+        // Runner's and never on the Corp's map.
+        assert_eq!(game.apply(Intent::Control(Control::JackOut)), Outcome::Nothing);
+        assert_eq!(game.apply(Intent::Control(Control::EndTurn)), Outcome::Submit(PlayerAction::EndTurn));
+        game.awaiting = true;
+        // The options close before the quit prompt opens; quitting
+        // mid-game asks first; Escape again withdraws.
+        assert_eq!(game.apply(Intent::ToggleOptions), Outcome::Redraw);
+        assert!(game.options_open);
+        assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
+        assert!(!game.options_open && !game.confirm_quit);
         assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
         assert!(game.confirm_quit);
         assert_eq!(game.apply(Intent::Back), Outcome::Redraw);

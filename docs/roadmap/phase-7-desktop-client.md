@@ -609,9 +609,118 @@ yet a board to play on.
    submit by itself: it opens the card's actions (item 5) with reading
    it among them, and a second, deliberate click acts. The one-entry
    shortcut in `models::game::Game::click` is the line to remove.
+   *Done in §4's first PR: a click opens a sheet and never submits.*
+
+Three more, from the second look (15 September 2026), kept in the
+person's order:
+
+9. **The official card backs, fetched and used.** Null Signal Games'
+   backs are today a documented drop-in only (`assets/cards/README.md`);
+   they should be downloaded into the cache on the same opt-in as the
+   scans and the icon font, and drawn wherever `CardImages::back` is
+   asked, with the painted back as the tier beneath.
+10. **The servers as a table reads them, right to left**: Archives, R&D,
+    HQ, then the remotes — `spawn_servers`' sort key is the reverse of
+    that today, HQ first from the left.
+11. **A deck is a stack of cards** with its count beneath, not a header
+    with a number: R&D and the stack drawn as overlapped backs, the way
+    a pile sits on a table.
 
 **Open, for §4 onward:** the transitions are highlights, not movement;
 the sound bank and the tweens are §4. A `ChooseCards` prompt's positions
 are reachable only from the panel (item 1). The opponent's hand is
 drawn as whole backs capped at eight. The log keeps its last eighty
 lines on screen.
+
+---
+
+## 4. Feel — IN PROGRESS
+
+### 4a. Cards and zones as the way to act, a control bar, and a gear menu — DONE (15 September 2026)
+
+`feat/desktop-cards-zones-and-options`. The second look at the board
+asked for three things at once: no flat list of every action on screen
+by default, a fixed set of buttons for the actions a turn is made of,
+and the cards and zones as the way into everything else — a click on
+R&D must never simply draw. Items 5 and 8 of §3's list are closed by
+it; item 2 (a lone `Pass priority` taken without a click) is not, but
+the pass is now one button in one place.
+
+**Decisions taken, with the alternative rejected.**
+
+- **Hiding the panel outright would have stranded `EndTurn` and
+  `PassPriority`**, which have no card or server to click. So the
+  target-less entries are split in two, in `netrunner_client` where a
+  test can see it. `board::Control` is a fixed bar per side (Corp:
+  credit, draw, purge, end turn, pass; Runner: credit, draw, remove tag,
+  end turn, pass, continue, jack out, complete run — the run trio drawn
+  greyed outside a run, so the bar never reflows), and
+  `ActionMap::decisions` is everything else with no target — the
+  mulligan, a bid, a paid choice, an access decision, a selection to
+  confirm, and the `ToggleCardSelection` positions §3 item 1 still
+  leaves unplaced — listed under the prompt as the thing it is asking.
+  The map's test now checks, over four random-vs-random games as both
+  viewers, that the bar, the decisions and the targeted entries cover
+  every index: nothing is reachable only from the flat panel, which is
+  the "play helper", off by default (`DesktopPrefs::play_helper`), on
+  from the gear or the Settings screen. The log is the "play history",
+  the same way (`play_history`). AGENTS.md §5's "reachable from the
+  flat action panel" now says this.
+- **A click never submits; it opens a sheet.** `models::game::Sheet`
+  replaces the popup and the separate inspector: a card target is drawn
+  as the Large face, its text and its legal actions as buttons (with no
+  actions it is the inspector); a zone target — a server header, or the
+  new `Target::Pile` for the Runner's stack and heap, which are now
+  buttons in the Runner's strip — as its actions and its contents where
+  the viewer may see them. Archives is every card for the Corp and, for
+  the Runner, the face-up cards with backs for the rest (the
+  `PublicArchivedCard` mask decides, never the screen); the heap is all
+  face up; the Corp's own HQ is its hand; a remote is its ICE and root;
+  R&D and the stack are a few backs and a count, because a deck's order
+  is never shown, even to its owner. A face in a pile reads the card
+  over the sheet (`Intent::Inspect`), and Escape closes the reading,
+  then the sheet, then the options, then asks to quit. A sheet left
+  open while the opponent acts stays open with its entries cleared and
+  rebuilt on the next `Awaiting`, so reading Archives is not interrupted
+  by the bot's turn. Anchoring a popup at the card (§3's note) is not
+  done: the sheet shows the card, which is what anchoring was for. A
+  draw is also on its deck (`DrawCardClick` targets R&D or the stack),
+  so the zone's sheet offers it beside the bar — the one entry on two
+  routes, which is the map's design.
+- **The gear is painted.** Neither bundled font has U+2699 (Noto Sans
+  Symbols 2 covers 2654–2668, 267f–268f and 269e–26a1 of the block,
+  Noto Sans none of it — checked with `fc-query`), so `widgets::gear_image`
+  paints a cog the way `card_back::paint` paints a back, and the button
+  reads "Options" where `Assets<Image>` is not registered (the headless
+  tests). The options overlay draws `models::settings::Row::GAME` — the
+  two aids, the animation speed and the two volumes — through the
+  Settings screen's own `spawn_rows`, so a row has one shape and one
+  control wherever it appears, and a change is saved at once as there.
+  A greyed control is `widgets::disabled_button`, the same node with dim
+  text and a `Disabled` marker the feedback system skips.
+
+**Found on the way.**
+
+- **`all` is vacuously true of no targets.** The first `decisions()`
+  put `EndTurn` on the rail beside the bar: an entry with no targets
+  satisfied "every target is a position". The map's coverage test
+  caught it before the screen did.
+- **The Runner is asked to pass priority during the Corp's turn**, so a
+  headless test that waits for "the Runner's action phase" after
+  keeping its hand waits forever unless it passes through the bar when
+  asked — which is what a person does, and what the test helper now
+  does.
+- **An end of turn opens a paid-ability window before the phase moves**,
+  and at the bottom rung the Corp's next decision arrives within the
+  frame; a test that asserted `!awaiting` after pressing End turn saw
+  it already true again. The applied count and the log line are the
+  stable signals.
+
+**Verified.** `cargo test --workspace` green (`netrunner_client` 79,
+`netrunner_desktop` 20 in the library and 8 in `tests/game.rs`: the
+decisions at the mulligan, a hand card's sheet and its button, the bar
+greyed then live then ending the turn, R&D and Archives and the stack
+opening sheets with nothing applied, the gear's toggles saved to the
+file and drawn), clippy silent, screenshots of the board with both aids
+off and both on read back through the dev hooks. No engine change, so
+no sweep and no coverage report.
