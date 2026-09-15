@@ -7,7 +7,7 @@ mod deck;
 mod diag;
 mod headless;
 mod learn;
-mod prose;
+use netrunner_client::prose;
 mod ratings;
 mod remote;
 mod replay;

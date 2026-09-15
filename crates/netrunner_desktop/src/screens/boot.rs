@@ -10,7 +10,7 @@ use bevy::prelude::*;
 use crate::core::{ClientCore, Notices, TokioRuntime};
 use crate::nav::Navigate;
 use crate::screens::AppScreen;
-use crate::theme::{Theme, FONT_PATH};
+use crate::theme::{Theme, FONT_PATH, SYMBOL_FONT_PATH};
 
 pub struct BootPlugin;
 
@@ -37,8 +37,12 @@ fn boot(world: &mut World) {
     // unregistered asset type is a panic, not a pending load.
     if world.contains_resource::<Assets<Font>>() {
         let font = world.resource::<AssetServer>().load(FONT_PATH);
-        world.resource_mut::<Theme>().font = Some(font);
+        let symbols = world.resource::<AssetServer>().load(SYMBOL_FONT_PATH);
+        let mut theme = world.resource_mut::<Theme>();
+        theme.font = Some(font);
+        theme.symbol_font = Some(symbols);
     }
     world.spawn((Name::new("Camera"), Camera2d));
-    world.write_message(Navigate(AppScreen::MainMenu));
+    let first = world.get_resource::<crate::dev::Dev>().map_or(AppScreen::MainMenu, |dev| dev.first_screen());
+    world.write_message(Navigate(first));
 }

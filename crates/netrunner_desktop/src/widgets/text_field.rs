@@ -66,7 +66,7 @@ pub fn edit_text_fields(
         }
         for child in children.iter() {
             if let Ok(mut text) = texts.get_mut(child) {
-                text.0 = format!("{}▏", field.text);
+                text.0 = format!("{}|", field.text);
                 break;
             }
         }

@@ -110,13 +110,20 @@ impl CardImageStore {
     }
 
     /// `<dir>/<code>.jpg`, whether or not it exists.
+    ///
+    /// The code is written as NetrunnerDB prints it: five digits,
+    /// zero-padded. `CardId` is a `u32`, so the Core Set's `"01001"` is
+    /// `1001` in memory, and the first cut of this store asked the CDN
+    /// for `1001.jpg` — a different card's picture, or nothing. System
+    /// Gateway and later sets have five significant digits, so the
+    /// padding changes nothing for them.
     pub fn path_for(&self, code: CardId) -> PathBuf {
-        self.dir.join(format!("{}.jpg", code.0))
+        self.dir.join(format!("{}.jpg", padded(code)))
     }
 
-    /// The URL the template gives for `code`.
+    /// The URL the template gives for `code`, padded as `path_for` pads.
     pub fn url_for(&self, code: CardId) -> String {
-        self.template().replace("{code}", &code.0.to_string())
+        self.template().replace("{code}", &padded(code))
     }
 
     pub fn status(&self, code: CardId) -> ImageStatus {
@@ -230,6 +237,11 @@ fn read_manifest(dir: &Path) -> Option<String> {
     manifest.image_url_template.contains("{code}").then_some(manifest.image_url_template)
 }
 
+/// NetrunnerDB's five-digit spelling of a code.
+fn padded(code: CardId) -> String {
+    format!("{:05}", code.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -254,7 +266,7 @@ mod tests {
         let dir = temp_dir("manifest");
         let store = CardImageStore::with_dir(dir.clone());
         store.set_template("https://example.test/{code}.png".to_string()).await.unwrap();
-        assert_eq!(CardImageStore::with_dir(dir.clone()).url_for(CardId(7)), "https://example.test/7.png");
+        assert_eq!(CardImageStore::with_dir(dir.clone()).url_for(CardId(7)), "https://example.test/00007.png");
         std::fs::write(dir.join(MANIFEST_FILE), r#"{"image_url_template":"no placeholder"}"#).unwrap();
         assert_eq!(CardImageStore::with_dir(dir.clone()).template(), DEFAULT_IMAGE_URL_TEMPLATE);
         let _ = std::fs::remove_dir_all(&dir);
@@ -280,6 +292,16 @@ mod tests {
         assert_eq!(with.image_url_template.as_deref(), Some("https://x/{code}.jpg"));
         let without: NetrunnerDbEnvelope<serde_json::Value> = serde_json::from_str(r#"{"success":true,"data":[]}"#).unwrap();
         assert_eq!(without.image_url_template, None);
+    }
+
+    /// A Core Set code keeps its leading zero on disk and in the URL:
+    /// `CardId(1001)` is NetrunnerDB's `01001`.
+    #[test]
+    fn core_set_codes_are_five_digits_on_disk_and_in_the_url() {
+        let store = CardImageStore::with_dir(temp_dir("pad"));
+        assert_eq!(store.path_for(CardId(1001)).file_name().unwrap(), "01001.jpg");
+        assert_eq!(store.url_for(CardId(1001)), "https://card-images.netrunnerdb.com/v2/large/01001.jpg");
+        assert_eq!(store.path_for(CardId(30001)).file_name().unwrap(), "30001.jpg");
     }
 
     /// An already-cached card is skipped without a request, so a download

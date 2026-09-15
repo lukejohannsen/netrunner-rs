@@ -463,6 +463,8 @@ pub fn visible_zones(view: &ClientView, registry: &CardRegistry) -> Vec<CardZone
     zones
 }
 
+pub use netrunner_client::prose::engine_reading;
+
 /// One card as a person reads it: the type line, the printed numbers,
 /// the printed text with its line breaks, the flavour. The engine's DSL is
 /// not shown — the printed text is what the DSL was written from, and it
@@ -518,34 +520,6 @@ pub fn card_modal(id: &CardId, registry: &CardRegistry) -> Modal {
         lines.extend(engine);
     }
     Modal::new(&card.title, &lines.join("\n"), "Esc to close")
-}
-
-/// One line per trigger, ability and subroutine: `[when] clause → engine
-/// reading`. The clause is the printed text the author linked
-/// (`TriggeredEffect::text`, `AbilityDef::text`, `SubroutineDef::text`),
-/// and the reading is the DSL rendered by `prose`.
-pub fn engine_reading(card: &netrunner_core::dsl::CardDefinition, registry: &CardRegistry) -> Vec<String> {
-    let mut lines = Vec::new();
-    for trigger in &card.triggers {
-        let reading = trigger.effects.iter().map(|e| crate::prose::describe_effect(e, registry)).collect::<Vec<_>>().join("; ");
-        let when = crate::prose::humanize(format!("{:?}", trigger.trigger));
-        match &trigger.text {
-            Some(text) => lines.push(format!("• [{when}] \"{}\" → {reading}", text.trim_end_matches('.'))),
-            None => lines.push(format!("• [{when}] → {reading}")),
-        }
-    }
-    for ability in &card.abilities {
-        let reading = crate::prose::describe_effect(&ability.effect, registry);
-        let cost = ability.cost.as_ref().map(|c| format!("{}: ", crate::prose::describe_cost(c))).unwrap_or_default();
-        match &ability.text {
-            Some(text) => lines.push(format!("• [ability] \"{}\" → {cost}{reading}", text.trim_end_matches('.'))),
-            None => lines.push(format!("• [ability] → {cost}{reading}")),
-        }
-    }
-    for sub in &card.subroutines {
-        lines.push(format!("• [subroutine] \"{}\" → {}", sub.text.trim_end_matches('.'), crate::prose::describe_effect(&sub.effect, registry)));
-    }
-    lines
 }
 
 impl Modal {

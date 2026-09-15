@@ -8,6 +8,7 @@
 //! a way back, so every menu entry leads somewhere from the first PR.
 
 pub mod boot;
+pub mod card_browser;
 pub mod main_menu;
 pub mod profile;
 pub mod settings;
@@ -35,6 +36,28 @@ pub enum AppScreen {
 }
 
 impl AppScreen {
+    pub const ALL: [AppScreen; 12] = [
+        AppScreen::Boot,
+        AppScreen::MainMenu,
+        AppScreen::Profile,
+        AppScreen::Settings,
+        AppScreen::Decks,
+        AppScreen::DeckEditor,
+        AppScreen::CardBrowser,
+        AppScreen::NewGame,
+        AppScreen::Learn,
+        AppScreen::Online,
+        AppScreen::Game,
+        AppScreen::Replay,
+    ];
+
+    /// The screen named by its variant or its heading, any case —
+    /// `cardbrowser` and `cards` both — for `NETRUNNER_SCREEN`.
+    pub fn from_name(name: &str) -> Option<AppScreen> {
+        let name = name.trim();
+        AppScreen::ALL.into_iter().find(|screen| format!("{screen:?}").eq_ignore_ascii_case(name) || screen.title().eq_ignore_ascii_case(name))
+    }
+
     /// The heading a screen shows.
     pub fn title(self) -> &'static str {
         match self {

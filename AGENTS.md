@@ -49,7 +49,7 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 | `netrunner_selfplay` | High-volume self-play data generation for training. |
 | `netrunner_card_sync` | Async NetrunnerDB API sync and cross-platform disk caching, and the card-image cache (`CardImageStore`) — the only crate doing network I/O for card data. |
 | `netrunner_rating` | Pure, engine-free Glicko-2 ratings: a `RatingBook` of one rating per track (human-vs-human, human-vs-bot, bot benchmark), participant and role, serializable whole. No I/O; the CLI's `bench` and the server own their files. |
-| `netrunner_client` | The toolkit-agnostic client core both clients stand on: the settings file (one struct, so neither client drops the other's fields), the saved-deck store, the local rating book and its rung suggestion, and the format's card pool. Later phases add the narration, the `ActionMap`, the view-diff `Transition`s and the one `MatchHandle` every game screen consumes. No rendering, no rules. |
+| `netrunner_client` | The toolkit-agnostic client core both clients stand on: the settings file (one struct, so neither client drops the other's fields), the saved-deck store, the local rating book and its rung suggestion, the format's card pool and the browser's catalog, the words for the DSL (`prose`, with `engine_reading`), and the printed card as a face lays it out (`card_face` decides which corner a number sits in, `card_text` splits the text at its icons). Later phases add the `ActionMap`, the view-diff `Transition`s and the one `MatchHandle` every game screen consumes. No rendering, no rules. |
 | `netrunner_desktop` | The Bevy graphical client. Renders `ClientView` only; a plugin per screen; consumes `netrunner_client`. Its own CI job, because Bevy is several hundred crates. |
 
 Bot *logic* belongs in `netrunner_bots`, not in `netrunner_gym` or `netrunner_selfplay`; those are harnesses. `netrunner_session` is a **driver**, not a harness and not a rules authority — it owns the loop, never a rule.
@@ -168,6 +168,7 @@ One rustdoc lint is allowed, and it is a domain collision rather than laziness: 
 ### Build & Run
 - `cargo build --workspace`: Build the entire monorepo.
 - `cargo run -p netrunner_cli`: Run the TUI client — the main menu (Phase 6); side flags such as `--runner human --corp-level 3` skip straight to a game.
+- `cargo run -p netrunner_desktop`: Run the Bevy client. Dependencies are optimised even in the dev profile (`[profile.dev.package."*"]` in the workspace `Cargo.toml`, because an unoptimised Bevy could not draw the card browser); the first build is slow and the client is then playable. `NETRUNNER_SCREEN=cards NETRUNNER_SCREENSHOT=out.png` boots into a screen, saves the window and exits — how to look at a screen from a session with no eyes.
 - `cargo run -p netrunner_server -- --serve`: Run the standalone headless WebSocket server.
 - `cargo run -p netrunner_selfplay`: Generate self-play training data.
 - `cargo run --release -p netrunner_cli -- bench --bots random,heuristic,puct --games 12 --seed 1`: Rate every seating of a set of bots on the Glicko-2 benchmark ladder (`--report` for JSON, `--bots puct,puct-onnx --model X` to place a trained policy on it).

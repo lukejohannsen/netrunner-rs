@@ -33,11 +33,20 @@
 // what the system reads; the lint is meant for types a reader cannot
 // parse, which a `Query` is not.
 #![allow(clippy::type_complexity)]
+// A system's parameters are the things it reads and writes, and a screen
+// with eleven things on it has a system with eleven of them; bundling them
+// into a `SystemParam` struct moves the list, it does not shorten it.
+#![allow(clippy::too_many_arguments)]
 
 use bevy::app::PluginGroupBuilder;
 use bevy::prelude::*;
 
+pub mod assets;
+pub mod card_back;
+pub mod card_images;
 pub mod core;
+pub mod dev;
+pub mod downloads;
 pub mod models;
 pub mod nav;
 pub mod screens;
@@ -56,13 +65,17 @@ impl PluginGroup for NetrunnerDesktopPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(core::CorePlugin)
+            .add(dev::DevPlugin)
             .add(theme::ThemePlugin)
             .add(nav::NavPlugin)
             .add(widgets::WidgetsPlugin)
+            .add(card_images::CardImagesPlugin)
+            .add(downloads::DownloadsPlugin)
             .add(screens::boot::BootPlugin)
             .add(screens::main_menu::MainMenuPlugin)
             .add(screens::profile::ProfilePlugin)
             .add(screens::settings::SettingsPlugin)
+            .add(screens::card_browser::CardBrowserPlugin)
             .add(screens::stubs::StubScreensPlugin)
     }
 }

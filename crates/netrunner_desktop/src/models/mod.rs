@@ -8,4 +8,5 @@
 //! a third client, and so that what a screen *does* is pinned by tests
 //! that need no window.
 
+pub mod browser;
 pub mod settings;

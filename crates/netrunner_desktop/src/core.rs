@@ -19,6 +19,7 @@ use netrunner_client::deck_store;
 use netrunner_client::ratings;
 use netrunner_client::settings::{self, Settings};
 use netrunner_core::cards::CardRegistry;
+use netrunner_core::dsl::CardDefinition;
 
 pub struct CorePlugin;
 
@@ -35,6 +36,11 @@ pub struct ClientCore {
     /// Every playable card, the registry every match and every screen
     /// resolves titles through.
     pub registry: Arc<CardRegistry>,
+    /// Every printing in the catalog, the playable card standing in for
+    /// its printing (`netrunner_client::cards::catalog`) — what the
+    /// browser lists. Built once: it clones the registry and parses the
+    /// catalog, which is too much for a screen's `OnEnter`.
+    pub catalog: Arc<Vec<CardDefinition>>,
     pub settings: Settings,
     /// `None` when the OS has no data directory; edits then apply to this
     /// session only, and the settings screen says so.
@@ -74,8 +80,10 @@ impl ClientCore {
                 CardImageStore::with_dir(std::env::temp_dir().join("netrunner").join("images"))
             }
         };
+        let registry = netrunner_client::decks::sample_deck_registry();
         let core = Self {
-            registry: Arc::new(netrunner_client::decks::sample_deck_registry()),
+            catalog: Arc::new(netrunner_client::cards::catalog(&registry)),
+            registry: Arc::new(registry),
             settings,
             settings_path,
             decks_dir,
@@ -88,8 +96,10 @@ impl ClientCore {
     /// A client with every file under `dir` — what a test builds so it
     /// never reads or writes the developer's own data directory.
     pub fn in_dir(dir: PathBuf) -> Self {
+        let registry = netrunner_client::decks::sample_deck_registry();
         Self {
-            registry: Arc::new(netrunner_client::decks::sample_deck_registry()),
+            catalog: Arc::new(netrunner_client::cards::catalog(&registry)),
+            registry: Arc::new(registry),
             settings: Settings::default(),
             settings_path: Some(dir.join("settings.json")),
             decks_dir: Some(dir.join("decks")),

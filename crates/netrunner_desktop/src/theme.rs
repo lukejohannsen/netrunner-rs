@@ -23,10 +23,21 @@ impl Plugin for ThemePlugin {
 /// is the fallback while it loads or if the file is missing.
 pub const FONT_PATH: &str = "fonts/NotoSans-Regular.ttf";
 
+/// The face the card's printed icons are drawn in: Noto Sans Symbols 2,
+/// same licence. Noto Sans has no arrows, geometric shapes or dingbats,
+/// so the click, the subroutine, the unique diamond and the influence
+/// pips need a second font; `netrunner_client::card_text::Symbol::glyph`
+/// names the code points, each checked against this file's character
+/// map.
+pub const SYMBOL_FONT_PATH: &str = "fonts/NotoSansSymbols2-Regular.ttf";
+
 #[derive(Resource, Clone)]
 pub struct Theme {
     /// `None` until boot loads it, and in a headless test.
     pub font: Option<Handle<Font>>,
+    /// `None` until boot loads it, and in a headless test; a face then
+    /// draws `Symbol::fallback` instead of `Symbol::glyph`.
+    pub symbol_font: Option<Handle<Font>>,
     pub background: Color,
     pub panel: Color,
     pub panel_border: Color,
@@ -45,6 +56,7 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             font: None,
+            symbol_font: None,
             background: Color::srgb(0.06, 0.07, 0.09),
             panel: Color::srgb(0.10, 0.11, 0.14),
             panel_border: Color::srgb(0.22, 0.24, 0.30),
@@ -99,5 +111,21 @@ impl Theme {
             font.font = handle.clone().into();
         }
         font
+    }
+
+    /// A `TextFont` in the symbol face at `size`, or the text face when
+    /// the symbol font is not loaded — in which case the caller draws
+    /// fallbacks, not glyphs (`has_symbols`).
+    pub fn symbol_font(&self, size: f32) -> TextFont {
+        let mut font = TextFont { font_size: FontSize::Px(size), ..default() };
+        if let Some(handle) = self.symbol_font.as_ref().or(self.font.as_ref()) {
+            font.font = handle.clone().into();
+        }
+        font
+    }
+
+    /// Whether a face may draw `Symbol::glyph`.
+    pub fn has_symbols(&self) -> bool {
+        self.symbol_font.is_some()
     }
 }

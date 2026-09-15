@@ -163,3 +163,60 @@ fn a_text_field_captures_escape_until_it_closes() {
     app.update();
     assert_eq!(screen(&app), AppScreen::MainMenu);
 }
+
+/// The card browser: every printing is a face, a face opens in the
+/// inspector, typing narrows the grid, and Escape clears, closes, then
+/// leaves — three presses, because the search field captures the first
+/// two.
+#[test]
+fn the_card_browser_lists_faces_filters_as_typed_and_escapes_in_three() {
+    use netrunner_desktop::screens::card_browser::FaceButton;
+    use netrunner_desktop::widgets::text_field::TextField;
+    let (mut app, _dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::CardBrowser));
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::CardBrowser);
+    let faces = |app: &mut App| app.world_mut().query::<&FaceButton>().iter(app.world()).count();
+    let all = faces(&mut app);
+    assert!(all > 200, "{all} faces: every printing in the catalog");
+    let texts = |app: &mut App| app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect::<Vec<_>>();
+    assert!(texts(&mut app).iter().any(|t| t.starts_with("Cost ")), "the first card is open in the inspector from the start");
+
+    // Press a thumb the way a pointer would: the second, so the
+    // inspector visibly changes.
+    let (second, code) = app.world_mut().query::<(Entity, &FaceButton)>().iter(app.world()).nth(1).map(|(e, f)| (e, f.0)).unwrap();
+    app.world_mut().entity_mut(second).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    assert!(texts(&mut app).iter().any(|t| t.ends_with(&format!("#{:05}", code.0))), "the inspector shows the pressed card's code");
+
+    // Type into the search field, which is open from the start.
+    assert_eq!(app.world_mut().query::<&TextField>().iter(app.world()).count(), 1);
+    for c in ["t", "i", "t", "h", "e"] {
+        press(&mut app, KeyCode::KeyT, Key::Character(c.into()));
+        app.update();
+    }
+    app.update();
+    let narrowed = faces(&mut app);
+    assert!(narrowed < all && narrowed >= 1, "{narrowed} of {all} faces match \"tithe\"");
+
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::CardBrowser, "the first Escape clears the search");
+    assert_eq!(app.world_mut().query::<&TextField>().iter(app.world()).next().unwrap().text, "");
+    assert_eq!(faces(&mut app), all, "the grid is whole again");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::CardBrowser, "the second closes the field");
+    assert_eq!(app.world_mut().query::<&TextField>().iter(app.world()).count(), 0);
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::MainMenu, "the third leaves");
+    assert_eq!(roots(&mut app, AppScreen::CardBrowser), 0);
+}

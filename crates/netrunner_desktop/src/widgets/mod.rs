@@ -8,6 +8,7 @@
 //! in a query of that marker — so no screen needs its own hover system
 //! and no button needs a closure.
 
+pub mod card_face;
 pub mod text_field;
 
 use bevy::prelude::*;
