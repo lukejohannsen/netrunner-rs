@@ -18,6 +18,10 @@
 //! - `NETRUNNER_OPTIONS=1` — on the board, the gear menu is opened once
 //!   the person's first decision has arrived, so the options window can
 //!   be looked at over a real board.
+//! - `NETRUNNER_MENU=1` — on the board, once the person's decision has
+//!   arrived (after any autoplay), the actions menu a secondary click
+//!   would open is opened above the first hand card with an action (or
+//!   the first card), so the menu can be looked at.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -65,6 +69,8 @@ pub struct Dev {
     pub autoplayed: u32,
     /// Open the options window on the board, once.
     pub options: bool,
+    /// Open the actions menu above a hand card, once.
+    pub menu: bool,
     pub screenshot: Option<PathBuf>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
@@ -88,6 +94,7 @@ impl Dev {
             autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
             autoplayed: 0,
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
+            menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,
             frames: 0,

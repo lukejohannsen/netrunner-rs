@@ -1,8 +1,9 @@
 //! A game, without a window: the form starts a match against the bottom
 //! rung on a thread, the board draws the first decision, a press on a
 //! decision button submits it, a card or a zone opens its sheet and never
-//! acts, the control bar greys what is not legal, the gear opens the
-//! options, and Escape asks before leaving.
+//! acts, a secondary click opens its actions as a menu above the card,
+//! the control bar greys what is not legal, the gear opens the options,
+//! and Escape asks before leaving.
 //!
 //! Driven under `MinimalPlugins` like `tests/navigation.rs`; the match
 //! thread is real, so the test pumps `update` until the message it
@@ -12,6 +13,7 @@
 use std::time::{Duration, Instant};
 
 use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::mouse::MouseButtonInput;
 use bevy::input::{ButtonState, InputPlugin};
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
@@ -21,7 +23,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{Click, DecisionPopup, LogRow, Model, Overlay};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, LogRow, Model, Overlay};
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
 use netrunner_desktop::screens::settings::Control as SettingsControl;
 use netrunner_desktop::widgets::Disabled;
@@ -44,6 +46,20 @@ fn press(app: &mut App, key_code: KeyCode, logical_key: Key) {
     for state in [ButtonState::Pressed, ButtonState::Released] {
         app.world_mut().write_message(KeyboardInput { key_code, logical_key: logical_key.clone(), state, text: None, repeat: false, window: Entity::PLACEHOLDER });
     }
+}
+
+/// A mouse button down and up, a frame each: `ButtonInput` reports the
+/// press for the one frame after the message.
+fn click(app: &mut App, button: MouseButton) {
+    for state in [ButtonState::Pressed, ButtonState::Released] {
+        app.world_mut().write_message(MouseButtonInput { button, state, window: Entity::PLACEHOLDER });
+        app.update();
+    }
+    app.update();
+}
+
+fn menus(app: &mut App) -> usize {
+    app.world_mut().query::<&ActionsMenu>().iter(app.world()).count()
 }
 
 fn screen(app: &App) -> AppScreen {
@@ -214,6 +230,86 @@ fn pressing_a_hand_card_opens_its_sheet_and_the_sheet_submits() {
     let button = entity_with(&mut app, &Click::Entry(entries[0])).expect("the sheet lists the card's action");
     press_entity(&mut app, button);
     assert_eq!(overlays(&mut app), 0, "the sheet's button submitted and closed the sheet");
+    wait_for(&mut app, "the action to be applied", |app| app.world().resource::<Model>().0.applied > before);
+}
+
+/// A secondary click on a card opens its actions as a menu above the
+/// card — the sheet's list, without the sheet — and the menu's button
+/// is what submits. Escape and a primary click on nothing of the menu's
+/// close it; Ctrl with the primary button is the same click and opens
+/// no sheet; nothing opens through a sheet.
+#[test]
+fn a_secondary_click_opens_the_actions_menu_above_the_card_and_its_button_submits() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let (card, entries) = {
+        let model = &app.world().resource::<Model>().0;
+        let hand = model.view.as_ref().unwrap().runner.grip_cards.clone().unwrap();
+        hand.iter().map(|c| (c.clone(), model.actions.for_hand_card(c))).find(|(_, e)| !e.is_empty()).expect("an opening Runner hand has something playable")
+    };
+    let face = entity_with(&mut app, &Click::Target(Target::HandCard(card.clone()))).expect("the card is on the board");
+    let before = app.world().resource::<Model>().0.applied;
+    // `Interaction` never reports the right button: the hovered node is
+    // the target, and the button is read from the input resource.
+    app.world_mut().entity_mut(face).insert(Interaction::Hovered);
+    click(&mut app, MouseButton::Right);
+    let model = &app.world().resource::<Model>().0;
+    assert!(model.awaiting && model.applied == before, "the click sent nothing");
+    let menu = model.menu.clone().expect("the menu is open");
+    assert_eq!(menu.target, Target::HandCard(card.clone()));
+    assert_eq!(menu.entries, entries, "the menu is the sheet's list");
+    assert!(model.sheet.is_none(), "and no sheet opened");
+    assert_eq!(menus(&mut app), 1);
+    assert_eq!(overlays(&mut app), 0);
+    assert_eq!(click_entry_count(&mut app), entries.len(), "one button per entry, and the helper is off");
+    // Escape closes the menu and asks nothing.
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(menus(&mut app), 0, "Escape closes the menu");
+    assert!(!app.world().resource::<Model>().0.confirm_quit, "and does not ask to quit");
+    // Open again; a primary click that presses no part of the menu
+    // closes it.
+    click(&mut app, MouseButton::Right);
+    assert_eq!(menus(&mut app), 1);
+    click(&mut app, MouseButton::Left);
+    assert_eq!(menus(&mut app), 0, "a click elsewhere closes the menu");
+    // Ctrl with the primary button is the secondary click: the card
+    // registers the press too, and opens no sheet for it.
+    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Pressed, text: None, repeat: false, window: Entity::PLACEHOLDER });
+    app.world_mut().entity_mut(face).insert(Interaction::Pressed);
+    click(&mut app, MouseButton::Left);
+    assert_eq!(menus(&mut app), 1, "Ctrl and the primary button open the menu");
+    assert_eq!(overlays(&mut app), 0, "and no sheet");
+    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Released, text: None, repeat: false, window: Entity::PLACEHOLDER });
+    app.update();
+    // A zone has a menu too: R&D's offers the run.
+    let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
+    app.world_mut().entity_mut(face).insert(Interaction::None);
+    app.world_mut().entity_mut(rnd).insert(Interaction::Hovered);
+    click(&mut app, MouseButton::Right);
+    let model = &app.world().resource::<Model>().0;
+    assert!(model.menu.as_ref().is_some_and(|m| m.target == Target::Server(ServerId::RnD)), "{:?}", model.menu);
+    assert!(model.menu.as_ref().unwrap().entries.iter().any(|i| matches!(model.actions.entries[*i].action, PlayerAction::InitiateRun { server: ServerId::RnD })));
+    assert!(texts(&mut app).iter().any(|t| t == "R&D"), "headed by the zone");
+    // With a sheet open, a secondary click reaching a card through its
+    // ground opens nothing.
+    app.world_mut().entity_mut(rnd).insert(Interaction::None);
+    press_entity(&mut app, face);
+    assert_eq!(overlays(&mut app), 1, "the sheet is up");
+    assert_eq!(menus(&mut app), 0, "and the click on the card closed the menu");
+    app.world_mut().entity_mut(face).insert(Interaction::Hovered);
+    click(&mut app, MouseButton::Right);
+    assert_eq!(menus(&mut app), 0, "nothing opens through the sheet");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    // The menu's button submits, as the sheet's would.
+    click(&mut app, MouseButton::Right);
+    let button = entity_with(&mut app, &Click::Entry(entries[0])).expect("the menu lists the card's action");
+    press_entity(&mut app, button);
+    assert_eq!(menus(&mut app), 0, "the press closed the menu");
     wait_for(&mut app, "the action to be applied", |app| app.world().resource::<Model>().0.applied > before);
 }
 

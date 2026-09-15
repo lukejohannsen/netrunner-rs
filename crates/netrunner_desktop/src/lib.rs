@@ -29,10 +29,11 @@
 //!   `netrunner_client::board::ActionMap`, built from `legal_actions`;
 //!   what to highlight comes from `board::diff`'s `Transition`s, never
 //!   from comparing what is on screen. A click on a card or a zone opens
-//!   its sheet and never acts; the basic actions are a fixed, greyable
-//!   control bar and the prompt's decisions sit under the prompt, so
-//!   every legal action is reachable without the flat panel, which is
-//!   an aid a person turns on.
+//!   its sheet and never acts, and a secondary click opens the same
+//!   actions as a menu above the card; the basic actions are a fixed,
+//!   greyable control bar and the prompt's decisions sit under the
+//!   prompt, so every legal action is reachable without the flat panel,
+//!   which is an aid a person turns on.
 //! - The board is the table seen from the person's chair: the Corp reads
 //!   their servers Archives, R&D, HQ, remotes, ice climbing toward the
 //!   Runner; the Runner sees the mirror across the table. The order is
