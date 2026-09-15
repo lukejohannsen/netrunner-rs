@@ -30,7 +30,7 @@
 //!   what to highlight comes from `board::diff`'s `Transition`s, never
 //!   from comparing what is on screen. A click on a card or a zone opens
 //!   its sheet and never acts, and a secondary click opens the same
-//!   actions as a menu over the card; the basic actions are a fixed,
+//!   actions as a menu above the card; the basic actions are a fixed,
 //!   greyable control bar and the prompt's decisions sit under the
 //!   prompt, so every legal action is reachable without the flat panel,
 //!   which is an aid a person turns on.

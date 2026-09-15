@@ -20,7 +20,7 @@
 //!   be looked at over a real board.
 //! - `NETRUNNER_MENU=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the actions menu a secondary click
-//!   would open is opened over the first hand card with an action (or
+//!   would open is opened above the first hand card with an action (or
 //!   the first card), so the menu can be looked at.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
@@ -69,7 +69,7 @@ pub struct Dev {
     pub autoplayed: u32,
     /// Open the options window on the board, once.
     pub options: bool,
-    /// Open the actions menu over a hand card, once.
+    /// Open the actions menu above a hand card, once.
     pub menu: bool,
     pub screenshot: Option<PathBuf>,
     /// `(x, y, lines)`.

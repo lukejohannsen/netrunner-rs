@@ -20,13 +20,13 @@
 //! under the prompt, so nothing depends on the flat panel, which is an
 //! aid a person turns on (`DesktopPrefs::play_helper`).
 //!
-//! **A secondary click opens the same actions as a [`Menu`] over the
+//! **A secondary click opens the same actions as a [`Menu`] above the
 //! card** — the card game's "pick the card up and see what it can do"
 //! without the sheet's reading. It lists exactly the entries the sheet
 //! would (`entries_for`), so the two are one rule with two doors, and
-//! it sits centred on the card's own box (the [`Anchor`] the screen
+//! it sits just above the card's own box (the [`Anchor`] the screen
 //! read off the node), never at the pointer, so it is in the same
-//! place however the card was clicked; it never opens over a sheet,
+//! place however the card was clicked and the card stays in view; it never opens over a sheet,
 //! the options or the quit prompt
 //! (the board still reports hovers through an overlay's ground), and
 //! it closes on the next click anywhere, on Escape, and when the board
@@ -49,7 +49,7 @@ pub enum Intent {
     /// A card or a zone on the board: opens its sheet.
     Click(Target),
     /// A secondary click on a card or a zone: opens its actions as a
-    /// menu centred over the node that was clicked.
+    /// menu just above the node that was clicked.
     Menu { target: Target, over: Anchor },
     /// A click that landed on nothing of the menu's: closes it.
     CloseMenu,
@@ -113,7 +113,7 @@ pub struct Sheet {
     pub entries: Vec<usize>,
 }
 
-/// The box on the window a menu is centred over — the clicked node's,
+/// The box on the window a menu sits above — the clicked node's,
 /// in logical pixels: `x, y` its centre, `width, height` its size. A
 /// menu at the pointer landed somewhere different on every click; the
 /// card's own box is one place.
@@ -126,7 +126,7 @@ pub struct Anchor {
 }
 
 /// A secondary click's menu: the target, the entries a press could
-/// mean (the sheet's list, `entries_for`), and the box it sits over.
+/// mean (the sheet's list, `entries_for`), and the box it sits above.
 /// Unlike a sheet it does not outlive the board it was opened over:
 /// an applied action closes it, since the card it sits on may have
 /// moved.
@@ -552,7 +552,7 @@ mod tests {
         handle.join();
     }
 
-    /// A secondary click opens the target's entries as a menu over the
+    /// A secondary click opens the target's entries as a menu above the
     /// card, the same list the sheet would show; a press on one
     /// submits; a click elsewhere, Escape and the board moving close
     /// it; and nothing opens through a sheet.

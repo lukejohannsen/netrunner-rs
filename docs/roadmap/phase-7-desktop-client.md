@@ -718,10 +718,14 @@ And three from the look at §4a (15 September 2026), before it merged:
     node was laid out in (`Anchor`, read off `ComputedNode` and
     `UiGlobalTransform`), so the two never disagree about what a card
     can do, and a press on a menu button is the same `Intent::Choose`
-    as a sheet's. The menu is centred over that box, not put at the
-    pointer: the first cut used the pointer, and the person's verdict
-    was that it jumped around with the click — a card's menu is in one
-    place for that card.
+    as a sheet's. The menu sits just above that box, centred on it,
+    not at the pointer and not on the card: the first cut used the
+    pointer, and the person's verdict was that it jumped around with
+    the click; the second centred it on the card, which was a misread
+    of "above" — a card's menu is in one place for that card, and the
+    card stays in view beneath it. When there is no room above (a
+    header along the top edge, from the Runner's chair) it sits just
+    below.
     The secondary click is the right button, or Ctrl held with the
     primary — the Mac's convention — and `controls` drops the primary
     press the card registers under Ctrl, so it opens no sheet. Read as

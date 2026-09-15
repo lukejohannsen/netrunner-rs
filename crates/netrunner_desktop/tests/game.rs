@@ -1,7 +1,7 @@
 //! A game, without a window: the form starts a match against the bottom
 //! rung on a thread, the board draws the first decision, a press on a
 //! decision button submits it, a card or a zone opens its sheet and never
-//! acts, a secondary click opens its actions as a menu over the card,
+//! acts, a secondary click opens its actions as a menu above the card,
 //! the control bar greys what is not legal, the gear opens the options,
 //! and Escape asks before leaving.
 //!
@@ -233,13 +233,13 @@ fn pressing_a_hand_card_opens_its_sheet_and_the_sheet_submits() {
     wait_for(&mut app, "the action to be applied", |app| app.world().resource::<Model>().0.applied > before);
 }
 
-/// A secondary click on a card opens its actions as a menu over the
+/// A secondary click on a card opens its actions as a menu above the
 /// card — the sheet's list, without the sheet — and the menu's button
 /// is what submits. Escape and a primary click on nothing of the menu's
 /// close it; Ctrl with the primary button is the same click and opens
 /// no sheet; nothing opens through a sheet.
 #[test]
-fn a_secondary_click_opens_the_actions_menu_over_the_card_and_its_button_submits() {
+fn a_secondary_click_opens_the_actions_menu_above_the_card_and_its_button_submits() {
     let (mut app, _dir) = headless_client();
     start_a_game(&mut app);
     to_the_runners_turn(&mut app);

@@ -48,13 +48,14 @@
 //! that reads the card over the sheet. R&D and the stack are backs and a
 //! count: a deck's order is never shown, even to its owner.
 //!
-//! **A secondary click is a menu over the card.** The right button, or
+//! **A secondary click is a menu above the card.** The right button, or
 //! the primary with Ctrl held (the Mac's), on a card or a zone opens
-//! the same entries its sheet would list, as a small panel centred on
-//! the node that was clicked (`models::game::Menu`, anchored by the
-//! node's laid-out box, not the pointer — a menu at the pointer landed
-//! somewhere different on every click), so a card's actions are one
-//! click away without the sheet's reading. `Interaction` reports only
+//! the same entries its sheet would list, as a small panel sitting
+//! just above the node that was clicked, centred on it, so the card
+//! stays in view under its own menu (`models::game::Menu`, anchored by
+//! the node's laid-out box, not the pointer — a menu at the pointer
+//! landed somewhere different on every click), so a card's actions are
+//! one click away without the sheet's reading. `Interaction` reports only
 //! the primary button, so `secondary_click` reads the button from
 //! `ButtonInput<MouseButton>` and takes the target from the node the
 //! focus system marks hovered — every card, ICE bar and header is a
@@ -1198,24 +1199,34 @@ fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, i
     Some(button.id())
 }
 
-/// The width of the secondary click's menu.
+/// The width of the secondary click's menu, and the gap between its
+/// bottom edge and the top of the card it sits above.
 const MENU_WIDTH: f32 = 280.0;
+const MENU_GAP: f32 = 6.0;
 
 /// The menu a secondary click opened: the target's name and one button
 /// per entry, or the line the sheet would show when there is nothing,
-/// in a small panel centred on the box the target was laid out in — so
-/// it is in one place for a card however the card was clicked. Kept on
-/// the window: pulled in when it would run off an edge, by an estimate
-/// of its height (the layout has not run when it is spawned, and a
-/// menu is a heading and a row per entry). The panel
+/// in a small panel just above the box the target was laid out in and
+/// centred on it — so it is in one place for a card however the card
+/// was clicked, and the card stays in view beneath it. When the box is
+/// too near the top for the menu to fit above, it sits just below
+/// instead (a header along the top edge, from the Runner's chair).
+/// Kept on the window sideways: pulled in when it would run off the
+/// left or right edge. The height is an estimate (the layout has not
+/// run when it is spawned, and a menu is a heading and a row per
+/// entry). The panel
 /// takes `Interaction` and blocks, so a click on its ground is a click
 /// on the menu, not on the card beneath. Between the decision pop-up
 /// and the overlays in depth: a sheet covers it, it covers the pop-up.
 fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, menu: &crate::models::game::Menu, window: Vec2) {
+    // Padding, the heading, the panel's row gap, then a 40 px button (or
+    // the one-line notice) per row with the gap between rows.
     let rows = menu.entries.len().max(1) as f32;
-    let height = 2.0 * 16.0 + 24.0 + rows * (40.0 + 8.0);
+    let height = 2.0 * 12.0 + 22.0 + 8.0 + rows * 40.0 + (rows - 1.0) * 8.0;
     let left = (menu.over.x - MENU_WIDTH / 2.0).min(window.x - MENU_WIDTH - layout::PADDING).max(layout::PADDING);
-    let top = (menu.over.y - height / 2.0).min(window.y - height - layout::PADDING).max(layout::PADDING);
+    let above = menu.over.y - menu.over.height / 2.0 - MENU_GAP - height;
+    let below = menu.over.y + menu.over.height / 2.0 + MENU_GAP;
+    let top = if above >= layout::PADDING { above } else { below.min(window.y - height - layout::PADDING) };
     let accent = theme.accent;
     let mut panel = parent.spawn((ActionsMenu, MenuPart, Interaction::None, FocusPolicy::Block, GlobalZIndex(15), widgets::panel(theme, px(MENU_WIDTH))));
     panel.entry::<Node>().and_modify(move |mut node| {
