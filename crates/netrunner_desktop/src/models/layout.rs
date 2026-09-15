@@ -29,6 +29,21 @@
 //! order itself. The Runner's installed cards have no position in the
 //! rules ("does not matter" — the learn-to-play guide), so the rig
 //! keeps its three groups in the one order for both chairs.
+//!
+//! **A server column is a stack of tiles.** The header, every card in
+//! the root and every piece of ice are the same small block — a title
+//! and a number — so a column costs [`TILE`] per piece and never a card
+//! face: a root drawn as a face was the one thing on the board at card
+//! size that was not in a hand or a rig, and it cost the whole board its
+//! card width. A tile opens the card's sheet when clicked, so nothing
+//! is lost but the picture.
+//!
+//! **The run lane is a fifth row, always there.** Between the Corp's
+//! servers and the Runner's rig — adjacent to the outermost ice from
+//! either chair — [`RUN_LANE`] is reserved whether or not a run is on,
+//! so the cards keep their size when one begins; a lane that appeared
+//! with the run would have re-sized every card at the moment the person
+//! most wants to watch the board.
 
 use netrunner_core::rules::{ServerId, Side};
 
@@ -86,17 +101,16 @@ pub fn ice_top_down<T>(ice: &[T], chair: Side) -> Vec<&T> {
 /// What the board has to make room for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Counts {
-    /// The most ICE on any one server: the tallest server column.
-    pub ice: usize,
+    /// The most pieces — ice and root cards together — on any one
+    /// server: the tallest server column, in tiles.
+    pub pieces: usize,
     /// Corp servers, centrals included: the widest row of columns.
     pub servers: usize,
     /// Which strip is the person's: the Runner's carries the pile
     /// buttons and is taller.
     pub human_is_runner: bool,
-    /// Whether any server has a card in its root: an empty row of
-    /// headers is a short row, and the cards can be larger.
-    pub roots: bool,
-    /// Whether the rig has anything in it, for the same reason.
+    /// Whether the rig has anything in it: an empty rig is a short
+    /// row, and the cards can be larger.
     pub rig: bool,
 }
 
@@ -115,8 +129,11 @@ pub const ROW_GAP: f32 = 8.0;
 /// a card ("2 adv"), at the small text size with its leading.
 pub const LABEL: f32 = 22.0;
 pub const CHIPS: f32 = 20.0;
-/// An ICE bar's height, with the gap under it.
-pub const ICE_BAR: f32 = 30.0;
+/// A tile's height — an ice, or a card in a root — with the gap under it.
+pub const TILE: f32 = 30.0;
+/// The run lane between the two areas: a row of chips and a line of
+/// words beneath, with the gaps around it.
+pub const RUN_LANE: f32 = 64.0;
 /// The identity in a strip is drawn at this fraction of the face width.
 pub const IDENTITY_SCALE: f32 = 0.6;
 /// The gap between cards in a row.
@@ -154,21 +171,21 @@ pub fn board_height(window_height: f32) -> f32 {
     window_height - 2.0 * PADDING - TOP_BAR - CONTROL_BAR - 2.0 * ROW_GAP
 }
 
-/// The height of the board's four rows at face width `face`: the
+/// The height of the board's five rows at face width `face`: the
 /// opponent's strip (its identity at `IDENTITY_SCALE`, or its text,
-/// whichever is taller), the Corp's servers (label, header, the ICE
-/// bars of the tallest, a card, a chip line), the Runner's rig (label,
-/// group label, a card, a chip line) and the person's strip beside
-/// their hand (label and a card, or the strip's text). Monotone in
-/// `face`, which is what lets [`face_width`] search it.
+/// whichever is taller), the Corp's servers (label, header, the tiles
+/// of the tallest), the run lane, the Runner's rig (label, group label,
+/// a card, a chip line) and the person's strip beside their hand (label
+/// and a card, or the strip's text). Monotone in `face`, which is what
+/// lets [`face_width`] search it.
 pub fn rows_height(face: f32, counts: Counts) -> f32 {
     let (opponent_strip, own_strip) = if counts.human_is_runner { (STRIP_CORP, STRIP_RUNNER) } else { (STRIP_RUNNER, STRIP_CORP) };
     let card = 1.4 * face;
     let top = (1.4 * IDENTITY_SCALE * face).max(opponent_strip);
-    let servers = LABEL + SERVER_HEADER + counts.ice as f32 * ICE_BAR + if counts.roots { card + CHIPS } else { 0.0 };
+    let servers = LABEL + SERVER_HEADER + counts.pieces as f32 * TILE;
     let rig = LABEL + if counts.rig { GROUP_LABEL + card + CHIPS } else { 0.0 };
     let bottom = (LABEL + card).max(own_strip);
-    top + servers + rig + bottom + 3.0 * ROW_GAP
+    top + servers + RUN_LANE + rig + bottom + 4.0 * ROW_GAP
 }
 
 /// The face width the board has room for, in pixels: the largest for
@@ -226,28 +243,29 @@ mod tests {
 
     #[test]
     fn the_face_shrinks_with_the_window_and_with_ice_and_stays_in_range() {
-        let none = Counts { ice: 0, servers: 4, human_is_runner: true, roots: true, rig: true };
-        assert!(face_width((1280.0, 800.0), Counts { roots: false, rig: false, ..none }) > face_width((1280.0, 800.0), none), "an empty board has room for larger cards");
+        let none = Counts { pieces: 0, servers: 4, human_is_runner: true, rig: true };
+        assert!(face_width((1280.0, 800.0), Counts { rig: false, ..none }) > face_width((1280.0, 800.0), none), "an empty board has room for larger cards");
         let large = face_width((1920.0, 1080.0), none);
         let small = face_width((1280.0, 800.0), none);
         assert!(large > small, "{large} > {small}");
-        assert!(face_width((1920.0, 1080.0), Counts { ice: 4, ..none }) < large, "four ICE bars cost card height");
-        assert_eq!(face_width((800.0, 400.0), Counts { ice: 6, ..none }), MIN_FACE, "never below the floor");
+        assert!(face_width((1920.0, 1080.0), Counts { pieces: 4, ..none }) < large, "four tiles cost card height");
+        assert_eq!(face_width((800.0, 400.0), Counts { pieces: 6, ..none }), MIN_FACE, "never below the floor");
         assert_eq!(face_width((4000.0, 3000.0), none), MAX_FACE, "never above the cap");
         // Nine servers across a laptop width cap it below what the
         // height would allow.
         assert!(face_width((1280.0, 1080.0), Counts { servers: 9, ..none }) < face_width((1280.0, 1080.0), none));
     }
 
-    /// Four rows at the computed width fit the board's height, and one
-    /// pixel more would not: the invariant the whole module exists for.
+    /// The five rows at the computed width fit the board's height, and
+    /// one pixel more would not: the invariant the whole module exists
+    /// for.
     #[test]
-    fn four_rows_at_the_computed_width_fit_the_window_and_no_wider_would() {
-        for (window, ice, runner) in [((1280.0, 800.0), 0, true), ((1280.0, 800.0), 3, false), ((1920.0, 1080.0), 5, true), ((1366.0, 768.0), 2, true), ((2560.0, 1440.0), 0, false), ((2000.0, 1250.0), 2, true)] {
-            let counts = Counts { ice, servers: 5, human_is_runner: runner, roots: true, rig: ice % 2 == 0 };
+    fn the_rows_at_the_computed_width_fit_the_window_and_no_wider_would() {
+        for (window, pieces, runner) in [((1280.0, 800.0), 0, true), ((1280.0, 800.0), 3, false), ((1920.0, 1080.0), 5, true), ((1366.0, 768.0), 2, true), ((2560.0, 1440.0), 0, false), ((2000.0, 1250.0), 2, true)] {
+            let counts = Counts { pieces, servers: 5, human_is_runner: runner, rig: pieces % 2 == 0 };
             let w = face_width(window, counts);
             let room = board_height(window.1);
-            assert!(rows_height(w, counts) <= room || w == MIN_FACE, "{window:?} with {ice} ICE: {} of {room}", rows_height(w, counts));
+            assert!(rows_height(w, counts) <= room || w == MIN_FACE, "{window:?} with {pieces} tiles: {} of {room}", rows_height(w, counts));
             if w < MAX_FACE && w > MIN_FACE {
                 let wider = (w + 1.0).min(MAX_FACE);
                 let servers_cap = (board_width(window.0) - 4.0 * CARD_GAP) / 5.0 - 2.0 * SERVER_CHROME;

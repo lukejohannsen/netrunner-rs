@@ -883,3 +883,128 @@ opening sheets with nothing applied, the gear's toggles saved to the
 file and drawn), clippy silent, screenshots of the board with both aids
 off and both on read back through the dev hooks. No engine change, so
 no sweep and no coverage report.
+
+### 4b. Server columns as tile stacks, and a run as a paced trail — DONE (15 September 2026)
+
+`feat/server-tiles-and-run-trail`. Two things the person saw on the
+board after #32: a card installed in a server's root was drawn as a
+full face while the centrals were tiles and the ice was bars, so a
+column was three kinds of thing and the one face on the board that was
+not in a hand or a rig; and a run was invisible — an accent border on
+the column, an outline on one bar, words on the rail — over in a frame
+when the bot ran, with nothing to say what it had done to the Corp.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A server column is a stack of tiles.** `spawn_tile` is the ice bar
+  generalised: header, root cards and ice are the same block — title,
+  strength or counters, faction-coloured border when rezzed, dim when
+  not, `Card · 2 adv` for a face-down card the Runner cannot name
+  (advancement is public) — each a click on its sheet, so the picture
+  is read there and the column costs `layout::TILE` a piece
+  (`Counts.pieces`, the tallest column's ice and root together, replaces
+  `ice` and `roots`). The order was already the rule from #31 and is
+  untouched: `column_top_down` and `ice_top_down` put the piece the
+  Runner meets first nearest the middle of the screen from both chairs.
+- **A run is a trail read off the entry's events, not a `Transition`.**
+  One applied `ContinueRun` can pass an ice, approach the next and
+  encounter it in one `PublicHistoryEntry`, which `diff` collapses to a
+  single `RunMoved` naming only where the run ended up. So
+  `netrunner_client::board::trail::RunTrail` (toolkit-free, beside
+  `diff`) is built from the view's `active_run` (`begin`), fed the
+  entry's events one at a time (`observe`: approach, encounter, each
+  subroutine broken or fired, pass, bypass, the server, each access, the
+  ending) and reconciled with the view once the action applied (`sync`),
+  so it can be shown a step at a time and never disagree with the
+  engine. It keeps a line of consequences in a few words each — the
+  printed clause of a subroutine that fired, "stole Send a Message (3)",
+  "2 net damage" — which is what the Corp wanted to see. Tested over six
+  real games as both viewers: every step's install is in the view's run,
+  the stage never runs past the ice, every ended run has an outcome, and
+  the Corp sees a subroutine fire.
+- **The pace is the client's, in `models::pace::Pacer`.** The screen's
+  `poll` used to drain every message into the model at once; it now
+  pushes them through the pacer, which splits an `Applied` in a run into
+  a beat per step event and releases them `BEAT` (700 ms) apart, scaled
+  by `DesktopPrefs::animation_speed` — the setting's first consumer; its
+  documented 0 is instant, which the headless tests set. The person's
+  own click answers at once; the bot's beats and every message during a
+  run wait; a `Rejected` never does; outside a run nothing is paced. The
+  message itself is the last beat, so the board moves only when the
+  whole action has been shown. Tested with a fake clock over a real
+  match as the Corp: step beats are spaced by the pause, messages
+  outside a run are released at once, order is kept.
+- **The run lane is a fifth board row, always reserved.** Between the
+  servers and the rig from either chair — adjacent to the outermost ice
+  — `layout::RUN_LANE` is counted in `rows_height` whether or not a run
+  is on, so the cards keep their size when one begins; a lane that
+  appeared with the run would have re-sized every card at the moment the
+  person most wants to watch, and a floating overlay would have covered
+  the middle. It draws the trail left to right — `Run on HQ`, a chip per
+  ice with a dot per subroutine (hollow pending, accent broken, red
+  fired; the dots stay on a passed ice), the server, `Accessing`, the
+  outcome — and the last few consequences beneath. An ice chip is a
+  click on the same sheet as its tile. The lane is refilled on a beat
+  without the board (`relane`, `Dirty.lane`), and the trail lingers
+  after the run until the next run or the next turn, so the Corp sees
+  the whole run and what it did rather than a lane that emptied the
+  instant it was over.
+- **A tile says its rez state, and its sheet lists the card's facts.**
+  The person's second look: a rezzable tile must say whether it is
+  rezzed, tokens must show, and a click must give the state a person
+  reasons from. `netrunner_client::board::facts` is the one place the
+  words come from — `tile_label` for the tile (`Ansel 1.0 · unrezzed`,
+  `Whitespace · rezzed · str 0`, `Superconducting Hub · 2/3 adv`, and
+  from the chair that cannot name it `ICE · unrezzed` or `Card · face
+  down · 4 adv`; an agenda is never "unrezzed") and `install_facts` for
+  the sheet: where it sits and in what order the Runner meets it,
+  rezzed or the rez cost, strength now and printed, each subroutine
+  with its status in an encounter, tokens against the agenda's
+  requirement, counters by kind, trash cost, what it hosts and what it
+  is hosted on; a rig card gets its strength, counters and hosts the
+  same way. The sheet is `install_sheet` for every install, known or
+  hidden — a hidden one shows the back at the large size under
+  "Face-down card" or "Unrezzed ice" with the facts the mask allows.
+  Tested over real games as both viewers: every install on the board
+  has a label with its state and facts starting with its place, a
+  hidden card is never named, an ice met in a run says its strength
+  now and its subroutines. `NETRUNNER_SHEET=1` opens the first Corp
+  install's sheet for a screenshot. One glyph found: the bundled font
+  has no `↳`, so a subroutine line uses the `»` the card text uses.
+- **A line from the lane to the column was drawn and dropped.** The
+  first cut placed an absolute 2 px node, rotated with `UiTransform`,
+  from the lane's server chip to the column under run, off the laid-out
+  nodes. The person's verdict on seeing it was that it was ugly and not
+  needed; the column's border in the Runner's colour, which #31 already
+  drew, says which server is under run. Gone the same day.
+
+**Found on the way.**
+
+- **The test helper's bool means greyed, not live.** `control_button`
+  returns whether the bar's button is `Disabled`; the first lane test
+  read it the other way and pressed nothing for two dozen rounds. Worth
+  knowing before the next test that drives the bar.
+- **A run on an unprotected server never encounters.** The dev hook that
+  holds the pace for a screenshot first held only at an encounter, and
+  the bot's runs on empty centrals never triggered it; it holds at the
+  server's approach too.
+
+**Dev hook.** `NETRUNNER_HOLD_RUN=1`: the pace stops at a run's first
+encounter or server approach and the autoplay counts as done, so
+`NETRUNNER_SCREENSHOT` catches the lane with a run in flight.
+
+**Verified.** `cargo test --workspace` green (`netrunner_client` 82 —
+two of them `trail`'s, one `facts`'; `netrunner_desktop` 28 in the
+library — two `pace`'s, the `layout` invariants over five rows — and
+12 in `tests/game.rs`, two new: a run from R&D's sheet fills the lane
+with one chip per ice in the trail's order, a server column holds no
+card face, and the trail stays with its outcome once the run is over;
+a tile says its rez state and its sheet lists the facts), clippy
+silent. Screenshotted on a 2560×1600 screen as both chairs forty
+decisions in and held mid-run: tile stacks in one column with the ice,
+the lane at `Run on Remote 0 › Palisade · encounter ○ › Remote 0` with
+`Palisade rezzed` beneath from the Runner's chair, `Run on Archives ›
+Tithe · passed ○○ › Archives` from the Corp's, and after a run the Corp
+read `Run on R&D › R&D › Accessing › Successful` with `stole Send a
+Message (3)`; no scroll area on the board. No engine change, so no
+sweep and no coverage report.
