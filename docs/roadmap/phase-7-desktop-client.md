@@ -603,15 +603,180 @@ yet a board to play on.
    faces made readable the board is 1,780 px tall in a 723 px viewport;
    a design is owed that puts every card and piece on one screen —
    fanned hands, overlapped ICE, a scale that follows the window.
+   *Done in §4a, after it regressed there first: fullscreen, a computed
+   card width, overlapped rows, no scroll container on the board.*
 8. **A click to look at a card installed it.** The model submits a
    card's action when it has exactly one, so "examine" and "install"
    are the same click, and one game was lost to it. A click must never
    submit by itself: it opens the card's actions (item 5) with reading
    it among them, and a second, deliberate click acts. The one-entry
    shortcut in `models::game::Game::click` is the line to remove.
+   *Done in §4's first PR: a click opens a sheet and never submits.*
+
+Three more, from the second look (15 September 2026), kept in the
+person's order:
+
+9. **The official card backs, fetched and used.** Null Signal Games'
+   backs are today a documented drop-in only (`assets/cards/README.md`);
+   they should be downloaded into the cache on the same opt-in as the
+   scans and the icon font, and drawn wherever `CardImages::back` is
+   asked, with the painted back as the tier beneath.
+10. **The servers as a table reads them, right to left**: Archives, R&D,
+    HQ, then the remotes — `spawn_servers`' sort key is the reverse of
+    that today, HQ first from the left.
+11. **A deck is a stack of cards** with its count beneath, not a header
+    with a number: R&D and the stack drawn as overlapped backs, the way
+    a pile sits on a table.
+
+And three from the look at §4a (15 September 2026), before it merged:
+
+12. **The toggles fall out of the options window.** The gear menu's
+    rows are the Settings screen's rows at their 220 + 260 px widths
+    plus a control, in a 560 px panel; the control lands outside it.
+    The rows want a width that follows the panel, or the panel the rows.
+13. **A decision — the mulligan, an access, a choice a card asks —
+    should be a pop-up in the middle of the screen**, not buttons on
+    the rail at the top right: it is the thing the game is waiting on,
+    and the middle is where the eyes are. The rail keeps the prompt's
+    words; the decision's buttons move to a centred panel, the way the
+    quit prompt already is.
+14. **Right-click on a card (or the Mac's equivalent) opens its
+    actions** — install into a remote or a central, play, whatever the
+    card can do — as a menu at the pointer, with the left click's sheet
+    staying the way to read it. `Interaction` reports only the primary
+    button, so this reads `ButtonInput<MouseButton>` with the hovered
+    node.
 
 **Open, for §4 onward:** the transitions are highlights, not movement;
 the sound bank and the tweens are §4. A `ChooseCards` prompt's positions
 are reachable only from the panel (item 1). The opponent's hand is
 drawn as whole backs capped at eight. The log keeps its last eighty
 lines on screen.
+
+---
+
+## 4. Feel — IN PROGRESS
+
+### 4a. Cards and zones as the way to act, a control bar, and a gear menu — DONE (15 September 2026)
+
+`feat/desktop-cards-zones-and-options`. The second look at the board
+asked for three things at once: no flat list of every action on screen
+by default, a fixed set of buttons for the actions a turn is made of,
+and the cards and zones as the way into everything else — a click on
+R&D must never simply draw. Items 5 and 8 of §3's list are closed by
+it; item 2 (a lone `Pass priority` taken without a click) is not, but
+the pass is now one button in one place.
+
+**Decisions taken, with the alternative rejected.**
+
+- **Hiding the panel outright would have stranded `EndTurn` and
+  `PassPriority`**, which have no card or server to click. So the
+  target-less entries are split in two, in `netrunner_client` where a
+  test can see it. `board::Control` is a fixed bar per side (Corp:
+  credit, draw, purge, end turn, pass; Runner: credit, draw, remove tag,
+  end turn, pass, continue, jack out, complete run — the run trio drawn
+  greyed outside a run, so the bar never reflows), and
+  `ActionMap::decisions` is everything else with no target — the
+  mulligan, a bid, a paid choice, an access decision, a selection to
+  confirm, and the `ToggleCardSelection` positions §3 item 1 still
+  leaves unplaced — listed under the prompt as the thing it is asking.
+  The map's test now checks, over four random-vs-random games as both
+  viewers, that the bar, the decisions and the targeted entries cover
+  every index: nothing is reachable only from the flat panel, which is
+  the "play helper", off by default (`DesktopPrefs::play_helper`), on
+  from the gear or the Settings screen. The log is the "play history",
+  the same way (`play_history`). AGENTS.md §5's "reachable from the
+  flat action panel" now says this.
+- **A click never submits; it opens a sheet.** `models::game::Sheet`
+  replaces the popup and the separate inspector: a card target is drawn
+  as the Large face, its text and its legal actions as buttons (with no
+  actions it is the inspector); a zone target — a server header, or the
+  new `Target::Pile` for the Runner's stack and heap, which are now
+  buttons in the Runner's strip — as its actions and its contents where
+  the viewer may see them. Archives is every card for the Corp and, for
+  the Runner, the face-up cards with backs for the rest (the
+  `PublicArchivedCard` mask decides, never the screen); the heap is all
+  face up; the Corp's own HQ is its hand; a remote is its ICE and root;
+  R&D and the stack are a few backs and a count, because a deck's order
+  is never shown, even to its owner. A face in a pile reads the card
+  over the sheet (`Intent::Inspect`), and Escape closes the reading,
+  then the sheet, then the options, then asks to quit. A sheet left
+  open while the opponent acts stays open with its entries cleared and
+  rebuilt on the next `Awaiting`, so reading Archives is not interrupted
+  by the bot's turn. Anchoring a popup at the card (§3's note) is not
+  done: the sheet shows the card, which is what anchoring was for. A
+  draw is also on its deck (`DrawCardClick` targets R&D or the stack),
+  so the zone's sheet offers it beside the bar — the one entry on two
+  routes, which is the map's design.
+- **The gear is painted.** Neither bundled font has U+2699 (Noto Sans
+  Symbols 2 covers 2654–2668, 267f–268f and 269e–26a1 of the block,
+  Noto Sans none of it — checked with `fc-query`), so `widgets::gear_image`
+  paints a cog the way `card_back::paint` paints a back, and the button
+  reads "Options" where `Assets<Image>` is not registered (the headless
+  tests). The options overlay draws `models::settings::Row::GAME` — the
+  two aids, the animation speed and the two volumes — through the
+  Settings screen's own `spawn_rows`, so a row has one shape and one
+  control wherever it appears, and a change is saved at once as there.
+  A greyed control is `widgets::disabled_button`, the same node with dim
+  text and a `Disabled` marker the feedback system skips.
+
+- **The board fits the window, fullscreen, and never scrolls — a rule
+  now, not an item.** The first cut of this PR kept the board as a
+  scroll column at a static 180 px face and the person's hand went
+  below the fold again, the third time a static size had done it; the
+  person's words were that scrolling to see cards is unacceptable and
+  that the cards must scale rather than the board scroll. So: the
+  window opens `BorderlessFullscreen`; `models::layout::face_width`
+  computes the widest card for which the four rows — the opponent's
+  strip and hand, their area, the person's area, the person's strip
+  and hand — fit `board_height`, by binary search over `rows_height`
+  (which counts the tallest server's ICE bars, whether any root or rig
+  card exists, and the strips' text, so an empty board gets larger
+  cards and a full one smaller), capped by the server columns across
+  and clamped to 72–220 px; `fit` recomputes it every frame from the
+  primary window and the view and redraws the board when it moves; a
+  hand, a row of backs or a rig wider than its room overlaps its cards
+  by `layout::step` (never below a fifth of a card, so every card
+  keeps an edge to click) instead of wrapping; the board root has no
+  `ScrollArea` and `Overflow::clip` only as a backstop; and
+  `FaceSize::Board` carries its width, its text scaled from the 180 px
+  reference down to a floor. The control bar moved from under the top
+  bar to centred along the bottom, beside the hand — at the top it
+  made every action a mouse trip across the opponent's side. The first
+  fit clipped the hand's bottom edge by 55 px: the height budget
+  counted 0.84 of a card for a strip whose text is taller than that,
+  and no server header; `rows_height` now sums what is drawn, with the
+  strips at a fixed estimate (175 / 210 px) that errs long, since an
+  over-estimate is slack between rows and an under-estimate is the
+  thing that must not happen. Both chairs were screenshotted at 40 and
+  60 decisions on a 2560×1600 screen with every card whole and the only
+  scroll areas the rail's; AGENTS.md §5 carries the rule.
+
+**Found on the way.**
+
+- **`all` is vacuously true of no targets.** The first `decisions()`
+  put `EndTurn` on the rail beside the bar: an entry with no targets
+  satisfied "every target is a position". The map's coverage test
+  caught it before the screen did.
+- **The Runner is asked to pass priority during the Corp's turn**, so a
+  headless test that waits for "the Runner's action phase" after
+  keeping its hand waits forever unless it passes through the bar when
+  asked — which is what a person does, and what the test helper now
+  does.
+- **An end of turn opens a paid-ability window before the phase moves**,
+  and at the bottom rung the Corp's next decision arrives within the
+  frame; a test that asserted `!awaiting` after pressing End turn saw
+  it already true again. The applied count and the log line are the
+  stable signals.
+
+**Verified.** `cargo test --workspace` green (`netrunner_client` 79,
+`netrunner_desktop` 23 in the library — three of them `layout`'s: the
+face shrinks with the window and with ICE and grows on an empty board,
+four rows at the computed width fit and one pixel more would not, a
+row overlaps only when it must — and 8 in `tests/game.rs`: the
+decisions at the mulligan, a hand card's sheet and its button, the bar
+greyed then live then ending the turn, R&D and Archives and the stack
+opening sheets with nothing applied, the gear's toggles saved to the
+file and drawn), clippy silent, screenshots of the board with both aids
+off and both on read back through the dev hooks. No engine change, so
+no sweep and no coverage report.

@@ -3,13 +3,26 @@
 //!
 //! **The flat list is the contract; the board is a convenience.** A
 //! client must be able to offer every element of `view.legal_actions`
-//! from one panel, because a card the layout could not place is still
+//! without the board, because a card the layout could not place is still
 //! playable (AGENTS.md §5). So the map is the legal list in order, each
 //! entry with its label (`actions::describe_action`, the words the
 //! terminal uses) and the targets it belongs to — a hand card, an
-//! installed card, a server, a selection position, or nothing but the
-//! panel. Clicking a target is a *second* route to the same entry; the
-//! `for_*` lookups are indices into the one list, never a second list.
+//! installed card, a server, one of the Runner's piles, a selection
+//! position, or nothing on the board. Clicking a target is a *second*
+//! route to the same entry; the `for_*` lookups are indices into the one
+//! list, never a second list.
+//!
+//! **The entries no target reaches are split two ways.** The basic
+//! actions a player takes every turn — a credit, a draw, ending the
+//! turn, purging or removing a tag, passing priority, and the run's
+//! continue / jack out / complete — are a fixed [`Control`] bar, drawn
+//! always and greyed when the engine does not list them, so a person
+//! never hunts for "End turn". Everything else with no target is a
+//! [`ActionMap::decisions`]: the mulligan, a trace bid, a paid choice,
+//! an access decision, a selection to confirm — the thing the prompt is
+//! asking, listed under it. Together with the targeted entries that is
+//! every index exactly once, and a flat panel of the whole list (the
+//! "play helper") is an aid a person turns on, not the way in.
 //!
 //! Nothing here decides legality: an action is in the map because the
 //! engine put it in `legal_actions`, and `MatchHandle::submit` sends it
@@ -39,6 +52,100 @@ pub enum Target {
     Server(ServerId),
     /// A position in the zone a `ChooseCards` prompt selects from.
     Position(usize),
+    /// The Runner's stack or heap — a zone a click opens, as the Corp's
+    /// centrals are opened through `Server`.
+    Pile(Pile),
+}
+
+/// The Runner's two piles. The Corp's are servers (`ServerId::RnD`,
+/// `ServerId::Archives`) and need no second name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Pile {
+    Stack,
+    Heap,
+}
+
+impl Pile {
+    pub fn name(self) -> &'static str {
+        match self {
+            Pile::Stack => "Stack",
+            Pile::Heap => "Heap",
+        }
+    }
+}
+
+/// A basic action with a fixed place on the board's control bar.
+///
+/// Which side has which, and in what order, is decided here rather than
+/// in a screen so both clients draw the same bar and a test can check
+/// that every control resolves to at most one entry. The run trio is on
+/// the Runner's bar outside a run too — greyed, so the bar never
+/// reflows when a run starts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Control {
+    GainCredit,
+    Draw,
+    EndTurn,
+    PurgeViruses,
+    RemoveTag,
+    PassPriority,
+    ContinueRun,
+    JackOut,
+    CompleteRun,
+}
+
+impl Control {
+    const CORP: [Control; 5] = [Control::GainCredit, Control::Draw, Control::PurgeViruses, Control::EndTurn, Control::PassPriority];
+    const RUNNER: [Control; 8] =
+        [Control::GainCredit, Control::Draw, Control::RemoveTag, Control::EndTurn, Control::PassPriority, Control::ContinueRun, Control::JackOut, Control::CompleteRun];
+
+    /// The bar for `side`, in order.
+    pub fn for_side(side: Side) -> &'static [Control] {
+        match side {
+            Side::Corp => &Self::CORP,
+            Side::Runner => &Self::RUNNER,
+        }
+    }
+
+    /// The button's word. Shorter than `describe_action`'s label, which
+    /// names the side and the click cost; the bar has no room and the
+    /// side is the viewer's own.
+    pub fn label(self) -> &'static str {
+        match self {
+            Control::GainCredit => "Take 1 credit",
+            Control::Draw => "Draw a card",
+            Control::EndTurn => "End turn",
+            Control::PurgeViruses => "Purge viruses",
+            Control::RemoveTag => "Remove a tag",
+            Control::PassPriority => "Pass priority",
+            Control::ContinueRun => "Continue run",
+            Control::JackOut => "Jack out",
+            Control::CompleteRun => "Complete run",
+        }
+    }
+
+    /// Whether `action` is what this control means. The side field is
+    /// ignored: the bar is the viewer's, and the map holds only the
+    /// viewer's legal actions.
+    pub fn matches(self, action: &PlayerAction) -> bool {
+        matches!(
+            (self, action),
+            (Control::GainCredit, PlayerAction::GainCreditClick { .. })
+                | (Control::Draw, PlayerAction::DrawCardClick { .. })
+                | (Control::EndTurn, PlayerAction::EndTurn)
+                | (Control::PurgeViruses, PlayerAction::PurgeVirusCounters)
+                | (Control::RemoveTag, PlayerAction::RemoveTag)
+                | (Control::PassPriority, PlayerAction::PassPriority { .. })
+                | (Control::ContinueRun, PlayerAction::ContinueRun)
+                | (Control::JackOut, PlayerAction::JackOut)
+                | (Control::CompleteRun, PlayerAction::CompleteRun)
+        )
+    }
+
+    /// Whether some control, on either bar, means `action`.
+    fn any_matches(action: &PlayerAction) -> bool {
+        Self::RUNNER.iter().chain(Self::CORP.iter()).any(|control| control.matches(action))
+    }
 }
 
 /// One legal action, as the panel lists it.
@@ -98,9 +205,37 @@ impl ActionMap {
         self.with_target(&Target::Position(position))
     }
 
-    /// The entries no click on the board reaches — only the panel does.
+    pub fn for_pile(&self, pile: Pile) -> Vec<usize> {
+        self.with_target(&Target::Pile(pile))
+    }
+
+    /// The entries no click on the board reaches: the control bar's and
+    /// the decisions together.
     pub fn globals(&self) -> Vec<usize> {
         self.entries.iter().enumerate().filter(|(_, entry)| entry.targets.is_empty()).map(|(i, _)| i).collect()
+    }
+
+    /// The entry `control` would submit, if the engine lists it. At most
+    /// one: a side has one `EndTurn` and one `PassPriority` at a time.
+    pub fn for_control(&self, control: Control) -> Option<usize> {
+        self.entries.iter().position(|entry| control.matches(&entry.action))
+    }
+
+    /// What the prompt is asking: every entry that is on no target and on
+    /// no control — the mulligan, a bid, a choice, an access decision —
+    /// plus the selection positions, which the board does not place
+    /// (a `ChooseCards` prompt's zone is not drawn as clickable cards yet).
+    pub fn decisions(&self) -> Vec<usize> {
+        self.entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| {
+                // `all` is vacuously true of no targets, hence the guard.
+                (entry.targets.is_empty() && !Control::any_matches(&entry.action))
+                    || (!entry.targets.is_empty() && entry.targets.iter().all(|t| matches!(t, Target::Position(_))))
+            })
+            .map(|(i, _)| i)
+            .collect()
     }
 
     pub fn is_empty(&self) -> bool {
@@ -110,9 +245,12 @@ impl ActionMap {
 
 /// Where a click could mean `action`. Two targets where the action names
 /// two things (an install names the card and the server; a trojan the
-/// card and its host), so either click offers it.
+/// card and its host), so either click offers it. A draw is on the deck
+/// it draws from, so the zone's sheet offers it beside the control bar.
 fn targets_of(action: &PlayerAction) -> Vec<Target> {
     match action {
+        PlayerAction::DrawCardClick { side: Side::Corp } => vec![Target::Server(ServerId::RnD)],
+        PlayerAction::DrawCardClick { side: Side::Runner } => vec![Target::Pile(Pile::Stack)],
         PlayerAction::InstallCard { card_id, zone, .. } => vec![Target::HandCard(card_id.clone()), Target::Server(*zone)],
         PlayerAction::InstallProgramOnIce { card_id, host } => vec![Target::HandCard(card_id.clone()), Target::Install(*host)],
         PlayerAction::PlayEvent { card_id }
@@ -130,11 +268,10 @@ fn targets_of(action: &PlayerAction) -> Vec<Target> {
         | PlayerAction::TrashResource { target } => vec![Target::Install(*target)],
         PlayerAction::InitiateRun { server } | PlayerAction::ChooseServerForPendingDecision { server } => vec![Target::Server(*server)],
         PlayerAction::ToggleCardSelection { position } => vec![Target::Position(*position)],
-        // The run and access actions belong to the run panel, which is
-        // always drawn while a run is on; the accessed card is named on
-        // it, not on the board.
+        // The basic actions are the control bar's; the run and access
+        // decisions belong under the prompt, which names the accessed
+        // card — neither is on the board.
         PlayerAction::GainCreditClick { .. }
-        | PlayerAction::DrawCardClick { .. }
         | PlayerAction::ContinueRun
         | PlayerAction::JackOut
         | PlayerAction::CompleteRun
@@ -334,6 +471,7 @@ mod tests {
                                         assert!(exists, "seed {seed}: {action:?} targets a server that does not exist");
                                     }
                                     Target::Position(_) => assert!(matches!(view.pending_decision, Some(PendingDecision::ChooseCards { .. }))),
+                                    Target::Pile(_) => assert_eq!(side, Side::Runner, "seed {seed}: {action:?} targets a pile the Corp does not have"),
                                     Target::Identity(owner) => {
                                         let shown = match owner {
                                             Side::Corp => view.corp.identity.is_some(),
@@ -347,6 +485,25 @@ mod tests {
                         assert_eq!(map.for_hand_card(&CardId("no_such_card".to_string())), Vec::<usize>::new());
                         if Prompt::of(&view, &registry).is_some() {
                             prompts += 1;
+                        }
+                        // The bar, the decisions and the targeted entries
+                        // cover every index (a draw is on the bar and on
+                        // the deck): nothing is reachable only from the
+                        // flat panel.
+                        let mut seen: Vec<usize> = map.decisions();
+                        for control in Control::for_side(side) {
+                            if let Some(index) = map.for_control(*control) {
+                                seen.push(index);
+                            }
+                        }
+                        seen.extend(map.entries.iter().enumerate().filter(|(_, e)| e.targets.iter().any(|t| !matches!(t, Target::Position(_)))).map(|(i, _)| i));
+                        seen.sort_unstable();
+                        seen.dedup();
+                        assert_eq!(seen, (0..map.entries.len()).collect::<Vec<_>>(), "seed {seed}, {side:?}: {:?}", map.entries.iter().map(|e| &e.action).collect::<Vec<_>>());
+                        for control in Control::for_side(side.other()) {
+                            if !Control::for_side(side).contains(control) {
+                                assert_eq!(map.for_control(*control), None, "seed {seed}: {control:?} is the other side's");
+                            }
                         }
                         let index = match side {
                             Side::Corp => 0,
@@ -390,7 +547,11 @@ mod tests {
         let PlayerAction::InstallCard { card_id, zone, .. } = &map.entries[install].action else { unreachable!() };
         assert!(map.for_hand_card(card_id).contains(&install));
         assert!(map.for_server(*zone).contains(&install));
-        assert!(map.globals().iter().any(|i| matches!(map.entries[*i].action, PlayerAction::EndTurn)), "End turn is panel-only");
+        assert!(map.globals().iter().any(|i| matches!(map.entries[*i].action, PlayerAction::EndTurn)), "End turn is on no target");
+        assert_eq!(map.for_control(Control::EndTurn).map(|i| &map.entries[i].action), Some(&PlayerAction::EndTurn), "and on the bar");
+        assert!(map.for_control(Control::Draw).is_some_and(|i| map.for_server(ServerId::RnD).contains(&i)), "a draw is on the bar and on R&D");
+        assert!(!map.decisions().iter().any(|i| matches!(map.entries[*i].action, PlayerAction::EndTurn)), "a bar action is not a decision");
+        assert_eq!(map.for_control(Control::JackOut), None, "no run, no jack out");
         assert!(map.explain(install, &registry, &view).unwrap().contains("install"));
         assert_eq!(Prompt::of(&view, &registry), None, "an ordinary action phase has no heading");
     }

@@ -12,10 +12,18 @@ pub enum Row {
     SfxVolume,
     MusicVolume,
     DownloadImages,
+    PlayHelper,
+    PlayHistory,
 }
 
 impl Row {
-    pub const ALL: [Row; 6] = [Row::Player, Row::Format, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages];
+    pub const ALL: [Row; 8] = [Row::Player, Row::Format, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory];
+
+    /// The rows the board's gear menu shows: what changes how a game is
+    /// played and looks, and nothing that would want a text field. A
+    /// future board property (a layout, a card-back choice) goes here
+    /// as well as in `ALL`.
+    pub const GAME: [Row; 5] = [Row::PlayHelper, Row::PlayHistory, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -25,6 +33,8 @@ impl Row {
             Row::SfxVolume => "Sound effects",
             Row::MusicVolume => "Music",
             Row::DownloadImages => "Download card images",
+            Row::PlayHelper => "Play helper",
+            Row::PlayHistory => "Play history",
         }
     }
 
@@ -77,6 +87,14 @@ pub fn apply(settings: &mut Settings, intent: Intent) -> bool {
             settings.desktop.download_images = !settings.desktop.download_images;
             true
         }
+        Intent::Toggle(Row::PlayHelper) => {
+            settings.desktop.play_helper = !settings.desktop.play_helper;
+            true
+        }
+        Intent::Toggle(Row::PlayHistory) => {
+            settings.desktop.play_history = !settings.desktop.play_history;
+            true
+        }
         Intent::NameEdited(Some(name)) => {
             let name: String = name.trim().chars().take(MAX_NAME_LEN).collect();
             let next = (!name.is_empty()).then_some(name);
@@ -96,6 +114,10 @@ fn step_volume(volume: &mut f32, delta: i32) -> bool {
     changed
 }
 
+fn on_off(flag: bool) -> String {
+    if flag { "on" } else { "off" }.to_string()
+}
+
 /// The value a row shows.
 pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
     let prefs = &settings.desktop;
@@ -111,7 +133,9 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
         }
         Row::SfxVolume => format!("{:.0}%", prefs.sfx_volume * 100.0),
         Row::MusicVolume => format!("{:.0}%", prefs.music_volume * 100.0),
-        Row::DownloadImages => if prefs.download_images { "on" } else { "off" }.to_string(),
+        Row::DownloadImages => on_off(prefs.download_images),
+        Row::PlayHelper => on_off(prefs.play_helper),
+        Row::PlayHistory => on_off(prefs.play_history),
     }
 }
 
@@ -178,5 +202,22 @@ mod tests {
         assert!(apply(&mut settings, Intent::Toggle(Row::DownloadImages)));
         assert!(settings.desktop.download_images);
         assert!(!apply(&mut settings, Intent::Toggle(Row::Format)), "not a toggle");
+    }
+
+    /// The board's two aids are off until turned on, and the gear menu's
+    /// rows are settings rows, so a value has one spelling in both places.
+    #[test]
+    fn the_board_aids_toggle_and_the_game_rows_are_settings_rows() {
+        let mut settings = Settings::default();
+        assert_eq!(value(&settings, Row::PlayHelper, "luke"), "off");
+        assert_eq!(value(&settings, Row::PlayHistory, "luke"), "off");
+        assert!(apply(&mut settings, Intent::Toggle(Row::PlayHelper)));
+        assert!(settings.desktop.play_helper && !settings.desktop.play_history);
+        assert!(apply(&mut settings, Intent::Toggle(Row::PlayHistory)));
+        assert_eq!(value(&settings, Row::PlayHistory, "luke"), "on");
+        for row in Row::GAME {
+            assert!(Row::ALL.contains(&row), "{row:?} is on the settings screen too");
+            assert_ne!(row, Row::Player, "a text field has no place in an overlay");
+        }
     }
 }

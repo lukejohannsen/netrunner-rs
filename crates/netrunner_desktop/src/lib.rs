@@ -28,7 +28,11 @@
 //! - The board renders a `ClientView` and submits what it chose from
 //!   `netrunner_client::board::ActionMap`, built from `legal_actions`;
 //!   what to highlight comes from `board::diff`'s `Transition`s, never
-//!   from comparing what is on screen.
+//!   from comparing what is on screen. A click on a card or a zone opens
+//!   its sheet and never acts; the basic actions are a fixed, greyable
+//!   control bar and the prompt's decisions sit under the prompt, so
+//!   every legal action is reachable without the flat panel, which is
+//!   an aid a person turns on.
 //! - Assets come in three tiers: a procedural one that always works, an
 //!   optional file under `assets/` that is prettier, and a user override
 //!   under `<data dir>/netrunner/assets/`. Nothing that is not the

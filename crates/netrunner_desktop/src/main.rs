@@ -5,7 +5,7 @@ use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::render::settings::{PowerPreference, RenderCreation, WgpuSettings};
 use bevy::render::RenderPlugin;
-use bevy::window::WindowResolution;
+use bevy::window::{MonitorSelection, WindowMode, WindowResolution};
 
 use netrunner_desktop::{NetrunnerDesktopPlugins, WINDOW_TITLE};
 
@@ -16,6 +16,14 @@ fn main() -> AppExit {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: WINDOW_TITLE.to_string(),
+                        // The game is played fullscreen and nothing else:
+                        // the board fits whatever the monitor is
+                        // (`models::layout`), and a card table in a window
+                        // among other windows is not the thing asked for.
+                        // Borderless rather than exclusive, so alt-tab and
+                        // the compositor behave; the resolution is what a
+                        // window would be if a platform refuses.
+                        mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
                         resolution: WindowResolution::new(1280, 800),
                         ..default()
                     }),

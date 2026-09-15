@@ -10,4 +10,5 @@
 
 pub mod browser;
 pub mod game;
+pub mod layout;
 pub mod settings;

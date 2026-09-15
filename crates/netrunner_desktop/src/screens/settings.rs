@@ -2,8 +2,10 @@
 //! its control, saved after every change.
 //!
 //! The rows are rebuilt whenever a value changes rather than patched in
-//! place — six rows of text are cheap to respawn, and one spawn function
-//! is one place the layout can be wrong.
+//! place — eight rows of text are cheap to respawn, and one spawn function
+//! is one place the layout can be wrong. The board's gear menu draws a
+//! subset of the same rows with [`spawn_rows`], so a row has one shape
+//! and one control wherever it appears.
 
 use bevy::prelude::*;
 
@@ -26,9 +28,10 @@ impl Plugin for SettingsPlugin {
     }
 }
 
-/// The controls, on their buttons.
+/// The controls, on their buttons. `pub` because the board's gear menu
+/// spawns the same rows and applies `Intent` presses itself.
 #[derive(Component, Debug, Clone, PartialEq)]
-enum Control {
+pub enum Control {
     Intent(Intent),
     EditName,
     Back,
@@ -60,12 +63,14 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
         widgets::dim(&theme, saved_where),
         widgets::button(&theme, "Back", Val::Auto, Control::Back),
     ])).add_child(rows);
-    commands.entity(rows).with_children(|parent| spawn_rows(parent, &theme, &core));
+    commands.entity(rows).with_children(|parent| spawn_rows(parent, &theme, &core, &Row::ALL));
 }
 
-fn spawn_rows(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore) {
+/// One row per entry of `rows`: the label, the value, and its control
+/// carrying the `Intent` a press means.
+pub fn spawn_rows(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, rows: &[Row]) {
     let login = player_name(None);
-    for row in Row::ALL {
+    for &row in rows {
         let value = model::value(&core.settings, row, &login);
         parent.spawn((widgets::row(12.0), children![
             (widgets::label(theme, row.label()), Node { width: px(220), ..default() }),
@@ -166,7 +171,7 @@ fn refresh(mut commands: Commands, mut dirty: ResMut<Dirty>, rows: Query<Entity,
     dirty.0 = false;
     let Ok(rows) = rows.single() else { return };
     commands.entity(rows).despawn_children();
-    commands.entity(rows).with_children(|parent| spawn_rows(parent, &theme, &core));
+    commands.entity(rows).with_children(|parent| spawn_rows(parent, &theme, &core, &Row::ALL));
 }
 
 fn persist(core: &ClientCore, notices: &mut Notices) {
