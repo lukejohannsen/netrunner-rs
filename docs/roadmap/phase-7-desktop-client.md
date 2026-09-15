@@ -599,6 +599,16 @@ yet a board to play on.
    it at the card and makes the panel the fallback it was designed as.
 6. **A HUD**: credits, clicks, points, tags, damage and hand size for
    both sides, always in the same place, big enough to read at a glance.
+7. **The window must fit the whole game without scrolling.** With the
+   faces made readable the board is 1,780 px tall in a 723 px viewport;
+   a design is owed that puts every card and piece on one screen —
+   fanned hands, overlapped ICE, a scale that follows the window.
+8. **A click to look at a card installed it.** The model submits a
+   card's action when it has exactly one, so "examine" and "install"
+   are the same click, and one game was lost to it. A click must never
+   submit by itself: it opens the card's actions (item 5) with reading
+   it among them, and a second, deliberate click acts. The one-entry
+   shortcut in `models::game::Game::click` is the line to remove.
 
 **Open, for §4 onward:** the transitions are highlights, not movement;
 the sound bank and the tweens are §4. A `ChooseCards` prompt's positions
