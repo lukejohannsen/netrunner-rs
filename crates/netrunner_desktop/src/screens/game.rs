@@ -134,6 +134,13 @@ pub struct LogRow;
 /// The full-window overlay, when one is up.
 #[derive(Component)]
 pub struct Overlay;
+/// The decision the game is waiting on — the mulligan, an access, a
+/// trace bid, a choice a card asks — as a pop-up in the middle of the
+/// screen, where the eyes are, rather than buttons on the rail. It sits
+/// over the board and does not block it: a card can still be read, and
+/// a sheet opens above it. Respawned with the rail.
+#[derive(Component)]
+pub struct DecisionPopup;
 #[derive(Component)]
 struct StatusLine;
 
@@ -463,7 +470,9 @@ fn redraw(
     log: Query<Entity, With<LogList>>,
     mut log_row: Query<&mut Node, With<LogRow>>,
     mut log_scroll: Query<&mut ScrollPosition, With<LogScroll>>,
-    overlays: Query<Entity, With<Overlay>>,
+    // One query for both floating layers: a system takes sixteen
+    // parameters at most, and this one is at the limit.
+    floating: Query<(Entity, Has<Overlay>, Has<DecisionPopup>), Or<(With<Overlay>, With<DecisionPopup>)>>,
     roots: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
     mut status: Query<&mut Text, With<StatusLine>>,
     theme: Res<Theme>,
@@ -494,6 +503,15 @@ fn redraw(
         if let Ok(bar) = bar.single() {
             commands.entity(bar).despawn_children().with_children(|parent| spawn_control_bar(parent, &theme, game));
         }
+        for (popup, _, _) in floating.iter().filter(|(_, _, popup)| *popup) {
+            commands.entity(popup).despawn();
+        }
+        let decisions = if game.awaiting && !game.finished() { game.actions.decisions() } else { Vec::new() };
+        if let Some(root) = roots.iter().next()
+            && !decisions.is_empty()
+        {
+            commands.entity(root).with_children(|parent| spawn_decision_popup(parent, &theme, game, &decisions));
+        }
     }
     if relog {
         for mut node in &mut log_row {
@@ -513,7 +531,7 @@ fn redraw(
         }
     }
     if reoverlay {
-        for overlay in &overlays {
+        for (overlay, _, _) in floating.iter().filter(|(_, overlay, _)| *overlay) {
             commands.entity(overlay).despawn();
         }
         if let Some(root) = roots.iter().next()
@@ -1019,14 +1037,9 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
         parent.spawn(widgets::dim(theme, if game.view.is_some() { "Opponent is thinking…" } else { "Setting up…" }));
         return;
     }
-    let decisions = game.actions.decisions();
-    if !decisions.is_empty() {
-        parent.spawn((Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: px(4), ..default() },)).with_children(|list| {
-            for index in decisions {
-                entry_button(list, theme, game, index);
-            }
-        });
-    }
+    // The decisions are the pop-up's (`spawn_decision_popup`), not the
+    // rail's; the rail keeps the prompt's words and, when on, the flat
+    // panel.
     if !helper {
         if game.prompt.is_none() {
             parent.spawn((widgets::dim(theme, "Your turn: click a card or a zone, or use the bar above."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -1059,6 +1072,52 @@ fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, i
         node.justify_content = JustifyContent::FlexStart;
         node.padding = UiRect::axes(px(10), px(6));
     });
+}
+
+/// The decision pop-up: the prompt's words as its heading and one
+/// button per decision, centred over the board. The container is the
+/// whole window so the panel can be centred in it, and ignores picking
+/// so the board beneath stays clickable; only the panel and its
+/// buttons are hit. Under the overlays (`GlobalZIndex(20)`), so a
+/// sheet opened to read a card covers it.
+fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, decisions: &[usize]) {
+    parent
+        .spawn((
+            DecisionPopup,
+            GlobalZIndex(10),
+            Pickable::IGNORE,
+            Node {
+                position_type: PositionType::Absolute,
+                left: px(0),
+                top: px(0),
+                width: percent(100),
+                height: percent(100),
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                ..default()
+            },
+        ))
+        .with_children(|screen| {
+            let accent = theme.accent;
+            let mut panel = screen.spawn(widgets::panel(theme, px(520)));
+            panel.entry::<BorderColor>().and_modify(move |mut border| *border = BorderColor::all(accent));
+            panel.with_children(|panel| {
+                let (title, detail) = match &game.prompt {
+                    Some(prompt) => (prompt.title.clone(), prompt.detail.clone()),
+                    None => ("Your decision".to_string(), String::new()),
+                };
+                panel.spawn((widgets::heading(theme, title), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                if !detail.is_empty() {
+                    panel.spawn((widgets::dim(theme, detail), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
+                if let Some(rejection) = &game.rejection {
+                    panel.spawn((widgets::notice(theme, format!("Rejected: {rejection}"), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
+                for index in decisions {
+                    entry_button(panel, theme, game, *index);
+                }
+            });
+        });
 }
 
 // ---- the overlays ----
