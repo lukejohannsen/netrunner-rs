@@ -23,11 +23,12 @@ use netrunner_core::rules::{
 };
 use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
-use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, StallReason, SubmitError};
+use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError};
 
 use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
+use netrunner_client::play::stall_message;
 use netrunner_client::decks;
 use crate::ratings::{self, SeatRating};
 use crate::remote;
@@ -368,17 +369,6 @@ fn hold_modal(terminal: &mut ratatui::DefaultTerminal, ui: &LocalUiState) -> Res
     }
 }
 
-fn stall_message(reason: StallReason) -> String {
-    match reason {
-        StallReason::BudgetExhausted => "match ended without reaching GameOver (step budget exhausted)".to_string(),
-        StallReason::NoCurrentActor => "match stalled: no side has a decision pending".to_string(),
-        StallReason::NoLegalActions { side } => format!("match deadlocked: {side:?} has priority but no legal action"),
-        StallReason::DecisionLivelock { side, source_card, actions } => format!(
-            "match livelocked: {side:?} spent {actions} actions inside {}'s prompt without resolving it",
-            source_card.as_ref().map_or("an unnamed card", |card| card.0.as_str())
-        ),
-    }
-}
 
 /// Splits a `BotKind` into the session seat it becomes and, for the one
 /// kind that cannot be a `Seat::Agent`, the agent this module has to pump

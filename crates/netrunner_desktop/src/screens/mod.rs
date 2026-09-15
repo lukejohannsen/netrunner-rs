@@ -9,7 +9,9 @@
 
 pub mod boot;
 pub mod card_browser;
+pub mod game;
 pub mod main_menu;
+pub mod new_game;
 pub mod profile;
 pub mod settings;
 pub mod stubs;

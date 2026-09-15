@@ -18,18 +18,26 @@
 //! renders a `ClientView` and submits from `legal_actions`; this crate
 //! carries the parts of a client that are neither — file paths,
 //! persistence, the pool a format allows, the words for the engine's DSL
-//! (`prose`), and the printed card as a face lays it out (`card_face`,
-//! `card_text`) — and, as later phases land, the one match-driving
-//! interface every screen consumes.
+//! (`prose`), the printed card as a face lays it out (`card_face`,
+//! `card_text`), the words on an action and in the log (`actions`), the
+//! new-game form's state (`start`) — and the match: `play::MatchHandle`
+//! is the one match-driving interface every game screen consumes,
+//! `board::ActionMap` says what a click on the board means, and
+//! `board::diff` says what changed between two views, so a client can
+//! animate without inferring anything from its own last frame.
 
+pub mod actions;
+pub mod board;
 pub mod card_face;
 pub mod card_text;
 pub mod cards;
 pub mod deck_store;
+pub mod play;
 pub mod decks;
 pub mod prose;
 pub mod ratings;
 pub mod settings;
+pub mod start;
 
 /// The OS data directory every client file lives under — the base
 /// `settings`, `deck_store` and `ratings` resolve from, and the one a

@@ -27,6 +27,7 @@ fn every_catalog_card_draws_as_a_text_face_that_says_its_text() {
         app.world_mut().commands().entity(root).with_children(|parent| {
             entity = Some(spawn_face(parent, &theme, &face, FaceSize::Thumb, None, ()));
             spawn_face(parent, &theme, &face, FaceSize::Large, None, ());
+            spawn_face(parent, &theme, &face, FaceSize::Board, None, ());
         });
         app.world_mut().flush();
         faces.push((face, entity.unwrap()));

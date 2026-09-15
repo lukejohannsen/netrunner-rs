@@ -329,7 +329,7 @@ impl Menu {
     /// re-read every time, so a rated game's result moves the suggested
     /// rung before the next one.
     fn open_new_game(&mut self) {
-        match StartMenu::open(&self.base, &self.registry) {
+        match start::open(&self.base, &self.registry) {
             Ok(mut form) => {
                 if let Some(last) = &self.last_game {
                     form.resume_from(last);
@@ -408,7 +408,7 @@ impl Menu {
                 KeyCode::Esc | KeyCode::Char('q') => MenuStep::Quit,
                 _ => MenuStep::Continue,
             },
-            Screen::NewGame(form) => match form.key(key) {
+            Screen::NewGame(form) => match start::key(form, key) {
                 StartKey::Continue => MenuStep::Continue,
                 StartKey::Back => {
                     self.screen = Screen::Main;
@@ -416,7 +416,7 @@ impl Menu {
                 }
                 StartKey::Start(choice) => {
                     let mut config = self.base.clone();
-                    choice.apply(&mut config);
+                    start::apply_choice(&choice, &mut config);
                     self.last_game = Some(choice);
                     MenuStep::Launch(Launch::Local { config: Box::new(config) })
                 }

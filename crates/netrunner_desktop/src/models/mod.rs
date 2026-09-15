@@ -9,4 +9,5 @@
 //! that need no window.
 
 pub mod browser;
+pub mod game;
 pub mod settings;

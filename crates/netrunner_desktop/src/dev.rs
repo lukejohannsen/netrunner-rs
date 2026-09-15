@@ -7,6 +7,14 @@
 //!   the menu (`cards`, `settings`, … — the variant name, any case).
 //! - `NETRUNNER_SCREENSHOT=<path.png>` — once the screen has had time to
 //!   lay out and draw, the window is saved there and the client exits.
+//! - `NETRUNNER_GAME=corp|runner` — boot starts an unrated game on the
+//!   default decks against the middle rung, the person in that chair,
+//!   and goes to the board (unless `NETRUNNER_SCREEN` says elsewhere) —
+//!   how the board is looked at without a hand on the form.
+//! - `NETRUNNER_AUTOPLAY=<n>` — on the board, the person's seat takes a
+//!   legal action by itself, `n` times, cycling through the list so the
+//!   game develops (installs, runs, rezzes) — how a board forty actions
+//!   in is looked at without a hand on it. Never set for a person.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -47,6 +55,11 @@ impl Plugin for DevPlugin {
 #[derive(Resource, Debug, Default)]
 pub struct Dev {
     pub screen: Option<AppScreen>,
+    /// The chair a dev game seats the person in.
+    pub game: Option<netrunner_core::rules::Side>,
+    /// How many decisions the board takes by itself, and how many it has.
+    pub autoplay: u32,
+    pub autoplayed: u32,
     pub screenshot: Option<PathBuf>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
@@ -59,17 +72,26 @@ impl Dev {
             let parts: Vec<f32> = spec.split(',').filter_map(|part| part.trim().parse().ok()).collect();
             (parts.len() == 3).then(|| (parts[0], parts[1], parts[2]))
         });
+        let game = std::env::var("NETRUNNER_GAME").ok().and_then(|side| match side.trim().to_ascii_lowercase().as_str() {
+            "corp" => Some(netrunner_core::rules::Side::Corp),
+            "runner" => Some(netrunner_core::rules::Side::Runner),
+            _ => None,
+        });
         Dev {
             screen: std::env::var("NETRUNNER_SCREEN").ok().and_then(|name| AppScreen::from_name(&name)),
+            game,
+            autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
+            autoplayed: 0,
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,
             frames: 0,
         }
     }
 
-    /// Where boot goes: the requested screen, else the menu.
+    /// Where boot goes: the requested screen, else the board when a dev
+    /// game was asked for, else the menu.
     pub fn first_screen(&self) -> AppScreen {
-        self.screen.unwrap_or(AppScreen::MainMenu)
+        self.screen.unwrap_or(if self.game.is_some() { AppScreen::Game } else { AppScreen::MainMenu })
     }
 }
 
@@ -105,7 +127,10 @@ fn screenshot_then_exit(
     scroll_areas: Query<(Entity, &ComputedNode, &ScrollPosition), With<bevy::ui_widgets::ScrollArea>>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    if *screen.get() != dev.first_screen() {
+    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay {
+        // The frames are counted from when the screen has nothing left
+        // to do by itself, so an autoplayed board is shot after its last
+        // decision, not during it.
         return;
     }
     dev.frames += 1;
