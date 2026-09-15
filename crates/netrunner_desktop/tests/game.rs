@@ -110,6 +110,31 @@ fn the_form_starts_a_game_the_board_offers_its_actions_and_a_press_submits_one()
     wait_for(&mut app, "the Runner's turn", |app| app.world().resource::<Model>().0.awaiting);
 }
 
+/// A card with nothing to do opens in the inspector — the first game
+/// played by hand had every card click doing nothing, because a face is
+/// a `Button` the shared feedback system does not report.
+#[test]
+fn pressing_a_hand_card_with_no_action_opens_it_in_the_inspector() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    // At the mulligan no hand card has an action, so a press inspects.
+    let face = {
+        let mut q = app.world_mut().query::<(Entity, &Click)>();
+        q.iter(app.world()).find(|(_, c)| matches!(c, Click::Target(netrunner_client::board::Target::HandCard(_)))).map(|(e, _)| e).expect("a hand card")
+    };
+    app.world_mut().entity_mut(face).insert(Interaction::Pressed);
+    app.update();
+    app.update();
+    assert!(app.world().resource::<Model>().0.inspecting.is_some(), "the card is open");
+    assert_eq!(app.world_mut().query::<&Overlay>().iter(app.world()).count(), 1, "the inspector overlay is up");
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(app.world_mut().query::<&Overlay>().iter(app.world()).count(), 0, "Escape closes it");
+    assert_eq!(screen(&app), AppScreen::Game);
+}
+
 #[test]
 fn escape_asks_before_leaving_and_leaving_ends_the_match() {
     let (mut app, _dir) = headless_client();

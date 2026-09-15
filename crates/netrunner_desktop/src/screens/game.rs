@@ -236,6 +236,7 @@ fn escape(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, 
 
 fn controls(
     mut pressed: MessageReader<Pressed>,
+    faces: Query<(&Interaction, &Click), (Changed<Interaction>, Without<widgets::Themed>)>,
     mut pending: ResMut<Pending>,
     marks: Query<&Click>,
     model: Option<ResMut<Model>>,
@@ -246,6 +247,16 @@ fn controls(
 ) {
     let mut intents: Vec<Intent> = std::mem::take(&mut pending.0);
     let mut leave_to: Option<AppScreen> = None;
+    // A face is a `Button` without the theme's recolouring, so the
+    // shared feedback system never reports it; its press is read here.
+    // The first hand-driven game found every card click doing nothing.
+    for (interaction, click) in &faces {
+        if *interaction == Interaction::Pressed
+            && let Click::Target(target) = click
+        {
+            intents.push(Intent::Click(target.clone()));
+        }
+    }
     for Pressed(entity) in pressed.read() {
         match marks.get(*entity) {
             Ok(Click::Target(target)) => intents.push(Intent::Click(target.clone())),
@@ -369,19 +380,15 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     let human = game.side;
     let opponent = human.other();
     let lit = Lit::of(transitions);
-    // Each side's hand sits beside its strip rather than under it: two
-    // strips of their own took a third of the height and put the
-    // person's hand below the fold.
-    parent.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), ..default() },)).with_children(|row| {
-        spawn_strip(row, theme, core, images, game, view, opponent);
-        spawn_opponent_hand(row, theme, images, view, opponent);
-    });
+    // One row each, top to bottom, and the board scrolls. A cut that put
+    // each hand beside its strip to save height squeezed the hand into a
+    // column one card wide once the faces were made readable.
+    spawn_strip(parent, theme, core, images, game, view, opponent);
+    spawn_opponent_hand(parent, theme, images, view, opponent);
     spawn_area(parent, theme, core, images, game, view, opponent, &lit);
     spawn_area(parent, theme, core, images, game, view, human, &lit);
-    parent.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::FlexEnd, column_gap: px(16), ..default() },)).with_children(|row| {
-        spawn_hand(row, theme, core, images, view, human, &lit);
-        spawn_strip(row, theme, core, images, game, view, human);
-    });
+    spawn_hand(parent, theme, core, images, view, human, &lit);
+    spawn_strip(parent, theme, core, images, game, view, human);
 }
 
 /// What the last transitions touched, so the redraw can outline it.
@@ -412,9 +419,6 @@ impl Lit {
     }
 }
 
-/// How much of the identity's face a strip shows.
-const IDENTITY_CROP: f32 = 72.0;
-
 fn outline(theme: &Theme) -> Outline {
     Outline { width: px(3), offset: px(1), color: theme.accent }
 }
@@ -441,20 +445,18 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
             if let Some(id) = &identity
                 && let Some(card) = core.registry.get(id)
             {
-                // The top of the face — its title and art — in a clipped
-                // slot: a full identity in each strip was a third of the
-                // board's height, and the strip's text names it anyway.
-                // The click still opens it or its ability.
+                // The whole face: a cropped one read as a broken card to the
+                // first person who played, and the board scrolls anyway.
                 let image = card.numeric_id.and_then(|code| images.face(code));
-                row.spawn((Node { height: px(IDENTITY_CROP), overflow: Overflow::clip(), flex_shrink: 0.0, ..default() },)).with_children(|slot| {
-                    spawn_face(slot, theme, &Face::of(card), FaceSize::Board, image, (Button, Click::Target(Target::Identity(side))));
-                });
+                spawn_face(row, theme, &Face::of(card), FaceSize::Board, image, (Button, Click::Target(Target::Identity(side))));
             }
             row.spawn((Node { flex_direction: FlexDirection::Column, row_gap: px(2), ..default() },)).with_children(|column| {
                 let title = identity.as_ref().and_then(|id| core.registry.get(id)).map_or_else(|| format!("{side:?}"), |c| c.title.clone());
                 column.spawn((Text::new(format!("{who} · {title}")), theme.font(size::BODY), TextColor(colour)));
+                // The numbers a player watches, in the body size and the
+                // text colour: dim and small, nobody saw them.
                 for line in strip_lines(view, side) {
-                    column.spawn(widgets::dim(theme, line));
+                    column.spawn((widgets::label(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 }
             });
         });
@@ -498,16 +500,11 @@ fn spawn_opponent_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, images:
         Side::Corp => view.corp.hq_count,
         Side::Runner => view.runner.grip_count,
     };
-    parent.spawn((Node { flex_direction: FlexDirection::Row, flex_wrap: FlexWrap::Wrap, column_gap: px(4), row_gap: px(4), flex_grow: 1.0, min_width: px(0), ..default() },)).with_children(|row| {
-        for _ in 0..count.min(12) {
-            let mut back = row.spawn(Node::default());
-            back.with_children(|slot| {
-                spawn_back(slot, theme, images.back(side), side, FaceSize::Board, ());
-            });
-            back.entry::<Node>().and_modify(|mut node| {
-                node.height = px(FaceSize::Board.height() * 0.45);
-                node.overflow = Overflow::clip();
-            });
+    parent.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(4), overflow: Overflow::clip(), ..default() },)).with_children(|row| {
+        // Whole backs: half a back read as half a card. Eight is a wide
+        // hand; the strip carries the exact count.
+        for _ in 0..count.min(8) {
+            spawn_back(row, theme, images.back(side), side, FaceSize::Board, ());
         }
     });
 }
@@ -701,9 +698,8 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
         Side::Runner => view.runner.grip_cards.as_deref(),
     }
     .unwrap_or(&[]);
-    parent.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(4), ..default() },)).with_children(|column| {
-    section_label(column, theme, format!("Your hand · {}", hand.len()));
-    column.spawn(wrap_row()).with_children(|row| {
+    section_label(parent, theme, format!("Your hand · {}", hand.len()));
+    parent.spawn(wrap_row()).with_children(|row| {
         // A hand is a multiset; the first copy of a lit card is the one
         // outlined, which is as much as a highlight can say.
         let mut lit_left = lit.hand.clone();
@@ -716,7 +712,6 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
                 row.commands().entity(entity).insert(outline(theme));
             }
         }
-    });
     });
 }
 

@@ -550,9 +550,58 @@ quit from turn 3 checked in `ratings.json` and in `netrunner_cli
 ratings`, the popup on a card with several actions, the inspector, and
 the picture-less text face at board size.
 
+**Driven by hand (15 September 2026), a second commit on the branch.**
+The first game a person played found one bug and a board that was not
+yet a board to play on.
+
+- **Every card click did nothing.** A face is a `Button` but not a
+  `Themed` one, and the shared feedback system reports presses only for
+  themed buttons — so no card, and no identity, ever reached the model,
+  and the inspector the design promised never opened. The board's
+  `controls` now reads a face's `Interaction` change itself; a test
+  presses a hand card at the mulligan and sees the inspector.
+- **Half a card reads as a broken card.** The identity crop and the
+  cropped opponent backs, both cut to make the board fit, were the first
+  thing the person saw; both are whole again and the board scrolls.
+- **The cards were too small to tell apart.** `FaceSize::Board` was
+  96 px wide so a hand and a rig would fit beside the servers; the
+  person asked for double, and it is 180 px now.
+- **The numbers were invisible.** Credits, clicks, points and tags were
+  in the strips in the dim small face, and the person reported "no
+  on-screen indication of points/credits/health". They are in the body
+  size and the text colour now; a real HUD is item 6 below.
+
+**Noted, to fix later — the person's list, kept in their order:**
+
+1. **`Toggle selection of card N` is unusable**, in both clients: a
+   position into a zone tells a person nothing. `describe_action` can
+   resolve the position through the prompt's `source` zone when the
+   viewer can see it (their own hand, the heap), and the board can put
+   the toggle on the card itself.
+2. **A sole legal action should not need a click.** Passing priority
+   over and over is the whole of a run from the other chair. The model
+   can submit a lone `PassPriority` (and, arguably, any lone action) on
+   arrival — a client policy, not a rule, and worth a short delay so
+   the board is seen to change.
+3. **The `operator` Runner ran Archives three times running**, into
+   Urtica Cipher's damage, having seen what was there, and never drew a
+   card — the stack stayed at 24 — until it flatlined itself. A bot
+   blindness for Phase 5's ladder: the one-ply Runner's run choice does
+   not read a known Archives, and its draw term is too weak to act.
+4. **The layout does not use the play field.** Two strips, a row of
+   servers, a row of rig and a row of hand, stacked and scrolling, is a
+   list, not a table; §4 owes the board a real arrangement — the
+   opponent's side mirrored across the top, the servers spread, the hand
+   fanned along the bottom.
+5. **Actions should live on the cards.** A person playing a card game
+   expects to pick up the card and see what it can do; the panel reads
+   as a help menu. The popup already lists a card's entries; §4 anchors
+   it at the card and makes the panel the fallback it was designed as.
+6. **A HUD**: credits, clicks, points, tags, damage and hand size for
+   both sides, always in the same place, big enough to read at a glance.
+
 **Open, for §4 onward:** the transitions are highlights, not movement;
 the sound bank and the tweens are §4. A `ChooseCards` prompt's positions
-are reachable only from the panel (the board does not yet map a hand
-card to its position in the prompt's zone). The opponent's hand is
-drawn as backs capped at twelve. The log keeps its last eighty lines on
-screen.
+are reachable only from the panel (item 1). The opponent's hand is
+drawn as whole backs capped at eight. The log keeps its last eighty
+lines on screen.

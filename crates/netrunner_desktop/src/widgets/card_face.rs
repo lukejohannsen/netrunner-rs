@@ -25,9 +25,10 @@ use crate::theme::Theme;
 /// The three sizes a face is drawn at, all 5:7 like the card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FaceSize {
-    /// A card on the board: a hand of eight and a rig of twelve have to
-    /// fit beside the servers, so the face is a title, a cost and a
-    /// number or two, and the inspector is where the text is read.
+    /// A card on the board. The first cut was 96 px wide so a hand and a
+    /// rig would fit beside the servers; the first person to play could
+    /// not tell the cards apart and asked for double, so it is now wider
+    /// than a grid thumb and the board scrolls instead.
     Board,
     /// A grid cell.
     Thumb,
@@ -38,7 +39,7 @@ pub enum FaceSize {
 impl FaceSize {
     pub fn width(self) -> f32 {
         match self {
-            FaceSize::Board => 96.0,
+            FaceSize::Board => 180.0,
             FaceSize::Thumb => 140.0,
             FaceSize::Large => 380.0,
         }
@@ -50,7 +51,7 @@ impl FaceSize {
 
     fn title(self) -> f32 {
         match self {
-            FaceSize::Board => 9.0,
+            FaceSize::Board => 14.0,
             FaceSize::Thumb => 11.0,
             FaceSize::Large => 21.0,
         }
@@ -58,7 +59,7 @@ impl FaceSize {
 
     fn small(self) -> f32 {
         match self {
-            FaceSize::Board => 7.0,
+            FaceSize::Board => 10.0,
             FaceSize::Thumb => 8.0,
             FaceSize::Large => 14.0,
         }
@@ -66,7 +67,7 @@ impl FaceSize {
 
     fn body(self) -> f32 {
         match self {
-            FaceSize::Board => 7.0,
+            FaceSize::Board => 10.5,
             FaceSize::Thumb => 8.5,
             FaceSize::Large => 15.0,
         }
@@ -74,7 +75,7 @@ impl FaceSize {
 
     fn number(self) -> f32 {
         match self {
-            FaceSize::Board => 9.0,
+            FaceSize::Board => 14.0,
             FaceSize::Thumb => 11.0,
             FaceSize::Large => 19.0,
         }
@@ -82,7 +83,7 @@ impl FaceSize {
 
     fn padding(self) -> f32 {
         match self {
-            FaceSize::Board => 4.0,
+            FaceSize::Board => 6.0,
             FaceSize::Thumb => 5.0,
             FaceSize::Large => 12.0,
         }
