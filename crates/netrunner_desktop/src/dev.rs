@@ -22,6 +22,11 @@
 //!   arrived (after any autoplay), the actions menu a secondary click
 //!   would open is opened above the first hand card with an action (or
 //!   the first card), so the menu can be looked at.
+//! - `NETRUNNER_HOLD_RUN=1` — on the board, the pace of a run stops at
+//!   its first encounter (or the server's approach, with no ice to
+//!   meet) and the autoplay counts as done, so the
+//!   screenshot catches a run in flight: the lane, its chips, the line
+//!   to the server.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -71,6 +76,8 @@ pub struct Dev {
     pub options: bool,
     /// Open the actions menu above a hand card, once.
     pub menu: bool,
+    /// Hold a run at its first encounter for the screenshot.
+    pub hold_run: bool,
     pub screenshot: Option<PathBuf>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
@@ -95,6 +102,7 @@ impl Dev {
             autoplayed: 0,
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
+            hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,
             frames: 0,

@@ -68,22 +68,32 @@
 //! and hand card a `Transition` names is outlined for that redraw, and
 //! nothing is ever inferred from the previous frame's nodes. §4 turns
 //! the same transitions into movement and sound.
+//!
+//! **A run is shown a beat at a time.** The match's messages go through
+//! `models::pace::Pacer` rather than straight into the model: in a run
+//! each event that moves the run is released on its own beat, the
+//! model's `RunTrail` observes it and the run lane between the two
+//! areas redraws (`relane`, without the board), and the message itself
+//! — the board — lands last. The column under run keeps its border in
+//! the Runner's colour; a line from the lane to it was drawn and
+//! dropped the same day, on the person's word that it was ugly.
 
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy::window::PrimaryWindow;
 
 use netrunner_client::board::action_map::server_name;
-use netrunner_client::board::{Control, Pile, Target, Transition, Zone};
+use netrunner_client::board::{Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Transition, Zone};
 use netrunner_client::card_face::Face;
 use netrunner_core::dsl::{CardId, CardType};
-use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, RunPhase, ServerId, Side};
+use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, RunPhase, ServerId, Side, SubroutineStatus};
 use netrunner_core::view::{ClientView, ServerView};
 
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, Notices};
 use crate::models::game::{Anchor, Game, Intent, MatchMessageRef, Outcome};
 use crate::models::layout::{self, Counts};
+use crate::models::pace::{Beat, Pacer};
 use crate::models::settings::{self as settings_model, Row};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::{ActiveMatch, LastGame};
@@ -100,7 +110,7 @@ impl Plugin for GamePlugin {
         app.init_resource::<Pending>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), secondary_click, controls, fit, redraw).chain().run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), secondary_click, controls, fit, relane, redraw).chain().run_if(in_state(AppScreen::Game)));
     }
 }
 
@@ -129,6 +139,18 @@ pub enum Click {
 /// The board, respawned when the view moves.
 #[derive(Component)]
 pub struct Board;
+
+/// The run lane between the two areas, refilled on a beat without the
+/// board.
+#[derive(Component)]
+pub struct RunLane;
+/// A server's column, for a test that reads what a column holds.
+#[derive(Component)]
+pub struct ServerColumn(pub ServerId);
+
+/// The pacer the match's messages go through.
+#[derive(Resource)]
+pub struct Pace(pub Pacer);
 /// The prompt, its decisions and the flat panel, respawned when the view
 /// moves or a submit closes it.
 #[derive(Component)]
@@ -179,6 +201,8 @@ struct Dirty {
     rail: bool,
     log: bool,
     overlay: bool,
+    /// The run lane alone: a beat of the trail, with the board still.
+    lane: bool,
 }
 
 impl Dirty {
@@ -187,6 +211,7 @@ impl Dirty {
         self.rail = true;
         self.log = true;
         self.overlay = true;
+        self.lane = true;
     }
 }
 
@@ -228,11 +253,10 @@ impl BoardFit {
 fn counts(game: &Game) -> Counts {
     let human_is_runner = game.side == Side::Runner;
     let Some(view) = &game.view else { return Counts { human_is_runner, ..Counts::default() } };
-    let ice = view.corp.servers.iter().map(|s| s.ice.len()).max().unwrap_or(0);
+    let pieces = view.corp.servers.iter().map(|s| s.ice.len() + s.root.len()).max().unwrap_or(0);
     // The three centrals are always drawn.
     let remotes = view.corp.servers.iter().filter(|s| matches!(s.server, ServerId::Remote(_))).count();
-    let roots = view.corp.servers.iter().any(|s| !s.root.is_empty());
-    Counts { ice, servers: 3 + remotes, human_is_runner, roots, rig: !view.runner.rig.is_empty() }
+    Counts { pieces, servers: 3 + remotes, human_is_runner, rig: !view.runner.rig.is_empty() }
 }
 
 /// Recomputes the face width from the window and the view, and marks the
@@ -249,7 +273,7 @@ fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, 
     }
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, active: Option<Res<ActiveMatch>>, mut images: Option<ResMut<Assets<Image>>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, active: Option<Res<ActiveMatch>>, mut images: Option<ResMut<Assets<Image>>>, dev: Option<Res<crate::dev::Dev>>) {
     commands.init_resource::<Dirty>();
     let Some(active) = active else {
         commands.spawn((screen_root(AppScreen::Game, theme.background), children![
@@ -260,6 +284,9 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
         return;
     };
     let game = Game::new(core.registry.clone(), active.handle.side());
+    let mut pacer = Pacer::new(active.handle.side(), core.settings.desktop.animation_speed);
+    pacer.hold_at_encounter = dev.is_some_and(|dev| dev.hold_run);
+    commands.insert_resource(Pace(pacer));
 
     // No scroll area, ever: the board's rows are sized by `BoardFit` to
     // fit, and `Overflow::clip` is the backstop, not the design.
@@ -357,6 +384,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
 /// the form gets the choice to reopen on.
 fn leave(world: &mut World) {
     world.remove_resource::<Model>();
+    world.remove_resource::<Pace>();
     if let Some(active) = world.remove_resource::<ActiveMatch>()
         && let Some(choice) = active.choice
     {
@@ -364,12 +392,31 @@ fn leave(world: &mut World) {
     }
 }
 
-/// Drains the match's messages into the model.
-fn poll(active: Option<ResMut<ActiveMatch>>, model: Option<ResMut<Model>>, mut dirty: ResMut<Dirty>) {
-    let (Some(mut active), Some(mut model)) = (active, model) else { return };
+/// Drains the match's messages into the pacer, and the beats due now
+/// into the model: a run's events move the trail and the lane, a
+/// message moves the board.
+fn poll(active: Option<ResMut<ActiveMatch>>, model: Option<ResMut<Model>>, pace: Option<ResMut<Pace>>, time: Res<Time>, mut dirty: ResMut<Dirty>, dev: Option<ResMut<crate::dev::Dev>>) {
+    let (Some(mut active), Some(mut model), Some(mut pace)) = (active, model, pace) else { return };
     while let Some(message) = active.handle.poll() {
-        model.0.apply(Intent::Message(MatchMessageRef(message)));
-        dirty.all();
+        pace.0.push(message);
+    }
+    for beat in pace.0.tick(time.elapsed()) {
+        match beat {
+            Beat::Steps(events) => {
+                if model.0.apply(Intent::RunStep(events)) == Outcome::Redraw {
+                    dirty.lane = true;
+                }
+            }
+            Beat::Apply(message) => {
+                model.0.apply(Intent::Message(MatchMessageRef(message)));
+                dirty.all();
+            }
+        }
+    }
+    // Held at an encounter for a screenshot: the autoplay is done, so
+    // the shot is taken with the run in flight.
+    if pace.0.held && let Some(mut dev) = dev {
+        dev.autoplayed = dev.autoplayed.max(dev.autoplay);
     }
 }
 
@@ -481,6 +528,7 @@ fn controls(
     mut dirty: ResMut<Dirty>,
     mut notices: ResMut<Notices>,
     mut navigate: MessageWriter<Navigate>,
+    mut pace: Option<ResMut<Pace>>,
 ) {
     let mut intents: Vec<Intent> = std::mem::take(&mut pending.0);
     let mut leave_to: Option<AppScreen> = None;
@@ -507,6 +555,9 @@ fn controls(
             if settings_model::apply(&mut core.settings, intent.clone()) {
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
+                }
+                if let Some(pace) = pace.as_mut() {
+                    pace.0.set_speed(core.settings.desktop.animation_speed);
                 }
                 dirty.rail = true;
                 dirty.log = true;
@@ -581,7 +632,7 @@ fn redraw(
     if !(dirty.board || dirty.rail || dirty.log || dirty.overlay) {
         return;
     }
-    let Dirty { board: reboard, rail: rerail, log: relog, overlay: reoverlay } = std::mem::take(&mut *dirty);
+    let Dirty { board: reboard, rail: rerail, log: relog, overlay: reoverlay, lane: _ } = std::mem::take(&mut *dirty);
     let game = &mut model.0;
     if reboard {
         let transitions = game.take_transitions();
@@ -676,6 +727,9 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
         spawn_opponent_hand(row, theme, images, view, opponent, fit);
     });
     spawn_area(parent, theme, core, images, game, view, opponent, &lit, fit);
+    // The run lane, between the servers and the rig from either chair,
+    // reserved whether or not a run is on (`layout::RUN_LANE`).
+    parent.spawn((RunLane, run_lane_node())).with_children(|lane| fill_run_lane(lane, theme, core, game));
     spawn_area(parent, theme, core, images, game, view, human, &lit, fit);
     parent.spawn(strip_row()).with_children(|row| {
         spawn_strip(row, theme, core, images, game, view, human, fit);
@@ -881,13 +935,13 @@ fn spawn_opponent_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, images:
 #[allow(clippy::too_many_arguments)]
 fn spawn_area(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit) {
     match side {
-        Side::Corp => spawn_servers(parent, theme, core, images, game, view, lit, fit),
+        Side::Corp => spawn_servers(parent, theme, core, game, view, lit, fit),
         Side::Runner => spawn_rig(parent, theme, core, images, view, lit, fit),
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit) {
+fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit) {
     // Every central is a column even when nothing is installed on it,
     // because a run on an empty central is a click on its header.
     let mut servers: Vec<ServerView> = view.corp.servers.clone();
@@ -913,8 +967,9 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
         area.spawn(row_node).with_children(|row| {
             for server in &servers {
                 let under_run = game.run_on(server.server);
-                let border = if under_run { theme.accent } else { theme.panel_border };
+                let border = if under_run { theme.runner } else { theme.panel_border };
                 row.spawn((
+                    ServerColumn(server.server),
                     Node {
                         flex_direction: FlexDirection::Column,
                         flex_shrink: 0.0,
@@ -937,7 +992,7 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                         match piece {
                             layout::Piece::Header => spawn_server_header(column, theme, view, server.server),
                             layout::Piece::Ice => spawn_server_ice(column, theme, core, server, game.side, encountered, lit, size),
-                            layout::Piece::Root => spawn_server_root(column, theme, core, images, server, lit, size),
+                            layout::Piece::Root => spawn_server_root(column, theme, core, server, lit, size),
                         }
                     }
                 });
@@ -956,15 +1011,47 @@ fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &
     compact_button(column, theme, format!("{}{count}", server_name(server)), Click::Target(Target::Server(server)));
 }
 
-/// A server's ice as bars: the title when it can be named, its strength
-/// when rezzed, and the run's marker on the piece being approached.
+/// A tile in a server column — an ice or a root card — the same block
+/// the header is: the title when it may be named, a number or two, and
+/// a border in the card's faction colour when it is rezzed. A click
+/// opens the card's sheet; the picture is read there, not here, so the
+/// column costs `layout::TILE` per piece and never a face.
+fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, colour: Color, text_colour: Color, install: InstallId, lit: bool, size: FaceSize) -> Entity {
+    let mut tile = column.spawn((
+        Button,
+        widgets::Themed,
+        Click::Target(Target::Install(install)),
+        Node {
+            width: px(size.width() + 4.0),
+            height: px(layout::TILE - 4.0),
+            flex_shrink: 0.0,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            overflow: Overflow::clip(),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(4)),
+            ..default()
+        },
+        BackgroundColor(theme.button),
+        BorderColor::all(colour),
+        children![(Text::new(label), theme.font(size::SMALL - 3.0), TextColor(text_colour))],
+    ));
+    if lit {
+        tile.insert(outline(theme));
+    }
+    tile.id()
+}
+
+/// A server's ice as tiles: the title when it can be named, its
+/// strength when rezzed, and the run's marker on the piece being
+/// approached.
 #[allow(clippy::too_many_arguments)]
 fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize) {
     for ice in layout::ice_top_down(&server.ice, chair) {
         let title = ice.card.as_ref().and_then(|id| core.registry.get(id));
         // The title when it may be named and the strength when
-        // rezzed; an unrezzed bar is told by its dim border
-        // and text, not a suffix that would wrap the bar.
+        // rezzed; an unrezzed tile is told by its dim border
+        // and text, not a suffix that would wrap the tile.
         let label = match (ice.rezzed, title) {
             (true, Some(card)) => format!("{}  {}", card.title, card.strength.map_or(String::new(), |s| s.to_string())),
             (false, Some(card)) => card.title.clone(),
@@ -972,58 +1059,27 @@ fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
         };
         let colour = if ice.rezzed { theme.faction(title.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
         let text_colour = if ice.rezzed { theme.text } else { theme.text_dim };
-        let mut bar = column.spawn((
-            Button,
-            widgets::Themed,
-            Click::Target(Target::Install(ice.install_id)),
-            Node {
-                width: px(size.width() + 4.0),
-                height: px(layout::ICE_BAR - 4.0),
-                flex_shrink: 0.0,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                overflow: Overflow::clip(),
-                border: UiRect::all(px(1)),
-                border_radius: BorderRadius::all(px(4)),
-                ..default()
-            },
-            BackgroundColor(theme.button),
-            BorderColor::all(colour),
-            children![(Text::new(label), theme.font(size::SMALL - 3.0), TextColor(text_colour))],
-        ));
-        if encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id) {
-            bar.insert(outline(theme));
-        }
+        let is_lit = encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id);
+        spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size);
     }
 }
 
-/// The cards in a server's root, each with its chips beneath.
-fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, server: &ServerView, lit: &Lit, size: FaceSize) {
+/// The cards in a server's root as tiles, with their counters in the
+/// label: advancement is public, so a face-down card the viewer cannot
+/// name still reads "Card · 2 adv".
+fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, server: &ServerView, lit: &Lit, size: FaceSize) {
     for card in &server.root {
-        let marker = (Button, Click::Target(Target::Install(card.install_id)));
-        let entity = match card.card.as_ref().and_then(|id| core.registry.get(id)) {
-            Some(def) => {
-                let image = def.numeric_id.and_then(|code| images.face(code));
-                spawn_face(column, theme, &Face::of(def), size, image, marker)
-            }
-            None => spawn_back(column, theme, images.back(Side::Corp), Side::Corp, size, marker),
-        };
-        if lit.installs.contains(&card.install_id) {
-            column.commands().entity(entity).insert(outline(theme));
-        }
-        let mut chips = Vec::new();
+        let def = card.card.as_ref().and_then(|id| core.registry.get(id));
+        let mut label = def.map_or_else(|| "Card".to_string(), |def| def.title.clone());
         if card.advancement_tokens > 0 {
-            chips.push(format!("{} adv", card.advancement_tokens));
+            label.push_str(&format!(" · {} adv", card.advancement_tokens));
         }
         if let Some(counters) = card.counters.filter(|n| *n > 0) {
-            chips.push(format!("{counters} ctr"));
+            label.push_str(&format!(" · {counters} ctr"));
         }
-        if !card.rezzed && card.card.is_some() {
-            chips.push("unrezzed".to_string());
-        }
-        if !chips.is_empty() {
-            column.spawn(widgets::dim(theme, chips.join(" · ")));
-        }
+        let colour = if card.rezzed { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
+        let text_colour = if card.rezzed { theme.text } else { theme.text_dim };
+        spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size);
     }
 }
 
@@ -1294,6 +1350,139 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, game: 
                 }
             });
         });
+}
+
+// ---- the run lane ----
+
+fn run_lane_node() -> Node {
+    Node { width: percent(100), height: px(layout::RUN_LANE - layout::ROW_GAP), flex_shrink: 0.0, flex_direction: FlexDirection::Column, justify_content: JustifyContent::Center, row_gap: px(4), overflow: Overflow::clip(), ..default() }
+}
+
+/// The trail as a row of chips, left to right in the order the Runner
+/// meets them — the server, each ice, the server's approach, the access,
+/// the outcome — and one line beneath of what the run did. Empty with no
+/// trail; the lane keeps its height either way.
+fn fill_run_lane(lane: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game) {
+    let Some(trail) = &game.trail else { return };
+    let title = |card: &Option<CardId>| card.as_ref().and_then(|id| core.registry.get(id)).map(|def| def.title.clone());
+    lane.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), flex_shrink: 0.0, ..default() }).with_children(|row| {
+        let lit = |on: bool| if on { ChipStyle::Current } else { ChipStyle::Done };
+        chip(row, theme, trail.heading(), ChipStyle::Origin, Pickable::IGNORE);
+        for step in &trail.ice {
+            arrow(row, theme);
+            let name = title(&step.card).unwrap_or_else(|| "ICE".to_string());
+            let (label, style) = match step.state {
+                IceState::Upcoming => (name, ChipStyle::Upcoming),
+                IceState::Approaching => (format!("{name} · approach"), ChipStyle::Current),
+                IceState::Encountering => (format!("{name} · encounter"), ChipStyle::Current),
+                IceState::Passed => (format!("{name} · passed"), ChipStyle::Done),
+                IceState::Bypassed => (format!("{name} · bypassed"), ChipStyle::Done),
+            };
+            let entity = chip(row, theme, label, style, (Button, Click::Target(Target::Install(step.install))));
+            if !step.subs.is_empty() {
+                row.commands().entity(entity).with_children(|chip| {
+                    chip.spawn(Node { flex_direction: FlexDirection::Row, column_gap: px(3), margin: UiRect::left(px(6)), ..default() }).with_children(|dots| {
+                        for status in &step.subs {
+                            let (fill, edge) = match status {
+                                SubroutineStatus::Pending => (Color::NONE, theme.text_dim),
+                                SubroutineStatus::Broken => (theme.accent, theme.accent),
+                                SubroutineStatus::Resolved => (theme.danger, theme.danger),
+                            };
+                            dots.spawn((Node { width: px(8), height: px(8), border: UiRect::all(px(1)), border_radius: BorderRadius::MAX, ..default() }, BackgroundColor(fill), BorderColor::all(edge)));
+                        }
+                    });
+                });
+            }
+        }
+        arrow(row, theme);
+        let at_server = matches!(trail.stage, Stage::AtServer | Stage::Accessing { .. });
+        chip(row, theme, server_name(trail.server), if at_server { lit(!trail.ended()) } else { ChipStyle::Upcoming }, Pickable::IGNORE);
+        if let Stage::Accessing { count, card } = &trail.stage {
+            arrow(row, theme);
+            // The count is what the mask allows: none for the Corp
+            // watching a breach of HQ or R&D.
+            let label = match (title(card), count) {
+                (Some(name), _) => format!("Accessing {name}"),
+                (None, 0) => "Accessing".to_string(),
+                (None, n) => format!("Accessing · {n}"),
+            };
+            chip(row, theme, label, lit(!trail.ended()), Pickable::IGNORE);
+        }
+        if let Some(outcome) = trail.outcome {
+            arrow(row, theme);
+            let (label, style) = match outcome {
+                RunOutcome::Successful => ("Successful", ChipStyle::Success),
+                RunOutcome::JackedOut => ("Jacked out", ChipStyle::Done),
+                RunOutcome::Ended => ("Run ends", ChipStyle::Ended),
+            };
+            chip(row, theme, label.to_string(), style, Pickable::IGNORE);
+        }
+    });
+    if !trail.consequences.is_empty() {
+        // The last few, newest last: one line, clipped by the lane.
+        let recent: Vec<&str> = trail.consequences.iter().rev().take(4).rev().map(String::as_str).collect();
+        lane.spawn((widgets::dim(theme, recent.join("  ·  ")), Node { flex_shrink: 0.0, overflow: Overflow::clip(), ..default() }));
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ChipStyle {
+    /// The server chip: the Runner's colour, the colour of the column
+    /// under run.
+    Origin,
+    Upcoming,
+    /// Where the run is now.
+    Current,
+    /// Behind the run.
+    Done,
+    Success,
+    Ended,
+}
+
+fn chip(row: &mut ChildSpawnerCommands, theme: &Theme, label: String, style: ChipStyle, marker: impl Bundle) -> Entity {
+    let (border, background, text) = match style {
+        ChipStyle::Origin => (theme.runner, theme.runner.with_alpha(0.2), theme.text),
+        ChipStyle::Upcoming => (theme.panel_border, theme.panel, theme.text_dim),
+        ChipStyle::Current => (theme.accent, theme.accent.with_alpha(0.25), theme.text),
+        ChipStyle::Done => (theme.panel_border, theme.button, theme.text_dim),
+        ChipStyle::Success => (theme.runner, theme.runner.with_alpha(0.25), theme.text),
+        ChipStyle::Ended => (theme.corp, theme.corp.with_alpha(0.25), theme.text),
+    };
+    row.spawn((
+        marker,
+        Node {
+            flex_shrink: 0.0,
+            height: px(28),
+            padding: UiRect::axes(px(10), px(0)),
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::Center,
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(14)),
+            ..default()
+        },
+        BackgroundColor(background),
+        BorderColor::all(border),
+        children![(Text::new(label), theme.font(size::SMALL - 2.0), TextColor(text))],
+    ))
+    .id()
+}
+
+fn arrow(row: &mut ChildSpawnerCommands, theme: &Theme) {
+    row.spawn((Text::new("\u{203a}"), theme.font(size::SMALL), TextColor(theme.text_dim)));
+}
+
+/// A beat of the trail with the board still: refills the lane alone.
+/// Runs before `redraw`, which covers the lane whenever it respawns
+/// the board.
+fn relane(mut commands: Commands, mut dirty: ResMut<Dirty>, model: Option<Res<Model>>, lane: Query<Entity, With<RunLane>>, theme: Res<Theme>, core: Res<ClientCore>) {
+    if !dirty.lane || dirty.board {
+        return;
+    }
+    dirty.lane = false;
+    let Some(model) = model else { return };
+    if let Ok(lane) = lane.single() {
+        commands.entity(lane).despawn_children().with_children(|parent| fill_run_lane(parent, &theme, &core, &model.0));
+    }
 }
 
 // ---- the overlays ----

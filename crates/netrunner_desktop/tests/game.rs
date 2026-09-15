@@ -23,7 +23,8 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, LogRow, Model, Overlay};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
 use netrunner_desktop::screens::settings::Control as SettingsControl;
 use netrunner_desktop::widgets::Disabled;
@@ -35,7 +36,11 @@ fn headless_client() -> (App, std::path::PathBuf) {
     let dir = std::env::temp_dir().join(format!("netrunner_desktop_game_{}_{n}", std::process::id()));
     let mut app = App::new();
     app.add_plugins((MinimalPlugins, StatesPlugin, InputPlugin));
-    app.insert_resource(ClientCore::in_dir(dir.clone()));
+    let mut core = ClientCore::in_dir(dir.clone());
+    // No pause between a run's beats: the tests wait on the model with a
+    // five-second bound, and a paced run is a person's to watch.
+    core.settings.desktop.animation_speed = 0.0;
+    app.insert_resource(core);
     app.add_plugins(NetrunnerDesktopPlugins);
     app.update();
     app.update();
@@ -379,6 +384,97 @@ fn the_servers_are_the_table_seen_from_the_chair() {
     start_a_game_as(&mut app, Side::Runner);
     wait_for(&mut app, "the Runner's first decision", |app| click_entry_count(app) > 0);
     assert_eq!(servers(&mut app), [ServerId::Hq, ServerId::RnD, ServerId::Archives], "the Runner's chair, across the table");
+}
+
+/// A run is a trail in the lane between the two areas: the Runner runs
+/// R&D from its sheet, and the lane shows one chip per ice in the run's
+/// order, each a click on its install; the run ends and the lane keeps
+/// the trail with its outcome; a root card is a tile, never a face.
+#[test]
+fn a_run_fills_the_lane_and_the_lane_keeps_the_trail() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
+    press_entity(&mut app, rnd);
+    let run = {
+        let model = &app.world().resource::<Model>().0;
+        let sheet = model.sheet.clone().expect("the zone sheet is open");
+        *sheet.entries.iter().find(|i| matches!(model.actions.entries[**i].action, PlayerAction::InitiateRun { server: ServerId::RnD })).expect("R&D offers the run")
+    };
+    let button = entity_with(&mut app, &Click::Entry(run)).expect("the run's button");
+    press_entity(&mut app, button);
+    wait_for(&mut app, "the run to be on the board", |app| app.world().resource::<Model>().0.trail.is_some());
+    // The lane after the redraw: the server chip, and the ice chips in
+    // the trail's order, each a click on its install.
+    app.update();
+    app.update();
+    let world = app.world_mut();
+    assert_eq!(world.query::<&RunLane>().iter(world).count(), 1);
+    let trail = world.resource::<Model>().0.trail.clone().unwrap();
+    assert_eq!(trail.server, ServerId::RnD);
+    let lane = world.query_filtered::<Entity, With<RunLane>>().single(world).unwrap();
+    let mut chips: Vec<Click> = Vec::new();
+    let mut stack = vec![lane];
+    while let Some(entity) = stack.pop() {
+        if let Some(click) = world.get::<Click>(entity) {
+            chips.push(click.clone());
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter().rev());
+        }
+    }
+    let expected: Vec<Click> = trail.ice.iter().map(|step| Click::Target(Target::Install(step.install))).collect();
+    assert_eq!(chips, expected, "one chip per ice, in the order the Runner meets them");
+    // No root card is a face: a server column holds tiles only.
+    let columns: Vec<Entity> = world.query_filtered::<Entity, With<ServerColumn>>().iter(world).collect();
+    assert!(columns.len() >= 3, "the three centrals, and any remote the Corp made");
+    let mut stack = columns;
+    while let Some(entity) = stack.pop() {
+        assert!(world.get::<BodyText>(entity).is_none(), "a card face inside a server column");
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter());
+        }
+    }
+    // The run plays out (the Runner's bot is not seated; the person is
+    // asked to continue), and the trail stays with its outcome.
+    for _ in 0..24 {
+        // Continue, complete, answer a decision, or pass priority in a
+        // window — whichever the engine lists, as a person would.
+        let mut pressed = false;
+        for control in [Control::ContinueRun, Control::CompleteRun] {
+            let (entity, disabled) = control_button(&mut app, control);
+            if !disabled && !pressed {
+                press_entity(&mut app, entity);
+                pressed = true;
+            }
+        }
+        if !pressed {
+            let decision = app.world().resource::<Model>().0.actions.decisions().first().copied();
+            if let Some(index) = decision {
+                let button = entity_with(&mut app, &Click::Entry(index)).expect("the decision's button");
+                press_entity(&mut app, button);
+                pressed = true;
+            }
+        }
+        if !pressed {
+            let (entity, disabled) = control_button(&mut app, Control::PassPriority);
+            if !disabled {
+                press_entity(&mut app, entity);
+            }
+        }
+        wait_for(&mut app, "the next decision", |app| {
+            let model = &app.world().resource::<Model>().0;
+            model.awaiting || model.finished()
+        });
+        if app.world().resource::<Model>().0.view.as_ref().is_some_and(|v| v.active_run.is_none()) {
+            break;
+        }
+    }
+    let model = &app.world().resource::<Model>().0;
+    assert!(model.view.as_ref().is_some_and(|v| v.active_run.is_none()), "the run on R&D is over within two dozen presses");
+    let trail = model.trail.clone().expect("the trail lingers after the run");
+    assert!(trail.ended(), "{trail:?}");
 }
 
 /// A zone click opens what may be done there and never does it: R&D

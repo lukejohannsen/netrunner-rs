@@ -31,21 +31,33 @@
 //! (the board still reports hovers through an overlay's ground), and
 //! it closes on the next click anywhere, on Escape, and when the board
 //! moves under it.
+//!
+//! **A run is a [`RunTrail`], kept after it ends.** The screen's pacer
+//! hands the run's events over a beat at a time ([`Intent::RunStep`])
+//! before the message that applied them, so the trail moves ahead of
+//! the board and the board never ahead of the trail; the message then
+//! `sync`s the trail with the view. A trail outlives its run — until
+//! the next run begins or the next turn starts — because a run that
+//! vanished the instant it ended told the Corp nothing about what it
+//! did.
 
 use std::sync::Arc;
 
 use netrunner_client::actions::push_log_line;
-use netrunner_client::board::{transitions, ActionMap, Control, Prompt, Target, Transition};
+use netrunner_client::board::{transitions, ActionMap, Control, Prompt, RunTrail, Target, Transition};
 use netrunner_client::play::{GameEndReason, MatchMessage};
 use netrunner_client::ratings::RatingReport;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
-use netrunner_core::rules::{InstallId, PlayerAction, ServerId, Side};
+use netrunner_core::rules::{GameEvent, InstallId, PlayerAction, ServerId, Side};
 use netrunner_core::view::ClientView;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
     Message(MatchMessageRef),
+    /// A beat of a run: the events, in order, that the trail observes
+    /// before the message that applied them arrives.
+    RunStep(Vec<GameEvent>),
     /// A card or a zone on the board: opens its sheet.
     Click(Target),
     /// A secondary click on a card or a zone: opens its actions as a
@@ -173,6 +185,9 @@ pub struct Game {
     /// How many actions have been applied, for a screen to know the
     /// board moved without comparing views.
     pub applied: usize,
+    /// The run on, or the last one, as a trail of steps; `None` before
+    /// the first run and after the turn that followed the last.
+    pub trail: Option<RunTrail>,
 }
 
 impl Game {
@@ -195,6 +210,7 @@ impl Game {
             stalled: None,
             confirm_quit: false,
             applied: 0,
+            trail: None,
         }
     }
 
@@ -237,6 +253,22 @@ impl Game {
     pub fn apply(&mut self, intent: Intent) -> Outcome {
         match intent {
             Intent::Message(MatchMessageRef(message)) => self.message(message),
+            Intent::RunStep(events) => {
+                // A run beginning replaces the last run's trail; its ice
+                // is filled in by the message that follows.
+                if events.iter().any(|e| matches!(e, GameEvent::RunInitiated { .. })) {
+                    self.trail = None;
+                }
+                match &mut self.trail {
+                    Some(trail) if !trail.ended() => {
+                        for event in &events {
+                            trail.observe(event, &self.registry);
+                        }
+                        Outcome::Redraw
+                    }
+                    _ => Outcome::Nothing,
+                }
+            }
             Intent::Click(target) => self.click(target),
             Intent::Menu { target, over } => {
                 if self.covered() {
@@ -315,6 +347,7 @@ impl Game {
                     self.transitions.extend(transitions(before, &view, &entry));
                 }
                 push_log_line(&mut self.log, &entry, &self.registry, Some(&view));
+                self.follow_run(&view);
                 self.view = Some(*view);
                 self.applied += 1;
                 self.awaiting = false;
@@ -366,6 +399,25 @@ impl Game {
                 self.stalled = Some(reason);
                 Outcome::Redraw
             }
+        }
+    }
+
+    /// Keeps the trail with the view after an action applied: a run on
+    /// the board with no trail (or an ended one) begins one, a run on
+    /// the board with a trail syncs it, a trail whose run is gone is
+    /// given its outcome and kept until a new turn starts.
+    fn follow_run(&mut self, view: &ClientView) {
+        let new_turn = self.transitions.iter().any(|t| matches!(t, Transition::TurnStarted { .. }));
+        match (&mut self.trail, &view.active_run) {
+            (Some(trail), Some(run)) if !trail.ended() => trail.sync(Some(run)),
+            (_, Some(run)) => self.trail = Some(RunTrail::begin(run)),
+            (Some(trail), None) => {
+                trail.sync(None);
+                if new_turn {
+                    self.trail = None;
+                }
+            }
+            (None, None) => {}
         }
     }
 
