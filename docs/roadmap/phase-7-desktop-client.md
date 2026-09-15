@@ -714,9 +714,14 @@ And three from the look at §4a (15 September 2026), before it merged:
     node.
     *Done (15 September 2026, `feat/right-click-actions-menu`). The
     menu is the sheet's list through a second door: `models::game::Menu`
-    holds the target, `entries_for`'s indices and the pointer's window
-    position, so the two never disagree about what a card can do, and a
-    press on a menu button is the same `Intent::Choose` as a sheet's.
+    holds the target, `entries_for`'s indices and the box the clicked
+    node was laid out in (`Anchor`, read off `ComputedNode` and
+    `UiGlobalTransform`), so the two never disagree about what a card
+    can do, and a press on a menu button is the same `Intent::Choose`
+    as a sheet's. The menu is centred over that box, not put at the
+    pointer: the first cut used the pointer, and the person's verdict
+    was that it jumped around with the click — a card's menu is in one
+    place for that card.
     The secondary click is the right button, or Ctrl held with the
     primary — the Mac's convention — and `controls` drops the primary
     press the card registers under Ctrl, so it opens no sheet. Read as
@@ -738,8 +743,8 @@ And three from the look at §4a (15 September 2026), before it merged:
     now also what decides an overlay is drawn). Zones have the menu
     too — R&D's offers the run or the draw. Tested in the model and
     headless on the screen with `MouseButtonInput` messages and a
-    hovered face; `NETRUNNER_MENU=<x>,<y>` opens it on a hand card for
-    a screenshot.*
+    hovered face; `NETRUNNER_MENU=1` opens it over a hand card for a
+    screenshot.*
 
 **Open, for §4 onward:** the transitions are highlights, not movement;
 the sound bank and the tweens are §4. A `ChooseCards` prompt's positions

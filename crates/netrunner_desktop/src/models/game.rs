@@ -20,11 +20,14 @@
 //! under the prompt, so nothing depends on the flat panel, which is an
 //! aid a person turns on (`DesktopPrefs::play_helper`).
 //!
-//! **A secondary click opens the same actions as a [`Menu`] at the
-//! pointer** — the card game's "pick the card up and see what it can
-//! do" without the sheet's reading. It lists exactly the entries the
-//! sheet would (`entries_for`), so the two are one rule with two
-//! doors; it never opens over a sheet, the options or the quit prompt
+//! **A secondary click opens the same actions as a [`Menu`] over the
+//! card** — the card game's "pick the card up and see what it can do"
+//! without the sheet's reading. It lists exactly the entries the sheet
+//! would (`entries_for`), so the two are one rule with two doors, and
+//! it sits centred on the card's own box (the [`Anchor`] the screen
+//! read off the node), never at the pointer, so it is in the same
+//! place however the card was clicked; it never opens over a sheet,
+//! the options or the quit prompt
 //! (the board still reports hovers through an overlay's ground), and
 //! it closes on the next click anywhere, on Escape, and when the board
 //! moves under it.
@@ -46,8 +49,8 @@ pub enum Intent {
     /// A card or a zone on the board: opens its sheet.
     Click(Target),
     /// A secondary click on a card or a zone: opens its actions as a
-    /// menu at `at`, a window position in logical pixels.
-    Menu { target: Target, at: (f32, f32) },
+    /// menu centred over the node that was clicked.
+    Menu { target: Target, over: Anchor },
     /// A click that landed on nothing of the menu's: closes it.
     CloseMenu,
     /// An entry of the action map, by index — from a sheet, the rail or
@@ -110,16 +113,28 @@ pub struct Sheet {
     pub entries: Vec<usize>,
 }
 
+/// The box on the window a menu is centred over — the clicked node's,
+/// in logical pixels: `x, y` its centre, `width, height` its size. A
+/// menu at the pointer landed somewhere different on every click; the
+/// card's own box is one place.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Anchor {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
 /// A secondary click's menu: the target, the entries a press could
-/// mean (the sheet's list, `entries_for`), and where the pointer was.
+/// mean (the sheet's list, `entries_for`), and the box it sits over.
 /// Unlike a sheet it does not outlive the board it was opened over:
-/// an applied action closes it, since the card under the pointer may
-/// have moved.
+/// an applied action closes it, since the card it sits on may have
+/// moved.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Menu {
     pub target: Target,
     pub entries: Vec<usize>,
-    pub at: (f32, f32),
+    pub over: Anchor,
 }
 
 /// The end of the match, for the game-over overlay.
@@ -148,7 +163,7 @@ pub struct Game {
     pub sheet: Option<Sheet>,
     /// A card's text over the sheet (a face in a pile), or alone.
     pub inspecting: Option<CardId>,
-    /// A secondary click's menu, at the pointer.
+    /// A secondary click's menu, over its card.
     pub menu: Option<Menu>,
     pub options_open: bool,
     pub rejection: Option<String>,
@@ -223,12 +238,12 @@ impl Game {
         match intent {
             Intent::Message(MatchMessageRef(message)) => self.message(message),
             Intent::Click(target) => self.click(target),
-            Intent::Menu { target, at } => {
+            Intent::Menu { target, over } => {
                 if self.covered() {
                     return Outcome::Nothing;
                 }
                 let entries = self.entries_for(&target);
-                self.menu = Some(Menu { target, entries, at });
+                self.menu = Some(Menu { target, entries, over });
                 Outcome::Redraw
             }
             Intent::CloseMenu => {
@@ -537,8 +552,8 @@ mod tests {
         handle.join();
     }
 
-    /// A secondary click opens the target's entries as a menu at the
-    /// pointer, the same list the sheet would show; a press on one
+    /// A secondary click opens the target's entries as a menu over the
+    /// card, the same list the sheet would show; a press on one
     /// submits; a click elsewhere, Escape and the board moving close
     /// it; and nothing opens through a sheet.
     #[test]
@@ -559,8 +574,9 @@ mod tests {
         let (card, entries) = hand.iter().map(|c| (c.clone(), game.actions.for_hand_card(c))).find(|(_, e)| !e.is_empty()).expect("something playable");
         let target = Target::HandCard(card.clone());
         let before = game.applied;
-        assert_eq!(game.apply(Intent::Menu { target: target.clone(), at: (300.0, 700.0) }), Outcome::Redraw);
-        assert_eq!(game.menu, Some(Menu { target: target.clone(), entries: entries.clone(), at: (300.0, 700.0) }));
+        let over = Anchor { x: 300.0, y: 700.0, width: 120.0, height: 168.0 };
+        assert_eq!(game.apply(Intent::Menu { target: target.clone(), over }), Outcome::Redraw);
+        assert_eq!(game.menu, Some(Menu { target: target.clone(), entries: entries.clone(), over }));
         assert_eq!(game.menu.as_ref().unwrap().entries, game.entries_for(&target), "the menu is the sheet's list");
         assert!(game.awaiting && game.applied == before && game.sheet.is_none(), "it opened, and opened no sheet");
         // Escape closes the menu and nothing else.
@@ -568,26 +584,26 @@ mod tests {
         assert!(game.menu.is_none() && !game.confirm_quit);
         assert_eq!(game.apply(Intent::CloseMenu), Outcome::Nothing, "nothing to close");
         // A zone has a menu too: R&D offers the draw.
-        game.apply(Intent::Menu { target: Target::Server(ServerId::RnD), at: (0.0, 0.0) });
+        game.apply(Intent::Menu { target: Target::Server(ServerId::RnD), over: Anchor::default() });
         assert!(game.menu.as_ref().unwrap().entries.iter().any(|i| matches!(game.actions.entries[*i].action, PlayerAction::DrawCardClick { .. })));
         // A click elsewhere closes it; a left click on a card closes it
         // and opens the sheet.
         assert_eq!(game.apply(Intent::CloseMenu), Outcome::Redraw);
-        game.apply(Intent::Menu { target: target.clone(), at: (0.0, 0.0) });
+        game.apply(Intent::Menu { target: target.clone(), over: Anchor::default() });
         game.apply(Intent::Click(target.clone()));
         assert!(game.menu.is_none() && game.sheet.is_some());
         // Through the sheet, nothing opens.
-        assert_eq!(game.apply(Intent::Menu { target: target.clone(), at: (0.0, 0.0) }), Outcome::Nothing);
+        assert_eq!(game.apply(Intent::Menu { target: target.clone(), over: Anchor::default() }), Outcome::Nothing);
         assert!(game.menu.is_none());
         game.apply(Intent::Back);
         // The menu's button submits, as the sheet's would, and closes it.
-        game.apply(Intent::Menu { target: target.clone(), at: (0.0, 0.0) });
+        game.apply(Intent::Menu { target: target.clone(), over: Anchor::default() });
         let Outcome::Submit(action) = game.apply(Intent::Choose(entries[0])) else { panic!("the menu's button submits") };
         assert_eq!(action, game.actions.entries[entries[0]].action);
         assert!(game.menu.is_none() && !game.awaiting);
         handle.submit(action).unwrap();
         // The board moving closes a menu opened meanwhile.
-        game.menu = Some(Menu { target, entries: Vec::new(), at: (0.0, 0.0) });
+        game.menu = Some(Menu { target, entries: Vec::new(), over: Anchor::default() });
         until_awaiting(&mut game, &mut handle);
         assert!(game.menu.is_none(), "an applied action closes the menu");
         handle.join();

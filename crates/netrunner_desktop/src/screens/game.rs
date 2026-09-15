@@ -48,10 +48,12 @@
 //! that reads the card over the sheet. R&D and the stack are backs and a
 //! count: a deck's order is never shown, even to its owner.
 //!
-//! **A secondary click is a menu at the pointer.** The right button, or
+//! **A secondary click is a menu over the card.** The right button, or
 //! the primary with Ctrl held (the Mac's), on a card or a zone opens
-//! the same entries its sheet would list, as a small panel where the
-//! pointer is (`models::game::Menu`), so a card's actions are one
+//! the same entries its sheet would list, as a small panel centred on
+//! the node that was clicked (`models::game::Menu`, anchored by the
+//! node's laid-out box, not the pointer — a menu at the pointer landed
+//! somewhere different on every click), so a card's actions are one
 //! click away without the sheet's reading. `Interaction` reports only
 //! the primary button, so `secondary_click` reads the button from
 //! `ButtonInput<MouseButton>` and takes the target from the node the
@@ -79,7 +81,7 @@ use netrunner_core::view::{ClientView, ServerView};
 
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, Notices};
-use crate::models::game::{Game, Intent, MatchMessageRef, Outcome};
+use crate::models::game::{Anchor, Game, Intent, MatchMessageRef, Outcome};
 use crate::models::layout::{self, Counts};
 use crate::models::settings::{self as settings_model, Row};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
@@ -375,7 +377,7 @@ fn poll(active: Option<ResMut<ActiveMatch>>, model: Option<ResMut<Model>>, mut d
 /// `applied`th entry, so the choice wanders through the list and the
 /// game develops rather than clicking for credits forever. Off, and
 /// ignored, for a person.
-fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut pending: ResMut<Pending>) {
+fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut pending: ResMut<Pending>, nodes: Query<(&Click, &ComputedNode, &UiGlobalTransform)>) {
     let (Some(mut dev), Some(model)) = (dev, model) else { return };
     if dev.options && model.0.awaiting && dev.autoplayed >= dev.autoplay {
         // The gear, pressed once the board has settled.
@@ -383,11 +385,8 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
         pending.0.push(Intent::ToggleOptions);
         return;
     }
-    if let Some(at) = dev.menu
-        && model.0.awaiting
-        && dev.autoplayed >= dev.autoplay
-    {
-        dev.menu = None;
+    if dev.menu && model.0.awaiting && dev.autoplayed >= dev.autoplay {
+        dev.menu = false;
         let hand = model.0.view.as_ref().and_then(|view| match model.0.side {
             Side::Corp => view.corp.hq_cards.clone(),
             Side::Runner => view.runner.grip_cards.clone(),
@@ -396,7 +395,10 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
         // with nothing in it is a look worth taking too.
         let hand = hand.unwrap_or_default();
         if let Some(card) = hand.iter().find(|card| !model.0.actions.for_hand_card(card).is_empty()).or(hand.first()) {
-            pending.0.push(Intent::Menu { target: Target::HandCard(card.clone()), at });
+            let target = Target::HandCard(card.clone());
+            // The card's own box, as the click would have read it.
+            let over = nodes.iter().find(|(click, _, _)| **click == Click::Target(target.clone())).map_or_else(Anchor::default, |(_, node, transform)| anchor_of(node, transform));
+            pending.0.push(Intent::Menu { target, over });
         }
     }
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
@@ -417,19 +419,29 @@ fn escape(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, 
     pending.0.push(Intent::Back);
 }
 
+/// The box a node was laid out in, in logical window pixels: the
+/// global transform's translation is its centre and the computed size
+/// its extent, both physical until scaled back.
+fn anchor_of(node: &ComputedNode, transform: &UiGlobalTransform) -> Anchor {
+    let scale = node.inverse_scale_factor();
+    let centre = transform.translation * scale;
+    let size = node.size() * scale;
+    Anchor { x: centre.x, y: centre.y, width: size.x, height: size.y }
+}
+
 /// The secondary click — the right button, or the primary with Ctrl
-/// held — on a hovered card or zone raises a menu of its actions at the
-/// pointer. The focus system sets `Interaction` for the primary button
-/// only and never for the right, so the button is read from the input
+/// held — on a hovered card or zone raises a menu of its actions over
+/// it. The focus system sets `Interaction` for the primary button only
+/// and never for the right, so the button is read from the input
 /// resource and the target is whichever `Click::Target` node it left
-/// hovered (or pressed, with Ctrl). With a menu open, a click that
-/// presses no part of it closes it; the menu's own button reaches
-/// `controls` as a `Pressed` and submits.
+/// hovered (or pressed, with Ctrl); that node's laid-out box anchors
+/// the menu. With a menu open, a click that presses no part of it
+/// closes it; the menu's own button reaches `controls` as a `Pressed`
+/// and submits.
 fn secondary_click(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    windows: Query<&Window, With<PrimaryWindow>>,
-    targets: Query<(&Interaction, &Click)>,
+    targets: Query<(&Interaction, &Click, &ComputedNode, &UiGlobalTransform)>,
     menu_parts: Query<&Interaction, With<MenuPart>>,
     model: Option<Res<Model>>,
     mut pending: ResMut<Pending>,
@@ -439,15 +451,12 @@ fn secondary_click(
     let secondary = mouse.just_pressed(MouseButton::Right) || (ctrl && mouse.just_pressed(MouseButton::Left));
     let menu_open = model.0.menu.is_some();
     if secondary {
-        let target = targets.iter().find_map(|(interaction, click)| match (interaction, click) {
-            (Interaction::Hovered | Interaction::Pressed, Click::Target(target)) => Some(target.clone()),
+        let target = targets.iter().find_map(|(interaction, click, node, transform)| match (interaction, click) {
+            (Interaction::Hovered | Interaction::Pressed, Click::Target(target)) => Some((target.clone(), anchor_of(node, transform))),
             _ => None,
         });
         match target {
-            Some(target) => {
-                let at = windows.single().ok().and_then(Window::cursor_position).unwrap_or(Vec2::ZERO);
-                pending.0.push(Intent::Menu { target, at: (at.x, at.y) });
-            }
+            Some((target, over)) => pending.0.push(Intent::Menu { target, over }),
             None if menu_open => pending.0.push(Intent::CloseMenu),
             None => {}
         }
@@ -1194,18 +1203,19 @@ const MENU_WIDTH: f32 = 280.0;
 
 /// The menu a secondary click opened: the target's name and one button
 /// per entry, or the line the sheet would show when there is nothing,
-/// in a small panel whose top-left corner is the pointer. Kept on the
-/// window: pulled left or up when it would run off the right or bottom
-/// edge, by an estimate of its height (the layout has not run when it
-/// is spawned, and a menu is a heading and a row per entry). The panel
+/// in a small panel centred on the box the target was laid out in — so
+/// it is in one place for a card however the card was clicked. Kept on
+/// the window: pulled in when it would run off an edge, by an estimate
+/// of its height (the layout has not run when it is spawned, and a
+/// menu is a heading and a row per entry). The panel
 /// takes `Interaction` and blocks, so a click on its ground is a click
 /// on the menu, not on the card beneath. Between the decision pop-up
 /// and the overlays in depth: a sheet covers it, it covers the pop-up.
 fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, menu: &crate::models::game::Menu, window: Vec2) {
     let rows = menu.entries.len().max(1) as f32;
     let height = 2.0 * 16.0 + 24.0 + rows * (40.0 + 8.0);
-    let left = menu.at.0.min(window.x - MENU_WIDTH - layout::PADDING).max(0.0);
-    let top = menu.at.1.min(window.y - height - layout::PADDING).max(0.0);
+    let left = (menu.over.x - MENU_WIDTH / 2.0).min(window.x - MENU_WIDTH - layout::PADDING).max(layout::PADDING);
+    let top = (menu.over.y - height / 2.0).min(window.y - height - layout::PADDING).max(layout::PADDING);
     let accent = theme.accent;
     let mut panel = parent.spawn((ActionsMenu, MenuPart, Interaction::None, FocusPolicy::Block, GlobalZIndex(15), widgets::panel(theme, px(MENU_WIDTH))));
     panel.entry::<Node>().and_modify(move |mut node| {
