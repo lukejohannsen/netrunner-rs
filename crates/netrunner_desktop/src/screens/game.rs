@@ -48,12 +48,26 @@
 //! that reads the card over the sheet. R&D and the stack are backs and a
 //! count: a deck's order is never shown, even to its owner.
 //!
+//! **A secondary click is a menu at the pointer.** The right button, or
+//! the primary with Ctrl held (the Mac's), on a card or a zone opens
+//! the same entries its sheet would list, as a small panel where the
+//! pointer is (`models::game::Menu`), so a card's actions are one
+//! click away without the sheet's reading. `Interaction` reports only
+//! the primary button, so `secondary_click` reads the button from
+//! `ButtonInput<MouseButton>` and takes the target from the node the
+//! focus system marks hovered — every card, ICE bar and header is a
+//! `Button`, which blocks, so the topmost is the one under the pointer.
+//! A primary click that lands on nothing of the menu's closes it, and
+//! so does the board moving; it never opens through an overlay, whose
+//! ground passes hovers to the board beneath.
+//!
 //! **Highlights come from `board::diff`.** After a redraw, every install
 //! and hand card a `Transition` names is outlined for that redraw, and
 //! nothing is ever inferred from the previous frame's nodes. §4 turns
 //! the same transitions into movement and sound.
 
 use bevy::prelude::*;
+use bevy::ui::FocusPolicy;
 use bevy::window::PrimaryWindow;
 
 use netrunner_client::board::action_map::server_name;
@@ -83,7 +97,7 @@ impl Plugin for GamePlugin {
         app.init_resource::<Pending>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), controls, fit, redraw).chain().run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), secondary_click, controls, fit, redraw).chain().run_if(in_state(AppScreen::Game)));
     }
 }
 
@@ -141,6 +155,15 @@ pub struct Overlay;
 /// a sheet opens above it. Respawned with the rail.
 #[derive(Component)]
 pub struct DecisionPopup;
+/// The secondary click's menu of a target's actions, at the pointer.
+/// Respawned with the rail, like the pop-up; over it and under the
+/// overlays.
+#[derive(Component)]
+pub struct ActionsMenu;
+/// The menu's panel and each of its buttons: a primary click that
+/// presses none of these closes the menu.
+#[derive(Component)]
+struct MenuPart;
 #[derive(Component)]
 struct StatusLine;
 
@@ -360,6 +383,22 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
         pending.0.push(Intent::ToggleOptions);
         return;
     }
+    if let Some(at) = dev.menu
+        && model.0.awaiting
+        && dev.autoplayed >= dev.autoplay
+    {
+        dev.menu = None;
+        let hand = model.0.view.as_ref().and_then(|view| match model.0.side {
+            Side::Corp => view.corp.hq_cards.clone(),
+            Side::Runner => view.runner.grip_cards.clone(),
+        });
+        // The first card with an action, else the first card: a menu
+        // with nothing in it is a look worth taking too.
+        let hand = hand.unwrap_or_default();
+        if let Some(card) = hand.iter().find(|card| !model.0.actions.for_hand_card(card).is_empty()).or(hand.first()) {
+            pending.0.push(Intent::Menu { target: Target::HandCard(card.clone()), at });
+        }
+    }
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
         return;
     }
@@ -378,8 +417,50 @@ fn escape(keys: Res<ButtonInput<KeyCode>>, mut captured: ResMut<InputCaptured>, 
     pending.0.push(Intent::Back);
 }
 
+/// The secondary click — the right button, or the primary with Ctrl
+/// held — on a hovered card or zone raises a menu of its actions at the
+/// pointer. The focus system sets `Interaction` for the primary button
+/// only and never for the right, so the button is read from the input
+/// resource and the target is whichever `Click::Target` node it left
+/// hovered (or pressed, with Ctrl). With a menu open, a click that
+/// presses no part of it closes it; the menu's own button reaches
+/// `controls` as a `Pressed` and submits.
+fn secondary_click(
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    targets: Query<(&Interaction, &Click)>,
+    menu_parts: Query<&Interaction, With<MenuPart>>,
+    model: Option<Res<Model>>,
+    mut pending: ResMut<Pending>,
+) {
+    let Some(model) = model else { return };
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
+    let secondary = mouse.just_pressed(MouseButton::Right) || (ctrl && mouse.just_pressed(MouseButton::Left));
+    let menu_open = model.0.menu.is_some();
+    if secondary {
+        let target = targets.iter().find_map(|(interaction, click)| match (interaction, click) {
+            (Interaction::Hovered | Interaction::Pressed, Click::Target(target)) => Some(target.clone()),
+            _ => None,
+        });
+        match target {
+            Some(target) => {
+                let at = windows.single().ok().and_then(Window::cursor_position).unwrap_or(Vec2::ZERO);
+                pending.0.push(Intent::Menu { target, at: (at.x, at.y) });
+            }
+            None if menu_open => pending.0.push(Intent::CloseMenu),
+            None => {}
+        }
+        return;
+    }
+    if menu_open && mouse.just_pressed(MouseButton::Left) && !menu_parts.iter().any(|i| *i == Interaction::Pressed) {
+        pending.0.push(Intent::CloseMenu);
+    }
+}
+
 fn controls(
     mut pressed: MessageReader<Pressed>,
+    keys: Res<ButtonInput<KeyCode>>,
     faces: Query<(&Interaction, &Click), (Changed<Interaction>, Without<widgets::Themed>)>,
     mut pending: ResMut<Pending>,
     marks: Query<&Click>,
@@ -393,11 +474,16 @@ fn controls(
 ) {
     let mut intents: Vec<Intent> = std::mem::take(&mut pending.0);
     let mut leave_to: Option<AppScreen> = None;
+    // With Ctrl held the primary button is the secondary click
+    // (`secondary_click` raised the menu), so the press it also
+    // registers on the card opens no sheet.
+    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
     // A face is a `Button` without the theme's recolouring, so the
     // shared feedback system never reports it; its press is read here.
     // The first hand-driven game found every card click doing nothing.
     for (interaction, click) in &faces {
         if *interaction == Interaction::Pressed
+            && !ctrl
             && let Click::Target(target) = click
         {
             intents.push(Intent::Click(target.clone()));
@@ -419,6 +505,7 @@ fn controls(
             continue;
         }
         match marks.get(*entity) {
+            Ok(Click::Target(_)) if ctrl => {}
             Ok(Click::Target(target)) => intents.push(Intent::Click(target.clone())),
             Ok(Click::Entry(index)) => intents.push(Intent::Choose(*index)),
             Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
@@ -470,9 +557,9 @@ fn redraw(
     log: Query<Entity, With<LogList>>,
     mut log_row: Query<&mut Node, With<LogRow>>,
     mut log_scroll: Query<&mut ScrollPosition, With<LogScroll>>,
-    // One query for both floating layers: a system takes sixteen
+    // One query for the three floating layers: a system takes sixteen
     // parameters at most, and this one is at the limit.
-    floating: Query<(Entity, Has<Overlay>, Has<DecisionPopup>), Or<(With<Overlay>, With<DecisionPopup>)>>,
+    floating: Query<(Entity, Has<Overlay>, Has<DecisionPopup>, Has<ActionsMenu>), Or<(With<Overlay>, With<DecisionPopup>, With<ActionsMenu>)>>,
     roots: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
     mut status: Query<&mut Text, With<StatusLine>>,
     theme: Res<Theme>,
@@ -503,14 +590,17 @@ fn redraw(
         if let Ok(bar) = bar.single() {
             commands.entity(bar).despawn_children().with_children(|parent| spawn_control_bar(parent, &theme, game));
         }
-        for (popup, _, _) in floating.iter().filter(|(_, _, popup)| *popup) {
-            commands.entity(popup).despawn();
+        for (entity, _, _, _) in floating.iter().filter(|(_, _, popup, menu)| *popup || *menu) {
+            commands.entity(entity).despawn();
         }
         let decisions = if game.awaiting && !game.finished() { game.actions.decisions() } else { Vec::new() };
-        if let Some(root) = roots.iter().next()
-            && !decisions.is_empty()
-        {
-            commands.entity(root).with_children(|parent| spawn_decision_popup(parent, &theme, game, &decisions));
+        if let Some(root) = roots.iter().next() {
+            if !decisions.is_empty() {
+                commands.entity(root).with_children(|parent| spawn_decision_popup(parent, &theme, game, &decisions));
+            }
+            if let Some(menu) = &game.menu {
+                commands.entity(root).with_children(|parent| spawn_actions_menu(parent, &theme, game, menu, fit.window));
+            }
         }
     }
     if relog {
@@ -531,7 +621,7 @@ fn redraw(
         }
     }
     if reoverlay {
-        for (overlay, _, _) in floating.iter().filter(|(_, overlay, _)| *overlay) {
+        for (overlay, _, _, _) in floating.iter().filter(|(_, overlay, _, _)| *overlay) {
             commands.entity(overlay).despawn();
         }
         if let Some(root) = roots.iter().next()
@@ -555,7 +645,7 @@ fn status_line(game: &Game) -> String {
 }
 
 fn overlay_needed(game: &Game) -> bool {
-    game.finished() || game.confirm_quit || game.options_open || game.sheet.is_some() || game.inspecting.is_some()
+    game.covered()
 }
 
 // ---- the board ----
@@ -1089,12 +1179,53 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
 }
 
 /// A full-width button for entry `index`, its label left-aligned.
-fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, index: usize) {
-    let Some(entry) = game.actions.entries.get(index) else { return };
+fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, index: usize) -> Option<Entity> {
+    let entry = game.actions.entries.get(index)?;
     let mut button = parent.spawn(widgets::button(theme, entry.label.clone(), percent(100), Click::Entry(index)));
     button.entry::<Node>().and_modify(|mut node| {
         node.justify_content = JustifyContent::FlexStart;
         node.padding = UiRect::axes(px(10), px(6));
+    });
+    Some(button.id())
+}
+
+/// The width of the secondary click's menu.
+const MENU_WIDTH: f32 = 280.0;
+
+/// The menu a secondary click opened: the target's name and one button
+/// per entry, or the line the sheet would show when there is nothing,
+/// in a small panel whose top-left corner is the pointer. Kept on the
+/// window: pulled left or up when it would run off the right or bottom
+/// edge, by an estimate of its height (the layout has not run when it
+/// is spawned, and a menu is a heading and a row per entry). The panel
+/// takes `Interaction` and blocks, so a click on its ground is a click
+/// on the menu, not on the card beneath. Between the decision pop-up
+/// and the overlays in depth: a sheet covers it, it covers the pop-up.
+fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, menu: &crate::models::game::Menu, window: Vec2) {
+    let rows = menu.entries.len().max(1) as f32;
+    let height = 2.0 * 16.0 + 24.0 + rows * (40.0 + 8.0);
+    let left = menu.at.0.min(window.x - MENU_WIDTH - layout::PADDING).max(0.0);
+    let top = menu.at.1.min(window.y - height - layout::PADDING).max(0.0);
+    let accent = theme.accent;
+    let mut panel = parent.spawn((ActionsMenu, MenuPart, Interaction::None, FocusPolicy::Block, GlobalZIndex(15), widgets::panel(theme, px(MENU_WIDTH))));
+    panel.entry::<Node>().and_modify(move |mut node| {
+        node.position_type = PositionType::Absolute;
+        node.left = px(left);
+        node.top = px(top);
+        node.padding = UiRect::all(px(12));
+    });
+    panel.entry::<BorderColor>().and_modify(move |mut border| *border = BorderColor::all(accent));
+    panel.with_children(|panel| {
+        panel.spawn((widgets::label(theme, target_title(game, &menu.target)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        if menu.entries.is_empty() {
+            let line = if game.awaiting { "Nothing to do here right now." } else { "Not your decision right now." };
+            panel.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        }
+        for index in &menu.entries {
+            if let Some(button) = entry_button(panel, theme, game, *index) {
+                panel.commands().entity(button).insert(MenuPart);
+            }
+        }
     });
 }
 

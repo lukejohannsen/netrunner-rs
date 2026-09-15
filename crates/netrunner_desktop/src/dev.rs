@@ -18,6 +18,10 @@
 //! - `NETRUNNER_OPTIONS=1` — on the board, the gear menu is opened once
 //!   the person's first decision has arrived, so the options window can
 //!   be looked at over a real board.
+//! - `NETRUNNER_MENU=<x>,<y>` — on the board, once the person's decision
+//!   has arrived (after any autoplay), the actions menu a secondary
+//!   click would open is opened on the first hand card with an action,
+//!   at that window position, so the menu can be looked at.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -65,6 +69,8 @@ pub struct Dev {
     pub autoplayed: u32,
     /// Open the options window on the board, once.
     pub options: bool,
+    /// Open the actions menu on a hand card at this window position, once.
+    pub menu: Option<(f32, f32)>,
     pub screenshot: Option<PathBuf>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
@@ -73,6 +79,10 @@ pub struct Dev {
 
 impl Dev {
     fn from_env() -> Self {
+        let menu = std::env::var("NETRUNNER_MENU").ok().and_then(|spec| {
+            let parts: Vec<f32> = spec.split(',').filter_map(|part| part.trim().parse().ok()).collect();
+            (parts.len() == 2).then(|| (parts[0], parts[1]))
+        });
         let scroll = std::env::var("NETRUNNER_SCROLL").ok().and_then(|spec| {
             let parts: Vec<f32> = spec.split(',').filter_map(|part| part.trim().parse().ok()).collect();
             (parts.len() == 3).then(|| (parts[0], parts[1], parts[2]))
@@ -88,6 +98,7 @@ impl Dev {
             autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
             autoplayed: 0,
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
+            menu,
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,
             frames: 0,

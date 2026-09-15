@@ -675,6 +675,10 @@ person's order:
 11. **A deck is a stack of cards** with its count beneath, not a header
     with a number: R&D and the stack drawn as overlapped backs, the way
     a pile sits on a table.
+    *Dropped (15 September 2026): no longer wanted. The header with its
+    count stays as the deck's mark on the board, and the count is in
+    the strip beside it; the numbering here is kept so the items above
+    and below keep their addresses.*
 
 And three from the look at §4a (15 September 2026), before it merged:
 
@@ -708,6 +712,34 @@ And three from the look at §4a (15 September 2026), before it merged:
     staying the way to read it. `Interaction` reports only the primary
     button, so this reads `ButtonInput<MouseButton>` with the hovered
     node.
+    *Done (15 September 2026, `feat/right-click-actions-menu`). The
+    menu is the sheet's list through a second door: `models::game::Menu`
+    holds the target, `entries_for`'s indices and the pointer's window
+    position, so the two never disagree about what a card can do, and a
+    press on a menu button is the same `Intent::Choose` as a sheet's.
+    The secondary click is the right button, or Ctrl held with the
+    primary — the Mac's convention — and `controls` drops the primary
+    press the card registers under Ctrl, so it opens no sheet. Read as
+    planned: the focus system sets `Interaction` for the primary button
+    only, so `secondary_click` takes the button from the input resource
+    and the target from whichever `Click::Target` node is hovered —
+    every card, ICE bar and header is a `Button`, which blocks, so the
+    topmost is the one under the pointer. Kept on the window by an
+    estimate of its height, since the layout has not run when it is
+    spawned. It closes on Escape (before the sheet and the quit
+    prompt), on a primary click that presses no part of it (the panel
+    takes `Interaction` and blocks, so its ground counts as a part),
+    when the board moves (an applied action — the card under the
+    pointer may be gone; a sheet, by contrast, stays open), and when a
+    card's primary click opens its sheet. It never opens through an
+    overlay: `Node`'s default `FocusPolicy` is `Pass`, so an overlay's
+    ground reports hovers on the cards beneath it, and the model
+    refuses a menu while anything covers the board (`Game::covered`,
+    now also what decides an overlay is drawn). Zones have the menu
+    too — R&D's offers the run or the draw. Tested in the model and
+    headless on the screen with `MouseButtonInput` messages and a
+    hovered face; `NETRUNNER_MENU=<x>,<y>` opens it on a hand card for
+    a screenshot.*
 
 **Open, for §4 onward:** the transitions are highlights, not movement;
 the sound bank and the tweens are §4. A `ChooseCards` prompt's positions
