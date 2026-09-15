@@ -33,6 +33,10 @@
 //!   control bar and the prompt's decisions sit under the prompt, so
 //!   every legal action is reachable without the flat panel, which is
 //!   an aid a person turns on.
+//! - The board is the table seen from the person's chair: the Corp reads
+//!   their servers Archives, R&D, HQ, remotes, ice climbing toward the
+//!   Runner; the Runner sees the mirror across the table. The order is
+//!   `models::layout`'s, never a screen's own.
 //! - Assets come in three tiers: a procedural one that always works, an
 //!   optional file under `assets/` that is prettier, and a user override
 //!   under `<data dir>/netrunner/assets/`. Nothing that is not the
