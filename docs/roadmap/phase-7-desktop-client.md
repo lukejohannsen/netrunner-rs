@@ -644,6 +644,16 @@ And three from the look at §4a (15 September 2026), before it merged:
     and the middle is where the eyes are. The rail keeps the prompt's
     words; the decision's buttons move to a centred panel, the way the
     quit prompt already is.
+    *Done (15 September 2026, `feat/decision-popup`): `DecisionPopup`,
+    respawned with the rail whenever `ActionMap::decisions` is
+    non-empty — the prompt's words as its heading, the rejection if
+    any, one button per decision — in an accent-bordered panel centred
+    over the board. It does not block the board: its full-window
+    container is `Pickable::IGNORE`, so a card beneath can still be
+    read, and it sits under the overlays so a sheet covers it. The rail
+    keeps the prompt's words. One finding: a Bevy system takes sixteen
+    parameters at most, and `redraw` was at the limit, so the overlay
+    and pop-up entities share one `Has<_>` query.*
 14. **Right-click on a card (or the Mac's equivalent) opens its
     actions** — install into a remote or a central, play, whatever the
     card can do — as a menu at the pointer, with the left click's sheet

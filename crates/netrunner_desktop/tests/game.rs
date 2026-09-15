@@ -21,7 +21,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{Click, LogRow, Model, Overlay};
+use netrunner_desktop::screens::game::{Click, DecisionPopup, LogRow, Model, Overlay};
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
 use netrunner_desktop::screens::settings::Control as SettingsControl;
 use netrunner_desktop::widgets::Disabled;
@@ -146,12 +146,14 @@ fn the_form_starts_a_game_the_board_offers_its_actions_and_a_press_submits_one()
     let entries = click_entry_count(&mut app);
     let model = app.world().resource::<Model>();
     assert!(model.0.awaiting);
-    // The helper is off, so the rail has the prompt's decisions — keep
-    // and mulligan — and not a flat panel (the same two, here).
+    // The helper is off, so the buttons are the prompt's decisions —
+    // keep and mulligan — in the centred pop-up, not a flat panel.
     assert_eq!(entries, model.0.actions.decisions().len(), "one button per decision");
     assert_eq!(entries, 2);
     assert!(model.0.prompt.as_ref().is_some_and(|p| p.title.contains("mulligan")), "{:?}", model.0.prompt);
     let before = model.0.applied;
+    assert_eq!(app.world_mut().query::<&DecisionPopup>().iter(app.world()).count(), 1, "the decision is a pop-up");
+    assert!(texts(&mut app).iter().any(|t| t.contains("Keep this hand")), "headed by the prompt's words");
     let keep = button_labelled(&mut app, "Keep hand").expect("Keep hand is on the panel");
     app.world_mut().entity_mut(keep).insert(Interaction::Pressed);
     app.update();
@@ -193,6 +195,7 @@ fn pressing_a_hand_card_opens_its_sheet_and_the_sheet_submits() {
     assert_eq!(screen(&app), AppScreen::Game);
     // On the Runner's turn a card with an action still only opens.
     to_the_runners_turn(&mut app);
+    assert_eq!(app.world_mut().query::<&DecisionPopup>().iter(app.world()).count(), 0, "an ordinary action phase asks nothing");
     let (card, entries) = {
         let model = &app.world().resource::<Model>().0;
         let hand = model.view.as_ref().unwrap().runner.grip_cards.clone().unwrap();
