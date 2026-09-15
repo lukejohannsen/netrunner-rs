@@ -12,6 +12,9 @@ repository.workspace = true
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
 netrunner_bots = { path = "../netrunner_bots" }
+# The one match loop (`Session`), which `play::MatchHandle` runs on its own
+# thread, and the masked log entry every client renders.
+netrunner_session = { path = "../netrunner_session" }
 netrunner_rating = { path = "../netrunner_rating" }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -23,4 +26,4 @@ dirs = "5"
 [features]
 # Forwarded so a client built with a policy network gets the bots' ONNX
 # support through this crate rather than naming `netrunner_bots` itself.
-onnx = ["netrunner_bots/onnx"]
+onnx = ["netrunner_bots/onnx", "netrunner_session/onnx"]

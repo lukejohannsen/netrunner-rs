@@ -2,8 +2,8 @@
 //! menu entry leads somewhere and the navigation is tested end to end
 //! before any of them exists. Each stub is replaced by its own plugin in
 //! the phase that builds it (Phase 7 roadmap): the deck builder, the
-//! new-game form, the lessons, the online lobby, and the board itself.
-//! The card browser was the first to go (§2).
+//! lessons, the online lobby, and the replay. The card browser was the
+//! first to go (§2); the new-game form and the board went in §3.
 
 use bevy::prelude::*;
 
@@ -14,15 +14,7 @@ use crate::widgets::{self, Pressed};
 
 pub struct StubScreensPlugin;
 
-const STUBS: [AppScreen; 7] = [
-    AppScreen::Decks,
-    AppScreen::DeckEditor,
-    AppScreen::NewGame,
-    AppScreen::Learn,
-    AppScreen::Online,
-    AppScreen::Game,
-    AppScreen::Replay,
-];
+const STUBS: [AppScreen; 5] = [AppScreen::Decks, AppScreen::DeckEditor, AppScreen::Learn, AppScreen::Online, AppScreen::Replay];
 
 impl Plugin for StubScreensPlugin {
     fn build(&self, app: &mut App) {

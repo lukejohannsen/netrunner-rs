@@ -17,13 +17,18 @@ use bevy::prelude::*;
 
 use netrunner_client::card_face::{Face, Slot};
 use netrunner_client::card_text::{superscript, Segment, Symbol};
+use netrunner_core::rules::Side;
 
 use crate::card_images::{picture, WantsImage};
 use crate::theme::Theme;
 
-/// The two sizes a face is drawn at, both 5:7 like the card.
+/// The three sizes a face is drawn at, all 5:7 like the card.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FaceSize {
+    /// A card on the board: a hand of eight and a rig of twelve have to
+    /// fit beside the servers, so the face is a title, a cost and a
+    /// number or two, and the inspector is where the text is read.
+    Board,
     /// A grid cell.
     Thumb,
     /// The inspector's.
@@ -33,6 +38,7 @@ pub enum FaceSize {
 impl FaceSize {
     pub fn width(self) -> f32 {
         match self {
+            FaceSize::Board => 96.0,
             FaceSize::Thumb => 140.0,
             FaceSize::Large => 380.0,
         }
@@ -44,6 +50,7 @@ impl FaceSize {
 
     fn title(self) -> f32 {
         match self {
+            FaceSize::Board => 9.0,
             FaceSize::Thumb => 11.0,
             FaceSize::Large => 21.0,
         }
@@ -51,6 +58,7 @@ impl FaceSize {
 
     fn small(self) -> f32 {
         match self {
+            FaceSize::Board => 7.0,
             FaceSize::Thumb => 8.0,
             FaceSize::Large => 14.0,
         }
@@ -58,6 +66,7 @@ impl FaceSize {
 
     fn body(self) -> f32 {
         match self {
+            FaceSize::Board => 7.0,
             FaceSize::Thumb => 8.5,
             FaceSize::Large => 15.0,
         }
@@ -65,6 +74,7 @@ impl FaceSize {
 
     fn number(self) -> f32 {
         match self {
+            FaceSize::Board => 9.0,
             FaceSize::Thumb => 11.0,
             FaceSize::Large => 19.0,
         }
@@ -72,6 +82,7 @@ impl FaceSize {
 
     fn padding(self) -> f32 {
         match self {
+            FaceSize::Board => 4.0,
             FaceSize::Thumb => 5.0,
             FaceSize::Large => 12.0,
         }
@@ -197,6 +208,30 @@ pub fn spawn_face(parent: &mut ChildSpawnerCommands, theme: &Theme, face: &Face,
         });
     });
     root.id()
+}
+
+/// A face-down card: the side's back as a picture when one is painted
+/// (`CardImages::back`), else a plain node in the side's colour — the
+/// headless tests' path. `marker` goes on the root, as `spawn_face`.
+pub fn spawn_back(parent: &mut ChildSpawnerCommands, theme: &Theme, back: Option<Handle<Image>>, side: Side, size: FaceSize, marker: impl Bundle) -> Entity {
+    if let Some(handle) = back {
+        return parent.spawn((marker, picture(handle, size))).id();
+    }
+    parent
+        .spawn((
+            marker,
+            Node {
+                width: px(size.width()),
+                height: px(size.height()),
+                flex_shrink: 0.0,
+                border: UiRect::all(px(2)),
+                border_radius: BorderRadius::all(px(8)),
+                ..default()
+            },
+            BackgroundColor(theme.side(side).with_alpha(0.35)),
+            BorderColor::all(theme.side(side)),
+        ))
+        .id()
 }
 
 /// The body text of a face, for tests that read what a face says.

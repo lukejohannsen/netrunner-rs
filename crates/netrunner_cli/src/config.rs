@@ -208,12 +208,12 @@ pub struct Config {
     /// `discretion_advised`), the name of a saved deck in the deck
     /// directory, or a path to a deck file. Run with an unknown name to be
     /// shown what is available.
-    #[arg(long = "corp-deck", default_value = "discretion_advised")]
+    #[arg(long = "corp-deck", default_value = netrunner_client::start::DEFAULT_CORP_DECK)]
     pub corp_deck: String,
 
     /// Which deck the Runner plays, in the same forms as `--corp-deck`
     /// (e.g. `stolen_goods`).
-    #[arg(long = "runner-deck", default_value = "stolen_goods")]
+    #[arg(long = "runner-deck", default_value = netrunner_client::start::DEFAULT_RUNNER_DECK)]
     pub runner_deck: String,
 
     /// Where saved decks live. Defaults to the OS data directory
@@ -708,10 +708,7 @@ impl Config {
             Side::Corp => self.corp_personality,
             Side::Runner => self.runner_personality,
         };
-        match flag {
-            Some(personality) => Ok(personality),
-            None => Personality::for_deck(deck),
-        }
+        netrunner_client::play::personality_for(flag, deck)
     }
 
     /// Whether `side`'s chair is a bot: a bot kind, or a rung — which

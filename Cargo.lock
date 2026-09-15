@@ -4186,6 +4186,7 @@ dependencies = [
  "netrunner_bots",
  "netrunner_core",
  "netrunner_rating",
+ "netrunner_session",
  "serde",
  "serde_json",
 ]

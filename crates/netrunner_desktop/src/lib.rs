@@ -22,7 +22,13 @@
 //!   result.
 //! - Bevy runs on the main thread. Anything that blocks — a bot's search,
 //!   a socket — runs elsewhere (`core::TokioRuntime`, a thread) and
-//!   reaches a system through a channel it polls.
+//!   reaches a system through a channel it polls. The match is the
+//!   first: `netrunner_client::play::MatchHandle` runs the session on
+//!   its own thread and the board polls it once a frame.
+//! - The board renders a `ClientView` and submits what it chose from
+//!   `netrunner_client::board::ActionMap`, built from `legal_actions`;
+//!   what to highlight comes from `board::diff`'s `Transition`s, never
+//!   from comparing what is on screen.
 //! - Assets come in three tiers: a procedural one that always works, an
 //!   optional file under `assets/` that is prettier, and a user override
 //!   under `<data dir>/netrunner/assets/`. Nothing that is not the
@@ -98,6 +104,8 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(screens::profile::ProfilePlugin)
             .add(screens::settings::SettingsPlugin)
             .add(screens::card_browser::CardBrowserPlugin)
+            .add(screens::new_game::NewGamePlugin)
+            .add(screens::game::GamePlugin)
             .add(screens::stubs::StubScreensPlugin)
     }
 }

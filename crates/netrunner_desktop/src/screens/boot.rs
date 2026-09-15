@@ -43,6 +43,15 @@ fn boot(world: &mut World) {
         theme.symbol_font = Some(symbols);
     }
     world.spawn((Name::new("Camera"), Camera2d));
+    // A dev game, if asked for: started here so the board finds it on
+    // entry, the way a Start on the form leaves it.
+    if let Some(side) = world.get_resource::<crate::dev::Dev>().and_then(|dev| dev.game) {
+        let core = world.resource::<ClientCore>();
+        match crate::screens::new_game::start_default(core, side) {
+            Ok(active) => world.insert_resource(active),
+            Err(error) => world.resource_mut::<Notices>().push(format!("dev game not started: {error}")),
+        }
+    }
     let first = world.get_resource::<crate::dev::Dev>().map_or(AppScreen::MainMenu, |dev| dev.first_screen());
     world.write_message(Navigate(first));
 }

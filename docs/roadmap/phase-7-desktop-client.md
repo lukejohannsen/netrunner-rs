@@ -376,3 +376,183 @@ done about it.
 the plan; the stubs name the phase that replaces them. The board will
 want `spawn_face` at a third size and a `WantsImage` that survives a
 `Transition`.
+
+---
+
+## 3. The play area — DONE (15 September 2026)
+
+`feat/desktop-play-area`. The novel and risky part of the client, and
+the reason it exists: a game is played on a board, against a rung, from
+a form, and the terminal client is unchanged for the person who uses it.
+The order inside the PR was the order of risk — the match on its own
+thread first, then what a click means, then what changed, then the two
+screens over them — and every piece below the screens is tested under
+plain `cargo test` with no window.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A local match runs on its own thread behind channels**
+  (`netrunner_client::play::MatchHandle`, `LocalMatchSpec`,
+  `MatchMessage`). `Session::step` blocks while a `Seat::Agent`
+  searches — seconds at `elite` — and a session pumped from a system
+  would freeze the frame for as long as the bot thinks. The thread runs
+  the loop `netrunner_cli::tui::drive_local` runs, one `step` at a time
+  (never `run`, which swallows the bot's `Applied` steps: each log entry
+  is the human's *masked* copy of that action, and `last_entry_for`
+  reads concealment off the state the action left), and sends
+  `Applied { entry, view }` after every action of either seat,
+  `Awaiting { view }` when the person must act, `Rejected { reason }`
+  with the engine's own words, and `Ended` with the rating report. The
+  client sends a `PlayerAction` back, **unfiltered** — `Session::submit`
+  is the only authority (the Session Rule), and a rejection comes back
+  as a message with the same seat still awaiting. Everything that can
+  fail — a deck that will not validate, a ratings file that will not
+  load — fails in `start_local` before the thread exists, so a game that
+  cannot start is a notice under the form rather than a board that dies
+  on its first frame (Phase 6's rule, kept). `std::sync::mpsc` and
+  `std::thread`, no new dependency; the receiver sits behind a mutex
+  only because a `Receiver` is not `Sync` and a Bevy resource has to be.
+  Dropping the handle quits the game the way the terminal's `q` does: a
+  forfeit from turn 3 (`ratings::quit_outcome`), nothing before. A
+  remote game (§7) and a lesson (§6) will feed the same messages, so the
+  board cannot tell which it is playing.
+- **`board::ActionMap` is the legal list, indexed by target.** Every
+  element of `view.legal_actions`, in the engine's order, with its label
+  (`actions::describe_action` — the terminal's words) and the targets a
+  click could mean it by: a hand card, an install, a server, an
+  identity, a selection position. The `for_*` lookups return indices into
+  the one list, never a second list, so the flat panel is the contract
+  and the board a convenience (AGENTS.md §5: a card the layout cannot
+  place is still playable). An install names two targets — the card and
+  the server — so either click offers it; a trojan the card and its host.
+  `Prompt::of` is the heading over the panel: a card's own words where a
+  card is asking (`option_texts`, `PendingPaidChoice::text` — the Linked
+  Clause Rule), the run's phase, the trace, the access, the mulligan. A
+  test over four random-vs-random games checks every legal action is
+  exactly one entry and every target is on the viewer's own board. Two
+  findings on the way: an identity's ability is activated by the
+  engine's identity handle (`InstallId::CORP_IDENTITY`), which is on no
+  server, so `Target::Identity(Side)` exists for it; and a
+  `ChooseServerForPendingDecision` may name the remote it would create.
+- **`board::diff::transitions` computes what changed, from the masked
+  events and the two views.** The events say *what* (`CardDrawn`,
+  `CardInstalled`, `IceRezzed`, `AgendaScored`, `DamageTaken`), the
+  views say *where* (which install, which slot) and *how much* (credits
+  and clicks before and after, tags, bad publicity, a run's position and
+  phase, a run ending — successful if it had reached `Success` or a
+  `RunSucceeded` is in the entry). A card the mask struck moves as
+  `card: None`; a draw the viewer can see is a multiset difference of
+  their hand, so a second copy of a card already held is still the card
+  drawn. The test plays six games as both viewers, half with the
+  heuristic Corp so agendas get scored, and checks every transition
+  against the view it describes — every `to` zone holds the card, every
+  number equals the after-view's — and that no transition names a card
+  neither of the viewer's views showed. It found the one real bug of the
+  module before it shipped: a program can be installed from the heap or
+  the stack, so an install's origin is where the card *was*, not the
+  hand. The screen consumes them as highlights (an `Outline` on each
+  install or hand card a transition touched, for one redraw); §4 turns
+  the same list into movement and sound.
+- **The new-game form's state was lifted, not rebuilt**
+  (`netrunner_client::start::StartMenu`, from `netrunner_cli::tui::start`).
+  The terminal keeps its key bindings (`tui::start::key`, over an
+  `Intent`), its drawing and the fold into `Config` (`apply_choice`);
+  the desktop draws each pane as a drop-down and calls `set_cursor`. So
+  both clients list the same decks with the same labels, suggest the
+  same rung from the same book, default to the same decks
+  (`DEFAULT_CORP_DECK` / `DEFAULT_RUNNER_DECK`, which the terminal's
+  clap defaults now read), and reopen on the game just played with the
+  rung moved to the new suggestion. The same lift for the words: every
+  label and log line (`describe_action`, `explain_action`,
+  `narrate_event`, `push_log_line`, `visible_zones`) moved verbatim from
+  `netrunner_cli::app` to `netrunner_client::actions` with its tests,
+  and `app.rs` keeps `pub use` re-exports so no call site there moved —
+  the §2 `prose` precedent. `stall_message` and the style rule
+  (`play::personality_for`: the flag, else the deck's own) went the same
+  way, each now called from the terminal.
+- **The board is `bevy_ui`, respawned on change, and ICE lies flat.**
+  The opponent's strip and hand across the top, their area, the person's
+  area, the person's hand beside their strip across the bottom; the
+  Corp's servers are columns with the ICE as bars above the root — the
+  way ICE lies on a table — because a rotated `UiTransform` is laid out
+  as its unrotated box and would overlap its neighbours; the Runner's
+  rig is three labelled rows. A face-down card is the side's back
+  (`spawn_back`). The right rail is the prompt, the rejection if any,
+  the action panel (one button per entry, in a scroll column) and the
+  log, scrolled to its newest line. The board subtree is respawned when
+  the view moves — at most once per applied action — and the rail and
+  the overlay on their own, so a popup opening does not redraw the
+  board. A click on a card or server with one entry submits it, with
+  several opens a popup of them, with none opens the card's text; the
+  panel is always there. Escape is the board's own (`nav::Captures`):
+  it closes what is open, then asks before leaving, and the quit prompt
+  says whether a forfeit will be recorded. The game-over overlay shows
+  the winner, the reason and the rating lines, with Play again (the
+  form, resumed) and Menu. `models::game::Game` is the toolkit-free
+  state behind all of it, driven by an `Intent`, with the double-submit
+  guard (`awaiting` goes off when an entry is chosen and comes back on
+  `Rejected`) pinned by a test that plays a real match.
+- **A third face size, `FaceSize::Board` (96×134).** A hand of eight
+  and a rig of twelve have to fit beside the servers; at this size the
+  face is a title, a cost and a number or two, and the inspector (the
+  Large face, opened from any click with no action) is where the text
+  is read. `tests/faces.rs` draws every catalog card at it.
+- **Two dev hooks, neither a feature.** `NETRUNNER_GAME=corp|runner`
+  starts an unrated game on the default decks against the middle rung
+  at boot and lands on the board; `NETRUNNER_AUTOPLAY=<n>` has the
+  person's seat take `n` decisions by itself, cycling through the list
+  so the game develops. Together with `NETRUNNER_SCREENSHOT` they are
+  how this board was looked at, sixty decisions in, by someone who
+  cannot look — and how the layout problem below was found.
+
+**Found on the way.**
+
+- **Two strips of their own put the person's hand below the fold.** The
+  first mid-game screenshot as the Runner (turn 6, sixty autoplayed
+  decisions) had the board's content at 971 px in a 723 px viewport,
+  and the thing that had scrolled off was the person's own hand. Three
+  cuts, each read off the next screenshot: each side's hand beside its
+  strip in one row (971 → 969, because the servers then wrapped), the
+  server headers as compact buttons so seven columns fit across (→ 918),
+  and the identity in each strip cropped to its top 72 px, the strip's
+  text naming it anyway (→ 761, the board's height). An ICE bar lost
+  its "(unrezzed)" suffix, which wrapped inside the bar; the dim border
+  and text say it now.
+- **Remotes are numbered as the engine numbers them.** The first header
+  said "Remote 1" over a panel that said `Run Remote(0)`, the terminal's
+  label — two names for one server. `server_name` now says `Remote 0`.
+- **A `Receiver` is not `Sync`**, so a `MatchHandle` could not be a
+  resource until its receiver went behind a mutex. One uncontended lock
+  a frame.
+- **An install is not always from hand.** `ProgramInstalled` fires for a
+  program a card's text installs from the heap or the stack, and the
+  diff's first cut said "from the hand". The transitions test caught it
+  on seed 2 (`fermenter`, from the heap): the origin is now where the
+  before-view showed the card, with the hidden hand as the default only
+  for a viewer who could not see it there.
+- **Autoplay as the Corp flatlined the Runner in six turns**: the
+  cycling hand ran into Urtica Cipher twice. Which is to say the
+  game-over overlay was seen before it was looked for.
+
+**Verified.** `cargo test --workspace` green (`netrunner_client` 52 →
+79, `netrunner_desktop` 18 in the library, 4 in `tests/game.rs` — the
+form starts a match, the board offers every legal action, a press
+submits one and the next decision comes round; Escape asks and a second
+Escape withdraws; leaving ends the match; the board with no match says
+so — 7 in `tests/navigation.rs`, `tests/faces.rs` at three sizes;
+`netrunner_cli` 71, unchanged in count with the lifted tests moved),
+clippy silent, `cargo machete` clean. No engine change, so no sweep and
+no coverage report: `netrunner_core` is untouched. Screenshots of both
+chairs at the mulligan and mid-game are what the layout was checked
+against. **Still to be driven by hand:** a full game in each chair at
+`operator`, one at `elite` to feel the frame stay live under PUCT, a
+quit from turn 3 checked in `ratings.json` and in `netrunner_cli
+ratings`, the popup on a card with several actions, the inspector, and
+the picture-less text face at board size.
+
+**Open, for §4 onward:** the transitions are highlights, not movement;
+the sound bank and the tweens are §4. A `ChooseCards` prompt's positions
+are reachable only from the panel (the board does not yet map a hand
+card to its position in the prompt's zone). The opponent's hand is
+drawn as backs capped at twelve. The log keeps its last eighty lines on
+screen.
