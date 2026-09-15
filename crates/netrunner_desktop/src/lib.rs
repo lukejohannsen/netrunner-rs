@@ -33,11 +33,21 @@
 // what the system reads; the lint is meant for types a reader cannot
 // parse, which a `Query` is not.
 #![allow(clippy::type_complexity)]
+// A system's parameters are the things it reads and writes, and a screen
+// with eleven things on it has a system with eleven of them; bundling them
+// into a `SystemParam` struct moves the list, it does not shorten it.
+#![allow(clippy::too_many_arguments)]
 
 use bevy::app::PluginGroupBuilder;
 use bevy::prelude::*;
 
+pub mod assets;
+pub mod card_back;
+pub mod card_images;
 pub mod core;
+pub mod dev;
+pub mod downloads;
+pub mod icon_font;
 pub mod models;
 pub mod nav;
 pub mod screens;
@@ -48,6 +58,25 @@ pub use screens::AppScreen;
 
 pub const WINDOW_TITLE: &str = "Netrunner";
 
+/// The observers behind `ScrollArea` and `Scrollbar`, for an app built
+/// without `DefaultPlugins`. With them (the `ui` feature brings
+/// `bevy_ui_widgets`, and `DefaultPlugins` adds its plugin group) they
+/// are already there, and adding a plugin twice is a panic at start-up;
+/// without them — the headless tests — the components would be inert
+/// markers. So: added only where absent.
+struct ScrollPlugins;
+
+impl Plugin for ScrollPlugins {
+    fn build(&self, app: &mut App) {
+        if !app.is_plugin_added::<bevy::ui_widgets::ScrollAreaPlugin>() {
+            app.add_plugins(bevy::ui_widgets::ScrollAreaPlugin);
+        }
+        if !app.is_plugin_added::<bevy::ui_widgets::ScrollbarPlugin>() {
+            app.add_plugins(bevy::ui_widgets::ScrollbarPlugin);
+        }
+    }
+}
+
 /// Every plugin the client is made of, in one group, so `main` and a
 /// headless test build the same application.
 pub struct NetrunnerDesktopPlugins;
@@ -56,13 +85,19 @@ impl PluginGroup for NetrunnerDesktopPlugins {
     fn build(self) -> PluginGroupBuilder {
         PluginGroupBuilder::start::<Self>()
             .add(core::CorePlugin)
+            .add(dev::DevPlugin)
             .add(theme::ThemePlugin)
             .add(nav::NavPlugin)
             .add(widgets::WidgetsPlugin)
+            .add(ScrollPlugins)
+            .add(card_images::CardImagesPlugin)
+            .add(downloads::DownloadsPlugin)
+            .add(icon_font::IconFontPlugin)
             .add(screens::boot::BootPlugin)
             .add(screens::main_menu::MainMenuPlugin)
             .add(screens::profile::ProfilePlugin)
             .add(screens::settings::SettingsPlugin)
+            .add(screens::card_browser::CardBrowserPlugin)
             .add(screens::stubs::StubScreensPlugin)
     }
 }

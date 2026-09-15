@@ -134,7 +134,7 @@ fn open_name_field(
             TextField { text: current.clone(), max_len: MAX_NAME_LEN },
             Node { padding: UiRect::all(px(8)), border: UiRect::all(px(1)), ..default() },
             BorderColor::all(theme.accent),
-            children![widgets::label(&theme, format!("{current}▏")), widgets::dim(&theme, "  Enter saves, Escape cancels")],
+            children![widgets::label(&theme, format!("{current}|")), widgets::dim(&theme, "  Enter saves, Escape cancels")],
         ));
     });
 }

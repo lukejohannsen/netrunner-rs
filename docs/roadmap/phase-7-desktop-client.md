@@ -157,5 +157,219 @@ and Escape back, Profile against a real ratings file, a name and a
 format set here and read by the terminal client's Settings with the
 `desktop` block surviving its save.
 
-**Open, for §2 onward:** the `Sfx`/audio, tween, and card-face modules
-exist only in the plan; the stubs name the phase that replaces them.
+---
+
+## 2. Card faces and the browser — DONE (14 September 2026)
+
+`feat/desktop-card-faces-and-browser`. The first screen with content:
+every printing as a face, the chosen one open beside it with its printed
+text and how the engine reads it — what the menu entry promised. The
+face is a widget, not browser furniture, because §3 puts the same one on
+the board.
+
+**`netrunner_client`** grew the toolkit-free half, tested under plain
+`cargo test`. `prose` moved in from the CLI with `engine_reading`
+beside it (`main.rs` swaps `mod prose;` for a `use`, so every
+`crate::prose::` call site is untouched and the TUI's inspector is
+byte-identical) — the desktop could not reach a module in a crate with
+no `lib.rs`, and §1's rule is lift, not copy. `card_text::segments`
+splits a printed text at its symbols (`[credit]`, `[click]`,
+`[subroutine]`, `[trash]`, `[mu]`, `[recurring-credit]`, `[link]`,
+`[interrupt]`), its line breaks and `Trace[N]` — a trace strength the
+card prints as a superscript, the one bracket the first cut did not
+know — and every catalog text parses with no bracket left over.
+`card_face::Face::of` decides *where* a number goes — cost top-left, an
+agenda's advancement requirement in its place, strength bottom-left on
+ice and programs, memory and trash cost bottom-right, an identity's deck
+size, influence limit and link along the bottom, influence as pips —
+pinned per type and over every printing. `cards::catalog` is every
+printing with the playable card standing in for its own (271 entries,
+reprints separate: a Core Set and a System Gateway Hedge Fund are two
+pictures), and the TUI builder's private `type_group` / `type_order` /
+`faction_label` / `faction_order` are public here, so a group has one
+spelling in both clients.
+
+**`netrunner_desktop`.** A second font, **Noto Sans Symbols 2** under the
+same OFL notice: Noto Sans has no arrows, geometric shapes or dingbats
+(checked against its character map), so `◆ ● ⏱ ▸ 🗑 ▣ ⭮ ⛓ ⚡` would have
+been tofu. Each glyph is named on `Symbol::glyph` and was checked against
+the new font's map too — the arrows block is in neither, which is why
+the subroutine is a triangle rather than the hooked arrow the card
+prints; `Symbol::fallback` (`¢`, `»`, a word) is drawn when the font is
+not loaded, which is the headless tests' path. `widgets::card_face`
+draws a `Face` at two sizes (140×196 and 300×420, both 5:7): the text
+layout when no picture is cached, tagged `WantsImage`, and
+`card_images::poll_decoded` swaps the picture in place when one arrives,
+so a download finishing while the browser is open fills the grid without
+leaving it. Pictures are **bytes decoded with `Image::from_buffer` on
+the compute pool**, not asset paths: the cache directory is outside the
+asset root and `AssetPlugin` refuses absolute paths by default
+(`UnapprovedPathMode::Forbid`), and a second `AssetSource` would have to
+be registered before `DefaultPlugins`. `card_back::paint` draws the two
+backs (side colour, rim, traces, a diamond) unless
+`assets/cards/back-{corp,runner}.png` exists — the documented drop-in
+for the official PNGs, never committed — through `assets::resolve`, the
+three-tier rule in one function. `downloads::Downloads` runs
+`refresh_template` then `download` on the tokio runtime, four in
+flight, progress on a channel and the report on a oneshot, and is not
+tied to the screen that started it. The browser
+(`screens::card_browser`, `models::browser` with its `Intent`) is three
+columns: a rail of chips (side, faction, type, "Startup only", Clear),
+a search field open from the start that filters live, and the download
+button, which says "Card images are off in Settings" until the opt-in
+is on; a CSS-grid of thumb faces under `bevy_ui_widgets::ScrollArea`,
+each a button; and the inspector — the large face, the numbers line the
+terminal's `card_modal` prints, set and code, "Not implemented in the
+engine yet" for a catalog-only card, the text, the flavour, "Engine
+reads it as", and whether the picture is cached. Escape clears the
+search, then closes the field, then leaves. `ClientCore` carries the
+catalog, built once at boot.
+
+**Found on the way, and fixed here.**
+
+- **Core Set image URLs were wrong.** `CardId` is a `u32`, so NetrunnerDB's
+  `"01001"` is `1001`, and `CardImageStore` asked the CDN for `1001.jpg`.
+  Codes are five digits; `path_for` and `url_for` now pad, and a test
+  pins `CardId(1001)` → `01001.jpg`. Nothing had called `download` yet.
+- **List items ran together** in the catalog's `printed_text`:
+  `strip_markup` dropped `<li>` without a separator, so Wildcat Strike
+  read "choice:Gain 6[credit].Draw 4 cards." Each item is now its own
+  bulleted line. The clause gate normalises to alphanumerics, so it stays
+  green; five cards across sg and elev.
+- **A bundle may not carry a component twice.** Wrapping the shared
+  button helper in a chip and adding a `Node` panicked at spawn — the
+  chip is now spawned then adjusted, and the same shape caught the
+  inspector's panel and a label's second font.
+- `CardDefinition::printed_text`'s doc said `stripped_text` while the
+  code used `text`; `text` is right (the symbols are wanted) and the doc
+  now says so.
+- **An unoptimised build could not draw the browser.** With 271 faces on
+  screen the second frame came 1.8 s after the first and the third never
+  came inside ninety seconds: text shaping at opt-level 0, through
+  taffy's measure calls, for some two thousand text nodes. §1's menu had
+  eight. The workspace `Cargo.toml` now carries the Bevy book's
+  `[profile.dev.package."*"] opt-level = 3` — dependencies optimised,
+  the workspace's own crates not, so the engine keeps its
+  `debug_assertions` and overflow panics and CI's
+  `CARGO_PROFILE_DEV_OPT_LEVEL=2` is unaffected. One slow rebuild of the
+  dependency graph, then `cargo run -p netrunner_desktop` is playable.
+  That rebuild is heavier than before as well as slower: twenty
+  parallel optimising `rustc`s on a 32 GB box ran it out of memory once,
+  and `-j 6` did not.
+- **A window nobody is looking at gets no frames.** With dependencies
+  optimised the second frame came 0.2 s after the first — and the third
+  still never came. A stack trace of the process showed the render
+  thread inside Vulkan's `queue_present`, in `wl_display_dispatch_queue`:
+  under Wayland the compositor withholds frame callbacks from a surface
+  it is not showing (a window launched from a shell with no one to
+  raise it), and with vsync on, present blocks on them; the main thread
+  waits on the render thread, and the app sits still without a panic or
+  a log line. The dev screenshot path now sets `PresentMode::AutoNoVsync`
+  on the window, which does not wait (`MESA_VK_WSI_PRESENT_MODE=immediate`
+  is the same from outside). The frame-time finding above was real and
+  is fixed, but it was hidden behind this one until the trace.
+- **Looking at a screen without eyes.** `dev.rs`: `NETRUNNER_SCREEN=cards`
+  boots straight into a screen and `NETRUNNER_SCREENSHOT=<png>` saves the
+  window after thirty frames and exits — how both findings above were
+  made, and how a model checks what it drew. Neither is a feature; both
+  are ignored when unset. The first picture of the browser found two
+  more things: the text field's caret `▏` is not in Noto Sans (a box; now
+  `|`), and both neutral factions were a chip labelled "Neutral" (now one
+  chip that matches either side's neutral cards until a side is chosen).
+
+**Verified.** `cargo test --workspace` green (52 in `netrunner_client`,
+13 in `netrunner_card_sync`, 18 in `netrunner_desktop` — the headless
+browser test enters, opens a face, types "tithe" and narrows the grid,
+and leaves in three Escapes; `tests/faces.rs` draws every catalog card
+at both sizes and reads each body back span by span), clippy silent
+with one new crate-level allow (`too_many_arguments`: a system's
+parameters are what it reads, and a `SystemParam` struct moves the list
+rather than shortening it), `cargo machete` clean. Still to be driven by
+hand at that point: the picture download end to end on this box, wheel
+scrolling on the grid, and the drop-in backs.
+
+**Driven by hand (15 September 2026), a second commit on the branch.**
+The download ran end to end (271 scans cached) and the drop-in backs
+are untried. Everything else the hand found is below, with what was
+done about it.
+
+- **The grid did not scroll.** Not the input: a new dev hook
+  (`NETRUNNER_SCROLL=x,y,lines` puts the pointer at a window position
+  and turns the wheel through the same `WindowEvent`s winit sends, then
+  logs every scrolling node's size, content size and position) showed
+  the wheel reaching the grid's `ScrollArea` observer, and the grid
+  reporting its scrollable content as **one thumb** — 140×196 for 271
+  of them — so the scroll range was zero. taffy 0.10 measures each grid
+  item's content contribution from its *own grid area*
+  (`align_and_position_item`: `Point { x: x - grid_area.left, y: y -
+  grid_area.top }`), and the maximum over the items is one cell. The
+  grid is no longer the scroll container: it sits inside a flex column
+  that is, whose content is the grid's full height (11,220 px; three
+  wheel lines move it 300). A first guess — that `ScrollAreaPlugin` was
+  never added — was wrong twice over: `DefaultPlugins` brings it with
+  the `ui` feature (adding it again is a panic at start-up), and the
+  headless app now adds it and `ScrollbarPlugin` only where absent, so
+  the tests run the same observers.
+- **A scrollbar** beside the grid and one beside the inspector
+  (`widgets::scrollbar`, Bevy's `Scrollbar`/`ScrollbarThumb`: the thumb
+  is sized and placed by the plugin, and a drag or a click on the track
+  moves the target).
+- **The keyboard moves the selection**: the arrows by one or by a row
+  (the column count read off the grid's laid-out width), Page Up and
+  Down by three rows, Home and End to the ends — `Intent::Step(n)` on
+  the model, clamped to the visible list, so a key can never open a
+  card the grid does not show. The grid scrolls to keep a key-moved
+  selection in view and never after a click. A selection change moves
+  the outline and respawns the inspector only; respawning the grid for
+  a held key was a slideshow.
+- **The inspector's face grew** from 300×420 to 380×532 and the panel
+  scrolls under it.
+- **Drop-downs instead of chips** (`widgets::dropdown`: a head that
+  reads "Label: choice ▾", a list spawned under it on press and lifted
+  above the grid with `GlobalZIndex`, closed by a choice, a click
+  elsewhere or Escape). Five filters in one toolbar row where the chips
+  took a rail. Escape now has three claimants — an open list, the search
+  field, the screen — and `nav::Captures` is the system set that orders
+  them: the flag is reset at the start of `Update`, the widgets set it
+  from inside the set (a list before the field, so one Escape closes
+  the list and leaves the search alone), and the Escape rule reads it
+  after. A keystroke in the search respawns the grid but not the
+  drop-downs, so a list left open stays open while the grid narrows.
+- **Set and format filters**, and a **"Legal in Startup · Standard ·
+  Eternal · Snapshot"** line in the inspector (`cards::legal_formats`,
+  by the same tables `legal_in` reads; `cards::set_name` for the three
+  pack codes the catalog carries).
+- **NetrunnerDB's icon font, fetched to the cache.** The site draws the
+  factions, the sets and the printed symbols with one 38 KB TrueType
+  face (`netrunnerfont.css`; code points U+E900–U+E935, its whole
+  character map). Its repository is MIT but the marks are Null Signal
+  Games' and its predecessor's, so it is treated as the scans are:
+  `CardImageStore::download_icon_font` fetches it on the same opt-in as
+  the pictures, checks for a TrueType header before keeping it (a CDN
+  error page would load as a font and fail silently), and never ships
+  it. `icon_font.rs` loads it from bytes (`Font::from_bytes`, what the
+  asset loader does) and `Theme::symbol` is now the three tiers in one
+  place: the icon font's glyph, else Noto Sans Symbols 2's, else the
+  Latin-1 fallback. `card_text::faction_icon` / `set_icon` and
+  `Symbol::icon` are the code points, tested to be distinct and inside
+  the map; the faction's mark sits in its drop-down entry, on the
+  inspector's faction line and in the text face's bottom row.
+- **`rodio::stream` errors are filtered** (`main.rs`): the audio plugin
+  opens the output stream at start-up and holds it idle, and on this box
+  (PipeWire behind ALSA) the idle stream logged `alsa::poll() returned
+  POLLERR` at random, as an ERROR line, over and over. A stream nothing
+  has written to cannot have failed in a way a player would notice.
+  `RUST_LOG` still overrides the whole filter; §4's sound bank revisits
+  it if a playing stream shows the same.
+- **The download button** moved to the status row beside its progress
+  bar; with it in the toolbar the row wrapped and stranded Back.
+- **"Engine reads it as" drew a box** where the prose joins a clause to
+  its reading with `→` — the arrows block is in neither bundled font,
+  as §2 already recorded for the subroutine. The inspector draws `›`
+  there; the prose itself is unchanged, since the terminal has the
+  arrow.
+
+**Open, for §3 onward:** the `Sfx`/audio and tween modules exist only in
+the plan; the stubs name the phase that replaces them. The board will
+want `spawn_face` at a third size and a `WantsImage` that survives a
+`Transition`.

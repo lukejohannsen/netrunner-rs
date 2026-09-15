@@ -8,17 +8,25 @@
 //! in a query of that marker — so no screen needs its own hover system
 //! and no button needs a closure.
 
+pub mod card_face;
+pub mod dropdown;
 pub mod text_field;
 
 use bevy::prelude::*;
+use bevy::ui_widgets::{ControlOrientation, Scrollbar, ScrollbarThumb};
 
+use crate::nav::Captures;
 use crate::theme::{size, Theme};
 
 pub struct WidgetsPlugin;
 
 impl Plugin for WidgetsPlugin {
     fn build(&self, app: &mut App) {
-        app.add_message::<Pressed>().add_systems(Update, (button_feedback, text_field::edit_text_fields));
+        // The drop-down before the text field: both may take an Escape,
+        // and an open list closing is the one that wins.
+        app.add_message::<Pressed>()
+            .add_message::<dropdown::DropdownChanged>()
+            .add_systems(Update, (button_feedback, (dropdown::dropdowns, text_field::edit_text_fields).chain().in_set(Captures)).chain());
     }
 }
 
@@ -95,6 +103,18 @@ pub fn button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, width: Val, ma
         BackgroundColor(theme.button),
         BorderColor::all(theme.panel_border),
         children![(Text::new(text), theme.font(size::BODY), TextColor(theme.text))],
+    )
+}
+
+/// A vertical scrollbar for `target`, a node with `Overflow::scroll_y`:
+/// a thin track with a thumb the scrollbar plugin sizes and moves. Put
+/// it beside the target in a row; the wheel still works without it.
+pub fn scrollbar(theme: &Theme, target: Entity) -> impl Bundle + use<> {
+    (
+        Scrollbar::new(target, ControlOrientation::Vertical, 24.0),
+        Node { width: px(10), height: percent(100), flex_shrink: 0.0, border_radius: BorderRadius::all(px(5)), ..default() },
+        BackgroundColor(theme.panel),
+        children![(ScrollbarThumb { border_radius: BorderRadius::all(px(5)), border: UiRect::ZERO }, BackgroundColor(theme.panel_border))],
     )
 }
 

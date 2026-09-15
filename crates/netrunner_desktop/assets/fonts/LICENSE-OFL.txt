@@ -2,8 +2,15 @@ NotoSans-Regular.ttf — Noto Sans, by the Noto Project Authors.
 Copyright 2010, 2012-2020 Google Inc. / Google LLC.
 Source: https://github.com/notofonts/latin-greek-cyrillic
 
-This Font Software is licensed under the SIL Open Font License, Version 1.1,
-reproduced below. It is an asset of the desktop client only; the rest of
+NotoSansSymbols2-Regular.ttf — Noto Sans Symbols 2, by the Noto Project
+Authors. Copyright 2022 The Noto Project Authors.
+Source: https://github.com/notofonts/symbols (the Google Fonts build)
+Carries the glyphs the card face draws Netrunner's printed icons with —
+the click, the subroutine, the trash can, the unique diamond, the
+influence pips — none of which Noto Sans itself has.
+
+Both are licensed under the SIL Open Font License, Version 1.1,
+reproduced below. They are assets of the desktop client only; the rest of
 this repository is GPL-3.0-or-later (see LICENSE at the root).
 
 SIL OPEN FONT LICENSE Version 1.1 - 26 February 2007

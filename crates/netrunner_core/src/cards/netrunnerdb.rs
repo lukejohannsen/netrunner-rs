@@ -135,18 +135,34 @@ fn build_type_line(card_type: &CardType, keywords: &[String]) -> String {
 /// symbols this codebase quotes verbatim. Preferred over the API's own
 /// `stripped_text`, which flattens `[subroutine]` to the word "Subroutine"
 /// and joins every line into one — fine for search, wrong for reading.
+///
+/// A list item (`<li>`, the "Resolve 1 of the following:" cards) becomes
+/// its own line with a bullet. Dropping the tag alone ran the options
+/// together — "choice:Gain 6[credit].Draw 4 cards." — which is what a
+/// card face showed until the first one was drawn. `<strong>` and `<em>`
+/// are still dropped: the emphasis is typographic, and a client that
+/// wants it can read the catalog's raw `text`.
 fn strip_markup(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
+    let mut tag = String::new();
     let mut in_tag = false;
     for ch in text.chars() {
         match ch {
-            '<' => in_tag = true,
-            '>' if in_tag => in_tag = false,
-            _ if !in_tag => out.push(ch),
-            _ => {}
+            '<' => {
+                in_tag = true;
+                tag.clear();
+            }
+            '>' if in_tag => {
+                in_tag = false;
+                if tag == "li" {
+                    out.push_str("\n• ");
+                }
+            }
+            _ if in_tag => tag.push(ch),
+            _ => out.push(ch),
         }
     }
-    out
+    out.trim().to_string()
 }
 
 fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversionError> {
@@ -278,7 +294,17 @@ mod tests {
     fn markup_is_stripped_and_the_symbols_and_line_breaks_are_kept() {
         assert_eq!(strip_markup("Whenever you install a <strong>virus</strong> program"), "Whenever you install a virus program");
         assert_eq!(strip_markup("[subroutine] Do 1 net damage.\n[subroutine] Gain 1[credit]."), "[subroutine] Do 1 net damage.\n[subroutine] Gain 1[credit].");
-        assert_eq!(strip_markup("a < b"), "a ", "a stray angle bracket swallows to the end, which no card text has");
+        assert_eq!(strip_markup("a < b"), "a", "a stray angle bracket swallows to the end, which no card text has");
+    }
+
+    /// Wildcat Strike: each option on its own bulleted line, and no blank
+    /// line where the `<ul>` was.
+    #[test]
+    fn list_items_become_bulleted_lines() {
+        assert_eq!(
+            strip_markup("Resolve 1 of the following of the Corpʼs choice:<ul><li>Gain 6[credit].</li><li>Draw 4 cards.</li></ul>"),
+            "Resolve 1 of the following of the Corpʼs choice:\n• Gain 6[credit].\n• Draw 4 cards."
+        );
     }
 
     fn base_dto() -> NetrunnerDbCardDto {

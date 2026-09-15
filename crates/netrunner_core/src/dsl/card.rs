@@ -523,12 +523,15 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artist: Option<String>,
 
-    /// The card's printed rules text, plain (NetrunnerDB's
-    /// `stripped_text`), for a client to show a person. **Never read by
-    /// the engine**: the rules a card runs on are `triggers`, `abilities`
-    /// and `subroutines`, and this is the sentence they were written from.
-    /// Joined from the catalog like `artist`, so card files do not restate
-    /// it and cannot drift from what was printed.
+    /// The card's printed rules text, for a client to show a person:
+    /// NetrunnerDB's `text` with its HTML removed and its line breaks and
+    /// `[credit]`-style symbols kept (`cards::netrunnerdb::strip_markup`),
+    /// not the API's `stripped_text`, which spells the symbols out and
+    /// joins the lines. **Never read by the engine**: the rules a card runs
+    /// on are `triggers`, `abilities` and `subroutines`, and this is the
+    /// sentence they were written from. Joined from the catalog like
+    /// `artist`, so card files do not restate it and cannot drift from
+    /// what was printed.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub printed_text: Option<String>,
 

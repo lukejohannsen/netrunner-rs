@@ -17,11 +17,25 @@
 //! decides a rule. The client contract (AGENTS.md §3) is that a client
 //! renders a `ClientView` and submits from `legal_actions`; this crate
 //! carries the parts of a client that are neither — file paths,
-//! persistence, and the pool a format allows — and, as later phases land,
-//! the one match-driving interface every screen consumes.
+//! persistence, the pool a format allows, the words for the engine's DSL
+//! (`prose`), and the printed card as a face lays it out (`card_face`,
+//! `card_text`) — and, as later phases land, the one match-driving
+//! interface every screen consumes.
 
+pub mod card_face;
+pub mod card_text;
 pub mod cards;
 pub mod deck_store;
 pub mod decks;
+pub mod prose;
 pub mod ratings;
 pub mod settings;
+
+/// The OS data directory every client file lives under — the base
+/// `settings`, `deck_store` and `ratings` resolve from, and the one a
+/// client's asset overrides (`<data dir>/netrunner/assets`) sit beside.
+/// `None` on an OS with no such directory, which every caller treats as
+/// "this session only".
+pub fn data_dir() -> Option<std::path::PathBuf> {
+    dirs::data_dir()
+}

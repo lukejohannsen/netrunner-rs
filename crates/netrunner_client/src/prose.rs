@@ -29,7 +29,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
-    Amount, BoostDuration, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, SubroutineBreakCount,
+    Amount, BoostDuration, CardDefinition, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, SubroutineBreakCount,
 };
 use netrunner_core::rules::{PendingDecision, ServerId, Side};
 use netrunner_core::view::ClientView;
@@ -293,6 +293,36 @@ pub fn humanize(debug: String) -> String {
     out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// One line per trigger, ability and subroutine: `[when] clause → engine
+/// reading`. The clause is the printed text the author linked
+/// (`TriggeredEffect::text`, `AbilityDef::text`, `SubroutineDef::text`),
+/// and the reading is the DSL rendered by this module. Both clients'
+/// inspectors show these under "Engine reads it as", beside the printed
+/// text, so a person can see whether the two agree.
+pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<String> {
+    let mut lines = Vec::new();
+    for trigger in &card.triggers {
+        let reading = trigger.effects.iter().map(|e| describe_effect(e, registry)).collect::<Vec<_>>().join("; ");
+        let when = humanize(format!("{:?}", trigger.trigger));
+        match &trigger.text {
+            Some(text) => lines.push(format!("• [{when}] \"{}\" → {reading}", text.trim_end_matches('.'))),
+            None => lines.push(format!("• [{when}] → {reading}")),
+        }
+    }
+    for ability in &card.abilities {
+        let reading = describe_effect(&ability.effect, registry);
+        let cost = ability.cost.as_ref().map(|c| format!("{}: ", describe_cost(c))).unwrap_or_default();
+        match &ability.text {
+            Some(text) => lines.push(format!("• [ability] \"{}\" → {cost}{reading}", text.trim_end_matches('.'))),
+            None => lines.push(format!("• [ability] → {cost}{reading}")),
+        }
+    }
+    for sub in &card.subroutines {
+        lines.push(format!("• [subroutine] \"{}\" → {}", sub.text.trim_end_matches('.'), describe_effect(&sub.effect, registry)));
+    }
+    lines
+}
+
 /// The card that parked a decision, if the view names one: the card whose
 /// text the prompt came from, else the card being resolved.
 pub fn decision_card(view: &ClientView) -> Option<&CardId> {
@@ -334,7 +364,7 @@ mod tests {
 
     #[test]
     fn effects_read_as_sentences() {
-        let registry = netrunner_client::decks::sample_deck_registry();
+        let registry = crate::decks::sample_deck_registry();
         let d = |effect: &Effect| describe_effect(effect, &registry);
         assert_eq!(d(&Effect::GiveTags(1)), "give the Runner 1 tag");
         assert_eq!(d(&Effect::Sequence(vec![])), "do nothing");
@@ -368,7 +398,7 @@ mod tests {
     /// option on a deck people play falls back to its debug form.
     #[test]
     fn every_sample_deck_choice_has_words() {
-        let registry = netrunner_client::decks::sample_deck_registry();
+        let registry = crate::decks::sample_deck_registry();
         let mut checked = 0;
         for deck in netrunner_core::decks::embedded_decks() {
             for entry in &deck.cards {

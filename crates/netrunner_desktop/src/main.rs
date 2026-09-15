@@ -1,6 +1,7 @@
 //! The graphical desktop client. Everything is in the library so the
 //! plugin set a test builds is the one this binary runs.
 
+use bevy::log::LogPlugin;
 use bevy::prelude::*;
 use bevy::render::settings::{PowerPreference, RenderCreation, WgpuSettings};
 use bevy::render::RenderPlugin;
@@ -20,10 +21,25 @@ fn main() -> AppExit {
                     }),
                     ..default()
                 })
-                .set(RenderPlugin { render_creation: RenderCreation::Automatic(Box::new(wgpu_settings())), ..default() }),
+                .set(RenderPlugin { render_creation: RenderCreation::Automatic(Box::new(wgpu_settings())), ..default() })
+                .set(LogPlugin { filter: log_filter(), ..default() }),
         )
         .add_plugins(NetrunnerDesktopPlugins)
         .run()
+}
+
+/// Bevy's default filter, with rodio's output-stream errors turned off.
+///
+/// The audio plugin opens the output stream at start-up and holds it
+/// idle until something plays, and on this box (PipeWire behind ALSA)
+/// that idle stream reports `alsa::poll() returned POLLERR` at random,
+/// as an ERROR line, again and again — a stream nothing has written to
+/// cannot have failed in any way a player would notice, and the log was
+/// unreadable behind it. The sound bank (§4) revisits this if a stream
+/// that *is* playing shows the same; `RUST_LOG` still overrides the
+/// whole filter for anyone chasing an audio fault.
+fn log_filter() -> String {
+    format!("{},rodio::stream=off", bevy::log::DEFAULT_FILTER)
 }
 
 /// Bevy's defaults, except that the adapter is the *low-power* one unless

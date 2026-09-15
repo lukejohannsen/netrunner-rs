@@ -48,7 +48,7 @@ use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
 use crate::app::{card_modal, Modal};
-use netrunner_client::cards::legal_in;
+use netrunner_client::cards::{faction_label, faction_order, legal_in, type_group, type_order};
 use netrunner_client::deck_store::{self, Origin, StoredDeck};
 
 /// What one key did, for the menu.
@@ -873,58 +873,6 @@ fn sorted_entries(deck: &DeckFile, registry: &CardRegistry) -> Vec<(CardId, u32)
         (card.map_or(99, |card| type_order(&card.card_type)), card.map_or_else(|| id.0.clone(), |card| card.title.clone()))
     });
     rows
-}
-
-/// Ice of every subtype is one group: a builder filters by "ICE", not by
-/// "Barrier".
-fn type_group(card_type: &CardType) -> &'static str {
-    match card_type {
-        CardType::Agenda => "Agenda",
-        CardType::Asset => "Asset",
-        CardType::Upgrade => "Upgrade",
-        CardType::Operation => "Operation",
-        CardType::Ice(_) => "ICE",
-        CardType::Event => "Event",
-        CardType::Hardware => "Hardware",
-        CardType::Resource => "Resource",
-        CardType::Program => "Program",
-        CardType::Identity => "Identity",
-    }
-}
-
-fn type_order(card_type: &CardType) -> u8 {
-    match card_type {
-        CardType::Identity => 0,
-        CardType::Agenda | CardType::Event => 1,
-        CardType::Asset | CardType::Hardware => 2,
-        CardType::Upgrade | CardType::Resource => 3,
-        CardType::Operation => 4,
-        CardType::Ice(_) | CardType::Program => 5,
-    }
-}
-
-fn faction_label(faction: Faction) -> &'static str {
-    match faction {
-        Faction::Anarch => "Anarch",
-        Faction::Criminal => "Criminal",
-        Faction::Shaper => "Shaper",
-        Faction::HaasBioroid => "Haas-Bioroid",
-        Faction::Jinteki => "Jinteki",
-        Faction::Nbn => "NBN",
-        Faction::WeylandConsortium => "Weyland",
-        Faction::NeutralCorp | Faction::NeutralRunner => "Neutral",
-    }
-}
-
-fn faction_order(faction: Option<Faction>) -> u8 {
-    match faction {
-        Some(Faction::HaasBioroid) | Some(Faction::Anarch) => 0,
-        Some(Faction::Jinteki) | Some(Faction::Criminal) => 1,
-        Some(Faction::Nbn) | Some(Faction::Shaper) => 2,
-        Some(Faction::WeylandConsortium) => 3,
-        Some(Faction::NeutralCorp) | Some(Faction::NeutralRunner) => 4,
-        None => 5,
-    }
 }
 
 fn format_label(format: NsgFormat) -> String {
