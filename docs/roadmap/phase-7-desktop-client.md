@@ -634,6 +634,10 @@ And three from the look at §4a (15 September 2026), before it merged:
     rows are the Settings screen's rows at their 220 + 260 px widths
     plus a control, in a 560 px panel; the control lands outside it.
     The rows want a width that follows the panel, or the panel the rows.
+    *Done (15 September 2026, `fix/options-rows-fit-their-panel`): a
+    row is as wide as its panel, the label takes what the value (170 px,
+    wrapping) and the control leave. `NETRUNNER_OPTIONS=1` opens the
+    gear menu over a dev game so it can be screenshotted.*
 13. **A decision — the mulligan, an access, a choice a card asks —
     should be a pop-up in the middle of the screen**, not buttons on
     the rail at the top right: it is the thing the game is waiting on,
