@@ -50,7 +50,7 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 | `netrunner_card_sync` | Async NetrunnerDB API sync and cross-platform disk caching, and the card-image cache (`CardImageStore`) — the only crate doing network I/O for card data. |
 | `netrunner_rating` | Pure, engine-free Glicko-2 ratings: a `RatingBook` of one rating per track (human-vs-human, human-vs-bot, bot benchmark), participant and role, serializable whole. No I/O; the CLI's `bench` and the server own their files. |
 | `netrunner_client` | The toolkit-agnostic client core both clients stand on: the settings file (one struct, so neither client drops the other's fields), the saved-deck store, the local rating book and its rung suggestion, the format's card pool and the browser's catalog, the words for the DSL (`prose`, with `engine_reading`), and the printed card as a face lays it out (`card_face` decides which corner a number sits in, `card_text` splits the text at its icons). Later phases add the `ActionMap`, the view-diff `Transition`s and the one `MatchHandle` every game screen consumes. No rendering, no rules. |
-| `netrunner_desktop` | The Bevy graphical client. Renders `ClientView` only; a plugin per screen; consumes `netrunner_client`. Its own CI job, because Bevy is several hundred crates. |
+| `netrunner_desktop` | The Bevy graphical client. Renders `ClientView` only; a plugin per screen; consumes `netrunner_client`. Its own weekly CI job (`platforms.yml`), because Bevy is several hundred crates; the local `cargo test --workspace` is what checks it before a merge. |
 
 Bot *logic* belongs in `netrunner_bots`, not in `netrunner_gym` or `netrunner_selfplay`; those are harnesses. `netrunner_session` is a **driver**, not a harness and not a rules authority — it owns the loop, never a rule.
 
@@ -155,7 +155,7 @@ Related mechanical gates, all of which must stay green:
 
 The bar for any change: `cargo test --workspace` fully green and `cargo clippy --workspace --all-targets` completely silent. Both hold today.
 
-**CI enforces that bar** (`.github/workflows/ci.yml`), and the `ci` aggregate check is **required on `main`** — a red run blocks the merge, so a branch is not landable until it is green. Every push and pull request runs both commands on Linux, Windows *and* macOS — three platforms, where the repo previously only ever built on one — plus `cargo doc` with warnings denied (one exception, below), each optional feature one crate at a time, `cargo-deny` (advisories, licenses, bans, sources — see `deny.toml`) and `cargo-machete`. The two 256-seed sweeps run weekly and on demand in `.github/workflows/deep-sweep.yml`; they are still the thing to run locally before merging engine-level work, because a weekly job is not a pre-merge gate.
+**CI enforces that bar** (`.github/workflows/ci.yml`), and the `ci` aggregate check is **required on `main`** — a red run blocks the merge, so a branch is not landable until it is green. Every push and pull request runs both commands **on Linux only**, excluding the desktop crate, plus the security checks: `cargo-deny` (advisories, licenses, bans, sources — see `deny.toml`), gitleaks over the history, and zizmor and actionlint over the workflows. Everything that only *builds* — both commands on Windows and macOS, the desktop crate on all three platforms, `cargo doc` with warnings denied (one exception, below), each optional feature one crate at a time, the beta toolchain and `cargo-machete` — runs weekly and on demand in `.github/workflows/platforms.yml` and gates nothing, because the three-OS matrix was what every merge waited on. **So the desktop crate is checked by your local `cargo test --workspace` and `cargo clippy --workspace --all-targets`, not by CI**, and `gh workflow run platforms.yml --ref <branch>` is how to see Windows and macOS before a merge rather than on the next Monday. The two 256-seed sweeps run weekly and on demand in `.github/workflows/deep-sweep.yml`; they are still the thing to run locally before merging engine-level work, because a weekly job is not a pre-merge gate.
 
 One rustdoc lint is allowed, and it is a domain collision rather than laziness: rustdoc reads Netrunner's printed symbols — `[click]`, `[c]`, `[credit]`, `[mu]`, `[trash]`, which these comments quote verbatim from card text — as intra-doc links, so `broken_intra_doc_links` is passed `-A` in the `docs` job. Every other rustdoc lint is denied, including `private_intra_doc_links`; **keep quoting card text, and do not escape the brackets.**
 
@@ -239,10 +239,11 @@ number moved, so the rules below are mostly about making that possible.
   `cargo test --workspace` green, `cargo clippy --workspace --all-targets`
   silent, and for engine-level work both 256-seed sweeps. A branch that claims
   a measured effect also carries the before/after numbers, taken on **pinned
-  binaries** — see the Testing Rule for why. CI now checks the first two on
-  three platforms for you, but it runs the sweeps only at the default seed
-  count: **the 256-seed runs are still yours to do** before merging engine
-  work, and a green PR is not evidence they happened.
+  binaries** — see the Testing Rule for why. CI checks the first two on
+  Linux for every crate but the desktop one, and runs the sweeps only at the
+  default seed count: **the desktop crate and the 256-seed runs are still
+  yours to do** before merging, and a green PR is not evidence they
+  happened.
 - Never force-push `main` and never rewrite published history.
 
 ### Pull requests

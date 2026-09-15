@@ -91,10 +91,12 @@ cargo test --workspace
 cargo clippy --workspace --all-targets
 ```
 
-Both of those run in CI on Linux, Windows and macOS for every push and pull request, along
-with the dependency-hygiene checks (`cargo-deny`, `cargo-machete`) and a weekly 256-seed run
-of the two agent-driven sweeps. `.github/workflows/ci.yml` explains what each job is for and
-what is deliberately left out.
+Both of those run in CI on Linux for every push and pull request (all but the desktop crate),
+along with the security checks (`cargo-deny`, gitleaks, and an audit of the workflows). Windows,
+macOS, the desktop crate on all three, `cargo doc`, the optional features and `cargo-machete`
+run weekly in `.github/workflows/platforms.yml`, and the two agent-driven sweeps get a weekly
+256-seed run. `.github/workflows/ci.yml` explains what each job is for and what is deliberately
+left out.
 
 ## Workspace layout
 
