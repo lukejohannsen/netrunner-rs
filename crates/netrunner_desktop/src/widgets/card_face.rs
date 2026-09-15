@@ -23,13 +23,15 @@ use crate::card_images::{picture, WantsImage};
 use crate::theme::Theme;
 
 /// The three sizes a face is drawn at, all 5:7 like the card.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FaceSize {
-    /// A card on the board. The first cut was 96 px wide so a hand and a
-    /// rig would fit beside the servers; the first person to play could
-    /// not tell the cards apart and asked for double, so it is now wider
-    /// than a grid thumb and the board scrolls instead.
-    Board,
+    /// A card on the board, at the width in pixels the board has room
+    /// for (`models::layout::face_width`): the board never scrolls, so
+    /// the cards are the thing that gives. The first cut was 96 px so a
+    /// hand and a rig would fit beside the servers, the second 180 so
+    /// they could be told apart — and 180 put the hand below the fold.
+    /// Its text scales with it, down to a floor a person can still read.
+    Board(u16),
     /// A grid cell.
     Thumb,
     /// The inspector's.
@@ -37,9 +39,12 @@ pub enum FaceSize {
 }
 
 impl FaceSize {
+    /// The width a board face's text sizes are authored at.
+    pub const BOARD_REFERENCE: f32 = 180.0;
+
     pub fn width(self) -> f32 {
         match self {
-            FaceSize::Board => 180.0,
+            FaceSize::Board(w) => w as f32,
             FaceSize::Thumb => 140.0,
             FaceSize::Large => 380.0,
         }
@@ -49,9 +54,15 @@ impl FaceSize {
         self.width() * 1.4
     }
 
+    /// A board face's text, scaled from the reference width, never
+    /// below `floor`.
+    fn scaled(self, at_reference: f32, floor: f32) -> f32 {
+        (at_reference * self.width() / Self::BOARD_REFERENCE).max(floor)
+    }
+
     fn title(self) -> f32 {
         match self {
-            FaceSize::Board => 14.0,
+            FaceSize::Board(_) => self.scaled(14.0, 9.0),
             FaceSize::Thumb => 11.0,
             FaceSize::Large => 21.0,
         }
@@ -59,7 +70,7 @@ impl FaceSize {
 
     fn small(self) -> f32 {
         match self {
-            FaceSize::Board => 10.0,
+            FaceSize::Board(_) => self.scaled(10.0, 7.0),
             FaceSize::Thumb => 8.0,
             FaceSize::Large => 14.0,
         }
@@ -67,7 +78,7 @@ impl FaceSize {
 
     fn body(self) -> f32 {
         match self {
-            FaceSize::Board => 10.5,
+            FaceSize::Board(_) => self.scaled(10.5, 7.5),
             FaceSize::Thumb => 8.5,
             FaceSize::Large => 15.0,
         }
@@ -75,7 +86,7 @@ impl FaceSize {
 
     fn number(self) -> f32 {
         match self {
-            FaceSize::Board => 14.0,
+            FaceSize::Board(_) => self.scaled(14.0, 9.0),
             FaceSize::Thumb => 11.0,
             FaceSize::Large => 19.0,
         }
@@ -83,7 +94,7 @@ impl FaceSize {
 
     fn padding(self) -> f32 {
         match self {
-            FaceSize::Board => 6.0,
+            FaceSize::Board(_) => self.scaled(6.0, 3.0),
             FaceSize::Thumb => 5.0,
             FaceSize::Large => 12.0,
         }

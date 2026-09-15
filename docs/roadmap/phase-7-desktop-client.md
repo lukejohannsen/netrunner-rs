@@ -603,6 +603,8 @@ yet a board to play on.
    faces made readable the board is 1,780 px tall in a 723 px viewport;
    a design is owed that puts every card and piece on one screen —
    fanned hands, overlapped ICE, a scale that follows the window.
+   *Done in §4a, after it regressed there first: fullscreen, a computed
+   card width, overlapped rows, no scroll container on the board.*
 8. **A click to look at a card installed it.** The model submits a
    card's action when it has exactly one, so "examine" and "install"
    are the same click, and one game was lost to it. A click must never
@@ -699,6 +701,38 @@ the pass is now one button in one place.
   A greyed control is `widgets::disabled_button`, the same node with dim
   text and a `Disabled` marker the feedback system skips.
 
+- **The board fits the window, fullscreen, and never scrolls — a rule
+  now, not an item.** The first cut of this PR kept the board as a
+  scroll column at a static 180 px face and the person's hand went
+  below the fold again, the third time a static size had done it; the
+  person's words were that scrolling to see cards is unacceptable and
+  that the cards must scale rather than the board scroll. So: the
+  window opens `BorderlessFullscreen`; `models::layout::face_width`
+  computes the widest card for which the four rows — the opponent's
+  strip and hand, their area, the person's area, the person's strip
+  and hand — fit `board_height`, by binary search over `rows_height`
+  (which counts the tallest server's ICE bars, whether any root or rig
+  card exists, and the strips' text, so an empty board gets larger
+  cards and a full one smaller), capped by the server columns across
+  and clamped to 72–220 px; `fit` recomputes it every frame from the
+  primary window and the view and redraws the board when it moves; a
+  hand, a row of backs or a rig wider than its room overlaps its cards
+  by `layout::step` (never below a fifth of a card, so every card
+  keeps an edge to click) instead of wrapping; the board root has no
+  `ScrollArea` and `Overflow::clip` only as a backstop; and
+  `FaceSize::Board` carries its width, its text scaled from the 180 px
+  reference down to a floor. The control bar moved from under the top
+  bar to centred along the bottom, beside the hand — at the top it
+  made every action a mouse trip across the opponent's side. The first
+  fit clipped the hand's bottom edge by 55 px: the height budget
+  counted 0.84 of a card for a strip whose text is taller than that,
+  and no server header; `rows_height` now sums what is drawn, with the
+  strips at a fixed estimate (175 / 210 px) that errs long, since an
+  over-estimate is slack between rows and an under-estimate is the
+  thing that must not happen. Both chairs were screenshotted at 40 and
+  60 decisions on a 2560×1600 screen with every card whole and the only
+  scroll areas the rail's; AGENTS.md §5 carries the rule.
+
 **Found on the way.**
 
 - **`all` is vacuously true of no targets.** The first `decisions()`
@@ -717,7 +751,10 @@ the pass is now one button in one place.
   stable signals.
 
 **Verified.** `cargo test --workspace` green (`netrunner_client` 79,
-`netrunner_desktop` 20 in the library and 8 in `tests/game.rs`: the
+`netrunner_desktop` 23 in the library — three of them `layout`'s: the
+face shrinks with the window and with ICE and grows on an empty board,
+four rows at the computed width fit and one pixel more would not, a
+row overlaps only when it must — and 8 in `tests/game.rs`: the
 decisions at the mulligan, a hand card's sheet and its button, the bar
 greyed then live then ending the turn, R&D and Archives and the stack
 opening sheets with nothing applied, the gear's toggles saved to the
