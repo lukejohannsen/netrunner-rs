@@ -578,6 +578,11 @@ yet a board to play on.
    resolve the position through the prompt's `source` zone when the
    viewer can see it (their own hand, the heap), and the board can put
    the toggle on the card itself.
+   *Done in §4c, in both clients: `Select Hedge Fund`, `Confirm Hedge
+   Fund`, `Select a different card`. The view alone could not do it — an
+   R&D or stack search has no cards in the view — so the engine now
+   publishes the prompt's candidates to the chooser. The toggle on the
+   card itself is still to do.*
 2. **A sole legal action should not need a click.** Passing priority
    over and over is the whole of a run from the other chair. The model
    can submit a lone `PassPriority` (and, arguably, any lone action) on
@@ -1008,3 +1013,104 @@ Tithe · passed ○○ › Archives` from the Corp's, and after a run the Corp
 read `Run on R&D › R&D › Accessing › Successful` with `stole Send a
 Message (3)`; no scroll area on the board. No engine change, so no
 sweep and no coverage report.
+
+### 4c. A card-selection prompt names its cards — DONE (15 September 2026)
+
+`feat/selection-names-its-cards`. §3's noted item 1, raised again by the
+person for both clients: a card that asks for cards offered `Toggle
+selection of card N` — a position into a zone, which tells a human
+nothing. What they asked for: `Select <card name>`, with the location
+when there is more than one, then `Confirm` and `Select a different
+card`. Both clients now read, for example, `Select Syailendra
+(protecting Remote 1, outermost of 2)`, `Select unrezzed ice (protecting
+Remote 2)`, `Confirm Marjanah` over `Select a different card`, and the
+prompt says `Selected: Marjanah` or `Nothing selected yet`.
+
+**Decisions taken, with the alternative rejected.**
+
+- **The engine publishes the candidates, to the chooser only.** A label
+  could resolve a position from the view for a hand, the heap, Archives
+  and the board, but not for a search of R&D or the stack (Malapert,
+  Mutual Favor, Poétrï, AU Co., Off the Books, Embedded Reporting),
+  MuslihaT's top card or Touch-ups' revealed grip: `ClientView` keeps
+  R&D and the stack count-only even for their owner. AGENTS.md §3 says
+  what to do when the view lacks something — extend the masking layer
+  with a rule about who may see it — so `ClientView::selection` lists one
+  `SelectionCandidate { position, card, install }` per position the
+  chooser can act on (the toggles `legal_actions` offers plus the cards
+  already `selected`), built by `pending_choice::selection_positions`. It
+  is empty for the opponent and a spectator. A card is shown because the
+  card asking says so ("search", "look at", "reveal"), and only the
+  positions the filter admits are listed, so a search publishes what it
+  may take and not the deck. The one card a chooser still may not name,
+  an opponent's unrezzed install (Tāo Salonga's swap), or a face-down
+  Archives card for the Runner, is `None` on exactly the condition the
+  masked board uses, read off `PublicGameState` rather than restated.
+  `#[serde(default)]`, so an older view still reads. No bot reads it,
+  and the observation and `ActionSpace` are unchanged. `determinize`
+  could now reseat filter-matching cards at the prompt's positions
+  (`reseat_selectable_cards` was deleted as unfixable without this), and
+  that is left for a bot branch to measure.
+- **Identical copies in one place are one button** (the person's call).
+  A grip of two Sure Gambles offers `Select Sure Gamble` once, then
+  `Select another Sure Gamble`; two chosen are one `Deselect Sure Gamble`.
+  The alternative, a numbered button per copy, keeps every legal index on
+  its own button and makes a person ask what the difference between copy
+  1 and copy 2 is. So `netrunner_client::selection::Selection::hidden`
+  names the positions a shown button stands for (same name, same place,
+  same side of the selection). Both clients leave them out:
+  `ActionMap::decisions` for the pop-up and `selection::shown` for the
+  terminal's list. The play helper still lists every index. That changes
+  §4a's rule that the decisions cover every index once, and the map's
+  test now says so: a collapsed index must have a shown decision with
+  the same words.
+- **The place is shown only when it tells two cards apart.** `Select
+  Hedge Fund` alone, `Select Ice Wall (protecting HQ)` beside another
+  Ice Wall elsewhere, and a concealed install always by its place, since
+  that is all that distinguishes it. The ice order uses `board::facts`'
+  words.
+- **`Select a different card` is the deselect when only one card may be
+  chosen**; with room for several it is `Deselect <card>`. The confirm
+  names what it confirms (`Confirm Hedge Fund and Sure Gamble (×2)`), or
+  reads `Choose none` for an "up to" prompt left empty. The list is
+  ordered cards to choose, then the confirm, then the way back
+  (`Selection::rank`), so a full single choice reads `Confirm …`, `Select
+  a different card`, in the person's order rather than the engine's.
+- **The log says what a toggle did.** A log line is written against the
+  view the action left, where a position just chosen is selected, so it
+  reads `Selected Hedge Fund` / `Deselected Hedge Fund` rather than the
+  button's words. The opponent reads `Selected a card`.
+
+**Found on the way.**
+
+- **The local terminal logged against the view the person chose from**,
+  not the one the action left, unlike the server and the desktop. On
+  that board a card just installed is not yet anywhere, so its log line
+  fell back to `install #N`. `tui::log_last` and the lesson loop now pass
+  the post-action view.
+- **The comment on the old label was wrong.** It said the selection
+  prompt drew the zone beside the list. Neither client ever did.
+
+**Dev hook.** `NETRUNNER_HOLD_SELECTION=1`: the autoplay stops at the
+first card-selection prompt the person is asked, so `NETRUNNER_SCREENSHOT`
+catches the pop-up.
+
+**Still to do.** The toggle on the card itself: a click on a hand card
+or a tile during a selection, which `Target::Position` was reserved for
+and nothing places yet.
+
+**Verified.** `cargo test --workspace` green (1,469 tests: five new in
+`netrunner_core`'s view tests; five in `netrunner_client`, one of them
+over 24 random-vs-random games that checks 321 selection prompts as the
+chooser reads them, with no button a position, every toggle a card or a
+place, and no title the board conceals; one each in the terminal and the
+desktop model), clippy silent. Both 256-seed sweeps green, with the fog
+gate now checking at every step, for both seats and a spectator, that the
+selection is the chooser's alone, names every position the chooser can
+act on, and names no card the board masks. **The engine's flow did not
+move:** `--headless --all-matchups --games 192 --corp random --runner
+random --seed 1` gives a byte-identical JSON report on pinned `main` and
+branch binaries. Screenshotted as the Corp with
+`NETRUNNER_HOLD_SELECTION`, 2560×1600: Seamless Launch's pop-up reads
+`Nothing selected yet` over `Select Whitespace`, `Select Ansel 1.0`,
+`Select Palisade`, and no scroll area is the board.

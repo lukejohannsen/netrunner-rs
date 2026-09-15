@@ -223,6 +223,7 @@ fn the_flatline_during_an_encounter_window_position_plays_out() {
 /// strictly stronger one.
 #[test]
 fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
+    let mut selections_seen = 0;
     for seed in 0..sweep_seed_count() {
         let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
         let matchup = format!("{} vs {}", corp_deck.id, runner_deck.id);
@@ -249,6 +250,14 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
                     let spectator = session.view_for(Viewer::Spectator);
                     assert!(spectator.corp.hq_cards.is_none() && spectator.runner.grip_cards.is_none() && spectator.legal_actions.is_empty());
                     assert_no_concealed_card_is_named(&spectator, session.state(), seed, &matchup, Viewer::Spectator);
+                    let other = session.view_for(side.other());
+                    assert_no_concealed_card_is_named(&other, session.state(), seed, &matchup, side.other().into());
+                    for (seat_view, viewer) in [(&*view, Viewer::from(side)), (&other, Viewer::from(side.other())), (&spectator, Viewer::Spectator)] {
+                        assert_selection_is_the_choosers_alone(seat_view, seed, &matchup, viewer);
+                    }
+                    if !view.selection.is_empty() {
+                        selections_seen += 1;
+                    }
                     assert_cards_are_conserved(session.state(), &corp_deck.to_deck(), &runner_deck.to_deck(), seed, &matchup);
 
                     assert!(
@@ -280,6 +289,7 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
             }
         }
     }
+    assert!(selections_seen > 0, "no seat was ever choosing cards, so the selection rule was never exercised");
 }
 
 /// **No card is ever created or destroyed.** Every card a deck started with
@@ -366,6 +376,9 @@ fn assert_no_concealed_card_is_named(
 
     let actions = format!("{:?}", view.legal_actions);
     let decision = format!("{:?}", view.pending_decision);
+    // Deliberately not in `visible_card_ids`: a selection names cards
+    // *because* the viewer may see them, so it is checked, never trusted.
+    let selection = format!("{:?}", view.selection);
     for id in masked {
         let quoted = format!("\"{id}\"");
         assert!(
@@ -376,6 +389,39 @@ fn assert_no_concealed_card_is_named(
             !decision.contains(&quoted),
             "seed {seed} ({matchup}): {side:?}'s pending_decision names {id}, which their own view masks — {decision}"
         );
+        assert!(
+            !selection.contains(&quoted),
+            "seed {seed} ({matchup}): {side:?}'s selection names {id}, which their own view masks — {selection}"
+        );
+    }
+}
+
+/// `ClientView::selection` is the chooser's and nobody else's, and it names
+/// every position the chooser can act on — each toggle the engine offers
+/// and each card already chosen — so a client can put a card's name on
+/// every button of the prompt and never fall back to a number.
+fn assert_selection_is_the_choosers_alone(view: &netrunner_core::view::ClientView, seed: u64, matchup: &str, viewer: Viewer) {
+    use netrunner_core::rules::{PendingDecision, PlayerAction};
+    let listed: std::collections::BTreeSet<usize> = view.selection.iter().map(|c| c.position).collect();
+    match &view.pending_decision {
+        Some(PendingDecision::ChooseCards { side, selected, .. }) if viewer.is(*side) => {
+            let toggles = view.legal_actions.iter().filter_map(|a| match a {
+                PlayerAction::ToggleCardSelection { position } => Some(*position),
+                _ => None,
+            });
+            for position in toggles.chain(selected.iter().copied()) {
+                assert!(
+                    listed.contains(&position),
+                    "seed {seed} ({matchup}): {viewer:?} can act on position {position} but the selection does not name it — {:?}",
+                    view.selection
+                );
+            }
+        }
+        _ => assert!(
+            view.selection.is_empty(),
+            "seed {seed} ({matchup}): {viewer:?} is not choosing and was shown the selection — {:?}",
+            view.selection
+        ),
     }
 }
 

@@ -311,8 +311,11 @@ fn run_lesson(
     ui.modal = Some(Modal::new(&lesson.title, &lesson.intro, "Enter to begin"));
     loop {
         let step = session.step()?;
+        // The board as it now stands, not the one the learner chose from —
+        // see `log_last`.
+        let now = session.session().view_for(lesson.side);
         for entry in session.drain_log() {
-            push_log_line(&mut ui.action_log, &entry, &ui.registry, ui.view.as_ref());
+            push_log_line(&mut ui.action_log, &entry, &ui.registry, Some(&now));
         }
 
         match step {
@@ -475,10 +478,14 @@ fn drive_local(
 }
 
 /// Appends the action just applied to the human's log, as the human may
-/// see it.
+/// see it — against the board the action *left*, as the server's and the
+/// desktop's logs are: `ui.view` is still the one the human chose from, on
+/// which a card just installed is not yet anywhere and a card just
+/// selected is not yet selected.
 fn log_last(session: &Session, ui: &mut LocalUiState, human_side: Side) {
     if let Some(entry) = session.last_entry_for(human_side) {
-        push_log_line(&mut ui.action_log, &entry, &ui.registry, ui.view.as_ref());
+        let after = session.view_for(human_side);
+        push_log_line(&mut ui.action_log, &entry, &ui.registry, Some(&after));
     }
 }
 
@@ -700,10 +707,13 @@ impl LocalUiState {
     }
 
     /// The actions the list shows: the lesson's subset when one applies
-    /// and the escape hatch is closed, otherwise every legal action.
-    fn offered_actions(&self) -> &[PlayerAction] {
+    /// and the escape hatch is closed, otherwise every legal action — less
+    /// a second copy's selection toggle, which the first copy's row stands
+    /// for (`netrunner_client::selection`).
+    fn offered_actions(&self) -> Vec<PlayerAction> {
         let legal = self.view.as_ref().map_or(&[][..], |view| view.legal_actions.as_slice());
-        if self.coaching.is_some() && !self.show_all && !self.allowed.is_empty() { &self.allowed } else { legal }
+        let offered = if self.coaching.is_some() && !self.show_all && !self.allowed.is_empty() { &self.allowed } else { legal };
+        netrunner_client::selection::shown(offered, self.view.as_ref(), &self.registry)
     }
 
     fn selected_action(&self) -> Option<PlayerAction> {
@@ -1505,6 +1515,59 @@ mod tests {
         terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
         let rendered = format!("{:?}", terminal.backend().buffer());
         assert!(rendered.contains("Bigger Picture asks"), "the pane is titled by the asking card");
+    }
+
+    /// A card-selection prompt lists its cards by name — the person's
+    /// report was a list of `Toggle selection of card N` — with a second
+    /// copy folded into the first copy's row, and the pane says what is
+    /// chosen. Once the one card allowed is chosen, the list is the confirm
+    /// and the way back: "Select a different card".
+    #[test]
+    fn a_card_selection_lists_its_cards_by_name_and_says_what_is_chosen() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef};
+        use netrunner_core::rules::{PendingChoiceResume, PendingDecision};
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (mut state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        state.phase = GamePhase::Action(Side::Corp);
+        let first = state.corp.hq[0].clone();
+        let other = state.corp.hq.iter().find(|c| **c != first).cloned().expect("an opening hand of two titles");
+        state.corp.hq = vec![first.clone(), first.clone(), other.clone()];
+        let title = |id: &netrunner_core::dsl::CardId| registry.get(id).unwrap().title.clone();
+        let decision = |selected: Vec<usize>| PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnHq,
+            filter: CardFilter::Any,
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: None,
+            then: None,
+            selected,
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        };
+
+        state.pending_decision = Some(decision(Vec::new()));
+        let mut ui = LocalUiState::new(registry.clone(), Side::Corp);
+        ui.begin_decision(build_client_view(&state, &registry, Side::Corp));
+        assert_eq!(ui.legal_action_labels(), vec![format!("Select {}", title(&first)), format!("Select {}", title(&other))], "two copies, one row");
+        let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+        assert!(rendered.contains("Nothing selected yet"), "the pane says nothing is chosen");
+        assert!(!rendered.contains("Toggle selection"));
+
+        state.pending_decision = Some(decision(vec![2]));
+        ui.begin_decision(build_client_view(&state, &registry, Side::Corp));
+        assert_eq!(ui.legal_action_labels(), vec![format!("Confirm {}", title(&other)), "Select a different card".to_string()]);
+        assert_eq!(ui.actions_title(), Some(format!("choose 1 card from HQ (Selected: {})", title(&other))));
     }
 
     /// The split follows the viewer: the Corp block keeps the larger share

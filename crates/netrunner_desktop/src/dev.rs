@@ -30,6 +30,9 @@
 //!   meet) and the autoplay counts as done, so the
 //!   screenshot catches a run in flight: the lane, its chips, the line
 //!   to the server.
+//! - `NETRUNNER_HOLD_SELECTION=1` — on the board, the autoplay stops at
+//!   the first card-selection prompt the person is asked, so the
+//!   screenshot catches the pop-up's buttons naming the cards.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -81,6 +84,8 @@ pub struct Dev {
     pub menu: bool,
     /// Hold a run at its first encounter for the screenshot.
     pub hold_run: bool,
+    /// Stop the autoplay at the first card-selection prompt.
+    pub hold_selection: bool,
     /// Open the sheet of the first installed Corp card, once.
     pub sheet: bool,
     pub screenshot: Option<PathBuf>,
@@ -108,6 +113,7 @@ impl Dev {
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
+            hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
             sheet: std::env::var_os("NETRUNNER_SHEET").is_some_and(|v| !v.is_empty()),
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,

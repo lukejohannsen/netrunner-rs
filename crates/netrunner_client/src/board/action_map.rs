@@ -21,12 +21,16 @@
 //! [`ActionMap::decisions`]: the mulligan, a trace bid, a paid choice,
 //! an access decision, a selection to confirm — the thing the prompt is
 //! asking, listed under it. Together with the targeted entries that is
-//! every index exactly once, and a flat panel of the whole list (the
+//! every index exactly once — except a second copy of a card in a
+//! selection, which the button for the first copy stands for
+//! (`selection` says why) — and a flat panel of the whole list (the
 //! "play helper") is an aid a person turns on, not the way in.
 //!
 //! Nothing here decides legality: an action is in the map because the
 //! engine put it in `legal_actions`, and `MatchHandle::submit` sends it
 //! back unfiltered.
+
+use std::collections::BTreeSet;
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
@@ -37,6 +41,7 @@ use netrunner_core::view::ClientView;
 
 use crate::actions::{card_title, describe_action, explain_action};
 use crate::prose;
+use crate::selection::Selection;
 
 /// The thing on the board an entry belongs to.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -163,6 +168,13 @@ pub struct ActionEntry {
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ActionMap {
     pub entries: Vec<ActionEntry>,
+    /// The card-selection prompt, when the viewer is choosing — what orders
+    /// its decisions (`Selection::rank`).
+    selection: Option<Selection>,
+    /// The selection positions another decision button already stands for
+    /// — a second copy of a card in the same place (`Selection::hidden`).
+    /// Still entries, so the play helper lists them; not decisions.
+    collapsed: BTreeSet<usize>,
 }
 
 impl ActionMap {
@@ -172,7 +184,15 @@ impl ActionMap {
             .iter()
             .map(|action| ActionEntry { action: action.clone(), label: describe_action(action, registry, Some(view)), targets: targets_of(action) })
             .collect();
-        Self { entries }
+        let selection = Selection::of(view, registry);
+        let collapsed = selection.as_ref().map(|selection| selection.hidden()).unwrap_or_default();
+        Self { entries, selection, collapsed }
+    }
+
+    /// Whether entry `index` is a selection button another one already
+    /// stands for (see `collapsed`).
+    pub fn is_collapsed(&self, index: usize) -> bool {
+        matches!(self.entries.get(index).map(|e| &e.action), Some(PlayerAction::ToggleCardSelection { position }) if self.collapsed.contains(position))
     }
 
     /// One sentence on what entry `index` does, for a tooltip or a
@@ -224,18 +244,25 @@ impl ActionMap {
     /// What the prompt is asking: every entry that is on no target and on
     /// no control — the mulligan, a bid, a choice, an access decision —
     /// plus the selection positions, which the board does not place
-    /// (a `ChooseCards` prompt's zone is not drawn as clickable cards yet).
+    /// (a `ChooseCards` prompt's zone is not drawn as clickable cards yet),
+    /// less the ones a button for an identical copy already stands for, and
+    /// in the order a selection reads (`Selection::rank`).
     pub fn decisions(&self) -> Vec<usize> {
-        self.entries
+        let mut decisions: Vec<usize> = self
+            .entries
             .iter()
             .enumerate()
-            .filter(|(_, entry)| {
+            .filter(|(i, entry)| {
                 // `all` is vacuously true of no targets, hence the guard.
                 (entry.targets.is_empty() && !Control::any_matches(&entry.action))
-                    || (!entry.targets.is_empty() && entry.targets.iter().all(|t| matches!(t, Target::Position(_))))
+                    || (!entry.targets.is_empty() && entry.targets.iter().all(|t| matches!(t, Target::Position(_))) && !self.is_collapsed(*i))
             })
             .map(|(i, _)| i)
-            .collect()
+            .collect();
+        if let Some(selection) = &self.selection {
+            decisions.sort_by_key(|i| selection.rank(&self.entries[*i].action));
+        }
+        decisions
     }
 
     pub fn is_empty(&self) -> bool {
@@ -322,10 +349,13 @@ impl Prompt {
                 }
                 PendingDecision::ChooseCards { min, max, selected, source_card, prompting_card, .. } => {
                     let range = if min == max { format!("{min}") } else { format!("{min} to {max}") };
-                    Prompt {
-                        title: format!("{}: choose {range} card{}", asked_by(prompting_card, source_card), if *max == 1 { "" } else { "s" }),
-                        detail: format!("{} selected", selected.len()),
-                    }
+                    // The chosen cards by name; a count only for a viewer
+                    // who is not choosing and so has no names to be told.
+                    let detail = match Selection::of(view, registry) {
+                        Some(selection) => selection.summary(),
+                        None => format!("{} selected", selected.len()),
+                    };
+                    Prompt { title: format!("{}: choose {range} card{}", asked_by(prompting_card, source_card), if *max == 1 { "" } else { "s" }), detail }
                 }
                 PendingDecision::ChooseTriggerOrder { .. } => Prompt { title: "Choose which triggers first".to_string(), detail: String::new() },
                 PendingDecision::ChooseServer { source_card, prompting_card, .. } => {
@@ -489,8 +519,18 @@ mod tests {
                         // The bar, the decisions and the targeted entries
                         // cover every index (a draw is on the bar and on
                         // the deck): nothing is reachable only from the
-                        // flat panel.
+                        // flat panel — save a collapsed copy, which a
+                        // shown decision with the same words stands for.
                         let mut seen: Vec<usize> = map.decisions();
+                        for index in (0..map.entries.len()).filter(|i| map.is_collapsed(*i)) {
+                            let label = &map.entries[index].label;
+                            assert!(
+                                map.decisions().iter().any(|d| map.entries[*d].label == *label),
+                                "seed {seed}: collapsed {:?} has no shown button saying {label:?}",
+                                map.entries[index].action
+                            );
+                            seen.push(index);
+                        }
                         for control in Control::for_side(side) {
                             if let Some(index) = map.for_control(*control) {
                                 seen.push(index);

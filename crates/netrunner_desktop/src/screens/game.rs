@@ -86,7 +86,7 @@ use netrunner_client::board::action_map::server_name;
 use netrunner_client::board::{facts, Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Transition, Zone};
 use netrunner_client::card_face::Face;
 use netrunner_core::dsl::{CardId, CardType};
-use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, RunPhase, ServerId, Side, SubroutineStatus};
+use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, RunPhase, ServerId, Side, SubroutineStatus};
 use netrunner_core::view::{ClientView, ServerView};
 
 use crate::card_images::CardImages;
@@ -462,6 +462,12 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
         }
     }
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
+        return;
+    }
+    // Held at a card-selection prompt for a screenshot: the autoplay is
+    // done, and the pop-up is what is shot.
+    if dev.hold_selection && model.0.view.as_ref().is_some_and(|view| matches!(view.pending_decision, Some(PendingDecision::ChooseCards { .. }))) {
+        dev.autoplayed = dev.autoplay;
         return;
     }
     dev.autoplayed += 1;
@@ -1736,7 +1742,14 @@ fn target_title(game: &Game, target: &Target) -> String {
         Target::Install(id) => game.card_at(*id).map_or_else(|| "This card".to_string(), |card| title(&card)),
         Target::Server(server) => server_name(*server),
         Target::Identity(side) => format!("{side:?} identity"),
-        Target::Position(position) => format!("Card {position}"),
+        // The card the prompt means by that position, as the selection
+        // names it; a position is never shown as a number.
+        Target::Position(position) => game
+            .view
+            .as_ref()
+            .and_then(|view| netrunner_client::selection::Selection::of(view, game.registry()))
+            .and_then(|selection| selection.candidate(*position).map(|candidate| selection.display(candidate)))
+            .unwrap_or_else(|| "A card".to_string()),
         Target::Pile(pile) => pile.name().to_string(),
     }
 }

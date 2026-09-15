@@ -35,7 +35,7 @@ pub fn push_log_line(log: &mut Vec<String>, entry: &PublicHistoryEntry, registry
         "[turn {}] {:?}: {}",
         entry.turn_number,
         entry.side,
-        describe_public_action(&entry.action, registry, view)
+        describe_logged_action(&entry.action, registry, view)
     ));
     // What the action line cannot say — an install or a swap a card's own
     // text performed, an advance's resulting token count — comes off the
@@ -495,11 +495,19 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
                 _ => format!("Choose option {}", option_index + 1),
             }
         }
-        // A position, deliberately not resolved to a card: the zone it
-        // indexes may hold cards this viewer cannot identify, and the
-        // selection prompt renders the zone alongside this list anyway.
-        PlayerAction::ToggleCardSelection { position } => format!("Toggle selection of card {position}"),
-        PlayerAction::ConfirmCardSelection => "Confirm selection".to_string(),
+        // A position names a slot in the prompt's zone, not a card; the
+        // chooser's view carries the card at each (`ClientView::selection`,
+        // masked there), and `selection` words it. Anyone else — the
+        // opponent's log, a view-less caller — gets no position number:
+        // it meant nothing to a person.
+        PlayerAction::ToggleCardSelection { position } => view
+            .and_then(|view| crate::selection::Selection::of(view, registry))
+            .and_then(|selection| selection.toggle_label(*position))
+            .unwrap_or_else(|| "Select a card".to_string()),
+        PlayerAction::ConfirmCardSelection => view
+            .and_then(|view| crate::selection::Selection::of(view, registry))
+            .map(|selection| selection.confirm_label())
+            .unwrap_or_else(|| "Confirm selection".to_string()),
         PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?}"),
         // The action is a position into the parked trigger list, so the
         // card and trigger it names come from the view's `pending_decision`
@@ -517,6 +525,25 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
                 None => format!("Resolve trigger #{index} first"),
             }
         }
+    }
+}
+
+/// `describe_public_action` for a log line, which is written against the
+/// view *after* the action. Only a toggle reads differently there: labelled
+/// as a button it would say what toggling it *again* would do, so the log
+/// says what it did — "Selected Hedge Fund" — from whether the position is
+/// now chosen. The opponent sees the same from the public `selected`
+/// without the card.
+fn describe_logged_action(action: &PublicAction, registry: &CardRegistry, view: Option<&ClientView>) -> String {
+    let PublicAction::Visible(PlayerAction::ToggleCardSelection { position }) = action else {
+        return describe_public_action(action, registry, view);
+    };
+    if let Some(line) = view.and_then(|view| crate::selection::Selection::of(view, registry)).and_then(|s| s.logged_toggle(*position)) {
+        return line;
+    }
+    match view.and_then(|view| view.pending_decision.as_ref()) {
+        Some(PendingDecision::ChooseCards { selected, .. }) if !selected.contains(position) => "Deselected a card".to_string(),
+        _ => "Selected a card".to_string(),
     }
 }
 
@@ -617,8 +644,8 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::AcceptPendingPaidChoice { .. } => "Pay the offered cost to get the card's effect.".to_string(),
         PlayerAction::DeclinePendingPaidChoice => "Do not pay; the optional effect does not happen.".to_string(),
         PlayerAction::ResolvePendingChoice { .. } => "Pick this option for the card that is asking you to choose.".to_string(),
-        PlayerAction::ToggleCardSelection { .. } => "Add or remove this card from the selection a card effect is asking for.".to_string(),
-        PlayerAction::ConfirmCardSelection => "Confirm the cards you selected.".to_string(),
+        PlayerAction::ToggleCardSelection { .. } => "Add this card to the cards a card effect is asking you to choose, or take it back out to choose a different one.".to_string(),
+        PlayerAction::ConfirmCardSelection => "Confirm the cards you selected: the card effect goes ahead with them.".to_string(),
         PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?} as the server this card effect applies to."),
     }
 }
@@ -919,6 +946,99 @@ mod tests {
             masked_advance_lines > 0,
             "no advance line named a position, so the concealed path was never exercised"
         );
+    }
+
+    /// Every card-selection prompt a real game parks, worded as the chooser
+    /// reads it: no button on it is a number, each toggle names a card or
+    /// where a concealed one sits, the confirm says what it confirms, and
+    /// no word on it is a title the chooser's own board conceals. The
+    /// person's report was `Toggle selection of card 3`; this is the test
+    /// that it cannot come back for any card the sample decks hold.
+    #[test]
+    fn every_selection_prompt_names_its_cards_and_no_card_the_chooser_cannot_see() {
+        use crate::board::{ActionMap, Prompt};
+        use netrunner_bots::BotAgent;
+        use netrunner_core::cards::register_playable_cards;
+        use netrunner_core::rules::GameState;
+        use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
+
+        // "card 3", the old label's shape. A number is fine elsewhere — a
+        // remote's, an ICE's order, a title's own ("Brân 1.0").
+        let is_number = |label: &str| {
+            label.to_lowercase().split("card ").skip(1).any(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
+        };
+        let mut prompts = 0;
+        for seed in 0..24 {
+            let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
+            let mut registry = CardRegistry::new();
+            register_playable_cards(&mut registry);
+            let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).expect("sample decks are legal");
+            let mut session = Session::new(state, registry, Seat::External, Seat::External);
+            let mut agents = [RandomAgent::new(seed), RandomAgent::new(seed + 1000)];
+            loop {
+                match session.step() {
+                    SessionStep::Awaiting { side, view } => {
+                        if matches!(view.pending_decision, Some(PendingDecision::ChooseCards { side: chooser, .. }) if chooser == side) {
+                            prompts += 1;
+                            let registry = session.registry();
+                            let map = ActionMap::build(&view, registry);
+                            let detail = Prompt::of(&view, registry).expect("a selection is a prompt").detail;
+                            assert!(detail.starts_with("Selected: ") || detail == "Nothing selected yet", "seed {seed}: {detail:?}");
+                            // Titles the chooser's board conceals, less any
+                            // the view shows elsewhere (two copies of one ICE).
+                            let shown: std::collections::HashSet<String> = view
+                                .corp
+                                .servers
+                                .iter()
+                                .flat_map(|s| s.ice.iter().chain(s.root.iter()))
+                                .filter_map(|c| c.card.as_ref())
+                                .chain(view.selection.iter().filter_map(|c| c.card.as_ref()))
+                                .chain(view.corp.hq_cards.iter().flatten())
+                                .chain(view.runner.grip_cards.iter().flatten())
+                                .chain(view.runner.heap.iter())
+                                .chain(view.runner.rig.iter().map(|c| &c.card))
+                                .map(|card| card_title(card, registry))
+                                .collect();
+                            let concealed: Vec<String> = view
+                                .corp
+                                .servers
+                                .iter()
+                                .flat_map(|s| s.ice.iter().chain(s.root.iter()))
+                                .filter(|c| c.card.is_none())
+                                .filter_map(|c| session.state().find_corp_install(c.install_id))
+                                .map(|real| card_title(&real.card, registry))
+                                .filter(|title| !shown.contains(title))
+                                .collect();
+                            for entry in &map.entries {
+                                let label = &entry.label;
+                                match entry.action {
+                                    PlayerAction::ToggleCardSelection { .. } => assert!(
+                                        label.starts_with("Select ") || label.starts_with("Deselect "),
+                                        "seed {seed}: {label:?}"
+                                    ),
+                                    PlayerAction::ConfirmCardSelection => {
+                                        assert!(label.starts_with("Confirm ") || label == "Choose none", "seed {seed}: {label:?}")
+                                    }
+                                    _ => continue,
+                                }
+                                assert!(!is_number(label), "seed {seed}: a selection button is a number: {label:?}");
+                                assert!(label != "Select a card", "seed {seed}: the chooser's toggle names no card");
+                                for title in &concealed {
+                                    assert!(!label.contains(title.as_str()), "seed {seed}: {label:?} names {title}, which the board conceals");
+                                }
+                            }
+                        }
+                        let index = if side == Side::Corp { 0 } else { 1 };
+                        let action = agents[index].select_action(&view, session.registry());
+                        session.submit(action).expect("a legal action");
+                    }
+                    SessionStep::Applied { .. } => {}
+                    SessionStep::Ended { .. } => break,
+                    SessionStep::Stalled(reason) => panic!("seed {seed} stalled: {reason:?}"),
+                }
+            }
+        }
+        assert!(prompts > 0, "no game parked a selection, so nothing was checked");
     }
 
     /// One instance per variant, mirroring `PlayerAction::VARIANT_NAMES`'

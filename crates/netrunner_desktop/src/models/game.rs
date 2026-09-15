@@ -694,4 +694,57 @@ mod tests {
         assert!(total > 0, "three decisions in, something moved");
         handle.join();
     }
+
+    /// A card-selection prompt, as the pop-up draws it: a button per card by
+    /// name — the person's report was `Toggle selection of card N` — with a
+    /// second copy folded into the first's, the chosen cards named under
+    /// the prompt, and, once the one card allowed is chosen, "Confirm" and
+    /// "Select a different card", in that order.
+    #[test]
+    fn a_card_selection_pops_up_its_cards_by_name() {
+        use netrunner_core::dsl::{CardFilter, CardZoneRef};
+        use netrunner_core::rules::{GameState, PendingChoiceResume, PendingDecision};
+        use netrunner_core::view::build_client_view;
+
+        let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
+        let corp = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (mut state, _) = GameState::setup(&corp, &runner, &registry, 11).unwrap();
+        state.phase = GamePhase::Action(Side::Runner);
+        let first = state.runner.grip[0].clone();
+        let other = state.runner.grip.iter().find(|c| **c != first).cloned().expect("an opening grip of two titles");
+        state.runner.grip = vec![first.clone(), other.clone(), first.clone()];
+        let title = |id: &CardId| registry.get(id).unwrap().title.clone();
+        let parked = |selected: Vec<usize>| PendingDecision::ChooseCards {
+            side: Side::Runner,
+            source: CardZoneRef::OwnGrip,
+            filter: CardFilter::Any,
+            min: 1,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: None,
+            then: None,
+            selected,
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        };
+        let mut game = Game::new(registry.clone(), Side::Runner);
+        let labels = |game: &Game| game.actions.decisions().iter().map(|i| game.actions.entries[*i].label.clone()).collect::<Vec<_>>();
+
+        state.pending_decision = Some(parked(Vec::new()));
+        let view = build_client_view(&state, &registry, Side::Runner);
+        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Awaiting { view: Box::new(view) })));
+        assert_eq!(labels(&game), vec![format!("Select {}", title(&first)), format!("Select {}", title(&other))], "the second copy is the first one's button");
+        assert_eq!(game.prompt.as_ref().map(|p| p.detail.as_str()), Some("Nothing selected yet"));
+        assert_eq!(game.actions.entries.len(), 3, "the collapsed copy is still an entry, for the play helper");
+
+        state.pending_decision = Some(parked(vec![1]));
+        let view = build_client_view(&state, &registry, Side::Runner);
+        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Awaiting { view: Box::new(view) })));
+        assert_eq!(labels(&game), vec![format!("Confirm {}", title(&other)), "Select a different card".to_string()]);
+        assert_eq!(game.prompt.as_ref().map(|p| p.detail.clone()), Some(format!("Selected: {}", title(&other))));
+    }
 }

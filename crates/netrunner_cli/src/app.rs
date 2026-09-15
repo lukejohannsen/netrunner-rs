@@ -155,13 +155,20 @@ impl App {
         self.view.as_ref().map_or(&[], |view| view.legal_actions.as_slice())
     }
 
+    /// The list the pane shows and Enter submits from: every legal action,
+    /// less a second copy's selection toggle, which the first copy's row
+    /// stands for (`netrunner_client::selection`).
+    fn offered_actions(&self) -> Vec<PlayerAction> {
+        netrunner_client::selection::shown(self.legal_actions(), self.view.as_ref(), &self.registry)
+    }
+
     fn submit_selected_action(&mut self) {
         // The action would vanish into a closed channel, and the view it
         // was chosen from may be stale by the time the seat is back.
         if self.connection_lost {
             return;
         }
-        let Some(action) = self.legal_actions().get(self.selected).cloned() else { return };
+        let Some(action) = self.offered_actions().get(self.selected).cloned() else { return };
         let _ = self.tx.send(ClientMessage::SubmitAction(action));
     }
 
@@ -222,7 +229,7 @@ impl App {
     }
 
     fn move_selection(&mut self, delta: i32) {
-        let len = self.legal_actions().len();
+        let len = self.offered_actions().len();
         if len == 0 {
             return;
         }
@@ -478,11 +485,11 @@ impl RenderableView for App {
     }
 
     fn legal_action_labels(&self) -> Vec<String> {
-        self.legal_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect()
+        self.offered_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect()
     }
 
     fn selected_action(&self) -> Option<PlayerAction> {
-        self.legal_actions().get(self.selected).cloned()
+        self.offered_actions().get(self.selected).cloned()
     }
 
     fn action_log(&self) -> &[String] {
