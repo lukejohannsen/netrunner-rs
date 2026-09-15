@@ -1,0 +1,192 @@
+# Everything that builds more than the merge gate needs: the workspace on
+# Windows and macOS, the Bevy client on all three platforms, the beta
+# toolchain, rustdoc, every optional feature, and unused dependencies.
+#
+# These ran on every push and PR in ci.yml until 14 September 2026, and the
+# three-OS matrix was what every merge waited on. A platform break is worth
+# hearing about within a week, not worth holding every merge for, so they
+# run here weekly and on demand, and nothing in branch protection requires
+# them. To check a branch before merging it, once this file is on main:
+#
+#     gh workflow run platforms.yml --ref <branch>
+#
+# `--all-features` is deliberately absent for the reason ci.yml's header
+# gives; the `features` job below is its replacement.
+name: Platforms
+
+on:
+  # Two hours after the weekly CI run and one after the deep sweep, so a
+  # failure here is never confused with either.
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+  # Same reason as ci.yml: the sweeps inside `cargo test` dominate at
+  # opt-level 0, and opt-level 2 keeps the overflow checks release drops.
+  CARGO_PROFILE_DEV_OPT_LEVEL: 2
+
+jobs:
+  # The engine on the two platforms ci.yml no longer builds. Real platform
+  # surface here — `dirs` resolving OS data directories, crossterm/ratatui,
+  # the server tests binding loopback sockets, and pyo3 linking libpython
+  # three different ways.
+  #
+  # Clippy runs inside the matrix rather than as one Linux-only job so that
+  # platform-gated code is linted on the platform where it compiles.
+  #
+  # Cold-cache durations from the first run, which is what the timeout is
+  # sized against: macos 8m13s, windows 9m43s.
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      # One platform failing is information about that platform; the other
+      # should still report.
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+      - run: cargo clippy --workspace --exclude netrunner_desktop --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --exclude netrunner_desktop --locked
+
+  # The graphical client, on its own. Bevy is several hundred crates and
+  # minutes of cold compile, so it keeps a job and a cache key of its own
+  # rather than evicting the engine's build cache with Bevy's. The two share
+  # nothing but `netrunner_client`, which is small and engine-shaped and
+  # stays in the `test` jobs (here and in ci.yml). Before a merge, the
+  # Linux build of this crate is checked locally; see AGENTS.md.
+  #
+  # First cold-cache run (PR #23): ubuntu 16m03s, macos 16m42s, windows
+  # 33m35s, against the 45-minute timeout below.
+  #
+  # Linux needs the ALSA and udev headers at build time (bevy_audio and
+  # bevy_gilrs link them through pkg-config); Windows and macOS need
+  # nothing. The tests run without a window or a GPU — `MinimalPlugins`
+  # and the pure `models/` — so no virtual display is set up.
+  desktop:
+    name: desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Bevy's Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      - uses: $/.github/actions/setup-rust
+        with:
+          cache-key: desktop
+      - run: cargo clippy -p netrunner_desktop -p netrunner_client --all-targets --locked -- -D warnings
+      - run: cargo test -p netrunner_desktop -p netrunner_client --locked
+      - run: cargo check -p netrunner_desktop --features onnx --locked
+      - run: cargo doc -p netrunner_desktop --no-deps --locked
+        env:
+          RUSTDOCFLAGS: -D warnings -A rustdoc::broken_intra_doc_links
+
+  # Non-blocking, on purpose: a new lint landing in beta is something to know
+  # about six weeks early, not a reason to stop a PR.
+  beta:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+        with:
+          toolchain: beta
+      - run: cargo clippy --workspace --exclude netrunner_desktop --all-targets --locked -- -D warnings
+      - run: cargo test --workspace --exclude netrunner_desktop --locked
+
+  # Clippy does not check the doc comments themselves, and this codebase's
+  # comments carry its design decisions, so they are worth a gate of their
+  # own: bad HTML, unopenable code blocks, and public docs linking to private
+  # items (seven of which this job found on its first run) all fail here.
+  docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      # broken_intra_doc_links is the one rustdoc lint allowed, and the reason
+      # is the domain rather than laziness: Netrunner's printed symbols are
+      # written `[click]`, `[c]`, `[credit]`, `[mu]`, `[trash]`, this repo's
+      # comments quote card text verbatim as a matter of house style, and
+      # rustdoc reads every one of those as an intra-doc link — 42 of them
+      # today, across the DSL modules. The alternative is escaping each as
+      # `\[click\]` forever, which taxes the most distinctive habit in these
+      # comments to protect rendered docs that are not published anywhere.
+      # Every other rustdoc lint stays denied. Revisit if this project ever
+      # publishes its API docs, where a dead link would start costing a
+      # reader something.
+      RUSTDOCFLAGS: -D warnings -A rustdoc::broken_intra_doc_links
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+      # The desktop crate's docs are built in its own job, where Bevy is
+      # already compiled.
+      - run: cargo doc --workspace --exclude netrunner_desktop --no-deps --locked
+
+  # Every optional feature, one crate at a time. Left off the main matrix
+  # because `ort`'s `download-binaries` fetches an ONNX Runtime shared
+  # library from a third-party CDN at build time, so this is the one job with
+  # a network dependency beyond crates.io.
+  features:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/setup-rust
+      - name: netrunner_core with the external card-directory loader
+        run: cargo test -p netrunner_core --features fs-loader --locked
+      - name: netrunner_bots with the ONNX policy evaluator
+        run: cargo test -p netrunner_bots --features onnx --locked
+      # tests/onnx_opponent.rs is `#![cfg(feature = "onnx")]` and needs no
+      # checkpoint — it builds its model from netrunner_bots::onnx_fixture, a
+      # hand-encoded protobuf. Its header already claimed it "runs in CI
+      # without a training run"; this step is what makes that true.
+      - name: netrunner_cli with an ONNX opponent
+        run: cargo test -p netrunner_cli --features onnx --locked
+      - name: netrunner_selfplay with ONNX
+        run: cargo check -p netrunner_selfplay --features onnx --locked
+      # Check, not test, and deliberately: with `extension-module` PyO3 does
+      # not link libpython, so no runnable test binary exists by design. What
+      # this proves is that the maturin wheel path still compiles.
+      - name: netrunner_gym as a Python extension module
+        run: cargo check -p netrunner_gym --features extension-module --locked
+
+  # Unused dependencies. Found two on its first run (netrunner_gym carried
+  # serde and serde_json with no use site), which is the argument for it.
+  machete:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af # v2.87.11
+        with:
+          tool: cargo-machete
+      # --with-metadata resolves the real dependency graph instead of
+      # grepping source, which is what keeps workspace path deps from
+      # reading as unused.
+      - run: cargo machete --with-metadata

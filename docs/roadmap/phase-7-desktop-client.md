@@ -147,7 +147,10 @@ composite action gained a `cache-key` input); `test`, `beta` and `docs`
 run `--exclude netrunner_desktop`; the `ci` aggregate requires it. First
 cold-cache run (PR #23): **ubuntu 16m03s, macos 16m42s, windows 33m35s**,
 against a 45-minute timeout — Windows is the one to watch as the crate
-grows. The engine jobs were unmoved (ubuntu `test` 2m59s).
+grows. The engine jobs were unmoved (ubuntu `test` 2m59s). *Since 14
+September 2026 the `desktop` job runs weekly in `platforms.yml` and the
+`ci` aggregate no longer requires it; see the Infrastructure row of
+`ROADMAP.md`.*
 
 **Verified.** `cargo test --workspace` green (36 in `netrunner_client`,
 12 in `netrunner_card_sync`, 10 in `netrunner_desktop`), clippy silent,
