@@ -15,6 +15,73 @@
 //! bar, the control bar, the labels and gaps, at the sizes the screen
 //! draws them. They are here rather than read off laid-out nodes so the
 //! width can be computed before the first frame, and tested.
+//!
+//! **The board is the table seen from the person's chair.** Null Signal
+//! Games' setup puts the Corp's deck (R&D) at the left of the Corp's
+//! area with Archives to its left and the identity (HQ) to its right,
+//! remotes beyond, ice in a column out toward the Runner and a server's
+//! root between its ice and the Corp. The Corp sees that from their
+//! chair — Archives, R&D, HQ, remotes, left to right, ice climbing away
+//! from them — and the Runner sees it across the table, mirrored:
+//! remotes, HQ, R&D, Archives, ice coming down toward them, outermost
+//! nearest. [`servers_left_to_right`], [`column_top_down`] and
+//! [`ice_top_down`] are that rule, so the screen never decides an
+//! order itself. The Runner's installed cards have no position in the
+//! rules ("does not matter" — the learn-to-play guide), so the rig
+//! keeps its three groups in the one order for both chairs.
+
+use netrunner_core::rules::{ServerId, Side};
+
+/// The Corp's servers as the chair sees them, left to right: the Corp's
+/// own order (Archives, R&D, HQ, then the remotes as they were made)
+/// from the Corp's chair, and its mirror from the Runner's.
+pub fn servers_left_to_right(servers: impl IntoIterator<Item = ServerId>, chair: Side) -> Vec<ServerId> {
+    let mut order: Vec<ServerId> = servers.into_iter().collect();
+    order.sort_by_key(|s| match s {
+        ServerId::Archives => (0, 0),
+        ServerId::RnD => (1, 0),
+        ServerId::Hq => (2, 0),
+        ServerId::Remote(n) => (3, *n),
+    });
+    if chair == Side::Runner {
+        order.reverse();
+    }
+    order
+}
+
+/// What a server column is made of, named so a chair can order it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Piece {
+    /// The header: the deck, the identity or the remote's name, which
+    /// sits nearest the Corp.
+    Header,
+    /// The cards installed in the root, between the header and the ice.
+    Root,
+    /// The ice, in a column out toward the Runner.
+    Ice,
+}
+
+/// A server column top to bottom as the chair sees it: from the Corp's
+/// chair the ice climbs away toward the Runner at the top of the
+/// screen, so it comes first; from the Runner's the header is at the
+/// top and the ice comes down to them.
+pub fn column_top_down(chair: Side) -> [Piece; 3] {
+    match chair {
+        Side::Corp => [Piece::Ice, Piece::Root, Piece::Header],
+        Side::Runner => [Piece::Header, Piece::Root, Piece::Ice],
+    }
+}
+
+/// A server's ice top to bottom as the chair sees it. `ice` is the
+/// engine's order, outermost first (the piece approached first); the
+/// outermost sits nearest the Runner, which is the top of the Corp's
+/// screen and the bottom of the Runner's.
+pub fn ice_top_down<T>(ice: &[T], chair: Side) -> Vec<&T> {
+    match chair {
+        Side::Corp => ice.iter().collect(),
+        Side::Runner => ice.iter().rev().collect(),
+    }
+}
 
 /// What the board has to make room for.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -143,6 +210,19 @@ pub fn step(n: usize, width: f32, gap: f32, available: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_servers_and_the_columns_are_the_table_seen_from_the_chair() {
+        let servers = [ServerId::Remote(1), ServerId::Hq, ServerId::Remote(0), ServerId::Archives, ServerId::RnD];
+        assert_eq!(servers_left_to_right(servers, Side::Corp), [ServerId::Archives, ServerId::RnD, ServerId::Hq, ServerId::Remote(0), ServerId::Remote(1)]);
+        assert_eq!(servers_left_to_right(servers, Side::Runner), [ServerId::Remote(1), ServerId::Remote(0), ServerId::Hq, ServerId::RnD, ServerId::Archives]);
+        assert_eq!(column_top_down(Side::Corp), [Piece::Ice, Piece::Root, Piece::Header]);
+        assert_eq!(column_top_down(Side::Runner), [Piece::Header, Piece::Root, Piece::Ice]);
+        // Outermost first from the engine: nearest the Runner either way.
+        let ice = ["outer", "middle", "inner"];
+        assert_eq!(ice_top_down(&ice, Side::Corp), [&"outer", &"middle", &"inner"]);
+        assert_eq!(ice_top_down(&ice, Side::Runner), [&"inner", &"middle", &"outer"]);
+    }
 
     #[test]
     fn the_face_shrinks_with_the_window_and_with_ice_and_stays_in_range() {

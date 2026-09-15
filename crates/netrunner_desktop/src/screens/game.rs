@@ -796,18 +796,21 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
             servers.push(ServerView { server: central, ice: Vec::new(), root: Vec::new() });
         }
     }
-    servers.sort_by_key(|s| match s.server {
-        ServerId::Hq => (0, 0),
-        ServerId::RnD => (1, 0),
-        ServerId::Archives => (2, 0),
-        ServerId::Remote(n) => (3, n),
-    });
+    // The table seen from the chair (`layout::servers_left_to_right`):
+    // the Corp's Archives, R&D, HQ, remotes; the Runner's mirror.
+    let order = layout::servers_left_to_right(servers.iter().map(|s| s.server), game.side);
+    servers.sort_by_key(|s| order.iter().position(|id| *id == s.server));
     let run = view.active_run.as_ref();
     let encountered = run.filter(|r| matches!(r.phase, RunPhase::ApproachIce | RunPhase::EncounterIce)).and_then(|r| r.ice.get(r.position)).map(|i| i.install_id);
     let size = fit.size();
+    // The columns line up along the Corp's edge of the table: their
+    // headers at the top from the Runner's chair, at the bottom from
+    // the Corp's, however tall their ice makes them.
+    let mut row_node = card_row();
+    row_node.align_items = if game.side == Side::Corp { AlignItems::FlexEnd } else { AlignItems::FlexStart };
     parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|area| {
         section_label(area, theme, "Servers");
-        area.spawn(card_row()).with_children(|row| {
+        area.spawn(row_node).with_children(|row| {
             for server in &servers {
                 let under_run = game.run_on(server.server);
                 let border = if under_run { theme.accent } else { theme.panel_border };
@@ -827,80 +830,101 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     BorderColor::all(border),
                 ))
                 .with_children(|column| {
-                    let count = match server.server {
-                        ServerId::Hq => format!(" · {}", view.corp.hq_count),
-                        ServerId::RnD => format!(" · {}", view.corp.rd_count),
-                        ServerId::Archives => format!(" · {}", view.corp.archives.len()),
-                        ServerId::Remote(_) => String::new(),
-                    };
-                    compact_button(column, theme, format!("{}{count}", server_name(server.server)), Click::Target(Target::Server(server.server)));
-                    // ICE, outermost at the top: a bar with the title when it
-                    // can be named, its strength, and the run's marker.
-                    for ice in server.ice.iter().rev() {
-                        let title = ice.card.as_ref().and_then(|id| core.registry.get(id));
-                        // The title when it may be named and the strength when
-                        // rezzed; an unrezzed bar is told by its dim border
-                        // and text, not a suffix that would wrap the bar.
-                        let label = match (ice.rezzed, title) {
-                            (true, Some(card)) => format!("{}  {}", card.title, card.strength.map_or(String::new(), |s| s.to_string())),
-                            (false, Some(card)) => card.title.clone(),
-                            (_, None) => "ICE".to_string(),
-                        };
-                        let colour = if ice.rezzed { theme.faction(title.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
-                        let text_colour = if ice.rezzed { theme.text } else { theme.text_dim };
-                        let mut bar = column.spawn((
-                            Button,
-                            widgets::Themed,
-                            Click::Target(Target::Install(ice.install_id)),
-                            Node {
-                                width: px(size.width() + 4.0),
-                                height: px(layout::ICE_BAR - 4.0),
-                                flex_shrink: 0.0,
-                                align_items: AlignItems::Center,
-                                justify_content: JustifyContent::Center,
-                                overflow: Overflow::clip(),
-                                border: UiRect::all(px(1)),
-                                border_radius: BorderRadius::all(px(4)),
-                                ..default()
-                            },
-                            BackgroundColor(theme.button),
-                            BorderColor::all(colour),
-                            children![(Text::new(label), theme.font(size::SMALL - 3.0), TextColor(text_colour))],
-                        ));
-                        if encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id) {
-                            bar.insert(outline(theme));
-                        }
-                    }
-                    for card in &server.root {
-                        let marker = (Button, Click::Target(Target::Install(card.install_id)));
-                        let entity = match card.card.as_ref().and_then(|id| core.registry.get(id)) {
-                            Some(def) => {
-                                let image = def.numeric_id.and_then(|code| images.face(code));
-                                spawn_face(column, theme, &Face::of(def), size, image, marker)
-                            }
-                            None => spawn_back(column, theme, images.back(Side::Corp), Side::Corp, size, marker),
-                        };
-                        if lit.installs.contains(&card.install_id) {
-                            column.commands().entity(entity).insert(outline(theme));
-                        }
-                        let mut chips = Vec::new();
-                        if card.advancement_tokens > 0 {
-                            chips.push(format!("{} adv", card.advancement_tokens));
-                        }
-                        if let Some(counters) = card.counters.filter(|n| *n > 0) {
-                            chips.push(format!("{counters} ctr"));
-                        }
-                        if !card.rezzed && card.card.is_some() {
-                            chips.push("unrezzed".to_string());
-                        }
-                        if !chips.is_empty() {
-                            column.spawn(widgets::dim(theme, chips.join(" · ")));
+                    // Header, root and ice in the chair's order
+                    // (`layout::column_top_down`): the header nearest the
+                    // Corp, the ice out toward the Runner, outermost nearest.
+                    for piece in layout::column_top_down(game.side) {
+                        match piece {
+                            layout::Piece::Header => spawn_server_header(column, theme, view, server.server),
+                            layout::Piece::Ice => spawn_server_ice(column, theme, core, server, game.side, encountered, lit, size),
+                            layout::Piece::Root => spawn_server_root(column, theme, core, images, server, lit, size),
                         }
                     }
                 });
             }
         });
     });
+}
+
+fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, server: ServerId) {
+    let count = match server {
+        ServerId::Hq => format!(" · {}", view.corp.hq_count),
+        ServerId::RnD => format!(" · {}", view.corp.rd_count),
+        ServerId::Archives => format!(" · {}", view.corp.archives.len()),
+        ServerId::Remote(_) => String::new(),
+    };
+    compact_button(column, theme, format!("{}{count}", server_name(server)), Click::Target(Target::Server(server)));
+}
+
+/// A server's ice as bars: the title when it can be named, its strength
+/// when rezzed, and the run's marker on the piece being approached.
+#[allow(clippy::too_many_arguments)]
+fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize) {
+    for ice in layout::ice_top_down(&server.ice, chair) {
+        let title = ice.card.as_ref().and_then(|id| core.registry.get(id));
+        // The title when it may be named and the strength when
+        // rezzed; an unrezzed bar is told by its dim border
+        // and text, not a suffix that would wrap the bar.
+        let label = match (ice.rezzed, title) {
+            (true, Some(card)) => format!("{}  {}", card.title, card.strength.map_or(String::new(), |s| s.to_string())),
+            (false, Some(card)) => card.title.clone(),
+            (_, None) => "ICE".to_string(),
+        };
+        let colour = if ice.rezzed { theme.faction(title.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
+        let text_colour = if ice.rezzed { theme.text } else { theme.text_dim };
+        let mut bar = column.spawn((
+            Button,
+            widgets::Themed,
+            Click::Target(Target::Install(ice.install_id)),
+            Node {
+                width: px(size.width() + 4.0),
+                height: px(layout::ICE_BAR - 4.0),
+                flex_shrink: 0.0,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                overflow: Overflow::clip(),
+                border: UiRect::all(px(1)),
+                border_radius: BorderRadius::all(px(4)),
+                ..default()
+            },
+            BackgroundColor(theme.button),
+            BorderColor::all(colour),
+            children![(Text::new(label), theme.font(size::SMALL - 3.0), TextColor(text_colour))],
+        ));
+        if encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id) {
+            bar.insert(outline(theme));
+        }
+    }
+}
+
+/// The cards in a server's root, each with its chips beneath.
+fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, server: &ServerView, lit: &Lit, size: FaceSize) {
+    for card in &server.root {
+        let marker = (Button, Click::Target(Target::Install(card.install_id)));
+        let entity = match card.card.as_ref().and_then(|id| core.registry.get(id)) {
+            Some(def) => {
+                let image = def.numeric_id.and_then(|code| images.face(code));
+                spawn_face(column, theme, &Face::of(def), size, image, marker)
+            }
+            None => spawn_back(column, theme, images.back(Side::Corp), Side::Corp, size, marker),
+        };
+        if lit.installs.contains(&card.install_id) {
+            column.commands().entity(entity).insert(outline(theme));
+        }
+        let mut chips = Vec::new();
+        if card.advancement_tokens > 0 {
+            chips.push(format!("{} adv", card.advancement_tokens));
+        }
+        if let Some(counters) = card.counters.filter(|n| *n > 0) {
+            chips.push(format!("{counters} ctr"));
+        }
+        if !card.rezzed && card.card.is_some() {
+            chips.push("unrezzed".to_string());
+        }
+        if !chips.is_empty() {
+            column.spawn(widgets::dim(theme, chips.join(" · ")));
+        }
+    }
 }
 
 /// The rig as one row of three groups; the cards of every group overlap

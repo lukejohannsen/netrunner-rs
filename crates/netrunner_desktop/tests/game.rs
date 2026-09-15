@@ -118,8 +118,12 @@ fn to_the_runners_turn(app: &mut App) {
     });
 }
 
-/// Play vs Computer → Start (Novice, unrated) → the board.
+/// Play vs Computer → Start (Novice, unrated) → the board, as the Runner.
 fn start_a_game(app: &mut App) {
+    start_a_game_as(app, Side::Runner);
+}
+
+fn start_a_game_as(app: &mut App, human: Side) {
     app.world_mut().write_message(Navigate(AppScreen::NewGame));
     app.update();
     app.update();
@@ -127,7 +131,7 @@ fn start_a_game(app: &mut App) {
     // The form's choice, made directly rather than through five drop-downs:
     // the bottom rung so the bot answers at once, unrated so no file is
     // written. `start` is the same function the Start button calls.
-    let choice = StartChoice { human: Side::Runner, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string(), rated: false };
+    let choice = StartChoice { human, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string(), rated: false };
     let active = new_game::start(app.world().resource::<ClientCore>(), &choice).expect("the default decks start a game");
     app.world_mut().insert_resource(active);
     app.world_mut().write_message(Navigate(AppScreen::Game));
@@ -241,6 +245,44 @@ fn the_control_bar_greys_what_is_not_legal_and_submits_what_is() {
     // log, not the phase, says the turn ended.
     let log = &app.world().resource::<Model>().0.log;
     assert!(log.iter().any(|line| line.contains("Runner: End turn")), "{log:?}");
+}
+
+/// Every `Click` on the screen in tree order — parents before children,
+/// siblings in the order they were spawned — which is the order a row
+/// draws left to right and a column top to bottom.
+fn clicks_in_tree_order(app: &mut App) -> Vec<Click> {
+    let world = app.world_mut();
+    let roots: Vec<Entity> = world.query_filtered::<Entity, (With<Node>, Without<ChildOf>)>().iter(world).collect();
+    let mut stack: Vec<Entity> = roots.into_iter().rev().collect();
+    let mut clicks = Vec::new();
+    while let Some(entity) = stack.pop() {
+        if let Some(click) = world.get::<Click>(entity) {
+            clicks.push(click.clone());
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter().rev());
+        }
+    }
+    clicks
+}
+
+/// The board is the table seen from the chair: the Corp reads their own
+/// servers Archives, R&D, HQ, then the remotes, left to right; the
+/// Runner sees them across the table, mirrored.
+#[test]
+fn the_servers_are_the_table_seen_from_the_chair() {
+    let servers = |app: &mut App| -> Vec<ServerId> {
+        clicks_in_tree_order(app).into_iter().filter_map(|c| if let Click::Target(Target::Server(s)) = c { Some(s) } else { None }).collect()
+    };
+    let (mut app, _dir) = headless_client();
+    start_a_game_as(&mut app, Side::Corp);
+    wait_for(&mut app, "the Corp's first decision", |app| click_entry_count(app) > 0);
+    assert_eq!(servers(&mut app), [ServerId::Archives, ServerId::RnD, ServerId::Hq], "the Corp's chair");
+
+    let (mut app, _dir) = headless_client();
+    start_a_game_as(&mut app, Side::Runner);
+    wait_for(&mut app, "the Runner's first decision", |app| click_entry_count(app) > 0);
+    assert_eq!(servers(&mut app), [ServerId::Hq, ServerId::RnD, ServerId::Archives], "the Runner's chair, across the table");
 }
 
 /// A zone click opens what may be done there and never does it: R&D

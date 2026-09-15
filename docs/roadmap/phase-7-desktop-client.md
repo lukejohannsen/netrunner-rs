@@ -647,6 +647,31 @@ person's order:
 10. **The servers as a table reads them, right to left**: Archives, R&D,
     HQ, then the remotes — `spawn_servers`' sort key is the reverse of
     that today, HQ first from the left.
+    *Done (15 September 2026, `feat/board-as-the-table-from-the-chair`).
+    The rule is Null Signal Games' setup seen from the chair: the
+    learn-to-play guide puts R&D at the left of the Corp's area with
+    Archives to its left and the identity (HQ) to its right, ice "in a
+    column out toward the Runner" and a root "between these areas and
+    the ice". So the Corp's chair reads Archives, R&D, HQ, remotes left
+    to right with the ice climbing away at the top of each column,
+    outermost first; the Runner's chair is the mirror — remotes, HQ,
+    R&D, Archives (the "right to left" asked for), header at the top,
+    ice coming down to them with the outermost nearest. Three pure
+    functions in `models::layout` (`servers_left_to_right`,
+    `column_top_down`, `ice_top_down`), tested, and one desktop test
+    that starts a game in each chair and reads the headers' order off
+    the tree. Found on the way: the old column drew the ice
+    innermost-first for both chairs while its comment said outermost
+    (`ServerView::ice` is outermost-first, the engine's approach
+    order), so a stacked server read backwards. The Runner's rig keeps
+    its three groups in one order: the guide says an installed Runner
+    card's position "does not matter", and three rows would cost board
+    height for nothing. The columns line up along the Corp's edge —
+    headers at the top from the Runner's chair, at the bottom from the
+    Corp's — however tall their ice makes them, which the first Corp
+    screenshot showed was needed: top-aligned, a bare HQ floated above
+    a two-ice Archives. Verified as both chairs sixty decisions in, no
+    board scroll area.*
 11. **A deck is a stack of cards** with its count beneath, not a header
     with a number: R&D and the stack drawn as overlapped backs, the way
     a pile sits on a table.
