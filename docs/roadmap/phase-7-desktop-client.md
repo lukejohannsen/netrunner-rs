@@ -628,6 +628,25 @@ person's order:
     with a number: R&D and the stack drawn as overlapped backs, the way
     a pile sits on a table.
 
+And three from the look at §4a (15 September 2026), before it merged:
+
+12. **The toggles fall out of the options window.** The gear menu's
+    rows are the Settings screen's rows at their 220 + 260 px widths
+    plus a control, in a 560 px panel; the control lands outside it.
+    The rows want a width that follows the panel, or the panel the rows.
+13. **A decision — the mulligan, an access, a choice a card asks —
+    should be a pop-up in the middle of the screen**, not buttons on
+    the rail at the top right: it is the thing the game is waiting on,
+    and the middle is where the eyes are. The rail keeps the prompt's
+    words; the decision's buttons move to a centred panel, the way the
+    quit prompt already is.
+14. **Right-click on a card (or the Mac's equivalent) opens its
+    actions** — install into a remote or a central, play, whatever the
+    card can do — as a menu at the pointer, with the left click's sheet
+    staying the way to read it. `Interaction` reports only the primary
+    button, so this reads `ButtonInput<MouseButton>` with the hovered
+    node.
+
 **Open, for §4 onward:** the transitions are highlights, not movement;
 the sound bank and the tweens are §4. A `ChooseCards` prompt's positions
 are reachable only from the panel (item 1). The opponent's hand is
