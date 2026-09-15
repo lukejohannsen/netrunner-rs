@@ -39,4 +39,10 @@ pub enum SyncError {
 
     #[error("what NetrunnerDB served for the icon font is not a TrueType file")]
     IconFontInvalid,
+
+    #[error("jinteki.net answered {status} for the {side:?} card back")]
+    CardBackDownload { side: netrunner_core::rules::Side, status: u16 },
+
+    #[error("what jinteki.net served for the {side:?} card back is not a PNG")]
+    CardBackInvalid { side: netrunner_core::rules::Side },
 }

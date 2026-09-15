@@ -36,7 +36,10 @@
 //! - Assets come in three tiers: a procedural one that always works, an
 //!   optional file under `assets/` that is prettier, and a user override
 //!   under `<data dir>/netrunner/assets/`. Nothing that is not the
-//!   project's to license is committed.
+//!   project's to license is committed: the scans, the icon font and
+//!   the official card backs are fetched into the cache on the player's
+//!   opt-in, and a back already on screen takes the fetched one under
+//!   the same handle.
 
 // A Bevy query with two or three components and a filter is the normal
 // shape of a system parameter, and naming each one is noise that hides

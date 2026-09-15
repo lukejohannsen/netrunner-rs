@@ -29,6 +29,15 @@
 //! treated as the card scans are: fetched into the cache on the
 //! player's say-so, never shipped. A client without it draws the
 //! symbols from its own fonts and names the factions in words.
+//!
+//! **So are the official card backs.** Null Signal Games does not
+//! publish its backs — its print-and-play files omit them and its
+//! visual-assets page keeps them out of the public pack — and
+//! jinteki.net, the community's online client, draws them by NSG's
+//! arrangement from [`CARD_BACK_CORP_URL`] and [`CARD_BACK_RUNNER_URL`].
+//! Those are fetched into the cache on the same opt-in, for the player's
+//! own screen, exactly as the scans are, and a client without them draws
+//! its own back.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -39,6 +48,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use tokio::sync::Semaphore;
 
 use netrunner_core::card::CardId;
+use netrunner_core::rules::Side;
 
 use crate::cache_path::resolve_images_dir;
 use crate::error::SyncError;
@@ -58,6 +68,30 @@ pub const ICON_FONT_URL: &str = "https://netrunnerdb.com/fonts/netrunner.ttf";
 
 /// The icon font's name in the cache, beside the images.
 const ICON_FONT_FILE: &str = "netrunnerdb-icons.ttf";
+
+/// Where jinteki.net serves the official Corp card back (255 × 356,
+/// a 16-bit PNG). The same files sit in its repository under
+/// `resources/public/img/`, but the site is what it deploys.
+pub const CARD_BACK_CORP_URL: &str = "https://jinteki.net/img/nsg-corp.png";
+/// Where jinteki.net serves the official Runner card back.
+pub const CARD_BACK_RUNNER_URL: &str = "https://jinteki.net/img/nsg-runner.png";
+
+/// A back's name in the cache, beside the images: the same name the
+/// desktop's drop-in tier uses under `assets/cards/`, so one word means
+/// one file wherever it sits.
+fn card_back_file(side: Side) -> &'static str {
+    match side {
+        Side::Corp => "back-corp.png",
+        Side::Runner => "back-runner.png",
+    }
+}
+
+pub fn card_back_url(side: Side) -> &'static str {
+    match side {
+        Side::Corp => CARD_BACK_CORP_URL,
+        Side::Runner => CARD_BACK_RUNNER_URL,
+    }
+}
 
 /// Whether a card's image is on disk.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,6 +227,40 @@ impl CardImageStore {
         Ok(path)
     }
 
+    /// `<dir>/back-corp.png` or `<dir>/back-runner.png`, whether or not
+    /// it exists.
+    pub fn card_back_path(&self, side: Side) -> PathBuf {
+        self.dir.join(card_back_file(side))
+    }
+
+    /// The official back for `side`, if it has been fetched.
+    pub fn card_back(&self, side: Side) -> Option<PathBuf> {
+        let path = self.card_back_path(side);
+        path.is_file().then_some(path)
+    }
+
+    /// Fetches the official back for `side` unless it is already on
+    /// disk. Under half a megabyte, once a side; the bytes are checked
+    /// for a PNG signature before they are kept, for the reason the
+    /// icon font's are — an error page in a `.png` would decode as
+    /// nothing and the drawn back would stay, with no word why.
+    pub async fn download_card_back(&self, side: Side) -> Result<PathBuf, SyncError> {
+        let path = self.card_back_path(side);
+        if path.is_file() {
+            return Ok(path);
+        }
+        let response = self.http.get(card_back_url(side)).send().await?;
+        if !response.status().is_success() {
+            return Err(SyncError::CardBackDownload { side, status: response.status().as_u16() });
+        }
+        let bytes = response.bytes().await?;
+        if !is_png(&bytes) {
+            return Err(SyncError::CardBackInvalid { side });
+        }
+        write_atomically(&path, &bytes).await?;
+        Ok(path)
+    }
+
     /// Asks NetrunnerDB for its current image URL template and keeps it.
     /// One cards request, the same one a catalog sync makes; the card data
     /// in the response is not used here.
@@ -298,6 +366,11 @@ fn is_truetype(bytes: &[u8]) -> bool {
     matches!(bytes.get(..4), Some([0, 1, 0, 0] | b"true" | b"OTTO"))
 }
 
+/// The eight-byte PNG signature.
+fn is_png(bytes: &[u8]) -> bool {
+    bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -339,6 +412,23 @@ mod tests {
         assert_eq!(store.icon_font(), Some(dir.join("netrunnerdb-icons.ttf")));
         assert!(is_truetype(&[0, 1, 0, 0, 0, 11]) && is_truetype(b"OTTO....") && is_truetype(b"true...."));
         assert!(!is_truetype(b"<!DOCTYPE html>") && !is_truetype(b"\0\x01"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_card_backs_live_beside_the_images_and_are_absent_until_fetched() {
+        let dir = temp_dir("backs");
+        let store = CardImageStore::with_dir(dir.clone());
+        assert_eq!(store.card_back_path(Side::Corp), dir.join("back-corp.png"));
+        assert_eq!(store.card_back_path(Side::Runner), dir.join("back-runner.png"));
+        assert_eq!(store.card_back(Side::Corp), None);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(store.card_back_path(Side::Corp), b"\x89PNG\r\n\x1a\n....").unwrap();
+        assert_eq!(store.card_back(Side::Corp), Some(dir.join("back-corp.png")));
+        assert_eq!(store.card_back(Side::Runner), None);
+        assert!(card_back_url(Side::Corp).ends_with("nsg-corp.png") && card_back_url(Side::Runner).ends_with("nsg-runner.png"));
+        assert!(is_png(b"\x89PNG\r\n\x1a\n\0\0\0\rIHDR"));
+        assert!(!is_png(b"<!DOCTYPE html>") && !is_png(b"\x89PN"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 

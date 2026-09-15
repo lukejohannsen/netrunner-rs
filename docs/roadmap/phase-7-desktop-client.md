@@ -621,6 +621,29 @@ person's order:
    they should be downloaded into the cache on the same opt-in as the
    scans and the icon font, and drawn wherever `CardImages::back` is
    asked, with the painted back as the tier beneath.
+   *Done (15 September 2026, `feat/official-card-backs-cached`).
+   Null Signal Games publishes no backs — its print-and-play files omit
+   them and its visual-assets page keeps them out of the public pack —
+   so the source is the copies jinteki.net serves for its own table
+   (`img/nsg-corp.png`, `img/nsg-runner.png`, 255 × 356 sixteen-bit
+   PNGs), read on the images opt-in for the player's own screen the way
+   the scans are read from NetrunnerDB, never committed.
+   `CardImageStore::download_card_back` keeps them beside the scans as
+   `back-corp.png` / `back-runner.png` — the drop-in's names, so one
+   name means one file in every tier — after checking for a PNG
+   signature. `card_images::load_backs` picks the best tier on disk at
+   start (drop-in, bundled, cache, painted) and, for a back still
+   painted, looks at the cache once a second and fetches once when the
+   opt-in is on; the fetched image is decoded off the main thread and
+   put **under the existing handle** (`Assets::insert`), so a hand of
+   backs already on screen changes without a redraw and no screen
+   knows the tier moved. One finding: a sixteen-bit PNG decodes to
+   `Rgba16Unorm`, which has no sRGB variant, so the renderer read it as
+   linear and drew the back washed out; `eight_bit_srgb` narrows it to
+   `Rgba8UnormSrgb` on load, tested. Verified as both chairs forty
+   decisions in: the fetch landed 0.3 s after boot, mid-autoplay, and
+   the opponent's hand showed the official back at the screenshot; the
+   second run read them from the cache at start.*
 10. **The servers as a table reads them, right to left**: Archives, R&D,
     HQ, then the remotes — `spawn_servers`' sort key is the reverse of
     that today, HQ first from the left.
