@@ -118,6 +118,55 @@ pub(crate) fn zone_install_ids(state: &GameState, chooser: Side, zone: &CardZone
     }
 }
 
+/// The positions a parked `ChooseCards` may still name, with the card and
+/// install at each, for `view::build_client_view` to mask and publish to
+/// the chooser: `eligible_positions` (what `legal_actions` can toggle)
+/// together with `selected` (what the prompt must be able to say is
+/// chosen), in position order. `None` when no `ChooseCards` is parked.
+///
+/// Unmasked on purpose — this is the chooser's *entitlement*, not yet
+/// their view. What a chooser may still not see here — an opponent's
+/// unrezzed install, a facedown Archives card for the Runner — already has
+/// its rule on the masked board (`PublicInstalledCard`,
+/// `PublicArchivedCard`), and the caller applies it from there rather than
+/// restating it.
+pub(crate) fn selection_positions(
+    state: &GameState,
+    registry: &CardRegistry,
+) -> Option<SelectionPositions> {
+    let Some(PendingDecision::ChooseCards { side, source, filter, selected, source_install, .. }) = state.pending_decision.as_ref() else {
+        return None;
+    };
+    let corp_archives = matches!(source, CardZoneRef::OwnArchives)
+        || (matches!(source, CardZoneRef::OpponentDiscard) && owning_side(*side, source) == Side::Corp);
+    let cards = zone_card_ids(state, *side, source, *source_install);
+    let installs = zone_install_ids(state, *side, source);
+    let mut positions = eligible_positions(state, registry, *side, source, filter, *source_install);
+    positions.extend(selected.iter().copied());
+    positions.sort_unstable();
+    positions.dedup();
+    let candidates = positions
+        .into_iter()
+        .filter_map(|position| {
+            let card = cards.get(position)?.clone();
+            let install = installs.as_ref().and_then(|ids| ids.get(position).copied());
+            Some((position, card, install))
+        })
+        .collect();
+    Some(SelectionPositions { chooser: *side, corp_archives, candidates })
+}
+
+/// `selection_positions`' answer.
+pub(crate) struct SelectionPositions {
+    pub chooser: Side,
+    /// Whether the positions index the Corp's Archives, whose facedown
+    /// cards the masked board hides from the Runner — so the caller can
+    /// apply that mask as well as the install one.
+    pub corp_archives: bool,
+    /// `(position, card, install)`, in position order.
+    pub candidates: Vec<(usize, CardId, Option<InstallId>)>,
+}
+
 /// The cards hosted on the Runner rig install `source`, if it is one.
 fn hosted_cards_of(state: &GameState, source: Option<InstallId>) -> Option<&Vec<CardId>> {
     let source = source?;

@@ -350,7 +350,10 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
         PendingDecision::ChooseEffect { .. } => asks("choose one".to_string()),
         PendingDecision::ChooseCards { source, min, max, .. } => {
             let how_many = if min == max { plural(*min, "card", "cards") } else { format!("{min} to {max} cards") };
-            asks(format!("choose {how_many} from {}", describe_zone(source)))
+            // The chooser is told what they have chosen so far, by name —
+            // the one line a terminal pane has for it.
+            let chosen = crate::selection::Selection::of(view, registry).map(|s| format!(" ({})", s.summary())).unwrap_or_default();
+            asks(format!("choose {how_many} from {}{chosen}", describe_zone(source)))
         }
         PendingDecision::ChooseServer { .. } => asks("choose a server".to_string()),
         PendingDecision::ChooseTriggerOrder { .. } => Some("Choose which trigger resolves first".to_string()),

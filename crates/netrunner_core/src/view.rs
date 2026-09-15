@@ -20,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use crate::cards::CardRegistry;
 use crate::dsl::CardId;
 use crate::rules::{
-    legal_actions_for, mask_state_for_player, GamePhase, GameState, InstallSlot, MaskedZone, PaidAbilityWindow,
-    PendingPrevention, PlayerAction, PublicArchivedCard, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunState, ScoredAgenda, ServerId, Side,
+    legal_actions_for, mask_state_for_player, GamePhase, GameState, InstallId, InstallSlot, MaskedZone, PaidAbilityWindow,
+    PendingPrevention, PlayerAction, PublicArchivedCard, PublicGameState, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunState, ScoredAgenda, ServerId, Side,
     TraceState, Viewer,
 };
 
@@ -145,10 +145,68 @@ pub struct ClientView {
     pub pending_prevention: Option<PendingPrevention>,
     pub pending_paid_choice: Option<crate::rules::PendingPaidChoice>,
     pub pending_decision: Option<crate::rules::PendingDecision>,
+    /// The cards a parked `PendingDecision::ChooseCards` is choosing
+    /// between, one per position the chooser can still name — so a client
+    /// can say "Select Hedge Fund" where it said "Toggle selection of card
+    /// 3". **Empty for every viewer but the chooser**: an opponent and a
+    /// spectator see that a choice is being made, never among what.
+    ///
+    /// The positions are the ones `legal_actions` can toggle plus the ones
+    /// already `selected`, in position order; nothing else in the zone is
+    /// listed, so a search of R&D publishes the cards the filter admits and
+    /// not the deck. Each card is shown to the chooser because the card
+    /// asking says so — "search R&D", "look at the top card of your stack",
+    /// "reveal the grip" — which is why this is not the R&D and stack
+    /// count-only rule above being broken: it is the one case where a
+    /// card's text grants the look. The exception is an opponent's
+    /// unrezzed install (Tāo Salonga swapping ICE the Runner cannot
+    /// identify), whose `card` is `None` on exactly the condition
+    /// `PublicInstalledCard::card` is — read off the masked board, so the
+    /// two rules cannot drift.
+    #[serde(default)]
+    pub selection: Vec<SelectionCandidate>,
     /// `legal_actions_for(state, registry, side)` — only the actions this
     /// viewer may actually submit. Empty for a spectator, who may submit
     /// nothing.
     pub legal_actions: Vec<PlayerAction>,
+}
+
+/// One card a `ChooseCards` prompt may select, as its chooser sees it. See
+/// `ClientView::selection`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SelectionCandidate {
+    /// The `ToggleCardSelection` position this card is.
+    pub position: usize,
+    /// `None` only for an opponent's install the board conceals.
+    pub card: Option<CardId>,
+    /// The install, when the prompt selects from installed cards — public,
+    /// like `PublicInstalledCard::install_id`, and what lets a client say
+    /// where a card it cannot name sits.
+    pub install: Option<InstallId>,
+}
+
+/// `ClientView::selection` for `viewer`: the parked selection's candidates
+/// when the viewer is its chooser, with a Corp install's or an Archives
+/// card's identity taken from the masked board rather than decided here.
+fn selection_for(state: &GameState, registry: &CardRegistry, viewer: Viewer, public: &PublicGameState) -> Vec<SelectionCandidate> {
+    let Some(parked) = crate::rules::pending_choice::selection_positions(state, registry) else { return Vec::new() };
+    if !viewer.is(parked.chooser) {
+        return Vec::new();
+    }
+    parked
+        .candidates
+        .into_iter()
+        .map(|(position, card, install)| {
+            // A Corp install resolves through the masked board; a rig card
+            // is never masked, and `installed` does not hold one.
+            let masked = match install {
+                Some(id) => public.corp.installed.iter().find(|c| c.install_id == id).map(|c| c.card.clone()),
+                None if parked.corp_archives => public.corp.archives.get(position).map(|a| a.card.clone()),
+                None => None,
+            };
+            SelectionCandidate { position, card: masked.unwrap_or(Some(card)), install }
+        })
+        .collect()
 }
 
 fn zone_count(zone: &MaskedZone) -> usize {
@@ -204,6 +262,7 @@ fn active_player(phase: GamePhase) -> Side {
 pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: impl Into<Viewer>) -> ClientView {
     let viewer = viewer.into();
     let public = mask_state_for_player(state, viewer);
+    let selection = selection_for(state, registry, viewer, &public);
 
     let corp = CorpClientView {
         credits: public.corp.resources.credits.0,
@@ -260,6 +319,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         pending_prevention: public.pending_prevention,
         pending_paid_choice: public.pending_paid_choice,
         pending_decision: public.pending_decision,
+        selection,
         legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),
     }
 }
@@ -466,5 +526,128 @@ mod tests {
         let runner_sees = build_client_view(&state, &registry, Side::Runner);
         assert_eq!(view.corp, runner_sees.corp, "the Corp's board as the Runner sees it");
         assert_eq!(view.runner, corp_sees.runner, "the Runner's board as the Corp sees it");
+    }
+
+    fn choose_cards(side: Side, source: crate::dsl::CardZoneRef, filter: crate::dsl::CardFilter, max: u32, selected: Vec<usize>) -> crate::rules::PendingDecision {
+        crate::rules::PendingDecision::ChooseCards {
+            side,
+            source,
+            filter,
+            min: 1,
+            max,
+            reveal: false,
+            shuffle_after: false,
+            destination: None,
+            then: None,
+            selected,
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: crate::rules::PendingChoiceResume::None,
+        }
+    }
+
+    fn toggles(view: &ClientView) -> Vec<usize> {
+        view.legal_actions
+            .iter()
+            .filter_map(|action| match action {
+                PlayerAction::ToggleCardSelection { position } => Some(*position),
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Malapert's "search R&D for 1 non-agenda card": the Corp is shown
+    /// the cards the filter admits, by name, at exactly the positions its
+    /// toggles name — and not the agenda, and not to anyone else. R&D is
+    /// count-only everywhere else in the view; the card's text is what
+    /// grants this look.
+    #[test]
+    fn a_search_of_rd_shows_the_chooser_what_the_filter_admits_and_no_one_else_anything() {
+        let registry = CardRegistry::from_cards(vec![
+            blank_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier)),
+            blank_card("hedge_fund", Side::Corp, CardType::Operation),
+            CardDefinition { agenda_points: Some(2), advancement_requirement: Some(3), ..blank_card("hostile_takeover", Side::Corp, CardType::Agenda) },
+        ]);
+        let mut state = base_state();
+        state.corp.r_and_d = vec![CardId("ice_wall".to_string()), CardId("hostile_takeover".to_string()), CardId("hedge_fund".to_string())];
+        state.pending_decision = Some(choose_cards(Side::Corp, crate::dsl::CardZoneRef::OwnRAndD, crate::dsl::CardFilter::NonAgenda, 1, Vec::new()));
+
+        let corp = build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(
+            corp.selection,
+            vec![
+                SelectionCandidate { position: 0, card: Some(CardId("ice_wall".to_string())), install: None },
+                SelectionCandidate { position: 2, card: Some(CardId("hedge_fund".to_string())), install: None },
+            ]
+        );
+        assert_eq!(corp.selection.iter().map(|c| c.position).collect::<Vec<_>>(), toggles(&corp), "one candidate per toggle");
+        assert_eq!(corp.corp.rd_count, 3, "the deck itself stays a count");
+
+        for other in [Viewer::Player(Side::Runner), Viewer::Spectator] {
+            assert!(build_client_view(&state, &registry, other).selection.is_empty(), "{other:?} sees that a choice is made, not among what");
+        }
+    }
+
+    /// A chosen card stays listed after its toggle, so the prompt can say
+    /// what is selected — and when the selection is full, that is the only
+    /// toggle left and still named.
+    #[test]
+    fn a_selected_card_stays_a_candidate() {
+        let registry = CardRegistry::from_cards(vec![blank_card("hedge_fund", Side::Corp, CardType::Operation)]);
+        let mut state = base_state();
+        state.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("hedge_fund".to_string())];
+        state.pending_decision = Some(choose_cards(Side::Corp, crate::dsl::CardZoneRef::OwnHq, crate::dsl::CardFilter::Any, 1, vec![1]));
+        let corp = build_client_view(&state, &registry, Side::Corp);
+        assert_eq!(corp.selection.iter().map(|c| c.position).collect::<Vec<_>>(), vec![0, 1]);
+        assert_eq!(toggles(&corp), vec![1], "full at one: only the deselect is legal");
+    }
+
+    /// The Runner choosing among the Corp's installs (Tāo Salonga's swap)
+    /// is told where each is and, for an unrezzed one, nothing more: the
+    /// same `None` the board gives it.
+    #[test]
+    fn an_opponents_unrezzed_install_is_a_candidate_by_place_and_never_by_name() {
+        let registry = CardRegistry::from_cards(vec![
+            blank_card("ice_wall", Side::Corp, CardType::Ice(IceType::Barrier)),
+            blank_card("pad_campaign", Side::Corp, CardType::Asset),
+        ]);
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.pending_decision = Some(choose_cards(Side::Runner, crate::dsl::CardZoneRef::OpponentInstalled, crate::dsl::CardFilter::Any, 1, Vec::new()));
+        let runner = build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(
+            runner.selection,
+            vec![
+                SelectionCandidate { position: 0, card: None, install: Some(InstallId(1071)) },
+                SelectionCandidate { position: 1, card: Some(CardId("pad_campaign".to_string())), install: Some(InstallId(1072)) },
+            ]
+        );
+        assert!(build_client_view(&state, &registry, Side::Corp).selection.is_empty());
+    }
+
+    /// A facedown Archives card is hidden from the Runner by the board, and
+    /// a selection over the Corp's Archives hides it the same way. No card
+    /// selects from there for the Runner today; the rule is here so the
+    /// first one cannot leak.
+    #[test]
+    fn a_facedown_archives_card_is_a_candidate_the_runner_cannot_name() {
+        let registry = CardRegistry::from_cards(vec![blank_card("hedge_fund", Side::Corp, CardType::Operation)]);
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.archives = vec![crate::rules::ArchivedCard::faceup(CardId("hedge_fund".to_string())), crate::rules::ArchivedCard { card: CardId("hedge_fund".to_string()), facedown: true }];
+        state.pending_decision = Some(choose_cards(Side::Runner, crate::dsl::CardZoneRef::OpponentDiscard, crate::dsl::CardFilter::Any, 1, Vec::new()));
+        let runner = build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(runner.selection.iter().map(|c| c.card.is_some()).collect::<Vec<_>>(), vec![true, false]);
+    }
+
+    /// A view serialized before the field existed still reads.
+    #[test]
+    fn a_view_without_a_selection_field_deserializes() {
+        let view = build_client_view(&base_state(), &CardRegistry::new(), Side::Corp);
+        let mut json = serde_json::to_value(&view).unwrap();
+        json.as_object_mut().unwrap().remove("selection");
+        let back: ClientView = serde_json::from_value(json).unwrap();
+        assert_eq!(back, view);
     }
 }
