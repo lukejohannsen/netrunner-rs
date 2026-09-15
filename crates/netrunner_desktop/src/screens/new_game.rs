@@ -171,14 +171,21 @@ pub fn start(core: &ClientCore, choice: &StartChoice) -> Result<ActiveMatch, Str
 }
 
 /// An unrated game on the default decks against the middle rung, the
-/// person in `side`'s chair — the dev hook's game, and a test's.
+/// person in `side`'s chair — a test's game.
 pub fn start_default(core: &ClientCore, side: Side) -> Result<ActiveMatch, String> {
+    start_dev(core, side, None, None)
+}
+
+/// `start_default` with either deck replaced — the dev hook's game, so a
+/// screen a card reaches (Scatter Field's install) can be shot on a deck
+/// that holds the card.
+pub fn start_dev(core: &ClientCore, side: Side, corp_deck: Option<&str>, runner_deck: Option<&str>) -> Result<ActiveMatch, String> {
     let choice = StartChoice {
         human: side,
         level: Level::Operator,
         style: None,
-        corp_deck: DEFAULT_CORP_DECK.to_string(),
-        runner_deck: DEFAULT_RUNNER_DECK.to_string(),
+        corp_deck: corp_deck.unwrap_or(DEFAULT_CORP_DECK).to_string(),
+        runner_deck: runner_deck.unwrap_or(DEFAULT_RUNNER_DECK).to_string(),
         rated: false,
     };
     start(core, &choice).map(|active| ActiveMatch { choice: None, ..active })

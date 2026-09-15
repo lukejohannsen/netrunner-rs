@@ -747,4 +747,54 @@ mod tests {
         assert_eq!(labels(&game), vec![format!("Confirm {}", title(&other)), "Select a different card".to_string()]);
         assert_eq!(game.prompt.as_ref().map(|p| p.detail.clone()), Some(format!("Selected: {}", title(&other))));
     }
+
+    /// Scatter Field's "You may install 1 card from HQ", from the Corp's
+    /// chair with an asset already earning credits in Remote 0: the choice
+    /// of server is under the prompt as buttons — the new remote among them,
+    /// which has no column on the board to click — and each says what it
+    /// does. The person's report was that overwriting looked like the only
+    /// way; the new remote was offered and nowhere to be seen.
+    #[test]
+    fn a_card_effect_install_pops_up_where_it_can_go() {
+        use netrunner_core::dsl::{CardDefinition, CardFilter, CardType, CardZoneRef, Effect, IceType};
+        use netrunner_core::rules::{apply_action, GameState, InstallSlot, InstalledCard, PendingChoiceResume, PendingDecision};
+        use netrunner_core::view::build_client_view;
+
+        let def = |id: &str, title: &str, card_type: CardType| CardDefinition { id: CardId(id.to_string()), title: title.to_string(), side: Side::Corp, card_type, is_playable: true, ..Default::default() };
+        let registry = Arc::new(CardRegistry::from_cards(vec![
+            def("nico_campaign", "Nico Campaign", CardType::Asset),
+            def("pad_campaign", "PAD Campaign", CardType::Asset),
+            def("scatter_field", "Scatter Field", CardType::Ice(IceType::CodeGate)),
+        ]));
+        let mut state = GameState::new(1);
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.hq = vec![CardId("pad_campaign".to_string())];
+        state.corp.installed = vec![InstalledCard { install_id: InstallId(1), card: CardId("nico_campaign".to_string()), server: ServerId::Remote(0), slot: InstallSlot::Root, rezzed: true, ..Default::default() }];
+        state.pending_decision = Some(PendingDecision::ChooseCards {
+            side: Side::Corp,
+            source: CardZoneRef::OwnHq,
+            filter: CardFilter::Any,
+            min: 0,
+            max: 1,
+            reveal: false,
+            shuffle_after: false,
+            destination: None,
+            then: Some(Box::new(Effect::PromptInstallCorpCard { origin_zone: CardZoneRef::OwnHq, ignore_costs: false, discount: 0, then: None, remote_only: false })),
+            selected: Vec::new(),
+            source_card: Some(CardId("scatter_field".to_string())),
+            prompting_card: Some(CardId("scatter_field".to_string())),
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: 0 }).unwrap();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).unwrap();
+
+        let mut game = Game::new(registry.clone(), Side::Corp);
+        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Awaiting { view: Box::new(build_client_view(&state, &registry, Side::Corp)) })));
+        let labels: Vec<String> = game.actions.decisions().iter().map(|i| game.actions.entries[*i].label.clone()).collect();
+        assert_eq!(labels, vec!["Install in Remote 0 — trashes Nico Campaign".to_string(), "Install in a new remote server".to_string()]);
+        let prompt = game.prompt.as_ref().expect("an install is a prompt");
+        assert_eq!(prompt.title, "Scatter Field: where to install PAD Campaign?");
+        assert!(prompt.detail.starts_with("A new remote server is an option."), "{}", prompt.detail);
+    }
 }

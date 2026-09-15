@@ -355,7 +355,11 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
             let chosen = crate::selection::Selection::of(view, registry).map(|s| format!(" ({})", s.summary())).unwrap_or_default();
             asks(format!("choose {how_many} from {}{chosen}", describe_zone(source)))
         }
-        PendingDecision::ChooseServer { .. } => asks("choose a server".to_string()),
+        PendingDecision::ChooseServer { install, .. } => match crate::placement::Placement::of(view, registry) {
+            Some(placement) => asks(placement.question()),
+            None if install.is_some() => asks("installing a card".to_string()),
+            None => asks("choose a server to run".to_string()),
+        },
         PendingDecision::ChooseTriggerOrder { .. } => Some("Choose which trigger resolves first".to_string()),
     }
 }
