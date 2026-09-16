@@ -599,6 +599,18 @@ const RD_DRAW_RESERVE: usize = 5;
 /// and this is built the same way round: the mechanism lands first, the
 /// weight is whatever the measurement earns, and a flat result is recorded
 /// rather than tuned until it moves.
+///
+/// **Measured twice, and zero both times for different reasons.** On
+/// §6's endpoints the travel cost the Runner chair 0.169 (the balanced
+/// Corp's win share 0.140 → 0.309 at 1.0, four seeds × 384), because the
+/// build endpoint was the worst Runner profile in the pool. With
+/// `Personality::Builder` repaired (§7) the cost is gone — 0.149 at 1.0,
+/// inside the seed-spread band — and the travel still buys nothing,
+/// because the repaired build endpoint is now the *best* profile and
+/// every leg that moves off it loses, in either direction: standing on it
+/// all game 0.113, travelling to balanced 0.125, balanced travelling to it
+/// 0.137, travelling to `Aggressive` 0.149. What a leg scores follows
+/// where it spends the game, not when it moves.
 const STAGE_GAIN: f64 = 0.0;
 
 /// Every tunable term of `evaluate_state`, as one value. `Default` is the
@@ -776,13 +788,17 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
 /// early, protect late", `Builder` "the rig first… *before* the runs
 /// start", `Cautious` "a full rig *before* a run" — and the pairs move the
 /// *same fields in opposite directions*. They are the two ends of one
-/// dial, and the game is played standing still on it. Balanced beating
-/// both `Builder` and `Aggressive` is what a fixed midpoint of a dial that
-/// should be moving looks like against its own two ends, so the endpoints
-/// were already measured and already shipped; what was missing was the
-/// scalar. Adding six new `Weights` terms instead would have grown the
-/// surface for the same claim and left the profiles still unable to
-/// sequence.
+/// dial, and the game is played standing still on it. Adding six new
+/// `Weights` terms instead would have grown the surface for the same claim
+/// and left the profiles still unable to sequence.
+///
+/// **A reading this comment used to give, now withdrawn.** It said
+/// balanced beating both `Builder` and `Aggressive` was "what a fixed
+/// midpoint of a dial that should be moving looks like against its own two
+/// ends". It was what a broken `Builder` looks like: a flat presence bonus
+/// had made it the worst Runner profile in the pool, and repaired it beats
+/// balanced (ROADMAP Phase 5 §7). With that endpoint fixed no leg of the
+/// travel beats standing on it — see `STAGE_GAIN`.
 ///
 /// **Continuous, never a switch.** `UniformPolicyEvaluator::evaluate_from`
 /// scores leaf minus root, so a stage that jumped inside one search would

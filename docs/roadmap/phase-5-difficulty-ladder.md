@@ -770,3 +770,139 @@ Phase 2 §5 items 38 and 40's precedent. Verified byte-identical: a
 **game for game**, both `games` and `pairings` arrays equal. Workspace
 tests green, clippy silent. Reports under
 `target/coverage/stage-g{0.0,0.5,1.0}-seed{1,2}.json`.
+
+
+## 7. The build endpoint was the worst Runner profile, and with it repaired no stance travel beats standing on it — DONE, dial still at gain 0.0 (16 September 2026)
+
+`feat/build-endpoint-covers`. §6's handover taken: fix the build
+endpoint, then re-measure the dial. Both parts landed, and the second
+closes the question §6 left open in a different place from where §6
+pointed.
+
+**The endpoint was not a mediocre profile; it was the worst one.** Before
+touching a weight, every Runner profile was seated against the fixed
+`heuristic` Corp (`bench --bots heuristic,heuristic:X --pairing
+heuristic/heuristic:X`, 384 games a seed). Corp win share against
+`balanced` 0.143 / 0.133 on seeds 1–2, `cautious` 0.151 / 0.172,
+`aggressive` 0.185 / 0.164 — and **`builder` 0.331 / 0.336**. §6's dial
+was travelling *from* a profile that loses a third of its games *toward*
+one that loses a sixth, past the balanced midpoint that beat both. That
+was the whole of its cost, and the reading §6 gave of the same numbers
+("what a fixed midpoint of a moving dial looks like against its own
+ends") is withdrawn in `stage_weights`' doc comment.
+
+**One knob carried it, found by ablation rather than by reasoning.** A
+throwaway environment override on `Personality::Builder` (never
+committed) swept each of its three terms alone, two seeds × 384:
+
+| variant | Corp win share |
+|---|---|
+| as shipped (presence 1.6, memory 0.8, coverage 4.0) | 0.331 / 0.336 |
+| all three at balanced — the control | 0.148 / 0.130 |
+| `board_presence_weight` 1.0 | 0.247 / 0.242 |
+| `board_presence_weight` 0.6 | 0.130 / 0.138 |
+| `memory_weight` 0.25 | 0.260 / 0.253 |
+| `breaker_coverage_weight` 5.0 | 0.326 / 0.357 |
+| `savings_shortfall_weight` 0.9 | 0.320 / 0.352 |
+| `held_card_weight` 0.25 | 0.302 / 0.307 |
+
+Presence is monotone down to about 0.6 and flat below it (0.2: 0.123,
+0.4: 0.123, 0.6: 0.125 over four seeds); memory, coverage, savings and
+the held-card fraction are inert or worse once it is fixed (memory 0.25:
+0.119, 0.5: 0.120; savings 0.6: 0.121; coverage 3.0: 0.107, lower on four
+seeds of four but inside the band). **The change is
+`board_presence_weight` 1.6 → 0.4 and nothing else** — exactly
+`own_credit_weight`, so a rig card that breaks nothing is worth the credit
+it costs and no more.
+
+**Why a flat presence bonus wrecks a builder, which is the part worth
+keeping.** At 1.6 a 1[c] resource installs at 1.6 − 0.4 = +1.2, and the
+click that saves for a breaker in grip is worth 0.4 + 0.3 shortfall =
++0.7, so `SAVINGS_SHORTFALL_WEIGHT`, which exists to win exactly that
+decision, loses it.
+`diag tempo`, seed 1, 192 games, static profile:
+
+| `builder` | installs / game | credit clicks | credits at turn 3 | rig at turn 5 | coverage at turn 5 |
+|---|---|---|---|---|---|
+| presence 1.6 | 3.7 | 6.4 | **3.5** | 1.98 | 1.22 |
+| presence 0.4 | 1.7 | 13.6 | 4.8 | 1.14 | **1.12** |
+
+The shipped profile spent its credits on the table and could not pay for
+the breakers its coverage term asked for — one subtype per 1.6 rig
+cards. Repaired, the rig *is* breakers (1.12 of 1.14), and the Runner
+banks and runs (18.2 runs a game against 15.1). §6 said a build endpoint
+"has to reward coverage rather than presence"; the measurement says the
+coverage term was already big enough, and what had to go was the
+presence.
+
+**What the repair is worth, on the pinned binary** (verified game for
+game against the sweep at the same setting), paired by
+`scripts/paired_bench.py`:
+
+| leg | before | after | delta | z | discordant |
+|---|---|---|---|---|---|
+| static `builder`, six seeds × 384 | 0.305 | **0.121** | −0.184 | 16.4 | 672 |
+
+Against every Corp profile, four seeds × 384: `rush` 0.253 → 0.066,
+`glacier` 0.301 → 0.134, `trap` 0.344 → 0.188 — more than halved in each,
+so it is not tuned to the balanced Corp. `builder` goes from the worst
+Runner profile to the best, below `balanced` (0.148 in the same
+schedule). Three sample decks name the style (`bowel_movements`,
+`party_hard`, `prick_thyself`), so this reaches deck-style play directly.
+
+**The dial, re-measured**, `heuristic` both chairs, four seeds × 384:
+
+| leg | before (§6 endpoint) | after | delta | z |
+|---|---|---|---|---|
+| gain 0.5 | 0.242 | 0.146 | −0.096 | 8.2 |
+| gain 1.0 | 0.309 | 0.149 | −0.160 | 11.8 |
+
+and against the static evaluator on the new binary, **gain 0.0 → 0.5
+is +0.006 (z 0.57) and 0.0 → 1.0 is +0.009 (z 0.83)**. §6 was right that
+the endpoint and not the scalar was the cost: the cost is gone. And the
+travel still buys nothing. Gain 0.0 is byte-identical to `main` on all
+four seeds.
+
+**Why nothing, which is the finding.** With the scaffold again, the
+dial's two endpoints were set to other profiles so that the same games
+could be played with the travel going elsewhere — including nowhere:
+
+| leg, gain 1.0 | Corp win share | against static | z |
+|---|---|---|---|
+| repaired `builder` all game (both endpoints `builder`) | **0.113** | −0.027 | 2.81 |
+| `builder` early → `balanced` late | 0.125 | −0.015 | 1.51 |
+| `balanced` early → `builder` late (inverted) | 0.137 | −0.003 | 0.39 |
+| `builder` early → `aggressive` late (the dial as built) | 0.149 | +0.009 | 0.83 |
+| static `balanced` | 0.140 | — | — |
+
+Standing on the repaired endpoint beats the dial as built by 0.036 (z
+3.63) and beats the inverted travel by 0.023 (z 2.65). **Every leg that
+moves loses to the one that does not, in both directions**, and the legs
+order by how much of the game they spend on the better profile, not by
+when they spend it. On this chair and at this strength there is no
+"build, *then* press": the stance that builds is also the better stance
+late. §4(c)'s phase hypothesis is not supported on the Runner chair, and
+`STAGE_GAIN` stays **0.0** — now for that reason rather than §6's.
+(These five legs ran on the uncommitted override; the static-profile and
+dial legs above did not.)
+
+**Handed over, not taken here:**
+
+- **`balanced`'s own `BOARD_PRESENCE_WEIGHT`.** The same knob on the
+  default would be worth something like the 0.027 above to the Runner, but
+  it is a constant: it moves the Corp arm too (`corp_install_value` reads
+  it), which is §3's constant-sweep trap, and the Runner ladder was
+  calibrated on the balanced Runner at 768 games a cell (§2), so moving it
+  re-spaces the ladder. Its own branch, chair-isolated.
+- **`Glacier` has the same shape of defect on the Corp chair**, a flat
+  `rezzed_ice_weight` 1.8 fighting a per-cost term (§3). §3's one-knob
+  repair moved the per-cost term and lost; the flat term — the analogue
+  of what worked here — is untried.
+- **The pressure endpoint is also a cost as a static profile**:
+  `aggressive` 0.179 against balanced 0.144 over four seeds. Ablated, the
+  largest single piece is `grip_floor` 2 (3: 0.158); restoring it moved
+  no dial leg by more than 0.001, because the travel never reached it
+  once `builder` was worth standing on.
+
+Workspace tests green, clippy silent. Reports under
+`target/coverage/builder-endpoint-{static,dial}-*.json`.

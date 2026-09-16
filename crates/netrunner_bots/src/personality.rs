@@ -63,9 +63,10 @@ pub enum Personality {
     /// saving for the breaker in hand, and a subroutine or a tag costs
     /// more.
     Cautious,
-    /// A builder Runner: the rig first. Board presence, memory in use and
-    /// a breaker for a new subtype are all worth more, so the hand goes
-    /// on the table before the runs start.
+    /// A builder Runner: the rig that breaks ICE, and nothing else. A
+    /// breaker for a new subtype and free memory are worth more, and a rig
+    /// card that breaks nothing is worth less — one credit — so the
+    /// credits go to breakers rather than onto the table.
     Builder,
     /// A wary Runner: treats face-down ICE as real. The one term in the
     /// evaluator that reads an unrezzed piece (`unrezzed_threat_weight`,
@@ -234,16 +235,47 @@ impl Personality {
             },
             Personality::Builder => Weights {
                 // Distinct from `Cautious`, which is about safety (grip
-                // floor, tags, savings): this is about installing. A rig
-                // card at 1.6 presence beats a credit click by four to
-                // one, a breaker for a new subtype is worth 4.0 and memory
-                // in use 0.8 a unit. **The grip floor stays at 3**: the
-                // first cut dropped it to 2 to empty a hand of programs
-                // onto the table, and the Runner was flatlined 18 → 26
-                // and 13 → 21 on two of three seeds for it, losing ten
-                // games of 96 on every seed. Installing from a thin grip
-                // is how a builder dies.
-                board_presence_weight: 1.6,
+                // floor, tags, savings): this is about the rig.
+                //
+                // **Presence is *below* balanced, and that is the profile.**
+                // It was 1.6 — "a rig card beats a credit click by four to
+                // one" — and that made this the worst Runner profile in
+                // the pool: the balanced Corp won 0.305 of 2,304 games
+                // against it (six seeds × 384) where it wins 0.148 against
+                // balanced. A flat bonus on *any* rig card outbids the
+                // click that saves for a breaker (a 1[c] resource at 1.6 −
+                // 0.4 = +1.2 against a credit's 0.4 + 0.3 shortfall =
+                // +0.7), so the Runner spent its credits on the table,
+                // sat on 3.5 of them by turn 3 and could not pay for the
+                // breakers the coverage term was asking for: one breaker
+                // subtype per 1.6 rig cards by turn 5. At 0.4 — exactly
+                // `own_credit_weight`, so a card that breaks nothing is
+                // worth the credit it costs and no more — the rig is
+                // breakers (coverage 1.12 on a rig of 1.14 at turn 5),
+                // and the Corp's win share falls to **0.121** over the
+                // same games, below balanced, and by more than half
+                // against every Corp profile (rush 0.253 → 0.066, glacier
+                // 0.301 → 0.134, trap 0.344 → 0.188; ROADMAP Phase 5 §7).
+                // The response is flat from 0.0 to 0.6 and climbs from
+                // there (0.212 at 0.8 and 0.245 at 1.0, two seeds each),
+                // so the claim is "no more than a credit", not the digit.
+                //
+                // `memory_weight` prices *free* memory (`memory_units` is
+                // what is left, not what is used), so 0.8 values a
+                // console's headroom and taxes each program's MU by the
+                // same coin. It measured neutral at 0.25 and 0.5 once
+                // presence was fixed (0.119, 0.120 against 0.123), and
+                // `breaker_coverage_weight` at balanced's 3.0 read 0.107
+                // — lower on four seeds of four but inside the seed-spread
+                // band — so both stay as they were rather than ride along
+                // with the one knob that carried 0.18.
+                //
+                // **The grip floor stays at 3**: the first cut dropped it
+                // to 2 to empty a hand of programs onto the table, and the
+                // Runner was flatlined 18 → 26 and 13 → 21 on two of three
+                // seeds for it, losing ten games of 96 on every seed.
+                // Installing from a thin grip is how a builder dies.
+                board_presence_weight: 0.4,
                 memory_weight: 0.8,
                 breaker_coverage_weight: 4.0,
                 ..base
@@ -331,7 +363,12 @@ mod tests {
         assert!(cautious.active_run_weight < base.active_run_weight && cautious.pending_subroutine_weight > base.pending_subroutine_weight);
         assert!(cautious.breaker_coverage_weight > base.breaker_coverage_weight);
         let builder = Personality::Builder.weights();
-        assert!(builder.board_presence_weight > base.board_presence_weight && builder.memory_weight > base.memory_weight);
+        // Presence *below* balanced and coverage above it: a flat bonus on
+        // any rig card outbid saving for the breakers, and made this the
+        // worst Runner profile in the pool (ROADMAP Phase 5 §7).
+        assert!(builder.board_presence_weight < base.board_presence_weight, "a builder pays for coverage, not for cards");
+        assert!(builder.board_presence_weight <= builder.own_credit_weight, "a rig card that breaks nothing is worth no more than a credit");
+        assert!(builder.breaker_coverage_weight > base.breaker_coverage_weight && builder.memory_weight > base.memory_weight);
         assert_eq!(builder.grip_floor, base.grip_floor, "a builder that installs from a thin grip gets flatlined for it");
         let wary = Personality::Wary.weights();
         assert!(wary.unrezzed_threat_weight > base.unrezzed_threat_weight && base.unrezzed_threat_weight == 0.0);
