@@ -64,6 +64,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 diag::rez_rate::RezRateArgs { corp, runner, games, seed, simulations, determinizations, threads, report };
             diag::rez_rate::run(&args, &config)
         }
+        Some(Command::Diag {
+            action: DiagAction::Tempo { games, seed, corp, runner, simulations, determinizations, turns, threads, report },
+        }) => {
+            let args =
+                diag::tempo::TempoArgs { corp, runner, games, seed, simulations, determinizations, turns, threads, report };
+            diag::tempo::run(&args, &config)
+        }
         Some(Command::Matches) => remote::print_matches(&config.server).await,
         Some(Command::Ratings) => ratings::print(&config),
         Some(Command::Cards { action }) => cards::run(action).await,

@@ -1475,7 +1475,12 @@ fn protected_agenda_ice(state: &GameState, registry: &CardRegistry, cap: usize) 
 /// How many of the three ICE subtypes the rig can break: a rig card whose
 /// abilities contain `Effect::BreakSubroutines` covers its `restrict_to`
 /// subtype, or all three when unrestricted (an AI breaker).
-fn breaker_coverage(state: &GameState, registry: &CardRegistry) -> usize {
+///
+/// Public for the same reason `is_unrezzed_threat` is: `netrunner_cli diag
+/// tempo` reports how far along its rig the Runner is when it starts
+/// running, and a diagnostic that re-derived "coverage" itself would be
+/// measuring its own copy rather than the term the Runner actually reads.
+pub fn breaker_coverage(state: &GameState, registry: &CardRegistry) -> usize {
     rig_coverage(state, registry).iter().filter(|c| **c).count()
 }
 

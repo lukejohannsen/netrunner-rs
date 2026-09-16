@@ -10,3 +10,4 @@
 
 pub mod leaf_sensitivity;
 pub mod rez_rate;
+pub mod tempo;

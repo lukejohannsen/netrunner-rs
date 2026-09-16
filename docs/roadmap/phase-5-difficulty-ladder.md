@@ -536,6 +536,14 @@ position rather than being scheduled against a clock. Try the board-reading
 form first and keep the turn counter as the fallback to beat, not the
 first thing tried.
 
+**§5 is the first work against (c)**, and it is the instrument rather than
+the change: a per-turn tempo profile, because nothing in this repo could
+have told a phased Corp from an unphased one. Its baseline confirms (c)'s
+prediction on the Corp chair, finds the Runner chair's stance *inverted*
+(most aggressive when its rig is emptiest), and corrects §3's
+"credit-starved" reading to its early-game form — all three of which bear
+on which stage signal is worth reading.
+
 **Sequencing:** (c), then (b), then (a). Each one moves the numbers the
 next one would be measured against, and re-spacing rungs around a top rung
 that is about to be rebuilt would be measured twice and thrown away once —
@@ -553,3 +561,107 @@ measured and larger than what §3 itself bought. *Closed:* the calibration that 
 the top steps — it ran at 768 games a cell and both chairs climb at every
 step; the server offers levels; local play is rated and the modal names
 the next rung (`feat/local-rating`, Phase 3 §2); the start screen.
+
+
+## 5. The tempo instrument, and a baseline in which both chairs play their stance backwards — DONE (16 September 2026)
+
+`diag/tempo`, the first branch against §4(c). Its product is a
+measurement: `netrunner_cli diag tempo` and the profile it takes off an
+unmodified `main`.
+
+**Why an instrument first.** Every figure in §3 and §4 is a win rate, and
+a win rate cannot tell "plays in phases now" from "plays the same and wins
+slightly more". §4(c)'s own evidence — 13.0 installs and 6.3 advancements
+over 11.4 turns — is a whole-game mean, and a whole-game mean is precisely
+the statistic that cannot distinguish a Corp that installs five times and
+*then* advances five times from one that alternates ten times. So the
+change §4(c) asks for is not measurable by anything this repo had.
+
+One record per turn per chair: that turn's clicks split by what they
+bought, the no-click tempo actions (rez, score, steal) beside them, and a
+snapshot of the board they were spent on. `HistoryEntry` already carries
+`turn_number` and `side`, so nothing reconstructs either. Verified
+complete the way `rez-rate` is — turns recorded against `GameState::turn`
+at the end of each game, 9,079 of 9,079 over 384 games.
+
+**Both chairs name a personality by construction.** `--corp`/`--runner`
+take a `BotSpec`, whose personality defaults to `Balanced` and not to the
+deck's style, so §3's measurement trap cannot be sprung through this
+command. A rung is spelled `level:elite` and is seated through
+`make_seat_agent`, so profiling the ladder — what §4(a) and §4(b) will
+want — is already wired.
+
+**The baseline, `heuristic:balanced` both chairs, 384 games, seed 1
+(seed 2 reproduces every column within 0.02):**
+
+| Corp turn | 1 | 2 | 3 | 5 | 8 | 12 | 13+ |
+|---|---|---|---|---|---|---|---|
+| installs | 2.46 | 1.65 | 1.57 | 1.14 | 0.82 | 0.76 | 0.72 |
+| advances | 0.17 | **0.93** | 0.46 | 0.40 | 0.47 | 0.63 | 0.73 |
+| rezzes | **1.04** | 0.78 | 0.60 | 0.45 | 0.41 | 0.42 | 0.34 |
+| credits at start | 5.0 | 4.6 | 3.2 | 4.5 | 9.1 | 16.1 | **27.0** |
+| face-down installs | 0.00 | 1.12 | 1.58 | 2.81 | 3.67 | 4.35 | **5.61** |
+
+| Runner turn | 1 | 2 | 3 | 5 | 8 | 12 | 13+ |
+|---|---|---|---|---|---|---|---|
+| installs | 0.82 | 0.28 | 0.20 | 0.11 | 0.08 | 0.12 | 0.07 |
+| runs | 1.85 | **2.20** | 1.98 | 1.78 | 1.43 | 1.15 | **1.00** |
+| rig coverage (of 3) | 0.00 | 0.79 | 0.90 | 1.04 | 1.17 | 1.30 | 1.43 |
+
+**There is no phase anywhere in either chair.** The Corp installs on every
+turn of the game and advances on every turn from the second — its
+*advancement peak is turn 2*, before any fort exists — which is §4(c)'s
+prediction confirmed at the resolution it was made at. Nothing in the
+curve marks a transition; both columns simply decay.
+
+**The Runner's stance is inverted, and that is the new finding.** It
+installs almost everything it will ever install on turn 1, stops by turn
+3, and never gets past **1.43 of 3** ICE subtypes covered — while its runs
+*peak at turn 2 and fall by half* over the game. So it is at its most
+aggressive when its rig is emptiest and its most passive when its rig is
+best: the exact reverse of "build a sweet rig first, then get aggressive",
+and the reverse of `Builder`'s and `Aggressive`'s own doc comments. A dial
+that moved the right way would be pushing against a baseline that is
+currently running the wrong way, which makes the Runner chair a *larger*
+target than the Corp one rather than the secondary chair §4 assumed.
+
+**A correction to §3, and it is load-bearing for the Corp stage scalar.**
+§3 concluded "the Corp is not card-starved, it is credit-starved — it
+cannot pay to rez what it already installed", and read as a statement
+about the whole game that is false. Credits at turn start run **5.0 → 3.2
+→ 27.0**: the Corp *is* credit-starved for the first four turns, and from
+about turn 8 it is sitting on money it does not spend, while face-down
+installs climb monotonically to **5.61 and never come down** and its rez
+rate *falls* from 1.04 a turn to 0.34. Late in a game this Corp is rich,
+holding five unrezzed cards, and rezzing less than at any earlier point.
+So a "credits against the rez costs already on the table" term will be
+inert exactly where §3's sentence implied it would bite — the shortfall it
+measures closes by turn 8 on its own — and the real defect is later and
+different: a rez that is affordable and still not taken. §3's sentence is
+corrected to its early-game form rather than deleted.
+
+**A bug the tests found before the measurement did.** A rez is the Corp's
+tempo and happens on the *Runner's* turn, at an ICE approach. Attributing
+an action by `(turn_number, side)` therefore dropped every ICE rez in the
+game, because the Corp owns no record for an even turn — the count read
+4.6 rezzes a game against a true 7.5, a 40% loss, and the profile would
+have shown the Corp barely rezzing at all. An action is now attributed to
+the *acting side's own current row*, which is where a reader looking for
+"when does this Corp start rezzing" will look. `a_rez_on_the_runners_turn_is_the_corps_tempo`
+is that bug.
+
+**One caveat on reading the tail.** Rows are per-turn means over the games
+that reached that turn, and `n` falls 384 → 165 by turn 12, so the late
+rows are the long games — the ones neither side closed. The decay in
+installs and runs is therefore partly selection and the tail is not
+evidence on its own. What is not selection is the *early* shape, where
+every row has all 384 games: the Corp advancing at its peak on turn 2, and
+the Runner making 1.85 runs on turn 1 with no rig at all.
+
+`breaker_coverage` is public for this, on `is_unrezzed_threat`'s
+precedent: a diagnostic that re-derived "coverage" itself would measure
+its own copy rather than the term the Runner reads.
+
+Reports under `target/coverage/tempo-baseline-seed{1,2}.json`. Workspace
+tests green, clippy silent; no engine or evaluator behaviour changed, so
+nothing here can move a game.
