@@ -979,3 +979,148 @@ comment, which now records this leg. Reports live in the session
 scratchpad and are summarised above. They are not kept under
 `target/coverage/`, because the scaffold that produced them is not in the
 tree.
+
+
+## 9. The Corp profiles audited: `glacier` was burying its hand, and repaired it is the strongest Corp — DONE (16 September 2026)
+
+`feat/corp-profile-audit`. §7's method, applied to the Corp chair. Each
+Corp profile was seated against the fixed `heuristic` balanced Runner,
+and each profile's knobs were put back to balanced one at a time on a
+throwaway override that is not committed. Six seeds × 384, paired game
+for game, Corp win share (higher is a stronger Corp).
+
+**Where the profiles stood.** `trap` 0.212, `glacier` 0.168, `balanced`
+0.148, `rush` 0.090. The order has moved since §3, where balanced
+(0.198) beat `glacier` (0.174): the Runner got stronger in between, and
+`glacier` now beats balanced by 0.020 (z 2.2) in the same games.
+
+**`glacier`**, knob by knob against the shipped profile:
+
+| knob, shipped → tried | Corp win share | delta | z |
+|---|---|---|---|
+| `unrezzed_install_weight` 1.2 → 1.0 | 0.185 | +0.017 | |
+| `unrezzed_install_weight` 1.2 → **0.9** | 0.240 | **+0.072** | 7.3 |
+| `unrezzed_install_weight` 1.2 → 0.8 / 0.7 | 0.239 / 0.238 | +0.071 | 7.2 |
+| `unrezzed_install_weight` 1.2 → 0.4 or 0.0 | **0.000** | | |
+| `agenda_protection_weight` 1.0 → 0.5 | 0.141 | −0.026 | 4.1 |
+| `rezzed_ice_weight` 1.8 → 1.4 | 0.158 | −0.010 | 3.1 |
+| `own_credit_weight` 0.5 → 0.4 | 0.158 | −0.009 | 1.1 |
+| `advancement_weight` 1.2 → 1.5 | 0.164 | −0.003 | 0.5 |
+| `agenda_protection_cap` 3 → 2 | 0.168 | 0.000 | |
+
+**The install weight is a switch, and the tempo instrument says what it
+switches.** The step falls between 1.0 and 0.9, which is where a
+face-down install out of a thin HQ, `unrezzed_install_weight` −
+`hq_shortfall_weight` 0.5, stops beating the profile's own credit click
+at `own_credit_weight` 0.5. `diag tempo`, 384 games, seed 1:
+
+| `glacier` | installs, turn 2 | credit clicks, turn 2 | face down, turn 3 | credits, turn 3 | installs / game | scores / game | turns / game |
+|---|---|---|---|---|---|---|---|
+| 1.2 | 2.29 | 0.16 | 2.32 | 3.6 | 13.9 | 0.9 | 12.2 |
+| 0.9 | 1.17 | 0.86 | 1.42 | 4.6 | 13.8 | 1.2 | 14.0 |
+
+At 1.2 the Corp put its hand face down on turns 2 and 3 with no money
+to rez it. At 0.9 it banks first and installs the same number of cards
+over the game, just later, when it can pay. That is §5's "credit-starved
+early" (credits at turn start 5.0 → 3.2) written into a profile, and it
+is the lever §3's `HELD_CARD_WEIGHT` experiment pointed at without
+reaching: the Corp is short of credits, not cards, so the fix is to stop
+spending them on cards. Raising `hq_shortfall_weight` to 0.8 while
+leaving the install weight alone recovers **0.216**, about two thirds of
+the effect. So the floor decision is most of the switch. The likeliest
+remainder, not separately measured, is the other install at the same
+−0.5 offset: a second unprotected ICE on a server, whose 1[c] install
+cost puts it level with a credit click. At 0.4 and below nothing unprotected is
+installed, agendas included, and the Corp never scores (the Runner wins
+all 384 games on points).
+
+**Protection was already the engine, and it wanted more.** With the
+switch set at 0.8: `agenda_protection_weight` 1.0 → 0.239, 1.5 → 0.249,
+2.0 → 0.265, **3.0 → 0.282**, 4.0 → 0.282, 6.0 → 0.273, 10.0 → 0.268.
+The cap is inert (2: 0.288, 4: 0.281). Without the switch, protection
+4.0 alone reads 0.217, so the two effects are close to additive.
+
+**§3's named defect is withdrawn as a cost.** §3 read `glacier` rezzing
+the cheapest ICE of any Corp profile as its flat `rezzed_ice_weight` 1.8
+fighting a per-cost credit term, and took that for the defect. Measured,
+the flat term *helps*: back at 1.4 the profile loses 0.010 (z 3.1), and
+2.4 reads 0.170. The rez-rate pattern may be real. What cost games was
+the install weight, which §3 never touched.
+
+**The change:** `unrezzed_install_weight` 1.2 → **0.8** and
+`agenda_protection_weight` 1.0 → **3.0**. On the pinned binary, which
+replays the sweep game for game on all six seeds:
+
+| leg | before | after | delta | z | discordant |
+|---|---|---|---|---|---|
+| `glacier` vs balanced Runner, six seeds × 384 | 0.168 | **0.282** | +0.114 | 10.9 | 585 |
+
+Against every Runner profile, four seeds × 384: `aggressive` 0.200 →
+0.322, `cautious` 0.180 → 0.287, `builder` (§7's repair) 0.134 → 0.231,
+`wary` 0.173 → 0.286. In the same games it beats `trap` by **0.070
+(z 6.1)**, which makes it the strongest Corp profile in the pool. A test
+now pins the switch: the profile's install from the floor must not beat
+its own credit click. Balanced-vs-balanced games are byte-identical to
+`main`.
+
+**It survives search, which §3's terms did not.** §3's better scoring
+terms lifted the one-ply `operator` and gave `puct@512` +0.000. The
+same `puct@512` that the `veteran` and `elite` rungs are built on,
+un-handicapped, seated as Corp against the one-ply Runner, one seed ×
+384 (sampling sd about 0.024 a leg), paired:
+
+| Corp, `puct@512` | Corp win share | delta | z | discordant |
+|---|---|---|---|---|
+| `balanced` | 0.245 | — | | |
+| `glacier` shipped | 0.284 | +0.039 over balanced | 1.5 | 95 |
+| `glacier` repaired | **0.357** | +0.073 over shipped | 2.5 | 122 |
+| | | +0.112 over balanced | 4.0 | 115 |
+
+One seed, so it is the direction and rough size, not a calibration. But
+it matters for §4(b): the "better leaf buys search nothing" finding was
+about terms that encode a decision a tree can find by looking ahead. A
+likely reason this one differs, not tested: bank now to rez later pays
+off turns away, past what a 512-simulation search reaches. The top of
+the Corp ladder has a lever that is not more search. The run needed
+`--threads 10`: the first attempt at full parallelism, alongside a
+workspace build, was killed for memory.
+
+**`rush`, audited, not repaired.** It loses to balanced by 0.058 (z
+7.0), and the cost sits in the two knobs that make it a rush:
+`installed_agenda_weight` 1.0 → 0 is +0.041 (z 5.8), `advancement_weight`
+2.5 → 1.5 is +0.037 (z 5.5). Nothing else moves it beyond noise except
+the install switch at 0.6 (+0.019, z 2.5), because its `own_credit_weight`
+of 0.3 puts its switch lower. Against this Runner, "score early" is the
+defect rather than a knob inside it. A rush that wins would be a
+different archetype, which is a design question and not a tuning one.
+
+**`trap`, audited, unchanged.** Its ambush terms are its whole value:
+`ambush_weight` 3.0 → 0 costs 0.044 (z 7.7) and the cap 7 → 3 costs
+0.013 (z 4.8), and `ambush_advancement_weight` 2.8 → 1.0 is within noise
+(+0.009, z 2.0). `glacier`'s switch carried over (install 0.8 with
+credits 0.5) reads +0.023 (z 2.4), inside the seed-spread band, and the
+profile's own test pins it as "its ambush terms and nothing else", so it
+is recorded and not taken.
+
+**Handed over:**
+
+- **A Corp that is both.** `trap`'s ambush terms and `glacier`'s
+  install switch and protection come from different profiles and were
+  never measured together. The two best Corp levers found so far could
+  compose, or could fight over the same clicks.
+- **Where this reaches.** The calibrated ladder rungs are
+  `Personality::Balanced` (`difficulty.rs`) and are untouched. But local
+  and server play seat a bot with no chosen personality in its *deck's*
+  style (`netrunner_client::play`, `netrunner_server::serve`), and five
+  Corp decks name `glacier` (`agency`, `brick_stack`, `discretion_advised`,
+  `hidden_funds`, `pork_chops`). So a person meets this Corp at every
+  rung with those decks, and the rung's calibration does not describe
+  it. Whether rungs should be calibrated per style, or the Corp's top
+  rung should *be* this profile (§4(b)), is the next decision.
+- **The same switch on balanced.** The balanced Corp at install 0.8 reads
+  0.160 against 0.148 (+0.012), a smaller effect because its credit
+  click is worth 0.4. As a constant it moves the Runner's reading of the
+  Corp board too: §3's trap again.
+
+Workspace tests green, clippy silent. Reports under
+`target/coverage/glacier-audit-{before,after}-s{1..6}.json`.
