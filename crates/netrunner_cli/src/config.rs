@@ -438,6 +438,16 @@ pub enum Command {
         /// Phase 2 §5 item 36. Use `--label` to keep two settings apart.
         #[arg(long)]
         mcts_depth: Option<usize>,
+        /// How far a position's *stage* may move the evaluator's weights,
+        /// from the build archetype toward the pressure one: 0.0 (the
+        /// default) is the static evaluator every number here was taken
+        /// on, 1.0 is the full travel. ROADMAP Phase 5 §4(c) and §6.
+        ///
+        /// **One flag for both chairs is the chair isolation**, not a
+        /// shortcut: only the Runner arm is staged, so a Corp seat handed
+        /// the same gain plays byte-identically to one handed zero.
+        #[arg(long, default_value_t = 0.0)]
+        stage_gain: f64,
         /// Play only this ordered pairing, `CORP/RUNNER` (repeatable),
         /// each side one of `--bots`. **Every game keeps the index and
         /// seed it has in the full cross product**, so a filtered game is
@@ -624,6 +634,12 @@ pub enum DiagAction {
         /// rows with one game in them.
         #[arg(long, default_value_t = 12)]
         turns: u32,
+        /// How far a position's stage may move the evaluator's weights —
+        /// `eval::Weights::stage_gain`. 0.0 is the static evaluator, and
+        /// the profile taken at 0.0 is the baseline any other is read
+        /// against.
+        #[arg(long, default_value_t = 0.0)]
+        stage_gain: f64,
         /// Worker threads. All cores if omitted.
         #[arg(long)]
         threads: Option<usize>,

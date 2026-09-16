@@ -155,6 +155,14 @@ impl MctsAgent {
         self
     }
 
+    /// How far the position's stage may move the weights the leaves and
+    /// rollouts are scored with — `eval::Weights::stage_gain`. Applied
+    /// after `with_personality`, which replaces the whole struct.
+    pub fn with_stage_gain(mut self, gain: f64) -> Self {
+        self.weights.stage_gain = gain;
+        self
+    }
+
     /// The same search with playouts cut off `max_depth` plies below the
     /// root (tree descent and rollout together) instead of
     /// `DEFAULT_MAX_DEPTH`. A measurement dial: ROADMAP Phase 2 §5 item

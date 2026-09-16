@@ -71,6 +71,9 @@ pub struct TempoArgs {
     /// into a tail row. A profile is a shape, and twenty rows of one game
     /// each is not one.
     pub turns: u32,
+    /// `eval::Weights::stage_gain` for both seats; only the Runner arm
+    /// reads it, which is what keeps the two chairs' profiles separable.
+    pub stage_gain: f64,
     pub report: Option<PathBuf>,
 }
 
@@ -434,6 +437,7 @@ fn play(
         shared_sample: false,
         mcts_depth: None,
         personality: spec.personality,
+        stage_gain: args.stage_gain,
     };
     // `make_seat_agent` rather than `make_agent_with_model`, so a chair
     // spelled `level:elite` is the rung the ladder calibrated and not a
