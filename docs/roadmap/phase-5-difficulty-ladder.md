@@ -438,6 +438,68 @@ gain is +0.026. Deciding what balanced should be — and whether Trap stays
 a distinct archetype afterwards — is the open work.
 
 
+## 4. Owed: re-space the Corp chair, and reconsider how its top rungs are built — OPEN (16 September 2026)
+
+Two separate jobs, both opened by §3 and neither attempted there. They are
+recorded together because the second may make the first unnecessary.
+
+**(a) Re-space the Corp rungs.** §3 lifted `operator` (one ply) by +0.016
+and `veteran` (`puct@512`) by +0.000, so the `operator → veteran` step
+fell +0.055 (z 2.7) → **+0.039 (z 1.9)** and now reads `flat` on one seed
+of two at 384 games a cell, where both seeds were `rise` before. Pooled at
+768 it still climbs, so this is a **margin** problem, not a broken ladder
+— but it is the chair's weakest joint and it got weaker. The method is
+§2's, applied to the Corp: measure the `epsilon` → win-rate curve on this
+chair, interpolate for four even steps, take round numbers. The Corp
+column is 0.012 / 0.078 / 0.182 / 0.221 / 0.277, so an even step is 0.066
+and the rung that is out of place is `operator`, at 0.182 against a target
+of 0.144 — it wants a small handicap of its own now, where it has had
+`epsilon` 0.0 since the ladder was built. **Do not assume the curve is
+linear**: the Runner chair's was (w ≈ 0.833 − 0.70ε to 0.034), and this
+one is visibly not — `epsilon` 0.35 already costs the Corp more than half
+its margin over random (0.182 → 0.078), so the interpolation needs its own
+measured points rather than the Runner's shape.
+
+**(b) Reconsider how the top two rungs are built**, which is the deeper
+item and is the reason (a) is worth doing *after* it rather than before.
+`veteran` and `elite` are `puct@512` at `epsilon` 0.10 and 0.0 — **more
+search over the same leaf** — and §3 showed that a better leaf buys them
+nothing at all (+0.000 for `veteran`). That is Phase 2 §5 item 34's
+saturation finding arriving from a new direction: lookahead already finds
+what the leaf term encodes, so the two levers the ladder has for its top
+rungs (search budget, evaluator quality) are *the same lever twice*, and
+both are spent. The consequences to work through:
+
+- **The Corp ceiling will not yield to evaluator work alone.** §3's whole
+  gain at `elite` was 0.266 → 0.277. Another term of the same kind buys
+  another hundredth.
+- **Handicapping may be the wrong mechanism for the Corp's top half.**
+  The ladder's founding decision (§1) was that rungs are one strong bot
+  handicapped, because search budget is not a difficulty dial. That holds.
+  But it assumed a strong bot *exists* to handicap, and on this chair the
+  strongest thing available is 0.277 — so the top of the Corp ladder is
+  handicapping something that is not strong.
+- **The measured candidate is not more search.** §3's own numbers put
+  `--corp-personality trap` at 0.259 ± 0.032 against balanced's 0.204 ±
+  0.029 over 768 games each, chair-isolated, z = 2.6, flatlines 32 → 79 —
+  larger than anything §3 itself bought, and it is a *card-reading* lever
+  rather than a deeper search. The balanced Corp switches it off by design
+  ("does not play for the flatline"), which was right against the Runner
+  that existed when it was written and is wrong against one making 20 runs
+  a game. Taking it is not a free +0.055: the same constants also teach
+  every `Balanced` Runner to respect ambushes, and with both chairs moved
+  the net is +0.026. Deciding what `balanced` should be — and whether
+  `Trap` survives as a distinct archetype afterwards — is the work.
+- **The Corp personalities want a retune against §3's rez arithmetic**
+  regardless, and `Glacier` has a named defect there (§3): the fort
+  profile rezzes the *cheapest* ICE of any Corp personality. The one-knob
+  repair was measured and is not the repair.
+
+**Sequencing:** do (b) first. Re-spacing the Corp rungs around a top rung
+that is about to be rebuilt would be measured twice and thrown away once —
+which is exactly what happened to the Runner chair's first calibration in
+§2, and the note is here so it does not happen again.
+
 **Standing open items:** the **Corp chair's ceiling** — still open, and
 §3 is the first cut at it: the one-ply Corp gains +0.017 (forced
 `balanced`) to +0.033 (deck styles) against the un-handicapped one-ply
