@@ -611,6 +611,12 @@ const RD_DRAW_RESERVE: usize = 5;
 /// all game 0.113, travelling to balanced 0.125, balanced travelling to it
 /// 0.137, travelling to `Aggressive` 0.149. What a leg scores follows
 /// where it spends the game, not when it moves.
+///
+/// **Nor does a clock** (§8). The fallback §4(c) kept to beat — the same
+/// travel on the Runner's own turn count, full at turn 4, 8, 12 or 16 —
+/// never beats `runner_stage` beyond noise on either destination (best
+/// −0.014, z 1.29), loses to it outright when the clock is short (turn 4:
+/// +0.040, z 3.56), and never beats standing on `Builder` (best +0.003).
 const STAGE_GAIN: f64 = 0.0;
 
 /// Every tunable term of `evaluate_state`, as one value. `Default` is the
