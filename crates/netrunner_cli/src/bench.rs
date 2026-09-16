@@ -123,7 +123,7 @@ pub struct BenchReport {
 /// (`heuristic:rush`), and `--label` if given.
 pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> String {
     // A rung rates under its own name, not the bot it happens to be
-    // built from: `elite` is `puct@512` on one chair and `mcts@128` on
+    // built from: `elite` is `puct@512` on one chair and one ply on
     // the other, and one id for both is exactly what the per-role rating
     // book is for. Adding the budget here would give the two chairs two
     // participants and hide that the ladder is one thing.
