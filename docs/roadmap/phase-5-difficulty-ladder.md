@@ -438,10 +438,11 @@ gain is +0.026. Deciding what balanced should be — and whether Trap stays
 a distinct archetype afterwards — is the open work.
 
 
-## 4. Owed: re-space the Corp chair, and reconsider how its top rungs are built — OPEN (16 September 2026)
+## 4. Owed: re-space the Corp chair, reconsider how its top rungs are built, and teach the bots to play in phases — OPEN (16 September 2026)
 
-Two separate jobs, both opened by §3 and neither attempted there. They are
-recorded together because the second may make the first unnecessary.
+Three jobs, opened by §3 and none attempted there. They are recorded
+together because (b) may make (a) unnecessary, and (c) is the largest of
+the three.
 
 **(a) Re-space the Corp rungs.** §3 lifted `operator` (one ply) by +0.016
 and `veteran` (`puct@512`) by +0.000, so the `operator → veteran` step
@@ -495,7 +496,48 @@ both are spent. The consequences to work through:
   profile rezzes the *cheapest* ICE of any Corp personality. The one-knob
   repair was measured and is not the repair.
 
-**Sequencing:** do (b) first. Re-spacing the Corp rungs around a top rung
+**(c) The bots have no notion of *when* in the game they are.**
+`evaluate_state_with` is a static function of the position: it scores a
+board the same way on turn 1 and turn 20, so the Corp interleaves building
+and scoring every single turn instead of doing one and then the other.
+Measured in §3: 13.0 installs and 6.3 advancements a game spread over 11.4
+turns, continuously. A person plays the Corp in phases — bank economy and
+build the wall, *then* push an agenda behind it — and nothing in this
+evaluator can express the "then".
+
+**The striking part is that the archetypes already name the two phases.**
+`Glacier` is "build the fort first" and `Rush` is "the agenda goes on the
+table first"; they are exactly the early and late halves the idea calls
+for, and they are *static profiles for a whole game* rather than phases of
+one. That they cannot be sequenced is the gap, and the numbers hint that
+neither extreme is right on its own: balanced beats both (0.198, against
+`Glacier`'s 0.174 and `Rush`'s 0.109 over 384 games).
+
+The **deck half is already built** and is worth not rediscovering:
+`Personality::for_deck` reads a style off the `DeckFile`, every embedded
+deck names one (`every_embedded_deck_style_is_a_personality_for_its_side`),
+and an unset `--corp-personality` means *the deck's own style* — which is
+the flag behaviour §3 first got wrong. So "different decks play
+differently" is wired; what is missing is that a deck's strategy is fixed
+for the whole game.
+
+**The design question, and it is a real one.** `GameState::turn` exists, so
+a phase schedule is implementable as weights that vary with it. But the
+lesson recorded on `Personality::Trap` cuts against exactly that: the
+profile's first cut was six generic knobs around a wish, it lost to
+balanced, and it only worked once it was three terms that **read the
+cards**. A turn-number switch is a generic knob of the same kind. The
+alternative is terms whose value moves with the board on its own — what
+the agenda points still needed are worth, whether the credits on hand
+cover the rez costs already sitting face-down on the table (§3: the Corp
+is credit-starved and cannot pay for what it installed), whether a scoring
+remote exists yet — so that "build now, score later" *falls out of* the
+position rather than being scheduled against a clock. Try the board-reading
+form first and keep the turn counter as the fallback to beat, not the
+first thing tried.
+
+**Sequencing:** (c), then (b), then (a). Each one moves the numbers the
+next one would be measured against, and re-spacing rungs around a top rung
 that is about to be rebuilt would be measured twice and thrown away once —
 which is exactly what happened to the Runner chair's first calibration in
 §2, and the note is here so it does not happen again.
