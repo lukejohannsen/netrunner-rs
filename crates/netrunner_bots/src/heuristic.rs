@@ -38,6 +38,14 @@ impl HeuristicAgent {
     pub fn with_personality(side: Side, seed: u64, personality: Personality) -> Self {
         Self { side, rng: StdRng::seed_from_u64(seed), weights: personality.weights() }
     }
+
+    /// How far the position's stage may move the weights this scores with
+    /// — `eval::Weights::stage_gain`. Zero, the default, is the static
+    /// evaluator and every number recorded before it existed.
+    pub fn with_stage_gain(mut self, gain: f64) -> Self {
+        self.weights.stage_gain = gain;
+        self
+    }
 }
 
 impl BotAgent for HeuristicAgent {

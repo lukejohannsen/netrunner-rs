@@ -36,9 +36,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // arms can still borrow the global flags (`--decks-dir`, `--format`)
     // alongside their own action.
     match config.command.take() {
-        Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label }) => {
+        Some(Command::Bench { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, stage_gain, pairings, threads, report, ratings, label }) => {
             let args =
-                bench::BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, pairings, threads, report, ratings, label };
+                bench::BenchArgs { bots, games, seed, simulations, determinizations, shared_sample, mcts_depth, stage_gain, pairings, threads, report, ratings, label };
             bench::run(&args, &config)
         }
         Some(Command::Diag {
@@ -65,10 +65,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             diag::rez_rate::run(&args, &config)
         }
         Some(Command::Diag {
-            action: DiagAction::Tempo { games, seed, corp, runner, simulations, determinizations, turns, threads, report },
+            action: DiagAction::Tempo { games, seed, corp, runner, simulations, determinizations, turns, stage_gain, threads, report },
         }) => {
             let args =
-                diag::tempo::TempoArgs { corp, runner, games, seed, simulations, determinizations, turns, threads, report };
+                diag::tempo::TempoArgs { corp, runner, games, seed, simulations, determinizations, turns, stage_gain, threads, report };
             diag::tempo::run(&args, &config)
         }
         Some(Command::Matches) => remote::print_matches(&config.server).await,

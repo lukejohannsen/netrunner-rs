@@ -665,3 +665,108 @@ its own copy rather than the term the Runner reads.
 Reports under `target/coverage/tempo-baseline-seed{1,2}.json`. Workspace
 tests green, clippy silent; no engine or evaluator behaviour changed, so
 nothing here can move a game.
+
+
+## 6. The stance dial, and the endpoint it travels to is the wrong one — DONE, at gain 0.0 (16 September 2026)
+
+`feat/runner-plays-in-phases`, stacked on §5. The mechanism §4(c) asked
+for, built, measured on the Runner chair, and **shipped off**: it costs
+that chair 0.159 to 0.180 of win share, monotone in the dial and
+reproduced on two seeds. `STAGE_GAIN` is 0.0 and the branch is
+byte-identical to §5 game for game.
+
+**The Runner chair first, against §4's order**, because §5's baseline
+found its stance *inverted* rather than merely flat — most aggressive when
+its rig is emptiest — which is a sharper target than the Corp's. §4's
+reason for sequencing (do not calibrate the ladder twice) is unaffected by
+which chair goes first.
+
+**The mechanism, and why it is an interpolation rather than new terms.**
+Four of the seven personalities describe themselves with a temporal word
+they cannot act on — `Glacier` "build the fort, *then* score behind it",
+`Rush` "score early, protect late", `Builder` "the rig first… *before* the
+runs start", `Cautious` "a full rig *before* a run" — and each pair moves
+*the same fields in opposite directions*. They are the two ends of one
+dial and the game is played standing still on it, which is also the first
+explanation §3's unexplained number has had: balanced beating both
+`Builder` and `Aggressive` is what a fixed midpoint of a moving dial looks
+like against its own ends. So the endpoints were already measured and
+already shipped, and only the scalar was missing. Six new `Weights` terms
+would have grown the surface for the same claim and left the profiles
+still unable to sequence.
+
+`stage_weights` lerps `Weights` from the build archetype to the pressure
+one and then blends that toward the caller's own weights by `stage_gain`,
+so 0.0 is exactly the static evaluator. It is hoisted *above* the `match
+side`, not inside the arm, because `Aggressive` moves
+`opponent_credit_weight` and that term is read in the shared prefix.
+Counts round rather than truncate, so `grip_floor` travelling 3 → 2
+crosses at the halfway point.
+
+**The scalar** is `runner_stage`: the rig over the evaluator's own
+`breaker_coverage`, overridden by the Corp's clock
+(`corp.agenda_points / rules.winning_agenda_points`, not a hard-coded 7 —
+the starter format plays to 6). The larger of the two wins rather than the
+sum, which makes urgency an override rather than a bonus, so a Runner that
+never finds its breakers still plays instead of banking until it decks.
+Nothing reads a sampled card. It is continuous everywhere, because
+`UniformPolicyEvaluator::evaluate_from` scores leaf minus root and a stage
+that jumped inside one search would make two leaves of one tree
+incomparable.
+
+**One `--stage-gain` flag isolates the chair**, and that is structural
+rather than a discipline: only the Runner arm is staged, so a Corp seat
+handed the same gain is byte-identical to one handed zero
+(`the_corp_is_not_staged_so_one_flag_isolates_the_runner_chair`). §3's
+constant-sweep trap cannot be sprung through it.
+
+**What it is worth: less than nothing.** `heuristic` both chairs, 384
+games a leg, paired by `scripts/paired_bench.py` over discordant games:
+
+| leg | Corp win rate | Runner delta | z | discordant |
+|---|---|---|---|---|
+| seed 1, gain 0.0 → 0.5 | 0.143 → 0.224 | **−0.081** | 3.32 | 87 |
+| seed 1, gain 0.0 → 1.0 | 0.143 → 0.302 | **−0.159** | 5.90 | 107 |
+| seed 2, gain 0.0 → 1.0 | 0.133 → 0.312 | **−0.180** | 6.49 | 113 |
+
+Monotone in the gain and far outside the 0.026–0.047 seed-spread band in
+the wrong direction. This is not a term that bought nothing; it is one
+that cost a great deal.
+
+**And §5's instrument says why, which is the part worth keeping.** At gain
+1.0 the Runner does change stance as designed — credit clicks **10.3 →
+6.1** a game, draws 3.3 → 5.0, installs 1.9 → 2.6, trashes 0.9 → 1.4 —
+so it banks less and builds more, exactly what the build endpoint asks
+for. But its **rig coverage falls while its rig grows**: 0.83 → 0.30 at
+turn 2, 1.05 → 0.71 at turn 8, against a rig *size* rising 1.55 → 1.71.
+It is installing more cards and fewer breaker subtypes.
+
+**That is `Glacier`'s named defect (§3), on the Runner's side of the
+table.** `Builder`'s `board_presence_weight` 1.6 is a flat bonus on *any*
+rig card, and it fights the `breaker_coverage_weight` 4.0 that is the
+profile's actual purpose; the flat one wins, because there are always more
+non-breakers to install. §3 found the same shape in `Glacier` — a flat
+`rezzed_ice_weight` 1.8 losing to a per-cost `own_credit_weight` 0.5 — and
+recorded that the one-knob repair is not the repair.
+
+**The dial makes that defect self-reinforcing, which is the new part.**
+The scalar is gated on coverage, so a Runner that fills its rig with
+non-breakers never raises its coverage, never leaves the build stance, and
+goes on filling its rig with non-breakers. A static `Builder` merely plays
+badly; a staged one is trapped. That is a fact about this *pair* of
+endpoints, not about staging.
+
+**What it hands over.** The suspect is the endpoints, not the scalar. The
+dial demonstrably moves stance in the direction asked of it, and the
+stance it moves to is one that does not build the thing it is building
+for. The next cut is the endpoint repair that §4(b) already owed for the
+Corp, now owed for both chairs and with a measured reason: a build
+endpoint has to reward *coverage* rather than *presence*, or it is not a
+build endpoint. Until then the travel is off.
+
+Ships at `STAGE_GAIN = 0.0` — apparatus with its reason recorded, on
+Phase 2 §5 items 38 and 40's precedent. Verified byte-identical: a
+384-game `heuristic` bench at gain 0.0 matches the parent commit's binary
+**game for game**, both `games` and `pairings` arrays equal. Workspace
+tests green, clippy silent. Reports under
+`target/coverage/stage-g{0.0,0.5,1.0}-seed{1,2}.json`.

@@ -85,6 +85,15 @@ impl UniformPolicyEvaluator {
     pub fn with_personality(side: Side, personality: Personality) -> Self {
         Self { side, weights: personality.weights() }
     }
+
+    /// How far the position's stage may move the weights this value head
+    /// scores with — `eval::Weights::stage_gain`. Note that `evaluate_from`
+    /// takes leaf minus root, so the stage has to move continuously for two
+    /// leaves of one tree to stay comparable; `eval::runner_stage` does.
+    pub fn with_stage_gain(mut self, gain: f64) -> Self {
+        self.weights.stage_gain = gain;
+        self
+    }
 }
 
 impl UniformPolicyEvaluator {

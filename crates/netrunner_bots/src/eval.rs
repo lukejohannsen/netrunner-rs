@@ -1,3 +1,8 @@
+// The two stance endpoints are the archetypes themselves rather than a
+// second copy of their numbers, so `stage_weights` reads up a layer to
+// `personality`. The alternative — restating seven constants here — would
+// have left two definitions of `Builder` to keep in step.
+use crate::personality::Personality;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
     card_matches_filter, Amount, CardDefinition, CardFilter, CardType, CardZoneRef, Cost, Effect, IceType,
@@ -583,6 +588,19 @@ const HQ_FLOOR: usize = 3;
 /// one.
 const RD_DRAW_RESERVE: usize = 5;
 
+/// How far a position's *stage* is allowed to move the weights it is
+/// scored with: 0.0 is no movement at all and every number this repo has
+/// recorded, 1.0 is the full travel from the build archetype to the
+/// pressure one. See `stage_weights`.
+///
+/// **Zero by default, and that is the discipline rather than the answer.**
+/// ROADMAP Phase 2 §5 items 38 and 40 both shipped a term at weight 0.0 —
+/// apparatus with its reason recorded, byte-identical to the baseline —
+/// and this is built the same way round: the mechanism lands first, the
+/// weight is whatever the measurement earns, and a flat result is recorded
+/// rather than tuned until it moves.
+const STAGE_GAIN: f64 = 0.0;
+
 /// Every tunable term of `evaluate_state`, as one value. `Default` is the
 /// constants above, so `evaluate_state` is `evaluate_state_with(..,
 /// &Weights::default())` and every existing caller scores exactly as it
@@ -590,11 +608,14 @@ const RD_DRAW_RESERVE: usize = 5;
 /// few documented places. The constants keep the reasoning — each one's
 /// doc comment records the measurement that set it — and the struct
 /// carries the numbers, so a profile can move one without restating the
-/// rest. Two terms exist only for profiles and default to zero, so the
-/// balanced evaluator is unchanged by their existence:
-/// `opponent_grip_weight` (a Corp that wants the Runner's hand thin) and
-/// `installed_agenda_weight` (a Corp that wants the agenda on the table
-/// before the ICE in front of it).
+/// rest. Three terms exist only for profiles or for a measurement and
+/// default to zero, so the balanced evaluator is unchanged by their
+/// existence: `ambush_weight` and `installed_agenda_weight` (a Corp that
+/// plays for the flatline, and one that wants the agenda on the table
+/// before the ICE in front of it), and `unrezzed_threat_weight` (Phase 2
+/// §5 item 40's leaf window onto hidden state, measured and shipped off).
+/// `stage_gain` is a fourth and is not a term at all — it scales the other
+/// weights rather than the score.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Weights {
     pub agenda_point_weight: f64,
@@ -668,6 +689,11 @@ pub struct Weights {
     /// the one-ply Corp already advances every agenda it has installed
     /// and the profile had no way to say "install it".
     pub installed_agenda_weight: f64,
+    /// How far the position's stage may move every weight above, from the
+    /// build archetype toward the pressure one. Zero is the static
+    /// evaluator this repo has always had. See `STAGE_GAIN` and
+    /// `stage_weights`.
+    pub stage_gain: f64,
 }
 
 impl Default for Weights {
@@ -712,6 +738,7 @@ impl Default for Weights {
             rd_draw_reserve: RD_DRAW_RESERVE,
             active_run_against_weight: ACTIVE_RUN_AGAINST_WEIGHT,
             installed_agenda_weight: 0.0,
+            stage_gain: STAGE_GAIN,
         }
     }
 }
@@ -731,12 +758,152 @@ pub fn evaluate_state(state: &GameState, side: Side, registry: &CardRegistry) ->
     evaluate_state_with(state, side, registry, &Weights::default())
 }
 
+/// `w`, moved toward the stance the position calls for.
+///
+/// **The defect this exists for.** `evaluate_state_with` is otherwise a
+/// static function of the position: it scores a board identically on turn
+/// 1 and turn 20, so a bot interleaves building and pressuring every turn
+/// instead of doing one and then the other. `diag tempo`'s baseline
+/// (ROADMAP Phase 5 §5) measured both chairs doing exactly that, and found
+/// the Runner's stance *inverted* — 0.82 installs on turn 1 falling to
+/// 0.07, against 1.85 runs on turn 1 rising to 2.20 and then decaying,
+/// with rig coverage never past 1.43 of 3. It is most aggressive when its
+/// rig is emptiest.
+///
+/// **Why an interpolation rather than new terms.** Four of the seven
+/// personalities describe themselves with a temporal word they cannot act
+/// on — `Glacier` "build the fort, *then* score behind it", `Rush` "score
+/// early, protect late", `Builder` "the rig first… *before* the runs
+/// start", `Cautious` "a full rig *before* a run" — and the pairs move the
+/// *same fields in opposite directions*. They are the two ends of one
+/// dial, and the game is played standing still on it. Balanced beating
+/// both `Builder` and `Aggressive` is what a fixed midpoint of a dial that
+/// should be moving looks like against its own two ends, so the endpoints
+/// were already measured and already shipped; what was missing was the
+/// scalar. Adding six new `Weights` terms instead would have grown the
+/// surface for the same claim and left the profiles still unable to
+/// sequence.
+///
+/// **Continuous, never a switch.** `UniformPolicyEvaluator::evaluate_from`
+/// scores leaf minus root, so a stage that jumped inside one search would
+/// make two leaves of the same tree incomparable in a way no other term
+/// is. Every input below moves by one card or one credit at a time.
+///
+/// The Corp arm is deliberately not staged yet: Phase 5 §5's baseline
+/// relocated its signal (it is rich and under-rezzing *late*, not
+/// credit-starved throughout as §3 read it), and one chair at a time is
+/// what keeps a pool-wide effect attributable.
+fn stage_weights(state: &GameState, side: Side, registry: &CardRegistry, w: &Weights) -> Weights {
+    if w.stage_gain == 0.0 || side == Side::Corp {
+        return *w;
+    }
+    let stance = lerp(
+        &Personality::Builder.weights(),
+        &Personality::Aggressive.weights(),
+        runner_stage(state, registry),
+    );
+    lerp(w, &stance, w.stage_gain)
+}
+
+/// How far through its own game plan the Runner is, in `0.0..=1.0`: 0 is
+/// "nothing to run with", 1 is "run now".
+///
+/// Two readings, and the larger wins. **Readiness** is the rig, over the
+/// evaluator's own `breaker_coverage` rather than a second definition of
+/// it — a Runner with no breakers has no business making runs, and one
+/// that covers all three subtypes has no more building to do. **Urgency**
+/// is the Corp's clock: at five of seven points the rig no longer matters
+/// and the Runner has to contest whatever is on the table. Taking the
+/// larger rather than the sum is what makes urgency an override instead of
+/// a bonus, so a Runner that never finds its breakers still plays rather
+/// than banking credits until it decks.
+///
+/// **Nothing here reads a sampled card.** Coverage is the Runner's own
+/// rig, agenda points are public, and the win threshold is
+/// `MatchRules::winning_agenda_points` rather than a hard-coded 7 (the
+/// starter format plays to 6). That keeps the scalar on the safe side of
+/// the determinization line, where every term but
+/// `unrezzed_threat_weight` already sits.
+fn runner_stage(state: &GameState, registry: &CardRegistry) -> f64 {
+    let readiness = breaker_coverage(state, registry) as f64 / 3.0;
+    let target = state.rules.winning_agenda_points.max(1);
+    let urgency = f64::from(state.corp.resources.agenda_points.0) / f64::from(target);
+    readiness.max(urgency).clamp(0.0, 1.0)
+}
+
+/// `a` at `t == 0`, `b` at `t == 1`. The counts round rather than
+/// truncate, so a `grip_floor` travelling 3 → 2 crosses at the halfway
+/// point rather than at the very end.
+///
+/// `stage_gain` is taken from `a` and never interpolated: it is the dial's
+/// own setting, not one of the weights the dial moves, and blending it
+/// would make the travel depend on where the travel had already got to.
+fn lerp(a: &Weights, b: &Weights, t: f64) -> Weights {
+    let f = |x: f64, y: f64| x + (y - x) * t;
+    let c = |x: usize, y: usize| (x as f64 + (y as f64 - x as f64) * t).round().max(0.0) as usize;
+    let n = |x: u32, y: u32| (f64::from(x) + (f64::from(y) - f64::from(x)) * t).round().max(0.0) as u32;
+    Weights {
+        agenda_point_weight: f(a.agenda_point_weight, b.agenda_point_weight),
+        own_credit_weight: f(a.own_credit_weight, b.own_credit_weight),
+        opponent_credit_weight: f(a.opponent_credit_weight, b.opponent_credit_weight),
+        bad_publicity_weight: f(a.bad_publicity_weight, b.bad_publicity_weight),
+        tag_weight: f(a.tag_weight, b.tag_weight),
+        board_presence_weight: f(a.board_presence_weight, b.board_presence_weight),
+        memory_weight: f(a.memory_weight, b.memory_weight),
+        rezzed_ice_weight: f(a.rezzed_ice_weight, b.rezzed_ice_weight),
+        rezzed_asset_weight: f(a.rezzed_asset_weight, b.rezzed_asset_weight),
+        unrezzed_install_weight: f(a.unrezzed_install_weight, b.unrezzed_install_weight),
+        advancement_weight: f(a.advancement_weight, b.advancement_weight),
+        agenda_counter_weight: f(a.agenda_counter_weight, b.agenda_counter_weight),
+        ambush_advancement_weight: f(a.ambush_advancement_weight, b.ambush_advancement_weight),
+        ambush_advancement_cap: n(a.ambush_advancement_cap, b.ambush_advancement_cap),
+        ambush_weight: f(a.ambush_weight, b.ambush_weight),
+        agenda_protection_weight: f(a.agenda_protection_weight, b.agenda_protection_weight),
+        agenda_protection_cap: c(a.agenda_protection_cap, b.agenda_protection_cap),
+        breaker_coverage_weight: f(a.breaker_coverage_weight, b.breaker_coverage_weight),
+        unbreakable_ice_weight: f(a.unbreakable_ice_weight, b.unbreakable_ice_weight),
+        etr_subroutine_weight: f(a.etr_subroutine_weight, b.etr_subroutine_weight),
+        active_run_weight: f(a.active_run_weight, b.active_run_weight),
+        advanced_card_prospect_weight: f(a.advanced_card_prospect_weight, b.advanced_card_prospect_weight),
+        known_ambush_weight: f(a.known_ambush_weight, b.known_ambush_weight),
+        opponent_board_weight: f(a.opponent_board_weight, b.opponent_board_weight),
+        successful_run_weight: f(a.successful_run_weight, b.successful_run_weight),
+        pending_subroutine_weight: f(a.pending_subroutine_weight, b.pending_subroutine_weight),
+        unresolved_decision_weight: f(a.unresolved_decision_weight, b.unresolved_decision_weight),
+        pending_decision_upside_weight: f(a.pending_decision_upside_weight, b.pending_decision_upside_weight),
+        strength_shortfall_weight: f(a.strength_shortfall_weight, b.strength_shortfall_weight),
+        unrezzed_threat_weight: f(a.unrezzed_threat_weight, b.unrezzed_threat_weight),
+        savings_shortfall_weight: f(a.savings_shortfall_weight, b.savings_shortfall_weight),
+        grip_shortfall_weight: f(a.grip_shortfall_weight, b.grip_shortfall_weight),
+        grip_floor: c(a.grip_floor, b.grip_floor),
+        held_card_weight: f(a.held_card_weight, b.held_card_weight),
+        hq_shortfall_weight: f(a.hq_shortfall_weight, b.hq_shortfall_weight),
+        hq_floor: c(a.hq_floor, b.hq_floor),
+        rd_draw_reserve: c(a.rd_draw_reserve, b.rd_draw_reserve),
+        active_run_against_weight: f(a.active_run_against_weight, b.active_run_against_weight),
+        installed_agenda_weight: f(a.installed_agenda_weight, b.installed_agenda_weight),
+        stage_gain: a.stage_gain,
+    }
+}
+
 /// `evaluate_state` under a particular `Weights` — what a `Personality`
 /// gives the heuristic, MCTS and the uniform PUCT evaluator.
 pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistry, w: &Weights) -> f64 {
     if let GamePhase::GameOver(winner) = state.phase {
         return if winner == side { WIN_SCORE } else { -WIN_SCORE };
     }
+
+    // Before the shared prefix, not inside the per-side arm: a stance moves
+    // `opponent_credit_weight` too (`Aggressive` doubles it), and that term
+    // is read above the `match`. Hoisted once for the same reason
+    // `rig_coverage` is — `corp_install_value` runs per installed card.
+    let staged;
+    let w = if w.stage_gain == 0.0 {
+        w
+    } else {
+        staged = stage_weights(state, side, registry, w);
+        &staged
+    };
 
     let own = state.resources(side);
     let opponent = state.resources(side.other());
@@ -3021,7 +3188,141 @@ mod tests {
             assert_eq!(evaluate_state(&state, side, &empty()), evaluate_state_with(&state, side, &empty(), &Weights::default()));
         }
         assert_eq!(Weights::default().installed_agenda_weight, 0.0, "the balanced Corp has no install preference by type");
-        assert_eq!(Weights::default().installed_agenda_weight, 0.0, "the balanced Corp has no install preference by type");
+        assert_eq!(Weights::default().stage_gain, 0.0, "and the evaluator is static until a measurement earns otherwise");
+    }
+
+    /// The identity that makes every number recorded before the stage
+    /// existed still stand: at gain 0 nothing is interpolated at all, on
+    /// either chair and whatever the board looks like.
+    #[test]
+    fn a_stage_gain_of_zero_is_the_static_evaluator() {
+        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3)]);
+        let mut state = GameState::new(0);
+        state.corp.resources.agenda_points = AgendaPoints(5);
+        state.runner.rig = vec![rig_card("cleaver")];
+        state.runner.grip = corp_cards("g", 4);
+        let zero = Weights { stage_gain: 0.0, ..Weights::default() };
+        for side in [Side::Corp, Side::Runner] {
+            assert_eq!(
+                evaluate_state_with(&state, side, &registry, &zero),
+                evaluate_state_with(&state, side, &registry, &Weights::default()),
+                "{side:?} scores the same with the dial off"
+            );
+            assert_eq!(stage_weights(&state, side, &registry, &zero), zero);
+        }
+    }
+
+    /// The Corp arm is not staged yet, so a Corp seat handed a gain plays
+    /// byte-identically to one handed none. That is what lets one
+    /// `--stage-gain` flag isolate the Runner chair (`bots::AgentSetup`).
+    #[test]
+    fn the_corp_is_not_staged_so_one_flag_isolates_the_runner_chair() {
+        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3)]);
+        let mut state = GameState::new(0);
+        state.corp.resources.agenda_points = AgendaPoints(5);
+        state.runner.rig = vec![rig_card("cleaver")];
+        let full = Weights { stage_gain: 1.0, ..Weights::default() };
+        assert_eq!(
+            evaluate_state_with(&state, Side::Corp, &registry, &full),
+            evaluate_state_with(&state, Side::Corp, &registry, &Weights::default()),
+        );
+        assert_ne!(
+            evaluate_state_with(&state, Side::Runner, &registry, &full),
+            evaluate_state_with(&state, Side::Runner, &registry, &Weights::default()),
+            "the Runner chair does move, or the dial is wired to nothing"
+        );
+    }
+
+    /// `lerp` lands on its endpoints, is linear between them, and rounds a
+    /// count rather than truncating it — `grip_floor` travelling 3 → 2 has
+    /// to cross at the halfway point, not at the very end.
+    #[test]
+    fn lerp_lands_on_its_endpoints_and_rounds_its_counts() {
+        let build = Personality::Builder.weights();
+        let pressure = Personality::Aggressive.weights();
+        assert_eq!(lerp(&build, &pressure, 0.0), build);
+        assert_eq!(lerp(&build, &pressure, 1.0), pressure);
+
+        let half = lerp(&build, &pressure, 0.5);
+        let midpoint = (build.active_run_weight + pressure.active_run_weight) / 2.0;
+        assert!((half.active_run_weight - midpoint).abs() < 1e-9);
+
+        assert_eq!(build.grip_floor, 3);
+        assert_eq!(pressure.grip_floor, 2);
+        assert_eq!(lerp(&build, &pressure, 0.49).grip_floor, 3);
+        assert_eq!(lerp(&build, &pressure, 0.51).grip_floor, 2);
+
+        // The dial's own setting is the caller's and is never blended, or
+        // how far the travel goes would depend on how far it had got.
+        let geared = Weights { stage_gain: 0.6, ..build };
+        assert_eq!(lerp(&geared, &pressure, 1.0).stage_gain, 0.6);
+    }
+
+    /// The scalar is the rig, overridden by the Corp's clock. A Runner
+    /// with no breakers has no business running; one that covers all three
+    /// subtypes has no more building to do; and at five of seven points
+    /// against it, neither reading matters and it has to contest.
+    #[test]
+    fn the_runner_stage_reads_the_rig_and_is_overridden_by_the_corps_clock() {
+        let registry = CardRegistry::from_cards(vec![
+            breaker("cleaver", Some(IceType::Barrier)),
+            breaker("carmen", Some(IceType::Sentry)),
+            breaker("unity", Some(IceType::CodeGate)),
+        ]);
+        let mut state = GameState::new(0);
+        assert_eq!(runner_stage(&state, &registry), 0.0, "no rig, no clock: all build");
+
+        state.runner.rig = vec![rig_card("cleaver")];
+        assert!((runner_stage(&state, &registry) - 1.0 / 3.0).abs() < 1e-9);
+
+        state.runner.rig.push(rig_card("carmen"));
+        state.runner.rig.push(rig_card("unity"));
+        assert_eq!(runner_stage(&state, &registry), 1.0, "a complete rig is all pressure");
+
+        // The override, on a board with nothing built.
+        let mut losing = GameState::new(0);
+        losing.corp.resources.agenda_points = AgendaPoints(5);
+        let target = f64::from(losing.rules.winning_agenda_points);
+        assert!((runner_stage(&losing, &registry) - 5.0 / target).abs() < 1e-9);
+        assert!(runner_stage(&losing, &registry) > 0.5, "five points against is not a building position");
+    }
+
+    /// The decision the dial exists to win, and the one `diag tempo`
+    /// measured the Runner getting backwards: with an empty rig and a
+    /// breaker in grip, building beats running; with the rig complete and
+    /// the same choice, running beats building.
+    #[test]
+    fn a_staged_runner_builds_on_an_empty_rig_and_runs_on_a_full_one() {
+        let registry = CardRegistry::from_cards(vec![
+            costed_breaker("cleaver", Some(IceType::Barrier), 3),
+            costed_breaker("carmen", Some(IceType::Sentry), 3),
+            costed_breaker("unity", Some(IceType::CodeGate), 3),
+        ]);
+        use netrunner_core::rules::{MemoryUnits, ServerId};
+        let staged = Weights { stage_gain: 1.0, ..Weights::default() };
+        // The same two positions at both ends of the dial: one credit
+        // spent on a run in progress, against one spent holding the rig
+        // together. What moves between them is only the stance.
+        let run_value = |rig: Vec<&str>| {
+            let mut state = GameState::new(0);
+            state.runner.resources.credits = Credits(6);
+            state.runner.grip = corp_cards("g", 4);
+            state.runner.rig = rig.iter().map(|id| rig_card(id)).collect();
+            state.runner.memory_units = MemoryUnits(4);
+            // `access_prospect` counts what the breach would *show*, so an
+            // empty HQ makes the run worth nothing at either end of the
+            // dial and the comparison vacuous.
+            state.corp.hq = corp_cards("hq", 3);
+            let idle = evaluate_state_with(&state, Side::Runner, &registry, &staged);
+            state.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
+            evaluate_state_with(&state, Side::Runner, &registry, &staged) - idle
+        };
+        let empty_rig = run_value(vec![]);
+        let full_rig = run_value(vec!["cleaver", "carmen", "unity"]);
+        assert!(
+            full_rig > empty_rig,
+            "a run is worth more once the rig is built: {empty_rig} with nothing, {full_rig} with everything"
+        );
     }
 
     #[test]

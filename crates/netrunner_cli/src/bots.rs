@@ -79,13 +79,31 @@ pub struct AgentSetup {
     /// has no evaluator, and a network-backed `PuctOnnx` has its own
     /// value head).
     pub personality: Personality,
+    /// How far the position's stage may move the evaluator's weights, from
+    /// the build archetype toward the pressure one —
+    /// `eval::Weights::stage_gain`, and zero is the static evaluator.
+    ///
+    /// **One field for both chairs, and that is the chair isolation rather
+    /// than a shortcut.** `eval::stage_weights` stages the Runner arm only,
+    /// so a Corp seat handed the same gain is byte-identical to one handed
+    /// zero. A measurement therefore needs no per-chair flag, and cannot
+    /// spring Phase 5 §3's trap of moving both chairs with one constant.
+    pub stage_gain: f64,
 }
 
 impl AgentSetup {
     /// The defaults a seat gets when nobody is measuring anything: each
-    /// agent's own determinization count, no shared sample, balanced.
+    /// agent's own determinization count, no shared sample, balanced, and
+    /// the static evaluator.
     pub fn new(simulations: usize) -> Self {
-        Self { simulations, determinizations: None, shared_sample: false, mcts_depth: None, personality: Personality::Balanced }
+        Self {
+            simulations,
+            determinizations: None,
+            shared_sample: false,
+            mcts_depth: None,
+            personality: Personality::Balanced,
+            stage_gain: 0.0,
+        }
     }
 
     pub fn with_personality(mut self, personality: Personality) -> Self {
@@ -124,11 +142,13 @@ pub fn make_seat_agent(
 }
 
 pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Option<Box<dyn BotAgent>> {
-    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, personality } = setup;
+    let AgentSetup { simulations, determinizations, shared_sample, mcts_depth, personality, stage_gain } = setup;
     match kind {
         BotKind::Human | BotKind::Onnx | BotKind::PuctOnnx => None,
         BotKind::Random => Some(Box::new(RandomAgent::new(seed))),
-        BotKind::Heuristic => Some(Box::new(HeuristicAgent::with_personality(side, seed, personality))),
+        BotKind::Heuristic => {
+            Some(Box::new(HeuristicAgent::with_personality(side, seed, personality).with_stage_gain(stage_gain)))
+        }
         BotKind::Mcts => {
             let mut agent = match determinizations {
                 Some(trees) => MctsAgent::with_trees(side, seed, simulations, trees),
@@ -137,12 +157,12 @@ pub fn make_agent(kind: BotKind, side: Side, seed: u64, setup: AgentSetup) -> Op
             if let Some(depth) = mcts_depth {
                 agent = agent.with_max_depth(depth);
             }
-            Some(Box::new(agent.with_personality(personality).with_shared_sample(shared_sample)))
+            Some(Box::new(agent.with_personality(personality).with_stage_gain(stage_gain).with_shared_sample(shared_sample)))
         }
         BotKind::Puct => Some(Box::new(PuctAgent::with_config(
             side,
             seed,
-            UniformPolicyEvaluator::with_personality(side, personality),
+            UniformPolicyEvaluator::with_personality(side, personality).with_stage_gain(stage_gain),
             PuctConfig {
                 iterations: simulations,
                 samples: determinizations.unwrap_or(PuctConfig::default().samples),
