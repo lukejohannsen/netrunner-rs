@@ -262,10 +262,190 @@ game and exited. It is now the main menu's Play vs Computer form, reopened
 after every game with the rung moved to the new suggestion; the fold into
 `Config` is unchanged.
 
-**Standing open items:** the **Corp chair's ceiling** — `elite` wins 0.266
-against the un-handicapped one-ply Runner, so a Runner-seated player runs
-out of ladder at rung 5. The lever is the Corp evaluator (Phase 2 §5a's
-next term), not this table. *Closed:* the calibration that would resolve
+## 3. The Corp rezzed its cheapest ICE, not the ICE that held — IN PROGRESS (16 September 2026)
+
+`feat/corp-reads-the-rig`, stacked on §2's calibration. The Corp chair's
+ceiling from §2 is the target; this is the first cut at the evaluator
+lever, and it moves the chair without closing the item.
+
+**The structural finding.** Every `state.runner` read in
+`eval::evaluate_state_with` sat in the `Side::Runner` arm. The Corp arm
+read its own board and the Runner's *credit count*, and nothing else — so
+the Corp priced ICE by `REZZED_ICE_WEIGHT − 0.4 × cost`, a formula that
+**falls with cost**. It therefore rezzed its weakest ICE and left its best
+face-down. Over 192 heuristic-vs-heuristic games it installed 1,201 ICE
+and rezzed 493, split exactly backwards:
+
+| ICE | cost | strength | ETR subs | installed | rezzed (before) | rezzed (after) |
+|---|---|---|---|---|---|---|
+| Tithe | 1 | 1 | 0 | 143 | 71 (0.50) | 75 (0.52) |
+| Palisade | 3 | 2 | 1 | 67 | 34 (0.51) | 32 (0.48) |
+| Brân 1.0 | 6 | 6 | 2 | 59 | 14 (**0.24**) | 21 (0.35) |
+| Pharos | 7 | 5 | 2 | 43 | 11 (**0.26**) | 23 (**0.52**) |
+| Empiricist | 7 | — | 0 | 36 | 4 (0.11) | 8 (0.22) |
+
+A run met half a piece of ICE — 2,050 `IceApproached` over 3,781 runs —
+and **86% of runs completed** (HQ 0.912, R&D 0.924, remote 0.793). The
+Runner stole 615 agendas to the Corp's 158 scored.
+
+**Two terms, both mirrors of ones the Runner already had.**
+`ETR_SUBROUTINE_WEIGHT` 1.0 per run-ending subroutine on a rezzed piece
+(the Corp's `PENDING_SUBROUTINE_WEIGHT`) and `UNBREAKABLE_ICE_WEIGHT` 1.2
+for a subtype `rig_coverage` does not cover (the Corp's
+`BREAKER_COVERAGE_WEIGHT`).
+
+**What they are worth, stated carefully, because the first number taken
+here was wrong.** `--corp-personality` unset is *the deck's own style*,
+not `balanced`, so an early reading compared a deck-style baseline against
+a forced-balanced result and claimed 0.161 → 0.204 at z = 2.18. Measured
+like for like over 768 games on four seeds against the un-handicapped
+one-ply Runner:
+
+| Corp style | before | after | delta | z |
+|---|---|---|---|---|
+| forced `balanced` | 0.188 | 0.204 | +0.017 | 0.84 |
+| deck's own | 0.161 | 0.194 | +0.033 | 1.67 |
+
+Neither clears the usual bar on its own. What carries the change is the
+second half of the Testing Rule's clause rather than the first: it is a
+**rise on all eight seed-pairings** (four seeds × both style modes), which
+is p ≈ 0.004 on a sign test, and the mechanism below is not statistical at
+all.
+
+**Both are paid only on a face-up card, and that is arithmetic, not
+visibility.** The first cut paid them on the face-down piece too, where
+they sit on *both sides of the rez* and cancel out of the decision they
+exist to win: measured that way, `RezIce` went 1,073 → 1,053 and Corp wins
+31 → 29 of 192 — a term that did nothing at all.
+
+**What it did to the ladder, which is the point and is not all good.**
+The full 5 × 5 square re-run at 768 games a cell, Corp column against the
+un-handicapped one-ply Runner:
+
+| rung | before | after | step before | step after |
+|---|---|---|---|---|
+| `novice` | 0.012 | 0.012 | — | — |
+| `apprentice` | 0.078 | 0.078 | +0.066 (z 6.4) | +0.066 (z 6.4) |
+| `operator` | 0.167 | **0.182** | +0.089 (z 5.3) | +0.104 (z 6.1) |
+| `veteran` | 0.221 | 0.221 | +0.055 (z 2.7) | **+0.039 (z 1.9)** |
+| `elite` | 0.266 | **0.277** | +0.045 (z 2.0) | +0.056 (z 2.5) |
+
+**A better leaf lifts only the rungs that do not search.** `operator` is
+one ply and takes the whole gain (+0.016); `veteran` is `puct@512` at
+`epsilon` 0.10 and takes **+0.000**; `novice` is the random agent and does
+not read the evaluator at all, moving in neither column, which is the
+check that only evaluator-using rungs shifted. The third step therefore
+*compressed*: the rung below caught up to the one above. Pooled it is
+still a rise, but at 384 games a seed it reads `flat` on seed 2 (+0.018,
+sd 0.029) where **both** seeds were `rise` before. So the change costs the
+Corp ladder margin at exactly its weakest joint, and the remedy is a Corp
+re-spacing of the kind §2 did for the Runner — the `operator` rung wants a
+small handicap of its own now — or a `veteran` rung that is not simply
+more search over the same leaf. Phase 2 §5 item 34 already says search
+saturates from 512 simulations on, and this is the same fact seen from the
+ladder: lookahead finds the rez decision the leaf term encodes, so
+encoding it buys the searching rungs nothing.
+
+The Runner column is unchanged within noise (−0.016 to +0.004 a rung) and
+its calibrated spacing survives, which is what makes the Corp column above
+attributable.
+
+**Three things measured and rejected**, each recorded on the constant it
+would have touched:
+
+- **A Corp `HELD_CARD_WEIGHT`.** The inviting symmetry — the term that
+  fixed the Runner chair in §2's predecessor, and the Corp clicks to draw
+  1.1 times a game against the Runner's 3.6. Tried at 0.42, 0.45 and 0.48,
+  all three gave the *same* 1,623 draws against a baseline 425 and the
+  same **0.083** against 0.182: above `OWN_CREDIT_WEIGHT` it is a switch,
+  not a dial. Installs did not move (4,959 → 4,961), so the cards never
+  reached the table; the clicks came out of `GainCreditClick` and rezzes
+  fell 2,156 → 1,583. **The Corp is not card-starved, it is
+  credit-starved** — it cannot pay to rez what it has already installed.
+- **More fort.** `--corp-personality glacier` is literally "build the fort
+  first" (ICE at 1.8, agenda protection 1.0 at cap 3, credits at 0.5) and
+  scores **0.174** against balanced's 0.198. More ICE is not the lever.
+- **A bigger rez weight.** Once the two terms above are in, raising
+  `REZZED_ICE_WEIGHT` from 1.4 to 100.0 produces **byte-identical games**:
+  the rez decision is saturated, every affordable rez already happens, and
+  what is left is the credits to pay for them.
+
+**A measurement trap found on the way — and the first diagnosis of it was
+wrong.** Sweeping the three ambush constants read 0.208 where the same
+Corp weights applied through `--corp-personality trap` read 0.259, and
+this entry first blamed a cross-chair leak: both chairs share one
+`Weights`, so the Corp's ambush preferences were supposedly reaching the
+Runner through `visible_install_value`. **They were not.** Each agent
+holds its own `Weights` (`HeuristicAgent::with_personality`), and the
+Runner evaluates with the Runner's, so a Trap Corp is invisible to a
+Balanced Runner. The real cause is duller and matters more: editing a
+*constant* moves `Weights::default()`, and in a `heuristic`-vs-`heuristic`
+pairing **both** agents are `Personality::Balanced`, so the sweep taught
+the **Runner** to respect ambushes at the same time. A one-line fix that
+forced the balanced constants inside `visible_install_value` was written,
+measured as a no-op — no Runner profile sets an ambush term, so there was
+nothing to force — and reverted. What survives is the measurement rule:
+**a constant sweep moves both chairs and `--corp-personality` moves one**,
+so a chair figure must come from the flag.
+
+**The personalities need re-auditing against this, and one of them has a
+named defect.** Rez value is now `rezzed_ice_weight + 1.0 × etr + 1.2 ×
+uncovered − own_credit_weight × cost`, and the profiles were tuned before
+the first three terms existed. Measured rez rate by ICE cost, 384 games a
+profile:
+
+| profile | cost 1–2 | cost 3–4 | cost 5–7 | mean cost rezzed |
+|---|---|---|---|---|
+| balanced | 0.478 | 0.395 | 0.324 | 3.15 |
+| rush | 0.487 | 0.385 | **0.366** | **3.24** |
+| glacier | **0.538** | 0.487 | 0.342 | **3.12** |
+| trap | 0.483 | 0.406 | 0.322 | 3.16 |
+
+**`Glacier` — "build the fort first" — rezzes the cheapest ICE of any Corp
+profile, and `Rush` the most expensive.** The arithmetic says why:
+Glacier's `rezzed_ice_weight` 1.8 is a *flat* bonus that helps cheap and
+expensive ICE alike, while its `own_credit_weight` 0.5 is a *per-cost*
+penalty that bites hardest on exactly the ICE the profile exists for. The
+two knobs fight and the per-cost one wins; `Rush` takes that axis by
+accident at 0.3. `own_credit_weight` is doing double duty — it makes the
+Corp gain credits *and* makes it reluctant to spend them — and a profile
+that wants to rez needs the first without the second.
+
+**The obvious fix does not work, which is why this is recorded rather than
+taken.** Dropping Glacier's `own_credit_weight` to balanced's 0.4 scores
+**0.156** and to Rush's 0.3 **0.151**, against **0.174** as it stands —
+both worse, on separate binaries checked by hash. So the rez-rate story is
+real and the one-knob repair is not the repair. Glacier also advances at
+1.2 against balanced's 1.5, and balanced beats it outright (0.198 against
+0.174), so what the profile costs itself may not be the fort at all. A
+profile retune is its own measured job with its own before/after, not a
+rider on this branch.
+
+**The next lever, with its number already taken.** `--corp-personality
+trap` — three card-reading terms, `ambush_weight` 0.0 → 3.0,
+`ambush_advancement_weight` 1.0 → 2.8, its cap 3 → 7 — scores **0.259 ±
+0.032** against the same build's forced `balanced` **0.204 ± 0.029** over
+768 games each, z = 2.6, with flatlines 32 → 79 as the mechanism. Both
+sides of that comparison name a personality, so it is the one figure here
+the style confound above cannot touch, and it is larger than anything §3
+itself bought. The
+balanced Corp has `AMBUSH_WEIGHT` at zero *by design* ("the balanced Corp
+does not play for the flatline"), which was right against the Runner that
+existed when it was written and is wrong against one that makes 20 runs a
+game. Moving the default is not a free +0.055, because the same constants
+also teach the Runner to respect ambushes: with both chairs moved the
+gain is +0.026. Deciding what balanced should be — and whether Trap stays
+a distinct archetype afterwards — is the open work.
+
+
+**Standing open items:** the **Corp chair's ceiling** — still open, and
+§3 is the first cut at it: the one-ply Corp gains +0.017 (forced
+`balanced`) to +0.033 (deck styles) against the un-handicapped one-ply
+Runner, a rise on all eight seed-pairings but under the bar on either
+alone, so a Runner-seated player still runs out of ladder at rung 5. The
+lever remains the Corp evaluator, not this table, and §3 names the next
+one — the ambush terms balanced switches off — with its number already
+measured and larger than what §3 itself bought. *Closed:* the calibration that would resolve
 the top steps — it ran at 768 games a cell and both chairs climb at every
 step; the server offers levels; local play is rated and the modal names
 the next rung (`feat/local-rating`, Phase 3 §2); the start screen.
