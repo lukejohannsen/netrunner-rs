@@ -141,6 +141,73 @@ const AGENDA_PROTECTION_CAP: usize = 2;
 /// +1.5, or +0.8 from the floor, and every breaker in the pool clears a
 /// run from anywhere.
 const BREAKER_COVERAGE_WEIGHT: f64 = 3.0;
+/// A piece of ICE whose subtype the Runner's rig has **no breaker for**,
+/// on top of whatever `corp_install_value` already pays for it. The exact
+/// mirror of `BREAKER_COVERAGE_WEIGHT`, and it exists because the Corp
+/// half of this evaluator could not see across the table at all: every
+/// `state.runner` read in `evaluate_state_with` sat in the Runner arm, so
+/// the Corp priced ICE by its rez cost (`REZZED_ICE_WEIGHT` − 0.4 × cost)
+/// and by nothing else. Cheap ICE therefore always looked best, and cheap
+/// ICE is exactly what a developed rig walks through: over 192
+/// heuristic-vs-heuristic games the Runner completed **86% of 3,781 runs**
+/// (HQ 0.912, R&D 0.924) and stole 615 agendas to the Corp's 158 scored.
+///
+/// Reads `rig_coverage` — the same three flags the Runner's own term
+/// counts — so the two chairs agree on what "covered" means, and an AI
+/// breaker shuts the term off on all three subtypes at once the way it
+/// opens all three for the Runner. **Only the rig, never the grip**: an
+/// installed program is public, so this is the Corp reading what it is
+/// entitled to see. The mirror-image line is `UNREZZED_THREAT_WEIGHT`,
+/// which is the *Runner* reading a face-down Corp card and is off at zero
+/// for that reason.
+///
+/// **Rezzed ICE only**, which is an arithmetic rule rather than a
+/// visibility one: paid on the face-down card as well, the term sits on
+/// both sides of the rez and cancels out of the single decision it exists
+/// to win. It was built that way first and measured before it was
+/// reasoned about — `RezIce` 1,073 → 1,053, Corp wins 31 → 29 of 192, a
+/// term that changed nothing.
+///
+/// **Why 1.2.** The decision it has to win is rezzing an expensive piece
+/// of ICE the rig cannot break. That rez is worth 1.4 − 0.4 × cost today,
+/// so a 6-cost bioroid sits at −1.0 and stays face-down forever however
+/// well it would hold; at 1.2 it is +0.2 and gets rezzed, while a 3-cost
+/// the rig already covers is unchanged. The ceiling is
+/// `ADVANCEMENT_WEIGHT` (1.5): above that the Corp would rather build ICE
+/// than advance the agenda behind it, which is the trade this term must
+/// not make. **The value itself is not swept**: with this term and
+/// `ETR_SUBROUTINE_WEIGHT` both in, every affordable rez already happens,
+/// and `REZZED_ICE_WEIGHT` 1.4 → 100.0 produces byte-identical games — so
+/// there is nothing left for a larger weight here to flip either. What
+/// 1.2 has to be is inside the bracket above, and it is.
+const UNBREAKABLE_ICE_WEIGHT: f64 = 1.2;
+/// Each subroutine on a **rezzed** piece of ICE that can end the run
+/// (`Effect::can_end_the_run`, the same recogniser `is_unrezzed_threat`
+/// uses). The term that makes a rez worth paying for, and the reason it
+/// has to exist is that `REZZED_ICE_WEIGHT − 0.4 × cost` is the wrong
+/// *shape*: it falls with cost, so the Corp rezzed its weakest ICE and
+/// left its best face-down. Over 192 heuristic-vs-heuristic games it
+/// installed 1,201 ICE and rezzed 493, and the split ran exactly backwards
+/// — Tithe (1[c], no ETR subroutine) installed 143 and rezzed 71, Pharos
+/// (7[c], strength 5, two ETR) installed 43 and rezzed **11**, Brân 1.0
+/// (6[c], strength 6, two ETR) installed 59 and rezzed **14**. A run met
+/// half a piece of ICE: 2,050 `IceApproached` and 1,246 `IceEncountered`
+/// across 3,781 runs, and 86% of those runs completed.
+///
+/// **Why ETR rather than every subroutine.** A subroutine that tags or
+/// deals damage is worth something, but the quantity this evaluator is
+/// short of is the one that *stops a run*, and pricing all subroutines
+/// alike would pay Tithe's two (net 1[c] and 1 net damage) the same as
+/// Pharos's two ETR. `PENDING_SUBROUTINE_WEIGHT` is the Runner's side of
+/// this same fact and is likewise about what is still in the way.
+///
+/// **Why 1.0.** Rezzing becomes `1.4 − 0.4 × cost + this × etr`, which
+/// has to be positive for every piece of ICE worth having and ordered
+/// sensibly among them. At 1.0: Palisade (3[c], one ETR) +1.2, Brân
+/// (6[c], two) +1.0, Tithe (1[c], none) +1.0, Pharos (7[c], two) +0.6 —
+/// the cheap filler still rezzes when there is nothing better, and the
+/// ICE that holds a server now rezzes at all, which it did not.
+const ETR_SUBROUTINE_WEIGHT: f64 = 1.0;
 /// Each card the breach would show the Runner for the first time this
 /// turn (`hidden_accesses`), while the Runner is mid-run *and can afford
 /// to break every rezzed ICE still ahead of it* (`run_is_breakable`).
@@ -496,6 +563,24 @@ const HQ_FLOOR: usize = 3;
 /// deck out loses at the next mandatory draw, and a one-ply evaluator
 /// sees that only one action too late. R&D's size is public, so the brake
 /// reads nothing the Corp's `ClientView` does not show.
+///
+/// **There is deliberately no Corp `HELD_CARD_WEIGHT` above this floor,
+/// and it was measured rather than assumed.** The symmetry argument is
+/// inviting — the term that fixed the Runner chair in September 2026 was
+/// exactly this, and the heuristic Corp clicks to draw 1.1 times a game
+/// against the Runner's 3.6 — but it is wrong about what the Corp is
+/// short of. Tried at 0.42 and 0.48 over 384 games a point — separate
+/// binaries, checked by hash — both produced the *same* 1,623 draws
+/// against a baseline 425 and the same 0.083 win rate against 0.182:
+/// above `OWN_CREDIT_WEIGHT` the term is a switch, not a dial, and 0.5
+/// (on the tie with installing) was worse again at 0.062. Installs did not move at all (4,959 → 4,961),
+/// so the extra cards did not reach the table; the clicks came out of
+/// `GainCreditClick`, rezzes fell 2,156 → 1,583 and `IceApproached` 3,703
+/// → 3,319. The Corp was never card-starved — it installs 13 cards a game
+/// off 11.4 turns — it is credit-starved, and cannot pay to rez the ICE
+/// it has already installed. A card in HQ that the Corp cannot afford to
+/// turn face up is worth less than the credit that would have paid for
+/// one.
 const RD_DRAW_RESERVE: usize = 5;
 
 /// Every tunable term of `evaluate_state`, as one value. `Default` is the
@@ -530,6 +615,12 @@ pub struct Weights {
     pub agenda_protection_weight: f64,
     pub agenda_protection_cap: usize,
     pub breaker_coverage_weight: f64,
+    /// Corp only: each installed ICE whose subtype the rig cannot break.
+    /// See `UNBREAKABLE_ICE_WEIGHT`.
+    pub unbreakable_ice_weight: f64,
+    /// Corp only: each run-ending subroutine on a rezzed piece of ICE.
+    /// See `ETR_SUBROUTINE_WEIGHT`.
+    pub etr_subroutine_weight: f64,
     /// Runner only: each card the current run would show the Runner for
     /// the first time this turn. See `ACTIVE_RUN_WEIGHT`.
     pub active_run_weight: f64,
@@ -600,6 +691,8 @@ impl Default for Weights {
             agenda_protection_weight: AGENDA_PROTECTION_WEIGHT,
             agenda_protection_cap: AGENDA_PROTECTION_CAP,
             breaker_coverage_weight: BREAKER_COVERAGE_WEIGHT,
+            unbreakable_ice_weight: UNBREAKABLE_ICE_WEIGHT,
+            etr_subroutine_weight: ETR_SUBROUTINE_WEIGHT,
             active_run_weight: ACTIVE_RUN_WEIGHT,
             advanced_card_prospect_weight: ADVANCED_CARD_PROSPECT_WEIGHT,
             known_ambush_weight: KNOWN_AMBUSH_WEIGHT,
@@ -661,8 +754,12 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
     match side {
         Side::Corp => {
             score -= state.corp.bad_publicity as f64 * w.bad_publicity_weight;
+            // Computed once and handed down rather than read per install:
+            // the rig does not change between two cards on the same board,
+            // and `corp_install_value` is called for every one of them.
+            let rig = rig_coverage(state, registry);
             for installed in &state.corp.installed {
-                score += corp_install_value(installed, registry, w);
+                score += corp_install_value(installed, registry, w, rig);
             }
             score += f64::from(scored_agenda_counters(state)) * w.agenda_counter_weight;
             score += protected_agenda_ice(state, registry, w.agenda_protection_cap) as f64 * w.agenda_protection_weight;
@@ -839,9 +936,32 @@ fn visible_corp_board(state: &GameState, registry: &CardRegistry, w: &Weights) -
 /// samples that put different cards under the same install therefore
 /// score identically here, which is what keeps this term honest for the
 /// search (`the_corp_board_term_reads_no_hidden_identity`).
+///
+/// **`UNBREAKABLE_ICE_WEIGHT` is switched off here** — the `[true; 3]` —
+/// and not because the Runner may not look at its own rig. It is that the
+/// Runner already pays `BREAKER_COVERAGE_WEIGHT` for covering a subtype;
+/// letting the same rig fact also shrink the Corp board it subtracts would
+/// count one thing twice in one score. This term prices the Corp's
+/// material, and the rig is priced where the rig lives.
+/// **The rig is forced to `[true; 3]` and nothing else is.** The reason
+/// is double counting, not visibility: the Runner already pays
+/// `BREAKER_COVERAGE_WEIGHT` for covering a subtype, so letting the same
+/// rig fact also shrink the Corp board it subtracts would count one thing
+/// twice in one score. This term prices the Corp's material, and the rig
+/// is priced where the rig lives.
+///
+/// `ETR_SUBROUTINE_WEIGHT` is deliberately left alone here, and the line
+/// is preference against fact. The rig flags say what a rig *can do*;
+/// how many run-ending subroutines a rezzed piece of ICE has is a
+/// property of the card, public the moment it is face up, and more of
+/// them really is more material on the table. So the Runner's reading of
+/// the Corp board moves with that term — measured on the ladder square,
+/// the Runner column falls 0.000 to 0.010 a rung — which is why a Corp
+/// column taken on this build is not strictly comparable with one taken
+/// before it: the reference Runner is not byte-identical either.
 fn visible_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights) -> f64 {
     if installed.rezzed {
-        corp_install_value(installed, registry, w)
+        corp_install_value(installed, registry, w, [true; 3])
     } else {
         w.unrezzed_install_weight + f64::from(installed.advancement_tokens) * w.advancement_weight
     }
@@ -1056,7 +1176,7 @@ fn punishes_access_with_damage(def: &CardDefinition) -> bool {
     found
 }
 
-fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights) -> f64 {
+fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights, rig: [bool; 3]) -> f64 {
     let def = registry.get(&installed.card);
     let is_ice = def.is_some_and(|d| matches!(d.card_type, CardType::Ice(_)));
     let mut value = if installed.rezzed {
@@ -1064,6 +1184,22 @@ fn corp_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &We
     } else {
         w.unrezzed_install_weight
     };
+    // What the rig cannot break is what holds — and only once it is face
+    // up, which is the whole point: a term paid on the face-down card too
+    // is present on both sides of the rez and cancels out of the decision
+    // it exists to win. Measured that way first, and it moved nothing
+    // (`RezIce` 1,073 → 1,053, Corp 31 → 29 of 192). See
+    // `UNBREAKABLE_ICE_WEIGHT`.
+    if installed.rezzed
+        && let Some(def) = def
+        && let CardType::Ice(subtype) = &def.card_type
+    {
+        if !rig[subtype_slot(*subtype)] {
+            value += w.unbreakable_ice_weight;
+        }
+        let etr = def.subroutines.iter().filter(|sub| sub.effect.can_end_the_run()).count();
+        value += etr as f64 * w.etr_subroutine_weight;
+    }
     if let Some(required) = def.and_then(|d| d.advancement_requirement) {
         value += installed.advancement_tokens.min(required) as f64 * w.advancement_weight;
         // Past the requirement a token is worth what it will *become* at
@@ -1272,6 +1408,11 @@ fn advancement_upside(
         return 0.0;
     }
     let mut worst: Option<f64> = None;
+    // Advancing does not change what the rig covers, so the unbreakable
+    // term is the same on both sides of the delta and cancels; the real
+    // coverage is passed anyway rather than a stand-in that only happens
+    // to cancel today.
+    let rig = rig_coverage(state, registry);
     for installed in &state.corp.installed {
         let Some(def) = registry.get(&installed.card) else { return 0.0 };
         if !card_matches_filter(def, filter) {
@@ -1279,7 +1420,7 @@ fn advancement_upside(
         }
         let mut advanced = installed.clone();
         advanced.advancement_tokens += amount;
-        let delta = corp_install_value(&advanced, registry, w) - corp_install_value(installed, registry, w);
+        let delta = corp_install_value(&advanced, registry, w, rig) - corp_install_value(installed, registry, w, rig);
         worst = Some(worst.map_or(delta, |worst: f64| worst.min(delta)));
     }
     worst.unwrap_or(0.0).max(0.0)
@@ -1357,22 +1498,29 @@ fn rig_coverage(state: &GameState, registry: &CardRegistry) -> [bool; 3] {
 /// blocks so the network is shown exactly what this evaluator counts.
 pub(crate) fn covers(def: &CardDefinition) -> [bool; 3] {
     let mut covered = [false; 3];
-    let slot = |subtype: IceType| match subtype {
-        IceType::Barrier => 0,
-        IceType::CodeGate => 1,
-        IceType::Sentry => 2,
-    };
     for ability in &def.abilities {
         ability.effect.for_each_effect(&mut |effect| {
             if let Effect::BreakSubroutines { restrict_to, .. } = effect {
                 match restrict_to {
-                    Some(subtype) => covered[slot(*subtype)] = true,
+                    Some(subtype) => covered[subtype_slot(*subtype)] = true,
                     None => covered = [true; 3],
                 }
             }
         });
     }
     covered
+}
+
+/// A subtype's index into a `covers`/`rig_coverage` flag array. Shared so
+/// that the Corp's `UNBREAKABLE_ICE_WEIGHT` indexes the same array the
+/// Runner's `BREAKER_COVERAGE_WEIGHT` fills, rather than each end keeping
+/// its own copy of the order.
+fn subtype_slot(subtype: IceType) -> usize {
+    match subtype {
+        IceType::Barrier => 0,
+        IceType::CodeGate => 1,
+        IceType::Sentry => 2,
+    }
 }
 
 /// What the Runner's grip is worth, summed over `install_delta` and
@@ -2391,6 +2539,58 @@ mod tests {
         assert!(board(2, 4, HQ_FLOOR) > board(1, 6, HQ_FLOOR + 1));
     }
 
+    /// The two terms that make the Corp rez the ICE that holds rather
+    /// than the ICE that is cheap. Both are paid **only once the card is
+    /// face up**, which is the arithmetic the first cut got wrong: paid
+    /// on the face-down card too they sit on both sides of the rez and
+    /// cancel out of the decision they exist to win.
+    #[test]
+    fn the_corp_prices_ice_by_what_it_stops_and_only_once_it_is_face_up() {
+        use netrunner_core::dsl::SubroutineDef;
+        use netrunner_core::rules::InstallSlot;
+        let mut pharos = ice("pharos", 7);
+        pharos.subroutines = vec![
+            SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None },
+            SubroutineDef { text: String::new(), effect: Effect::EndTheRun, only_breakable_by: None },
+        ];
+        let mut tithe = ice("tithe", 1);
+        tithe.subroutines =
+            vec![SubroutineDef { text: String::new(), effect: Effect::GainCredits(Side::Corp, 1), only_breakable_by: None }];
+        let registry = CardRegistry::from_cards(vec![pharos, tithe, breaker("fracter", Some(IceType::Barrier))]);
+
+        let board = |id: &str, rezzed, rig: Vec<InstalledRunnerCard>| {
+            let mut state = GameState::new(0);
+            state.runner.rig = rig;
+            state.corp.installed = vec![InstalledCard {
+                card: CardId(id.to_string()),
+                install_id: InstallId(1),
+                slot: InstallSlot::Ice,
+                rezzed,
+                ..Default::default()
+            }];
+            evaluate_state(&state, Side::Corp, &registry)
+        };
+        let naked = || vec![];
+        let fracter = || vec![rig_card("fracter")];
+
+        // Face down, the two pieces are worth the same: nothing about
+        // what they stop has been revealed, and nothing may cancel.
+        assert_eq!(board("pharos", false, naked()), board("tithe", false, naked()));
+        assert_eq!(board("pharos", false, naked()), board("pharos", false, fracter()));
+
+        // Face up, two run-enders against none is worth exactly two of
+        // this weight, and a rig with no fracter is worth one more.
+        let rez_gain = |id: &str, rig: Vec<InstalledRunnerCard>| board(id, true, rig) - board(id, false, naked());
+        assert!((rez_gain("pharos", naked()) - rez_gain("tithe", naked()) - 2.0 * ETR_SUBROUTINE_WEIGHT).abs() < 1e-9);
+        assert!((rez_gain("pharos", naked()) - rez_gain("pharos", fracter()) - UNBREAKABLE_ICE_WEIGHT).abs() < 1e-9);
+
+        // The decision the pair exists to win: a 7-cost run-ender the rig
+        // cannot break is worth rezzing, where `REZZED_ICE_WEIGHT` minus
+        // its cost alone leaves it face-down forever.
+        let paid = rez_gain("pharos", naked()) - 7.0 * OWN_CREDIT_WEIGHT;
+        assert!(paid > 0.0, "an expensive run-ender the rig cannot break is worth rezzing, got {paid}");
+    }
+
     /// The HQ term is a shortfall below a floor, and a thin R&D switches
     /// it off so the Corp does not draw itself to a deck-out.
     #[test]
@@ -2952,3 +3152,4 @@ mod tests {
 
 
 }
+
