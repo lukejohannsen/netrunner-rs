@@ -337,12 +337,16 @@ impl std::str::FromStr for BotSpec {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // `level:elite:glacier` crosses a rung with a style, the way
+        // `--corp-level 5 --corp-personality glacier` does at a seat. Without
+        // it the benchmark could only calibrate the `Balanced` rungs, while
+        // play seats every rung in its deck's own style.
         if let Some(level) = s.strip_prefix("level:") {
-            return Ok(BotSpec {
-                kind: BotKind::Heuristic,
-                personality: Personality::Balanced,
-                level: Some(level.parse::<Level>()?),
-            });
+            let (level, personality) = match level.split_once(':') {
+                Some((level, personality)) => (level, personality.parse::<Personality>()?),
+                None => (level, Personality::Balanced),
+            };
+            return Ok(BotSpec { kind: BotKind::Heuristic, personality, level: Some(level.parse::<Level>()?) });
         }
         let (kind, personality) = match s.split_once(':') {
             Some((kind, personality)) => (kind, personality.parse::<Personality>()?),
@@ -398,7 +402,7 @@ pub enum Command {
         /// `level:elite` (or `level:5`) seats a rung of the difficulty
         /// ladder instead, which is how the ladder is calibrated: the
         /// rung ignores `--simulations`, and resolves to a different bot
-        /// on each chair.
+        /// on each chair. `level:elite:glacier` plays the rung in a style.
         #[arg(long, value_delimiter = ',', default_value = "random,heuristic")]
         bots: Vec<BotSpec>,
         /// Games per ordered pairing, rotating through the sample-deck

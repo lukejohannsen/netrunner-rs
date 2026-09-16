@@ -22,20 +22,23 @@ This prints three things from one `bench --report`:
   not a rounding of the table.
 
 Usage:
-    scripts/ladder_report.py target/diag/ladder-s1.json [--reference level:apprentice]
+    scripts/ladder_report.py target/diag/ladder-s1.json [--reference level:apprentice] [--style glacier]
 """
 import argparse
 import json
 import math
 
-ORDER = ["level:novice", "level:apprentice", "level:operator", "level:veteran", "level:elite"]
+RUNGS = ["novice", "apprentice", "operator", "veteran", "elite"]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("report")
     parser.add_argument("--reference", default="level:apprentice", help="the fixed opponent each rung is measured against")
+    parser.add_argument("--style", help="read the rungs benched in this style (`level:elite:glacier`) rather than the calibrated balanced ones")
     args = parser.parse_args()
+    suffix = f":{args.style}" if args.style and args.style != "balanced" else ""
+    ORDER = [f"level:{rung}{suffix}" for rung in RUNGS]
     report = json.load(open(args.report))
 
     print(f"{'rung':<18} {'Glicko corp':>14}  {'Glicko runner':>14}")
