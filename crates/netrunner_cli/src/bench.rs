@@ -135,6 +135,12 @@ pub fn participant_id(bot: BotSpec, simulations: usize, label: Option<&str>) -> 
     // participants and hide that the ladder is one thing.
     if let Some(level) = bot.level {
         let mut id = format!("level:{}", level.name());
+        // A styled rung is a different opponent from the calibrated
+        // `Balanced` one, so it rates under a different id.
+        if bot.personality != netrunner_bots::Personality::Balanced {
+            id.push(':');
+            id.push_str(bot.personality.name());
+        }
         if let Some(label) = label {
             id.push('#');
             id.push_str(label);
@@ -486,6 +492,10 @@ mod tests {
         assert_eq!(participant_id(spec("heuristic"), 64, None), "heuristic");
         assert_eq!(participant_id(spec("heuristic:rush"), 64, None), "heuristic:rush");
         assert_eq!(participant_id(spec("mcts:cautious"), 32, Some("abc123")), "mcts@32:cautious#abc123");
+        assert_eq!(participant_id(spec("level:elite"), 64, None), "level:elite");
+        assert_eq!(participant_id(spec("level:5:glacier"), 64, None), "level:elite:glacier");
+        assert_eq!(spec("level:elite:balanced"), spec("level:elite"));
+        assert!("level:elite:berserk".parse::<BotSpec>().is_err());
         assert!("heuristic:berserk".parse::<BotSpec>().is_err());
         assert!("android".parse::<BotSpec>().is_err());
     }

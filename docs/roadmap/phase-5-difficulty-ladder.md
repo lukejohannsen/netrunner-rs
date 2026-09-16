@@ -1124,3 +1124,76 @@ is recorded and not taken.
 
 Workspace tests green, clippy silent. Reports under
 `target/coverage/glacier-audit-{before,after}-s{1..6}.json`.
+
+## 10. The Corp ladder in `glacier` style: every rung that reads the style gains, and `operator → veteran` goes flat — DONE, measurement only (16 September 2026)
+
+`diag/glacier-corp-ladder`. §9 handed over that the rungs are calibrated
+as `Balanced` while play seats a rung in its deck's style, and five Corp
+decks are `glacier`. This measures what that person meets. `bench` could
+not seat a styled rung (a `level:` spec was always `Balanced`), so it now
+takes `level:elite:glacier` — the same `with_personality` cross a seat
+makes — and rates it under that id; `scripts/ladder_report.py --style`
+reads one.
+
+Each Corp rung, `Balanced` and `glacier`, against the fixed un-handicapped
+one-ply balanced Runner (`heuristic`), 384 games a cell on seeds 1 and 2.
+The two arms share one bot-list layout, so they play the same matchups on
+the same seeds and are paired game for game. No stalls in any cell.
+
+| Corp rung | `Balanced` | `glacier` | delta | z (McNemar) | discordant |
+|---|---|---|---|---|---|
+| novice | 0.012 | 0.012 | +0.000 | | 0 |
+| apprentice | 0.062 | 0.092 | +0.030 | 2.4 | 91 |
+| operator | 0.125 | **0.257** | **+0.132** | 7.2 | 195 |
+| veteran | 0.236 | 0.277 | +0.042 | 2.1 | 226 |
+| elite | 0.258 | **0.363** | **+0.105** | 5.0 | 259 |
+
+`novice` is byte-identical, which is the apparatus check: at `epsilon`
+1.0 the inner agent, and so its style, is never consulted.
+
+**The style is worth as much at the top as at one ply**: `elite`
+(`puct@512`) gains +0.105 against `operator`'s +0.132, and `glacier`
+`elite` at 0.363 is the strongest Corp rung measured since the Runner's
+evaluator moved the pool. §9's one-seed `puct@512` reading (0.245 →
+0.357) reproduces on both seeds.
+
+**It is `veteran` that does not carry it.** Steps, pooled over 768 games
+a cell (sd of the difference in brackets):
+
+| step | `Balanced` | `glacier` |
+|---|---|---|
+| novice → apprentice | +0.051 (0.010) | +0.081 (0.011) |
+| apprentice → operator | +0.062 (0.015) | **+0.164** (0.019) |
+| operator → veteran | **+0.111** (0.019) | **+0.021 (0.023), flat** |
+| veteran → elite | +0.022 (0.022) | +0.086 (0.024) |
+
+A person playing a `glacier` deck meets a `veteran` no harder than
+`operator` — flat pooled, and inverted on seed 2 alone (0.271 → 0.255) —
+and then a large step to `elite`. `veteran` is `elite` with `epsilon`
+0.10, so the one knob between them costs `glacier` 0.086 and `Balanced`
+0.022: the handicap bites the style roughly four times harder. A likely
+reason, not tested: a banking plan pays off turns later, and a random
+action every tenth decision spends the credits or buries the card it was
+banking for, where a balanced Corp's plan is shorter and survives it.
+
+**The `Balanced` ladder's top step is now the weak one.** `veteran →
+elite` is +0.022 at z 1.0 — `rise` by the script's one-sd rule, `flat` on
+seed 1 alone (+0.005) — where §2 recorded +0.045. Its `operator` also
+reads 0.125, against the 0.182 §4(a) quotes. The reference is not the
+cause: `level:elite` and `heuristic` on the Runner chair produce the same
+winner in 384 of 384 games, and `operator` against either reads 0.148 /
+0.130 on its own schedule — in line with §7's and §9's 0.148. §4(a)'s
+column was taken before §7–§9 and does not reproduce on this binary; it
+should be re-measured before (a) interpolates from it.
+
+**What this decides for §4.** Per-style calibration is needed, not
+optional: the order survives the style (no step inverts pooled), but the
+spacing does not, and the rung a `glacier` deck makes meaningless is a
+different one from the rung that is weakest as `Balanced`. Two routes,
+neither taken here: give `veteran` a per-style `epsilon` (on these
+numbers `glacier` wants a smaller one, since 0.10 already costs most of
+its top step), or build the top rungs on `glacier` itself (§4(b)) and
+calibrate that one ladder, since as a Corp base it is +0.105 on `elite`
+and the strongest top the chair has.
+
+Reports under `target/coverage/corp-ladder-{balanced,glacier}-s{1,2}.json`.
