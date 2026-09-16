@@ -906,3 +906,76 @@ dial legs above did not.)
 
 Workspace tests green, clippy silent. Reports under
 `target/coverage/builder-endpoint-{static,dial}-*.json`.
+
+
+## 8. The turn-counter fallback leg: a clock does no better than the board, and neither beats not travelling — DONE, measurement only (16 September 2026)
+
+`diag/turn-counter-stage`, stacked on §7. §4(c) said to try a board-read
+stage first "and keep the turn counter as the fallback to beat", and §6
+measured only the board scalar. This is the owed leg: the same `lerp`
+between the same endpoints, driven by the clock instead of the board.
+
+**The scalar**, on a scaffold in `stage_weights` that is not committed:
+`((turn / 2).max(1) − 1) / (H − 1)`, clamped to `0..=1` — 0 on the
+Runner's first turn, 1 from its `H`th. `turn / 2` rather than `(turn + 1)
+/ 2` because `GameState::turn` counts each chair's turns separately and
+the Runner's are the even ones. That way the value holds through the
+Corp's next turn and cannot change between a Runner decision and the
+state its `EndTurn` produces. A one-ply agent scoring leaf against leaf
+would otherwise see the stance jump inside one comparison, which is the
+continuity §6 insisted on. No urgency override: that reads the board,
+and the point of the leg is a scalar that reads nothing. The horizon
+is a free parameter a clock needs and the board does not, so it was
+swept rather than chosen: 4, 8, 12 and 16 Runner turns, against games
+that run about 11. Both destinations §7 measured were run: `aggressive`
+(the dial as built) and `balanced` (the best travel §7 found).
+
+`heuristic` both chairs, repaired `builder` as the build endpoint, four
+seeds × 384, paired game for game. With no variable set, the scaffold
+binary replays #41's dial reports exactly. With the pressure endpoint set
+to `balanced`, it replays §7's builder-to-balanced leg exactly, so both
+board-scalar rows below are the same games as §7's.
+
+| leg | Corp win share | vs static 0.140 | vs board scalar | vs `builder` all game 0.113 |
+|---|---|---|---|---|
+| **→ `aggressive`**, board, gain 1.0 | 0.149 | +0.009 (z 0.83) | — | +0.036 (z 3.63) |
+| turn, H 4 | 0.189 | +0.049 (z 4.46) | **+0.040 (z 3.56)** | +0.076 (z 7.06) |
+| turn, H 8 | 0.160 | +0.020 (z 1.83) | +0.010 (z 0.95) | +0.046 (z 4.71) |
+| turn, H 12 | 0.153 | +0.013 (z 1.25) | +0.004 (z 0.38) | +0.040 (z 4.22) |
+| turn, H 16 | 0.163 | +0.023 (z 2.17) | +0.014 (z 1.30) | +0.049 (z 5.22) |
+| turn, H 12, gain 0.5 | 0.135 | −0.005 (z 0.49) | −0.014 (z 1.29) | +0.022 (z 2.30) |
+| **→ `balanced`**, board, gain 1.0 | 0.125 | −0.015 (z 1.51) | — | +0.012 (z 1.45) |
+| turn, H 4 | 0.138 | −0.002 (z 0.25) | +0.013 (z 1.42) | +0.025 (z 2.88) |
+| turn, H 8 | 0.116 | −0.024 (z 2.80) | −0.009 (z 1.06) | +0.003 (z 0.34) |
+| turn, H 12 | 0.116 | −0.024 (z 2.68) | −0.009 (z 1.06) | +0.003 (z 0.34) |
+| turn, H 16 | 0.124 | −0.016 (z 1.81) | −0.001 (z 0.15) | +0.010 (z 1.44) |
+| turn, H 12, gain 0.5 | 0.128 | −0.012 (z 1.48) | +0.003 (z 0.36) | +0.015 (z 1.74) |
+
+**What it says.**
+
+- **The clock never beats the board.** Its best showing against the board
+  scalar is −0.014 at z 1.29, and it is the best of ten turn legs, so a
+  selection effect by construction. The one resolved difference goes
+  the other way: a short clock, full pressure by turn 4, costs 0.040
+  (z 3.56). That is §5's inverted Runner again, forced by a schedule.
+- **Nothing that travels beats standing still.** The closest any leg
+  comes to `builder` all game is +0.003 (turn → `balanced` at H 8 or 12).
+  The legs that beat the static evaluator (z 2.7–2.8) do it by the same
+  margin standing on `builder` does, while spending most of a game there.
+  That is §7's finding again, not a new one.
+- **Toward `aggressive`, every leg loses to standing still** (z 2.3 to
+  7.1), whether the scalar is board or clock, full or half gain.
+
+So §4(c)'s ordering, board first and clock as the fallback, has now run
+both halves on the Runner chair, and neither schedule earns a non-zero
+`STAGE_GAIN`. On this chair and at this strength the lever was never
+*when*. It was that the build endpoint was broken (§7), and with it
+fixed the best schedule is none. The phase question stays open for the
+Corp chair, where §5 found the stance flat rather than inverted and no
+leg has run.
+
+No behaviour change. The only code touched is the `STAGE_GAIN` doc
+comment, which now records this leg. Reports live in the session
+scratchpad and are summarised above. They are not kept under
+`target/coverage/`, because the scaffold that produced them is not in the
+tree.
