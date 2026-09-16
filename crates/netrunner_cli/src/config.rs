@@ -592,6 +592,45 @@ pub enum DiagAction {
         #[arg(long)]
         report: Option<PathBuf>,
     },
+
+    /// *When* in a game does a bot do each thing? One record per side per
+    /// turn — that turn's clicks split by what they bought, on a snapshot
+    /// of the board they were spent on — reported as a per-turn profile.
+    /// ROADMAP Phase 5 §4(c): the evaluator scores a board the same on
+    /// turn 1 and turn 20, and a whole-game mean cannot tell a Corp that
+    /// builds then scores from one that alternates.
+    Tempo {
+        /// Games to play; game n plays `matchups[n % len]` on `seed + n`.
+        #[arg(long, default_value_t = 96)]
+        games: u32,
+        /// Base seed.
+        #[arg(long, default_value_t = 1)]
+        seed: u64,
+        /// Which bot takes the Corp chair.
+        #[arg(long, default_value = "heuristic")]
+        corp: BotSpec,
+        /// Which bot takes the Runner chair. Both chairs are reported, and
+        /// each is part of the other's measurement rather than a control.
+        #[arg(long, default_value = "heuristic")]
+        runner: BotSpec,
+        /// Search iterations for a searching bot in either chair.
+        #[arg(long, default_value_t = 128)]
+        simulations: usize,
+        /// Hidden-state samples per decision for a searching bot.
+        #[arg(long)]
+        determinizations: Option<usize>,
+        /// Turn ordinals reported individually; later turns pool into one
+        /// tail row, so the profile stays a shape rather than a list of
+        /// rows with one game in them.
+        #[arg(long, default_value_t = 12)]
+        turns: u32,
+        /// Worker threads. All cores if omitted.
+        #[arg(long)]
+        threads: Option<usize>,
+        /// Write every turn, and the profiles over them, as JSON here.
+        #[arg(long)]
+        report: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone)]

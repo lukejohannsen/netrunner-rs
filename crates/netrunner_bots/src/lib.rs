@@ -47,7 +47,7 @@ pub use agent_adapter::IndexedOnnxAgent;
 pub use agent_adapter::{Agent, BotAgentIndexAdapter, IndexedHeuristicAgent, IndexedRandomAgent};
 pub use determinize::determinize;
 pub use difficulty::{Level, LevelKind, LevelSpec};
-pub use eval::{evaluate_state, evaluate_state_with, is_unrezzed_threat, Weights};
+pub use eval::{breaker_coverage, evaluate_state, evaluate_state_with, is_unrezzed_threat, Weights};
 pub use handicap::HandicapAgent;
 pub use heuristic::HeuristicAgent;
 pub use mcts::MctsAgent;
