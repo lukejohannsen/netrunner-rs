@@ -154,6 +154,67 @@ owed rather than optional. The search Runners go back on top when one
 beats one ply again; the recorded lever is a one-ply playout policy
 (Phase 2 §5, "next" item 1), whose prize just grew from 0.06 to 0.19.
 
+**Both chairs now climb at every step, and the top of the Corp ladder is
+the new cap** (`calibrate-runner-rung-spacing`, 15 September 2026). The
+owed calibration ran at **768 games a cell** — the full 5 × 5 square at
+`--games 384` on each of seeds 1 and 2, 19,200 games a spec, ~34 minutes
+a seed on 18 threads, which is what the "overnight job" above costs now
+that no rung on either chair runs `mcts`. Both tables are against a fixed
+**un-handicapped one-ply** opponent on the other chair, which on the
+Runner chair is `level:operator` and on the Corp chair is now
+`level:elite` — the re-seating moved which rung that is, and the two
+references are the same bot:
+
+| rung | Corp | Runner (first cut) | Runner (re-spaced) | `epsilon` (Corp / Runner) |
+|---|---|---|---|---|
+| novice | 0.012 | 0.125 | 0.125 | 1.00 / 1.00 |
+| apprentice | 0.078 | 0.449 | 0.258 | 0.35 / 0.75 |
+| operator | 0.167 | 0.634 | 0.453 | 0.00 / 0.50 |
+| veteran | 0.221 | 0.789 | 0.664 | 0.10 / 0.25 |
+| elite | 0.266 | 0.833 | 0.833 | 0.00 / 0.00 |
+
+**The first cut's Runner rungs were crammed at the top.** Its steps are
++0.324, +0.185, +0.155 and **+0.044** against an even step of 0.177, and
+the last one is `flat` on seed 2 alone (+0.018, sd 0.028) — `veteran →
+elite` was a level selector a player could not feel, which is the same
+defect §1 caught on the Corp chair and the reason this run happened.
+**`epsilon` turned out to be near-linear in win rate on this chair**
+(w ≈ 0.833 − 0.70ε fits all five points to 0.034), so the fix was
+arithmetic rather than a search: interpolating the measured curve for four
+even steps gives ε = 0.73 / 0.46 / 0.23, and the round numbers **1.00 /
+0.75 / 0.50 / 0.25 / 0.00** are within 0.03 of it. Re-measured on the same
+two seeds, the steps are **+0.133, +0.195, +0.211, +0.169** — every one a
+rise at z ≥ 6.7, every one a rise on each seed taken alone, and all four
+within 0.045 of even. The apparatus check is that **exactly the 10 cells
+whose Runner is `novice` or `elite` are byte-identical** between the two
+runs, and no others: the two rungs whose `epsilon` did not change did not
+move a single game.
+
+**The Corp chair was already even and is left alone**: +0.066, +0.089,
++0.055, +0.045 against an even step of 0.064, all rises, z +6.4 / +5.3 /
++2.7 / +2.0. It spaces unevenly for a reason the Runner chair does not
+have — it changes *base* between rungs 3 and 4 — and 0.025 of drift is
+not worth a spec change.
+
+**What the run found that it was not looking for: the Corp chair has no
+top.** `puct@512` scores **0.266** against the un-handicapped one-ply
+Runner, where §1 measured that same cell at 0.714. Nothing about the Corp
+rungs changed; the Runner's evaluator did (Phase 2 §5a), and it moved the
+whole pool — the 25 cells run **0.385 Corp** on the first-cut spec and
+0.471 on the re-spaced one, against the engine's 0.548 baseline. So a
+player sitting as the **Runner** has no hard opponent at any rung: rung 5
+loses three games in four. This is the Runner chair's old cap, transferred
+to the Corp, and the lever is the same kind of thing — that chair's
+evaluator, not this table and not more search budget, which Phase 2 §5
+item 34 showed saturates from 512 simulations on. **It replaces the
+calibration as this phase's standing open item.**
+
+Also worth recording because it is cheap to misread: the Corp column
+above is **not** comparable to §1's or to the first cut's. Those were
+taken against a one-ply Runner that no longer exists, and against
+`level:operator`, which on the Runner chair is now handicapped. Only the
+`level:elite` reference is the same bot across the two runs here.
+
 **How a player reaches it.** `--corp-level` / `--runner-level` take a
 name or a rung number and override the kind, the personality *and*
 `--simulations` — one shared `bots::make_seat_agent`, so the TUI, the
@@ -201,7 +262,10 @@ game and exited. It is now the main menu's Play vs Computer form, reopened
 after every game with the rung moved to the new suggestion; the fold into
 `Config` is unchanged.
 
-**Standing open items:** the 192-game calibration that would resolve the
-top steps. *Closed:* the server offers levels; local play is rated and
-the modal names the next rung (`feat/local-rating`, Phase 3 §2); the
-start screen.
+**Standing open items:** the **Corp chair's ceiling** — `elite` wins 0.266
+against the un-handicapped one-ply Runner, so a Runner-seated player runs
+out of ladder at rung 5. The lever is the Corp evaluator (Phase 2 §5a's
+next term), not this table. *Closed:* the calibration that would resolve
+the top steps — it ran at 768 games a cell and both chairs climb at every
+step; the server offers levels; local play is rated and the modal names
+the next rung (`feat/local-rating`, Phase 3 §2); the start screen.

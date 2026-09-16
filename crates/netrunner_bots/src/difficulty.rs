@@ -58,10 +58,20 @@
 //! against the fixed heuristic Corp where `mcts@128` scores 0.677 and
 //! `puct@128` 0.760. A ladder that seated `mcts` above one ply would run
 //! backwards at the top, so the Runner chair is now **one base bot at
-//! five handicaps** — 1.0 / 0.5 / 0.25 / 0.10 / 0.0 — monotone by
-//! construction and cheap at every rung, its spacing owed to the
-//! overnight calibration. The Corp chair is unchanged: its evaluator did
-//! not move and `puct@512` still converts depth there.
+//! five handicaps** — 1.0 / 0.75 / 0.50 / 0.25 / 0.0 — monotone by
+//! construction and cheap at every rung. The Corp chair is unchanged: its
+//! evaluator did not move and `puct@512` still converts depth there.
+//!
+//! **Both chairs now climb at every step, and the calibration is what
+//! says so** (15 September 2026, 768 games a cell over two seeds; the
+//! table is in `docs/roadmap/phase-5-difficulty-ladder.md` §2). The two
+//! paragraphs above are the history of a cap that has moved twice, and
+//! the standing consequence is on the *other* chair now: `puct@512` wins
+//! **0.266** against the un-handicapped one-ply Runner, where the first
+//! calibration measured that cell at 0.714. The Corp ladder is evenly
+//! spaced and tops out too low, which is the Runner chair's old problem
+//! transferred — and like it, the lever is that chair's evaluator rather
+//! than this table.
 //!
 //! **Personality is not the difficulty dial, and deliberately so.** The
 //! six `Personality` profiles are a *style* axis, and each is written for
@@ -95,28 +105,33 @@ use crate::puct::{PuctAgent, PuctConfig};
 ///
 /// Five rather than ten: each rung has to be distinguishable from its
 /// neighbours by a person playing a handful of games, and the measured
-/// spread between the floor and the ceiling is about 0.65 of win rate on
-/// the Corp chair. Ten rungs would put neighbours inside the noise of a
-/// single evening's play.
+/// spread between the floor and the ceiling is **0.708** of win rate on
+/// the Runner chair and **0.254** on the Corp's. Ten rungs would put
+/// neighbours inside the noise of a single evening's play — and the Corp
+/// chair already spaces its five 0.064 apart, which is about the limit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Level {
     /// Legal moves, chosen at random. Loses to a first-time player who
     /// has understood the rules, which is exactly what a first rung is
-    /// for — the measured floor is 0.042 as Corp and 0.167 as Runner
-    /// against one ply.
+    /// for — the measured floor is 0.012 as Corp and 0.125 as Runner
+    /// against an un-handicapped one ply.
     Novice,
-    /// One ply, blundering a third of the time: it takes the obvious
-    /// line — advance, rez, break, run an open server — and then throws
-    /// a click away. The rung where a new player's mistakes stop being
-    /// the only ones on the table.
+    /// One ply, blundering a third of the time as the Corp and three
+    /// decisions in four as the Runner: it takes the obvious line —
+    /// advance, rez, break, run an open server — and then throws a click
+    /// away. The rung where a new player's mistakes stop being the only
+    /// ones on the table. The two chairs differ because the Runner's
+    /// whole ladder is handicaps of one base bot and so carries the whole
+    /// span in `epsilon`, where the Corp's changes base at rung 4.
     Apprentice,
     /// One ply, played straight as the Corp; as the Runner, one ply
-    /// throwing away a decision in four, because on that chair one ply
-    /// *is* the top of the ladder (see `spec`). No plan beyond the
-    /// current turn.
+    /// throwing away every second decision, because on that chair one ply
+    /// *is* the top of the ladder and all five rungs have to fit under it
+    /// (see `spec`). No plan beyond the current turn.
     Operator,
-    /// The strongest bot on this chair, blundering one decision in ten —
-    /// a real opponent with a visible crack in it.
+    /// The strongest bot on this chair, blundering one decision in ten as
+    /// the Corp and one in four as the Runner — a real opponent with a
+    /// visible crack in it.
     Veteran,
     /// The strongest configuration measured on each chair, playing every
     /// decision. The two chairs are different bots; see the module docs.
@@ -204,28 +219,38 @@ impl Level {
     /// the Runner chair converts, so `Elite` is `puct` at 512 on one side
     /// and `mcts` at four determinizations on the other.
     pub fn spec(self, side: Side) -> LevelSpec {
-        // Anchors, all against a fixed one-ply opponent on the other
-        // chair: random 0.042 / 0.167 (Corp / Runner win rate), one ply
-        // 0.562 / 0.438, `puct@512` as Corp 0.714, `mcts@128` at four
-        // determinizations as Runner 0.792. Every rung below is one of
-        // those two endpoints mixed toward random by `epsilon`, so the
-        // order needs no measurement and the *spacing* is what Phase 5
-        // §2 calibrates.
+        // Anchors, all against a fixed *un-handicapped one-ply* opponent
+        // on the other chair, re-taken 15 September 2026 at 768 games a
+        // cell: random 0.012 / 0.125 (Corp / Runner win rate), one ply
+        // 0.167 / 0.833, `puct@512` as Corp 0.266. Every rung is one of
+        // those endpoints mixed toward random by `epsilon`, so the order
+        // needs no measurement and the *spacing* is what Phase 5 §2
+        // calibrates. The figures the first cut used (0.042 / 0.167,
+        // 0.562 / 0.438, `puct@512` 0.714, `mcts@128` 0.792) are still in
+        // the roadmap and are not comparable to these: they were taken on
+        // the pre-`access_prospect` Runner evaluator, which moved the
+        // whole pool — the same 25 cells run 0.471 Corp on this spec
+        // (0.385 on the one it replaced) against the engine's 0.548.
         let (kind, simulations, samples, epsilon) = match (self, side) {
             // One ply at `epsilon` 1.0 rather than `LevelKind::Random`,
             // and the two are identical in play: `HandicapAgent` never
             // consults the inner agent at 1.0, so no heuristic ever runs.
             // Writing it this way makes the bottom three rungs one base
             // family with strictly falling handicap — 1.0, 0.35, 0.0 as
-            // the Corp; the Runner's middle two are re-spaced below —
-            // which is what `each_rung_is_the_one_below_it_with_less_
-            // handicap_or_a_better_base` can actually check.
+            // the Corp, 1.0, 0.75, 0.50 as the Runner — which is what
+            // `each_rung_is_the_one_below_it_with_less_handicap_or_a_
+            // better_base` can actually check.
             (Level::Novice, _) => (LevelKind::Heuristic, 0, 1, 1.0),
             // One ply is the cheap base, and the bottom of the ladder has
             // to stay cheap: handicapping `puct@512` here would think for
             // as long as the top rung while playing badly.
-            (Level::Apprentice, _) => (LevelKind::Heuristic, 0, 1, 0.35),
-            (Level::Operator, _) => (LevelKind::Heuristic, 0, 1, 0.0),
+            (Level::Apprentice, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.35),
+            (Level::Operator, Side::Corp) => (LevelKind::Heuristic, 0, 1, 0.0),
+            // The Runner's whole ladder is this one base, so its five
+            // handicaps carry the whole span and are spaced evenly; see
+            // the note below the table.
+            (Level::Apprentice, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.75),
+            (Level::Operator, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.50),
             // The top two rungs share a base and differ only in epsilon,
             // which is the one step in the ladder guaranteed monotone
             // without measuring anything at all.
@@ -251,20 +276,31 @@ impl Level {
             // plies before it, and their random playouts wash most of it
             // out. Seating `mcts` above one ply would make rung 5 easier
             // than rung 3. So the Runner's `operator` is no longer the
-            // un-handicapped bot: that is `elite`, and the middle rung
-            // carries 0.25. The spacing is uncalibrated (the overnight
-            // `scripts/ladder_report.py` job, Phase 5 §2); the order is
-            // structural. When a search Runner beats one ply again —
+            // un-handicapped bot: that is `elite`. The order is
+            // structural and the spacing is now measured — the four steps
+            // are even by construction of the note below the table.
+            // When a search Runner beats one ply again —
             // a one-ply playout policy is the recorded next lever — the
             // top two rungs go back to it.
-            (Level::Veteran, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.10),
+            (Level::Veteran, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.25),
             (Level::Elite, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.0),
         };
-        let epsilon = match (self, side) {
-            (Level::Apprentice, Side::Runner) => 0.5,
-            (Level::Operator, Side::Runner) => 0.25,
-            _ => epsilon,
-        };
+        // **The Runner's handicaps are evenly spaced and the Corp's are
+        // not, because only one of the two chairs is a single base bot.**
+        // Calibrated 15 September 2026 at 768 games a cell (two seeds ×
+        // 384, Phase 5 §2): the first cut's 1.0 / 0.5 / 0.25 / 0.10 / 0.0
+        // crammed its top three rungs, scoring 0.125 / 0.449 / 0.634 /
+        // 0.789 / 0.833 against a fixed one-ply Corp — steps of +0.324,
+        // +0.185, +0.155 and **+0.044**, the last one `flat` on one of
+        // the two seeds, which is a level selector a player cannot feel.
+        // `epsilon` turned out to be near-linear in win rate on this
+        // chair (w ≈ 0.833 − 0.70ε fits all five points to 0.034), so
+        // interpolating the measured curve for four even steps of 0.177
+        // gives 0.73 / 0.46 / 0.23 — these round numbers, within 0.03.
+        // The Corp's 1.0 / 0.35 / 0.0 are left alone: that chair changes
+        // *base* between rungs 3 and 4, and measured at 0.012 / 0.078 /
+        // 0.167 / 0.221 / 0.266 it is already even to within 0.025 of its
+        // own step.
         LevelSpec { level: self, side, kind, simulations, samples, epsilon, personality: Personality::Balanced }
     }
 }
