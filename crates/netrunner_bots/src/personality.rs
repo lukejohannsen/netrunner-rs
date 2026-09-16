@@ -46,9 +46,11 @@ pub enum Personality {
     /// worth more, protection less and capped at one ICE, HQ may run
     /// thinner, and credits are for spending.
     Rush,
-    /// A glacier Corp: build the fort, then score behind it. Protection
-    /// is worth double and rewards a third ICE, rezzed ICE and installs
-    /// are worth more, advancement less, and credits more.
+    /// A glacier Corp: build the fort, then score behind it. ICE in front
+    /// of an agenda is worth six times balanced and rewards a third piece,
+    /// rezzed ICE and credits are worth more, advancement less, and a
+    /// face-down install *less* — so the hand is not put on the table
+    /// before there is money to turn it face up.
     Glacier,
     /// A trap Corp: wants the Runner's grip thin and cards on the table
     /// that might be anything. Three ambush terms and nothing else — see
@@ -156,13 +158,56 @@ impl Personality {
                 ..base
             },
             Personality::Glacier => Weights {
-                // ICE in front of an agenda is worth double and a third
-                // piece still pays; an install at 1.2 + 1.0 = +2.2 beats
-                // advancing at 1.2 − 0.5 = +0.7.
-                agenda_protection_weight: 1.0,
+                // ICE in front of an agenda is worth six times balanced
+                // and a third piece still pays; an install there at 0.8 +
+                // 3.0 = +3.8 beats advancing at 1.2 − 0.5 = +0.7.
+                //
+                // **Audited against the balanced Runner (ROADMAP Phase 5
+                // §9), and two of these numbers moved.** Shipped, the
+                // profile won 0.168 of 2,304 games (six seeds × 384) —
+                // ahead of balanced's 0.148 in the same games, behind
+                // Trap's 0.212. Each knob put back to balanced one at a
+                // time said what it was carrying:
+                //
+                // - `unrezzed_install_weight` **1.2 → 0.8** is +0.071
+                //   (z 7.2), and it is a switch, not a dial: 1.0 reads
+                //   0.185, 0.9 reads 0.240, 0.7 0.238, and 0.4 never wins
+                //   at all (nothing unprotected is installed, so no agenda
+                //   is either). The step is where a face-down install out
+                //   of a thin HQ, 1.2 − `hq_shortfall_weight` 0.5 = +0.7,
+                //   stops beating this profile's credit click at 0.5. At
+                //   1.2 the Corp put its hand face down on turns 2 and 3
+                //   (2.29 installs on turn 2, 2.32 cards face down and 3.6
+                //   credits by turn 3) and could not rez it; at 0.9 it
+                //   clicks for credits instead (0.16 → 0.86 on turn 2),
+                //   installs the same 13.8 cards a game later, when it can
+                //   pay for them, and scores 0.9 → 1.2 agendas. That is
+                //   Phase 5 §5's "credit-starved early", written into a
+                //   profile. Raising `hq_shortfall_weight` to 0.8 instead
+                //   recovers two thirds of it (0.216), so the floor is
+                //   most of the decision and not all of it. 0.8 sits in
+                //   the middle of the flat 0.7–0.9 region.
+                // - `agenda_protection_weight` **1.0 → 3.0** is +0.043 on
+                //   top (z 5.8) and was already the profile's engine —
+                //   back at balanced's 0.5 it loses 0.026. It climbs to
+                //   0.282 at 3.0–4.0 and turns over past 6.0; the cap is
+                //   inert (2: 0.288, 4: 0.281).
+                // - `rezzed_ice_weight` 1.8 is **not** a defect, whatever
+                //   Phase 5 §3 suspected from the rez rate by cost: back
+                //   at 1.4 it costs 0.010 (z 3.1), and 2.4 is flat.
+                //   `own_credit_weight` 0.5 and `advancement_weight` 1.2
+                //   each measure within noise of balanced and stay.
+                //
+                // Together: **0.168 → 0.282** (z 10.9), ahead of Trap by
+                // 0.070 (z 6.1) in the same games, and +0.10 to +0.12
+                // against every Runner profile (aggressive 0.200 →
+                // 0.322, cautious 0.180 → 0.287, builder 0.134 → 0.231,
+                // wary 0.173 → 0.286). It survives search: under
+                // `puct@512` as Corp, 0.284 → 0.357 on one seed (z 2.5).
+                agenda_protection_weight: 3.0,
                 agenda_protection_cap: 3,
                 rezzed_ice_weight: 1.8,
-                unrezzed_install_weight: 1.2,
+                unrezzed_install_weight: 0.8,
                 advancement_weight: 1.2,
                 own_credit_weight: 0.5,
                 ..base
@@ -344,6 +389,10 @@ mod tests {
         let glacier = Personality::Glacier.weights();
         assert!(glacier.agenda_protection_weight > base.agenda_protection_weight && glacier.advancement_weight < base.advancement_weight);
         assert!(glacier.agenda_protection_cap > base.agenda_protection_cap);
+        // A face-down install out of a thin HQ must not beat this profile's
+        // own credit click, or it buries its hand before it can rez it
+        // (ROADMAP Phase 5 §9: the switch is worth 0.071).
+        assert!(glacier.unrezzed_install_weight - glacier.hq_shortfall_weight < glacier.own_credit_weight);
         let trap = Personality::Trap.weights();
         assert!(trap.ambush_weight > 0.0 && base.ambush_weight == 0.0, "the lever the profile was missing");
         assert!(trap.ambush_advancement_weight > base.ambush_advancement_weight);
