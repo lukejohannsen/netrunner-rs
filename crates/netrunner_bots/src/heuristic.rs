@@ -264,6 +264,10 @@ mod tests {
             state.runner = empty_runner();
             state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
             state.corp.resources.credits = Credits(5);
+            // Something behind the ICE to run for: a run is worth its
+            // hidden accesses, and an empty HQ and R&D would offer none.
+            state.corp.hq = vec![CardId("wall".to_string())];
+            state.corp.r_and_d = vec![CardId("wall".to_string()); 3];
             for (index, server) in [ServerId::Hq, ServerId::RnD, ServerId::Archives].into_iter().enumerate() {
                 state.corp.installed.push(InstalledCard {
                     card: CardId("wall".to_string()),
@@ -347,6 +351,52 @@ mod tests {
         assert_eq!(chosen, PlayerAction::DrawCardClick { side: Side::Runner });
     }
 
+    /// Past the floor the Runner drew only after damage. Now it draws when
+    /// the card its sample puts on top of the stack is one it would
+    /// install: a breaker for a subtype the rig cannot break. The sample's
+    /// stack comes from the registry when no decklist is known, so the
+    /// registry decides what the draw finds.
+    #[test]
+    fn draws_at_the_floor_when_the_stack_holds_a_breaker_and_not_when_it_holds_junk() {
+        use netrunner_core::dsl::{AbilityDef, Effect, IceType, SubroutineBreakCount, Trigger};
+        let runner_card = |id: &str, card_type: CardType, cost: u32| {
+            let mut def = blank_card(id, card_type);
+            def.side = Side::Runner;
+            def.cost = cost;
+            def.memory_cost = Some(1);
+            def
+        };
+        let choose = |card: CardDefinition| {
+            let mut registry = CardRegistry::new();
+            registry.insert(card);
+            let mut state = open_board(&mut registry);
+            state.runner.memory_units = MemoryUnits(4);
+            state.runner.stack = vec![CardId("filler".to_string()); 10];
+            // Nothing worth running, so the choice is between a draw and a credit.
+            state.corp.hq.clear();
+            state.corp.r_and_d.clear();
+            let view = build_client_view(&state, &registry, Side::Runner);
+            assert!(view.legal_actions.contains(&PlayerAction::DrawCardClick { side: Side::Runner }));
+            HeuristicAgent::new(Side::Runner, 3).select_action(&view, &registry)
+        };
+        let mut cleaver = runner_card("cleaver", CardType::Program, 3);
+        cleaver.abilities = vec![AbilityDef {
+            text: None,
+            trigger: Trigger::Paid,
+            cost: None,
+            requirement: None,
+            effect: Effect::BreakSubroutines { count: SubroutineBreakCount::All, restrict_to: Some(IceType::Barrier) },
+            cost_discount_if: None,
+            used_by: None,
+        }];
+        assert_eq!(choose(cleaver), PlayerAction::DrawCardClick { side: Side::Runner }, "a breaker on top is worth the draw");
+        assert_eq!(
+            choose(runner_card("pricey", CardType::Resource, 4)),
+            PlayerAction::GainCreditClick { side: Side::Runner },
+            "a card the Runner would never install is not"
+        );
+    }
+
     /// The Corp-side counterpart of the Runner's draw test: with an empty
     /// HQ and a stocked R&D, the Corp clicks to draw rather than for a
     /// credit (ROADMAP Phase 2 §5's Corp item).
@@ -411,6 +461,128 @@ mod tests {
             matches!(&chosen, PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root } if card_id.0 == "agenda"),
             "should install the agenda behind the ICE: {chosen:?}"
         );
+    }
+
+    /// A Runner at the floor with credits, open centrals and something to
+    /// find in each of them: the position the three tests below vary.
+    fn open_board(registry: &mut CardRegistry) -> GameState {
+        registry.insert(blank_card("filler", CardType::Operation));
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner = empty_runner();
+        state.runner.resources = PlayerResources { credits: Credits(5), clicks: Clicks(3), agenda_points: AgendaPoints(0) };
+        state.runner.grip = vec![CardId("filler".to_string()); 3];
+        state.corp.hq = vec![CardId("filler".to_string()); 2];
+        state.corp.r_and_d = vec![CardId("filler".to_string()); 5];
+        state
+    }
+
+    /// Urtica Cipher's shape: an asset that deals damage when accessed.
+    fn ambush(id: &str) -> CardDefinition {
+        use netrunner_core::dsl::{DamageType, Effect, Trigger, TriggeredEffect};
+        let mut def = blank_card(id, CardType::Asset);
+        def.triggers = vec![TriggeredEffect {
+            text: None,
+            trigger: Trigger::OnAccessed,
+            effects: vec![Effect::DealDamage(DamageType::Net, 2)],
+            requirement: None,
+        }];
+        def
+    }
+
+    /// The person's first desktop game (ROADMAP Phase 7 §3): the
+    /// `operator` Runner ran Archives three times into a face-up Urtica
+    /// Cipher. With the ambush face-up beside a card it has not seen, the
+    /// Runner runs somewhere else.
+    #[test]
+    fn does_not_run_archives_into_an_ambush_it_can_see() {
+        use netrunner_core::rules::ArchivedCard;
+        let mut registry = CardRegistry::new();
+        registry.insert(ambush("urtica_cipher"));
+        let mut state = open_board(&mut registry);
+        state.corp.archives = vec![
+            ArchivedCard::faceup(CardId("urtica_cipher".to_string())),
+            ArchivedCard { card: CardId("filler".to_string()), facedown: true },
+        ];
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert!(view.legal_actions.contains(&PlayerAction::InitiateRun { server: ServerId::Archives }));
+        for seed in 1..=8 {
+            let chosen = HeuristicAgent::new(Side::Runner, seed).select_action(&view, &registry);
+            assert!(matches!(chosen, PlayerAction::InitiateRun { server } if server != ServerId::Archives), "seed {seed}: {chosen:?}");
+        }
+        // Face down, the same card is one more thing to see, and Archives
+        // is as good a run as any central.
+        state.corp.archives[0].facedown = true;
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let runs_archives = (1..=8).any(|seed| {
+            HeuristicAgent::new(Side::Runner, seed).select_action(&view, &registry) == PlayerAction::InitiateRun { server: ServerId::Archives }
+        });
+        assert!(runs_archives, "two unseen cards in Archives outrank one in HQ");
+    }
+
+    /// Where the Corp is scoring is where the Runner goes: a face-down
+    /// card with two tokens beats every central.
+    #[test]
+    fn runs_the_advanced_remote_before_a_central() {
+        let mut registry = CardRegistry::new();
+        let mut agenda = blank_card("agenda", CardType::Agenda);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(2);
+        registry.insert(agenda);
+        let mut state = open_board(&mut registry);
+        state.corp.installed.push(InstalledCard {
+            card: CardId("agenda".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            advancement_tokens: 2,
+            ..Default::default()
+        });
+        let view = build_client_view(&state, &registry, Side::Runner);
+        for seed in 1..=4 {
+            let chosen = HeuristicAgent::new(Side::Runner, seed).select_action(&view, &registry);
+            assert_eq!(chosen, PlayerAction::InitiateRun { server: ServerId::Remote(0) }, "seed {seed}");
+        }
+    }
+
+    /// The trash lever through the real run: the Runner runs a naked
+    /// remote holding a rezzed asset, reaches the access, and pays 2[c]
+    /// to trash it — but leaves it at 4[c].
+    #[test]
+    fn trashes_an_affordable_asset_on_access_and_leaves_a_dear_one() {
+        use netrunner_core::rules::legal_actions;
+        let accessed = |trash_cost: u32| {
+            let mut registry = CardRegistry::new();
+            let mut nico = blank_card("nico_campaign", CardType::Asset);
+            nico.trash_cost = Some(trash_cost);
+            registry.insert(nico);
+            let mut state = open_board(&mut registry);
+            state.corp.installed.push(InstalledCard {
+                card: CardId("nico_campaign".to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                rezzed: true,
+                ..Default::default()
+            });
+            let (mut state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).unwrap();
+            let trash = PlayerAction::TrashAccessedCard { card_id: CardId("nico_campaign".to_string()) };
+            for _ in 0..20 {
+                let legal = legal_actions(&state, &registry);
+                if legal.contains(&trash) {
+                    break;
+                }
+                let step = legal
+                    .iter()
+                    .find(|a| matches!(a, PlayerAction::PassPriority { .. } | PlayerAction::ContinueRun | PlayerAction::CompleteRun))
+                    .cloned()
+                    .unwrap_or_else(|| panic!("no way forward from {legal:?}"));
+                state = apply_action(&state, &registry, step).unwrap().0;
+            }
+            let view = build_client_view(&state, &registry, Side::Runner);
+            assert!(view.legal_actions.contains(&trash), "reached the access: {:?}", view.legal_actions);
+            HeuristicAgent::new(Side::Runner, 1).select_action(&view, &registry)
+        };
+        assert_eq!(accessed(2), PlayerAction::TrashAccessedCard { card_id: CardId("nico_campaign".to_string()) });
+        assert_eq!(accessed(4), PlayerAction::PassAccessedCard { card_id: CardId("nico_campaign".to_string()) });
     }
 
     #[test]

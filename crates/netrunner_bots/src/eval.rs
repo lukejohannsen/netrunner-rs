@@ -141,22 +141,77 @@ const AGENDA_PROTECTION_CAP: usize = 2;
 /// +1.5, or +0.8 from the floor, and every breaker in the pool clears a
 /// run from anywhere.
 const BREAKER_COVERAGE_WEIGHT: f64 = 3.0;
-/// The Runner is mid-run *and can afford to break every rezzed ICE still
-/// ahead of it* (`run_is_breakable`). `InitiateRun` costs a click and
-/// changes nothing a static evaluator can see, so with no run term at all
-/// a one-ply Runner never ran — in 96 heuristic-Runner games,
-/// `RunInitiated` was 0 and 86 ended by the Corp decking itself. The term
-/// was first unconditional, and +0.6 against `GainCreditClick`'s +0.4 on
-/// every click meant the Runner ran into rezzed ICE it could not break
-/// rather than saving for a breaker: 0.7 programs installed per game and
-/// 75 subroutines broken against 1,025 fired across 96
-/// heuristic-vs-heuristic games (ROADMAP Phase 2 §5). Gating on
-/// *affordability* rather than on owning a matching breaker is deliberate
-/// — Cleaver at 0 credits breaks nothing — and only rezzed ICE counts,
-/// because an unrezzed card's identity in a determinized sample is a
-/// guess the real Runner cannot see and the Corp may never rez. Jacking
-/// out still forfeits the term, so a breakable run is worth finishing.
+/// Each card the breach would show the Runner for the first time this
+/// turn (`hidden_accesses`), while the Runner is mid-run *and can afford
+/// to break every rezzed ICE still ahead of it* (`run_is_breakable`).
+/// `InitiateRun` costs a click and changes nothing a static evaluator can
+/// see, so with no run term at all a one-ply Runner never ran — in 96
+/// heuristic-Runner games, `RunInitiated` was 0 and 86 ended by the Corp
+/// decking itself. The term was first unconditional, and +0.6 against
+/// `GainCreditClick`'s +0.4 on every click meant the Runner ran into
+/// rezzed ICE it could not break rather than saving for a breaker: 0.7
+/// programs installed per game and 75 subroutines broken against 1,025
+/// fired across 96 heuristic-vs-heuristic games (ROADMAP Phase 2 §5).
+/// Gating on *affordability* rather than on owning a matching breaker is
+/// deliberate — Cleaver at 0 credits breaks nothing — and only rezzed ICE
+/// counts, because an unrezzed card's identity in a determinized sample
+/// is a guess the real Runner cannot see and the Corp may never rez.
+/// Jacking out still forfeits the term, so a breakable run is worth
+/// finishing.
+///
+/// **Per hidden access rather than flat, since September 2026.** Flat,
+/// the term paid 0.6 for a run on *any* server, and nothing else in the
+/// evaluator read what the breach would find, so a one-ply Runner spent
+/// nine clicks in ten running — 3,102 runs to 361 credit clicks over 96
+/// heuristic-vs-heuristic games — and 538 of those runs were on Archives,
+/// most of them into a pile it had already turned face-up. A person
+/// playing the Corp watched it run a face-up Urtica Cipher three times
+/// and flatline (ROADMAP Phase 7 §3). Now the run is worth this much per
+/// card it has not yet seen this turn (`access_prospect`): an R&D, HQ or
+/// unrezzed-remote run is worth exactly what it was, a known Archives is
+/// worth nothing and loses to the credit, and a second run on the same
+/// server this turn is worth nothing except on HQ, where every access is a
+/// fresh random card. `Aggressive`'s 1.2 and `Cautious`'s 0.4 keep their
+/// meaning, per card. The successful-run term below is unchanged: it is
+/// the search's door term, sized by its own sweep, and it does not read
+/// the server either.
 const ACTIVE_RUN_WEIGHT: f64 = 0.6;
+/// Each advancement token on an unrezzed card in the root of the server
+/// the Runner is running, on top of `ACTIVE_RUN_WEIGHT` for the card
+/// itself, and zero once the server has been run this turn. A face-down
+/// card the Corp has advanced is the agenda about to score — or the
+/// ambush a trap Corp wants run, which is Netrunner's mind game and not
+/// this term's to resolve. At one token the run is 1.6 and already beats a
+/// central's 0.6; at two it is 2.6, so the one-ply Runner goes where the
+/// Corp is scoring before it goes anywhere else, which is the check a
+/// person expects the Runner to make.
+const ADVANCED_CARD_PROSPECT_WEIGHT: f64 = 1.0;
+/// Each card the breach would access that the Runner *knows* punishes
+/// access with damage (`punishes_access_with_damage`, the recogniser the
+/// Corp's ambush term uses): face-up in Archives, or rezzed in the root.
+/// Subtracted from the run's prospect. Sized above one hidden access
+/// (0.6) plus a credit (0.4) together, so a face-down card in Archives
+/// beside a face-up Urtica Cipher is not worth the run — the exact
+/// position the person watched the bot lose from — while a run on a
+/// server with two hidden cards and one known ambush is still marginally
+/// worth it. Unrezzed ambushes are not read: in a determinized sample
+/// their identity is a guess, and the Runner is meant not to know.
+const KNOWN_AMBUSH_WEIGHT: f64 = 1.5;
+/// The Runner's view of the Corp's board: each Corp install, valued by
+/// what the Runner can see of it (`visible_install_value`), subtracted at
+/// this fraction. **The Runner branch had no term over the Corp's board
+/// at all**, so `TrashAccessedCard` cost credits and gained nothing, and
+/// no heuristic Runner ever paid to trash what it accessed: a rezzed
+/// Nico Campaign could be run every click and left standing every time.
+/// For a one-ply Runner the term's only differential effect is at
+/// access — trashing a rezzed asset at 2[c] is 0.5 × 2.0 − 0.8 = +0.2
+/// and taken, at 3[c] −0.2 and left — and the same arithmetic is what
+/// `access_prospect` credits a run on a trashable card with, so the run
+/// that ends the loop is worth starting. Half, not one: at the Corp's own
+/// weights a rezzed asset is worth 2.0, and pricing its removal at that
+/// would send the Runner across the table to spend 5[c] on a 4-cost
+/// trash rather than on the breaker in its grip.
+const OPPONENT_BOARD_WEIGHT: f64 = 0.5;
 /// A run reached its server this turn
 /// (`RunnerState::made_successful_run_this_turn`): the run term, kept for
 /// the rest of the turn, so that **breaching keeps it and only leaving
@@ -391,6 +446,33 @@ const SAVINGS_SHORTFALL_WEIGHT: f64 = 0.3;
 const GRIP_SHORTFALL_WEIGHT: f64 = 0.7;
 /// Cards in grip below which `GRIP_SHORTFALL_WEIGHT` applies.
 const GRIP_FLOOR: usize = 3;
+/// Each card in the Runner's grip, at this fraction of what installing it
+/// would be worth to this same evaluator (`install_delta`: presence, new
+/// breaker coverage, minus its cost in credits), and nothing for a card
+/// whose install would be worth nothing. **A card in hand was worth
+/// exactly zero above the floor**, so from a five-card opening hand the
+/// Runner installed what it could, settled at three cards and never drew
+/// again — 126 draw clicks in 96 heuristic-vs-heuristic games, most of
+/// them refilling after damage — and "never expands beyond its opening
+/// hand" was a person's verdict on it (ROADMAP Phase 7 §3).
+///
+/// **A fraction of the install's own value, not a flat value per card.**
+/// A flat value is the shape `GRIP_SHORTFALL_WEIGHT` deliberately avoids:
+/// it taxes every install by that amount and a cheap card stops being
+/// worth putting on the table. At a fraction, installing a live card is
+/// still worth the other half of its delta, and a dead card — a second
+/// Barrier breaker, a resource whose cost outweighs its presence — is
+/// worth nothing held and nothing drawn. What that makes a draw worth is
+/// half the *sampled* top card: the one-ply agent applies `DrawCardClick`
+/// to its determinized stack, so a breaker for a subtype the rig cannot
+/// break (delta 2.8 at 3[c]) draws at +1.4 against a credit's 0.4, and a
+/// 2-cost resource (+0.2) does not. In effect the Runner draws at the
+/// rate its stack holds cards it would install, which is the honest
+/// answer to "should I draw" for a Runner that reads no further than
+/// that. Events are worth nothing here: the one-ply already plays an
+/// affordable event when its effect scores, and pricing one unplayed is
+/// a card-reading term of its own.
+const HELD_CARD_WEIGHT: f64 = 0.5;
 /// The Corp's `GRIP_SHORTFALL_WEIGHT`: each card HQ is below `HQ_FLOOR`.
 /// The heuristic Corp never clicked to draw (0 in every heuristic
 /// seating) and deployed about one card a turn — the mandatory draw —
@@ -448,7 +530,18 @@ pub struct Weights {
     pub agenda_protection_weight: f64,
     pub agenda_protection_cap: usize,
     pub breaker_coverage_weight: f64,
+    /// Runner only: each card the current run would show the Runner for
+    /// the first time this turn. See `ACTIVE_RUN_WEIGHT`.
     pub active_run_weight: f64,
+    /// Runner only: each advancement token on an unrezzed card in the
+    /// run's target root. See `ADVANCED_CARD_PROSPECT_WEIGHT`.
+    pub advanced_card_prospect_weight: f64,
+    /// Runner only: each known ambush the run would access, subtracted.
+    /// See `KNOWN_AMBUSH_WEIGHT`.
+    pub known_ambush_weight: f64,
+    /// Runner only: the Corp's board, as the Runner sees it, subtracted at
+    /// this fraction. See `OPPONENT_BOARD_WEIGHT`.
+    pub opponent_board_weight: f64,
     /// Runner only: a run reached its server this turn. See
     /// `SUCCESSFUL_RUN_WEIGHT`.
     pub successful_run_weight: f64,
@@ -464,6 +557,9 @@ pub struct Weights {
     pub savings_shortfall_weight: f64,
     pub grip_shortfall_weight: f64,
     pub grip_floor: usize,
+    /// Runner only: each grip card at this fraction of its install value.
+    /// See `HELD_CARD_WEIGHT`.
+    pub held_card_weight: f64,
     pub hq_shortfall_weight: f64,
     pub hq_floor: usize,
     pub rd_draw_reserve: usize,
@@ -505,6 +601,9 @@ impl Default for Weights {
             agenda_protection_cap: AGENDA_PROTECTION_CAP,
             breaker_coverage_weight: BREAKER_COVERAGE_WEIGHT,
             active_run_weight: ACTIVE_RUN_WEIGHT,
+            advanced_card_prospect_weight: ADVANCED_CARD_PROSPECT_WEIGHT,
+            known_ambush_weight: KNOWN_AMBUSH_WEIGHT,
+            opponent_board_weight: OPPONENT_BOARD_WEIGHT,
             successful_run_weight: SUCCESSFUL_RUN_WEIGHT,
             pending_subroutine_weight: PENDING_SUBROUTINE_WEIGHT,
             unresolved_decision_weight: UNRESOLVED_DECISION_WEIGHT,
@@ -514,6 +613,7 @@ impl Default for Weights {
             savings_shortfall_weight: SAVINGS_SHORTFALL_WEIGHT,
             grip_shortfall_weight: GRIP_SHORTFALL_WEIGHT,
             grip_floor: GRIP_FLOOR,
+            held_card_weight: HELD_CARD_WEIGHT,
             hq_shortfall_weight: HQ_SHORTFALL_WEIGHT,
             hq_floor: HQ_FLOOR,
             rd_draw_reserve: RD_DRAW_RESERVE,
@@ -589,12 +689,14 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             score += breaker_coverage(state, registry) as f64 * w.breaker_coverage_weight;
             score -= breaker_savings_shortfall(state, registry) as f64 * w.savings_shortfall_weight;
             score -= w.grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.grip_shortfall_weight;
+            score += held_cards_value(state, registry, w) * w.held_card_weight;
+            score -= visible_corp_board(state, registry, w) * w.opponent_board_weight;
             if state.runner.made_successful_run_this_turn {
                 score += w.successful_run_weight;
             }
             if let Some(run) = &state.active_run {
                 if run_is_breakable(state, run, registry) {
-                    score += w.active_run_weight;
+                    score += access_prospect(state, run, registry, w);
                 }
                 score -= pending_subroutines(run) as f64 * w.pending_subroutine_weight;
                 score -= strength_shortfall(state, run, registry) as f64 * w.strength_shortfall_weight;
@@ -621,6 +723,128 @@ fn run_is_breakable(state: &GameState, run: &RunState, registry: &CardRegistry) 
         total += cost;
     }
     total <= state.runner.resources.credits.0 + run.bad_publicity_credits
+}
+
+/// What the breach of `run.server` is worth to the Runner, read only off
+/// what its `ClientView` shows: hidden accesses at `active_run_weight`
+/// apiece, advancement tokens on the target's face-down root cards,
+/// known ambushes subtracted, and the net gain of trashing what it could
+/// afford to trash there. The caller gates it on `run_is_breakable`, as
+/// the flat run term was.
+///
+/// **Nothing here reads a sampled identity.** An unrezzed card counts by
+/// its position and its tokens; a face-down Archives card counts once; a
+/// card is read through the registry only when it is rezzed or face-up,
+/// which is when the real Runner could read it too. That is the line
+/// `UNREZZED_THREAT_WEIGHT` alone crosses, on purpose and at weight zero.
+///
+/// **"Seen this turn" is `servers_run_this_turn`.** A second R&D run
+/// finds the same top card, a second Archives run a pile already turned
+/// face-up, a second remote run the same face-down card — so those count
+/// nothing. HQ is the one server a repeat can pay on, because each access
+/// is a random card, and it pays exactly its chance of a card not yet
+/// seen: after `k` earlier HQ runs this turn, an access from `n` cards is
+/// fresh with probability `((n − 1) / n)^k`. Counting every repeat at
+/// full value was measured first and the Runner ran HQ 1,252 times in
+/// 96 games, thirteen a game, into a hand of one or two cards it had
+/// already read. At four cards the second run is 0.45 and the third 0.34,
+/// so the Runner runs HQ twice and then clicks for a credit. Every
+/// `run::start_run` pushes the target at initiation, so the active run
+/// is already on the list and "earlier" means a second entry; one
+/// card-started path (`Effect::InitiateRun` through `run/engine.rs`'s
+/// deduplicating push) records a repeat run once, and that run is priced
+/// as if it were the first — the cheaper direction.
+fn access_prospect(state: &GameState, run: &RunState, registry: &CardRegistry, w: &Weights) -> f64 {
+    use netrunner_core::rules::{InstallSlot, ServerId};
+    let server = run.server;
+    let earlier = runs_earlier_this_turn(state, server);
+    let seen = earlier > 0;
+    let credits = state.runner.resources.credits.0;
+    let mut hidden = 0.0_f64;
+    let mut tokens = 0u32;
+    let mut ambushes = 0usize;
+    let mut trash_gain = 0.0;
+    for installed in state.corp.installed.iter().filter(|card| card.server == server && card.slot == InstallSlot::Root) {
+        if installed.rezzed {
+            let Some(def) = registry.get(&installed.card) else { continue };
+            if punishes_access_with_damage(def) {
+                ambushes += 1;
+            }
+            if let Some(cost) = def.trash_cost
+                && cost <= credits
+            {
+                let removed = visible_install_value(installed, registry, w) * w.opponent_board_weight;
+                trash_gain += (removed - f64::from(cost) * w.own_credit_weight).max(0.0);
+            }
+        } else if !seen {
+            hidden += 1.0;
+            tokens += installed.advancement_tokens;
+        }
+    }
+    match server {
+        ServerId::Hq => {
+            let held = state.corp.hq.len();
+            let accesses = (1 + run.additional_hq_access as usize).min(held);
+            let fresh = if held == 0 { 0.0 } else { ((held - 1) as f64 / held as f64).powi(earlier as i32) };
+            hidden += accesses as f64 * fresh;
+        }
+        ServerId::RnD if !seen => hidden += (1 + run.additional_rd_access as usize).min(state.corp.r_and_d.len()) as f64,
+        ServerId::RnD | ServerId::Remote(_) => {}
+        ServerId::Archives => {
+            for archived in &state.corp.archives {
+                if archived.facedown {
+                    if !seen {
+                        hidden += 1.0;
+                    }
+                } else if let Some(def) = registry.get(&archived.card) {
+                    if punishes_access_with_damage(def) {
+                        ambushes += 1;
+                    }
+                    // A face-up agenda in Archives is a steal the breach
+                    // cannot miss, so it is worth the points outright
+                    // rather than a hidden access's 0.6 — the one reason
+                    // to run a pile the Runner has already read.
+                    if def.card_type == CardType::Agenda {
+                        trash_gain += f64::from(def.agenda_points.unwrap_or(0)) * w.agenda_point_weight;
+                    }
+                }
+            }
+        }
+    }
+    hidden * w.active_run_weight + f64::from(tokens) * w.advanced_card_prospect_weight
+        - ambushes as f64 * w.known_ambush_weight
+        + trash_gain
+}
+
+/// How many times the Runner ran `server` this turn before the run in
+/// progress — see `access_prospect` for why the active run's own entry
+/// is discounted.
+fn runs_earlier_this_turn(state: &GameState, server: netrunner_core::rules::ServerId) -> usize {
+    let entries = state.runner.servers_run_this_turn.iter().filter(|ran| **ran == server).count();
+    let own = usize::from(state.active_run.as_ref().is_some_and(|run| run.server == server));
+    entries.saturating_sub(own)
+}
+
+/// The Corp's board as the Runner's evaluation reads it, summed over
+/// `visible_install_value`; subtracted at `opponent_board_weight`.
+fn visible_corp_board(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    state.corp.installed.iter().map(|installed| visible_install_value(installed, registry, w)).sum()
+}
+
+/// `corp_install_value` for a viewer who cannot see under a face-down
+/// card. A rezzed install is public and priced exactly as the Corp
+/// prices it; an unrezzed one is its install weight plus every token on
+/// it at `advancement_weight`, because the requirement that would cap
+/// those tokens is on a card the Runner has not seen. Two determinized
+/// samples that put different cards under the same install therefore
+/// score identically here, which is what keeps this term honest for the
+/// search (`the_corp_board_term_reads_no_hidden_identity`).
+fn visible_install_value(installed: &InstalledCard, registry: &CardRegistry, w: &Weights) -> f64 {
+    if installed.rezzed {
+        corp_install_value(installed, registry, w)
+    } else {
+        w.unrezzed_install_weight + f64::from(installed.advancement_tokens) * w.advancement_weight
+    }
 }
 
 /// Unrezzed ICE still ahead of the Runner that the Corp could rez right
@@ -1151,6 +1375,38 @@ pub(crate) fn covers(def: &CardDefinition) -> [bool; 3] {
     covered
 }
 
+/// What the Runner's grip is worth, summed over `install_delta` and
+/// floored at zero per card; scaled by `held_card_weight`.
+fn held_cards_value(state: &GameState, registry: &CardRegistry, w: &Weights) -> f64 {
+    let rig = rig_coverage(state, registry);
+    state
+        .runner
+        .grip
+        .iter()
+        .filter_map(|card| registry.get(card))
+        .map(|def| install_delta(def, rig, w).max(0.0))
+        .sum()
+}
+
+/// What this evaluator would credit the Runner for installing `def` from
+/// its grip, credits and memory spent included: presence, plus coverage
+/// for each ICE subtype the card breaks that the rig (`rig`) cannot,
+/// minus the printed cost and the memory it takes. The same arithmetic
+/// the install itself scores (the grip term aside), so a card is "live"
+/// in hand exactly when the Runner would install it — leaving the memory
+/// out made a held Cleaver worth more than the installed one and the
+/// install a net loss. Zero for anything that is not a program, hardware
+/// or resource.
+fn install_delta(def: &CardDefinition, rig: [bool; 3], w: &Weights) -> f64 {
+    if !matches!(def.card_type, CardType::Program | CardType::Hardware | CardType::Resource) {
+        return 0.0;
+    }
+    let new_coverage = covers(def).iter().zip(rig).filter(|(grip, rig)| **grip && !rig).count();
+    w.board_presence_weight + new_coverage as f64 * w.breaker_coverage_weight
+        - f64::from(def.cost) * w.own_credit_weight
+        - f64::from(def.memory_cost.unwrap_or(0)) * w.memory_weight
+}
+
 /// Credits the Runner is short of the cheapest grip breaker worth
 /// installing: one that covers a subtype the rig cannot break and fits in
 /// free memory. Zero with no such card, or once it is affordable. Printed
@@ -1490,6 +1746,8 @@ mod tests {
         let mut clicked = GameState::new(0);
         clicked.runner.resources.credits = Credits(1);
         let mut running = GameState::new(0);
+        running.corp.hq = corp_cards("hq", 1);
+        clicked.corp.hq = corp_cards("hq", 1);
         running.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
         assert!(evaluate_state(&running, Side::Runner, &registry) > evaluate_state(&clicked, Side::Runner, &registry));
 
@@ -1821,6 +2079,8 @@ mod tests {
         let mut idle = GameState::new(0);
         idle.runner.resources.credits = Credits(credits);
         idle.runner.rig = rig;
+        // One card in HQ, so the breach has one hidden access to be worth.
+        idle.corp.hq = corp_cards("hq", 1);
         let mut running = idle.clone();
         running.active_run = Some(RunState { server: ServerId::Hq, ice, position, ..Default::default() });
         let term = evaluate_state(&running, Side::Runner, registry) - evaluate_state(&idle, Side::Runner, registry);
@@ -1862,6 +2122,7 @@ mod tests {
         let mut idle = GameState::new(0);
         idle.runner.resources.credits = Credits(2);
         idle.runner.rig = cleaver();
+        idle.corp.hq = corp_cards("hq", 1);
         let mut running = idle.clone();
         running.active_run =
             Some(RunState { server: ServerId::Hq, ice: ice(), bad_publicity_credits: 1, ..Default::default() });
@@ -1975,6 +2236,7 @@ mod tests {
             state.runner.resources.credits = Credits(credits);
             state.runner.memory_units = MemoryUnits(4);
             state.runner.grip = vec![CardId("cleaver".to_string())];
+            state.corp.hq = corp_cards("hq", 1);
             state
         };
         let clicked = saving(2);
@@ -2072,6 +2334,7 @@ mod tests {
         let holding = |cards: usize, running: bool| {
             let mut state = GameState::new(0);
             state.runner.grip = (0..cards).map(|i| CardId(format!("card_{i}"))).collect();
+            state.corp.hq = corp_cards("hq", 1);
             if running {
                 state.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
             }
@@ -2208,24 +2471,39 @@ mod tests {
     }
 
     /// The Carmen case behind `BREAKER_COVERAGE_WEIGHT`'s size: a 5-cost
-    /// breaker is worth installing over an open run, even from an at-floor
-    /// grip where the install also costs a grip card.
+    /// breaker is worth installing over an open run. **From a grip above
+    /// the floor**, since `HELD_CARD_WEIGHT`: from an at-floor grip the
+    /// install now loses the card's held value *and* the grip shortfall,
+    /// and the open run wins — the Runner draws first (a live top card is
+    /// worth more than the run) or runs, and installs Carmen the click
+    /// after. That trade was measured rather than avoided: with the held
+    /// term the Runner draws more than twice as often and Carmen is
+    /// installed as often as before, so the old at-floor claim is not
+    /// worth a lower held weight (one that would keep it, 0.13, leaves
+    /// no draw worth a credit).
     #[test]
-    fn a_five_cost_breaker_beats_an_open_run_even_from_an_at_floor_grip() {
+    fn a_five_cost_breaker_beats_an_open_run_from_a_grip_above_the_floor() {
         use netrunner_core::rules::{MemoryUnits, ServerId};
         let registry = CardRegistry::from_cards(vec![costed_breaker("carmen", Some(IceType::Sentry), 5)]);
-        let mut ran = GameState::new(0);
-        ran.runner.resources.credits = Credits(5);
-        ran.runner.memory_units = MemoryUnits(4);
-        ran.runner.grip = corp_cards("grip", GRIP_FLOOR - 1);
-        ran.runner.grip.push(CardId("carmen".to_string()));
-        let mut installed = ran.clone();
-        installed.runner.grip.pop();
-        installed.runner.resources.credits = Credits(0);
-        installed.runner.memory_units = MemoryUnits(3);
-        installed.runner.rig = vec![rig_card("carmen")];
-        ran.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
-        assert!(evaluate_state(&installed, Side::Runner, &registry) > evaluate_state(&ran, Side::Runner, &registry));
+        let position = |grip: usize| {
+            let mut ran = GameState::new(0);
+            ran.runner.resources.credits = Credits(5);
+            ran.runner.memory_units = MemoryUnits(4);
+            ran.corp.hq = corp_cards("hq", 1);
+            ran.runner.grip = corp_cards("grip", grip);
+            ran.runner.grip.push(CardId("carmen".to_string()));
+            let mut installed = ran.clone();
+            installed.runner.grip.pop();
+            installed.runner.resources.credits = Credits(0);
+            installed.runner.memory_units = MemoryUnits(3);
+            installed.runner.rig = vec![rig_card("carmen")];
+            ran.active_run = Some(RunState { server: ServerId::Hq, ..Default::default() });
+            (evaluate_state(&installed, Side::Runner, &registry), evaluate_state(&ran, Side::Runner, &registry))
+        };
+        let (installed, ran) = position(GRIP_FLOOR);
+        assert!(installed > ran, "above the floor Carmen beats the run: {installed} vs {ran}");
+        let (installed, ran) = position(GRIP_FLOOR - 1);
+        assert!(installed < ran, "at the floor the run comes first: {installed} vs {ran}");
     }
 
     /// An installed agenda is worth more for each ICE in front of it, up
@@ -2262,6 +2540,269 @@ mod tests {
         assert!((per_ice("offworld_office", AGENDA_PROTECTION_CAP) - AGENDA_PROTECTION_WEIGHT).abs() < 1e-9);
         assert!(per_ice("offworld_office", AGENDA_PROTECTION_CAP + 1).abs() < 1e-9, "past the cap an ICE is just an ICE");
         assert!(per_ice("nico_campaign", 1).abs() < 1e-9, "an asset is not protected by this term");
+    }
+
+    // ----- the run's prospect: what the breach can find -----
+
+    /// An access-punishing asset the Runner can read: Urtica Cipher's shape.
+    fn ambush(id: &str) -> CardDefinition {
+        let mut def = asset(id, 0);
+        def.triggers = vec![TriggeredEffect {
+            text: None,
+            trigger: Trigger::OnAccessed,
+            effects: vec![Effect::DealDamage(DamageType::Net, 2)],
+            requirement: None,
+        }];
+        def
+    }
+
+    /// The run term alone — the Runner's score in a breakable run on
+    /// `server` minus the same board idle.
+    fn prospect(state: &GameState, server: netrunner_core::rules::ServerId, registry: &CardRegistry) -> f64 {
+        let mut running = state.clone();
+        running.active_run = Some(RunState { server, ..Default::default() });
+        let term = evaluate_state(&running, Side::Runner, registry) - evaluate_state(state, Side::Runner, registry);
+        (term * 1000.0).round() / 1000.0
+    }
+
+    /// The person's complaint, as a test: a pile the Runner has already
+    /// turned face-up is not worth a click, a face-down card in it is, and
+    /// a face-up agenda in it is the steal the breach cannot miss.
+    #[test]
+    fn an_archives_run_is_worth_its_face_down_cards_and_face_up_agendas_and_nothing_else() {
+        use netrunner_core::rules::{ArchivedCard, ServerId};
+        let registry = CardRegistry::from_cards(vec![asset("nico_campaign", 2), advanceable("offworld_office", 3)]);
+        let mut state = GameState::new(0);
+        state.corp.archives = vec![ArchivedCard::faceup(CardId("nico_campaign".to_string())); 3];
+        assert_eq!(prospect(&state, ServerId::Archives, &registry), 0.0, "three known assets: nothing to find");
+        state.corp.archives.push(ArchivedCard { card: CardId("nico_campaign".to_string()), facedown: true });
+        assert_eq!(prospect(&state, ServerId::Archives, &registry), ACTIVE_RUN_WEIGHT, "one card the Runner has not seen");
+        state.corp.archives.push(ArchivedCard::faceup(CardId("offworld_office".to_string())));
+        assert_eq!(
+            prospect(&state, ServerId::Archives, &registry),
+            ACTIVE_RUN_WEIGHT + 2.0 * AGENDA_POINT_WEIGHT,
+            "a face-up agenda is worth its points"
+        );
+    }
+
+    /// The position the person watched the bot lose from: Urtica Cipher
+    /// face-up in Archives beside one face-down card. The face-down card
+    /// alone would be worth a run; the known ambush makes the run worth
+    /// less than the credit click it displaces.
+    #[test]
+    fn a_known_ambush_in_archives_makes_the_run_worth_less_than_a_credit() {
+        use netrunner_core::rules::{ArchivedCard, ServerId};
+        let registry = CardRegistry::from_cards(vec![ambush("urtica_cipher"), asset("nico_campaign", 2)]);
+        let mut state = GameState::new(0);
+        state.corp.archives = vec![
+            ArchivedCard::faceup(CardId("urtica_cipher".to_string())),
+            ArchivedCard { card: CardId("nico_campaign".to_string()), facedown: true },
+        ];
+        let term = prospect(&state, ServerId::Archives, &registry);
+        assert!((term - (ACTIVE_RUN_WEIGHT - KNOWN_AMBUSH_WEIGHT)).abs() < 1e-9, "{term}");
+        assert!(term < OWN_CREDIT_WEIGHT, "a credit click wins");
+        // The same ambush, still face down, is not read — its identity in
+        // a determinized sample is a guess.
+        state.corp.archives[0].facedown = true;
+        assert_eq!(prospect(&state, ServerId::Archives, &registry), 2.0 * ACTIVE_RUN_WEIGHT);
+    }
+
+    /// The same top card, the same pile, the same face-down remote: a
+    /// second run this turn finds nothing new anywhere but HQ.
+    #[test]
+    fn a_second_run_on_the_same_server_this_turn_is_worth_nothing_except_on_hq() {
+        use netrunner_core::rules::{ArchivedCard, ServerId};
+        let registry = CardRegistry::from_cards(vec![asset("nico_campaign", 2)]);
+        let mut state = GameState::new(0);
+        state.corp.hq = corp_cards("hq", 4);
+        state.corp.r_and_d = corp_cards("rd", 10);
+        state.corp.archives = vec![ArchivedCard { card: CardId("nico_campaign".to_string()), facedown: true }];
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("nico_campaign".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            ..Default::default()
+        }];
+        for server in [ServerId::Hq, ServerId::RnD, ServerId::Archives, ServerId::Remote(0)] {
+            assert_eq!(prospect(&state, server, &registry), ACTIVE_RUN_WEIGHT, "first run on {server:?}");
+        }
+        // `start_run` records the target at initiation, so a run in
+        // progress is already listed once; a repeat is a second entry.
+        let mut again = state.clone();
+        for server in [ServerId::Hq, ServerId::RnD, ServerId::Archives, ServerId::Remote(0)] {
+            again.runner.servers_run_this_turn = vec![server, server];
+            // HQ holds four cards, so the second access is fresh three
+            // times in four; everywhere else a repeat finds what the first
+            // run found.
+            let expected = if server == ServerId::Hq { 0.75 * ACTIVE_RUN_WEIGHT } else { 0.0 };
+            assert!((prospect(&again, server, &registry) - expected).abs() < 1e-9, "second run on {server:?}");
+            again.runner.servers_run_this_turn = vec![server];
+            assert_eq!(prospect(&again, server, &registry), ACTIVE_RUN_WEIGHT, "the run's own entry is not a repeat");
+        }
+        // The repeat's value falls with each run and with a thinner HQ:
+        // a third run at four cards is under a credit click, and a second
+        // run on a one-card HQ finds the card it already saw.
+        again.runner.servers_run_this_turn = vec![ServerId::Hq; 3];
+        let third = prospect(&again, ServerId::Hq, &registry);
+        assert!(third < OWN_CREDIT_WEIGHT && third > 0.0, "{third}");
+        again.corp.hq = corp_cards("hq", 1);
+        again.runner.servers_run_this_turn = vec![ServerId::Hq; 2];
+        assert_eq!(prospect(&again, ServerId::Hq, &registry), 0.0);
+    }
+
+    /// Where the Corp is scoring is where the Runner goes first: each
+    /// token on a face-down root card adds to the run, and past one token
+    /// the remote is worth more than any central.
+    #[test]
+    fn an_advanced_face_down_remote_card_is_worth_more_than_a_central() {
+        use netrunner_core::rules::ServerId;
+        let registry = CardRegistry::from_cards(vec![advanceable("offworld_office", 3)]);
+        let mut state = GameState::new(0);
+        state.corp.hq = corp_cards("hq", 4);
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("offworld_office".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            advancement_tokens: 2,
+            ..Default::default()
+        }];
+        let remote = prospect(&state, ServerId::Remote(0), &registry);
+        assert!((remote - (ACTIVE_RUN_WEIGHT + 2.0 * ADVANCED_CARD_PROSPECT_WEIGHT)).abs() < 1e-9, "{remote}");
+        assert!(remote > prospect(&state, ServerId::Hq, &registry));
+        // The tokens are read off the install, not the card: an ambush
+        // advanced twice is worth exactly the same run, because the Runner
+        // cannot tell the two apart.
+        let trap = CardRegistry::from_cards(vec![ambush("offworld_office")]);
+        assert_eq!(prospect(&state, ServerId::Remote(0), &trap), remote);
+    }
+
+    /// The trash lever, both halves: a rezzed asset the Runner can afford
+    /// to trash makes the run worth starting, and once accessed, trashing
+    /// it beats leaving it — at 2[c], and not at 4[c].
+    #[test]
+    fn a_trashable_rezzed_asset_is_worth_the_run_and_the_trash() {
+        use netrunner_core::rules::{ArchivedCard, ServerId};
+        let priced = |trash_cost: u32| {
+            let mut nico = asset("nico_campaign", 2);
+            nico.trash_cost = Some(trash_cost);
+            CardRegistry::from_cards(vec![nico])
+        };
+        let mut state = GameState::new(0);
+        state.runner.resources.credits = Credits(5);
+        state.corp.installed = vec![InstalledCard {
+            card: CardId("nico_campaign".to_string()),
+            install_id: InstallId(1),
+            server: ServerId::Remote(0),
+            rezzed: true,
+            ..Default::default()
+        }];
+        let removed = (BOARD_PRESENCE_WEIGHT + REZZED_ASSET_WEIGHT) * OPPONENT_BOARD_WEIGHT;
+        let cheap = prospect(&state, ServerId::Remote(0), &priced(2));
+        assert!((cheap - (removed - 2.0 * OWN_CREDIT_WEIGHT)).abs() < 1e-9, "{cheap}");
+        assert!(cheap > 0.0, "the run that ends the loop is worth starting");
+        assert_eq!(prospect(&state, ServerId::Remote(0), &priced(4)), 0.0, "too dear to trash: a known card, nothing to find");
+        assert_eq!(prospect(&state, ServerId::Remote(0), &priced(2)), cheap, "the prospect does not depend on having run before");
+
+        let mut trashed = state.clone();
+        trashed.corp.installed.clear();
+        trashed.corp.archives = vec![ArchivedCard::faceup(CardId("nico_campaign".to_string()))];
+        trashed.runner.resources.credits = Credits(3);
+        assert!(evaluate_state(&trashed, Side::Runner, &priced(2)) > evaluate_state(&state, Side::Runner, &priced(2)));
+        assert!(
+            (evaluate_state(&trashed, Side::Corp, &priced(2)) - evaluate_state(&state, Side::Corp, &priced(2))
+                - (-(BOARD_PRESENCE_WEIGHT + REZZED_ASSET_WEIGHT) + 2.0 * OPPONENT_CREDIT_WEIGHT))
+                .abs()
+                < 1e-9,
+            "the Corp's own reading of the same trash is unchanged"
+        );
+        let mut dear = trashed.clone();
+        dear.runner.resources.credits = Credits(1);
+        assert!(evaluate_state(&dear, Side::Runner, &priced(4)) < evaluate_state(&state, Side::Runner, &priced(4)));
+    }
+
+    /// The property that keeps the board term usable by a search over
+    /// determinized samples: two samples that put different cards under
+    /// the same face-down install score the same for the Runner.
+    #[test]
+    fn the_corp_board_term_reads_no_hidden_identity() {
+        use netrunner_core::rules::ServerId;
+        let registry = CardRegistry::from_cards(vec![advanceable("offworld_office", 3), ambush("urtica_cipher"), ice("palisade", 3)]);
+        let under = |card: &str, rezzed: bool| {
+            let mut state = GameState::new(0);
+            state.corp.installed = vec![InstalledCard {
+                card: CardId(card.to_string()),
+                install_id: InstallId(1),
+                server: ServerId::Remote(0),
+                advancement_tokens: 2,
+                rezzed,
+                ..Default::default()
+            }];
+            evaluate_state(&state, Side::Runner, &registry)
+        };
+        assert_eq!(under("offworld_office", false), under("urtica_cipher", false));
+        assert_eq!(under("offworld_office", false), under("palisade", false));
+        assert!(under("offworld_office", false) < evaluate_state(&GameState::new(0), Side::Runner, &registry), "and it counts");
+        assert_ne!(under("urtica_cipher", true), under("palisade", true), "rezzed, the card is public and priced as itself");
+    }
+
+    // ----- a card in grip: worth half of what installing it would be -----
+
+    /// The draw the person never saw: at the floor, a draw that brings a
+    /// breaker for an uncovered subtype beats a credit, and a draw that
+    /// brings a card the Runner would never install does not.
+    #[test]
+    fn drawing_a_breaker_for_an_uncovered_subtype_beats_a_credit_at_the_floor() {
+        let mut dead = costed_breaker("dead", Some(IceType::Barrier), 3);
+        dead.card_type = CardType::Resource;
+        dead.abilities.clear();
+        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3), dead]);
+        let holding = |drawn: Option<&str>| {
+            let mut state = GameState::new(0);
+            state.runner.resources.credits = Credits(if drawn.is_some() { 5 } else { 6 });
+            state.runner.grip = corp_cards("filler", GRIP_FLOOR);
+            if let Some(card) = drawn {
+                state.runner.grip.push(CardId(card.to_string()));
+            }
+            evaluate_state(&state, Side::Runner, &registry)
+        };
+        let delta = BOARD_PRESENCE_WEIGHT + BREAKER_COVERAGE_WEIGHT - 3.0 * OWN_CREDIT_WEIGHT - MEMORY_WEIGHT;
+        assert!((holding(Some("cleaver")) - holding(None) - (delta * HELD_CARD_WEIGHT - OWN_CREDIT_WEIGHT)).abs() < 1e-9);
+        assert!(holding(Some("cleaver")) > holding(None), "the draw beats the credit");
+        assert!(holding(Some("dead")) < holding(None), "a 3-cost card with no coverage is not worth drawing for");
+        assert!(
+            (holding(Some("dead")) - holding(None) + OWN_CREDIT_WEIGHT).abs() < 1e-9,
+            "and is worth exactly nothing held — the term never goes negative"
+        );
+    }
+
+    /// The reason the term is a fraction of the install rather than a
+    /// value per card: the live card still goes on the table, and a
+    /// second breaker for a covered subtype is dead in hand.
+    #[test]
+    fn a_live_card_is_still_installed_and_a_covered_breaker_is_dead_in_hand() {
+        use netrunner_core::rules::MemoryUnits;
+        let registry = CardRegistry::from_cards(vec![costed_breaker("cleaver", Some(IceType::Barrier), 3)]);
+        let mut held = GameState::new(0);
+        held.runner.resources.credits = Credits(3);
+        held.runner.memory_units = MemoryUnits(4);
+        held.runner.grip = corp_cards("filler", GRIP_FLOOR);
+        held.runner.grip.push(CardId("cleaver".to_string()));
+        let mut installed = held.clone();
+        installed.runner.grip.pop();
+        installed.runner.resources.credits = Credits(0);
+        installed.runner.memory_units = MemoryUnits(3);
+        installed.runner.rig = vec![rig_card("cleaver")];
+        assert!(evaluate_state(&installed, Side::Runner, &registry) > evaluate_state(&held, Side::Runner, &registry));
+
+        let mut duplicate = installed.clone();
+        duplicate.runner.grip.push(CardId("cleaver".to_string()));
+        let mut without = installed.clone();
+        without.runner.grip.push(CardId("filler_9".to_string()));
+        assert_eq!(
+            evaluate_state(&duplicate, Side::Runner, &registry),
+            evaluate_state(&without, Side::Runner, &registry),
+            "Barrier is covered, so a second Cleaver is worth what an unknown card is"
+        );
     }
 
     // ----- `Weights`: the terms only a personality moves -----
