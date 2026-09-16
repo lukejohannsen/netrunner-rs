@@ -1197,3 +1197,56 @@ calibrate that one ladder, since as a Corp base it is +0.105 on `elite`
 and the strongest top the chair has.
 
 Reports under `target/coverage/corp-ladder-{balanced,glacier}-s{1,2}.json`.
+
+## 11. `glacier`'s `veteran` Corp gets its own handicap: `epsilon` 0.02, and the glacier ladder climbs evenly at the top — DONE (16 September 2026)
+
+`feat/glacier-veteran-epsilon`. §10 found the `glacier` Corp's
+`operator → veteran` step flat (+0.021) because `veteran`'s `epsilon`
+0.10 costs this style 0.086 against `Balanced`'s 0.022. Of §10's two
+routes this takes the per-style handicap: `LevelSpec::with_personality`
+now sets `epsilon` for `(Veteran, Corp, Glacier)` and reads every other
+pairing back off `Level::spec`, so every seat (TUI, desktop, daemon,
+`bench`) gets it and no other rung or style moves.
+
+**The measurement.** `glacier` `veteran` against the same one-ply
+balanced Runner, 384 games on each of seeds 1 and 2 on §10's schedule, so
+every leg is paired with §10's `epsilon` 0.10 games. The value was set on
+a throwaway environment override that is not committed; the control leg
+at 0.10 replayed §10 game for game.
+
+| `epsilon` | `glacier` `veteran` | vs 0.10 (z) | `operator → veteran` | `veteran → elite` |
+|---|---|---|---|---|
+| 0.10 (was) | 0.277 | | +0.021 (z 0.9) | +0.086 |
+| 0.07 | 0.257 | −0.020 (−1.2) | +0.000 | +0.107 |
+| 0.05 | 0.277 | +0.000 | +0.021 | +0.086 |
+| 0.03 | 0.301 | +0.024 (1.2) | +0.044 (1.9) | +0.062 (2.6) |
+| **0.02** | **0.309** | +0.032 (1.6) | **+0.052 (2.3)** | **+0.055 (2.3)** |
+| 0.01 | 0.324 | +0.047 (2.3) | +0.068 (2.9) | +0.039 (1.6) |
+| 0.00 (`elite`) | 0.363 | | | |
+
+**The curve is not linear, and not the `Balanced` Corp's either.** From
+0.10 down to 0.05 it does not move beyond noise, and the whole climb to
+`elite` happens below 0.03. So an interpolation from §2's `Balanced`
+inversion (0.17 → 0.10) would have landed on the flat part and changed
+nothing a person could feel. A likely reading, not tested: a banking plan
+survives no blunder at all, so any rate above a few in a hundred costs
+it the whole plan, and only a very rare blunder leaves most games whole.
+
+**0.02 is the measured midpoint** (target 0.310 between `operator`
+0.257 and `elite` 0.363). Both steps are rises pooled and on each seed
+alone: `operator → veteran` +0.068 / +0.036, `veteran → elite` +0.062 /
++0.047. The `glacier` Corp ladder now reads **0.012 / 0.092 / 0.257 /
+0.309 / 0.363**, steps +0.081 / +0.164 / +0.052 / +0.055. Its uneven step
+is now `apprentice → operator`, which is a one-ply base at 0.35 and 0.0
+and is the same shape as the `Balanced` ladder's; that is (a)'s, not
+this entry's.
+
+`LevelSpec::describe` said "throws away about 0 decisions in 10" at this
+rate; below 0.1 it now says "about one decision in 50". Tests pin that
+only this pairing carries its own handicap, that styling twice cannot
+leak it into another style, and that the ladder is monotone in every
+style rather than only `Balanced`.
+
+Not done: the other Corp styles (`trap`, `rush`) and every Runner style
+still ride `Balanced`'s spacing unmeasured, and `Balanced`'s own top step
+(+0.022, z 1.0 in §10) is untouched.

@@ -83,6 +83,9 @@
 //! was conservative as the Runner and unchanged as the Corp. Every rung
 //! here is `Balanced`; what climbs is the search. "A glacier Corp at
 //! level 4" is a second axis crossed with this one, not a replacement.
+//! The cross keeps the order but not the spacing, so a style measured to
+//! break a step carries its own handicap in `LevelSpec::with_personality`
+//! — so far only `glacier`'s `veteran` Corp (Phase 5 §11).
 //!
 //! **Machine-independence is a prerequisite, not a detail.** A rung whose
 //! strength moved with the host's core count would not be a rung at all;
@@ -338,12 +341,30 @@ impl LevelSpec {
     /// measured. A profile is a *bias* on the same evaluator — it ranks the
     /// same legal moves differently, never more or less deeply — so the
     /// rung's strength order survives it (a handicapped bot with a style
-    /// is still the same bot with less handicap at the rung above), and
-    /// only the exact calibration figures are for `Balanced`. Before this
-    /// existed, `--corp-level 4 --corp-personality rush` played `Balanced`
-    /// and said nothing about it.
+    /// is still the same bot with less handicap at the rung above). Before
+    /// this existed, `--corp-level 4 --corp-personality rush` played
+    /// `Balanced` and said nothing about it.
+    ///
+    /// **The order survives a style and the spacing does not**, so a style
+    /// whose spacing was measured to break carries its own `epsilon` here.
+    /// The handicap is read back off `Level::spec` for every other
+    /// pairing, so styling a styled rung again is the same as styling the
+    /// plain one.
     pub fn with_personality(self, personality: Personality) -> Self {
-        Self { personality, ..self }
+        let epsilon = match (self.level, self.side, personality) {
+            // `glacier` as the Corp (Phase 5 §10–§11, 768 games a cell
+            // against the one-ply balanced Runner). At `Balanced`'s 0.10
+            // it scored 0.277, level with `operator`'s 0.257 and short of
+            // `elite`'s 0.363: the handicap costs this style 0.086 where it
+            // costs `Balanced` 0.022. The curve is not linear — flat from
+            // 0.10 to 0.05 (0.277 / 0.257 / 0.277) and climbing only below
+            // 0.03 (0.301, **0.309** at 0.02, 0.324 at 0.01) — so the value
+            // is the measured midpoint rather than an interpolation: steps
+            // of +0.052 and +0.055, each a rise on both seeds alone.
+            (Level::Veteran, Side::Corp, Personality::Glacier) => 0.02,
+            _ => self.level.spec(self.side).epsilon,
+        };
+        Self { personality, epsilon, ..self }
     }
 
     /// The agent this rung seats.
@@ -401,6 +422,10 @@ impl LevelSpec {
         if self.epsilon == 0.0 {
             return play;
         }
+        // Out of ten would round a rare blunder down to "about 0".
+        if self.epsilon < 0.1 {
+            return format!("{play}, and throws away about one decision in {}", (1.0 / self.epsilon).round());
+        }
         format!("{play}, and throws away about {} decisions in 10", (self.epsilon * 10.0).round())
     }
 }
@@ -434,10 +459,11 @@ mod tests {
         }
     }
 
-    /// The style axis crosses the difficulty axis without touching it: a
-    /// rung with a personality is the same rung — kind, budget, handicap —
-    /// with a different evaluator bias, and a `Balanced` request is
-    /// exactly `Level::spec`.
+    /// The style axis crosses the difficulty axis without touching its
+    /// base: a rung with a personality is the same rung — kind, budget,
+    /// and handicap unless the style has a measured one of its own — with
+    /// a different evaluator bias, and a `Balanced` request is exactly
+    /// `Level::spec`.
     #[test]
     fn a_personality_changes_the_evaluator_and_nothing_else_about_a_rung() {
         for side in [Side::Corp, Side::Runner] {
@@ -452,6 +478,28 @@ mod tests {
                     (plain.level, plain.side, plain.kind, plain.simulations, plain.samples, plain.epsilon)
                 );
                 let _: Box<dyn BotAgent> = styled.agent(3);
+            }
+        }
+    }
+
+    /// `glacier`'s `veteran` Corp carries its own handicap, which only it
+    /// carries, and which a second styling cannot leak into another style.
+    #[test]
+    #[allow(clippy::float_cmp)]
+    fn glacier_veteran_corp_has_its_own_handicap_and_no_other_rung_does() {
+        let glacier = Level::Veteran.spec(Side::Corp).with_personality(Personality::Glacier);
+        assert_eq!(glacier.epsilon, 0.02);
+        assert_eq!(glacier.with_personality(Personality::Balanced), Level::Veteran.spec(Side::Corp));
+        assert_eq!(Level::Veteran.spec(Side::Runner).with_personality(Personality::Glacier).epsilon, 0.25);
+        assert_eq!(glacier.describe(), "searches 512 positions per decision, and throws away about one decision in 50");
+        for side in [Side::Corp, Side::Runner] {
+            for level in Level::ALL {
+                for personality in Personality::ALL {
+                    let styled = level.spec(side).with_personality(personality);
+                    if (level, side, personality) != (Level::Veteran, Side::Corp, Personality::Glacier) {
+                        assert_eq!(styled.epsilon, level.spec(side).epsilon, "{level} {side:?} {personality:?}");
+                    }
+                }
             }
         }
     }
@@ -479,9 +527,10 @@ mod tests {
     /// after the fact by 1,200 games.
     #[test]
     fn each_rung_is_the_one_below_it_with_less_handicap_or_a_better_base() {
-        for side in [Side::Corp, Side::Runner] {
+        // In every style, because a style may carry its own handicap.
+        for (side, personality) in [Side::Corp, Side::Runner].into_iter().flat_map(|side| Personality::ALL.map(|p| (side, p))) {
             for pair in Level::ALL.windows(2) {
-                let (lower, upper) = (pair[0].spec(side), pair[1].spec(side));
+                let (lower, upper) = (pair[0].spec(side).with_personality(personality), pair[1].spec(side).with_personality(personality));
                 let same_base = (lower.kind, lower.simulations, lower.samples) == (upper.kind, upper.simulations, upper.samples);
                 if same_base {
                     assert!(upper.epsilon < lower.epsilon, "{side:?}: {} and {} share a base but not less handicap", lower.label(), upper.label());
