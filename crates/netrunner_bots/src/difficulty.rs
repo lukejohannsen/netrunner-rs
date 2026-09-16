@@ -52,6 +52,17 @@
 //! search, and that is Phase 2 §5's Runner-chair work, not a spacing
 //! problem this table can solve.
 //!
+//! **Then the leaf moved and the cap inverted** (15 September 2026):
+//! with the Runner's evaluator pricing what a run can find and what a
+//! card in grip is worth (Phase 2 §5a, reopened), one ply scores 0.865
+//! against the fixed heuristic Corp where `mcts@128` scores 0.677 and
+//! `puct@128` 0.760. A ladder that seated `mcts` above one ply would run
+//! backwards at the top, so the Runner chair is now **one base bot at
+//! five handicaps** — 1.0 / 0.5 / 0.25 / 0.10 / 0.0 — monotone by
+//! construction and cheap at every rung, its spacing owed to the
+//! overnight calibration. The Corp chair is unchanged: its evaluator did
+//! not move and `puct@512` still converts depth there.
+//!
 //! **Personality is not the difficulty dial, and deliberately so.** The
 //! six `Personality` profiles are a *style* axis, and each is written for
 //! one chair — a Runner profile seated as the Corp "touches only the
@@ -99,10 +110,12 @@ pub enum Level {
     /// a click away. The rung where a new player's mistakes stop being
     /// the only ones on the table.
     Apprentice,
-    /// One ply, played straight. No plan beyond the current turn, but no
-    /// gifts either.
+    /// One ply, played straight as the Corp; as the Runner, one ply
+    /// throwing away a decision in four, because on that chair one ply
+    /// *is* the top of the ladder (see `spec`). No plan beyond the
+    /// current turn.
     Operator,
-    /// The strongest bot on this chair, blundering one decision in six —
+    /// The strongest bot on this chair, blundering one decision in ten —
     /// a real opponent with a visible crack in it.
     Veteran,
     /// The strongest configuration measured on each chair, playing every
@@ -203,7 +216,8 @@ impl Level {
             // and the two are identical in play: `HandicapAgent` never
             // consults the inner agent at 1.0, so no heuristic ever runs.
             // Writing it this way makes the bottom three rungs one base
-            // family with strictly falling handicap — 1.0, 0.35, 0.0 —
+            // family with strictly falling handicap — 1.0, 0.35, 0.0 as
+            // the Corp; the Runner's middle two are re-spaced below —
             // which is what `each_rung_is_the_one_below_it_with_less_
             // handicap_or_a_better_base` can actually check.
             (Level::Novice, _) => (LevelKind::Heuristic, 0, 1, 1.0),
@@ -227,8 +241,29 @@ impl Level {
             // already it.
             (Level::Veteran, Side::Corp) => (LevelKind::Puct, 512, 1, 0.10),
             (Level::Elite, Side::Corp) => (LevelKind::Puct, 512, 1, 0.0),
-            (Level::Veteran, Side::Runner) => (LevelKind::Mcts, 128, 4, 0.17),
-            (Level::Elite, Side::Runner) => (LevelKind::Mcts, 128, 4, 0.0),
+            // **The Runner ladder is five handicaps of one ply** since
+            // 15 September 2026 (Phase 2 §5a, reopened): once the
+            // evaluator priced what a run can find and what a card in
+            // grip is worth, the one-ply Runner scored **0.865** against
+            // the fixed heuristic Corp over 192 games, against 0.760 for
+            // `puct@128` and 0.677 for `mcts@128` — the search Runners
+            // inherit the new leaf but not the policy that plays the
+            // plies before it, and their random playouts wash most of it
+            // out. Seating `mcts` above one ply would make rung 5 easier
+            // than rung 3. So the Runner's `operator` is no longer the
+            // un-handicapped bot: that is `elite`, and the middle rung
+            // carries 0.25. The spacing is uncalibrated (the overnight
+            // `scripts/ladder_report.py` job, Phase 5 §2); the order is
+            // structural. When a search Runner beats one ply again —
+            // a one-ply playout policy is the recorded next lever — the
+            // top two rungs go back to it.
+            (Level::Veteran, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.10),
+            (Level::Elite, Side::Runner) => (LevelKind::Heuristic, 0, 1, 0.0),
+        };
+        let epsilon = match (self, side) {
+            (Level::Apprentice, Side::Runner) => 0.5,
+            (Level::Operator, Side::Runner) => 0.25,
+            _ => epsilon,
         };
         LevelSpec { level: self, side, kind, simulations, samples, epsilon, personality: Personality::Balanced }
     }
@@ -387,13 +422,17 @@ mod tests {
 
     /// The two chairs convert different resources, so the top rung is
     /// deliberately a different bot on each — see the module docs. This
-    /// pins that asymmetry so it cannot be "tidied up" into one spec.
+    /// pins that asymmetry so it cannot be "tidied up" into one spec:
+    /// the Corp's is the deep search, the Runner's is one ply played
+    /// straight, and the Runner's `operator` is that same bot handicapped.
     #[test]
     fn the_top_rung_is_a_different_bot_on_each_chair() {
         let corp = Level::Elite.spec(Side::Corp);
         let runner = Level::Elite.spec(Side::Runner);
         assert_eq!((corp.kind, corp.simulations, corp.samples), (LevelKind::Puct, 512, 1));
-        assert_eq!((runner.kind, runner.simulations, runner.samples), (LevelKind::Mcts, 128, 4));
+        assert_eq!((runner.kind, runner.simulations, runner.samples, runner.epsilon), (LevelKind::Heuristic, 0, 1, 0.0));
+        assert_eq!(Level::Operator.spec(Side::Corp).epsilon, 0.0, "the Corp's operator is one ply played straight");
+        assert!(Level::Operator.spec(Side::Runner).epsilon > 0.0, "the Runner's is not, because one ply is the top");
     }
 
     /// The property the first cut of this table did not have. Every rung

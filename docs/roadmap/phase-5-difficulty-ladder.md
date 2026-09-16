@@ -132,6 +132,28 @@ cell (16 × 32 at 32 plies) +0.031 over `elite` at z +1.12 and eight times
 its cost. So the Runner rungs stay as calibrated, and the cap is now
 measured from the search side as well as the leaf side.
 
+**The Runner chair's cap inverted, and the Runner ladder is now one
+ply at five handicaps** (15 September 2026, `fix/heuristic-runner-access-prospect`,
+Phase 2 §5a reopened). The better Runner the paragraphs above were
+waiting for turned out to be the one-ply bot with a leaf that reads the
+board: pricing a run by what its breach can find, and a card in grip at
+half its install value, took the heuristic Runner from **0.417 to 0.865**
+against the fixed heuristic Corp over 192 games (paired, z −8.7 on the
+Corp side). The search Runners inherited the leaf and not the policy:
+on the same binary and games `puct@128` scores 0.760 and `mcts@128` —
+the `elite` base — 0.677 (`level:elite` as seated 0.630, up from 0.542,
++0.089 at z −2.25 for the Corp), so the table above would have seated a
+rung 5 that loses to rung 3. The spec is therefore
+`Heuristic` at `epsilon` 1.0 / 0.5 / 0.25 / 0.10 / 0.0 on the Runner
+chair — monotone by construction, every rung cheap, `operator` no longer
+the un-handicapped bot there — and the Corp chair is untouched (its
+evaluator did not move). **The Runner spacing is uncalibrated**: the
+calibration table above was taken on the old evaluator and the old
+bases, and the 192-game overnight `scripts/ladder_report.py` run is now
+owed rather than optional. The search Runners go back on top when one
+beats one ply again; the recorded lever is a one-ply playout policy
+(Phase 2 §5, "next" item 1), whose prize just grew from 0.06 to 0.19.
+
 **How a player reaches it.** `--corp-level` / `--runner-level` take a
 name or a rung number and override the kind, the personality *and*
 `--simulations` — one shared `bots::make_seat_agent`, so the TUI, the

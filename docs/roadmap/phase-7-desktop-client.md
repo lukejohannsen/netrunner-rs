@@ -593,6 +593,10 @@ yet a board to play on.
    card — the stack stayed at 24 — until it flatlined itself. A bot
    blindness for Phase 5's ladder: the one-ply Runner's run choice does
    not read a known Archives, and its draw term is too weak to act.
+   *Done in Phase 2 §5a (15 September 2026): a run is worth what the
+   breach can find — a known ambush counts against it — and a card in
+   grip is worth half of what installing it would be, so a draw can beat
+   a credit. Archives runs 627 → 46 and draws 76 → 332 over 96 games.*
 4. **The layout does not use the play field.** Two strips, a row of
    servers, a row of rig and a row of hand, stacked and scrolling, is a
    list, not a table; §4 owes the board a real arrangement — the
