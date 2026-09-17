@@ -1250,3 +1250,61 @@ style rather than only `Balanced`.
 Not done: the other Corp styles (`trap`, `rush`) and every Runner style
 still ride `Balanced`'s spacing unmeasured, and `Balanced`'s own top step
 (+0.022, z 1.0 in §10) is untouched.
+
+## 12. The Corp ladder in `rush` style has no top: search buys it +0.012, so no handicap can space it — DONE, measurement only (16 September 2026)
+
+`diag/rush-corp-ladder`. `rush` is the most common Corp style a person
+meets (6 of the 16 sample Corp decks) and the weakest Corp profile (§9,
+−0.058 against balanced), so after §10–§11 it was the style most likely to
+break the ladder's spacing. §10's method on §10's schedule: each rung as
+`rush` against the fixed one-ply balanced Runner, 384 games on each of
+seeds 1 and 2, paired game for game with the `Balanced` reports. No stalls.
+
+| Corp rung | `Balanced` | `rush` | delta | z (McNemar) | discordant |
+|---|---|---|---|---|---|
+| novice | 0.012 | 0.012 | +0.000 | | 0 |
+| apprentice | 0.062 | 0.061 | −0.001 | −0.1 | 73 |
+| operator | 0.125 | 0.100 | −0.025 | −1.8 | 117 |
+| veteran | 0.236 | 0.109 | **−0.126** | −7.3 | 179 |
+| elite | 0.258 | 0.112 | **−0.146** | −8.1 | 190 |
+
+`novice` is byte-identical again, as it must be.
+
+| step | `Balanced` | `rush` (s1 / s2) |
+|---|---|---|
+| novice → apprentice | +0.051 | +0.049 (+0.057 / +0.042) |
+| apprentice → operator | +0.062 | +0.039 (+0.018 / +0.060) |
+| operator → veteran | +0.111 | **+0.009** (+0.016 / +0.003), flat |
+| veteran → elite | +0.022 | **+0.003** (+0.018 / −0.013), flat |
+
+**The style costs one ply little and the search nearly everything.**
+`operator` loses 0.025 to the style (not significant), but `puct@512` as
+`rush` scores 0.112 against one ply's 0.100, where as `Balanced` the same
+search is worth +0.133. So `veteran` and `elite` are the same opponent as
+`operator` to a person playing a rush deck, and the planned repair — a
+per-style `epsilon`, as §11 gave `glacier` — cannot apply: the span it
+would space is 0.012 against a sampling sd of 0.016, and `epsilon` only
+takes strength away. The search rungs do play differently (games 365 → 295
+steps a game, 5 → 18 flatlines a seed, both `operator` → `elite`); they do
+not win more.
+
+This is §9's `rush` finding seen from the ladder. §9 put the profile's cost
+in the two knobs that make it a rush (`installed_agenda_weight` 1.0,
+`advancement_weight` 2.5) and read "score early" as the defect against
+this Runner. A likely reading, not tested: a deeper search over that leaf
+finds the rush line more reliably and the line itself does not win, so
+the leaf caps the search. §3's "a better leaf does not lift search" does
+not run in reverse.
+
+**Handed over, not done.** Three routes, each a decision rather than a
+tuning:
+
+- **Repair `rush`** so its search converts — §9 called a rush that wins a
+  different archetype, which makes this a design question.
+- **Seat the search rungs in another style for rush decks** (e.g. the
+  deck's style up to `operator`, `Balanced` or `glacier` above it). That
+  keeps the ladder but tells the player the top of it is not a rush.
+- **Say so**: the start screen could mark a rush deck's top rungs as
+  equivalent. Honest, and no stronger.
+
+Reports under `target/coverage/corp-ladder-rush-s{1,2}.json`.
