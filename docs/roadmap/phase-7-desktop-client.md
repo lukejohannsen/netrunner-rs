@@ -610,6 +610,7 @@ yet a board to play on.
    it at the card and makes the panel the fallback it was designed as.
 6. **A HUD**: credits, clicks, points, tags, damage and hand size for
    both sides, always in the same place, big enough to read at a glance.
+   *Done in §4f: a grid of large numbers in each side's strip.*
 7. **The window must fit the whole game without scrolling.** With the
    faces made readable the board is 1,780 px tall in a 723 px viewport;
    a design is owed that puts every card and piece on one screen —
@@ -1249,3 +1250,38 @@ without a click, only a lone one, offers nothing while it is in flight,
 and puts the pass back on the bar when it is rejected. The desktop's
 headless tests that press Pass during the Corp's turn still pass. No engine file changed,
 so no sweep and no coverage report. No layout change, so no screenshot.
+
+### 4f. A HUD: each side's numbers in fixed places — DONE (17 September 2026)
+
+`feat/desktop-hud`. §3's item 6. The numbers were in the strip as
+sentences — dim and small first, then body size — and "Credits 5 ·
+Clicks 3 · Agenda points 2/7" is a line to read, not a place to glance.
+
+**Decisions taken, with the alternative rejected.**
+
+- **Every readout is always there, at zero too.** Credits, Clicks and
+  Points in the same slots for both sides, the hand (HQ or Grip) in the
+  fourth, then the side's own: Bad publicity for the Corp, Tags and
+  Damage for the Runner. A Tags readout that appeared with the first tag
+  would move the numbers after it at the moment the person needs them,
+  so a live threat is drawn in the danger colour instead, and so is a
+  point total two short of the win.
+- **The words live in `netrunner_client::board::hud`**, beside `facts`,
+  so the terminal can take the same set; its header line is left as it
+  is for now.
+- **In the strip, not a row of its own.** A HUD row would cost the board
+  a row of card height; the grid (three columns, a heading-size number
+  over a small word) replaces the four body lines inside the same
+  `STRIP_CORP`/`STRIP_RUNNER` heights, and the counts a person looks up
+  rather than watches (R&D and Archives; MU and Link) are one small line
+  under it. The Runner's Stack and Heap stay the pile buttons.
+
+**Verified.** `cargo test --workspace` green (1,504 tests), clippy
+silent. New tests: `netrunner_client` checks the fixed order for both sides, that a threat
+marks its slot rather than adding one, and the points alarm; the
+desktop's headless game checks each side has one HUD holding exactly
+`hud::readouts` with the view's numbers. No engine file changed, so no
+sweep and no coverage report. Screenshotted from both chairs forty
+decisions in at 2560×1600 (the Runner opponent at 6/7 in red, its
+stolen line wrapping): no hand is clipped and the only scroll area
+logged is the hidden log's, at zero size.

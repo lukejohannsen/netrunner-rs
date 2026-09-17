@@ -23,7 +23,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, InstallFact, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, HudPanel, HudReadout, InstallFact, LogRow, Model, Overlay, RunLane, ServerColumn};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -391,6 +391,27 @@ fn the_servers_are_the_table_seen_from_the_chair() {
     start_a_game_as(&mut app, Side::Runner);
     wait_for(&mut app, "the Runner's first decision", |app| click_entry_count(app) > 0);
     assert_eq!(servers(&mut app), [ServerId::Hq, ServerId::RnD, ServerId::Archives], "the Runner's chair, across the table");
+}
+
+/// Both sides have a HUD on the board, each holding its side's readouts
+/// in `hud::readouts`' order with the view's numbers — the Runner's
+/// Tags and Damage there at zero, so nothing moves when the first tag
+/// lands.
+#[test]
+fn each_side_has_a_hud_with_every_readout_in_its_place() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let view = app.world().resource::<Model>().0.view.clone().expect("a view has arrived");
+    let world = app.world_mut();
+    let panels: Vec<(Entity, Side)> = world.query::<(Entity, &HudPanel)>().iter(world).map(|(e, p)| (e, p.0)).collect();
+    assert_eq!(panels.len(), 2, "one HUD a side");
+    for (panel, side) in panels {
+        let children: Vec<Entity> = world.entity(panel).get::<Children>().expect("a HUD has readouts").iter().collect();
+        let drawn: Vec<(&str, String)> = children.iter().filter_map(|c| world.entity(*c).get::<HudReadout>()).map(|r| (r.label, r.value.clone())).collect();
+        let expected: Vec<(&str, String)> = netrunner_client::board::hud::readouts(&view, side).into_iter().map(|r| (r.label, r.value)).collect();
+        assert_eq!(drawn, expected, "{side:?}'s HUD");
+    }
 }
 
 /// A run is a trail in the lane between the two areas: the Runner runs

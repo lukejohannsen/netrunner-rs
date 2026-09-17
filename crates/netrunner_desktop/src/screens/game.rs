@@ -83,7 +83,7 @@ use bevy::ui::FocusPolicy;
 use bevy::window::PrimaryWindow;
 
 use netrunner_client::board::action_map::server_name;
-use netrunner_client::board::{facts, Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Transition, Zone};
+use netrunner_client::board::{facts, hud, Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Transition, Zone};
 use netrunner_client::card_face::Face;
 use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, RunPhase, ServerId, Side, SubroutineStatus};
@@ -150,6 +150,15 @@ pub struct ServerColumn(pub ServerId);
 /// One line of an install's state on its sheet, for a test to read.
 #[derive(Component)]
 pub struct InstallFact;
+/// A side's HUD, for a test that reads where its numbers are.
+#[derive(Component)]
+pub struct HudPanel(pub Side);
+/// One number on a HUD, as `hud::readouts` gave it, for a test to read.
+#[derive(Component, Debug, Clone)]
+pub struct HudReadout {
+    pub label: &'static str,
+    pub value: String,
+}
 
 /// The pacer the match's messages go through.
 #[derive(Resource)]
@@ -865,10 +874,10 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
             row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, min_width: px(0), row_gap: px(2), ..default() },)).with_children(|column| {
                 let title = identity.as_ref().and_then(|id| core.registry.get(id)).map_or_else(|| format!("{side:?}"), |c| c.title.clone());
                 column.spawn((Text::new(format!("{who} · {title}")), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                // The numbers a player watches, in the body size and the
-                // text colour: dim and small, nobody saw them.
-                for line in strip_lines(view, side) {
-                    column.spawn((widgets::label(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                spawn_hud(column, theme, view, side);
+                column.spawn((widgets::dim(theme, hud::details(view, side)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                if let Some(line) = scored_line(view, side) {
+                    column.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 }
                 // The Runner's piles are zones a click opens — the stack
                 // for its draw, the heap for what is in it — as the
@@ -907,35 +916,50 @@ fn compact_button(parent: &mut ChildSpawnerCommands, theme: &Theme, text: String
         .id()
 }
 
-fn strip_lines(view: &ClientView, side: Side) -> Vec<String> {
-    let to_win = view.rules.winning_agenda_points;
-    match side {
-        Side::Corp => {
-            let corp = &view.corp;
-            let mut lines = vec![
-                format!("Credits {} · Clicks {} · Agenda points {}/{to_win}", corp.credits, corp.clicks, corp.agenda_points),
-                format!("HQ {} · R&D {} · Archives {} · Bad publicity {}", corp.hq_count, corp.rd_count, corp.archives.len(), corp.bad_publicity),
-            ];
-            if !corp.scored_agendas.is_empty() {
-                lines.push(format!("Scored: {}", corp.scored_agendas.iter().map(|a| a.card.0.replace('_', " ")).collect::<Vec<_>>().join(", ")));
+/// The HUD: a side's readouts as large numbers over short words, in a
+/// grid of `hud::PER_ROW` columns so every number keeps its place from
+/// one view to the next and from one side to the other. The numbers were
+/// sentences in the strip before (Phase 7 §4 item 6) — dim and small
+/// first, nobody saw them; body size next, they were a line to read. A
+/// live threat is drawn in the danger colour rather than added, which is
+/// `hud`'s rule.
+fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, side: Side) {
+    let readouts = hud::readouts(view, side);
+    parent
+        .spawn((
+            HudPanel(side),
+            Node {
+                display: Display::Grid,
+                grid_template_columns: RepeatedGridTrack::flex(hud::PER_ROW as u16, 1.0),
+                column_gap: px(6),
+                row_gap: px(2),
+                width: percent(100),
+                ..default()
+            },
+        ))
+        .with_children(|grid| {
+            for readout in readouts {
+                let colour = if readout.alarm { theme.danger } else { theme.text };
+                grid.spawn((HudReadout { label: readout.label, value: readout.value.clone() }, Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, ..default() }))
+                    .with_children(|cell| {
+                        cell.spawn((Text::new(readout.value), theme.font(size::HEADING), TextColor(colour)));
+                        cell.spawn((Text::new(readout.label), theme.font(size::SMALL), TextColor(if readout.alarm { theme.danger } else { theme.text_dim })));
+                    });
             }
-            lines
-        }
-        Side::Runner => {
-            let runner = &view.runner;
-            let mut lines = vec![
-                format!("Credits {} · Clicks {} · Agenda points {}/{to_win}", runner.credits, runner.clicks, runner.agenda_points),
-                format!("Grip {} · Stack {} · Heap {} · Tags {} · MU {} · Link {}", runner.grip_count, runner.stack_count, runner.heap.len(), runner.tags, runner.memory_units, runner.link_strength),
-            ];
-            if runner.brain_damage > 0 {
-                lines.push(format!("Core damage {}", runner.brain_damage));
-            }
-            if !runner.scored_agendas.is_empty() {
-                lines.push(format!("Stolen: {}", runner.scored_agendas.iter().map(|c| c.0.replace('_', " ")).collect::<Vec<_>>().join(", ")));
-            }
-            lines
-        }
+        });
+}
+
+/// The agendas a side has scored or stolen, by title, when there are any.
+fn scored_line(view: &ClientView, side: Side) -> Option<String> {
+    let titles: Vec<String> = match side {
+        Side::Corp => view.corp.scored_agendas.iter().map(|a| a.card.0.replace('_', " ")).collect(),
+        Side::Runner => view.runner.scored_agendas.iter().map(|c| c.0.replace('_', " ")).collect(),
+    };
+    if titles.is_empty() {
+        return None;
     }
+    let verb = if side == Side::Corp { "Scored" } else { "Stolen" };
+    Some(format!("{verb}: {}", titles.join(", ")))
 }
 
 /// The space a strip row leaves for its cards.
