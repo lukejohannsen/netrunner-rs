@@ -15,7 +15,7 @@ pub mod facts;
 pub mod hud;
 pub mod trail;
 
-pub use action_map::{ActionEntry, ActionMap, Control, Pile, Prompt, Target};
+pub use action_map::{table_servers, ActionEntry, ActionMap, Control, Pile, Prompt, Target};
 pub use diff::{transitions, Transition, Zone};
 pub use facts::{install_facts, tile_label};
 pub use trail::{IceState, IceStep, Outcome, RunTrail, Stage};

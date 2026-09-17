@@ -5,7 +5,7 @@
 //! where a number sits, not by its label: a Tags readout that appeared
 //! with the first tag would move every number after it at the moment the
 //! person most needs to find them. So each side has a fixed set — the
-//! four both sides share, in the same slots for both, then the side's
+//! three both sides share, in the same slots for both, then the side's
 //! own — and a threat that is live is *marked* ([`Readout::alarm`])
 //! rather than added.
 //!
@@ -48,9 +48,13 @@ pub struct Readout {
 pub const PER_ROW: usize = 3;
 
 /// A side's readouts, in their fixed order: Credits, Clicks, Agendas, then
-/// the hand (HQ or Grip), then the side's own — Bad publicity for the
-/// Corp, Tags and Core damage for the Runner. Always the same length for
-/// a side.
+/// the side's own — Bad publicity for the Corp; the Grip, Tags and Core
+/// damage for the Runner. Always the same length for a side.
+///
+/// **The Corp has no hand readout.** Its HQ is a server column whose
+/// header carries the count ("HQ · 4"), so an "HQ" readout said the same
+/// number twice, as the R&D and Archives line `details` dropped did. The
+/// Runner's grip has no column, so its count stays.
 pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
     let to_win = view.rules.winning_agenda_points;
     let quiet = |label, value: String| Readout { label, value, alarm: false, opens: None };
@@ -67,7 +71,6 @@ pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
                 quiet("Credits", corp.credits.to_string()),
                 quiet("Clicks", corp.clicks.to_string()),
                 points(Side::Corp, corp.agenda_points),
-                quiet("HQ", corp.hq_count.to_string()),
                 threat("Bad pub.", corp.bad_publicity),
             ]
         }
@@ -177,7 +180,7 @@ mod tests {
         let corp: Vec<_> = readouts(&view, Side::Corp).iter().map(|r| r.label).collect();
         let runner: Vec<_> = readouts(&view, Side::Runner).iter().map(|r| r.label).collect();
         assert_eq!(corp[..3], runner[..3]);
-        assert_eq!(corp, ["Credits", "Clicks", "Agendas", "HQ", "Bad pub."]);
+        assert_eq!(corp, ["Credits", "Clicks", "Agendas", "Bad pub."]);
         assert_eq!(runner, ["Credits", "Clicks", "Agendas", "Grip", "Tags", "Damage"]);
         assert_eq!(readouts(&view, Side::Corp)[2].opens, Some(Pile::Agendas(Side::Corp)));
         assert_eq!(readouts(&view, Side::Runner)[2].opens, Some(Pile::Agendas(Side::Runner)));

@@ -37,7 +37,7 @@ use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{
     GamePhase, InstallId, PendingDecision, PendingPreventionKind, PlayerAction, PublicAccessPhase, RunPhase, ServerId, Side,
 };
-use netrunner_core::view::ClientView;
+use netrunner_core::view::{ClientView, ServerView};
 
 use crate::actions::{card_title, describe_action, explain_action};
 use crate::prose;
@@ -450,6 +450,36 @@ fn title_of(card: Option<&CardId>, registry: &CardRegistry) -> String {
     card.map_or_else(|| "A card".to_string(), |id| card_title(id, registry))
 }
 
+/// The Corp's servers in the order both clients draw them, from either
+/// chair: Archives, R&D, HQ — each listed even with nothing installed,
+/// since a run on an empty central is still a click on it — then the
+/// remotes in the order they were made.
+///
+/// **One order for both chairs, not the table mirrored.** The desktop
+/// once showed the Runner the table as it lies across from them —
+/// remotes, HQ, R&D, Archives — which is how the cards sit, but every
+/// remote the Corp made pushed the three centrals a column to the right,
+/// so the servers a Runner hits most were in a new place each time. The
+/// person asked for the centrals to stay put; with remotes growing to
+/// the right they are fixed for the whole game from either chair. The
+/// engine's own `ServerView` order (HQ first) is a sort key for grouping,
+/// not a layout, and is left alone.
+pub fn table_servers(view: &ClientView) -> Vec<ServerView> {
+    let mut servers: Vec<ServerView> = view.corp.servers.clone();
+    for central in [ServerId::Archives, ServerId::RnD, ServerId::Hq] {
+        if !servers.iter().any(|s| s.server == central) {
+            servers.push(ServerView { server: central, ice: Vec::new(), root: Vec::new() });
+        }
+    }
+    servers.sort_by_key(|s| match s.server {
+        ServerId::Archives => (0, 0),
+        ServerId::RnD => (1, 0),
+        ServerId::Hq => (2, 0),
+        ServerId::Remote(n) => (3, n),
+    });
+    servers
+}
+
 /// A server as a person names it. Remotes keep the engine's numbering
 /// — `Remote 0` is the one every action label and log line calls
 /// `Remote(0)` — because a header that says 1 over a panel that says
@@ -469,6 +499,23 @@ mod tests {
     use netrunner_bots::RandomAgent;
     use netrunner_core::rules::GameState;
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
+
+    /// The centrals are always there and always first, Archives to HQ,
+    /// and the remotes follow by number, whatever order the engine gave.
+    #[test]
+    fn the_table_is_archives_rnd_hq_then_the_remotes() {
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let registry = crate::decks::sample_deck_registry();
+        let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let mut view = Session::new(state, registry, Seat::External, Seat::External).view_for(Side::Runner);
+        view.corp.servers.clear();
+        let order = |view: &ClientView| table_servers(view).iter().map(|s| s.server).collect::<Vec<_>>();
+        assert_eq!(order(&view), [ServerId::Archives, ServerId::RnD, ServerId::Hq], "an empty table still has its centrals");
+        for server in [ServerId::Remote(1), ServerId::Hq, ServerId::Remote(0)] {
+            view.corp.servers.push(ServerView { server, ice: Vec::new(), root: Vec::new() });
+        }
+        assert_eq!(order(&view), [ServerId::Archives, ServerId::RnD, ServerId::Hq, ServerId::Remote(0), ServerId::Remote(1)]);
+    }
 
     /// The whole map, over real games: every legal action is exactly one
     /// entry, in the engine's order, and every target names something

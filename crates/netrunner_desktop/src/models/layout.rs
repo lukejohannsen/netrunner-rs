@@ -22,11 +22,13 @@
 //! remotes beyond, ice in a column out toward the Runner and a server's
 //! root between its ice and the Corp. The Corp sees that from their
 //! chair — Archives, R&D, HQ, remotes, left to right, ice climbing away
-//! from them — and the Runner sees it across the table, mirrored:
-//! remotes, HQ, R&D, Archives, ice coming down toward them, outermost
-//! nearest. [`servers_left_to_right`], [`column_top_down`] and
-//! [`ice_top_down`] are that rule, so the screen never decides an
-//! order itself. The Runner's installed cards have no position in the
+//! from them — and the Runner sees the ice coming down toward them,
+//! outermost nearest. [`column_top_down`] and [`ice_top_down`] are that
+//! rule, so the screen never decides an order itself. **Left to right is
+//! one order for both chairs** (`netrunner_client::board::table_servers`):
+//! the Runner once saw the row mirrored, remotes first, and every remote
+//! the Corp made moved the three centrals a column over; the person asked
+//! for them to stay put, so a Runner reads the Corp's own order too. The Runner's installed cards have no position in the
 //! rules ("does not matter" — the learn-to-play guide), so the rig
 //! keeps its three groups in the one order for both chairs.
 //!
@@ -45,24 +47,7 @@
 //! with the run would have re-sized every card at the moment the person
 //! most wants to watch the board.
 
-use netrunner_core::rules::{ServerId, Side};
-
-/// The Corp's servers as the chair sees them, left to right: the Corp's
-/// own order (Archives, R&D, HQ, then the remotes as they were made)
-/// from the Corp's chair, and its mirror from the Runner's.
-pub fn servers_left_to_right(servers: impl IntoIterator<Item = ServerId>, chair: Side) -> Vec<ServerId> {
-    let mut order: Vec<ServerId> = servers.into_iter().collect();
-    order.sort_by_key(|s| match s {
-        ServerId::Archives => (0, 0),
-        ServerId::RnD => (1, 0),
-        ServerId::Hq => (2, 0),
-        ServerId::Remote(n) => (3, *n),
-    });
-    if chair == Side::Runner {
-        order.reverse();
-    }
-    order
-}
+use netrunner_core::rules::Side;
 
 /// What a server column is made of, named so a chair can order it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -233,10 +218,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_servers_and_the_columns_are_the_table_seen_from_the_chair() {
-        let servers = [ServerId::Remote(1), ServerId::Hq, ServerId::Remote(0), ServerId::Archives, ServerId::RnD];
-        assert_eq!(servers_left_to_right(servers, Side::Corp), [ServerId::Archives, ServerId::RnD, ServerId::Hq, ServerId::Remote(0), ServerId::Remote(1)]);
-        assert_eq!(servers_left_to_right(servers, Side::Runner), [ServerId::Remote(1), ServerId::Remote(0), ServerId::Hq, ServerId::RnD, ServerId::Archives]);
+    fn the_columns_are_the_table_seen_from_the_chair() {
         assert_eq!(column_top_down(Side::Corp), [Piece::Ice, Piece::Root, Piece::Header]);
         assert_eq!(column_top_down(Side::Runner), [Piece::Header, Piece::Root, Piece::Ice]);
         // Outermost first from the engine: nearest the Runner either way.

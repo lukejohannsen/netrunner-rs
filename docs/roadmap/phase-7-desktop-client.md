@@ -1495,3 +1495,51 @@ Screenshotted with a new dev hook, `NETRUNNER_KEYS=1`, over a Corp board
 forty decisions in. The first cut left blank lines under a wrapped row
 and "? or F1", so the key column no longer wraps and the long line was
 shortened. No engine file changed, so no sweep.
+
+### 4i. The servers keep one order from both chairs, and the Corp HUD drops HQ — DONE (17 September 2026)
+
+`feat/one-server-order-both-chairs`. The person asked for the Runner's
+seat, in both clients, to read the servers as the Corp does:
+`[Archives] [R&D] [HQ]`, then the remotes. They also pointed out that the
+"HQ" readout on the Corp's HUD repeats the HQ column header's count.
+
+**Decisions taken, with the alternative rejected.**
+
+- **One left-to-right order, not the table mirrored.** §4a item 10 had
+  the Runner see the table as it lies across from them: remotes, HQ,
+  R&D, Archives. That is how the cards sit, but each remote the Corp
+  made pushed the three centrals a column to the right, so the servers a
+  Runner hits most moved all game. Now Archives, R&D, HQ, then the
+  remotes by number, from either chair. The vertical rule is unchanged:
+  the ice still comes down toward the Runner, outermost nearest.
+- **The rule moved to `netrunner_client`** as `board::table_servers`,
+  and the TUI uses it too. It also carries the "every central, even
+  empty" rule the desktop had kept to itself.
+  `layout::servers_left_to_right` is gone.
+- **The TUI lists the three centrals always, each with its count:**
+  `Archives (3): …`, `R&D (32): (empty)`, `HQ (4): …`, then the remotes.
+  The count line above them went. Before, the lines followed the
+  engine's `ServerView` order (HQ first) and listed a server only once
+  something was installed on it, so an install on an empty central moved
+  every line below it. The engine's order is a grouping key and is left
+  alone.
+- **The Corp HUD is Credits, Clicks, Agendas and Bad pub.** HQ's count
+  is on its column header, the same reason §4f dropped the R&D and
+  Archives line. The Runner's Grip stays, because the grip has no
+  column. The shared first three slots are unchanged.
+
+**Verified.** `cargo test --workspace` green (1,513 tests), clippy
+silent across the workspace. Tests:
+- `table_servers` keeps the centrals first and present on an empty
+  table, and sorts remotes by number whatever order they came in.
+- The desktop's headless game sees `[Archives, R&D, HQ]` from both
+  chairs.
+- The TUI render test finds Archives, R&D, HQ in that order with counts
+  from both seats, and no old count line.
+- The HUD test expects the Corp's four readouts.
+
+Screenshotted sixty decisions in from both chairs. The Runner's board
+reads Archives · 3, R&D · 32, HQ · 3, Remote 0, Remote 1, and the Corp's
+opponent strip has no HQ readout. The Corp's board has five remotes
+beside the same three centrals. The only scroll area logged is the
+hidden log's, at zero size. No engine file changed, so no sweep.
