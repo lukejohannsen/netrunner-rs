@@ -85,8 +85,9 @@
 //! level 4" is a second axis crossed with this one, not a replacement.
 //! The cross keeps the order but not the spacing, so a style measured to
 //! break a step carries its own handicap in `LevelSpec::with_personality`
-//! — so far the `veteran` Corp in `glacier`, `rush` and `trap` (Phase 5
-//! §11, §14), which is every Corp style but `Balanced`.
+//! — so far the `veteran` Corp in `glacier` and `trap` (Phase 5 §11,
+//! §14). A style whose search rungs do not climb at all plays `Balanced`
+//! there instead: `rush`'s `veteran` and `elite` Corp (§15).
 //!
 //! **Machine-independence is a prerequisite, not a detail.** A rung whose
 //! strength moved with the host's core count would not be a rung at all;
@@ -360,6 +361,25 @@ impl LevelSpec {
     /// pairing, so styling a styled rung again is the same as styling the
     /// plain one.
     pub fn with_personality(self, personality: Personality) -> Self {
+        let personality = match (self.level, self.side, personality) {
+            // **A `rush` Corp's top two rungs play `Balanced`** (Phase 5
+            // §15), the one pairing where the style is not the style
+            // asked for. §12 found search worth +0.012 to `rush` over one
+            // ply, and on the six rush decks alone it is worth *less* than
+            // nothing — one ply 0.101, `puct@512` 0.062 at `veteran` and
+            // 0.035 at `elite` — so no handicap could make those rungs
+            // climb. Of §12's three routes (repair the profile, seat
+            // another style above `operator`, say so on the start screen)
+            // this is the second: `Balanced`'s rungs are already calibrated
+            // and read 0.100 / 0.180 / 0.258 from `operator` (0.101 /
+            // 0.149 / 0.271 on rush decks), where `glacier`'s would jump
+            // straight to 0.309. The cost is that the top of a rush deck's
+            // ladder does not play like a rush; nothing on the start screen
+            // says so yet, because its rung list is drawn before a style
+            // is resolved.
+            (Level::Veteran | Level::Elite, Side::Corp, Personality::Rush) => Personality::Balanced,
+            _ => personality,
+        };
         let epsilon = match (self.level, self.side, personality) {
             // `glacier` as the Corp (Phase 5 §10–§11, 768 games a cell
             // against the one-ply balanced Runner). At the 0.10 `Balanced`
@@ -372,15 +392,6 @@ impl LevelSpec {
             // is the measured midpoint rather than an interpolation: steps
             // of +0.052 and +0.055, each a rise on both seeds alone.
             (Level::Veteran, Side::Corp, Personality::Glacier) => 0.02,
-            // `rush` as the Corp keeps the 0.10 `Balanced` played before
-            // §14, and not because 0.10 spaces it: §12 found this style's
-            // `puct@512` worth +0.012 over one ply, so no handicap can
-            // (0.100 / 0.109 / 0.112). But `Balanced`'s 0.20 *inverts*
-            // it — 0.083, below `operator` on both seeds — and a rung
-            // that is easier than the one beneath it is worse than one
-            // that is level with it. Flat is the measured state until
-            // §12's decision is taken.
-            (Level::Veteran, Side::Corp, Personality::Rush) => 0.10,
             // `trap` as the Corp (§14). §13 read its flat top step as
             // `Balanced`'s own and expected it to follow `Balanced`'s
             // re-spacing; it did not — 0.20 costs `trap` 0.085 against
@@ -511,13 +522,33 @@ mod tests {
         }
     }
 
+    /// A `rush` Corp's search rungs are `Balanced`'s rungs exactly, and
+    /// every other rung and chair keeps the style it was asked for —
+    /// including a `rush` Corp's one-ply rungs, which are where the style
+    /// still plays.
+    #[test]
+    fn rush_corp_search_rungs_play_balanced_and_nothing_else_is_restyled() {
+        for side in [Side::Corp, Side::Runner] {
+            for level in Level::ALL {
+                for personality in Personality::ALL {
+                    let styled = level.spec(side).with_personality(personality);
+                    if side == Side::Corp && personality == Personality::Rush && matches!(level, Level::Veteran | Level::Elite) {
+                        assert_eq!(styled, level.spec(side), "{level} rush Corp is Balanced's rung");
+                    } else {
+                        assert_eq!(styled.personality, personality, "{level} {side:?} {personality:?}");
+                    }
+                }
+            }
+        }
+    }
+
     /// The Corp styles measured to break `veteran`'s spacing carry their
     /// own handicap, which only they carry, and which a second styling
     /// cannot leak into another style.
     #[test]
     #[allow(clippy::float_cmp)]
     fn styled_veteran_corps_have_their_own_handicap_and_no_other_rung_does() {
-        let own = [(Personality::Glacier, 0.02), (Personality::Rush, 0.10), (Personality::Trap, 0.15)];
+        let own = [(Personality::Glacier, 0.02), (Personality::Trap, 0.15)];
         let balanced = Level::Veteran.spec(Side::Corp);
         assert_eq!(balanced.epsilon, 0.20);
         assert_eq!(balanced.describe(), "searches 512 positions per decision, and throws away about 2 decisions in 10");
