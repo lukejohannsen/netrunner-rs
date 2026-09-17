@@ -1421,6 +1421,7 @@ one PR each:**
      observers), with a few pixels of travel before a press counts as a
      drag, so a still click is still a click.
 5. **Drag a card to play it, with the places it may go lit.**
+   *Done in §4l.*
    - Picking a card up lights the destinations its legal entries name,
      through `ActionMap::for_hand_card` and each entry's targets: a
      server, a new-remote column that appears only while dragging, or
@@ -1647,3 +1648,48 @@ and leaves the view's own order alone, while a still press still opens
 the menu. Screenshotted the Corp's board forty decisions in: unchanged,
 and the only scroll area is the hidden log's. No engine file changed, so
 no sweep.
+
+### 4l. A card dragged onto a lit place is played there — DONE (17 September 2026)
+
+`feat/drag-a-card-to-play-it`, stacked on §4k. Item 5 of the person's
+second list, and the last of it.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A drag is the one gesture on the board that submits.** A click still
+  never does — a click is what a person does to look — but a drag is
+  deliberate in a way a click is not: the card was picked up, carried to
+  a place that lit up, and let go. AGENTS.md §5 says so now.
+- **The places come from the card's own entries**
+  (`ActionMap::destinations_for_hand_card`), so the engine's
+  `legal_actions` decides what lights, and a card that is played rather
+  than placed — an operation, an event, a Runner's own install — lights
+  nothing and is still played from its menu.
+- **A remote the Corp has not made yet gets a column for the length of
+  the drag.** The engine offers the install and the board had nothing to
+  drop on; the column is headed "New remote 0", named for what dropping
+  there would make. §4d's pop-up is still how a *card's text* asks the
+  same question, because that one is a prompt rather than a place.
+- **A place that offers two ways opens a menu of just those**
+  (`ActionMap::for_hand_card_at`): an agenda dropped on a remote that
+  already holds something can be installed over it or not, and a drop
+  says *where*, not *which*.
+- **The drop is hit-tested against the laid-out boxes**, innermost
+  first, so an ice tile takes the drop rather than the column under it.
+  Bevy's focus system does not follow a pointer with a button held, so
+  the hovered node is not the thing to ask.
+- **A drop anywhere else puts the card back** — on the hand row it is
+  §4k's reorder, and elsewhere nothing happens.
+
+**Verified.** `cargo test --workspace` green (1,524 tests), clippy
+silent. New tests: `destinations_for_hand_card` and `for_hand_card_at`
+over a real game (an install names its server, an operation names
+nowhere), and the model's drop — nothing is lit until the press becomes a
+drag, one entry submits, a place with two asks with a menu, and a drop on
+a place the card does not name puts it back. Screenshotted with a new
+`NETRUNNER_DRAG=1` hook, which picks up the first card that has somewhere
+to go: an unrezzed Whitespace held over the Corp's board lights Archives,
+R&D and HQ and adds the "New remote 0" column. No engine file changed, so
+no sweep.
+
+**With this, the person's second list is done** (§4g–§4l).

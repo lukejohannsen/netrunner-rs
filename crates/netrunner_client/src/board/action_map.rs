@@ -238,6 +238,39 @@ impl ActionMap {
         self.with_target(&Target::Pile(pile))
     }
 
+    /// Where a card in hand may be taken: every place on the board an
+    /// entry of that card also names — a server to install into (a remote
+    /// the Corp has not made yet included, which the engine lists and the
+    /// board has no column for until a drag asks for one), or the ice a
+    /// trojan hosts on. A card with no destination — an operation, an
+    /// event, a Runner's own install — has none, and is played rather
+    /// than placed.
+    pub fn destinations_for_hand_card(&self, card: &CardId) -> Vec<Target> {
+        let mut places: Vec<Target> = Vec::new();
+        for index in self.for_hand_card(card) {
+            for target in &self.entries[index].targets {
+                if !matches!(target, Target::HandCard(_)) && !places.contains(target) {
+                    places.push(target.clone());
+                }
+            }
+        }
+        places
+    }
+
+    /// The entries that take `card` to `place`: what a drop there could
+    /// mean. More than one when a server offers a card two ways — an
+    /// agenda installed over what is already in the root, say — and the
+    /// drop then asks rather than guessing.
+    pub fn for_hand_card_at(&self, card: &CardId, place: &Target) -> Vec<usize> {
+        let wanted = Target::HandCard(card.clone());
+        self.entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| entry.targets.contains(&wanted) && entry.targets.contains(place))
+            .map(|(i, _)| i)
+            .collect()
+    }
+
     /// The entries no click on the board reaches: the control bar's and
     /// the decisions together.
     pub fn globals(&self) -> Vec<usize> {
@@ -499,6 +532,57 @@ mod tests {
     use netrunner_bots::RandomAgent;
     use netrunner_core::rules::GameState;
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
+
+    /// A card in hand names the places it may go, and each place the
+    /// entries a drop there could mean — including a remote the Corp has
+    /// not made yet, which the engine offers and no column shows.
+    #[test]
+    fn a_hand_card_names_where_it_may_go() {
+        let registry = crate::decks::sample_deck_registry();
+        let (corp_deck, runner_deck) = sweep_decks_for_seed(0);
+        let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, 0).unwrap();
+        let mut session = Session::new(state, registry.clone(), Seat::External, Seat::External);
+        let mut agents = [RandomAgent::new(0), RandomAgent::new(1)];
+        // Play on until the Corp is asked something with an install in it.
+        loop {
+            match session.step() {
+                SessionStep::Awaiting { side, view } => {
+                    let map = ActionMap::build(&view, &registry);
+                    let install = view.legal_actions.iter().find_map(|action| match action {
+                        PlayerAction::InstallCard { card_id, zone, .. } => Some((card_id.clone(), *zone)),
+                        _ => None,
+                    });
+                    if let Some((card, zone)) = install {
+                        let places = map.destinations_for_hand_card(&card);
+                        assert!(places.contains(&Target::Server(zone)), "{places:?}");
+                        assert!(places.iter().all(|place| !matches!(place, Target::HandCard(_))), "the card itself is not a place");
+                        let entries = map.for_hand_card_at(&card, &Target::Server(zone));
+                        assert!(!entries.is_empty());
+                        for index in &entries {
+                            assert!(map.entries[*index].targets.contains(&Target::Server(zone)));
+                            assert!(map.entries[*index].targets.contains(&Target::HandCard(card.clone())));
+                        }
+                        // A card the engine offers nowhere is played, not placed.
+                        let operation = view.legal_actions.iter().find_map(|action| match action {
+                            PlayerAction::PlayOperation { card_id, .. } => Some(card_id.clone()),
+                            _ => None,
+                        });
+                        if let Some(card) = operation {
+                            assert!(map.destinations_for_hand_card(&card).is_empty(), "an operation has no place on the board");
+                        }
+                        return;
+                    }
+                    use netrunner_bots::BotAgent;
+                    let index = usize::from(side == Side::Runner);
+                    let action = agents[index].select_action(&view, &registry);
+                    session.submit(action).unwrap();
+                }
+                SessionStep::Applied { .. } => {}
+                SessionStep::Ended { .. } => panic!("the game ended before an install was offered"),
+                SessionStep::Stalled(reason) => panic!("{reason:?}")
+            }
+        }
+    }
 
     /// The centrals are always there and always first, Archives to HQ,
     /// and the remotes follow by number, whatever order the engine gave.

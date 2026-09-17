@@ -46,6 +46,16 @@
 //! card joins the end, a played one drops out), and never leaves the
 //! client: the engine, the mask and the action map know nothing about it.
 //!
+//! **A card dragged onto the board is played there.** While a hand card
+//! is held, the places its own entries name are lit (`ActionMap::
+//! destinations_for_hand_card`), a remote the Corp has not made yet
+//! included; dropping on one submits the entry that lands there, or opens
+//! a menu of just those entries when a place offers more than one. A drop
+//! anywhere else puts the card back. This is the one gesture on the board
+//! that acts — a *click* still never does, because a click is what a
+//! person does to look — and it is deliberate in a way a click is not:
+//! the card was picked up, carried to a place that lit up, and let go.
+//!
 //! **A run is a [`RunTrail`], kept after it ends.** The screen's pacer
 //! hands the run's events over a beat at a time ([`Intent::RunStep`])
 //! before the message that applied them, so the trail moves ahead of
@@ -102,6 +112,10 @@ pub enum Intent {
     DragPress { slot: usize, at: (f32, f32) },
     /// The pointer moved while a hand card's press is held.
     DragMove { at: (f32, f32) },
+    /// The card being dragged was dropped on `target`, a place the board
+    /// lit for it: the one entry that takes it there, or a menu of them
+    /// when the place offers more than one.
+    DragDrop { target: Target, over: Anchor },
     /// The primary button came up: a still press is the click that opens
     /// the card's menu over `over`; a travelled one drops the card into
     /// the row, before the card whose centre the pointer is left of
@@ -437,6 +451,25 @@ impl Game {
                     _ => Outcome::Nothing,
                 }
             }
+            Intent::DragDrop { target, over } => {
+                let Some(drag) = self.dragging.take() else { return Outcome::Nothing };
+                let Some(card) = self.hand.cards().get(drag.what).cloned() else { return Outcome::Redraw };
+                if !drag.dragging {
+                    return self.click(Target::HandCard(card), over);
+                }
+                match self.actions.for_hand_card_at(&card, &target).as_slice() {
+                    [] => Outcome::Redraw,
+                    [index] => self.apply(Intent::Choose(*index)),
+                    // Two ways to the same place — an agenda over what is
+                    // in the root, say. A drag says where, not which, so
+                    // the menu asks rather than the drop guessing.
+                    several => {
+                        let entries = several.to_vec();
+                        self.menu = Some(Menu { target, entries, over });
+                        Outcome::Redraw
+                    }
+                }
+            }
             Intent::DragRelease { over, slots } => {
                 let Some(drag) = self.dragging.take() else { return Outcome::Nothing };
                 let (release, (x, _)) = drag.release();
@@ -708,6 +741,21 @@ impl Game {
     /// it has travelled far enough to be a drag.
     pub fn dragged_slot(&self) -> Option<usize> {
         self.dragging.as_ref().filter(|drag| drag.dragging).map(|drag| drag.what)
+    }
+
+    /// The card being dragged, once the press has become a drag.
+    pub fn dragged_card(&self) -> Option<CardId> {
+        self.dragged_slot().and_then(|slot| self.hand.cards().get(slot).cloned())
+    }
+
+    /// Where the card being dragged may be dropped: lit while it is held,
+    /// and empty when nothing is held or the card is played rather than
+    /// placed (an operation, an event, a Runner's own install).
+    pub fn drop_places(&self) -> Vec<Target> {
+        match self.dragged_card() {
+            Some(card) if self.awaiting => self.actions.destinations_for_hand_card(&card),
+            _ => Vec::new(),
+        }
     }
 
     /// The clicks the person's side has left, as the view shows them.
@@ -1053,6 +1101,56 @@ mod tests {
         assert_eq!(game.hand.cards(), expected.as_slice(), "dropped left of the first card");
         assert!(game.menu.is_none(), "a drag opens no menu");
         assert!(game.dragging.is_none() && game.applied == before);
+        handle.join();
+    }
+
+    /// A card dragged onto a place the board lit for it is played there:
+    /// one entry submits, a place that offers two asks with a menu, and a
+    /// card with nowhere to go lights nothing.
+    #[test]
+    fn a_card_dropped_on_a_lit_place_is_played_there() {
+        let (mut game, mut handle) = game(Side::Corp);
+        until_awaiting(&mut game, &mut handle);
+        until_the_corps_action_phase(&mut game, &mut handle);
+        // A card the engine offers an install for, and where it may go.
+        let hand = game.hand.cards().to_vec();
+        let (slot, card, places) = hand
+            .iter()
+            .enumerate()
+            .find_map(|(slot, card)| {
+                let places = game.actions.destinations_for_hand_card(card);
+                (!places.is_empty()).then(|| (slot, card.clone(), places))
+            })
+            .expect("an opening Corp hand has something to install");
+        let place = places[0].clone();
+        // Nothing is lit until the press has become a drag.
+        assert!(game.drop_places().is_empty(), "nothing is held");
+        game.apply(Intent::DragPress { slot, at: (100.0, 900.0) });
+        assert!(game.drop_places().is_empty(), "a press alone lights nothing");
+        game.apply(Intent::DragMove { at: (400.0, 400.0) });
+        assert_eq!(game.drop_places(), places, "the card's own places are lit");
+        let expected = game.actions.for_hand_card_at(&card, &place);
+        let outcome = game.apply(Intent::DragDrop { target: place.clone(), over: Anchor::default() });
+        match expected.as_slice() {
+            [index] => assert_eq!(outcome, Outcome::Submit(game.actions.entries[*index].action.clone())),
+            several => {
+                assert_eq!(outcome, Outcome::Redraw);
+                assert_eq!(game.menu.as_ref().map(|m| m.entries.clone()), Some(several.to_vec()), "a place with two ways asks");
+                assert_eq!(game.menu.as_ref().map(|m| m.target.clone()), Some(place));
+            }
+        }
+        assert!(game.dragging.is_none(), "the card was let go");
+        assert!(game.drop_places().is_empty());
+        // A card that is played rather than placed lights nothing, and a
+        // drop on a place it does not name does nothing.
+        game.awaiting = true;
+        if let Some((slot, card)) = hand.iter().enumerate().find(|(_, card)| game.actions.destinations_for_hand_card(card).is_empty() && !game.actions.for_hand_card(card).is_empty()) {
+            game.apply(Intent::DragPress { slot, at: (100.0, 900.0) });
+            game.apply(Intent::DragMove { at: (400.0, 400.0) });
+            assert!(game.drop_places().is_empty(), "{} is played, not placed", card.0);
+            assert_eq!(game.apply(Intent::DragDrop { target: Target::Server(ServerId::Archives), over: Anchor::default() }), Outcome::Redraw);
+            assert!(game.dragging.is_none() && game.menu.is_none(), "a drop it does not name puts it back");
+        }
         handle.join();
     }
 
