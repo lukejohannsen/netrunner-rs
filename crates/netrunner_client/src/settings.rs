@@ -105,11 +105,17 @@ pub struct DesktopPrefs {
     /// default for the same reason: the transitions and the prompt say
     /// what happened, and the log is for reading back.
     pub play_history: bool,
+    /// Whether the board shows the phase bar: the turn's steps, and a
+    /// run's, with the one in play marked. On by default — it says where
+    /// the game is, which a person cannot work out from the cards — and
+    /// off for whoever knows the turn by heart and wants the row of board
+    /// height back (`L`, or the game options).
+    pub phase_bar: bool,
 }
 
 impl Default for DesktopPrefs {
     fn default() -> Self {
-        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false }
+        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true }
     }
 }
 

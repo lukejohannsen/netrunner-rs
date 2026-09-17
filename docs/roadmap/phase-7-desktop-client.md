@@ -1399,6 +1399,7 @@ one PR each:**
    - Rebinding waits until someone asks for it.
 3. **A phase bar, toggled with L and from the gear menu, and
    remembered.**
+   *Done in §4j.*
    - One row for the turn: the Corp's draw › actions (clicks left) ›
      discard, or the Runner's actions › discard.
    - During a run, a second segment: initiation › approach ice N ›
@@ -1543,3 +1544,60 @@ reads Archives · 3, R&D · 32, HQ · 3, Remote 0, Remote 1, and the Corp's
 opponent strip has no HQ readout. The Corp's board has five remotes
 beside the same three centrals. The only scroll area logged is the
 hidden log's, at zero size. No engine file changed, so no sweep.
+
+### 4j. A phase bar: where the turn is, and where a run is — DONE (17 September 2026)
+
+`feat/desktop-phase-bar`. Item 3 of the person's second list. The status
+line named the phase the engine was in ("Turn 12 · Runner's turn") but
+not what came before or after it, and a run's step was only in the
+prompt's sentence.
+
+**Decisions taken, with the alternative rejected.**
+
+- **The words live in `netrunner_client::board::phase`**, beside `hud`
+  and `facts`, read off the masked view's `phase`, `turn`, `active_run`
+  and `paid_ability_window`. The terminal client can take the same set;
+  its `run_phase_strip` is left as it is for now.
+- **Every step is always listed, and the one in play is marked** — the
+  HUD's rule, for its reason: a bar whose steps appeared as they were
+  reached would be a different bar every time it was read. A turn is
+  Draw (the Runner's "Turn begins", which has no mandatory draw),
+  Actions with the clicks left on it, and Discard with how many must go.
+- **A run is a second segment, not more steps on the turn's.** A run
+  happens inside an action, and one flat row would have said the turn
+  had left its actions behind. The run's four steps are initiation,
+  approach, encounter, access, with the ice counted in the approach and
+  encounter ("Approach ice 2 of 3"); an ended run keeps a fifth, "Run
+  over", while its trail is still on the board. The engine's finer
+  moments — the rez window, a subroutine resolving, passing the piece —
+  are actions inside approach and encounter, not steps, or the bar would
+  have been a different shape on every ice.
+- **A paid-ability window is a line under the steps**, naming who holds
+  priority and which window it is, and nothing when none is open: who
+  may act in a window is the one thing a person cannot read off the
+  board, and a line that was always there would say nothing four turns
+  in five.
+- **It is a row of the board, not a bar of the window.** `rows_height`
+  charges `PHASE_BAR` when it is on, so the cards shrink by its height
+  and the board still never scrolls; turning it off gives the cards the
+  row back (the test asserts the difference is exactly the row and its
+  gap). It sits below the person's hand and above the control bar:
+  where the game is belongs beside what the person may do about it, and
+  a row at the top would have sat among the opponent's cards.
+- **On by default, off with L or the gear.** `DesktopPrefs::phase_bar`
+  is saved like the play helper's, and L is the key §4h left for it.
+
+**Verified.** `cargo test --workspace` green (1,517 tests), clippy
+silent. New tests: the turn's three steps and their marks, the clicks
+left and the discard count, the Runner's first step, the mulligan and
+game-over segments, the run's steps with the ice counted and its ended
+fifth, the window's line; the layout charging exactly one row for the
+bar; and the headless board, which reads the marks at the mulligan and
+on the Runner's turn, turns the bar off with L (the row goes, the face
+width does not shrink, the setting is saved), back on, and finds the run
+segment once a run is on. Screenshotted from the Runner's chair holding
+at a run's initiation (`NETRUNNER_HOLD_RUN=1`) and from the Corp's: the
+bar reads "Runner turn 6 · Turn begins · Actions · 3 clicks left ·
+Discard · Run on HQ · Initiation …", the hand is not clipped, and the
+only scroll area logged is the hidden log's. No engine file changed, so
+no sweep.

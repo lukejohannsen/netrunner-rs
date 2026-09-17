@@ -23,7 +23,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, EndTurnNotice, HelpRow, HudPanel, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -778,6 +778,59 @@ fn the_form_has_a_drop_down_per_pane_and_start_opens_the_board() {
     assert!(app.world().contains_resource::<ActiveMatch>());
     // Operator, the default suggestion, answers within the bound too.
     wait_for(&mut app, "the first decision at the suggested rung", |app| click_entry_count(app) > 0);
+}
+
+/// The phase bar is a row of the board: the turn's steps with the one in
+/// play marked, a run's steps beside them while a run is on, and L turns
+/// it off — which gives the cards the row back — and saves the choice.
+#[test]
+fn the_phase_bar_marks_the_step_in_play_and_l_turns_it_off() {
+    use netrunner_client::board::phase::State;
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    assert!(app.world().resource::<ClientCore>().settings.desktop.phase_bar, "the bar is on by default");
+    let steps = |app: &mut App| -> Vec<State> {
+        let world = app.world_mut();
+        world.query::<&PhaseStep>().iter(world).map(|s| s.0).collect()
+    };
+    let rows = |app: &mut App| app.world_mut().query::<&PhaseBarRow>().iter(app.world()).count();
+    assert_eq!(rows(&mut app), 1);
+    // The mulligan is its own segment: one step, and the game is in it.
+    assert_eq!(steps(&mut app), [State::Now]);
+    assert!(texts(&mut app).iter().any(|t| t == "Opening hands"));
+    to_the_runners_turn(&mut app);
+    // The turn's three steps, the actions one in play.
+    let marked = steps(&mut app);
+    assert_eq!(marked.len(), 3, "{marked:?}");
+    assert_eq!(marked, [State::Past, State::Now, State::Ahead]);
+    assert!(texts(&mut app).iter().any(|t| t.starts_with("Actions · ")), "the clicks left are on the step");
+    let face = app.world().resource::<netrunner_desktop::screens::game::BoardFit>().face;
+    // L turns it off: the row goes, the cards are re-fitted larger, and
+    // the choice is saved.
+    letter(&mut app, KeyCode::KeyL, "l");
+    assert_eq!(rows(&mut app), 0, "the row is gone");
+    assert!(steps(&mut app).is_empty());
+    assert!(!app.world().resource::<ClientCore>().settings.desktop.phase_bar);
+    let wider = app.world().resource::<netrunner_desktop::screens::game::BoardFit>().face;
+    assert!(wider >= face, "the cards have the row back: {face} then {wider}");
+    letter(&mut app, KeyCode::KeyL, "l");
+    assert_eq!(rows(&mut app), 1, "and back on");
+    // A run adds a second segment, and the run's own step is marked.
+    let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
+    press_entity(&mut app, rnd);
+    let run = {
+        let model = &app.world().resource::<Model>().0;
+        let menu = model.menu.clone().expect("the zone's menu is open");
+        *menu.entries.iter().find(|i| matches!(model.actions.entries[**i].action, PlayerAction::InitiateRun { server: ServerId::RnD })).expect("R&D offers the run")
+    };
+    let button = entity_with(&mut app, &Click::Entry(run)).expect("the run's button");
+    press_entity(&mut app, button);
+    wait_for(&mut app, "the run on the board", |app| app.world().resource::<Model>().0.view.as_ref().is_some_and(|v| v.active_run.is_some()));
+    app.update();
+    app.update();
+    assert!(texts(&mut app).iter().any(|t| t == "Run on R&D"), "{:?}", texts(&mut app));
+    assert!(steps(&mut app).len() >= 3 + 4, "the turn's steps and the run's");
 }
 
 /// A tile says whether its card is rezzed — or face down, from the

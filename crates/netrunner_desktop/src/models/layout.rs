@@ -97,6 +97,8 @@ pub struct Counts {
     /// Whether the rig has anything in it: an empty rig is a short
     /// row, and the cards can be larger.
     pub rig: bool,
+    /// Whether the phase bar is on, which costs the board its row.
+    pub phase_bar: bool,
 }
 
 /// The rail beside the board.
@@ -108,6 +110,11 @@ pub const BODY_GAP: f32 = 10.0;
 /// The top bar's height, and the control bar's.
 pub const TOP_BAR: f32 = 44.0;
 pub const CONTROL_BAR: f32 = 44.0;
+/// The phase bar's height when it is on: a row of step chips with the
+/// window's line under it. It is a row of the board like any other — the
+/// cards shrink by its height rather than the board scrolling — so
+/// turning it off gives the cards the row back.
+pub const PHASE_BAR: f32 = 54.0;
 /// Between the root's rows, and between the board's rows.
 pub const ROW_GAP: f32 = 8.0;
 /// A section label ("Servers", "Your hand · 5") and a chip line under
@@ -174,7 +181,8 @@ pub fn rows_height(face: f32, counts: Counts) -> f32 {
     let servers = LABEL + SERVER_HEADER + counts.pieces as f32 * TILE;
     let rig = LABEL + if counts.rig { GROUP_LABEL + card + CHIPS } else { 0.0 };
     let bottom = (LABEL + card).max(own_strip);
-    top + servers + RUN_LANE + rig + bottom + 4.0 * ROW_GAP
+    let phase = if counts.phase_bar { PHASE_BAR + ROW_GAP } else { 0.0 };
+    top + servers + RUN_LANE + rig + bottom + phase + 4.0 * ROW_GAP
 }
 
 /// The face width the board has room for, in pixels: the largest for
@@ -229,7 +237,7 @@ mod tests {
 
     #[test]
     fn the_face_shrinks_with_the_window_and_with_ice_and_stays_in_range() {
-        let none = Counts { pieces: 0, servers: 4, human_is_runner: true, rig: true };
+        let none = Counts { pieces: 0, servers: 4, human_is_runner: true, rig: true, phase_bar: true };
         assert!(face_width((1280.0, 800.0), Counts { rig: false, ..none }) > face_width((1280.0, 800.0), none), "an empty board has room for larger cards");
         let large = face_width((1920.0, 1080.0), none);
         let small = face_width((1280.0, 800.0), none);
@@ -240,6 +248,10 @@ mod tests {
         // Nine servers across a laptop width cap it below what the
         // height would allow.
         assert!(face_width((1280.0, 1080.0), Counts { servers: 9, ..none }) < face_width((1280.0, 1080.0), none));
+        // The phase bar is a row of the board's height, so the cards are
+        // never larger with it on.
+        assert!(face_width((1280.0, 1080.0), Counts { phase_bar: false, ..none }) >= face_width((1280.0, 1080.0), none));
+        assert_eq!(rows_height(100.0, none) - rows_height(100.0, Counts { phase_bar: false, ..none }), PHASE_BAR + ROW_GAP, "the bar is a row of the board");
     }
 
     /// The five rows at the computed width fit the board's height, and
@@ -248,7 +260,7 @@ mod tests {
     #[test]
     fn the_rows_at_the_computed_width_fit_the_window_and_no_wider_would() {
         for (window, pieces, runner) in [((1280.0, 800.0), 0, true), ((1280.0, 800.0), 3, false), ((1920.0, 1080.0), 5, true), ((1366.0, 768.0), 2, true), ((2560.0, 1440.0), 0, false), ((2000.0, 1250.0), 2, true)] {
-            let counts = Counts { pieces, servers: 5, human_is_runner: runner, rig: pieces % 2 == 0 };
+            let counts = Counts { pieces, servers: 5, human_is_runner: runner, rig: pieces % 2 == 0, phase_bar: pieces % 3 == 0 };
             let w = face_width(window, counts);
             let room = board_height(window.1);
             assert!(rows_height(w, counts) <= room || w == MIN_FACE, "{window:?} with {pieces} tiles: {} of {room}", rows_height(w, counts));

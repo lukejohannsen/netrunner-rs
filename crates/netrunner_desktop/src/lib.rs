@@ -33,7 +33,8 @@
 //!   click (the right button, or Ctrl or Cmd with the primary) opens its
 //!   sheet to read — the card, an install's state, a zone's contents;
 //!   a key (`models::shortcuts`, listed on `?`) presses one of those
-//!   buttons, never anything else; the basic actions are a fixed,
+//!   buttons, never anything else; the phase bar along the bottom says
+//!   where the turn and any run are (`board::phase`, toggled with L); the basic actions are a fixed,
 //!   greyable control bar and the prompt's decisions sit under the
 //!   prompt, so every legal action is reachable without the flat panel,
 //!   which is an aid a person turns on.
