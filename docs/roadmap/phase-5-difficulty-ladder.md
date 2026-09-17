@@ -1308,3 +1308,60 @@ tuning:
   equivalent. Honest, and no stronger.
 
 Reports under `target/coverage/corp-ladder-rush-s{1,2}.json`.
+
+## 13. The Corp ladder in `trap` style: stronger than `Balanced` at every rung, and its flat top step is `Balanced`'s own — DONE, measurement only (16 September 2026)
+
+`diag/trap-corp-ladder`. The last Corp style (2 of 16 sample Corp decks:
+`advanced_yomi`, `peculiarity`). §10's method on §10's schedule: each rung
+as `trap` against the fixed one-ply balanced Runner, 384 games on each of
+seeds 1 and 2, paired game for game with the `Balanced` reports. No stalls.
+
+| Corp rung | `Balanced` | `trap` | delta | z (McNemar) | discordant |
+|---|---|---|---|---|---|
+| novice | 0.012 | 0.012 | +0.000 | | 0 |
+| apprentice | 0.062 | 0.085 | +0.022 | 2.8 | 37 |
+| operator | 0.125 | 0.189 | +0.064 | 6.2 | 63 |
+| veteran | 0.236 | 0.284 | +0.048 | 4.3 | 75 |
+| elite | 0.258 | 0.297 | +0.039 | 3.3 | 82 |
+
+| step | `Balanced` (s1 / s2) | `trap` (s1 / s2) |
+|---|---|---|
+| novice → apprentice | +0.051 | +0.073 (+0.078 / +0.068) |
+| apprentice → operator | +0.062 | +0.104 (+0.078 / +0.130) |
+| operator → veteran | +0.111 | +0.095 (+0.112 / +0.078) |
+| veteran → elite | +0.022 (+0.005 / +0.039) | **+0.013 (−0.003 / +0.029), flat** |
+
+**`trap` is `Balanced` plus its ambush terms, and the games say so.** The
+two arms disagree on only 257 of 3,840 games, and the two `trap` decks
+carry 119 of them (`advanced_yomi` 81, `peculiarity` 38): the terms read
+ambush cards, and a deck without them plays close to balanced. Unlike
+`rush` (§12) the style survives search — +0.039 at `elite` — and unlike
+`glacier` (§10) it does not break the `operator → veteran` step.
+
+**Its one flat step is not the style's, so it gets no handicap of its
+own.** `veteran → elite` is +0.013 for `trap` and +0.022 for `Balanced`,
+flat on seed 1 in both (−0.003 and +0.005): the same `epsilon` 0.10 on
+the same `puct@512` costs both about as little. A `trap`-only `epsilon`
+would space this one style around a defect every unstyled game shares,
+and would stop inheriting the fix once the base spec is re-spaced. That
+fix is §4(a)'s — re-measure `Balanced`'s `veteran` `epsilon` curve and
+move it — and `trap`, reading `Level::spec` for every rung, follows it.
+§11's `glacier` arm stays the one exception, because there the step was
+the style's (0.086 of cost against 0.022).
+
+**Where the four Corp ladders stand**, 768 games a cell, all against the
+same Runner:
+
+| rung | `Balanced` | `glacier` (§11) | `rush` | `trap` |
+|---|---|---|---|---|
+| novice | 0.012 | 0.012 | 0.012 | 0.012 |
+| apprentice | 0.062 | 0.092 | 0.061 | 0.085 |
+| operator | 0.125 | 0.257 | 0.100 | 0.189 |
+| veteran | 0.236 | 0.309 | 0.109 | 0.284 |
+| elite | 0.258 | 0.363 | 0.112 | 0.297 |
+
+So the owed Corp work is two items, both already named: `Balanced`'s
+`veteran → elite` step (§4(a), which `trap` inherits) and `rush`'s missing
+top (§12, a decision).
+
+Reports under `target/coverage/corp-ladder-trap-s{1,2}.json`.
