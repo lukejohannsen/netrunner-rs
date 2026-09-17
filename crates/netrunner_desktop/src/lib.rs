@@ -32,6 +32,8 @@
 //!   its actions as a menu above it and never acts, and a secondary
 //!   click (the right button, or Ctrl or Cmd with the primary) opens its
 //!   sheet to read — the card, an install's state, a zone's contents;
+//!   a hand card is dragged along the hand to reorder it, which is the
+//!   client's own order and never the engine's (`models::game::HandOrder`);
 //!   a key (`models::shortcuts`, listed on `?`) presses one of those
 //!   buttons, never anything else; the phase bar along the bottom says
 //!   where the turn and any run are (`board::phase`, toggled with L); the basic actions are a fixed,

@@ -38,6 +38,14 @@
 //! the exception: a scored agenda has no card on the board to click, so
 //! its abilities stay on its row.
 //!
+//! **The hand is the person's own order** ([`HandOrder`]). The rules give
+//! a hand no order at all — it is a multiset — so the one the engine hands
+//! over is the order cards happened to be drawn in, and a person sorting
+//! their hand is doing something the rules allow and the view cannot
+//! record. The order lives here, is reconciled with every view (a drawn
+//! card joins the end, a played one drops out), and never leaves the
+//! client: the engine, the mask and the action map know nothing about it.
+//!
 //! **A run is a [`RunTrail`], kept after it ends.** The screen's pacer
 //! hands the run's events over a beat at a time ([`Intent::RunStep`])
 //! before the message that applied them, so the trail moves ahead of
@@ -58,6 +66,7 @@ use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{GameEvent, InstallId, PlayerAction, ServerId, Side};
 use netrunner_core::view::ClientView;
 
+use crate::models::drag::{insert_at, Drag, Release};
 use crate::models::shortcuts::Shortcut;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -84,6 +93,20 @@ pub enum Intent {
     /// A row of a list sheet (the score area's agendas), by position:
     /// opens its details in place, or closes them if it was the open one.
     Expand(usize),
+    /// A card of the person's hand dragged from one place in it to
+    /// another: `to` is the place it was dropped before.
+    ReorderHand { from: usize, to: usize },
+    /// The primary button went down on the person's own hand card at
+    /// place `slot`, with the pointer at `at`: armed, not acted on, until
+    /// the release says whether it was a click or a drag.
+    DragPress { slot: usize, at: (f32, f32) },
+    /// The pointer moved while a hand card's press is held.
+    DragMove { at: (f32, f32) },
+    /// The primary button came up: a still press is the click that opens
+    /// the card's menu over `over`; a travelled one drops the card into
+    /// the row, before the card whose centre the pointer is left of
+    /// (`slots`, the laid-out centres of the hand's faces).
+    DragRelease { over: Anchor, slots: Vec<f32> },
     /// A key the board reads (`shortcuts`). The ones about the pointer
     /// or the settings file are the screen's; the model answers the rest.
     Shortcut(Shortcut),
@@ -161,6 +184,56 @@ pub struct Menu {
     pub over: Anchor,
 }
 
+/// The person's own order for their hand, kept by card id.
+///
+/// A hand is a multiset, so two copies of a card are interchangeable and
+/// the order is a list of ids rather than of anything per-copy: moving
+/// "a Sure Gamble" is the whole of the choice, and there is nothing a
+/// per-copy handle would buy. [`HandOrder::sync`] keeps it honest against
+/// the view, which is the authority on *what* is in hand.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct HandOrder {
+    order: Vec<CardId>,
+}
+
+impl HandOrder {
+    /// The hand as the person arranged it. Always the view's own multiset.
+    pub fn cards(&self) -> &[CardId] {
+        &self.order
+    }
+
+    /// Reconciles with the hand the view gives: cards already placed keep
+    /// their places, a card drawn (or a second copy of one held) joins the
+    /// end, and a card that left drops out.
+    pub fn sync(&mut self, hand: &[CardId]) {
+        let mut left: Vec<CardId> = hand.to_vec();
+        let mut kept: Vec<CardId> = Vec::with_capacity(hand.len());
+        for card in &self.order {
+            if let Some(at) = left.iter().position(|c| c == card) {
+                // `remove`, not `swap_remove`: what is left over is the
+                // cards the person has not placed, and they join the end
+                // in the view's own order rather than a scrambled one.
+                left.remove(at);
+                kept.push(card.clone());
+            }
+        }
+        kept.extend(left);
+        self.order = kept;
+    }
+
+    /// Moves the card at `from` to sit before what is now at `to`, as a
+    /// drop between two cards reads.
+    pub fn move_card(&mut self, from: usize, to: usize) -> bool {
+        if from >= self.order.len() || to > self.order.len() {
+            return false;
+        }
+        let card = self.order.remove(from);
+        let at = if to > from { to - 1 } else { to };
+        self.order.insert(at.min(self.order.len()), card);
+        at != from
+    }
+}
+
 /// The end of the match, for the game-over overlay.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Over {
@@ -194,6 +267,11 @@ pub struct Game {
     pub expanded: Option<usize>,
     /// A click's menu, over its card.
     pub menu: Option<Menu>,
+    /// The person's own order for their own hand.
+    pub hand: HandOrder,
+    /// The press being held on a hand card: which place in the hand it
+    /// picked up, and where the pointer has been since.
+    pub dragging: Option<Drag<usize>>,
     pub options_open: bool,
     /// The list of keys (`shortcuts::LIST`) is up.
     pub help_open: bool,
@@ -229,6 +307,8 @@ impl Game {
             inspecting: None,
             expanded: None,
             menu: None,
+            hand: HandOrder::default(),
+            dragging: None,
             options_open: false,
             help_open: false,
             end_turn_armed: false,
@@ -345,6 +425,36 @@ impl Game {
                 self.inspecting = card;
                 Outcome::Redraw
             }
+            Intent::DragPress { slot, at } => {
+                self.dragging = Some(Drag::press(slot, at));
+                Outcome::Nothing
+            }
+            Intent::DragMove { at } => {
+                // Only the move that starts the drag redraws: the card is
+                // lifted once, and the row does not follow the pointer.
+                match self.dragging.as_mut().map(|drag| drag.moved(at)) {
+                    Some(true) => Outcome::Redraw,
+                    _ => Outcome::Nothing,
+                }
+            }
+            Intent::DragRelease { over, slots } => {
+                let Some(drag) = self.dragging.take() else { return Outcome::Nothing };
+                let (release, (x, _)) = drag.release();
+                match release {
+                    Release::Click => match self.hand.cards().get(drag.what).cloned() {
+                        Some(card) => self.click(Target::HandCard(card), over),
+                        None => Outcome::Redraw,
+                    },
+                    Release::Moved => self.apply(Intent::ReorderHand { from: drag.what, to: insert_at(&slots, x) }),
+                }
+            }
+            Intent::ReorderHand { from, to } => {
+                if self.hand.move_card(from, to) {
+                    Outcome::Redraw
+                } else {
+                    Outcome::Nothing
+                }
+            }
             Intent::Expand(row) => {
                 if self.sheet.is_none() {
                     return Outcome::Nothing;
@@ -399,6 +509,7 @@ impl Game {
                 push_log_line(&mut self.log, &entry, &self.registry, Some(&view));
                 self.follow_run(&view);
                 self.view = Some(*view);
+                self.follow_hand();
                 self.applied += 1;
                 self.awaiting = false;
                 self.actions = ActionMap::default();
@@ -420,6 +531,7 @@ impl Game {
                 self.actions = ActionMap::build(&view, &self.registry);
                 self.prompt = Prompt::of(&view, &self.registry);
                 self.view = Some(*view);
+                self.follow_hand();
                 self.awaiting = false;
                 Outcome::Submit(pass)
             }
@@ -427,6 +539,7 @@ impl Game {
                 self.actions = ActionMap::build(&view, &self.registry);
                 self.prompt = Prompt::of(&view, &self.registry);
                 self.view = Some(*view);
+                self.follow_hand();
                 self.awaiting = true;
                 Outcome::Redraw
             }
@@ -437,6 +550,7 @@ impl Game {
             }
             MatchMessage::Ended { winner, reason, view, report, notice } => {
                 self.view = Some(*view);
+                self.follow_hand();
                 self.awaiting = false;
                 self.actions = ActionMap::default();
                 self.prompt = None;
@@ -457,6 +571,16 @@ impl Game {
                 Outcome::Redraw
             }
         }
+    }
+
+    /// Keeps the person's hand order with the view: what is in hand is
+    /// the view's to say, the order the person's.
+    fn follow_hand(&mut self) {
+        let hand = self.view.as_ref().and_then(|view| match self.side {
+            Side::Corp => view.corp.hq_cards.clone(),
+            Side::Runner => view.runner.grip_cards.clone(),
+        });
+        self.hand.sync(&hand.unwrap_or_default());
     }
 
     /// Keeps the trail with the view after an action applied: a run on
@@ -578,6 +702,12 @@ impl Game {
             }),
             Target::Server(_) | Target::Position(_) | Target::Pile(_) => None,
         }
+    }
+
+    /// The place in the hand the pointer is dragging a card out of, once
+    /// it has travelled far enough to be a drag.
+    pub fn dragged_slot(&self) -> Option<usize> {
+        self.dragging.as_ref().filter(|drag| drag.dragging).map(|drag| drag.what)
     }
 
     /// The clicks the person's side has left, as the view shows them.
@@ -848,6 +978,81 @@ mod tests {
         assert_eq!(game.apply(Intent::Shortcut(Shortcut::ScoreArea(Side::Runner))), Outcome::Redraw);
         assert_eq!(game.sheet.as_ref().map(|s| s.target.clone()), Some(Target::Pile(Pile::Agendas(Side::Runner))));
         assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::GainCredit))), Outcome::Nothing);
+        handle.join();
+    }
+
+    /// The hand keeps the person's order: a card dragged along it moves,
+    /// a drawn card joins the end, a played one drops out, and two copies
+    /// are interchangeable. The view stays the authority on what is in
+    /// hand.
+    #[test]
+    fn the_hand_keeps_the_persons_order_across_draws_and_plays() {
+        let card = |name: &str| CardId(name.to_string());
+        let mut hand = HandOrder::default();
+        hand.sync(&[card("a"), card("b"), card("c")]);
+        assert_eq!(hand.cards(), [card("a"), card("b"), card("c")]);
+        // Dropped before the first card: the row shifts along.
+        assert!(hand.move_card(2, 0));
+        assert_eq!(hand.cards(), [card("c"), card("a"), card("b")]);
+        // Dropped where it already is: nothing moved, and nothing redraws.
+        assert!(!hand.move_card(0, 0));
+        assert!(!hand.move_card(0, 1), "before the card after it is where it is");
+        // Dropped past the end.
+        assert!(hand.move_card(0, 3));
+        assert_eq!(hand.cards(), [card("a"), card("b"), card("c")]);
+        assert!(!hand.move_card(9, 0), "a slot that is not there moves nothing");
+        // A draw joins the end; the order that is left is kept.
+        hand.sync(&[card("c"), card("a"), card("b"), card("d")]);
+        assert_eq!(hand.cards(), [card("a"), card("b"), card("c"), card("d")]);
+        // A play drops out, and the rest keep their places.
+        hand.sync(&[card("a"), card("c"), card("d")]);
+        assert_eq!(hand.cards(), [card("a"), card("c"), card("d")]);
+        // Two copies: one leaves and the other stays.
+        hand.sync(&[card("a"), card("a"), card("c"), card("d")]);
+        assert_eq!(hand.cards(), [card("a"), card("c"), card("d"), card("a")], "the second copy joins the end");
+        hand.sync(&[card("a"), card("c"), card("d")]);
+        assert_eq!(hand.cards(), [card("a"), card("c"), card("d")]);
+        // New cards join in the view's own order, not a scrambled one.
+        let mut fresh = HandOrder::default();
+        fresh.sync(&[card("a"), card("b"), card("c"), card("d")]);
+        assert_eq!(fresh.cards(), [card("a"), card("b"), card("c"), card("d")]);
+    }
+
+    /// A press on a hand card is armed: released still it is the click that
+    /// opens the menu, released after travelling it drops the card into the
+    /// row, and either way it never submits.
+    #[test]
+    fn a_hand_cards_press_is_a_click_when_still_and_a_drag_when_moved() {
+        let (mut game, mut handle) = game(Side::Corp);
+        until_awaiting(&mut game, &mut handle);
+        let hand = game.view.as_ref().unwrap().corp.hq_cards.clone().unwrap();
+        assert_eq!(game.hand.cards(), hand.as_slice(), "the view's order until the person changes it");
+        let slots: Vec<f32> = (0..hand.len()).map(|n| 100.0 * n as f32).collect();
+        let before = game.applied;
+        // Still: the click that opens the menu.
+        assert_eq!(game.apply(Intent::DragPress { slot: 1, at: (100.0, 500.0) }), Outcome::Nothing, "the press alone opens nothing");
+        assert!(game.menu.is_none() && game.dragging.is_some());
+        assert_eq!(game.apply(Intent::DragMove { at: (102.0, 501.0) }), Outcome::Nothing, "a wobble is not a drag");
+        assert_eq!(game.dragged_slot(), None);
+        assert_eq!(game.apply(Intent::DragRelease { over: Anchor::default(), slots: slots.clone() }), Outcome::Redraw);
+        assert_eq!(game.menu.as_ref().map(|m| m.target.clone()), Some(Target::HandCard(hand[1].clone())));
+        assert!(game.dragging.is_none() && game.applied == before, "and nothing was sent");
+        assert_eq!(game.hand.cards(), hand.as_slice(), "the order is untouched");
+        game.apply(Intent::CloseMenu);
+        // Moved: the card is dropped into the row, and the card lifted is
+        // known while the pointer is down.
+        game.apply(Intent::DragPress { slot: 2, at: (200.0, 500.0) });
+        assert_eq!(game.apply(Intent::DragMove { at: (20.0, 500.0) }), Outcome::Redraw, "the move that starts the drag redraws once");
+        assert_eq!(game.dragged_slot(), Some(2));
+        // Left of the first card's centre, which is where it is dropped.
+        assert_eq!(game.apply(Intent::DragMove { at: (-10.0, 500.0) }), Outcome::Nothing, "and not again");
+        assert_eq!(game.apply(Intent::DragRelease { over: Anchor::default(), slots }), Outcome::Redraw);
+        let mut expected = hand.clone();
+        let moved = expected.remove(2);
+        expected.insert(0, moved);
+        assert_eq!(game.hand.cards(), expected.as_slice(), "dropped left of the first card");
+        assert!(game.menu.is_none(), "a drag opens no menu");
+        assert!(game.dragging.is_none() && game.applied == before);
         handle.join();
     }
 

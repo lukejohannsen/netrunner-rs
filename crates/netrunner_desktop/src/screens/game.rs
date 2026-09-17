@@ -65,6 +65,15 @@
 //! so does the board moving; neither opens through an overlay, whose
 //! ground passes hovers to the board beneath.
 //!
+//! **A hand card is dragged into place** (`models::drag`). A press on a
+//! hand card is armed rather than acted on: released where it started it
+//! is the click that opens the card's menu, and released after six pixels
+//! of travel it is a drag, which drops the card between the two cards the
+//! pointer is over (`models::game::HandOrder`, the person's own order for
+//! a zone the rules give no order). Every other target still acts on the
+//! press. `drag_hand` reads the pointer from `CursorMoved` rather than the
+//! window, so the headless tests can drive it.
+//!
 //! **Keys are the buttons pressed another way** (`models::shortcuts`):
 //! `shortcuts` reads the keyboard messages by the character a key types,
 //! hands the model what it can answer, and acts itself only on the two it
@@ -117,10 +126,15 @@ pub struct GamePlugin;
 
 impl Plugin for GamePlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<Pending>()
+        // `CursorMoved` is `WindowPlugin`'s, and the headless tests run
+        // without one; registering it here is a no-op when the window
+        // plugin already has, and lets a test drive a drag by message.
+        app.add_message::<CursorMoved>()
+            .init_resource::<Pending>()
+            .init_resource::<Pointer>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, shortcuts, controls, fit, relane, redraw).chain().run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, relane, redraw).chain().run_if(in_state(AppScreen::Game)));
     }
 }
 
@@ -159,6 +173,16 @@ pub struct RunLane;
 /// A server's column, for a test that reads what a column holds.
 #[derive(Component)]
 pub struct ServerColumn(pub ServerId);
+/// Where the pointer was last seen, in logical window pixels: read off
+/// `CursorMoved`, because the window's own `cursor_position` needs a
+/// window and the headless tests have none.
+#[derive(Resource, Default)]
+pub struct Pointer(pub (f32, f32));
+
+/// A card's place in the person's own hand, for a drag to read.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HandSlot(pub usize);
+
 /// The phase bar's row, and one step chip on it, for a test to read.
 #[derive(Component)]
 pub struct PhaseBarRow;
@@ -604,6 +628,57 @@ fn board_click(
     }
 }
 
+/// A hand card's press, travel and release (`models::drag`). The pointer
+/// comes from `CursorMoved` rather than the window, so a test with no
+/// window can drive a drag; the press itself is `Interaction::Pressed` on
+/// a face carrying a `HandSlot`, as the click is. A release with no travel
+/// is handed back as the card's click, so the menu still opens from the
+/// same press — `controls` never sees a hand card at all.
+fn drag_hand(
+    mut moved: MessageReader<CursorMoved>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    keys: Res<ButtonInput<KeyCode>>,
+    slots: Query<(&HandSlot, &Interaction, &ComputedNode, &UiGlobalTransform)>,
+    model: Option<Res<Model>>,
+    mut pointer: ResMut<Pointer>,
+    mut pending: ResMut<Pending>,
+) {
+    let Some(model) = model else {
+        moved.clear();
+        return;
+    };
+    for message in moved.read() {
+        pointer.0 = (message.position.x, message.position.y);
+    }
+    let held = model.0.dragging.is_some();
+    // Ctrl or Cmd with the primary button is the secondary click, which
+    // reads the card; it never picks one up.
+    if !held && mouse.just_pressed(MouseButton::Left) && !secondary_modifier(&keys) && !model.0.covered() {
+        if let Some((slot, _, _, _)) = slots.iter().find(|(_, interaction, _, _)| matches!(interaction, Interaction::Pressed | Interaction::Hovered)) {
+            pending.0.push(Intent::DragPress { slot: slot.0, at: pointer.0 });
+        }
+        return;
+    }
+    if held && mouse.pressed(MouseButton::Left) {
+        pending.0.push(Intent::DragMove { at: pointer.0 });
+    }
+    if held && mouse.just_released(MouseButton::Left) {
+        // The row as it is laid out: each face's centre, in the person's
+        // own order, which is the order the slots were drawn in.
+        let mut row: Vec<(usize, f32, Anchor)> = slots
+            .iter()
+            .map(|(slot, _, node, transform)| {
+                let anchor = anchor_of(node, transform);
+                (slot.0, anchor.x, anchor)
+            })
+            .collect();
+        row.sort_by_key(|(slot, _, _)| *slot);
+        let dragged = model.0.dragged_slot().or_else(|| model.0.dragging.as_ref().map(|drag| drag.what));
+        let over = dragged.and_then(|slot| row.iter().find(|(at, _, _)| *at == slot)).map(|(_, _, anchor)| *anchor).unwrap_or_default();
+        pending.0.push(Intent::DragRelease { over, slots: row.iter().map(|(_, x, _)| *x).collect() });
+    }
+}
+
 /// The board's keys (`models::shortcuts`), read off the keyboard messages by
 /// what they type, so a letter is found on any layout; a key held with
 /// Ctrl, Cmd or Alt is left to the system. The model answers most of them.
@@ -685,6 +760,7 @@ fn controls(
     keys: Res<ButtonInput<KeyCode>>,
     faces: Query<(Entity, &Interaction, &Click), (Changed<Interaction>, Without<widgets::Themed>)>,
     boxes: Query<(&ComputedNode, &UiGlobalTransform)>,
+    slots: Query<&HandSlot>,
     mut pending: ResMut<Pending>,
     marks: Query<&Click>,
     settings_marks: Query<&SettingsControl>,
@@ -715,6 +791,12 @@ fn controls(
             && !modifier
             && let Click::Target(target) = click
         {
+            // A card of the person's own hand is `drag_hand`'s: its press
+            // is armed there and comes back as this same click if the
+            // pointer never moved.
+            if slots.contains(entity) {
+                continue;
+            }
             intents.push(click_on(entity, target));
         }
     }
@@ -884,6 +966,7 @@ fn overlay_needed(game: &Game) -> bool {
 // ---- the board ----
 
 fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, transitions: &[Transition], fit: &BoardFit) {
+    let drag = game.dragged_slot();
     // The phase bar is drawn last, below the hand and above the control
     // bar: where the game is belongs beside what the person may do about
     // it, and a row at the top would have sat among the opponent's cards.
@@ -914,7 +997,7 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     spawn_area(parent, theme, core, images, game, view, human, &lit, fit);
     parent.spawn(strip_row()).with_children(|row| {
         spawn_strip(row, theme, core, images, game, view, human, fit);
-        spawn_hand(row, theme, core, images, view, human, &lit, fit);
+        spawn_hand(row, theme, core, images, game, view, human, &lit, fit, drag);
     });
     with_phase_bar(parent, game);
 }
@@ -1323,12 +1406,16 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
 
 /// The person's hand beside their strip, overlapped when it is wide.
 #[allow(clippy::too_many_arguments)]
-fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit) {
-    let hand = match side {
+fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit, drag: Option<usize>) {
+    // The person's own order for their own hand, the view's for the
+    // opponent's (which is drawn as backs anyway).
+    let own = side == game.side;
+    let from_view = match side {
         Side::Corp => view.corp.hq_cards.as_deref(),
         Side::Runner => view.runner.grip_cards.as_deref(),
     }
     .unwrap_or(&[]);
+    let hand = if own { game.hand.cards() } else { from_view };
     let size = fit.size();
     let available = beside_strip(fit);
     parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|column| {
@@ -1338,12 +1425,24 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
             // outlined, which is as much as a highlight can say.
             let mut lit_left = lit.hand.clone();
             let mut faces = Vec::new();
-            for id in hand {
+            for (slot, id) in hand.iter().enumerate() {
                 let Some(def) = core.registry.get(id) else { continue };
                 let image = def.numeric_id.and_then(|code| images.face(code));
                 let entity = spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::HandCard(id.clone()))));
+                if own {
+                    // Its place in the row, so a drag knows which card it
+                    // picked up and where the others sit.
+                    row.commands().entity(entity).insert(HandSlot(slot));
+                }
                 if let Some(at) = lit_left.iter().position(|c| c == id) {
                     lit_left.swap_remove(at);
+                    row.commands().entity(entity).insert(outline(theme));
+                }
+                // The card being dragged is lifted out of the row by its
+                // outline: the row itself never moves under the pointer,
+                // because a hand that re-flowed mid-drag moved the gap the
+                // person was aiming at.
+                if own && drag.is_some_and(|dragged| dragged == slot) {
                     row.commands().entity(entity).insert(outline(theme));
                 }
                 faces.push(entity);
