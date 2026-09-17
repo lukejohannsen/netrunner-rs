@@ -20,6 +20,9 @@
 //! - `NETRUNNER_OPTIONS=1` — on the board, the gear menu is opened once
 //!   the person's first decision has arrived, so the options window can
 //!   be looked at over a real board.
+//! - `NETRUNNER_KEYS=1` — on the board, the list of keys is opened once
+//!   the person's decision has arrived (after any autoplay), so it can be
+//!   looked at over a real board.
 //! - `NETRUNNER_MENU=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the actions menu a click on a card
 //!   would open is opened above the first hand card with an action (or
@@ -92,6 +95,8 @@ pub struct Dev {
     pub autoplayed: u32,
     /// Open the options window on the board, once.
     pub options: bool,
+    /// Open the list of keys on the board, once.
+    pub keys: bool,
     /// Open the actions menu above a hand card, once.
     pub menu: bool,
     /// Hold a run at its first encounter for the screenshot.
@@ -129,6 +134,7 @@ impl Dev {
             autoplay: std::env::var("NETRUNNER_AUTOPLAY").ok().and_then(|n| n.trim().parse().ok()).unwrap_or(0),
             autoplayed: 0,
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
+            keys: std::env::var_os("NETRUNNER_KEYS").is_some_and(|v| !v.is_empty()),
             menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),

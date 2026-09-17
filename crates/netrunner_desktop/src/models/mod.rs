@@ -13,3 +13,4 @@ pub mod game;
 pub mod layout;
 pub mod pace;
 pub mod settings;
+pub mod shortcuts;

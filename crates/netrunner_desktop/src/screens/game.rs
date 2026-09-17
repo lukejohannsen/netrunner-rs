@@ -65,6 +65,12 @@
 //! so does the board moving; neither opens through an overlay, whose
 //! ground passes hovers to the board beneath.
 //!
+//! **Keys are the buttons pressed another way** (`models::shortcuts`):
+//! `shortcuts` reads the keyboard messages by the character a key types,
+//! hands the model what it can answer, and acts itself only on the two it
+//! cannot — the hovered card's menu and reading, and the play helper
+//! setting. `?` or F1 lists them over the board.
+//!
 //! **Highlights come from `board::diff`.** After a redraw, every install
 //! and hand card a `Transition` names is outlined for that redraw, and
 //! nothing is ever inferred from the previous frame's nodes. §4 turns
@@ -79,6 +85,8 @@
 //! the Runner's colour; a line from the lane to it was drawn and
 //! dropped the same day, on the person's word that it was ugly.
 
+use bevy::input::keyboard::{Key as BevyKey, KeyboardInput};
+use bevy::input::ButtonState;
 use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy::window::PrimaryWindow;
@@ -96,6 +104,7 @@ use crate::models::game::{Anchor, Game, Intent, MatchMessageRef, Outcome};
 use crate::models::layout::{self, Counts};
 use crate::models::pace::{Beat, Pacer};
 use crate::models::settings::{self as settings_model, Row};
+use crate::models::shortcuts::{self, Shortcut};
 use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::{ActiveMatch, LastGame};
 use crate::screens::settings::{self as settings_screen, Control as SettingsControl};
@@ -111,7 +120,7 @@ impl Plugin for GamePlugin {
         app.init_resource::<Pending>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, controls, fit, relane, redraw).chain().run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, shortcuts, controls, fit, relane, redraw).chain().run_if(in_state(AppScreen::Game)));
     }
 }
 
@@ -150,6 +159,14 @@ pub struct RunLane;
 /// A server's column, for a test that reads what a column holds.
 #[derive(Component)]
 pub struct ServerColumn(pub ServerId);
+/// The rail's line asking for a second Enter, for a test to find.
+#[derive(Component)]
+pub struct EndTurnNotice;
+
+/// A row of the list of keys, for a test to count.
+#[derive(Component)]
+pub struct HelpRow;
+
 /// One line of an install's state on its sheet, for a test to read.
 #[derive(Component)]
 pub struct InstallFact;
@@ -459,6 +476,10 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
         pending.0.push(Intent::ToggleOptions);
         return;
     }
+    if dev.keys && model.0.awaiting && dev.autoplayed >= dev.autoplay {
+        dev.keys = false;
+        pending.0.push(Intent::Shortcut(Shortcut::Help));
+    }
     if dev.menu && model.0.awaiting && dev.autoplayed >= dev.autoplay {
         dev.menu = false;
         let hand = model.0.view.as_ref().and_then(|view| match model.0.side {
@@ -573,6 +594,78 @@ fn board_click(
     }
     if menu_open && mouse.just_pressed(MouseButton::Left) && hovered.is_none() && !menu_parts.iter().any(|i| *i == Interaction::Pressed) {
         pending.0.push(Intent::CloseMenu);
+    }
+}
+
+/// The board's keys (`models::shortcuts`), read off the keyboard messages by
+/// what they type, so a letter is found on any layout; a key held with
+/// Ctrl, Cmd or Alt is left to the system. The model answers most of them.
+/// Two need the screen: the pointer's keys, which act on whichever card or
+/// zone is hovered as its click would, and the play helper, which is a
+/// setting saved to the file as the options menu saves it.
+#[allow(clippy::too_many_arguments)]
+fn shortcuts(
+    mut keyboard: MessageReader<KeyboardInput>,
+    held: Res<ButtonInput<KeyCode>>,
+    targets: Query<(Entity, &Interaction, &Click)>,
+    boxes: Query<(&ComputedNode, &UiGlobalTransform)>,
+    model: Option<Res<Model>>,
+    mut pending: ResMut<Pending>,
+    mut core: ResMut<ClientCore>,
+    mut notices: ResMut<Notices>,
+    mut dirty: ResMut<Dirty>,
+) {
+    let Some(model) = model else {
+        keyboard.clear();
+        return;
+    };
+    if held.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight, KeyCode::AltLeft, KeyCode::AltRight]) {
+        keyboard.clear();
+        return;
+    }
+    let shift = held.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight]);
+    for input in keyboard.read() {
+        if input.state != ButtonState::Pressed || input.repeat {
+            continue;
+        }
+        let key = match &input.logical_key {
+            BevyKey::Space => shortcuts::Key::Space,
+            BevyKey::Enter => shortcuts::Key::Enter,
+            BevyKey::Tab => shortcuts::Key::Tab,
+            BevyKey::F1 => shortcuts::Key::F1,
+            BevyKey::Character(text) => match text.chars().next() {
+                Some(c) => shortcuts::Key::Char(c.to_ascii_lowercase()),
+                None => continue,
+            },
+            _ => continue,
+        };
+        let Some(shortcut) = shortcuts::shortcut(key, shift, model.0.side) else { continue };
+        match shortcut {
+            Shortcut::ReadHovered | Shortcut::MenuHovered => {
+                let hovered = targets.iter().find_map(|(entity, interaction, click)| match (interaction, click) {
+                    (Interaction::Hovered | Interaction::Pressed, Click::Target(target)) => Some((entity, target.clone())),
+                    _ => None,
+                });
+                let Some((entity, target)) = hovered else { continue };
+                if shortcut == Shortcut::ReadHovered {
+                    pending.0.push(Intent::Inspect(target));
+                } else {
+                    let over = boxes.get(entity).map_or_else(|_| Anchor::default(), |(node, transform)| anchor_of(node, transform));
+                    pending.0.push(Intent::Click { target, over });
+                }
+            }
+            Shortcut::PlayHelper => {
+                if model.0.covered() {
+                    continue;
+                }
+                settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(Row::PlayHelper));
+                if let Err(error) = core.save_settings() {
+                    notices.push(format!("Settings not saved: {error}"));
+                }
+                dirty.rail = true;
+            }
+            _ => pending.0.push(Intent::Shortcut(shortcut)),
+        }
     }
 }
 
@@ -1277,6 +1370,13 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     if let Some(rejection) = &game.rejection {
         parent.spawn((widgets::notice(theme, format!("Rejected: {rejection}"), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
+    if game.end_turn_armed {
+        let clicks = match game.clicks_left() {
+            1 => "1 click".to_string(),
+            n => format!("{n} clicks"),
+        };
+        parent.spawn((EndTurnNotice, widgets::notice(theme, format!("{clicks} left — press Enter again to end the turn."), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
     if let Some(reason) = &game.stalled {
         parent.spawn((widgets::notice(theme, reason.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         return;
@@ -1294,7 +1394,7 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     // panel.
     if !helper {
         if game.prompt.is_none() {
-            parent.spawn((widgets::dim(theme, "Your turn: click a card or a zone for what it can do, right-click to read it, or use the bar."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            parent.spawn((widgets::dim(theme, "Your turn: click a card or a zone for what it can do, right-click to read it, or use the bar. ? lists the keys."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         }
         return;
     }
@@ -1563,7 +1663,7 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     // A card alone is its face and the panel's padding; an install's
     // state sits beside the face; a zone's contents are the widest.
     let card_alone = game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| !matches!(s.target, Target::Install(_)) && game.card_of(&s.target).is_some());
-    let width = if game.finished() || game.confirm_quit || game.options_open {
+    let width = if game.finished() || game.confirm_quit || game.options_open || game.help_open {
         px(560)
     } else if card_alone {
         px(FaceSize::Large.width() + 2.0 * 17.0)
@@ -1627,6 +1727,8 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     panel.spawn(widgets::heading(theme, "Game options"));
                     settings_screen::spawn_rows(panel, theme, core, &Row::GAME);
                     panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+                } else if game.help_open {
+                    help_sheet(panel, theme);
                 } else if let Some(id) = &game.inspecting {
                     // A card read out of a pile: the face and its text,
                     // nothing to do with it from here.
@@ -1640,6 +1742,23 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 }
             });
         });
+}
+
+/// The list of keys, a row each: the key in a fixed column, what it does
+/// beside it. From `shortcuts::LIST`, so the list and the keys cannot
+/// disagree about which letters there are.
+fn help_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme) {
+    panel.spawn(widgets::heading(theme, "Keyboard shortcuts"));
+    for (key, meaning) in shortcuts::LIST {
+        panel.spawn((HelpRow, Node { flex_direction: FlexDirection::Row, column_gap: px(16), ..default() })).with_children(|row| {
+            // A key never wraps, and its column is wide enough that it need
+            // not: a wrapped measure left a blank line under "? or F1".
+            row.spawn((Text::new(*key), theme.font(size::BODY), TextColor(theme.accent), TextLayout::new(Justify::Left, LineBreak::NoWrap), Node { width: px(120), flex_shrink: 0.0, ..default() }));
+            row.spawn((Text::new(*meaning), theme.font(size::BODY), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary), Node { flex_grow: 1.0, min_width: px(0), ..default() }));
+        });
+    }
+    panel.spawn(widgets::dim(theme, "A key does what its button does, only when the button would."));
+    panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
 }
 
 /// The card large, and nothing else: the picture, or the text layout
