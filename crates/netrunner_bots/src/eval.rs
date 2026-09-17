@@ -3269,10 +3269,12 @@ mod tests {
         let midpoint = (build.active_run_weight + pressure.active_run_weight) / 2.0;
         assert!((half.active_run_weight - midpoint).abs() < 1e-9);
 
+        // No profile's floor differs from another's since Phase 5 §16 put
+        // `Aggressive`'s back at 3, so the count under test is set here.
+        let thin = Weights { grip_floor: 2, ..pressure };
         assert_eq!(build.grip_floor, 3);
-        assert_eq!(pressure.grip_floor, 2);
-        assert_eq!(lerp(&build, &pressure, 0.49).grip_floor, 3);
-        assert_eq!(lerp(&build, &pressure, 0.51).grip_floor, 2);
+        assert_eq!(lerp(&build, &thin, 0.49).grip_floor, 3);
+        assert_eq!(lerp(&build, &thin, 0.51).grip_floor, 2);
 
         // The dial's own setting is the caller's and is never blended, or
         // how far the travel goes would depend on how far it had got.
