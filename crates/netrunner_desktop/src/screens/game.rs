@@ -40,28 +40,29 @@
 //! are respawned on their own, so a sheet opening does not redraw the
 //! board.
 //!
-//! **Sheets.** A card's sheet is the Large face, its text and its legal
-//! actions as buttons; a zone's sheet is its actions and its contents
+//! **Sheets are for reading.** A card's sheet is the Large face — the
+//! picture, or the text layout while no picture is cached — and, for an
+//! installed card, its state beside it; a zone's sheet is its contents
 //! where the viewer may see them — Archives as every card for the Corp
 //! and as the face-up ones with backs for the rest for the Runner, the
 //! heap, the Corp's own HQ, a remote's ICE and root — each face a button
 //! that reads the card over the sheet. R&D and the stack are backs and a
 //! count: a deck's order is never shown, even to its owner.
 //!
-//! **A secondary click is a menu above the card.** The right button, or
-//! the primary with Ctrl held (the Mac's), on a card or a zone opens
-//! the same entries its sheet would list, as a small panel sitting
-//! just above the node that was clicked, centred on it, so the card
-//! stays in view under its own menu (`models::game::Menu`, anchored by
-//! the node's laid-out box, not the pointer — a menu at the pointer
-//! landed somewhere different on every click), so a card's actions are
-//! one click away without the sheet's reading. `Interaction` reports only
-//! the primary button, so `secondary_click` reads the button from
+//! **A click is a menu above the card; a secondary click is its sheet.**
+//! The primary button on a card or a zone opens its actions as a small
+//! panel sitting just above the node that was clicked, centred on it, so
+//! the card stays in view under its own menu (`models::game::Menu`,
+//! anchored by the node's laid-out box, not the pointer — a menu at the
+//! pointer landed somewhere different on every click). The right button,
+//! or the primary with Ctrl or Cmd held (a Mac's one-button click),
+//! opens the sheet to read. `Interaction` reports only the primary
+//! button, so `board_click` reads the right button from
 //! `ButtonInput<MouseButton>` and takes the target from the node the
 //! focus system marks hovered — every card, ICE bar and header is a
 //! `Button`, which blocks, so the topmost is the one under the pointer.
 //! A primary click that lands on nothing of the menu's closes it, and
-//! so does the board moving; it never opens through an overlay, whose
+//! so does the board moving; neither opens through an overlay, whose
 //! ground passes hovers to the board beneath.
 //!
 //! **Highlights come from `board::diff`.** After a redraw, every install
@@ -110,7 +111,7 @@ impl Plugin for GamePlugin {
         app.init_resource::<Pending>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), secondary_click, controls, fit, relane, redraw).chain().run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, controls, fit, relane, redraw).chain().run_if(in_state(AppScreen::Game)));
     }
 }
 
@@ -200,7 +201,7 @@ pub struct Overlay;
 /// a sheet opens above it. Respawned with the rail.
 #[derive(Component)]
 pub struct DecisionPopup;
-/// The secondary click's menu of a target's actions, at the pointer.
+/// A click's menu of a target's actions, above its card.
 /// Respawned with the rail, like the pop-up; over it and under the
 /// overlays.
 #[derive(Component)]
@@ -471,7 +472,7 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
             let target = Target::HandCard(card.clone());
             // The card's own box, as the click would have read it.
             let over = nodes.iter().find(|(click, _, _)| **click == Click::Target(target.clone())).map_or_else(Anchor::default, |(_, node, transform)| anchor_of(node, transform));
-            pending.0.push(Intent::Menu { target, over });
+            pending.0.push(Intent::Click { target, over });
         }
     }
     if dev.sheet && model.0.awaiting && dev.autoplayed >= dev.autoplay {
@@ -480,14 +481,14 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
         // engine's order: the tile's own sheet.
         let first = model.0.view.as_ref().and_then(|view| view.corp.servers.iter().flat_map(|s| s.ice.iter().chain(s.root.iter())).map(|c| c.install_id).next());
         if let Some(id) = first {
-            pending.0.push(Intent::Click(Target::Install(id)));
+            pending.0.push(Intent::Inspect(Target::Install(id)));
         }
     }
     if model.0.awaiting
         && dev.autoplayed >= dev.autoplay
         && let Some(side) = dev.agendas.take()
     {
-        pending.0.push(Intent::Click(Target::Pile(Pile::Agendas(side))));
+        pending.0.push(Intent::Inspect(Target::Pile(Pile::Agendas(side))));
         pending.0.push(Intent::Expand(0));
     }
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
@@ -529,40 +530,48 @@ fn anchor_of(node: &ComputedNode, transform: &UiGlobalTransform) -> Anchor {
     Anchor { x: centre.x, y: centre.y, width: size.x, height: size.y }
 }
 
-/// The secondary click — the right button, or the primary with Ctrl
-/// held — on a hovered card or zone raises a menu of its actions over
-/// it. The focus system sets `Interaction` for the primary button only
-/// and never for the right, so the button is read from the input
-/// resource and the target is whichever `Click::Target` node it left
-/// hovered (or pressed, with Ctrl); that node's laid-out box anchors
-/// the menu. With a menu open, a click that presses no part of it
-/// closes it; the menu's own button reaches `controls` as a `Pressed`
-/// and submits.
-fn secondary_click(
+/// Whether the key that turns the primary button into the secondary is
+/// held: Ctrl, or Cmd — a Mac with one button reaches for either, and
+/// neither means anything else on a board click.
+fn secondary_modifier(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight, KeyCode::SuperLeft, KeyCode::SuperRight])
+}
+
+/// The secondary click — the right button, or the primary with Ctrl or
+/// Cmd held — on a hovered card or zone opens its sheet, to read. The
+/// focus system sets `Interaction` for the primary button only and
+/// never for the right, so the button is read from the input resource
+/// and the target is whichever `Click::Target` node it left hovered (or
+/// pressed, with the modifier). The plain primary press is `controls`'s,
+/// which opens the menu. With a menu open, a primary click that presses
+/// no part of it and no other card closes it; a press on a card is that
+/// card's menu instead (or, on the same card, the menu closing), and
+/// the menu's own button reaches `controls` as a `Pressed` and submits.
+fn board_click(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
-    targets: Query<(&Interaction, &Click, &ComputedNode, &UiGlobalTransform)>,
+    targets: Query<(&Interaction, &Click)>,
     menu_parts: Query<&Interaction, With<MenuPart>>,
     model: Option<Res<Model>>,
     mut pending: ResMut<Pending>,
 ) {
     let Some(model) = model else { return };
-    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
-    let secondary = mouse.just_pressed(MouseButton::Right) || (ctrl && mouse.just_pressed(MouseButton::Left));
+    let modifier = secondary_modifier(&keys);
+    let secondary = mouse.just_pressed(MouseButton::Right) || (modifier && mouse.just_pressed(MouseButton::Left));
+    let hovered = targets.iter().find_map(|(interaction, click)| match (interaction, click) {
+        (Interaction::Hovered | Interaction::Pressed, Click::Target(target)) => Some(target.clone()),
+        _ => None,
+    });
     let menu_open = model.0.menu.is_some();
     if secondary {
-        let target = targets.iter().find_map(|(interaction, click, node, transform)| match (interaction, click) {
-            (Interaction::Hovered | Interaction::Pressed, Click::Target(target)) => Some((target.clone(), anchor_of(node, transform))),
-            _ => None,
-        });
-        match target {
-            Some((target, over)) => pending.0.push(Intent::Menu { target, over }),
+        match hovered {
+            Some(target) => pending.0.push(Intent::Inspect(target)),
             None if menu_open => pending.0.push(Intent::CloseMenu),
             None => {}
         }
         return;
     }
-    if menu_open && mouse.just_pressed(MouseButton::Left) && !menu_parts.iter().any(|i| *i == Interaction::Pressed) {
+    if menu_open && mouse.just_pressed(MouseButton::Left) && hovered.is_none() && !menu_parts.iter().any(|i| *i == Interaction::Pressed) {
         pending.0.push(Intent::CloseMenu);
     }
 }
@@ -570,7 +579,8 @@ fn secondary_click(
 fn controls(
     mut pressed: MessageReader<Pressed>,
     keys: Res<ButtonInput<KeyCode>>,
-    faces: Query<(&Interaction, &Click), (Changed<Interaction>, Without<widgets::Themed>)>,
+    faces: Query<(Entity, &Interaction, &Click), (Changed<Interaction>, Without<widgets::Themed>)>,
+    boxes: Query<(&ComputedNode, &UiGlobalTransform)>,
     mut pending: ResMut<Pending>,
     marks: Query<&Click>,
     settings_marks: Query<&SettingsControl>,
@@ -584,19 +594,24 @@ fn controls(
 ) {
     let mut intents: Vec<Intent> = std::mem::take(&mut pending.0);
     let mut leave_to: Option<AppScreen> = None;
-    // With Ctrl held the primary button is the secondary click
-    // (`secondary_click` raised the menu), so the press it also
-    // registers on the card opens no sheet.
-    let ctrl = keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight]);
+    // With Ctrl or Cmd held the primary button is the secondary click
+    // (`board_click` opened the sheet), so the press it also registers
+    // on the card opens no menu.
+    let modifier = secondary_modifier(&keys);
+    // A press on a card or a zone is its menu, over the node's own box.
+    let click_on = |entity: Entity, target: &Target| {
+        let over = boxes.get(entity).map_or_else(|_| Anchor::default(), |(node, transform)| anchor_of(node, transform));
+        Intent::Click { target: target.clone(), over }
+    };
     // A face is a `Button` without the theme's recolouring, so the
     // shared feedback system never reports it; its press is read here.
     // The first hand-driven game found every card click doing nothing.
-    for (interaction, click) in &faces {
+    for (entity, interaction, click) in &faces {
         if *interaction == Interaction::Pressed
-            && !ctrl
+            && !modifier
             && let Click::Target(target) = click
         {
-            intents.push(Intent::Click(target.clone()));
+            intents.push(click_on(entity, target));
         }
     }
     for Pressed(entity) in pressed.read() {
@@ -618,11 +633,11 @@ fn controls(
             continue;
         }
         match marks.get(*entity) {
-            Ok(Click::Target(_)) if ctrl => {}
-            Ok(Click::Target(target)) => intents.push(Intent::Click(target.clone())),
+            Ok(Click::Target(_)) if modifier => {}
+            Ok(Click::Target(target)) => intents.push(click_on(*entity, target)),
             Ok(Click::Entry(index)) => intents.push(Intent::Choose(*index)),
             Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
-            Ok(Click::Inspect(card)) => intents.push(Intent::Inspect(Some(card.clone()))),
+            Ok(Click::Inspect(card)) => intents.push(Intent::InspectCard(Some(card.clone()))),
             Ok(Click::Expand(row)) => intents.push(Intent::Expand(*row)),
             Ok(Click::Options) => intents.push(Intent::ToggleOptions),
             Ok(Click::CloseOverlay) => intents.push(Intent::Back),
@@ -1279,7 +1294,7 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     // panel.
     if !helper {
         if game.prompt.is_none() {
-            parent.spawn((widgets::dim(theme, "Your turn: click a card or a zone, or use the bar above."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            parent.spawn((widgets::dim(theme, "Your turn: click a card or a zone for what it can do, right-click to read it, or use the bar."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         }
         return;
     }
@@ -1312,13 +1327,13 @@ fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, i
     Some(button.id())
 }
 
-/// The width of the secondary click's menu, and the gap between its
+/// The width of a click's menu, and the gap between its
 /// bottom edge and the top of the card it sits above.
 const MENU_WIDTH: f32 = 280.0;
 const MENU_GAP: f32 = 6.0;
 
-/// The menu a secondary click opened: the target's name and one button
-/// per entry, or the line the sheet would show when there is nothing,
+/// The menu a click opened: the target's name and one button per
+/// entry, or a line saying so when there is nothing,
 /// in a small panel just above the box the target was laid out in and
 /// centred on it — so it is in one place for a card however the card
 /// was clicked, and the card stays in view beneath it. When the box is
@@ -1545,11 +1560,14 @@ fn relane(mut commands: Commands, mut dirty: ResMut<Dirty>, model: Option<Res<Mo
 // ---- the overlays ----
 
 fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game) {
-    // The card read over a zone sheet is wider than a sheet's panel;
-    // the sheets are wider than the prompts.
+    // A card alone is its face and the panel's padding; an install's
+    // state sits beside the face; a zone's contents are the widest.
+    let card_alone = game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| !matches!(s.target, Target::Install(_)) && game.card_of(&s.target).is_some());
     let width = if game.finished() || game.confirm_quit || game.options_open {
         px(560)
-    } else if game.inspecting.is_some() || game.sheet.as_ref().is_some_and(|s| matches!(s.target, Target::Install(_)) || game.card_of(&s.target).is_some()) {
+    } else if card_alone {
+        px(FaceSize::Large.width() + 2.0 * 17.0)
+    } else if game.sheet.as_ref().is_some_and(|s| matches!(s.target, Target::Install(_))) {
         px(800)
     } else {
         px(960)
@@ -1612,43 +1630,32 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 } else if let Some(id) = &game.inspecting {
                     // A card read out of a pile: the face and its text,
                     // nothing to do with it from here.
-                    card_sheet(panel, theme, core, images, game, id, &[]);
+                    card_sheet(panel, theme, core, images, id);
                 } else if let Some(sheet) = &game.sheet {
                     match (&sheet.target, game.card_of(&sheet.target)) {
-                        (Target::Install(id), card) => install_sheet(panel, theme, core, images, game, *id, card.as_ref(), &sheet.entries),
-                        (_, Some(id)) => card_sheet(panel, theme, core, images, game, &id, &sheet.entries),
-                        (_, None) => zone_sheet(panel, theme, core, images, game, &sheet.target, &sheet.entries),
+                        (Target::Install(id), card) => install_sheet(panel, theme, core, images, game, *id, card.as_ref()),
+                        (_, Some(id)) => card_sheet(panel, theme, core, images, &id),
+                        (_, None) => zone_sheet(panel, theme, core, images, game, &sheet.target),
                     }
                 }
             });
         });
 }
 
-/// The card large, its text beside it, and its legal actions under the
-/// text — the deliberate second click. With no entries it is the
-/// inspector.
-fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, id: &CardId, entries: &[usize]) {
+/// The card large, and nothing else: the picture, or the text layout
+/// (which carries the printed text) while no picture is cached. What
+/// may be done with it is the menu's — the sheet once listed the actions
+/// under the card's text, and the person asked for reading and acting to
+/// be two clicks rather than one panel.
+fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, id: &CardId) {
     let Some(def) = core.registry.get(id) else {
         panel.spawn(widgets::dim(theme, format!("{} is not in the registry", id.0)));
         panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
         return;
     };
     panel.spawn(widgets::heading(theme, def.title.clone()));
-    panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
-        let image = def.numeric_id.and_then(|code| images.face(code));
-        spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
-        row.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
-            column.spawn((Text::new(Face::of(def).body_text(false)), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-            if entries.is_empty() {
-                column.spawn(widgets::dim(theme, if game.awaiting { "Nothing to do with this card right now." } else { "Not your decision right now." }));
-            } else {
-                column.spawn(widgets::label(theme, "Actions"));
-                for index in entries {
-                    entry_button(column, theme, game, *index);
-                }
-            }
-        });
-    });
+    let image = def.numeric_id.and_then(|code| images.face(code));
+    spawn_face(panel, theme, &Face::of(def), FaceSize::Large, image, ());
     panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
 }
 
@@ -1656,11 +1663,10 @@ fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
 /// cannot name) beside its state — `board::facts::install_facts`: where
 /// it sits and in what order it is met, rezzed or not and the cost of a
 /// rez, strength now and printed, each subroutine with its status in an
-/// encounter, tokens, counters, trash cost, what it hosts — then its
-/// text and its actions. The state is on the sheet because a person
-/// reads it off the table to decide what to do, and a tile has no room.
-#[allow(clippy::too_many_arguments)]
-fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, id: InstallId, card: Option<&CardId>, entries: &[usize]) {
+/// encounter, tokens, counters, trash cost, what it hosts. The state is
+/// the one thing beside the card, because the printed face cannot show
+/// it and a tile has no room; the printed text is on the face.
+fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, id: InstallId, card: Option<&CardId>) {
     let Some(view) = &game.view else { return };
     let def = card.and_then(|c| core.registry.get(c));
     let heading = def.map_or_else(|| facts::hidden_title(view, id), |d| d.title.clone());
@@ -1680,46 +1686,23 @@ fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
             for line in facts::install_facts(view, id, &core.registry).unwrap_or_default() {
                 column.spawn((InstallFact, Text::new(line), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
             }
-            if let Some(def) = def {
-                column.spawn((Text::new(Face::of(def).body_text(false)), theme.font(size::SMALL), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-            }
-            if entries.is_empty() {
-                column.spawn(widgets::dim(theme, if game.awaiting { "Nothing to do with this card right now." } else { "Not your decision right now." }));
-            } else {
-                column.spawn(widgets::label(theme, "Actions"));
-                for index in entries {
-                    entry_button(column, theme, game, *index);
-                }
-            }
         });
     });
     panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
 }
 
-/// A zone: its actions, then what is in it as far as the viewer may
-/// see. Every visible card is a button that reads it over the sheet.
+/// A zone: what is in it as far as the viewer may see — its actions are
+/// the menu's. Every visible card is a button that reads it over the
+/// sheet.
 /// The score area is the exception, a list rather than a spread of
 /// faces (`score_area_sheet`).
-fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, target: &Target, entries: &[usize]) {
+fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, target: &Target) {
     let Some(view) = &game.view else { return };
     panel.spawn(widgets::heading(theme, target_title(game, target)));
     if let Target::Pile(Pile::Agendas(side)) = target {
         score_area_sheet(panel, theme, core, images, game, view, *side);
         panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
         return;
-    }
-    if entries.is_empty() {
-        panel.spawn(widgets::dim(theme, if game.awaiting { "Nothing to do here right now." } else { "Not your decision right now." }));
-    } else {
-        // The install entries name the card and the server both; the row
-        // wraps when a hand of installs is offered to one remote.
-        panel.spawn(wrap_row()).with_children(|row| {
-            for index in entries {
-                if let Some(entry) = game.actions.entries.get(*index) {
-                    row.spawn(widgets::button(theme, entry.label.clone(), Val::Auto, Click::Entry(*index)));
-                }
-            }
-        });
     }
     // What the zone holds, for the viewer.
     enum Shown {

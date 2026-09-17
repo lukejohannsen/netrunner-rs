@@ -21,12 +21,12 @@
 //!   the person's first decision has arrived, so the options window can
 //!   be looked at over a real board.
 //! - `NETRUNNER_MENU=1` — on the board, once the person's decision has
-//!   arrived (after any autoplay), the actions menu a secondary click
+//!   arrived (after any autoplay), the actions menu a click on a card
 //!   would open is opened above the first hand card with an action (or
 //!   the first card), so the menu can be looked at.
 //! - `NETRUNNER_SHEET=1` — on the board, once the person's decision has
-//!   arrived (after any autoplay), the sheet of the first installed Corp
-//!   card on the board is opened, so an install's state can be looked at.
+//!   arrived (after any autoplay), the sheet a secondary click opens on
+//!   the first installed Corp card on the board is opened, so an install's state can be looked at.
 //! - `NETRUNNER_AGENDAS=corp|runner` — on the board, once the person's
 //!   decision has arrived (after any autoplay), that side's score area
 //!   is opened from its HUD readout with the first row expanded, so the
