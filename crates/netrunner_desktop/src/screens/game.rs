@@ -179,6 +179,12 @@ pub struct ServerColumn(pub ServerId);
 #[derive(Resource, Default)]
 pub struct Pointer(pub (f32, f32));
 
+/// A place a dragged card may be dropped: the node's own box is the
+/// target, so the drop is hit-tested against what is laid out rather than
+/// against whatever the focus system last marked hovered.
+#[derive(Component, Debug, Clone, PartialEq)]
+pub struct DropPlace(pub Target);
+
 /// A card's place in the person's own hand, for a drag to read.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HandSlot(pub usize);
@@ -507,6 +513,27 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
         pending.0.push(Intent::ToggleOptions);
         return;
     }
+    // The first decision at which a card in hand has somewhere to go: a
+    // card held anywhere else lights nothing, and waiting for the
+    // person's own action phase can wait for ever — the autoplay may have
+    // stopped at a prompt inside the opponent's turn.
+    if dev.drag && model.0.awaiting && dev.autoplayed >= dev.autoplay {
+        let held = model.0.hand.cards().iter().position(|card| !model.0.actions.destinations_for_hand_card(card).is_empty());
+        match held {
+            Some(slot) => {
+                dev.drag = false;
+                pending.0.push(Intent::DragPress { slot, at: (0.0, 0.0) });
+                pending.0.push(Intent::DragMove { at: (400.0, 400.0) });
+            }
+            // Nothing in hand has anywhere to go at this decision (a hand
+            // of operations, or a prompt mid-turn): take one more action
+            // and look again, rather than holding the shot for ever.
+            None => dev.autoplay += 1,
+        }
+    }
+    if dev.drag && model.0.finished() {
+        dev.drag = false;
+    }
     if dev.keys && model.0.awaiting && dev.autoplayed >= dev.autoplay {
         dev.keys = false;
         pending.0.push(Intent::Shortcut(Shortcut::Help));
@@ -634,11 +661,18 @@ fn board_click(
 /// a face carrying a `HandSlot`, as the click is. A release with no travel
 /// is handed back as the card's click, so the menu still opens from the
 /// same press — `controls` never sees a hand card at all.
+/// Whether a point is inside a laid-out box.
+fn within(anchor: Anchor, (x, y): (f32, f32)) -> bool {
+    (anchor.x - x).abs() <= anchor.width / 2.0 && (anchor.y - y).abs() <= anchor.height / 2.0
+}
+
+#[allow(clippy::too_many_arguments)]
 fn drag_hand(
     mut moved: MessageReader<CursorMoved>,
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     slots: Query<(&HandSlot, &Interaction, &ComputedNode, &UiGlobalTransform)>,
+    places: Query<(&DropPlace, &ComputedNode, &UiGlobalTransform)>,
     model: Option<Res<Model>>,
     mut pointer: ResMut<Pointer>,
     mut pending: ResMut<Pending>,
@@ -675,7 +709,27 @@ fn drag_hand(
         row.sort_by_key(|(slot, _, _)| *slot);
         let dragged = model.0.dragged_slot().or_else(|| model.0.dragging.as_ref().map(|drag| drag.what));
         let over = dragged.and_then(|slot| row.iter().find(|(at, _, _)| *at == slot)).map(|(_, _, anchor)| *anchor).unwrap_or_default();
-        pending.0.push(Intent::DragRelease { over, slots: row.iter().map(|(_, x, _)| *x).collect() });
+        // A place the board lit for this card, under the pointer: the
+        // innermost wins, so an ice tile takes the drop rather than the
+        // column it sits in. Hit-tested against the laid-out boxes, since
+        // the focus system does not follow a pointer with a button down.
+        let lit = model.0.drop_places();
+        let dropped_on = places
+            .iter()
+            .filter(|(place, _, _)| lit.contains(&place.0))
+            .filter(|(_, node, transform)| within(anchor_of(node, transform), pointer.0))
+            .min_by(|a, b| {
+                let area = |node: &ComputedNode, transform: &UiGlobalTransform| {
+                    let anchor = anchor_of(node, transform);
+                    anchor.width * anchor.height
+                };
+                area(a.1, a.2).total_cmp(&area(b.1, b.2))
+            })
+            .map(|(place, node, transform)| (place.0.clone(), anchor_of(node, transform)));
+        match dropped_on {
+            Some((target, anchor)) => pending.0.push(Intent::DragDrop { target, over: anchor }),
+            None => pending.0.push(Intent::DragRelease { over, slots: row.iter().map(|(_, x, _)| *x).collect() }),
+        }
     }
 }
 
@@ -1223,7 +1277,19 @@ fn spawn_area(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
 fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit) {
     // Archives, R&D, HQ, then the remotes, from either chair, every
     // central a column even with nothing on it (`board::table_servers`).
-    let servers = netrunner_client::board::table_servers(view);
+    let mut servers = netrunner_client::board::table_servers(view);
+    // A card held over the board lights the places it may go, and a
+    // remote the Corp has not made yet gets a column of its own for the
+    // length of the drag: the engine offers it, and there was nothing to
+    // drop on.
+    let places = game.drop_places();
+    for place in &places {
+        if let Target::Server(server @ ServerId::Remote(_)) = place
+            && !servers.iter().any(|s| s.server == *server)
+        {
+            servers.push(ServerView { server: *server, ice: Vec::new(), root: Vec::new() });
+        }
+    }
     let run = view.active_run.as_ref();
     let encountered = run.filter(|r| matches!(r.phase, RunPhase::ApproachIce | RunPhase::EncounterIce)).and_then(|r| r.ice.get(r.position)).map(|i| i.install_id);
     let size = fit.size();
@@ -1237,9 +1303,17 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
         area.spawn(row_node).with_children(|row| {
             for server in &servers {
                 let under_run = game.run_on(server.server);
-                let border = if under_run { theme.runner } else { theme.panel_border };
+                let welcomes = places.contains(&Target::Server(server.server));
+                let border = if welcomes {
+                    theme.accent
+                } else if under_run {
+                    theme.runner
+                } else {
+                    theme.panel_border
+                };
                 row.spawn((
                     ServerColumn(server.server),
+                    DropPlace(Target::Server(server.server)),
                     Node {
                         flex_direction: FlexDirection::Column,
                         flex_shrink: 0.0,
@@ -1260,7 +1334,7 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     // Corp, the ice out toward the Runner, outermost nearest.
                     for piece in layout::column_top_down(game.side) {
                         match piece {
-                            layout::Piece::Header => spawn_server_header(column, theme, view, server.server),
+                            layout::Piece::Header => spawn_server_header(column, theme, view, server.server, welcomes),
                             layout::Piece::Ice => spawn_server_ice(column, theme, core, view, server, game.side, encountered, lit, size),
                             layout::Piece::Root => spawn_server_root(column, theme, core, view, server, lit, size),
                         }
@@ -1271,14 +1345,21 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     });
 }
 
-fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, server: ServerId) {
+fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, server: ServerId, welcomes: bool) {
+    let on_board = view.corp.servers.iter().any(|s| s.server == server) || !matches!(server, ServerId::Remote(_));
     let count = match server {
         ServerId::Hq => format!(" · {}", view.corp.hq_count),
         ServerId::RnD => format!(" · {}", view.corp.rd_count),
         ServerId::Archives => format!(" · {}", view.corp.archives.len()),
         ServerId::Remote(_) => String::new(),
     };
-    compact_button(column, theme, format!("{}{count}", server_name(server)), Click::Target(Target::Server(server)));
+    // The column a drag conjured says what it is: a server that does not
+    // exist yet, named for what dropping there would make.
+    let label = if on_board { format!("{}{count}", server_name(server)) } else { format!("New {}", server_name(server).to_lowercase()) };
+    let entity = compact_button(column, theme, label, Click::Target(Target::Server(server)));
+    if welcomes {
+        column.commands().entity(entity).insert(outline(theme));
+    }
 }
 
 /// A tile in a server column — an ice or a root card — the same block
@@ -1291,6 +1372,7 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
         Button,
         widgets::Themed,
         Click::Target(Target::Install(install)),
+        DropPlace(Target::Install(install)),
         Node {
             width: px(size.width() + 4.0),
             height: px(layout::TILE - 4.0),

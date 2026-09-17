@@ -20,6 +20,10 @@
 //! - `NETRUNNER_OPTIONS=1` — on the board, the gear menu is opened once
 //!   the person's first decision has arrived, so the options window can
 //!   be looked at over a real board.
+//! - `NETRUNNER_DRAG=1` — on the board, once the person's decision has
+//!   arrived (after any autoplay), the first hand card that has somewhere
+//!   to go is picked up and held, so the lit places — and the column a new
+//!   remote gets for the length of a drag — can be looked at.
 //! - `NETRUNNER_KEYS=1` — on the board, the list of keys is opened once
 //!   the person's decision has arrived (after any autoplay), so it can be
 //!   looked at over a real board.
@@ -97,6 +101,8 @@ pub struct Dev {
     pub options: bool,
     /// Open the list of keys on the board, once.
     pub keys: bool,
+    /// Pick up the first hand card that has somewhere to go, once.
+    pub drag: bool,
     /// Open the actions menu above a hand card, once.
     pub menu: bool,
     /// Hold a run at its first encounter for the screenshot.
@@ -135,6 +141,7 @@ impl Dev {
             autoplayed: 0,
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             keys: std::env::var_os("NETRUNNER_KEYS").is_some_and(|v| !v.is_empty()),
+            drag: std::env::var_os("NETRUNNER_DRAG").is_some_and(|v| !v.is_empty()),
             menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
@@ -190,7 +197,10 @@ fn screenshot_then_exit(
     scroll_areas: Query<(Entity, &ComputedNode, &ScrollPosition), With<bevy::ui_widgets::ScrollArea>>,
     mut exit: MessageWriter<AppExit>,
 ) {
-    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay {
+    // A card held for the shot (`NETRUNNER_DRAG`) waits for the person's
+    // own action phase, which may be several opponent turns away, so the
+    // frames do not start counting until it is in hand.
+    if *screen.get() != dev.first_screen() || dev.autoplayed < dev.autoplay || dev.drag {
         // The frames are counted from when the screen has nothing left
         // to do by itself, so an autoplayed board is shot after its last
         // decision, not during it.
