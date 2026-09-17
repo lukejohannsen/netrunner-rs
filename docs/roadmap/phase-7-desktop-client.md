@@ -1412,6 +1412,7 @@ one PR each:**
    - It takes a fixed row out of `face_width`'s budget, so the board
      still never scrolls.
 4. **Reorder one's own hand by dragging a card along it.**
+   *Done in §4k.*
    - The order is a client-side permutation per match, kept by `CardId`
      and reconciled with each view: a drawn card joins the end, and a
      card that left drops out. The engine and `ClientView` never see
@@ -1600,4 +1601,49 @@ at a run's initiation (`NETRUNNER_HOLD_RUN=1`) and from the Corp's: the
 bar reads "Runner turn 6 · Turn begins · Actions · 3 clicks left ·
 Discard · Run on HQ · Initiation …", the hand is not clipped, and the
 only scroll area logged is the hidden log's. No engine file changed, so
+no sweep.
+
+### 4k. A hand card is dragged into place — DONE (17 September 2026)
+
+`feat/drag-to-reorder-the-hand`, stacked on §4j. Item 4 of the person's
+second list, and the machinery item 5 (dragging a card to play it) needs.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A hand card's press is armed, not acted on** (`models::drag`). Every
+  other target still opens its menu on the press; a hand card waits for
+  the release, which is the click when the pointer never travelled and a
+  drag when it did. Opening the menu on the press and closing it again
+  once the pointer moved was the alternative, and it flashed a panel over
+  the board on every drag.
+- **Travel starts a drag, not time** (`drag::THRESHOLD`, six pixels): a
+  person holding still is clicking however long they hold, and one who
+  has moved six pixels is dragging however quickly. A timer would have
+  made a slow click a drag and a fast drag a click.
+- **The order is the client's** (`models::game::HandOrder`). The rules
+  give a hand no order — it is a multiset — so what the view hands over
+  is the order cards were drawn in, and a person sorting their hand is
+  doing something the rules allow and the view cannot record. It is kept
+  by card id (two copies are interchangeable, so nothing per-copy would
+  buy anything), reconciled with every view — a drawn card joins the
+  end, a played one drops out — and never leaves the client.
+- **The drag state lives in the model**, not in a resource: `redraw` is
+  already at Bevy's sixteen system parameters, and the press-travel-
+  release logic is worth testing without a window either way.
+- **The pointer is read from `CursorMoved`**, not the window, so a
+  headless test can drive a drag; `GamePlugin` registers the message,
+  which `WindowPlugin` normally owns and the tests have no window for.
+- **The row does not re-flow under the pointer.** The card being dragged
+  is outlined where it sits; a hand that re-ordered itself mid-drag moved
+  the gap the person was aiming at.
+
+**Verified.** `cargo test --workspace` green (1,522 tests), clippy
+silent. New tests: the press/travel/release machine and the drop's insert
+index; the hand order across draws, plays and two copies of a card; the
+model's drag, which opens the menu when still and reorders when moved and
+submits nothing either way; and the headless board, where a real press,
+pointer move and release reorders the hand, plays nothing, opens no menu
+and leaves the view's own order alone, while a still press still opens
+the menu. Screenshotted the Corp's board forty decisions in: unchanged,
+and the only scroll area is the hidden log's. No engine file changed, so
 no sweep.

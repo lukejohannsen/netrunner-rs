@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::MouseButtonInput;
+use bevy::window::CursorMoved;
 use bevy::input::{ButtonState, InputPlugin};
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
@@ -200,6 +201,31 @@ fn the_form_starts_a_game_the_board_offers_its_actions_and_a_press_submits_one()
     wait_for(&mut app, "the Runner's turn", |app| app.world().resource::<Model>().0.awaiting);
 }
 
+/// A press and release of the primary button on a hand card: its press is
+/// armed by `drag_hand` and the release, with the pointer still, is the
+/// click that opens the card's menu.
+fn press_card(app: &mut App, entity: Entity) {
+    app.world_mut().entity_mut(entity).insert(Interaction::Pressed);
+    app.world_mut().write_message(MouseButtonInput { button: MouseButton::Left, state: ButtonState::Pressed, window: Entity::PLACEHOLDER });
+    app.update();
+    app.world_mut().write_message(MouseButtonInput { button: MouseButton::Left, state: ButtonState::Released, window: Entity::PLACEHOLDER });
+    app.update();
+    app.update();
+}
+
+/// A hand card picked up and dropped at `x`: the press, a pointer well
+/// past the drag threshold, then the release.
+fn drag_card(app: &mut App, entity: Entity, x: f32) {
+    app.world_mut().entity_mut(entity).insert(Interaction::Pressed);
+    app.world_mut().write_message(MouseButtonInput { button: MouseButton::Left, state: ButtonState::Pressed, window: Entity::PLACEHOLDER });
+    app.update();
+    app.world_mut().write_message(CursorMoved { window: Entity::PLACEHOLDER, position: Vec2::new(x, 40.0), delta: None });
+    app.update();
+    app.world_mut().write_message(MouseButtonInput { button: MouseButton::Left, state: ButtonState::Released, window: Entity::PLACEHOLDER });
+    app.update();
+    app.update();
+}
+
 /// A mouse button with Ctrl held, down and up, then Ctrl released.
 fn ctrl_click(app: &mut App, button: MouseButton) {
     app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Pressed, text: None, repeat: false, window: Entity::PLACEHOLDER });
@@ -239,7 +265,7 @@ fn pressing_a_hand_card_opens_its_menu_and_the_menu_submits() {
         let mut q = app.world_mut().query::<(Entity, &Click)>();
         q.iter(app.world()).find(|(_, c)| matches!(c, Click::Target(Target::HandCard(_)))).map(|(e, _)| e).expect("a hand card")
     };
-    press_entity(&mut app, face);
+    press_card(&mut app, face);
     let model = app.world().resource::<Model>();
     assert!(model.0.menu.as_ref().is_some_and(|m| m.entries.is_empty()), "the card's menu is open with nothing to do");
     assert!(model.0.sheet.is_none(), "and nothing to read opened");
@@ -260,7 +286,7 @@ fn pressing_a_hand_card_opens_its_menu_and_the_menu_submits() {
     };
     let face = entity_with(&mut app, &Click::Target(Target::HandCard(card.clone()))).expect("the card is on the board");
     let before = app.world().resource::<Model>().0.applied;
-    press_entity(&mut app, face);
+    press_card(&mut app, face);
     let model = &app.world().resource::<Model>().0;
     assert!(model.awaiting && model.applied == before, "the click sent nothing");
     let menu = model.menu.clone().expect("the menu is open");
@@ -290,7 +316,7 @@ fn a_secondary_click_opens_the_card_to_read_and_offers_nothing() {
     let face = entity_with(&mut app, &Click::Target(Target::HandCard(card.clone()))).expect("the card is on the board");
     let before = app.world().resource::<Model>().0.applied;
     // Open the menu, then read the card: the sheet replaces the menu.
-    press_entity(&mut app, face);
+    press_card(&mut app, face);
     app.world_mut().entity_mut(face).insert(Interaction::None);
     assert_eq!(menus(&mut app), 1);
     right_click(&mut app, face);
@@ -304,7 +330,7 @@ fn a_secondary_click_opens_the_card_to_read_and_offers_nothing() {
     assert!(!texts(&mut app).iter().any(|t| t == "Actions"));
     // Through the sheet, neither click opens anything.
     right_click(&mut app, face);
-    press_entity(&mut app, face);
+    press_card(&mut app, face);
     app.world_mut().entity_mut(face).insert(Interaction::None);
     assert_eq!(menus(&mut app), 0, "nothing opens through the sheet");
     escape(&mut app);
@@ -320,7 +346,7 @@ fn a_secondary_click_opens_the_card_to_read_and_offers_nothing() {
     assert_eq!(menus(&mut app), 0, "and no menu");
     escape(&mut app);
     // A primary click that presses no part of a menu closes it.
-    press_entity(&mut app, face);
+    press_card(&mut app, face);
     app.world_mut().entity_mut(face).insert(Interaction::None);
     assert_eq!(menus(&mut app), 1);
     click(&mut app, MouseButton::Left);
@@ -778,6 +804,48 @@ fn the_form_has_a_drop_down_per_pane_and_start_opens_the_board() {
     assert!(app.world().contains_resource::<ActiveMatch>());
     // Operator, the default suggestion, answers within the bound too.
     wait_for(&mut app, "the first decision at the suggested rung", |app| click_entry_count(app) > 0);
+}
+
+/// A hand card dragged along the hand changes the person's own order and
+/// never plays it, and a press that does not travel is still the click
+/// that opens its menu. The order is the client's: the view is unchanged.
+#[test]
+fn a_hand_card_dragged_along_the_hand_reorders_it_and_plays_nothing() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let (before, order) = {
+        let model = &app.world().resource::<Model>().0;
+        (model.applied, model.hand.cards().to_vec())
+    };
+    assert!(order.len() >= 3, "an opening hand");
+    let last = order.len() - 1;
+    let face = entity_with(&mut app, &Click::Target(Target::HandCard(order[last].clone()))).expect("the card is on the board");
+    // The faces are laid out at zero width with no window, so every slot
+    // centre is 0.0 and a drop left of them lands at the head of the row —
+    // which is what this test is about: the drag path, not the geometry
+    // (`models::drag::insert_at` is tested on its own).
+    drag_card(&mut app, face, -50.0);
+    let (head, held, applied, awaiting, view_hand) = {
+        let model = &app.world().resource::<Model>().0;
+        (
+            model.hand.cards()[0].clone(),
+            model.hand.cards().len(),
+            model.applied,
+            model.awaiting,
+            model.view.as_ref().unwrap().runner.grip_cards.clone().unwrap(),
+        )
+    };
+    assert_eq!(head, order[last], "the card is at the head of the hand");
+    assert_eq!(held, order.len(), "and the hand is the same cards");
+    assert!(applied == before && awaiting, "the drag played nothing");
+    assert_eq!(menus(&mut app), 0, "and opened no menu");
+    assert_eq!(view_hand, order, "the view keeps the engine's order: the order is the client's");
+    // A press that does not travel is still the click.
+    let face = entity_with(&mut app, &Click::Target(Target::HandCard(order[0].clone()))).expect("the card is on the board");
+    press_card(&mut app, face);
+    assert_eq!(menus(&mut app), 1, "a still press opens the menu");
+    assert_eq!(app.world().resource::<Model>().0.applied, before);
 }
 
 /// The phase bar is a row of the board: the turn's steps with the one in

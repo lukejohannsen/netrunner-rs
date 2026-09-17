@@ -9,6 +9,7 @@
 //! that need no window.
 
 pub mod browser;
+pub mod drag;
 pub mod game;
 pub mod layout;
 pub mod pace;
