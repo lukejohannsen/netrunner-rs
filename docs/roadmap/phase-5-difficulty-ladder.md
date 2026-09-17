@@ -1299,7 +1299,7 @@ the leaf caps the search. §3's "a better leaf does not lift search" does
 not run in reverse.
 
 **Handed over, not done.** Three routes, each a decision rather than a
-tuning:
+tuning (*taken in §15: the second*):
 
 - **Repair `rush`** so its search converts — §9 called a rush that wins a
   different archetype, which makes this a design question.
@@ -1454,3 +1454,56 @@ Runner:
 
 Owed Corp ladder work is now `rush`'s missing top (§12, a decision) and
 §4(b)–(c). Reports under `target/coverage/veteran-eps-*.json`.
+
+*Superseded for `rush` in §15:* its top two rungs now play `Balanced`, so
+its `veteran` entry here is gone.
+
+## 15. A `rush` deck's top two Corp rungs play `Balanced`: its ladder climbs, and the top of it is not a rush — DONE (16 September 2026)
+
+`feat/rush-top-rungs-play-balanced`. §12's decision, taken by the person:
+of its three routes, **seat another style above `operator`**.
+`LevelSpec::with_personality` now hands back `Balanced`'s own rung for
+`(Veteran | Elite, Corp, Rush)`, so every seat (TUI, desktop, daemon,
+`bench`) gets it, and `rush`'s §14 `epsilon` entry is gone with it.
+
+**Why it was needed, seen on the decks that seat it.** §12 measured the
+style over all sixteen Corp decks, but play only seats `rush` on the six
+rush decks (an unset style is the deck's own). Read from §12's and §14's
+reports on those decks alone, 288 games a cell, the `rush` ladder did not
+just stall — **it ran backwards**: `operator` 0.101, `veteran` 0.062,
+`elite` 0.035. A deeper search over the rush leaf loses more.
+
+**Why `Balanced` rather than `glacier`.** `Balanced`'s search rungs are
+already calibrated (§14), and from `rush`'s `operator` they climb in two
+near-even steps; `glacier`'s `veteran` (0.309 over all decks, measured at
+0.10 on rush decks as 0.260) would be one jump from 0.100.
+
+| rung | all 16 decks | the 6 rush decks |
+|---|---|---|
+| novice (`rush`) | 0.012 | 0.000 |
+| apprentice (`rush`) | 0.061 | 0.035 |
+| operator (`rush`) | 0.100 | 0.101 |
+| veteran (was `rush`) | 0.109 → **0.180** | 0.062 → **0.149** |
+| elite (was `rush`) | 0.112 → **0.258** | 0.035 → **0.271** |
+
+Over all decks the steps from `operator` are +0.080 and +0.078; on rush
+decks +0.048 and +0.122. **`Balanced`'s `epsilon` is kept, not re-fitted
+to rush decks**: at 0.15 those decks read 0.198, which would even their
+two steps (+0.097 / +0.073), but over all decks — the method every other
+cell uses — 0.15 does the opposite (+0.119 / +0.039), and a separate value
+would rest on 288 games a cell, whose step noise (sd ≈ 0.03) is the size
+of the difference. So a rush deck's top rungs are `Balanced`'s exactly.
+
+**The apparatus check.** A pinned binary benched `level:veteran:rush` and
+`level:elite:rush` on §10's bot layout, 384 games on each of seeds 1 and
+2: each replays `Balanced`'s games (§14's `veteran` at 0.20, §10's
+`elite`) in **768 of 768** — winner, step count and matchup. No stalls.
+
+**The cost, on the record.** The top of a rush deck's ladder does not
+play like a rush, and nothing on the start screen says so yet: its rung
+list is drawn from the unstyled spec before a style is resolved. The
+`rush` profile itself is unrepaired, and still costs its one-ply rungs
+nothing measurable (`operator` 0.101 on rush decks against `Balanced`'s
+0.118, inside the noise).
+
+Reports under `target/coverage/rush-top-balanced-s{1,2}.json`.
