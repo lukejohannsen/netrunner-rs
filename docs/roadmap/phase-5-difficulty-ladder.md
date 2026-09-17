@@ -444,7 +444,9 @@ Three jobs, opened by §3 and none attempted there. They are recorded
 together because (b) may make (a) unnecessary, and (c) is the largest of
 the three.
 
-**(a) Re-space the Corp rungs.** §3 lifted `operator` (one ply) by +0.016
+**(a) Re-space the Corp rungs.** *Done for `veteran` in §14, on
+re-taken numbers — `operator` was not out of place; `veteran` was, and
+plays at `epsilon` 0.20 (`trap` 0.15, `rush` kept at 0.10).* §3 lifted `operator` (one ply) by +0.016
 and `veteran` (`puct@512`) by +0.000, so the `operator → veteran` step
 fell +0.055 (z 2.7) → **+0.039 (z 1.9)** and now reads `flat` on one seed
 of two at 384 games a cell, where both seeds were `rise` before. Pooled at
@@ -1364,4 +1366,91 @@ So the owed Corp work is two items, both already named: `Balanced`'s
 `veteran → elite` step (§4(a), which `trap` inherits) and `rush`'s missing
 top (§12, a decision).
 
+*Corrected in §14:* `trap` did not inherit the re-spacing. At `Balanced`'s
+new 0.20 its `operator → veteran` step went flat, so it carries its own
+`epsilon` (0.15).
+
 Reports under `target/coverage/corp-ladder-trap-s{1,2}.json`.
+
+## 14. `Balanced`'s `veteran` Corp plays at `epsilon` 0.20, and every other Corp style needed its own — DONE (16 September 2026)
+
+`feat/balanced-veteran-epsilon`. §4(a), on the numbers §10 re-took rather
+than the stale ones it quotes. `Balanced`'s Corp ladder read 0.012 /
+0.062 / 0.125 / 0.236 / 0.258: the lower three rungs sit on an even step
+of 0.062 already, and `operator` is not out of place (§4(a)'s 0.182 does
+not reproduce). The rung out of place is `veteran`, at 0.236 against a
+midpoint of 0.192, leaving `veteran → elite` at +0.022 (z 1.0) — a step a
+person cannot feel.
+
+**The measurement.** `veteran` as the Corp against the fixed one-ply
+balanced Runner, 384 games on each of seeds 1 and 2, `bench --pairing
+level:veteran/heuristic` inside §10's bot list, so every game keeps §10's
+index and seed and pairs with it. The value was set through an
+uncommitted environment override on one pinned binary; the control leg at
+0.10 replayed §10 in 768 of 768 games (winner and step count). No stalls
+in any leg.
+
+| `epsilon` | `veteran` | vs 0.10 (z McNemar) | `operator → veteran` | `veteran → elite` |
+|---|---|---|---|---|
+| 0.10 (was) | 0.236 | | +0.111 (z 5.7) | +0.022 (z 1.0) |
+| 0.15 | 0.219 | −0.017 (−1.0) | +0.094 | +0.039 |
+| 0.18 | 0.176 | −0.060 (−3.2) | +0.051 | +0.082 |
+| **0.20** | **0.180** | −0.056 (−3.1) | **+0.055 (z 3.0)** | **+0.078 (z 3.7)** |
+| 0.25 | 0.146 | −0.090 (−5.0) | +0.021, flat | +0.112 |
+| 0.30 | 0.111 | −0.125 (−7.2) | −0.014, inverted | +0.147 |
+
+**The curve drops steeply between 0.15 and 0.18 and is flat from there to
+0.20** — the third Corp handicap curve measured, and the third shape
+(glacier's was flat from 0.10 to 0.05 and climbed only below 0.03). 0.20
+is the round number on the midpoint: both steps rise on each seed alone
+(+0.049 / +0.060 and +0.081 / +0.076). The `Balanced` Corp ladder now
+reads **0.012 / 0.062 / 0.125 / 0.180 / 0.258**, steps +0.051 / +0.062 /
++0.055 / +0.078.
+
+**§13 was wrong that `trap` would inherit it.** A styled rung reads
+`Level::spec`'s handicap unless it carries its own, so both styles still
+riding it were re-measured at 0.20 on §12's and §13's schedules:
+
+| style | `operator` | `veteran` at 0.10 | at 0.20 | `elite` | `operator → veteran` at 0.20 |
+|---|---|---|---|---|---|
+| `trap` | 0.189 | 0.284 | 0.199 (z −4.5) | 0.297 | +0.010, flat; −0.013 on seed 2 |
+| `rush` | 0.100 | 0.109 | 0.083 (z −2.2) | 0.112 | **−0.017, inverted on both seeds** |
+
+0.20 costs `trap` 0.085 where it costs `Balanced` 0.056 — §13 compared the
+styles at 0.10, where the handicap barely bites either, and read the
+shared flat step as one defect. So both get an entry in
+`LevelSpec::with_personality`, as `glacier` did in §11:
+
+- **`trap` plays at 0.15.** Measured at 0.10 / 0.12 / 0.15 / 0.20: 0.284 /
+  0.263 / 0.232 / 0.199, target 0.243. 0.15 is nearest, with steps +0.043
+  (z 2.1) and +0.065 (z 2.9) pooled. **Not every seed agrees**: at 0.15
+  `operator → veteran` is +0.016 on seed 2, and at 0.12 `veteran → elite`
+  is +0.010 on seed 1. The style's whole `operator → elite` span is 0.108,
+  so two steps of it sit inside one seed's noise at 384 games; no value
+  clears §11's each-seed-alone bar, and more `epsilon` points would not
+  change that. Ladder: 0.012 / 0.085 / 0.189 / 0.232 / 0.297.
+- **`rush` keeps 0.10.** It is not spaced at 0.10 either — §12's
+  `puct@512` is worth +0.012 to this style and no handicap can space that
+  — but 0.10 leaves `veteran` level with `operator` and 0.20 puts it below.
+  A rung easier than the one beneath it is worse than a flat one. The
+  ladder stays §12's 0.012 / 0.061 / 0.100 / 0.109 / 0.112 until §12's
+  decision is taken.
+
+`glacier` (0.02, §11) was never riding the base value and is unchanged.
+Every Corp style but `Balanced` now carries its own `veteran` handicap,
+which says the base value is a calibration of one style rather than of the
+chair. The test pins all three and that no other rung or style moves.
+
+**Where the four Corp ladders stand**, 768 games a cell against the same
+Runner:
+
+| rung | `Balanced` | `glacier` | `rush` | `trap` |
+|---|---|---|---|---|
+| novice | 0.012 | 0.012 | 0.012 | 0.012 |
+| apprentice | 0.062 | 0.092 | 0.061 | 0.085 |
+| operator | 0.125 | 0.257 | 0.100 | 0.189 |
+| veteran | **0.180** | 0.309 | 0.109 | **0.232** |
+| elite | 0.258 | 0.363 | 0.112 | 0.297 |
+
+Owed Corp ladder work is now `rush`'s missing top (§12, a decision) and
+§4(b)–(c). Reports under `target/coverage/veteran-eps-*.json`.

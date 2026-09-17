@@ -85,7 +85,8 @@
 //! level 4" is a second axis crossed with this one, not a replacement.
 //! The cross keeps the order but not the spacing, so a style measured to
 //! break a step carries its own handicap in `LevelSpec::with_personality`
-//! — so far only `glacier`'s `veteran` Corp (Phase 5 §11).
+//! — so far the `veteran` Corp in `glacier`, `rush` and `trap` (Phase 5
+//! §11, §14), which is every Corp style but `Balanced`.
 //!
 //! **Machine-independence is a prerequisite, not a detail.** A rung whose
 //! strength moved with the host's core count would not be a rung at all;
@@ -132,7 +133,7 @@ pub enum Level {
     /// *is* the top of the ladder and all five rungs have to fit under it
     /// (see `spec`). No plan beyond the current turn.
     Operator,
-    /// The strongest bot on this chair, blundering one decision in ten as
+    /// The strongest bot on this chair, blundering one decision in five as
     /// the Corp and one in four as the Runner — a real opponent with a
     /// visible crack in it.
     Veteran,
@@ -262,12 +263,20 @@ impl Level {
             // ply to the best bot is 0.229 of win rate on the Corp chair
             // and only 0.104 on the Runner's, and the handicap is steep:
             // 0.17 cost the Corp 0.187, nearly the whole span, landing
-            // `veteran` on top of `operator` (Phase 5 §2). 0.10 is that
-            // measurement inverted — 0.17 x (span/2) / 0.187 — to put the
-            // rung mid-span at about 0.61. The Runner keeps 0.17 because
-            // mid-span there is 0.55 and 0.17 measured 0.542, which is
-            // already it.
-            (Level::Veteran, Side::Corp) => (LevelKind::Puct, 512, 1, 0.10),
+            // `veteran` on top of `operator` (Phase 5 §2). 0.10 was that
+            // measurement inverted to put the rung mid-span.
+            //
+            // **It is 0.20 since Phase 5 §14** (16 September 2026, 768
+            // games a cell against the one-ply balanced Runner): once the
+            // pool moved, 0.10 scored 0.236 against `operator` 0.125 and
+            // `elite` 0.258, a top step of +0.022 a person could not feel.
+            // The measured curve — 0.236 / 0.219 / 0.176 / 0.180 / 0.146 /
+            // 0.111 at 0.10 / 0.15 / 0.18 / 0.20 / 0.25 / 0.30 — falls
+            // steeply between 0.15 and 0.18 and is flat to 0.20, so 0.20
+            // is the round number on the midpoint (0.192): steps of +0.055
+            // and +0.078, each a rise on both seeds alone. By 0.25 the
+            // lower step is flat and at 0.30 it inverts.
+            (Level::Veteran, Side::Corp) => (LevelKind::Puct, 512, 1, 0.20),
             (Level::Elite, Side::Corp) => (LevelKind::Puct, 512, 1, 0.0),
             // **The Runner ladder is five handicaps of one ply** since
             // 15 September 2026 (Phase 2 §5a, reopened): once the
@@ -353,15 +362,35 @@ impl LevelSpec {
     pub fn with_personality(self, personality: Personality) -> Self {
         let epsilon = match (self.level, self.side, personality) {
             // `glacier` as the Corp (Phase 5 §10–§11, 768 games a cell
-            // against the one-ply balanced Runner). At `Balanced`'s 0.10
-            // it scored 0.277, level with `operator`'s 0.257 and short of
-            // `elite`'s 0.363: the handicap costs this style 0.086 where it
+            // against the one-ply balanced Runner). At the 0.10 `Balanced`
+            // played until §14 it scored 0.277, level with `operator`'s
+            // 0.257 and short of `elite`'s 0.363: the handicap costs this
+            // style 0.086 where it
             // costs `Balanced` 0.022. The curve is not linear — flat from
             // 0.10 to 0.05 (0.277 / 0.257 / 0.277) and climbing only below
             // 0.03 (0.301, **0.309** at 0.02, 0.324 at 0.01) — so the value
             // is the measured midpoint rather than an interpolation: steps
             // of +0.052 and +0.055, each a rise on both seeds alone.
             (Level::Veteran, Side::Corp, Personality::Glacier) => 0.02,
+            // `rush` as the Corp keeps the 0.10 `Balanced` played before
+            // §14, and not because 0.10 spaces it: §12 found this style's
+            // `puct@512` worth +0.012 over one ply, so no handicap can
+            // (0.100 / 0.109 / 0.112). But `Balanced`'s 0.20 *inverts*
+            // it — 0.083, below `operator` on both seeds — and a rung
+            // that is easier than the one beneath it is worse than one
+            // that is level with it. Flat is the measured state until
+            // §12's decision is taken.
+            (Level::Veteran, Side::Corp, Personality::Rush) => 0.10,
+            // `trap` as the Corp (§14). §13 read its flat top step as
+            // `Balanced`'s own and expected it to follow `Balanced`'s
+            // re-spacing; it did not — 0.20 costs `trap` 0.085 against
+            // `Balanced`'s 0.056, and `operator → veteran` went flat
+            // (+0.010). Measured at 0.10 / 0.12 / 0.15 / 0.20: 0.284 /
+            // 0.263 / 0.232 / 0.199, target 0.243. 0.15 is nearest, steps
+            // +0.043 (z 2.1) and +0.065 (z 2.9) pooled; each candidate
+            // leaves one step flat on one seed alone, because the style's
+            // whole `operator → elite` span is 0.108.
+            (Level::Veteran, Side::Corp, Personality::Trap) => 0.15,
             _ => self.level.spec(self.side).epsilon,
         };
         Self { personality, epsilon, ..self }
@@ -471,8 +500,8 @@ mod tests {
                 let plain = level.spec(side);
                 assert_eq!(plain.personality, Personality::Balanced, "the calibrated rung is Balanced");
                 assert_eq!(plain.with_personality(Personality::Balanced), plain);
-                let styled = plain.with_personality(Personality::Rush);
-                assert_eq!(styled.personality, Personality::Rush);
+                let styled = plain.with_personality(Personality::Aggressive);
+                assert_eq!(styled.personality, Personality::Aggressive);
                 assert_eq!(
                     (styled.level, styled.side, styled.kind, styled.simulations, styled.samples, styled.epsilon),
                     (plain.level, plain.side, plain.kind, plain.simulations, plain.samples, plain.epsilon)
@@ -482,21 +511,29 @@ mod tests {
         }
     }
 
-    /// `glacier`'s `veteran` Corp carries its own handicap, which only it
-    /// carries, and which a second styling cannot leak into another style.
+    /// The Corp styles measured to break `veteran`'s spacing carry their
+    /// own handicap, which only they carry, and which a second styling
+    /// cannot leak into another style.
     #[test]
     #[allow(clippy::float_cmp)]
-    fn glacier_veteran_corp_has_its_own_handicap_and_no_other_rung_does() {
-        let glacier = Level::Veteran.spec(Side::Corp).with_personality(Personality::Glacier);
-        assert_eq!(glacier.epsilon, 0.02);
-        assert_eq!(glacier.with_personality(Personality::Balanced), Level::Veteran.spec(Side::Corp));
-        assert_eq!(Level::Veteran.spec(Side::Runner).with_personality(Personality::Glacier).epsilon, 0.25);
+    fn styled_veteran_corps_have_their_own_handicap_and_no_other_rung_does() {
+        let own = [(Personality::Glacier, 0.02), (Personality::Rush, 0.10), (Personality::Trap, 0.15)];
+        let balanced = Level::Veteran.spec(Side::Corp);
+        assert_eq!(balanced.epsilon, 0.20);
+        assert_eq!(balanced.describe(), "searches 512 positions per decision, and throws away about 2 decisions in 10");
+        for (personality, epsilon) in own {
+            let styled = balanced.with_personality(personality);
+            assert_eq!(styled.epsilon, epsilon, "{personality:?}");
+            assert_eq!(styled.with_personality(Personality::Balanced), balanced);
+            assert_eq!(Level::Veteran.spec(Side::Runner).with_personality(personality).epsilon, 0.25);
+        }
+        let glacier = balanced.with_personality(Personality::Glacier);
         assert_eq!(glacier.describe(), "searches 512 positions per decision, and throws away about one decision in 50");
         for side in [Side::Corp, Side::Runner] {
             for level in Level::ALL {
                 for personality in Personality::ALL {
                     let styled = level.spec(side).with_personality(personality);
-                    if (level, side, personality) != (Level::Veteran, Side::Corp, Personality::Glacier) {
+                    if !(level == Level::Veteran && side == Side::Corp && own.iter().any(|(p, _)| *p == personality)) {
                         assert_eq!(styled.epsilon, level.spec(side).epsilon, "{level} {side:?} {personality:?}");
                     }
                 }
