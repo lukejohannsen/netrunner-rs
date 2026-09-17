@@ -18,9 +18,16 @@ base explicit enough that any model can extend it.
   and Iced are tool toolkits with animation bolted on, and Tauri adds a
   JavaScript toolchain and an IPC boundary to a Rust repo. Built with the
   feature subset `ui, audio, png, jpeg` — no 3D — and `bevy_ui` only for
-  the board (ICE is a rotated `UiTransform`). `bevy_feathers`/BSN are
-  marked unstable and `bevy_tweening` is a version lock-in for thirty
-  lines, so neither is used.
+  the board. `bevy_feathers`/BSN are marked unstable and `bevy_tweening`
+  is a version lock-in for thirty lines, so neither is used.
+  *Two corrections, both found while costing the third list: ICE is not
+  "a rotated `UiTransform`" as this bullet first said — a rotated node is
+  laid out as its unrotated box and would overlap its neighbours, which
+  is exactly why ICE are horizontal tiles (`screens/game.rs`). And the
+  feature subset is not as narrow as "no 3D" suggests: `ui` already
+  pulls the entire render stack, `bevy_light` and `bevy_material`
+  included. See the third list's preamble for what 3D would actually
+  cost, measured.*
 - **A toolkit-agnostic core, `netrunner_client`, lifted out of the
   terminal client** rather than copied into the desktop. The settings
   file has no `deny_unknown_fields` (a hand-edited file with a stray key
@@ -49,9 +56,13 @@ base explicit enough that any model can extend it.
   the engine jobs excluding it — so Bevy's several hundred crates never
   slow the engine's signal or evict its cache.
 
-Seven PRs, in order: §1 foundations, §2 card faces and the browser, §3
-the play area, §4 feel, §5 the deck builder, §6 lessons and replay, §7
-online.
+Seven sections, in order: §1 foundations, §2 card faces and the browser,
+§3 the play area, §4 feel, §5 the deck builder, §6 lessons and replay, §7
+online. *This said "seven PRs" until the third list, and that was only
+ever true of §1–§3. §4 is one PR per lettered item, driven by what the
+person asks for after playing — three lists and eighteen letters so far —
+so a section is a heading, not a branch. The numbering still holds: §5–§7
+keep their addresses however long §4's alphabet runs.*
 
 ---
 
@@ -1693,3 +1704,111 @@ R&D and HQ and adds the "New remote 0" column. No engine file changed, so
 no sweep.
 
 **With this, the person's second list is done** (§4g–§4l).
+
+**Noted, to build next — the person's third list, kept in their order,
+one PR each:**
+
+The first two lists were about what the board *does*; this one is about
+what it looks like. It came from three MTG Arena screenshots and one
+sentence: the board is correct and boring — flat, evenly lit, a stack of
+rows rather than a table seen from a chair. It also finally closes §3's
+item 4, "the layout does not use the play field", the last item of the
+first list still open. **Half of that item is dead and is not being
+reinstated:** §4i settled that the servers keep one order from both
+chairs, so "the opponent's side mirrored across the top" is gone; "the
+servers spread, the hand fanned along the bottom" is what this list
+delivers.
+
+**Two decisions taken before the list, with the alternative rejected.**
+
+- **No 3D, and the first reason given for that was wrong.** The claim
+  was that a perspective camera means hundreds of crates. It does not:
+  `netrunner_desktop` builds 57 bevy crates today and the `ui` feature
+  already pulls the whole render stack — `bevy_render`,
+  `bevy_core_pipeline`, `bevy_camera`, `bevy_mesh`, `bevy_material`,
+  `bevy_shader`, `bevy_light`, `bevy_sprite`, `bevy_sprite_render`,
+  `bevy_text`, `bevy_picking`, wgpu. Everything locked but unbuilt is
+  nine crates, of which five are 3D, and a textured quad needs at most
+  one of them. **Real perspective costs zero to one new crate.** (The
+  Cargo.toml comment "Nothing 3D — no PBR, glTF or lighting" is already
+  half untrue: `bevy_light` and `bevy_material` compile today. Correct
+  it when something next touches that file.) The real cost is about
+  1,000–1,500 lines of churn: the board proper is 576 draw lines across
+  26 functions, not the file's 2,277; `models/` is 2,384 lines with no
+  `bevy` reference at all and would not change; `anchor_of` is six lines
+  and is the whole bridge from `bevy_ui` geometry to the neutral
+  `Anchor`; an image card face is already one `ImageNode`, and Corp
+  installs are `TILE` text blocks rather than faces, so the board has
+  only four face spawn sites. The bill is the tests — 16 of the 17 in
+  `tests/game.rs` touch `bevy_ui` through seven helpers called about 78
+  times — and one of them, `clicks_in_tree_order`, *defines* server
+  order as depth-first `Children` order, which is what §4i's rule stands
+  on; in a 3D board that becomes x-position and has to be re-conceived
+  rather than ported. Also worth knowing before anyone tries it:
+  `bevy_sprite`'s picking backend matches `Projection::Orthographic` and
+  returns `None` otherwise, so a perspective camera silently makes every
+  card unclickable. **Deferred, not refused.** A painted field and
+  shadows get the still frame; what 3D buys is motion in perspective —
+  a card tilting as it is played, flipping on rez, the camera pushing in
+  on a run. Revisit it when a run should feel dramatic, not to make a
+  static screenshot less flat.
+- **The depth is painted, not computed.** Every card on the board stays
+  one size; the perspective lives in the table's art. The rejected
+  alternative was a per-row face-width ramp, and it is rejected on more
+  than taste: the natural "depth only on a big screen" form,
+  `ratio = 1 − (1 − d)·t` with `t` rising across `MIN_FACE..MAX_FACE`,
+  **is not monotone in the face width** — its derivative,
+  `1 − (1 − d)(2·base − m)/(M − m)`, is negative at `base = M = 220`
+  for any depth below about 0.60. `face_width`'s binary search is
+  licensed *only* by `rows_height` being monotone, so that ramp would
+  have returned a silently wrong width with every existing test still
+  green. A safe form exists — an affine ramp,
+  `MIN_FACE + (base − MIN_FACE) · DEPTH[row]`, whose derivative is
+  `DEPTH[row] > 0` — and is written down here so it is not rediscovered
+  from scratch if the ramp is ever wanted. It is not wanted now, and not
+  having it means `rows_height` and `face_width` keep their exact
+  present meaning. The known objection to uniform cards on a painted
+  perspective is that they read as stickers on a photograph; the answers
+  are a *shallow* painted perspective and a contact shadow under every
+  card, which is why item 1 is two PRs rather than one.
+
+1. **The play area has depth.** Closer objects larger, further ones
+   smaller, the way a person sees a table. Two PRs: the painted field
+   first, then the shadows and tint that sit the cards on it. Note the
+   order of *building* differs from the order of this list — the table
+   is item 6 below and is the first PR, because everything else reads
+   against it and because it is what unblocks the person making art.
+2. **Each player has an avatar and a bar of quick data**, the active
+   player's bar lit and the inactive one's muted grey. The avatar is the
+   identity card's art cropped to a disc — the Netrunner-native answer,
+   and `card_images` already fetches fronts; it falls back to the
+   faction mark in the icon font, then to a faction-coloured disc, which
+   is the three-tier rule again. The numbers are already
+   `board::hud::readouts`, so this adds no data, only a shape.
+3. **The grip arcs, and a hovered card lifts out of it.** Rotation only,
+   no resizing. *The person's own constraint, worth keeping as a rule:*
+   the lift is local to whoever is looking — it never enters a
+   `PlayerAction`, the log or a `ClientView`, because considering a card
+   is not a game event.
+4. **The space is used**, including a turn indicator in the bottom
+   right.
+5. **The right side carries the card being read**, and gives its width
+   back to the board when it is empty. The sheet rule holds: a reading
+   surface carries no actions, so there is still one list of what a card
+   can do, in the menu its click opens.
+6. **The field of play has a background**, and there are several to pick
+   between or have chosen at random. A table is a small folder — a JPEG
+   ground painted in shallow perspective, an optional PNG overlay with
+   alpha, and a `table.json` naming its accent colour — under the three
+   asset tiers, with the person's own tables in the override directory.
+   JSON rather than TOML because `toml` is not a workspace dependency
+   and `deny.toml` is an allow-list; SVG is not an option at all,
+   because Bevy has no rasteriser for it and `resvg` is a dependency for
+   nothing. A `NETRUNNER_TABLE_GUIDE=1` hook draws the row bands over
+   the current table, so a field can be painted to the real layout
+   rather than guessed at.
+
+After this list: the transitions the board already computes turned into
+movement and sound, which is what §4 has owed since §3. It comes after
+rather than before, because tweens animate cards between positions and
+this list moves every position.
