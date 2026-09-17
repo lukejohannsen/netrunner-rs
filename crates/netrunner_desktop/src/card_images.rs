@@ -123,7 +123,7 @@ impl CardImages {
 /// `bytes` as an image, `None` if the file is not one. `is_srgb` because
 /// card scans are sRGB; a linear sampler because a face is drawn smaller
 /// than the scan.
-fn decode(bytes: &[u8], extension: &str) -> Option<Image> {
+pub(crate) fn decode(bytes: &[u8], extension: &str) -> Option<Image> {
     Image::from_buffer(bytes, ImageType::Extension(extension), CompressedImageFormats::NONE, true, ImageSampler::linear(), RenderAssetUsages::default())
         .ok()
         .map(eight_bit_srgb)

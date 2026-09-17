@@ -111,11 +111,67 @@ pub struct DesktopPrefs {
     /// off for whoever knows the turn by heart and wants the row of board
     /// height back (`L`, or the game options).
     pub phase_bar: bool,
+    /// The field the board is played on.
+    #[serde(with = "table_by_name")]
+    pub table: Table,
+}
+
+/// Which table the board is played on: the painted ground, one named
+/// folder of art, or one of those chosen at random.
+///
+/// Stored in the file as a plain string rather than a tagged enum, so a
+/// hand-edited settings file reads `"table": "neon-alley"` rather than
+/// `{"Named": "neon-alley"}`. That costs two reserved names, which is
+/// the trade [`Table::from_name`] documents.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Table {
+    /// The drawn ground: the first asset tier, which needs no files and
+    /// so always works. The default, and what a named table falls back
+    /// to when its folder has gone.
+    #[default]
+    Painted,
+    /// One of the installed tables, drawn afresh at the start of each
+    /// **match** — not each frame, and not each redraw. A field that
+    /// changed under the cards mid-game would be a distraction rather
+    /// than a flourish.
+    Random,
+    /// The folder of that name, under `tables/` in either asset tier.
+    Named(String),
+}
+
+/// The two names a table folder may not use, because the file spells
+/// [`Table`] as a bare string.
+pub const TABLE_PAINTED: &str = "painted";
+pub const TABLE_RANDOM: &str = "random";
+
+impl Table {
+    /// How the settings file spells it.
+    pub fn as_name(&self) -> &str {
+        match self {
+            Table::Painted => TABLE_PAINTED,
+            Table::Random => TABLE_RANDOM,
+            Table::Named(name) => name,
+        }
+    }
+
+    /// The reverse, and **it cannot fail**: a name that is neither
+    /// reserved word is a table folder, and one whose folder is missing
+    /// resolves to [`Table::Painted`] when the board looks for it rather
+    /// than refusing to load the file. A settings file is hand-editable
+    /// and a table is a folder someone can delete; neither is a reason
+    /// to lose the rest of a player's preferences.
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            TABLE_PAINTED => Table::Painted,
+            TABLE_RANDOM => Table::Random,
+            other => Table::Named(other.to_string()),
+        }
+    }
 }
 
 impl Default for DesktopPrefs {
     fn default() -> Self {
-        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true }
+        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Painted }
     }
 }
 
@@ -167,6 +223,22 @@ impl Settings {
 }
 
 /// The format's flag spelling on disk (see the module comment).
+/// [`Table`] as the bare string the file stores, the way
+/// `format_by_name` stores a format.
+mod table_by_name {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::Table;
+
+    pub fn serialize<S: Serializer>(table: &Table, serializer: S) -> Result<S::Ok, S::Error> {
+        table.as_name().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Table, D::Error> {
+        Ok(Table::from_name(&String::deserialize(deserializer)?))
+    }
+}
+
 mod format_by_name {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -189,6 +261,26 @@ mod tests {
     fn temp_path(tag: &str) -> (PathBuf, PathBuf) {
         let dir = std::env::temp_dir().join(format!("netrunner_settings_{tag}_{}_{:?}", std::process::id(), std::thread::current().id()));
         (dir.clone(), dir.join("settings.json"))
+    }
+
+    /// The table is a bare string in the file, and an unknown one is a
+    /// folder name rather than an error — a hand-edited file and a
+    /// deleted folder must not cost a player the rest of their settings.
+    #[test]
+    fn the_table_is_stored_as_a_bare_name_and_an_unknown_one_is_a_folder() {
+        assert_eq!(Table::default(), Table::Painted);
+        for table in [Table::Painted, Table::Random, Table::Named("neon-alley".to_string())] {
+            assert_eq!(Table::from_name(table.as_name()), table, "{table:?} round-trips through its name");
+        }
+        assert_eq!(Table::from_name("no-such-table"), Table::Named("no-such-table".to_string()));
+        let mut settings = Settings::default();
+        settings.desktop.table = Table::Named("neon-alley".to_string());
+        let json = serde_json::to_string(&settings).unwrap();
+        assert!(json.contains(r#""table":"neon-alley""#), "a bare string, not a tagged enum: {json}");
+        assert_eq!(serde_json::from_str::<Settings>(&json).unwrap(), settings);
+        // The default is skipped along with the rest of an untouched
+        // block, so adding this field did not grow a terminal player's file.
+        assert!(!serde_json::to_string(&Settings::default()).unwrap().contains("table"));
     }
 
     #[test]

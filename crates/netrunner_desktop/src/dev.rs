@@ -118,6 +118,9 @@ pub struct Dev {
     pub screenshot: Option<PathBuf>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
+    /// Draw the board's rows over the table, so a field can be painted
+    /// to where the cards actually fall rather than guessed at.
+    pub table_guide: bool,
     frames: u32,
 }
 
@@ -154,6 +157,7 @@ impl Dev {
             }),
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,
+            table_guide: std::env::var_os("NETRUNNER_TABLE_GUIDE").is_some_and(|v| !v.is_empty()),
             frames: 0,
         }
     }

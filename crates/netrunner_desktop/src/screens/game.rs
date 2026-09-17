@@ -118,6 +118,7 @@ use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::{ActiveMatch, LastGame};
 use crate::screens::settings::{self as settings_screen, Control as SettingsControl};
 use crate::screens::AppScreen;
+use crate::table;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_back, spawn_face, FaceSize};
 use crate::widgets::{self, Pressed};
@@ -134,7 +135,7 @@ impl Plugin for GamePlugin {
             .init_resource::<Pointer>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, relane, redraw).chain().run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, relane, redraw, table_guide).chain().run_if(in_state(AppScreen::Game)));
     }
 }
 
@@ -440,6 +441,26 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
             },
         ))
         .id();
+    // The field, chosen once for the match rather than per redraw, and
+    // spawned before everything else so every later sibling paints over
+    // it. Only where `Assets<Image>` exists: the headless tests build the
+    // client without an asset plugin, and the board there has no field,
+    // which costs them nothing since nothing they assert is a picture.
+    let backdrops: Vec<Entity> = match images.as_deref_mut() {
+        Some(images) => {
+            let installed = table::available();
+            let folder = table::resolve(&core.settings.desktop.table, &installed, table_nonce());
+            // A named table whose files have gone falls back to the
+            // painted ground, which is the tier that always works.
+            let field = folder.as_deref().and_then(table::base).unwrap_or_else(|| table::paint(&theme));
+            let mut spawned = vec![commands.spawn(table::backdrop(images.add(field))).id()];
+            if let Some(overlay) = folder.as_deref().and_then(table::overlay) {
+                spawned.push(commands.spawn(table::backdrop(images.add(overlay))).id());
+            }
+            spawned
+        }
+        None => Vec::new(),
+    };
     let mut root = commands.spawn(screen_root(AppScreen::Game, theme.background));
     root.entry::<Node>().and_modify(|mut node| {
         node.align_items = AlignItems::Stretch;
@@ -447,12 +468,108 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
         node.row_gap = px(layout::ROW_GAP);
         node.overflow = Overflow::clip();
     });
+    for backdrop in backdrops {
+        root.add_child(backdrop);
+    }
     root.add_child(top).add_child(body).add_child(bar);
     commands.insert_resource(BoardFit::default());
     commands.insert_resource(Model(game));
     let mut dirty = Dirty::default();
     dirty.all();
     commands.insert_resource(dirty);
+}
+
+/// Marks the bands the table guide draws, so the next frame's are not
+/// drawn on top of this frame's.
+#[derive(Component)]
+struct TableGuide;
+
+/// `NETRUNNER_TABLE_GUIDE=1`: a band over each row of the board, with a
+/// centre line, so a field can be painted to where the cards actually
+/// fall.
+///
+/// The person authoring a table has to put its horizon and its vanishing
+/// point somewhere, and "somewhere" is only useful if it agrees with the
+/// layout. The bands are read from the **laid-out boxes** rather than
+/// recomputed from `models::layout`, so what they show is where the
+/// cards are, including every overlap and clamp the fit applied.
+///
+/// Rebuilt every frame while it is on, because `redraw` despawns the
+/// board's children wholesale and a guide that survived that would be
+/// describing the previous layout. It is a dev hook; the cost is a dev's.
+fn table_guide(
+    mut commands: Commands,
+    theme: Res<Theme>,
+    dev: Option<Res<crate::dev::Dev>>,
+    board: Query<(Entity, &Children, &ComputedNode, &UiGlobalTransform), With<Board>>,
+    boxes: Query<(&ComputedNode, &UiGlobalTransform)>,
+    drawn: Query<Entity, With<TableGuide>>,
+) {
+    if !dev.is_some_and(|dev| dev.table_guide) {
+        return;
+    }
+    // The bands hang off one container rather than off the board
+    // directly, and the loop below skips it. Both halves matter: the
+    // first cut parented each band to the board, so the next frame read
+    // the board's children — bands included — and drew a band for every
+    // band. It grew by a row a frame (6, 12, 18 …) and looked like a
+    // despawn that was not working.
+    for entity in &drawn {
+        commands.entity(entity).despawn();
+    }
+    let Ok((board_entity, children, board_node, board_at)) = board.single() else { return };
+    let board_box = anchor_of(board_node, board_at);
+    let container = commands
+        .spawn((
+            TableGuide,
+            GlobalZIndex(5),
+            Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), ..default() },
+        ))
+        .id();
+    commands.entity(board_entity).add_child(container);
+    for (index, child) in children.iter().filter(|child| !drawn.contains(*child)).enumerate() {
+        let Ok((node, at)) = boxes.get(child) else { continue };
+        let row = anchor_of(node, at);
+        // The child's box in the board's own coordinates, since the band
+        // sits in a container that fills the board.
+        let left = row.x - row.width / 2.0 - (board_box.x - board_box.width / 2.0);
+        let top = row.y - row.height / 2.0 - (board_box.y - board_box.height / 2.0);
+        let tint = if index % 2 == 0 { theme.accent } else { theme.danger };
+        // Outlined, never filled: the whole point is to see the field
+        // under the rows, and a wash over it would hide what is being
+        // painted to.
+        commands.entity(container).with_children(|guide| {
+            guide.spawn((
+                BackgroundColor(Color::NONE),
+                BorderColor::all(tint),
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: px(left),
+                    top: px(top),
+                    width: px(row.width),
+                    height: px(row.height),
+                    border: UiRect::all(px(1)),
+                    padding: UiRect::all(px(2)),
+                    ..default()
+                },
+                // `widgets::dim` already carries a `TextColor`; a second
+                // one in the same bundle is the duplicate-component panic.
+                children![(
+                    Text::new(format!("row {index} · y {:.0}…{:.0} · h {:.0}", top, top + row.height, row.height)),
+                    theme.font(size::SMALL),
+                    TextColor(tint),
+                )],
+            ));
+        });
+    }
+}
+
+/// What decides a random table. The wall clock, because the choice is
+/// cosmetic and per match: seeding it from the game's own seed would tie
+/// the field to the deal, so replaying a seed to look at a bug would
+/// change the picture with it.
+fn table_nonce() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_nanos() as u64).unwrap_or(0)
 }
 
 /// Leaving the screen ends the match: dropping the handle quits it, and
@@ -795,7 +912,7 @@ fn shortcuts(
                     continue;
                 }
                 let row = if shortcut == Shortcut::PhaseBar { Row::PhaseBar } else { Row::PlayHelper };
-                settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(row));
+                settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(row), &table::available());
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
                 }
@@ -859,7 +976,7 @@ fn controls(
         // the file is saved, as on the settings screen; the rail and the
         // log follow the new value on the next redraw.
         if let Ok(SettingsControl::Intent(intent)) = settings_marks.get(*entity) {
-            if settings_model::apply(&mut core.settings, intent.clone()) {
+            if settings_model::apply(&mut core.settings, intent.clone(), &table::available()) {
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
                 }
@@ -1325,7 +1442,10 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                         min_width: px(size.width() + 2.0 * layout::SERVER_CHROME - 2.0),
                         ..default()
                     },
-                    BackgroundColor(theme.panel),
+                    // Slightly translucent so the table shows through a
+                    // column. Over the old flat ground this is within a
+                    // pixel value of the opaque panel it replaces.
+                    BackgroundColor(theme.panel.with_alpha(0.82)),
                     BorderColor::all(border),
                 ))
                 .with_children(|column| {

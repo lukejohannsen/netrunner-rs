@@ -13,8 +13,10 @@ use netrunner_client::ratings::player_name;
 
 use crate::core::{ClientCore, Notices};
 use crate::models::settings::{self as model, Intent, Row, MAX_NAME_LEN};
+use netrunner_client::settings::Table;
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
+use crate::table;
 use crate::theme::Theme;
 use crate::widgets::text_field::{TextField, TextFieldEvent};
 use crate::widgets::{self, Pressed};
@@ -77,7 +79,16 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
 pub fn spawn_rows(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, rows: &[Row]) {
     let login = player_name(None);
     for &row in rows {
-        let value = model::value(&core.settings, row, &login);
+        let mut value = model::value(&core.settings, row, &login);
+        // The one row whose shown value may come off the disk: a table
+        // carrying a `table.json` with a `name` is called by it. The
+        // model cannot do this — it is pure — and this is the only place
+        // a row is drawn, for the settings screen and the gear menu both.
+        if let Table::Named(folder) = &core.settings.desktop.table
+            && row == Row::Table
+        {
+            value = table::manifest(folder).label(folder).to_string();
+        }
         let mut node = parent.spawn((widgets::row(12.0), children![
             (widgets::label(theme, row.label()), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }, TextLayout::new(Justify::Left, LineBreak::WordBoundary)),
             (widgets::label(theme, value), Node { width: px(170), flex_shrink: 0.0, ..default() }, TextLayout::new(Justify::Left, LineBreak::WordBoundary)),
@@ -112,7 +123,7 @@ fn controls(
             }
             Ok(Control::EditName) => edit.0 = true,
             Ok(Control::Intent(intent)) => {
-                let changed = model::apply(&mut core.settings, intent.clone());
+                let changed = model::apply(&mut core.settings, intent.clone(), &table::available());
                 if changed {
                     persist(&core, &mut notices);
                     dirty.0 = true;
@@ -164,7 +175,7 @@ fn name_edits(
             TextFieldEvent::Committed(name) => Intent::NameEdited(Some(name.clone())),
             TextFieldEvent::Cancelled => Intent::NameEdited(None),
         };
-        if model::apply(&mut core.settings, intent) {
+        if model::apply(&mut core.settings, intent, &table::available()) {
             persist(&core, &mut notices);
         }
         commands.entity(entity).despawn();
