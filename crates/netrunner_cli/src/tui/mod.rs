@@ -28,7 +28,7 @@ use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session,
 use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
-use netrunner_client::play::stall_message;
+use netrunner_client::play::{lone_pass, stall_message};
 use netrunner_client::decks;
 use crate::ratings::{self, SeatRating};
 use crate::remote;
@@ -438,6 +438,13 @@ fn drive_local(
         };
 
         match step {
+            // Nothing to ask: the pass is taken for the person, and the
+            // log line is what they see of it.
+            SessionStep::Awaiting { side, view } if side == human_side && lone_pass(&view).is_some() => {
+                let pass = lone_pass(&view).expect("matched above");
+                session.submit(pass).map_err(|error| format!("the lone pass was rejected: {error}"))?;
+                log_last(session, ui, human_side);
+            }
             SessionStep::Awaiting { side, view } if side == human_side => {
                 ui.begin_decision(*view);
                 if prompt_human(terminal, ui, |action| session.submit(action))? {

@@ -257,6 +257,25 @@ pub fn personality_for(flag: Option<Personality>, deck: &DeckFile) -> Result<Per
     }
 }
 
+/// The pass a client takes for the person, when passing priority is the
+/// only thing `view` lists: `Some` exactly when `legal_actions` is one
+/// `PassPriority`.
+///
+/// **A client policy, not a rule.** Passing over and over is the whole of
+/// a run from the other chair, and a click that has no alternative asks
+/// nothing of the person (Phase 7 §3's list, item 2). The engine still
+/// opens every window and still hears every pass; the client only stops
+/// asking. Nothing wider than the lone pass is taken — a lone `EndTurn`
+/// or a lone access decision is a moment the person may want to look at,
+/// and a pass beside anything else (a rez, an ability) is a real choice.
+/// A lesson does not use it: a step that teaches passing must be pressed.
+pub fn lone_pass(view: &ClientView) -> Option<PlayerAction> {
+    match view.legal_actions.as_slice() {
+        [pass @ PlayerAction::PassPriority { .. }] => Some(pass.clone()),
+        _ => None,
+    }
+}
+
 /// A stall, in the words the terminal reports it with.
 pub fn stall_message(reason: StallReason) -> String {
     match reason {
@@ -461,6 +480,37 @@ mod tests {
         handle.join();
         assert_eq!(games(&path), (0, 0, 1), "a quit from turn 3 is a loss on the ladder");
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Over a whole game from the Runner's chair — where the Corp's turn
+    /// asks for pass after pass — the lone pass is found exactly when it
+    /// is the only action, and taking it for the person finishes the game.
+    #[test]
+    fn a_lone_pass_is_taken_only_when_it_is_the_only_action() {
+        let mut handle = MatchHandle::start_local(spec(Side::Runner, 3, None)).unwrap();
+        let mut lone = 0;
+        loop {
+            match handle.wait().expect("the thread is alive until it says Ended") {
+                MatchMessage::Awaiting { view } => {
+                    match lone_pass(&view) {
+                        Some(pass) => {
+                            assert_eq!(view.legal_actions, vec![pass.clone()]);
+                            lone += 1;
+                            handle.submit(pass).unwrap();
+                        }
+                        None => {
+                            assert!(view.legal_actions.len() != 1 || !matches!(view.legal_actions[0], PlayerAction::PassPriority { .. }));
+                            handle.submit(view.legal_actions[0].clone()).unwrap();
+                        }
+                    }
+                }
+                MatchMessage::Applied { .. } => {}
+                MatchMessage::Rejected { reason } => panic!("the lone pass was rejected: {reason}"),
+                MatchMessage::Ended { .. } => break,
+                MatchMessage::Stalled { reason } => panic!("{reason}"),
+            }
+        }
+        assert!(lone > 0, "the Runner is asked to pass alone during the Corp's turn");
     }
 
     /// The deck's own style is the default and a flag overrides it.
