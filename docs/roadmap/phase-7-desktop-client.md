@@ -1317,3 +1317,113 @@ covers U+25A0–2609, with a plus and an en dash beneath it.
 "Creating new window", before a first frame, and the same command
 passed on a retry; both logged bevy's "Can't select current monitor"
 warning, as every run did. Not investigated.
+
+### 4g. A click opens a card's actions; a secondary click reads it — DONE (17 September 2026)
+
+`feat/left-click-actions-right-click-reads`. The first item of the
+person's second list (below, kept in their order). The primary click
+opened the sheet — the card, its text and its actions — and the
+secondary opened the same actions as a menu. The person asked for the
+card-client convention: the everyday click acts, and reading is the
+other button.
+
+**Decisions taken, with the alternative rejected.**
+
+- **The primary click opens the menu above the card** (§4a item 14's
+  menu, unchanged in shape and anchor), a second click on the same card
+  closes it, and a click on another card moves it. It still never
+  submits. The two exceptions stay: a selection position submits its
+  one entry, and the HUD's Agendas readout opens the score area, which
+  is a door and not a card.
+- **The secondary click (the right button, or Ctrl or Cmd with the
+  primary) opens the sheet, and a sheet has no actions.** A hand card or
+  an identity is the Large face alone: the scan, or the text layout,
+  which carries the printed text, while no scan is cached. An install is
+  its face beside its state (`board::facts::install_facts`), because the
+  printed face cannot show whether it is rezzed or how many counters it
+  holds. The person chose this over a strictly card-only reading. A zone
+  is its contents. Keeping the actions on the sheet as well was
+  rejected: two lists of the same thing is what the person asked to
+  lose.
+- **The score area keeps its buttons.** A scored agenda has no card on
+  the board to click, so its abilities stay on its row.
+- **Cmd joins Ctrl as the modifier.** On a Mac, winit already reports a
+  two-finger tap or a Control-click as the right button. Cmd-click is
+  there for a one-button mouse with a hand on the other key, and it
+  means nothing else on the board.
+- **`Sheet` lost its `entries`**, and with them the rebuild on every
+  `Awaiting`. A sheet left open while the opponent acts has nothing to
+  go stale.
+
+**Verified.** `cargo test --workspace` green (1,508 tests), clippy
+silent across the workspace. Rewritten tests: the desktop model opens a
+menu on a click (and closes it on a second), never submits from it, and
+opens an entry-less sheet on a secondary click that nothing opens
+through, which the board moving keeps and a menu does not survive. The
+headless game checks a press on a hand card opens its menu and the
+menu's button submits; the right button and Ctrl+primary open the
+sheet with no entry buttons; R&D's and the stack's menus offer the run
+and the draw while their sheets show the contents; and a tile's facts
+are reached by the right button. Screenshotted forty decisions in: the
+Corp's menu over a hand card, and an install's sheet (Tithe beside its
+state lines). The Runner's shot landed on the opponent's turn and
+showed no sheet, which is the hook waiting as it should. The only
+scroll area logged is the hidden log's, at zero size. No engine file
+changed, so no sweep.
+
+**Noted, to build next — the person's second list, kept in their order,
+one PR each:**
+
+1. **A click opens a card's actions; a secondary click reads it.**
+   *Done in §4g.*
+2. **Keyboard shortcuts for the common actions, and a list of them.**
+   *Planned design:*
+   - Space is the "go on" key: pass priority, or continue the run when
+     that is what is offered. It never jacks out or ends the turn.
+   - Enter ends the turn. The engine lists `EndTurn` only once the
+     clicks are spent, so a stray Enter cannot throw a turn away.
+   - C takes a credit, D draws, R removes a tag, P purges, J jacks out,
+     A completes the run.
+   - 1–9 press the decision pop-up's buttons in order.
+   - I reads the hovered card and M opens its menu (the keyboard's two
+     clicks).
+   - Tab opens the score area, H toggles the play helper, L the phase
+     bar (item 3), and ? or F1 shows the list.
+   - Every key goes through `Intent::Control` or an existing intent, so
+     the engine's list still decides what a key does. None acts while
+     an overlay covers the board.
+   - Rebinding waits until someone asks for it.
+3. **A phase bar, toggled with L and from the gear menu, and
+   remembered.**
+   - One row for the turn: the Corp's draw › actions (clicks left) ›
+     discard, or the Runner's actions › discard.
+   - During a run, a second segment: initiation › approach ice N ›
+     encounter › access › outcome.
+   - A marker for an open paid-ability window: who holds priority, at
+     which checkpoint.
+   - It reads `phase`, `active_run` and `paid_ability_window`. The words
+     live in `netrunner_client::board`, beside `hud`, so the terminal
+     can take them.
+   - It takes a fixed row out of `face_width`'s budget, so the board
+     still never scrolls.
+4. **Reorder one's own hand by dragging a card along it.**
+   - The order is a client-side permutation per match, kept by `CardId`
+     and reconciled with each view: a drawn card joins the end, and a
+     card that left drops out. The engine and `ClientView` never see
+     it.
+   - This brings in the drag machinery (bevy_picking's `Pointer<Drag*>`
+     observers), with a few pixels of travel before a press counts as a
+     drag, so a still click is still a click.
+5. **Drag a card to play it, with the places it may go lit.**
+   - Picking a card up lights the destinations its legal entries name,
+     through `ActionMap::for_hand_card` and each entry's targets: a
+     server, a new-remote column that appears only while dragging, or
+     an ice host.
+   - A card with no destination (an operation, an event, most Runner
+     installs) lights the play area as a whole.
+   - A drop on a place with one entry submits it. A drop on a place
+     with several opens the menu of just those, and a drop anywhere
+     else puts the card back.
+   - This changes AGENTS.md §5 from "a click never submits" to "a click
+     never submits; a completed drag onto a lit place does", and that
+     sentence changes with the PR, not before.

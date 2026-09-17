@@ -1,7 +1,7 @@
 //! A game, without a window: the form starts a match against the bottom
 //! rung on a thread, the board draws the first decision, a press on a
-//! decision button submits it, a card or a zone opens its sheet and never
-//! acts, a secondary click opens its actions as a menu above the card,
+//! decision button submits it, a card or a zone opens its actions as a
+//! menu above it and never acts, a secondary click opens its sheet to read,
 //! the control bar greys what is not legal, the gear opens the options,
 //! and Escape asks before leaving.
 //!
@@ -200,31 +200,56 @@ fn the_form_starts_a_game_the_board_offers_its_actions_and_a_press_submits_one()
     wait_for(&mut app, "the Runner's turn", |app| app.world().resource::<Model>().0.awaiting);
 }
 
-/// A hand card opens its sheet whether or not it has an action, and a
-/// press on the sheet's button is what submits — never the card click.
+/// A mouse button with Ctrl held, down and up, then Ctrl released.
+fn ctrl_click(app: &mut App, button: MouseButton) {
+    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Pressed, text: None, repeat: false, window: Entity::PLACEHOLDER });
+    click(app, button);
+    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Released, text: None, repeat: false, window: Entity::PLACEHOLDER });
+    app.update();
+}
+
+/// A secondary click on `entity`: `Interaction` never reports the right
+/// button, so the node is marked hovered and the button is read from the
+/// input resource, as the pointer would leave it.
+fn right_click(app: &mut App, entity: Entity) {
+    app.world_mut().entity_mut(entity).insert(Interaction::Hovered);
+    click(app, MouseButton::Right);
+    app.world_mut().entity_mut(entity).insert(Interaction::None);
+    app.update();
+}
+
+fn escape(app: &mut App) {
+    press(app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+}
+
+/// A hand card opens its menu whether or not it has an action, and a
+/// press on the menu's button is what submits — never the card click.
 /// The first game played by hand had every card click doing nothing
 /// (a face is a `Button` the shared feedback system does not report),
 /// and the second had a click to examine a card install it.
 #[test]
-fn pressing_a_hand_card_opens_its_sheet_and_the_sheet_submits() {
+fn pressing_a_hand_card_opens_its_menu_and_the_menu_submits() {
     let (mut app, _dir) = headless_client();
     start_a_game(&mut app);
     wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
-    // At the mulligan no hand card has an action: the sheet is the card.
+    // At the mulligan no hand card has an action: the menu says so.
     let face = {
         let mut q = app.world_mut().query::<(Entity, &Click)>();
         q.iter(app.world()).find(|(_, c)| matches!(c, Click::Target(Target::HandCard(_)))).map(|(e, _)| e).expect("a hand card")
     };
     press_entity(&mut app, face);
     let model = app.world().resource::<Model>();
-    assert!(model.0.sheet.as_ref().is_some_and(|s| s.entries.is_empty()), "the card is open with nothing to do");
-    assert_eq!(overlays(&mut app), 1, "the sheet is up");
+    assert!(model.0.menu.as_ref().is_some_and(|m| m.entries.is_empty()), "the card's menu is open with nothing to do");
+    assert!(model.0.sheet.is_none(), "and nothing to read opened");
+    assert_eq!(menus(&mut app), 1);
+    assert_eq!(overlays(&mut app), 0);
     assert!(texts(&mut app).iter().any(|t| t.contains("Nothing to do")));
-    press(&mut app, KeyCode::Escape, Key::Escape);
-    app.update();
-    app.update();
-    assert_eq!(overlays(&mut app), 0, "Escape closes it");
+    escape(&mut app);
+    assert_eq!(menus(&mut app), 0, "Escape closes it");
     assert_eq!(screen(&app), AppScreen::Game);
+    app.world_mut().entity_mut(face).insert(Interaction::None);
     // On the Runner's turn a card with an action still only opens.
     to_the_runners_turn(&mut app);
     assert_eq!(app.world_mut().query::<&DecisionPopup>().iter(app.world()).count(), 0, "an ordinary action phase asks nothing");
@@ -238,91 +263,69 @@ fn pressing_a_hand_card_opens_its_sheet_and_the_sheet_submits() {
     press_entity(&mut app, face);
     let model = &app.world().resource::<Model>().0;
     assert!(model.awaiting && model.applied == before, "the click sent nothing");
-    assert_eq!(model.sheet.as_ref().map(|s| s.entries.clone()), Some(entries.clone()));
-    let button = entity_with(&mut app, &Click::Entry(entries[0])).expect("the sheet lists the card's action");
+    let menu = model.menu.clone().expect("the menu is open");
+    assert_eq!(menu.target, Target::HandCard(card.clone()));
+    assert_eq!(menu.entries, entries);
+    assert_eq!(click_entry_count(&mut app), entries.len(), "one button per entry, and the helper is off");
+    let button = entity_with(&mut app, &Click::Entry(entries[0])).expect("the menu lists the card's action");
     press_entity(&mut app, button);
-    assert_eq!(overlays(&mut app), 0, "the sheet's button submitted and closed the sheet");
+    assert_eq!(menus(&mut app), 0, "the menu's button submitted and closed the menu");
     wait_for(&mut app, "the action to be applied", |app| app.world().resource::<Model>().0.applied > before);
 }
 
-/// A secondary click on a card opens its actions as a menu above the
-/// card — the sheet's list, without the sheet — and the menu's button
-/// is what submits. Escape and a primary click on nothing of the menu's
-/// close it; Ctrl with the primary button is the same click and opens
-/// no sheet; nothing opens through a sheet.
+/// A secondary click — the right button, or Ctrl with the primary — on a
+/// card opens its sheet to read: the card, and no action on it. It closes
+/// a menu that was open, Escape closes it, nothing opens through it, and a
+/// primary click on nothing of a menu's closes the menu.
 #[test]
-fn a_secondary_click_opens_the_actions_menu_above_the_card_and_its_button_submits() {
+fn a_secondary_click_opens_the_card_to_read_and_offers_nothing() {
     let (mut app, _dir) = headless_client();
     start_a_game(&mut app);
     to_the_runners_turn(&mut app);
-    let (card, entries) = {
+    let card = {
         let model = &app.world().resource::<Model>().0;
         let hand = model.view.as_ref().unwrap().runner.grip_cards.clone().unwrap();
-        hand.iter().map(|c| (c.clone(), model.actions.for_hand_card(c))).find(|(_, e)| !e.is_empty()).expect("an opening Runner hand has something playable")
+        hand.into_iter().find(|c| !model.actions.for_hand_card(c).is_empty()).expect("an opening Runner hand has something playable")
     };
     let face = entity_with(&mut app, &Click::Target(Target::HandCard(card.clone()))).expect("the card is on the board");
     let before = app.world().resource::<Model>().0.applied;
-    // `Interaction` never reports the right button: the hovered node is
-    // the target, and the button is read from the input resource.
-    app.world_mut().entity_mut(face).insert(Interaction::Hovered);
-    click(&mut app, MouseButton::Right);
+    // Open the menu, then read the card: the sheet replaces the menu.
+    press_entity(&mut app, face);
+    app.world_mut().entity_mut(face).insert(Interaction::None);
+    assert_eq!(menus(&mut app), 1);
+    right_click(&mut app, face);
     let model = &app.world().resource::<Model>().0;
     assert!(model.awaiting && model.applied == before, "the click sent nothing");
-    let menu = model.menu.clone().expect("the menu is open");
-    assert_eq!(menu.target, Target::HandCard(card.clone()));
-    assert_eq!(menu.entries, entries, "the menu is the sheet's list");
-    assert!(model.sheet.is_none(), "and no sheet opened");
-    assert_eq!(menus(&mut app), 1);
-    assert_eq!(overlays(&mut app), 0);
-    assert_eq!(click_entry_count(&mut app), entries.len(), "one button per entry, and the helper is off");
-    // Escape closes the menu and asks nothing.
-    press(&mut app, KeyCode::Escape, Key::Escape);
-    app.update();
-    app.update();
-    assert_eq!(menus(&mut app), 0, "Escape closes the menu");
+    assert_eq!(model.sheet.as_ref().map(|s| s.target.clone()), Some(Target::HandCard(card.clone())));
+    assert!(model.menu.is_none(), "reading closed the menu");
+    assert_eq!(overlays(&mut app), 1);
+    assert_eq!(menus(&mut app), 0);
+    assert_eq!(click_entry_count(&mut app), 0, "the sheet offers no action");
+    assert!(!texts(&mut app).iter().any(|t| t == "Actions"));
+    // Through the sheet, neither click opens anything.
+    right_click(&mut app, face);
+    press_entity(&mut app, face);
+    app.world_mut().entity_mut(face).insert(Interaction::None);
+    assert_eq!(menus(&mut app), 0, "nothing opens through the sheet");
+    escape(&mut app);
+    assert_eq!(overlays(&mut app), 0, "Escape closes the sheet");
     assert!(!app.world().resource::<Model>().0.confirm_quit, "and does not ask to quit");
-    // Open again; a primary click that presses no part of the menu
-    // closes it.
-    click(&mut app, MouseButton::Right);
+    // Ctrl with the primary button is the same click: the card
+    // registers the press too, and opens no menu for it.
+    app.world_mut().entity_mut(face).insert(Interaction::Pressed);
+    ctrl_click(&mut app, MouseButton::Left);
+    app.world_mut().entity_mut(face).insert(Interaction::None);
+    app.update();
+    assert_eq!(overlays(&mut app), 1, "Ctrl and the primary button open the sheet");
+    assert_eq!(menus(&mut app), 0, "and no menu");
+    escape(&mut app);
+    // A primary click that presses no part of a menu closes it.
+    press_entity(&mut app, face);
+    app.world_mut().entity_mut(face).insert(Interaction::None);
     assert_eq!(menus(&mut app), 1);
     click(&mut app, MouseButton::Left);
     assert_eq!(menus(&mut app), 0, "a click elsewhere closes the menu");
-    // Ctrl with the primary button is the secondary click: the card
-    // registers the press too, and opens no sheet for it.
-    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Pressed, text: None, repeat: false, window: Entity::PLACEHOLDER });
-    app.world_mut().entity_mut(face).insert(Interaction::Pressed);
-    click(&mut app, MouseButton::Left);
-    assert_eq!(menus(&mut app), 1, "Ctrl and the primary button open the menu");
-    assert_eq!(overlays(&mut app), 0, "and no sheet");
-    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Released, text: None, repeat: false, window: Entity::PLACEHOLDER });
-    app.update();
-    // A zone has a menu too: R&D's offers the run.
-    let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
-    app.world_mut().entity_mut(face).insert(Interaction::None);
-    app.world_mut().entity_mut(rnd).insert(Interaction::Hovered);
-    click(&mut app, MouseButton::Right);
-    let model = &app.world().resource::<Model>().0;
-    assert!(model.menu.as_ref().is_some_and(|m| m.target == Target::Server(ServerId::RnD)), "{:?}", model.menu);
-    assert!(model.menu.as_ref().unwrap().entries.iter().any(|i| matches!(model.actions.entries[*i].action, PlayerAction::InitiateRun { server: ServerId::RnD })));
-    assert!(texts(&mut app).iter().any(|t| t == "R&D"), "headed by the zone");
-    // With a sheet open, a secondary click reaching a card through its
-    // ground opens nothing.
-    app.world_mut().entity_mut(rnd).insert(Interaction::None);
-    press_entity(&mut app, face);
-    assert_eq!(overlays(&mut app), 1, "the sheet is up");
-    assert_eq!(menus(&mut app), 0, "and the click on the card closed the menu");
-    app.world_mut().entity_mut(face).insert(Interaction::Hovered);
-    click(&mut app, MouseButton::Right);
-    assert_eq!(menus(&mut app), 0, "nothing opens through the sheet");
-    press(&mut app, KeyCode::Escape, Key::Escape);
-    app.update();
-    app.update();
-    // The menu's button submits, as the sheet's would.
-    click(&mut app, MouseButton::Right);
-    let button = entity_with(&mut app, &Click::Entry(entries[0])).expect("the menu lists the card's action");
-    press_entity(&mut app, button);
-    assert_eq!(menus(&mut app), 0, "the press closed the menu");
-    wait_for(&mut app, "the action to be applied", |app| app.world().resource::<Model>().0.applied > before);
+    assert_eq!(app.world().resource::<Model>().0.applied, before);
 }
 
 /// The bar has every control of the side, greyed until the engine lists
@@ -468,8 +471,8 @@ fn a_run_fills_the_lane_and_the_lane_keeps_the_trail() {
     press_entity(&mut app, rnd);
     let run = {
         let model = &app.world().resource::<Model>().0;
-        let sheet = model.sheet.clone().expect("the zone sheet is open");
-        *sheet.entries.iter().find(|i| matches!(model.actions.entries[**i].action, PlayerAction::InitiateRun { server: ServerId::RnD })).expect("R&D offers the run")
+        let menu = model.menu.clone().expect("the zone's menu is open");
+        *menu.entries.iter().find(|i| matches!(model.actions.entries[**i].action, PlayerAction::InitiateRun { server: ServerId::RnD })).expect("R&D offers the run")
     };
     let button = entity_with(&mut app, &Click::Entry(run)).expect("the run's button");
     press_entity(&mut app, button);
@@ -546,37 +549,41 @@ fn a_run_fills_the_lane_and_the_lane_keeps_the_trail() {
     assert!(trail.ended(), "{trail:?}");
 }
 
-/// A zone click opens what may be done there and never does it: R&D
-/// offers the run, Archives shows its pile, and the count does not move.
+/// A zone click opens what may be done there and never does it; a
+/// secondary click reads what is in it: R&D offers the run and shows no
+/// order, Archives shows its pile, the stack offers the draw, and the
+/// count does not move.
 #[test]
-fn a_zone_click_opens_its_sheet_and_never_acts() {
+fn a_zone_click_opens_its_menu_and_never_acts_and_its_sheet_shows_the_contents() {
     let (mut app, _dir) = headless_client();
     start_a_game(&mut app);
     to_the_runners_turn(&mut app);
     let before = app.world().resource::<Model>().0.applied;
     let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
     press_entity(&mut app, rnd);
+    app.world_mut().entity_mut(rnd).insert(Interaction::None);
     let model = &app.world().resource::<Model>().0;
     assert!(model.awaiting && model.applied == before, "nothing was sent");
-    let sheet = model.sheet.clone().expect("the zone sheet is open");
-    assert!(sheet.entries.iter().any(|i| matches!(model.actions.entries[*i].action, PlayerAction::InitiateRun { server: ServerId::RnD })), "R&D offers the run");
+    let menu = model.menu.clone().expect("the zone's menu is open");
+    assert!(menu.entries.iter().any(|i| matches!(model.actions.entries[*i].action, PlayerAction::InitiateRun { server: ServerId::RnD })), "R&D offers the run");
+    assert!(texts(&mut app).iter().any(|t| t == "R&D"), "headed by the zone");
+    escape(&mut app);
+    right_click(&mut app, rnd);
+    assert_eq!(overlays(&mut app), 1, "the zone's sheet is up");
     assert!(texts(&mut app).iter().any(|t| t.contains("in an order nobody is shown")), "a deck's order is never shown");
-    press(&mut app, KeyCode::Escape, Key::Escape);
-    app.update();
-    app.update();
+    assert_eq!(click_entry_count(&mut app), 0, "and it offers no action");
+    escape(&mut app);
     let archives = entity_with(&mut app, &Click::Target(Target::Server(ServerId::Archives))).expect("Archives' header");
-    press_entity(&mut app, archives);
+    right_click(&mut app, archives);
     assert!(texts(&mut app).iter().any(|t| t == "Archives"), "the sheet is headed by the zone");
     assert_eq!(app.world().resource::<Model>().0.applied, before);
-    press(&mut app, KeyCode::Escape, Key::Escape);
-    app.update();
-    app.update();
-    // The Runner's own piles are buttons in the strip; the stack's sheet
+    escape(&mut app);
+    // The Runner's own piles are buttons in the strip; the stack's menu
     // offers the draw.
     let stack = entity_with(&mut app, &Click::Target(Target::Pile(netrunner_client::board::Pile::Stack))).expect("the stack is a button");
     press_entity(&mut app, stack);
     let model = &app.world().resource::<Model>().0;
-    assert!(model.sheet.as_ref().unwrap().entries.iter().any(|i| matches!(model.actions.entries[*i].action, PlayerAction::DrawCardClick { .. })));
+    assert!(model.menu.as_ref().unwrap().entries.iter().any(|i| matches!(model.actions.entries[*i].action, PlayerAction::DrawCardClick { .. })));
     assert_eq!(model.applied, before);
 }
 
@@ -726,8 +733,8 @@ fn a_tile_says_its_rez_state_and_its_sheet_lists_the_facts() {
     let card = view.corp.servers.iter().flat_map(|s| s.ice.iter().chain(s.root.iter())).find(|c| c.install_id == id).unwrap().clone();
     let expected = if card.rezzed { "rezzed" } else if card.slot == netrunner_core::rules::InstallSlot::Ice { "unrezzed" } else { "face down" };
     assert!(words.contains(expected), "the tile reads {words:?}, expected {expected:?}");
-    // Its sheet: the state lines, then Close.
-    press_entity(&mut app, tile);
+    // Its sheet, on a secondary click: the state lines, then Close.
+    right_click(&mut app, tile);
     let facts: Vec<String> = {
         let world = app.world_mut();
         world.query_filtered::<&Text, With<InstallFact>>().iter(world).map(|t| t.0.clone()).collect()
