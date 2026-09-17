@@ -1,7 +1,7 @@
 //! The settings screen, as state: which row is which, what each control
 //! does to the shared `Settings`, and what a commit of the name means.
 
-use netrunner_client::settings::{format_name, Settings, FORMATS};
+use netrunner_client::settings::{format_name, Settings, Table, FORMATS};
 
 /// The rows, in the order the screen shows them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,16 +15,17 @@ pub enum Row {
     PlayHelper,
     PlayHistory,
     PhaseBar,
+    Table,
 }
 
 impl Row {
-    pub const ALL: [Row; 9] = [Row::Player, Row::Format, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
+    pub const ALL: [Row; 10] = [Row::Player, Row::Format, Row::Table, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
 
     /// The rows the board's gear menu shows: what changes how a game is
     /// played and looks, and nothing that would want a text field. A
     /// future board property (a layout, a card-back choice) goes here
     /// as well as in `ALL`.
-    pub const GAME: [Row; 6] = [Row::PhaseBar, Row::PlayHelper, Row::PlayHistory, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume];
+    pub const GAME: [Row; 7] = [Row::Table, Row::PhaseBar, Row::PlayHelper, Row::PlayHistory, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -37,13 +38,14 @@ impl Row {
             Row::PlayHelper => "Play helper",
             Row::PlayHistory => "Play history",
             Row::PhaseBar => "Phase bar",
+            Row::Table => "Table",
         }
     }
 
     /// Whether the row is adjusted with a pair of `<` `>` buttons (as
     /// opposed to edited or toggled).
     pub fn is_stepped(self) -> bool {
-        matches!(self, Row::Format | Row::AnimationSpeed | Row::SfxVolume | Row::MusicVolume)
+        matches!(self, Row::Format | Row::AnimationSpeed | Row::SfxVolume | Row::MusicVolume | Row::Table)
     }
 }
 
@@ -64,9 +66,31 @@ pub const MAX_NAME_LEN: usize = 32;
 const SPEEDS: [f32; 5] = [0.0, 0.5, 1.0, 2.0, 4.0];
 const VOLUME_STEP: f32 = 0.1;
 
+/// Every value the table row steps through, in order: the painted
+/// ground, then each installed table, then random.
+///
+/// The painted ground is first because it is the default and the tier
+/// that always works, and random is last so a person stepping rightward
+/// walks past the actual tables before being offered a shuffle of them.
+/// Random is offered only when there is more than one table to choose
+/// between — with one installed it would be that table under a name that
+/// says otherwise, and with none it would be the painted ground.
+pub fn table_cycle(installed: &[String]) -> Vec<Table> {
+    let mut cycle = vec![Table::Painted];
+    cycle.extend(installed.iter().cloned().map(Table::Named));
+    if installed.len() > 1 {
+        cycle.push(Table::Random);
+    }
+    cycle
+}
+
 /// Applies `intent` to `settings`. Returns whether anything changed, so
 /// the screen saves only when there is something to save.
-pub fn apply(settings: &mut Settings, intent: Intent) -> bool {
+///
+/// `tables` is the installed table folders, which only the caller can
+/// know — it is the one row whose choices come off the disk rather than
+/// being fixed in this file.
+pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String]) -> bool {
     match intent {
         Intent::Step(Row::Format, delta) => {
             let current = settings.format.unwrap_or(FORMATS[0]);
@@ -81,6 +105,16 @@ pub fn apply(settings: &mut Settings, intent: Intent) -> bool {
             let next = SPEEDS[(index + delta).clamp(0, SPEEDS.len() as i32 - 1) as usize];
             let changed = next != prefs.animation_speed;
             prefs.animation_speed = next;
+            changed
+        }
+        Intent::Step(Row::Table, delta) => {
+            let cycle = table_cycle(tables);
+            // A table that has been uninstalled is not in the cycle, so
+            // a step from it starts over rather than going nowhere.
+            let index = cycle.iter().position(|table| *table == settings.desktop.table).unwrap_or(0) as i32;
+            let next = cycle[(index + delta).rem_euclid(cycle.len() as i32) as usize].clone();
+            let changed = next != settings.desktop.table;
+            settings.desktop.table = next;
             changed
         }
         Intent::Step(Row::SfxVolume, delta) => step_volume(&mut settings.desktop.sfx_volume, delta),
@@ -143,6 +177,14 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
         Row::PlayHelper => on_off(prefs.play_helper),
         Row::PlayHistory => on_off(prefs.play_history),
         Row::PhaseBar => on_off(prefs.phase_bar),
+        // The folder's own name. A table carrying a `table.json` with a
+        // prettier one is relabelled by the screen that draws the row,
+        // which is the only layer that may read the disk.
+        Row::Table => match &prefs.table {
+            Table::Painted => "Painted ground".to_string(),
+            Table::Random => "Random".to_string(),
+            Table::Named(name) => name.clone(),
+        },
     }
 }
 
@@ -154,9 +196,9 @@ mod tests {
     #[test]
     fn the_format_cycles_both_ways_and_wraps() {
         let mut settings = Settings::default();
-        assert!(apply(&mut settings, Intent::Step(Row::Format, 1)));
+        assert!(apply(&mut settings, Intent::Step(Row::Format, 1), &[]));
         assert_eq!(settings.format, Some(NsgFormat::Standard));
-        assert!(apply(&mut settings, Intent::Step(Row::Format, -2)));
+        assert!(apply(&mut settings, Intent::Step(Row::Format, -2), &[]));
         assert_eq!(settings.format, Some(NsgFormat::Snapshot), "wraps backwards");
         assert_eq!(value(&settings, Row::Format, "luke"), "snapshot");
     }
@@ -164,13 +206,13 @@ mod tests {
     #[test]
     fn the_animation_speed_walks_its_ladder_and_stops_at_the_ends() {
         let mut settings = Settings::default();
-        assert!(apply(&mut settings, Intent::Step(Row::AnimationSpeed, -1)));
+        assert!(apply(&mut settings, Intent::Step(Row::AnimationSpeed, -1), &[]));
         assert_eq!(settings.desktop.animation_speed, 0.5);
-        assert!(apply(&mut settings, Intent::Step(Row::AnimationSpeed, -1)));
+        assert!(apply(&mut settings, Intent::Step(Row::AnimationSpeed, -1), &[]));
         assert_eq!(value(&settings, Row::AnimationSpeed, "luke"), "instant");
-        assert!(!apply(&mut settings, Intent::Step(Row::AnimationSpeed, -1)), "already at the bottom");
+        assert!(!apply(&mut settings, Intent::Step(Row::AnimationSpeed, -1), &[]), "already at the bottom");
         for _ in 0..10 {
-            apply(&mut settings, Intent::Step(Row::AnimationSpeed, 1));
+            apply(&mut settings, Intent::Step(Row::AnimationSpeed, 1), &[]);
         }
         assert_eq!(settings.desktop.animation_speed, 4.0);
     }
@@ -178,12 +220,12 @@ mod tests {
     #[test]
     fn volumes_step_by_tenths_and_clamp() {
         let mut settings = Settings::default();
-        assert!(apply(&mut settings, Intent::Step(Row::SfxVolume, 1)));
+        assert!(apply(&mut settings, Intent::Step(Row::SfxVolume, 1), &[]));
         assert_eq!(value(&settings, Row::SfxVolume, "luke"), "90%");
-        assert!(apply(&mut settings, Intent::Step(Row::SfxVolume, 1)));
-        assert!(!apply(&mut settings, Intent::Step(Row::SfxVolume, 1)), "clamped at 100%");
+        assert!(apply(&mut settings, Intent::Step(Row::SfxVolume, 1), &[]));
+        assert!(!apply(&mut settings, Intent::Step(Row::SfxVolume, 1), &[]), "clamped at 100%");
         for _ in 0..12 {
-            apply(&mut settings, Intent::Step(Row::MusicVolume, -1));
+            apply(&mut settings, Intent::Step(Row::MusicVolume, -1), &[]);
         }
         assert_eq!(settings.desktop.music_volume, 0.0);
     }
@@ -191,14 +233,14 @@ mod tests {
     #[test]
     fn the_name_is_trimmed_capped_and_empty_means_the_login_name() {
         let mut settings = Settings::default();
-        assert!(apply(&mut settings, Intent::NameEdited(Some("  case ".to_string()))));
+        assert!(apply(&mut settings, Intent::NameEdited(Some("  case ".to_string())), &[]));
         assert_eq!(settings.player.as_deref(), Some("case"));
-        assert!(!apply(&mut settings, Intent::NameEdited(Some("case".to_string()))), "unchanged");
-        assert!(!apply(&mut settings, Intent::NameEdited(None)), "cancelled");
+        assert!(!apply(&mut settings, Intent::NameEdited(Some("case".to_string())), &[]), "unchanged");
+        assert!(!apply(&mut settings, Intent::NameEdited(None), &[]), "cancelled");
         assert_eq!(settings.player.as_deref(), Some("case"));
-        assert!(apply(&mut settings, Intent::NameEdited(Some("x".repeat(40)))));
+        assert!(apply(&mut settings, Intent::NameEdited(Some("x".repeat(40))), &[]));
         assert_eq!(settings.player.as_deref().map(str::len), Some(MAX_NAME_LEN));
-        assert!(apply(&mut settings, Intent::NameEdited(Some("   ".to_string()))));
+        assert!(apply(&mut settings, Intent::NameEdited(Some("   ".to_string())), &[]));
         assert_eq!(settings.player, None);
         assert_eq!(value(&settings, Row::Player, "luke"), "luke (login name)");
     }
@@ -206,9 +248,46 @@ mod tests {
     #[test]
     fn download_images_toggles() {
         let mut settings = Settings::default();
-        assert!(apply(&mut settings, Intent::Toggle(Row::DownloadImages)));
+        assert!(apply(&mut settings, Intent::Toggle(Row::DownloadImages), &[]));
         assert!(settings.desktop.download_images);
-        assert!(!apply(&mut settings, Intent::Toggle(Row::Format)), "not a toggle");
+        assert!(!apply(&mut settings, Intent::Toggle(Row::Format), &[]), "not a toggle");
+    }
+
+    /// The table row cycles the painted ground, the installed tables and
+    /// random — and offers random only when there is something to
+    /// shuffle.
+    #[test]
+    fn the_table_cycles_the_ground_then_what_is_installed_then_random() {
+        let none: [String; 0] = [];
+        assert_eq!(table_cycle(&none), vec![Table::Painted], "nothing installed is not a choice");
+        let one = ["neon-alley".to_string()];
+        assert_eq!(table_cycle(&one), vec![Table::Painted, Table::Named("neon-alley".to_string())], "one table needs no random");
+        let two = ["neon-alley".to_string(), "orbital".to_string()];
+        assert_eq!(table_cycle(&two).len(), 4);
+        assert_eq!(table_cycle(&two).last(), Some(&Table::Random), "random comes after the tables");
+
+        let mut settings = Settings::default();
+        assert_eq!(settings.desktop.table, Table::Painted);
+        assert!(apply(&mut settings, Intent::Step(Row::Table, 1), &two));
+        assert_eq!(settings.desktop.table, Table::Named("neon-alley".to_string()));
+        assert_eq!(value(&settings, Row::Table, "luke"), "neon-alley");
+        // It wraps both ways, like the format row.
+        assert!(apply(&mut settings, Intent::Step(Row::Table, -1), &two));
+        assert_eq!(value(&settings, Row::Table, "luke"), "Painted ground");
+        assert!(apply(&mut settings, Intent::Step(Row::Table, -1), &two));
+        assert_eq!(settings.desktop.table, Table::Random);
+
+        // With nothing installed the row has one value and cannot move.
+        let mut alone = Settings::default();
+        assert!(!apply(&mut alone, Intent::Step(Row::Table, 1), &none), "nowhere to step");
+        assert_eq!(alone.desktop.table, Table::Painted);
+
+        // A table the player has since deleted is not in the cycle; a
+        // step from it starts the cycle rather than doing nothing.
+        let mut gone = Settings::default();
+        gone.desktop.table = Table::Named("deleted".to_string());
+        assert!(apply(&mut gone, Intent::Step(Row::Table, 1), &two));
+        assert_eq!(gone.desktop.table, Table::Named("neon-alley".to_string()));
     }
 
     /// The board's two aids are off until turned on, and the gear menu's
@@ -218,9 +297,9 @@ mod tests {
         let mut settings = Settings::default();
         assert_eq!(value(&settings, Row::PlayHelper, "luke"), "off");
         assert_eq!(value(&settings, Row::PlayHistory, "luke"), "off");
-        assert!(apply(&mut settings, Intent::Toggle(Row::PlayHelper)));
+        assert!(apply(&mut settings, Intent::Toggle(Row::PlayHelper), &[]));
         assert!(settings.desktop.play_helper && !settings.desktop.play_history);
-        assert!(apply(&mut settings, Intent::Toggle(Row::PlayHistory)));
+        assert!(apply(&mut settings, Intent::Toggle(Row::PlayHistory), &[]));
         assert_eq!(value(&settings, Row::PlayHistory, "luke"), "on");
         for row in Row::GAME {
             assert!(Row::ALL.contains(&row), "{row:?} is on the settings screen too");

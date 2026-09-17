@@ -43,3 +43,33 @@ pub fn resolve(relative: &str) -> Option<PathBuf> {
 pub fn read(relative: &str) -> Option<Vec<u8>> {
     std::fs::read(resolve(relative)?).ok()
 }
+
+/// The names of the sub-directories of `relative` (`tables`) across both
+/// tiers, sorted and without duplicates.
+///
+/// [`resolve`] answers "which file", which is all a known asset needs;
+/// this answers "which are there", which is what a *chosen* one needs —
+/// a settings row to cycle and a random pick to draw from. Both tiers
+/// are listed rather than only the first that exists, so dropping one
+/// table into the override directory adds to the bundled set instead of
+/// hiding it; a name in both is one name, and `resolve` then decides
+/// which files win, override first, file by file. That means a player
+/// can override a single image of a bundled table and inherit the rest.
+///
+/// Anything unreadable is simply absent — a missing directory is the
+/// normal case, since neither tier has to exist.
+pub fn list_dirs(relative: &str) -> Vec<String> {
+    let mut names: Vec<String> = override_dir()
+        .map(|dir| dir.join(relative))
+        .into_iter()
+        .chain(std::iter::once(bundled_dir().join(relative)))
+        .filter_map(|dir| std::fs::read_dir(dir).ok())
+        .flatten()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect();
+    names.sort();
+    names.dedup();
+    names
+}

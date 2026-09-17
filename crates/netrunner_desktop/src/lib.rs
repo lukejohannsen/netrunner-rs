@@ -53,6 +53,13 @@
 //!   the official card backs are fetched into the cache on the player's
 //!   opt-in, and a back already on screen takes the fetched one under
 //!   the same handle.
+//! - The board's depth is **painted**, in the table under it
+//!   ([`table`]): every card is drawn at one size, so the perspective
+//!   lives in the field's art rather than in a per-row scale. A table is
+//!   a folder — a JPEG field, an optional alpha overlay, an optional
+//!   manifest — under the same three tiers, and the painted ground is
+//!   the tier that needs no files. It is drawn once per match, never per
+//!   frame.
 
 // A Bevy query with two or three components and a filter is the normal
 // shape of a system parameter, and naming each one is noise that hides
@@ -77,6 +84,7 @@ pub mod icon_font;
 pub mod models;
 pub mod nav;
 pub mod screens;
+pub mod table;
 pub mod theme;
 pub mod widgets;
 

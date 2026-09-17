@@ -41,6 +41,7 @@ pub mod prose;
 pub mod ratings;
 pub mod selection;
 pub mod settings;
+pub mod table;
 pub mod start;
 
 /// The OS data directory every client file lives under — the base
