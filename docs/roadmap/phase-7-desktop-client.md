@@ -1778,6 +1778,10 @@ delivers.
    order of *building* differs from the order of this list — the table
    is item 6 below and is the first PR, because everything else reads
    against it and because it is what unblocks the person making art.
+   *Half done in §4m: the field carries the perspective. The shadows
+   that sit the cards on it are still owed, and are now deliberately
+   after the skin (§4n), because art with its own baked shadow would
+   double up with a drawn one.*
 2. **Each player has an avatar and a bar of quick data**, the active
    player's bar lit and the inactive one's muted grey. The avatar is the
    identity card's art cropped to a disc — the Netrunner-native answer,
@@ -1807,8 +1811,182 @@ delivers.
    nothing. A `NETRUNNER_TABLE_GUIDE=1` hook draws the row bands over
    the current table, so a field can be painted to the real layout
    rather than guessed at.
+   *Done in §4m.*
+7. **The board's furniture is drawn rather than outlined.** Added on 17
+   September 2026, after the person looked at §4m's board and named what
+   was still flat: *"Archives, R&D, HQ, Remote Servers — are all just
+   line drawn tiles."* They asked whether icons and "bubbles, with and
+   without highlights" could be supplied as art with text placed on them
+   dynamically. They can: `bevy_ui` has nine-slice with its own render
+   pipeline, so a small picture stretches to any width with its corners
+   intact and the text sits on top as an ordinary child.
+   *Done in §4n.*
 
 After this list: the transitions the board already computes turned into
 movement and sound, which is what §4 has owed since §3. It comes after
 rather than before, because tweens animate cards between positions and
 this list moves every position.
+
+---
+
+### 4m. A table under the board, and the depth is painted on it — DONE (17 September 2026)
+
+`feat/desktop-table` (#61). Item 6 of the person's third list, built
+first because everything else reads against it and because the
+scaffolding is what unblocks somebody making art. The board was a flat
+dark ground; it now has a field, and that field is where the perspective
+lives.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A per-row face-width ramp is not used, and not on taste.**
+  `face_width` binary-searches `rows_height`, which is licensed *only* by
+  that function being monotone in the face width, and the obvious "depth
+  only on a big screen" ramp is not monotone: the derivative of
+  `base·(1 − (1 − d)(base − m)/(M − m))` is negative at `base = M = 220`
+  for any depth below about 0.60. It would have returned a silently
+  wrong width with **every existing test still green**. A safe form
+  exists — affine, `MIN_FACE + (base − MIN_FACE)·DEPTH[row]`, derivative
+  `DEPTH[row] > 0` — and is written down against the day the ramp is
+  wanted. Today `rows_height`, `face_width` and `step` are untouched and
+  the no-scroll invariant keeps its exact meaning.
+- **A table is a folder, not a bare image**, so it can carry more than
+  pixels: `base.jpg` (JPEG because a painted ground is photographic and
+  has no alpha — about a megabyte at 2560×1600 where the PNG is six), an
+  optional `overlay.png` (PNG because *that* one does need alpha), and an
+  optional `table.json`. **SVG is refused outright**: Bevy has no
+  rasteriser and adding one for a backdrop is a dependency for nothing.
+- **The manifest lives in `netrunner_client::table`**, not the desktop
+  crate: it is data rather than pixels, and testable without a window.
+  Optional at every level — a folder holding only a `base.jpg` is a table
+  named after itself, and a manifest with a typo costs the table its
+  colours and never its picture. Being made to write JSON before seeing
+  your own art is a reason not to bother.
+- **The painted tier draws a real receding grid** rather than a flat
+  wash: screen height maps to depth as `1/(v − horizon)`, the standard
+  ground-plane mapping, so the default ground demonstrates the intent
+  with no files at all. Lines fade with depth, because evenly-spaced
+  lines converge faster than the pixels can hold and the result is moiré
+  rather than distance.
+- **`Table` is a bare string in the settings file** — `"table":
+  "neon-alley"`, not a tagged enum — so a hand-edited file reads. That
+  costs two reserved names, `painted` and `random`, and a folder by
+  either is filtered out of the choices rather than offered and
+  unselectable. An unknown name is a folder rather than an error, and a
+  named table whose folder has gone falls back to the **painted ground,
+  never to some other picture**: somebody who named a table meant that
+  one.
+- **Random draws once per match**, from the wall clock rather than the
+  game's seed — seeding it from the deal would change the picture
+  whenever a seed was replayed to look at a bug.
+
+**Two things found by building it.** The `NETRUNNER_TABLE_GUIDE=1` hook
+parented each band to the board and then read the board's children the
+next frame, so it drew a band for every band — growing by a row a frame
+(6, 12, 18 …) and presenting as a despawn that was not working. The bands
+now hang off one container the loop skips, and they are outlined rather
+than filled, because the point of the guide is to see the field *under*
+the rows. And `widgets::dim` already carries a `TextColor`, so a second
+one in the same bundle is Bevy's duplicate-component panic.
+
+**Verified.** `cargo test --workspace` green (39 test binaries), clippy
+silent. New tests: the settings round trip as a bare name, an unknown one
+landing on a folder, the default still skipped from an untouched block;
+the manifest read, defaulted and surviving a typo; accents in the
+spellings a person would write; the painted ground's size and its
+near > far > beyond ordering, which is the depth cue itself; a choice
+resolving to a folder, to the painted ground when it is gone, and never
+panicking on an empty list; the row cycling both ways, wrapping, offering
+random only with something to shuffle, and restarting from a table since
+deleted. Screenshotted from the Runner's chair forty decisions in, with
+and without the guide: the grid converges on a vanishing point at the
+centre, the six rows land where the guide says, and the only scroll area
+logged is the hidden log's at zero size. No engine file changed, so no
+sweep.
+
+---
+
+### 4n. The board's furniture is drawn instead of outlined, and a skin never changes a size — DONE (17 September 2026)
+
+`feat/desktop-skin` (#62), stacked on §4m because a table may name the
+skin it was drawn for. Item 7, and the item the third list grew for.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A skin changes how a box is painted, never how big it is.** This is
+  the rule the design serves rather than a nicety: `face_width` budgets
+  the window to the pixel so the board never scrolls, and
+  `spawn_actions_menu` places itself from the hard-coded height of a
+  button. So `Dressing::apply` writes colours and an `ImageNode` and
+  **never touches `Node`** — a dressed node keeps its border *width*,
+  because width is layout, and has its border coloured away instead; the
+  corner radius stays the caller's, because `border_radius` is a field of
+  `Node` rather than a component of its own. Measured rather than
+  asserted: the control bar's eight buttons are 180, 174, 191, 140, 178,
+  188, 131, 193 skinned and undressed alike.
+- **Two levels of fallback**, because a skin nobody has finished has to
+  be worth starting: an undrawn slot is drawn as before, and an undrawn
+  *state* borrows its base slot's picture. One `tile.png` dresses a
+  rezzed tile and an unrezzed one.
+- **The caller says what it would have drawn.** A tile's border is its
+  card's faction colour and a column's is the accent when it welcomes a
+  drag; those are runtime facts the skin module has no business knowing.
+  `Skin::dress` takes the `Drawn` the call site already had and either
+  overrides it or hands it back. The tint `"state"` then means *the
+  colour the board would have used*, so one white picture serves every
+  faction and every alarm.
+- **The picture is applied by a system, not by the bundle.** A
+  `widgets::` bundle is a plain function of the theme and cannot reach a
+  resource; threading a `Skin` into `button`, `compact_button` and the
+  rest would have touched every call site in the crate to say something
+  none of them care about. They mark themselves `Dressed` and `dress`
+  paints them.
+- **Server marks are deliberately absent**, and they are the first thing
+  anyone asks for. A mark needs a box of its own in the header; a header
+  with one is wider; a wider header widens its column — which is a
+  *layout* change, and not a skin's to make. Reserving that box for every
+  server whether or not anybody has drawn a mark is the way to do it, and
+  it belongs with the panels and the icons.
+
+**Two things found by building it.** Registering `dress` at the head of
+`WidgetsPlugin`'s existing chain moved `button_feedback` relative to every
+screen's `controls`, and twelve board tests stopped seeing their presses;
+dressing has no ordering requirement of its own, so it is registered
+separately, with the reason in the code. And `button_feedback` resets to
+`theme.button` on `Interaction::None`, so any `Themed` node resting on
+another colour loses it after one hover — the drop-down's selected item
+is the live case. Recorded where the code is rather than silently worked
+around; the fix is for it to carry a `Dressed` of its own.
+
+**A correction to both authoring guides, from measuring rather than
+deriving.** The slot sizes were worked out from the layout constants and
+two were wrong: a button is 44 logical pixels tall rather than 40,
+because a text line is taller than its font size, and a server header is
+31 rather than 36 — 36 is what the *fit* budgets for that row, not what
+the button comes out at. Measuring also turned up what neither guide
+mentioned: there are two pixel scales, and this machine runs a 1.25
+display scale, so a box the layout calls 44 tall is 55 real pixels and a
+field over a 2048×1280 logical window is 2560×1600 of picture. Both
+guides now say to draw at 2×, and the tables guide says what it should
+have said first — the field is stretched and never cropped, so the aspect
+ratio is the part that matters.
+
+**Verified.** `cargo test --workspace` green (39 test binaries), clippy
+silent. New tests: the manifest read, defaulted, surviving a typo and
+keeping a key from a later version; every slot's key unique and every
+base terminating in one step; an empty skin handing back the caller's own
+colours for all 33 slots; a state borrowing its base's picture; tint
+precedence — state over base over plain — and not leaking back; insets
+becoming a nine-slice and an icon keeping its aspect; `"state"`
+recognised rather than parsed as a failed colour; `Auto` following the
+table, `Drawn` refusing one it offers, and a named skin never falling
+through to another. Proved end to end with a throwaway skin — a 32×32
+plate with a 3px rim and corner notches dressed the columns, headers,
+tiles, buttons, chips and HUD cells at eight different widths with no
+smearing — then deleted; no art is committed. No engine file changed, so
+no sweep.
+
+**Open, for the rest of the list:** the contact shadows that sit the
+cards on the field (item 1's other half), the panels, menus, sheets and
+icons, a server's own mark, the fanned hand, the hovered card, the player
+bars and the right-hand side.
