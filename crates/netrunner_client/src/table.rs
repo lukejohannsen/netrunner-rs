@@ -51,6 +51,10 @@ pub struct Manifest {
     pub accent: Option<String>,
     /// How dark the field is, which decides which way the text goes.
     pub ink: Ink,
+    /// The skin this field was made to be seen with, if any. Read only
+    /// when the player's skin setting is `Auto`, so naming one here is a
+    /// suggestion the table makes and never a choice it takes away.
+    pub skin: Option<String>,
 }
 
 impl Manifest {
@@ -84,8 +88,9 @@ impl Manifest {
     }
 }
 
-/// `#1ec8b4`, `1ec8b4`, `#1cb` — or `None`.
-fn parse_hex(text: &str) -> Option<(u8, u8, u8)> {
+/// `#1ec8b4`, `1ec8b4`, `#1cb` — or `None`. Public because a skin's
+/// tints are written the same way, by the same hand, in a sibling file.
+pub fn parse_hex(text: &str) -> Option<(u8, u8, u8)> {
     let hex = text.trim().trim_start_matches('#');
     let pair = |i: usize| u8::from_str_radix(&hex[i..i + 2], 16).ok();
     match hex.len() {

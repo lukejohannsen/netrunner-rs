@@ -84,6 +84,7 @@ pub mod icon_font;
 pub mod models;
 pub mod nav;
 pub mod screens;
+pub mod skin;
 pub mod table;
 pub mod theme;
 pub mod widgets;
@@ -121,6 +122,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(core::CorePlugin)
             .add(dev::DevPlugin)
             .add(theme::ThemePlugin)
+            .add(skin::SkinPlugin)
             .add(nav::NavPlugin)
             .add(widgets::WidgetsPlugin)
             .add(ScrollPlugins)
