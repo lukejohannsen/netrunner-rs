@@ -73,6 +73,9 @@ pub enum Intent {
     /// Open a card's text over whatever is open (a face in a zone sheet),
     /// or close it with `None`.
     Inspect(Option<CardId>),
+    /// A row of a list sheet (the score area's agendas), by position:
+    /// opens its details in place, or closes them if it was the open one.
+    Expand(usize),
     /// The gear: open or close the game options.
     ToggleOptions,
     /// Escape: closes the options, the menu, the inspector, the sheet or
@@ -175,6 +178,11 @@ pub struct Game {
     pub sheet: Option<Sheet>,
     /// A card's text over the sheet (a face in a pile), or alone.
     pub inspecting: Option<CardId>,
+    /// The row of a list sheet whose details are open, by position. One
+    /// at a time, in place rather than over the sheet: the score area is
+    /// a short list read top to bottom, and a card over it hid the rest.
+    /// Cleared whenever a sheet opens.
+    pub expanded: Option<usize>,
     /// A secondary click's menu, over its card.
     pub menu: Option<Menu>,
     pub options_open: bool,
@@ -203,6 +211,7 @@ impl Game {
             awaiting: false,
             sheet: None,
             inspecting: None,
+            expanded: None,
             menu: None,
             options_open: false,
             rejection: None,
@@ -304,6 +313,13 @@ impl Game {
             },
             Intent::Inspect(card) => {
                 self.inspecting = card;
+                Outcome::Redraw
+            }
+            Intent::Expand(row) => {
+                if self.sheet.is_none() {
+                    return Outcome::Nothing;
+                }
+                self.expanded = if self.expanded == Some(row) { None } else { Some(row) };
                 Outcome::Redraw
             }
             Intent::ToggleOptions => {
@@ -451,6 +467,7 @@ impl Game {
             };
         }
         self.inspecting = None;
+        self.expanded = None;
         self.sheet = Some(Sheet { target, entries });
         Outcome::Redraw
     }
@@ -678,6 +695,28 @@ mod tests {
         until_awaiting(&mut game, &mut handle);
         assert!(game.menu.is_none(), "an applied action closes the menu");
         handle.join();
+    }
+
+    /// The score area opens as a sheet from the HUD, one row's details
+    /// open at a time, a second press on the open row closes it, and a
+    /// sheet opened afresh starts with every row closed.
+    #[test]
+    fn a_score_area_row_expands_in_place_one_at_a_time() {
+        let mut game = Game::new(Arc::new(netrunner_client::decks::sample_deck_registry()), Side::Runner);
+        assert_eq!(game.apply(Intent::Expand(0)), Outcome::Nothing, "no sheet, nothing to expand");
+        let agendas = Target::Pile(netrunner_client::board::Pile::Agendas(Side::Corp));
+        assert_eq!(game.apply(Intent::Click(agendas.clone())), Outcome::Redraw);
+        assert_eq!(game.sheet.as_ref().map(|s| s.target.clone()), Some(agendas.clone()));
+        game.apply(Intent::Expand(1));
+        assert_eq!(game.expanded, Some(1));
+        game.apply(Intent::Expand(0));
+        assert_eq!(game.expanded, Some(0), "one row at a time");
+        game.apply(Intent::Expand(0));
+        assert_eq!(game.expanded, None, "the open row's second press closes it");
+        game.apply(Intent::Expand(2));
+        game.apply(Intent::Back);
+        game.apply(Intent::Click(agendas));
+        assert_eq!(game.expanded, None, "a sheet opens with every row closed");
     }
 
     #[test]

@@ -124,6 +124,8 @@ pub enum Click {
     Control(Control),
     /// A face in a zone sheet: read the card over the sheet.
     Inspect(CardId),
+    /// A row of a list sheet (the score area): open or close its details.
+    Expand(usize),
     /// The gear.
     Options,
     CloseOverlay,
@@ -159,6 +161,12 @@ pub struct HudReadout {
     pub label: &'static str,
     pub value: String,
 }
+/// A row of the score-area sheet, by position, for a test to press.
+#[derive(Component)]
+pub struct ScoreRow(pub usize);
+/// The open row's details, by position, for a test to find.
+#[derive(Component)]
+pub struct ScoreDetails(pub usize);
 
 /// The pacer the match's messages go through.
 #[derive(Resource)]
@@ -475,6 +483,13 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
             pending.0.push(Intent::Click(Target::Install(id)));
         }
     }
+    if model.0.awaiting
+        && dev.autoplayed >= dev.autoplay
+        && let Some(side) = dev.agendas.take()
+    {
+        pending.0.push(Intent::Click(Target::Pile(Pile::Agendas(side))));
+        pending.0.push(Intent::Expand(0));
+    }
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
         return;
     }
@@ -608,6 +623,7 @@ fn controls(
             Ok(Click::Entry(index)) => intents.push(Intent::Choose(*index)),
             Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
             Ok(Click::Inspect(card)) => intents.push(Intent::Inspect(Some(card.clone()))),
+            Ok(Click::Expand(row)) => intents.push(Intent::Expand(*row)),
             Ok(Click::Options) => intents.push(Intent::ToggleOptions),
             Ok(Click::CloseOverlay) => intents.push(Intent::Back),
             Ok(Click::ConfirmQuit) => intents.push(Intent::ConfirmQuit),
@@ -876,9 +892,6 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                 column.spawn((Text::new(format!("{who} · {title}")), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 spawn_hud(column, theme, view, side);
                 column.spawn((widgets::dim(theme, hud::details(view, side)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                if let Some(line) = scored_line(view, side) {
-                    column.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                }
                 // The Runner's piles are zones a click opens — the stack
                 // for its draw, the heap for what is in it — as the
                 // Corp's centrals are through their server headers.
@@ -922,7 +935,8 @@ fn compact_button(parent: &mut ChildSpawnerCommands, theme: &Theme, text: String
 /// sentences in the strip before (Phase 7 §4 item 6) — dim and small
 /// first, nobody saw them; body size next, they were a line to read. A
 /// live threat is drawn in the danger colour rather than added, which is
-/// `hud`'s rule.
+/// `hud`'s rule. A readout that opens a zone — Agendas, the score area —
+/// is a button, drawn with the buttons' fill so it reads as one.
 fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, side: Side) {
     let readouts = hud::readouts(view, side);
     parent
@@ -940,26 +954,25 @@ fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView
         .with_children(|grid| {
             for readout in readouts {
                 let colour = if readout.alarm { theme.danger } else { theme.text };
-                grid.spawn((HudReadout { label: readout.label, value: readout.value.clone() }, Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, ..default() }))
-                    .with_children(|cell| {
+                let marker = HudReadout { label: readout.label, value: readout.value.clone() };
+                let node = Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, ..default() };
+                let mut cell = match readout.opens {
+                    Some(pile) => grid.spawn((
+                        marker,
+                        Button,
+                        widgets::Themed,
+                        Click::Target(Target::Pile(pile)),
+                        Node { padding: UiRect::axes(px(6), px(0)), margin: UiRect::left(px(-6)), border_radius: BorderRadius::all(px(6)), ..node },
+                        BackgroundColor(theme.button),
+                    )),
+                    None => grid.spawn((marker, node)),
+                };
+                cell.with_children(|cell| {
                         cell.spawn((Text::new(readout.value), theme.font(size::HEADING), TextColor(colour)));
                         cell.spawn((Text::new(readout.label), theme.font(size::SMALL), TextColor(if readout.alarm { theme.danger } else { theme.text_dim })));
                     });
             }
         });
-}
-
-/// The agendas a side has scored or stolen, by title, when there are any.
-fn scored_line(view: &ClientView, side: Side) -> Option<String> {
-    let titles: Vec<String> = match side {
-        Side::Corp => view.corp.scored_agendas.iter().map(|a| a.card.0.replace('_', " ")).collect(),
-        Side::Runner => view.runner.scored_agendas.iter().map(|c| c.0.replace('_', " ")).collect(),
-    };
-    if titles.is_empty() {
-        return None;
-    }
-    let verb = if side == Side::Corp { "Scored" } else { "Stolen" };
-    Some(format!("{verb}: {}", titles.join(", ")))
 }
 
 /// The space a strip row leaves for its cards.
@@ -1683,9 +1696,16 @@ fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
 
 /// A zone: its actions, then what is in it as far as the viewer may
 /// see. Every visible card is a button that reads it over the sheet.
+/// The score area is the exception, a list rather than a spread of
+/// faces (`score_area_sheet`).
 fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, target: &Target, entries: &[usize]) {
     let Some(view) = &game.view else { return };
     panel.spawn(widgets::heading(theme, target_title(game, target)));
+    if let Target::Pile(Pile::Agendas(side)) = target {
+        score_area_sheet(panel, theme, core, images, game, view, *side);
+        panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+        return;
+    }
     if entries.is_empty() {
         panel.spawn(widgets::dim(theme, if game.awaiting { "Nothing to do here right now." } else { "Not your decision right now." }));
     } else {
@@ -1733,6 +1753,7 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         }
         Target::Pile(Pile::Stack) => (format!("{} cards, in an order nobody is shown", view.runner.stack_count), (0..view.runner.stack_count.min(5)).map(|_| Shown::Back(Side::Runner)).collect()),
         Target::Pile(Pile::Heap) => (format!("{} cards, all face up", view.runner.heap.len()), view.runner.heap.iter().cloned().map(Shown::Card).collect()),
+        Target::Pile(Pile::Agendas(_)) => unreachable!("the score area returned above"),
         Target::HandCard(_) | Target::Install(_) | Target::Identity(_) | Target::Position(_) => (String::new(), Vec::new()),
     };
     panel.spawn(widgets::dim(theme, caption));
@@ -1767,6 +1788,91 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         });
     }
     panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
+}
+
+/// A side's score area as a list: a row per agenda — its face small,
+/// its title and points — and a press on a row opens it in place, the
+/// face large beside what it is worth, its counters, its printed text
+/// and, for an agenda the viewer scored, the abilities it still has
+/// (`Target::Install` by the handle it kept). A list rather than the
+/// piles' spread of faces because the person asked to read down it and
+/// open one, and a card read over the sheet hides the others.
+#[allow(clippy::too_many_arguments)]
+fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side) {
+    let agendas = hud::score_area(view, side, &core.registry);
+    let (points, to_win) = (if side == Side::Corp { view.corp.agenda_points } else { view.runner.agenda_points }, view.rules.winning_agenda_points);
+    let caption = match agendas.len() {
+        0 => format!("None yet · {points} of {to_win} points"),
+        1 => format!("1 agenda · {points} of {to_win} points"),
+        n => format!("{n} agendas · {points} of {to_win} points"),
+    };
+    panel.spawn(widgets::dim(theme, caption));
+    if agendas.is_empty() {
+        return;
+    }
+    let scroll = panel
+        .spawn((
+            bevy::ui_widgets::ScrollArea,
+            Node { width: percent(100), max_height: px(560), flex_direction: FlexDirection::Column, row_gap: px(6), overflow: Overflow::scroll_y(), ..default() },
+        ))
+        .with_children(|list| {
+            for (row, agenda) in agendas.iter().enumerate() {
+                let open = game.expanded == Some(row);
+                let def = core.registry.get(&agenda.card);
+                let image = def.and_then(|d| d.numeric_id).and_then(|code| images.face(code));
+                list.spawn((
+                    ScoreRow(row),
+                    Button,
+                    widgets::Themed,
+                    Click::Expand(row),
+                    Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(12), padding: UiRect::all(px(6)), border_radius: BorderRadius::all(px(6)), flex_shrink: 0.0, ..default() },
+                    BackgroundColor(theme.button),
+                ))
+                .with_children(|button| {
+                    // The disclosure triangles are in Noto Sans Symbols 2 (U+25B8,
+                    // U+25BE), not Noto Sans, which drew both as a box — and
+                    // has no U+2212 minus either. Without the symbol font, a
+                    // plus and an en dash.
+                    let (marker, font) = if theme.has_symbols() {
+                        (if open { "▾" } else { "▸" }, theme.symbol_font(size::BODY))
+                    } else {
+                        (if open { "–" } else { "+" }, theme.font(size::BODY))
+                    };
+                    button.spawn((Text::new(marker), font, TextColor(theme.text_dim), Node { width: px(18), ..default() }));
+                    if let Some(def) = def {
+                        spawn_face(button, theme, &Face::of(def), FaceSize::Board(56), image.clone(), ());
+                    }
+                    button.spawn(widgets::label(theme, agenda.line()));
+                });
+                if !open {
+                    continue;
+                }
+                list.spawn((ScoreDetails(row), Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, padding: UiRect::left(px(28)), flex_shrink: 0.0, ..default() })).with_children(|details| {
+                    if let Some(def) = def {
+                        spawn_face(details, theme, &Face::of(def), FaceSize::Large, image, ());
+                    }
+                    details.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
+                        for line in agenda.facts(side, &core.registry) {
+                            column.spawn((Text::new(line), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                        }
+                        if let Some(def) = def {
+                            column.spawn((Text::new(Face::of(def).body_text(false)), theme.font(size::SMALL), TextColor(theme.text_dim), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                        }
+                        let entries = agenda.install.map(|id| game.entries_for(&Target::Install(id))).unwrap_or_default();
+                        if !entries.is_empty() {
+                            column.spawn(widgets::label(theme, "Actions"));
+                            for index in entries {
+                                entry_button(column, theme, game, index);
+                            }
+                        }
+                    });
+                });
+            }
+        })
+        .id();
+    panel.spawn((Node { width: percent(100), flex_direction: FlexDirection::Row, column_gap: px(4), ..default() },)).add_child(scroll).with_children(|row| {
+        row.spawn(widgets::scrollbar(theme, scroll));
+    });
 }
 
 fn target_title(game: &Game, target: &Target) -> String {

@@ -1275,13 +1275,42 @@ Clicks 3 · Agenda points 2/7" is a line to read, not a place to glance.
   `STRIP_CORP`/`STRIP_RUNNER` heights, and the counts a person looks up
   rather than watches (R&D and Archives; MU and Link) are one small line
   under it. The Runner's Stack and Heap stay the pile buttons.
+- **"Agendas 5/7" is a button onto the score area** (asked for on the
+  PR: "'Agendas' (click) -> open to show cards -> click card expand").
+  The readout is named for what it opens rather than "Points", and
+  `Pile::Agendas(side)` is the zone, beside the stack and heap. The sheet
+  is a *list*, not the piles' spread of faces: a row per agenda (a small
+  face, the title, its points), and a press opens that row in place —
+  the large face, "Scored by the Corp · 2 points · advancement
+  requirement 4", counters, the printed text, and for an agenda the
+  viewer scored, its abilities by the handle it kept. One row open at a
+  time (`Game::expanded`, `Intent::Expand`), closed on a second press and
+  whenever a sheet opens; reading a card *over* the sheet, as the piles
+  do, hid the rest of the list. The strip's "Stolen: …" line went with
+  it — it was the one thing in a fixed-height strip that grew with the
+  game, and the risk this entry's first cut flagged.
 
-**Verified.** `cargo test --workspace` green (1,504 tests), clippy
-silent. New tests: `netrunner_client` checks the fixed order for both sides, that a threat
-marks its slot rather than adding one, and the points alarm; the
-desktop's headless game checks each side has one HUD holding exactly
-`hud::readouts` with the view's numbers. No engine file changed, so no
+**Verified.** `cargo test --workspace` green (1,507 tests), clippy
+silent. New tests: `netrunner_client` checks the fixed order for both
+sides, that only Agendas opens anything, that a threat marks its slot
+rather than adding one, the points alarm, and the score area's rows
+(two copies are two rows, printed points, a stolen agenda has no
+handle); the desktop model opens one row at a time and closes them on
+reopen; the desktop's headless game checks each side has one HUD holding
+exactly `hud::readouts`, and that a press on Agendas opens a row per
+agenda, each row a press that opens its details and a second that
+closes them. No engine file changed, so no
 sweep and no coverage report. Screenshotted from both chairs forty
 decisions in at 2560×1600 (the Runner opponent at 6/7 in red, its
 stolen line wrapping): no hand is clipped and the only scroll area
-logged is the hidden log's, at zero size.
+logged is the hidden log's, at zero size. The score area screenshotted
+with `NETRUNNER_AGENDAS=corp|runner` (opens it, first row expanded):
+empty ("None yet · 0 of 7 points") and with two stolen agendas. The first
+cut drew the disclosure triangle as a box — Noto Sans has neither
+U+25B8/U+25BE nor U+2212 — so it is drawn in Noto Sans Symbols 2, which
+covers U+25A0–2609, with a plus and an en dash beneath it.
+
+**Seen, not caused here.** Two of eleven screenshot runs hung after
+"Creating new window", before a first frame, and the same command
+passed on a retry; both logged bevy's "Can't select current monitor"
+warning, as every run did. Not investigated.

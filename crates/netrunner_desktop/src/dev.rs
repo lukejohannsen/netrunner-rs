@@ -27,6 +27,10 @@
 //! - `NETRUNNER_SHEET=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the sheet of the first installed Corp
 //!   card on the board is opened, so an install's state can be looked at.
+//! - `NETRUNNER_AGENDAS=corp|runner` — on the board, once the person's
+//!   decision has arrived (after any autoplay), that side's score area
+//!   is opened from its HUD readout with the first row expanded, so the
+//!   list and an agenda's details can be looked at.
 //! - `NETRUNNER_HOLD_RUN=1` — on the board, the pace of a run stops at
 //!   its first encounter (or the server's approach, with no ice to
 //!   meet) and the autoplay counts as done, so the
@@ -98,6 +102,8 @@ pub struct Dev {
     pub hold_install: bool,
     /// Open the sheet of the first installed Corp card, once.
     pub sheet: bool,
+    /// Open this side's score area with its first row expanded, once.
+    pub agendas: Option<netrunner_core::rules::Side>,
     pub screenshot: Option<PathBuf>,
     /// `(x, y, lines)`.
     pub scroll: Option<(f32, f32, f32)>,
@@ -128,6 +134,11 @@ impl Dev {
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
             hold_install: std::env::var_os("NETRUNNER_HOLD_INSTALL").is_some_and(|v| !v.is_empty()),
             sheet: std::env::var_os("NETRUNNER_SHEET").is_some_and(|v| !v.is_empty()),
+            agendas: std::env::var("NETRUNNER_AGENDAS").ok().and_then(|side| match side.trim().to_ascii_lowercase().as_str() {
+                "corp" => Some(netrunner_core::rules::Side::Corp),
+                "runner" => Some(netrunner_core::rules::Side::Runner),
+                _ => None,
+            }),
             screenshot: std::env::var_os("NETRUNNER_SCREENSHOT").map(PathBuf::from),
             scroll,
             frames: 0,

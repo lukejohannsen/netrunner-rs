@@ -148,11 +148,12 @@ pub const MAX_FACE: f32 = 220.0;
 /// The strip beside a hand: the identity plus its lines of numbers.
 pub const STRIP_TEXT: f32 = 330.0;
 /// A strip's height when its text is taller than its identity: the
-/// name line, the HUD's two rows of large numbers over their words, the
-/// details line and a scored line that may wrap once at `STRIP_TEXT`;
-/// the Runner's has the pile buttons under them. Unchanged when the HUD
-/// replaced four body-size lines: screenshotted from both chairs at
-/// 2560×1600 forty decisions in, a stolen line wrapping, it fits.
+/// name line, the HUD's two rows of large numbers over their words and
+/// the details line; the Runner's has the pile buttons under them. The
+/// scored agendas are no longer a line here — the Agendas readout opens
+/// them — so nothing in a strip grows with the game. Unchanged when the
+/// HUD replaced four body-size lines, and screenshotted to fit from both
+/// chairs at 2560×1600 forty decisions in.
 /// Over-estimates absorb into the gaps between rows; under-estimates
 /// clip the hand, which is the thing that must not
 /// happen.
