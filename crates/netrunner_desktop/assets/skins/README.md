@@ -84,40 +84,57 @@ cycles:
 A missing or malformed manifest costs the skin its pictures and never
 stops the client. You will notice because the name stops changing.
 
-## The slots
+## How big to draw
 
-Sizes are logical pixels at a 1280×800 window; the ones marked *scales*
-follow the computed card width, which grows on a larger monitor. Draw
-generously and let the nine-slice do the work.
+**Two pixel scales, and the difference matters.** The game lays out in
+*logical* pixels and draws in *physical* ones; the ratio is your display
+scale. On the machine these numbers were measured on it is **1.25**, so a
+box the layout calls 44 tall is 55 real pixels. On a HiDPI laptop it is
+often 2.
+
+So: **the sizes below are logical. Author at 2× them.** A picture drawn
+larger than its box is scaled down and looks fine; one drawn smaller is
+scaled up and looks soft. 2× covers every scale factor in normal use and
+costs a few kilobytes.
+
+**For anything nine-sliced, the source size barely matters.** Only the
+corners and edges are drawn at a fixed size — the middle is stretched as
+far as it needs to go. A 64×64 picture with 16px insets dresses a box of
+any width. Draw the corner detail you want at 16–24px and stop worrying
+about the rest.
+
+These were measured on a real board, not derived from the constants:
+2048×1280 logical, 1.25 scale, cards at their maximum width. On a smaller
+window the *scaling* boxes shrink and the fixed ones do not.
 
 ### The servers — what you asked about first
 
-| Key | Box | Fit | Notes |
+| Key | Logical box | Fit | Notes |
 |---|---|---|---|
-| `server.column` | width *scales* (card + 22), height grows with the tiles | 9-slice | The frame around Archives / R&D / HQ / a remote |
+| `server.column` | 242 × grows with its tiles | 9-slice | The frame around a server. Width is the card width + 22, so it shrinks on a small window |
 | `server.column.welcomes` | same | 9-slice | A card is being dragged and could land here |
 | `server.column.run` | same | 9-slice | A run is on this server |
-| `server.header` | fits its text, ~36 tall | 9-slice | "Archives · 2", "R&D · 35", "New remote 1" |
+| `server.header` | fits its text (~97) × **31** | 9-slice | "Archives · 2", "R&D · 35", "New remote 1" |
 | `server.header.welcomes` | same | 9-slice | |
-| `tile` | width *scales* (card + 4), **height 26** | 9-slice | An ice, or a card in a root |
+| `tile` | card width + 4 (~224) × **26** | 9-slice | An ice, or a card in a root. Wide and short — draw the detail at the ends |
 | `tile.rezzed` / `tile.unrezzed` | same | 9-slice | `"tint": "state"` gives you the faction colour free |
 
 ### Buttons and chips
 
-| Key | Box | Fit | Notes |
+| Key | Logical box | Fit | Notes |
 |---|---|---|---|
-| `button` | fits its text, **~40 tall** | 9-slice | The control bar, the menus, every screen |
+| `button` | 74–154 × **44** | 9-slice | The control bar, the menus, every screen |
 | `button.hover` / `.pressed` / `.disabled` | same | 9-slice | |
-| `compact.button` | fits its text | 9-slice | Stack, Heap, and the base a server header builds on |
+| `compact.button` | ~85 × **31** | 9-slice | Stack, Heap, and the base a server header builds on |
 | `compact.button.hover` / `.pressed` | same | 9-slice | |
-| `run.chip` | fits its text, **height 28** | 9-slice | A pill in the run lane |
+| `run.chip` | 47–91 × **28** | 9-slice | A pill in the run lane |
 | `run.chip.origin` / `.upcoming` / `.current` / `.done` / `.success` / `.ended` | same | 9-slice | The server, the ice ahead, where the run is, what it did |
-| `phase.chip` | fits its text | 9-slice | A step of the turn |
+| `phase.chip` | 86–149 × **25** | 9-slice | A step of the turn. The widest is "Actions · 3 clicks left" |
 | `phase.chip.past` / `.now` / `.ahead` | same | 9-slice | |
-| `hud.cell` | a third of a player strip | 9-slice | The plate behind Credits, Clicks, Agendas… |
+| `hud.cell` | ~89 × **48** | 9-slice | The plate behind Credits, Clicks, Agendas… |
 | `hud.cell.alarm` | same | 9-slice | A live tag, damage, bad publicity |
-| `hud.cell.opens` | same | 9-slice | The Agendas readout, which opens the score area |
-| `sub.dot` | **8 × 8** | plain | A subroutine on an ice chip |
+| `hud.cell.opens` | ~95 × **48** | 9-slice | The Agendas readout, which opens the score area |
+| `sub.dot` | **8 × 8** | plain | A subroutine on an ice chip. Draw at 32×32 and let it shrink |
 | `sub.dot.pending` / `.broken` / `.resolved` | same | plain | |
 
 **A server's own mark — an Archives badge, an R&D badge — is not a slot

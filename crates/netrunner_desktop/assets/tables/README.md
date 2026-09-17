@@ -36,8 +36,19 @@ folder is the name of the table.
 
 **`base.jpg` — JPEG, not PNG.** The field is photographic and has no
 transparency, and at 2560×1440 a JPEG is about a megabyte where the PNG
-is six. Any size works; it is stretched to the window, so match your
-monitor's aspect ratio or expect it to be squashed.
+is six.
+
+**Draw it at your monitor's full physical resolution.** The field fills
+the whole window, in *physical* pixels — on the machine these notes were
+written on the window is 2048×1280 logical at a 1.25 display scale, which
+is **2560×1600** of actual picture. Check yours and match it; when in
+doubt, larger and the right shape.
+
+**It is stretched, not cropped, so the aspect ratio is the part that
+matters.** A 16:9 picture on a 16:10 screen is squashed vertically, and
+nothing crops it for you. If you want one field to suit several machines,
+draw it at the widest aspect you care about and keep anything you would
+miss away from the edges.
 
 **`overlay.png` — PNG, because this one *does* need alpha.** A vignette,
 a frame, a wash of colour, a logo in a corner. It is drawn over the field
