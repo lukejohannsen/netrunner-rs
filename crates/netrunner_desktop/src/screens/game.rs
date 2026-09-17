@@ -411,7 +411,12 @@ fn poll(active: Option<ResMut<ActiveMatch>>, model: Option<ResMut<Model>>, pace:
                 }
             }
             Beat::Apply(message) => {
-                model.0.apply(Intent::Message(MatchMessageRef(message)));
+                // The one message outcome that acts: a lone pass taken
+                // for the person. `submit` fails only once the match has
+                // ended, and its `Ended` is already on the way.
+                if let Outcome::Submit(action) = model.0.apply(Intent::Message(MatchMessageRef(message))) {
+                    let _ = active.handle.submit(action);
+                }
                 dirty.all();
             }
         }

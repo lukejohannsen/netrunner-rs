@@ -123,6 +123,14 @@ impl App {
                     if self.selected >= view.legal_actions.len() {
                         self.selected = 0;
                     }
+                    // A seat asked only to pass is not asked: the pass
+                    // goes straight back (`netrunner_client::play::
+                    // lone_pass`). A spectator's view lists nothing.
+                    if !self.connection_lost
+                        && let Some(pass) = netrunner_client::play::lone_pass(&view)
+                    {
+                        let _ = self.tx.send(ClientMessage::SubmitAction(pass));
+                    }
                     self.view = Some(*view);
                     self.last_rejection = None;
                 }
@@ -614,6 +622,25 @@ mod connection_tests {
         let (mut state, _) = GameState::setup(&corp_deck, &runner_deck, registry, 1).unwrap();
         state.phase = GamePhase::Action(Side::Corp);
         build_client_view(&state, registry, Side::Corp)
+    }
+
+    /// A view that lists only a pass is answered with the pass as it
+    /// arrives; a pass beside anything else waits for a key.
+    #[test]
+    fn a_lone_pass_is_sent_without_a_key_and_a_pass_with_company_is_not() {
+        let (mut app, server_tx, mut client_rx) = app_with_channels();
+        let pass = PlayerAction::PassPriority { side: Side::Corp };
+        let mut view = a_view(&app.registry);
+        view.legal_actions = vec![pass.clone(), PlayerAction::EndTurn];
+        server_tx.send(ServerMessage::StateUpdate(Box::new(view.clone()))).unwrap();
+        app.drain_messages();
+        assert!(client_rx.try_recv().is_err(), "a real choice is the person's");
+
+        view.legal_actions = vec![pass.clone()];
+        server_tx.send(ServerMessage::StateUpdate(Box::new(view))).unwrap();
+        app.drain_messages();
+        assert!(matches!(client_rx.try_recv(), Ok(ClientMessage::SubmitAction(sent)) if sent == pass));
+        assert!(client_rx.try_recv().is_err(), "sent once");
     }
 
     #[test]

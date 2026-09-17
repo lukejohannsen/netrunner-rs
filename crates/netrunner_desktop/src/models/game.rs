@@ -45,7 +45,7 @@ use std::sync::Arc;
 
 use netrunner_client::actions::push_log_line;
 use netrunner_client::board::{transitions, ActionMap, Control, Prompt, RunTrail, Target, Transition};
-use netrunner_client::play::{GameEndReason, MatchMessage};
+use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
 use netrunner_client::ratings::RatingReport;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
@@ -363,6 +363,23 @@ impl Game {
                 self.menu = None;
                 Outcome::Redraw
             }
+            // Passing is the only thing to do: the board shows the view
+            // and the pass goes back without a click (`lone_pass`), with
+            // nothing offered meanwhile — the pacer has already held this
+            // message a beat inside a run, so the board is seen to move.
+            // The map is still built, so a pass the engine rejects comes
+            // back as `Rejected` onto a live bar and cannot loop.
+            MatchMessage::Awaiting { view } if lone_pass(&view).is_some() => {
+                let pass = lone_pass(&view).expect("matched above");
+                self.actions = ActionMap::build(&view, &self.registry);
+                self.prompt = Prompt::of(&view, &self.registry);
+                self.view = Some(*view);
+                self.awaiting = false;
+                if let Some(sheet) = &mut self.sheet {
+                    sheet.entries.clear();
+                }
+                Outcome::Submit(pass)
+            }
             MatchMessage::Awaiting { view } => {
                 self.actions = ActionMap::build(&view, &self.registry);
                 self.prompt = Prompt::of(&view, &self.registry);
@@ -484,7 +501,9 @@ mod tests {
     fn until_awaiting(game: &mut Game, handle: &mut MatchHandle) {
         while !game.awaiting {
             let message = handle.wait().expect("the match is alive");
-            game.apply(Intent::Message(MatchMessageRef(message)));
+            if let Outcome::Submit(pass) = game.apply(Intent::Message(MatchMessageRef(message))) {
+                handle.submit(pass).unwrap();
+            }
             assert!(!game.finished(), "the game ended first");
         }
     }
@@ -674,6 +693,36 @@ mod tests {
         game.apply(Intent::Message(MatchMessageRef(MatchMessage::Ended { winner: Side::Corp, reason: GameEndReason::AgendaThreshold, view, report: None, notice: None })));
         assert!(game.finished() && !game.awaiting && game.actions.is_empty());
         assert_eq!(game.apply(Intent::RequestQuit), Outcome::Quit, "no confirmation once it is over");
+        handle.join();
+    }
+
+    /// A decision whose only action is a pass is submitted as it arrives
+    /// and never opens the bar; a rejection of it reopens the bar with
+    /// the pass on it, so a person is never left with nothing.
+    #[test]
+    fn a_lone_pass_is_submitted_without_a_click() {
+        let (mut game, mut handle) = game(Side::Runner);
+        let pass = loop {
+            let message = handle.wait().expect("the match is alive");
+            let lone = matches!(&message, MatchMessage::Awaiting { view } if view.legal_actions.len() == 1 && matches!(view.legal_actions[0], PlayerAction::PassPriority { .. }));
+            match game.apply(Intent::Message(MatchMessageRef(message))) {
+                Outcome::Submit(pass) => {
+                    assert!(lone, "only a lone pass is taken for the person");
+                    break pass;
+                }
+                _ if game.awaiting => {
+                    assert!(!lone);
+                    let first = game.apply(Intent::Choose(0));
+                    let Outcome::Submit(action) = first else { panic!("{first:?}") };
+                    handle.submit(action).unwrap();
+                }
+                _ => assert!(!lone),
+            }
+        };
+        assert_eq!(pass, PlayerAction::PassPriority { side: Side::Runner });
+        assert!(!game.awaiting, "nothing is offered while the pass is in flight");
+        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Rejected { reason: "no".to_string() })));
+        assert!(game.awaiting && game.actions.for_control(Control::PassPriority).is_some(), "a rejected pass is back on the bar");
         handle.join();
     }
 

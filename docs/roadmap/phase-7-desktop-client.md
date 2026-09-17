@@ -588,6 +588,8 @@ yet a board to play on.
    can submit a lone `PassPriority` (and, arguably, any lone action) on
    arrival — a client policy, not a rule, and worth a short delay so
    the board is seen to change.
+   *Done in §4e, in both clients: the lone pass only, not any lone
+   action, and the desktop's run pacer is the delay.*
 3. **The `operator` Runner ran Archives three times running**, into
    Urtica Cipher's damage, having seen what was there, and never drew a
    card — the stack stayed at 24 — until it flatlined itself. A bot
@@ -1198,3 +1200,52 @@ Archives, and the pop-up reads `Scatter Field: where to install Scatter
 Field?` over `Install protecting HQ`, `… R&D`, `… Archives — costs 1
 credit`, `… Remote 0 — costs 1 credit` and `Install protecting a new
 remote server`; no scroll area is the board.
+
+### 4e. A lone pass is taken without a click, in both clients — DONE (17 September 2026)
+
+`feat/lone-pass-taken-without-a-click`. §3's item 2: passing priority
+over and over is the whole of a run from the other chair, and a button
+with no alternative asks the person nothing. Over one game from the
+Runner's chair against the bottom rung (seed 3, the first legal action
+taken each time) **96 of the 217 decisions were a lone `PassPriority`**,
+every one a click for nothing.
+
+**Decisions taken, with the alternative rejected.**
+
+- **Only the lone pass, not any lone action.** §3's note floated taking
+  every sole legal action. A lone `EndTurn`, a lone access decision or a
+  lone mulligan answer is a moment worth seeing, and a pass beside
+  anything else (a rez, an ability, a trace bid) is a real choice. So
+  `netrunner_client::play::lone_pass` is `Some` exactly when
+  `legal_actions` is one `PassPriority`, one predicate for both clients.
+- **A client policy, not a rule, and not a `Seat`.** The engine still
+  opens every window and still hears every pass; `Session` and
+  `MatchHandle` are untouched, so the match thread, the sweeps and the
+  RL path see the same actions they did. A `MatchHandle` that passed on
+  its own would have hidden the pass from a screen that wants to show
+  it.
+- **No setting.** Nothing is lost by the pass being taken: the log line
+  says it happened, and in a run the desktop's pacer already holds an
+  `Awaiting` a beat before the model sees it, which is the "short delay
+  so the board is seen to change" §3 asked for. A toggle can follow if
+  a person asks for one.
+- **Where each client takes it.** The terminal's `drive_local` submits
+  the pass on the human's `Awaiting` without drawing a prompt, and logs
+  it. The remote `App` answers a `StateUpdate` that lists only a pass
+  (never while the connection is down; a spectator's view lists
+  nothing). The desktop model returns `Outcome::Submit` from the
+  `Awaiting` itself, with `awaiting` off so the bar stays greyed, and
+  `poll` hands the pass to the match. The action map is still built, so
+  a pass the engine rejects reopens the bar with the pass on it and
+  cannot loop. **A lesson never takes it:** a step that teaches passing
+  must be pressed.
+
+**Verified.** `cargo test --workspace` green (1,500 tests), clippy
+silent. New tests: `netrunner_client` plays that seed-3 game taking
+every lone pass and checks each was the only action and the game ends;
+the terminal's `App` sends a lone pass as it arrives, once, and does not
+send a pass beside `EndTurn`; the desktop model submits a lone pass
+without a click, only a lone one, offers nothing while it is in flight,
+and puts the pass back on the bar when it is rejected. The desktop's
+headless tests that press Pass during the Corp's turn still pass. No engine file changed,
+so no sweep and no coverage report. No layout change, so no screenshot.
