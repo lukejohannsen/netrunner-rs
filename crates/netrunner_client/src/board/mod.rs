@@ -13,6 +13,7 @@ pub mod action_map;
 pub mod diff;
 pub mod facts;
 pub mod hud;
+pub mod phase;
 pub mod trail;
 
 pub use action_map::{table_servers, ActionEntry, ActionMap, Control, Pile, Prompt, Target};

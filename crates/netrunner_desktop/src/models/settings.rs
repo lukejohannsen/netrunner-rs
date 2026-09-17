@@ -14,16 +14,17 @@ pub enum Row {
     DownloadImages,
     PlayHelper,
     PlayHistory,
+    PhaseBar,
 }
 
 impl Row {
-    pub const ALL: [Row; 8] = [Row::Player, Row::Format, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory];
+    pub const ALL: [Row; 9] = [Row::Player, Row::Format, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
 
     /// The rows the board's gear menu shows: what changes how a game is
     /// played and looks, and nothing that would want a text field. A
     /// future board property (a layout, a card-back choice) goes here
     /// as well as in `ALL`.
-    pub const GAME: [Row; 5] = [Row::PlayHelper, Row::PlayHistory, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume];
+    pub const GAME: [Row; 6] = [Row::PhaseBar, Row::PlayHelper, Row::PlayHistory, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -35,6 +36,7 @@ impl Row {
             Row::DownloadImages => "Download card images",
             Row::PlayHelper => "Play helper",
             Row::PlayHistory => "Play history",
+            Row::PhaseBar => "Phase bar",
         }
     }
 
@@ -91,6 +93,10 @@ pub fn apply(settings: &mut Settings, intent: Intent) -> bool {
             settings.desktop.play_helper = !settings.desktop.play_helper;
             true
         }
+        Intent::Toggle(Row::PhaseBar) => {
+            settings.desktop.phase_bar = !settings.desktop.phase_bar;
+            true
+        }
         Intent::Toggle(Row::PlayHistory) => {
             settings.desktop.play_history = !settings.desktop.play_history;
             true
@@ -136,6 +142,7 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
         Row::DownloadImages => on_off(prefs.download_images),
         Row::PlayHelper => on_off(prefs.play_helper),
         Row::PlayHistory => on_off(prefs.play_history),
+        Row::PhaseBar => on_off(prefs.phase_bar),
     }
 }
 

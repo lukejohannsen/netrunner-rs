@@ -63,6 +63,8 @@ pub enum Shortcut {
     MenuHovered,
     /// Turn the play helper's flat panel on or off.
     PlayHelper,
+    /// Turn the phase bar on or off.
+    PhaseBar,
     /// Open or close the list of keys.
     Help,
 }
@@ -88,6 +90,7 @@ pub fn shortcut(key: Key, shift: bool, side: Side) -> Option<Shortcut> {
         Key::Char('i') => Shortcut::ReadHovered,
         Key::Char('m') => Shortcut::MenuHovered,
         Key::Char('h') => Shortcut::PlayHelper,
+        Key::Char('l') => Shortcut::PhaseBar,
         Key::Char(digit @ '1'..='9') => Shortcut::Decision(digit as usize - '1' as usize),
         Key::Char(_) => return None,
     })
@@ -108,6 +111,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("M", "Actions of the card under the pointer"),
     ("I", "Read the card under the pointer"),
     ("Tab", "Your score area (Shift: your opponent's)"),
+    ("L", "Phase bar on or off"),
     ("H", "Play helper on or off"),
     ("? or F1", "This list"),
     ("Esc", "Close what is open, else leave the game"),

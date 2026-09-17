@@ -526,7 +526,7 @@ impl Game {
                 }
             }
             Shortcut::ScoreArea(side) => self.apply(Intent::Inspect(Target::Pile(Pile::Agendas(side)))),
-            Shortcut::ReadHovered | Shortcut::MenuHovered | Shortcut::PlayHelper | Shortcut::Help => Outcome::Nothing,
+            Shortcut::ReadHovered | Shortcut::MenuHovered | Shortcut::PlayHelper | Shortcut::PhaseBar | Shortcut::Help => Outcome::Nothing,
         }
     }
 

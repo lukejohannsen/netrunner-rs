@@ -159,6 +159,13 @@ pub struct RunLane;
 /// A server's column, for a test that reads what a column holds.
 #[derive(Component)]
 pub struct ServerColumn(pub ServerId);
+/// The phase bar's row, and one step chip on it, for a test to read.
+#[derive(Component)]
+pub struct PhaseBarRow;
+
+#[derive(Component)]
+pub struct PhaseStep(pub netrunner_client::board::phase::State);
+
 /// The rail's line asking for a second Enter, for a test to find.
 #[derive(Component)]
 pub struct EndTurnNotice;
@@ -288,22 +295,22 @@ impl BoardFit {
 }
 
 /// What the view puts on the board, for the fit.
-fn counts(game: &Game) -> Counts {
+fn counts(game: &Game, phase_bar: bool) -> Counts {
     let human_is_runner = game.side == Side::Runner;
-    let Some(view) = &game.view else { return Counts { human_is_runner, ..Counts::default() } };
+    let Some(view) = &game.view else { return Counts { human_is_runner, phase_bar, ..Counts::default() } };
     let pieces = view.corp.servers.iter().map(|s| s.ice.len() + s.root.len()).max().unwrap_or(0);
     // The three centrals are always drawn.
     let remotes = view.corp.servers.iter().filter(|s| matches!(s.server, ServerId::Remote(_))).count();
-    Counts { pieces, servers: 3 + remotes, human_is_runner, rig: !view.runner.rig.is_empty() }
+    Counts { pieces, servers: 3 + remotes, human_is_runner, rig: !view.runner.rig.is_empty(), phase_bar }
 }
 
 /// Recomputes the face width from the window and the view, and marks the
 /// board for a redraw when it moved. Runs every frame and is cheap: a
 /// handful of comparisons.
-fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, fit: Option<ResMut<BoardFit>>, mut dirty: ResMut<Dirty>) {
+fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, fit: Option<ResMut<BoardFit>>, core: Res<ClientCore>, mut dirty: ResMut<Dirty>) {
     let (Some(model), Some(mut fit)) = (model, fit) else { return };
     let window = windows.single().map_or(fit.window, |w| Vec2::new(w.width(), w.height()));
-    let face = layout::face_width((window.x, window.y), counts(&model.0));
+    let face = layout::face_width((window.x, window.y), counts(&model.0, core.settings.desktop.phase_bar));
     if (face - fit.face).abs() > 0.5 || window != fit.window {
         fit.face = face;
         fit.window = window;
@@ -654,15 +661,19 @@ fn shortcuts(
                     pending.0.push(Intent::Click { target, over });
                 }
             }
-            Shortcut::PlayHelper => {
+            Shortcut::PlayHelper | Shortcut::PhaseBar => {
                 if model.0.covered() {
                     continue;
                 }
-                settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(Row::PlayHelper));
+                let row = if shortcut == Shortcut::PhaseBar { Row::PhaseBar } else { Row::PlayHelper };
+                settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(row));
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
                 }
+                // The phase bar is a row of the board, so the cards are
+                // re-fitted around it; the helper is the rail's.
                 dirty.rail = true;
+                dirty.board = shortcut == Shortcut::PhaseBar;
             }
             _ => pending.0.push(Intent::Shortcut(shortcut)),
         }
@@ -873,8 +884,17 @@ fn overlay_needed(game: &Game) -> bool {
 // ---- the board ----
 
 fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, transitions: &[Transition], fit: &BoardFit) {
+    // The phase bar is drawn last, below the hand and above the control
+    // bar: where the game is belongs beside what the person may do about
+    // it, and a row at the top would have sat among the opponent's cards.
+    let with_phase_bar = |parent: &mut ChildSpawnerCommands, game: &Game| {
+        if core.settings.desktop.phase_bar {
+            parent.spawn((PhaseBarRow, phase_bar_node())).with_children(|row| fill_phase_bar(row, theme, game));
+        }
+    };
     let Some(view) = &game.view else {
         parent.spawn(widgets::dim(theme, "Waiting for the match to start…"));
+        with_phase_bar(parent, game);
         return;
     };
     let human = game.side;
@@ -896,6 +916,7 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
         spawn_strip(row, theme, core, images, game, view, human, fit);
         spawn_hand(row, theme, core, images, view, human, &lit, fit);
     });
+    with_phase_bar(parent, game);
 }
 
 /// What the last transitions touched, so the redraw can outline it.
@@ -1513,6 +1534,74 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, game: 
                 }
             });
         });
+}
+
+// ---- the phase bar ----
+
+fn phase_bar_node() -> Node {
+    Node {
+        width: percent(100),
+        height: px(layout::PHASE_BAR - layout::ROW_GAP),
+        flex_shrink: 0.0,
+        flex_direction: FlexDirection::Column,
+        justify_content: JustifyContent::Center,
+        align_items: AlignItems::Center,
+        row_gap: px(2),
+        overflow: Overflow::clip(),
+        ..default()
+    }
+}
+
+/// The turn's steps, and a run's, from `board::phase`: a chip per step in
+/// order, the one in play in the accent colour and outlined, the ones
+/// behind it dim. A segment's title is a chip of its own at the head of
+/// its row, so "Corp turn 12" and "Run on HQ" read as the headings they
+/// are, and the window's line sits under the lot.
+fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
+    use netrunner_client::board::phase::{self, State};
+    let Some(view) = &game.view else {
+        parent.spawn(widgets::dim(theme, "Setting up…"));
+        return;
+    };
+    let bar = phase::bar(view);
+    parent.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), overflow: Overflow::clip(), ..default() },)).with_children(|row| {
+        for (n, segment) in bar.segments.iter().enumerate() {
+            if n > 0 {
+                row.spawn((Text::new("·"), theme.font(size::SMALL), TextColor(theme.text_dim)));
+            }
+            row.spawn((Text::new(segment.title.clone()), theme.font(size::SMALL), TextColor(theme.text)));
+            for step in &segment.steps {
+                let (text, background, border) = match step.state {
+                    State::Past => (theme.text_dim, theme.panel, theme.panel),
+                    State::Now => (theme.background, theme.accent, theme.accent),
+                    State::Ahead => (theme.text_dim, theme.background, theme.panel_border),
+                };
+                row.spawn((
+                    PhaseStep(step.state),
+                    Node {
+                        padding: UiRect::axes(px(8), px(3)),
+                        border: UiRect::all(px(1)),
+                        border_radius: BorderRadius::all(px(10)),
+                        flex_shrink: 0.0,
+                        ..default()
+                    },
+                    BackgroundColor(background),
+                    BorderColor::all(border),
+                    children![(Text::new(step.label.clone()), theme.font(size::SMALL), TextColor(text))],
+                ));
+            }
+        }
+    });
+    match &bar.note {
+        Some(note) => {
+            parent.spawn((Text::new(note.clone()), theme.font(size::SMALL), TextColor(theme.accent)));
+        }
+        // A line only when a window is open, and a blank one to hold the
+        // row's height when it is not, so the bar never changes the board.
+        None => {
+            parent.spawn((Text::new(" "), theme.font(size::SMALL), TextColor(theme.text_dim)));
+        }
+    }
 }
 
 // ---- the run lane ----
