@@ -23,7 +23,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, HudPanel, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, EndTurnNotice, HelpRow, HudPanel, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -326,6 +326,87 @@ fn a_secondary_click_opens_the_card_to_read_and_offers_nothing() {
     click(&mut app, MouseButton::Left);
     assert_eq!(menus(&mut app), 0, "a click elsewhere closes the menu");
     assert_eq!(app.world().resource::<Model>().0.applied, before);
+}
+
+/// A key typed on the board: its press and release, then two frames.
+fn type_key(app: &mut App, key_code: KeyCode, logical_key: Key) {
+    press(app, key_code, logical_key);
+    app.update();
+    app.update();
+}
+
+fn letter(app: &mut App, key_code: KeyCode, c: &str) {
+    type_key(app, key_code, Key::Character(c.into()));
+}
+
+/// The keys are the buttons pressed another way, read off the keyboard
+/// by what they type: at the mulligan 1 keeps; on the Runner's turn C
+/// takes a credit, Ctrl-C does nothing, ? lists the keys and nothing acts
+/// under the list, M and I open the hovered card's menu and sheet, H turns
+/// the play helper on and saves it, and Enter with clicks left asks for a
+/// second Enter on the rail before the turn ends.
+#[test]
+fn the_keys_press_the_buttons_they_stand_for() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    letter(&mut app, KeyCode::Digit1, "1");
+    wait_for(&mut app, "the mulligan's first button to be applied", |app| app.world().resource::<Model>().0.applied > 0);
+    until_the_runners_turn(&mut app);
+    // C: Take 1 credit.
+    let (before, credits) = {
+        let model = &app.world().resource::<Model>().0;
+        (model.applied, model.view.as_ref().unwrap().runner.credits)
+    };
+    letter(&mut app, KeyCode::KeyC, "c");
+    wait_for(&mut app, "the credit to be taken", |app| app.world().resource::<Model>().0.applied > before);
+    until_the_runners_turn(&mut app);
+    assert_eq!(app.world().resource::<Model>().0.view.as_ref().unwrap().runner.credits, credits + 1);
+    // With Ctrl held, C is the system's.
+    let before = app.world().resource::<Model>().0.applied;
+    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Pressed, text: None, repeat: false, window: Entity::PLACEHOLDER });
+    app.update();
+    letter(&mut app, KeyCode::KeyC, "c");
+    app.world_mut().write_message(KeyboardInput { key_code: KeyCode::ControlLeft, logical_key: Key::Control, state: ButtonState::Released, text: None, repeat: false, window: Entity::PLACEHOLDER });
+    app.update();
+    app.update();
+    assert!(app.world().resource::<Model>().0.awaiting && app.world().resource::<Model>().0.applied == before, "Ctrl-C sent nothing");
+    // ? lists every key; under the list no key acts; Escape closes it.
+    type_key(&mut app, KeyCode::Slash, Key::Character("?".into()));
+    assert_eq!(overlays(&mut app), 1);
+    assert_eq!(app.world_mut().query::<&HelpRow>().iter(app.world()).count(), netrunner_desktop::models::shortcuts::LIST.len());
+    letter(&mut app, KeyCode::KeyC, "c");
+    assert_eq!(app.world().resource::<Model>().0.applied, before, "nothing acts under the list");
+    type_key(&mut app, KeyCode::Escape, Key::Escape);
+    assert_eq!(overlays(&mut app), 0);
+    assert!(!app.world().resource::<Model>().0.confirm_quit);
+    // M and I act on the hovered card.
+    let face = {
+        let mut q = app.world_mut().query::<(Entity, &Click)>();
+        q.iter(app.world()).find(|(_, c)| matches!(c, Click::Target(Target::HandCard(_)))).map(|(e, _)| e).expect("a hand card")
+    };
+    app.world_mut().entity_mut(face).insert(Interaction::Hovered);
+    letter(&mut app, KeyCode::KeyM, "m");
+    assert_eq!(menus(&mut app), 1, "M opens the hovered card's menu");
+    letter(&mut app, KeyCode::KeyI, "i");
+    assert_eq!(overlays(&mut app), 1, "I reads it");
+    assert_eq!(menus(&mut app), 0);
+    type_key(&mut app, KeyCode::Escape, Key::Escape);
+    app.world_mut().entity_mut(face).insert(Interaction::None);
+    // H turns the play helper on, and it is saved.
+    assert!(!app.world().resource::<ClientCore>().settings.desktop.play_helper);
+    letter(&mut app, KeyCode::KeyH, "h");
+    assert!(app.world().resource::<ClientCore>().settings.desktop.play_helper);
+    letter(&mut app, KeyCode::KeyH, "h");
+    assert!(!app.world().resource::<ClientCore>().settings.desktop.play_helper);
+    // Enter with clicks left: a notice on the rail, then the turn ends.
+    assert!(app.world().resource::<Model>().0.clicks_left() > 0);
+    type_key(&mut app, KeyCode::Enter, Key::Enter);
+    assert_eq!(app.world_mut().query::<&EndTurnNotice>().iter(app.world()).count(), 1, "the rail asks for a second Enter");
+    assert!(app.world().resource::<Model>().0.awaiting, "and nothing was sent");
+    type_key(&mut app, KeyCode::Enter, Key::Enter);
+    wait_for(&mut app, "the turn to end", |app| app.world().resource::<Model>().0.view.as_ref().is_some_and(|v| !matches!(v.phase, GamePhase::Action(Side::Runner)) || v.paid_ability_window.is_some()));
+    assert_eq!(app.world_mut().query::<&EndTurnNotice>().iter(app.world()).count(), 0);
 }
 
 /// The bar has every control of the side, greyed until the engine lists

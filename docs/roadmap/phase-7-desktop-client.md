@@ -1377,6 +1377,10 @@ one PR each:**
 1. **A click opens a card's actions; a secondary click reads it.**
    *Done in §4g.*
 2. **Keyboard shortcuts for the common actions, and a list of them.**
+   *Done in §4h, with one correction to the design below: Enter asks
+   twice while clicks are left, because the engine lists `EndTurn` with
+   clicks unspent, so the claim below that a stray Enter cannot throw a
+   turn away was wrong. L is left for the phase bar's PR.*
    *Planned design:*
    - Space is the "go on" key: pass priority, or continue the run when
      that is what is offered. It never jacks out or ends the turn.
@@ -1427,3 +1431,67 @@ one PR each:**
    - This changes AGENTS.md §5 from "a click never submits" to "a click
      never submits; a completed drag onto a lit place does", and that
      sentence changes with the PR, not before.
+
+### 4h. Keys for the buttons, and a list of them — DONE (17 September 2026)
+
+`feat/board-keyboard-shortcuts`. Item 2 of the person's second list
+(under §4g).
+
+**Decisions taken, with the alternative rejected.**
+
+- **A key presses a button that is already there.** Every shortcut goes
+  through the intent its button raises (`Intent::Control`, `Choose`,
+  `Click`, `Inspect`), so the engine's `legal_actions` still decides
+  whether it does anything. A key that means nothing now does nothing,
+  and no key acts under an overlay. The map and the list the person
+  reads live in one Bevy-free module (`models::shortcuts`), and a test
+  holds the letters and the list to each other.
+- **C and D spend the click at once, as the bar's buttons do.** The
+  person decided this after being asked about Shift or a confirmation.
+- **Enter asks twice while clicks are left.** The recorded design said
+  the engine lists `EndTurn` only once the clicks are spent. It does
+  not (`legal_actions.rs` tests it with clicks left, correctly, since a
+  player may end early), so one stray Enter would have thrown them
+  away. The first Enter puts "N clicks left — press Enter again to end
+  the turn" on the rail. The second ends the turn, and any other intent
+  in between stands the first down. With no clicks left, one Enter ends
+  the turn. The bar's End turn button is unchanged, because a pointer
+  aimed at it is not a stray.
+- **Space is the "go on" key:** pass priority if listed, else continue
+  the run. It never jacks out or ends the turn (the person's choice).
+- **1–9 press the open menu's buttons, else the pop-up's,** in drawn
+  order (`ActionMap::decisions`). The buttons are not numbered on
+  screen yet: numbering them changes every label a test finds a button
+  by, and it is worth doing when a person asks for it.
+- **Letters are read by what they type** (the logical key off
+  `KeyboardInput`), so C is the key marked C on any layout. A key held
+  with Ctrl, Cmd or Alt is left to the system, so Cmd-Q and Ctrl-C pass
+  through.
+- **M and I act on the hovered card** as its click and secondary click
+  would. H turns the play helper on or off and saves it, as the options
+  row does. Tab opens the person's score area and Shift-Tab the
+  opponent's. `?` or F1 opens the list, which the same key or Escape
+  closes.
+- **L waits for the phase bar** (item 3), so the list never names a key
+  that does nothing.
+
+**Verified.** `cargo test --workspace` green (1,512 tests), clippy
+silent across the workspace. New tests:
+- The shortcut map: every listed letter is a key and no other letter
+  is; Space, Enter, the digits, Tab with and without Shift, and `?`.
+- The model: at the mulligan Space and C do nothing and 1 keeps; the
+  list covers the board, and its key and Escape close it; C takes the
+  credit; a digit presses the open menu's button; Enter arms, fires on
+  the second press, and stands down on anything between; with no clicks
+  left one Enter ends the turn; Tab opens a score area, under which no
+  key acts.
+- The headless game, through real keyboard messages: 1 keeps, C gains
+  a credit, Ctrl-C sends nothing, `?` draws a row per listed key and
+  nothing acts under it, M and I open the hovered card's menu and sheet,
+  H toggles and saves the helper, and Enter puts the notice on the rail
+  and the second Enter ends the turn.
+
+Screenshotted with a new dev hook, `NETRUNNER_KEYS=1`, over a Corp board
+forty decisions in. The first cut left blank lines under a wrapped row
+and "? or F1", so the key column no longer wraps and the long line was
+shortened. No engine file changed, so no sweep.

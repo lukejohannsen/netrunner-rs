@@ -50,13 +50,15 @@
 use std::sync::Arc;
 
 use netrunner_client::actions::push_log_line;
-use netrunner_client::board::{transitions, ActionMap, Control, Prompt, RunTrail, Target, Transition};
+use netrunner_client::board::{transitions, ActionMap, Control, Pile, Prompt, RunTrail, Target, Transition};
 use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
 use netrunner_client::ratings::RatingReport;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{GameEvent, InstallId, PlayerAction, ServerId, Side};
 use netrunner_core::view::ClientView;
+
+use crate::models::shortcuts::Shortcut;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
@@ -82,10 +84,14 @@ pub enum Intent {
     /// A row of a list sheet (the score area's agendas), by position:
     /// opens its details in place, or closes them if it was the open one.
     Expand(usize),
+    /// A key the board reads (`shortcuts`). The ones about the pointer
+    /// or the settings file are the screen's; the model answers the rest.
+    Shortcut(Shortcut),
     /// The gear: open or close the game options.
     ToggleOptions,
-    /// Escape: closes the options, the menu, the inspector, the sheet or
-    /// the quit prompt, in that order, else asks to quit.
+    /// Escape: closes the options, the list of keys, the menu, the
+    /// inspector, the sheet or the quit prompt, in that order, else asks
+    /// to quit.
     Back,
     RequestQuit,
     ConfirmQuit,
@@ -189,6 +195,13 @@ pub struct Game {
     /// A click's menu, over its card.
     pub menu: Option<Menu>,
     pub options_open: bool,
+    /// The list of keys (`shortcuts::LIST`) is up.
+    pub help_open: bool,
+    /// Enter was pressed with clicks left: the next Enter ends the turn,
+    /// and anything else in between stands it down. The engine lists
+    /// `EndTurn` with clicks unspent — correctly, a player may end early —
+    /// so one stray Enter would have thrown them away.
+    pub end_turn_armed: bool,
     pub rejection: Option<String>,
     pub over: Option<Over>,
     pub stalled: Option<String>,
@@ -217,6 +230,8 @@ impl Game {
             expanded: None,
             menu: None,
             options_open: false,
+            help_open: false,
+            end_turn_armed: false,
             rejection: None,
             over: None,
             stalled: None,
@@ -236,10 +251,11 @@ impl Game {
     }
 
     /// Whether something covers the board — a sheet, a card being read,
-    /// the options, the quit prompt, the end of the match — so a click
-    /// that reaches a card through it opens nothing.
+    /// the options, the list of keys, the quit prompt, the end of the
+    /// match — so a click that reaches a card through it opens nothing,
+    /// and a key does nothing.
     pub fn covered(&self) -> bool {
-        self.finished() || self.confirm_quit || self.options_open || self.sheet.is_some() || self.inspecting.is_some()
+        self.finished() || self.confirm_quit || self.options_open || self.help_open || self.sheet.is_some() || self.inspecting.is_some()
     }
 
     pub fn take_transitions(&mut self) -> Vec<Transition> {
@@ -263,6 +279,16 @@ impl Game {
     }
 
     pub fn apply(&mut self, intent: Intent) -> Outcome {
+        // Whatever comes between two Enters stands the first one down;
+        // the notice it put on the rail goes with a redraw.
+        let armed = std::mem::take(&mut self.end_turn_armed);
+        match self.apply_intent(intent, armed) {
+            Outcome::Nothing if armed && !self.end_turn_armed => Outcome::Redraw,
+            outcome => outcome,
+        }
+    }
+
+    fn apply_intent(&mut self, intent: Intent, armed: bool) -> Outcome {
         match intent {
             Intent::Message(MatchMessageRef(message)) => self.message(message),
             Intent::RunStep(events) => {
@@ -326,6 +352,7 @@ impl Game {
                 self.expanded = if self.expanded == Some(row) { None } else { Some(row) };
                 Outcome::Redraw
             }
+            Intent::Shortcut(shortcut) => self.shortcut(shortcut, armed),
             Intent::ToggleOptions => {
                 self.options_open = !self.options_open;
                 self.menu = None;
@@ -334,6 +361,9 @@ impl Game {
             Intent::Back => {
                 if self.options_open {
                     self.options_open = false;
+                    Outcome::Redraw
+                } else if self.help_open {
+                    self.help_open = false;
                     Outcome::Redraw
                 } else if self.menu.take().is_some() || self.inspecting.take().is_some() || self.sheet.take().is_some() {
                     Outcome::Redraw
@@ -414,6 +444,7 @@ impl Game {
                 self.inspecting = None;
                 self.menu = None;
                 self.options_open = false;
+                self.help_open = false;
                 self.confirm_quit = false;
                 self.over = Some(Over { winner, reason, report, notice });
                 Outcome::Redraw
@@ -447,6 +478,58 @@ impl Game {
         }
     }
 
+    /// A key: the button it stands for, pressed. The list of keys opens
+    /// and closes on its own key whatever else is up, since it is how a
+    /// person finds the rest; every other key does nothing while the board
+    /// is covered. The pointer's keys and the play helper are the screen's
+    /// (it knows what is hovered and owns the settings file), so here they
+    /// are nothing.
+    fn shortcut(&mut self, shortcut: Shortcut, armed: bool) -> Outcome {
+        if shortcut == Shortcut::Help {
+            if self.help_open {
+                self.help_open = false;
+                return Outcome::Redraw;
+            }
+            if self.covered() {
+                return Outcome::Nothing;
+            }
+            self.menu = None;
+            self.help_open = true;
+            return Outcome::Redraw;
+        }
+        if self.covered() {
+            return Outcome::Nothing;
+        }
+        match shortcut {
+            Shortcut::Go => match self.actions.for_control(Control::PassPriority) {
+                Some(_) => self.apply(Intent::Control(Control::PassPriority)),
+                None => self.apply(Intent::Control(Control::ContinueRun)),
+            },
+            // Enter with clicks left asks for a second Enter; with none
+            // left, or on the second, it is the bar's End turn.
+            Shortcut::Control(Control::EndTurn) if !armed && self.clicks_left() > 0 && self.awaiting && self.actions.for_control(Control::EndTurn).is_some() => {
+                self.end_turn_armed = true;
+                Outcome::Redraw
+            }
+            Shortcut::Control(control) => self.apply(Intent::Control(control)),
+            Shortcut::Decision(n) => {
+                if !self.awaiting {
+                    return Outcome::Nothing;
+                }
+                let buttons = match &self.menu {
+                    Some(menu) => menu.entries.clone(),
+                    None => self.actions.decisions(),
+                };
+                match buttons.get(n) {
+                    Some(index) => self.apply(Intent::Choose(*index)),
+                    None => Outcome::Nothing,
+                }
+            }
+            Shortcut::ScoreArea(side) => self.apply(Intent::Inspect(Target::Pile(Pile::Agendas(side)))),
+            Shortcut::ReadHovered | Shortcut::MenuHovered | Shortcut::PlayHelper | Shortcut::Help => Outcome::Nothing,
+        }
+    }
+
     /// Opens the target's menu over `over`, or closes it if it was this
     /// target's. Two exceptions: a selection position is a toggle on a
     /// card the prompt lists, so its one entry is submitted as the rail's
@@ -466,7 +549,7 @@ impl Game {
                     _ => Outcome::Nothing,
                 }
             }
-            Target::Pile(netrunner_client::board::Pile::Agendas(_)) => self.apply(Intent::Inspect(target)),
+            Target::Pile(Pile::Agendas(_)) => self.apply(Intent::Inspect(target)),
             _ if self.menu.as_ref().is_some_and(|menu| menu.target == target) => {
                 self.menu = None;
                 Outcome::Redraw
@@ -495,6 +578,14 @@ impl Game {
             }),
             Target::Server(_) | Target::Position(_) | Target::Pile(_) => None,
         }
+    }
+
+    /// The clicks the person's side has left, as the view shows them.
+    pub fn clicks_left(&self) -> u32 {
+        self.view.as_ref().map_or(0, |view| match self.side {
+            Side::Corp => view.corp.clicks,
+            Side::Runner => view.runner.clicks,
+        })
     }
 
     /// Whether `server` is the one under run.
@@ -693,6 +784,70 @@ mod tests {
         until_awaiting(&mut game, &mut handle);
         assert!(game.menu.is_none(), "an applied action closes the menu");
         assert!(game.sheet.is_some(), "and leaves the sheet");
+        handle.join();
+    }
+
+    /// A key is the button it stands for: at the mulligan Space and C do
+    /// nothing and 1 keeps (the pop-up's first button); on the Corp's turn
+    /// C takes the credit, a digit presses the open menu's button, Enter
+    /// with clicks left asks twice and anything between stands it down;
+    /// the list of keys opens and closes on its own key and on Escape, and
+    /// no other key acts while the board is covered.
+    #[test]
+    fn a_key_presses_the_button_it_stands_for_and_nothing_through_an_overlay() {
+        let (mut game, mut handle) = game(Side::Corp);
+        until_awaiting(&mut game, &mut handle);
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Go)), Outcome::Nothing, "nothing to pass at the mulligan");
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::GainCredit))), Outcome::Nothing);
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Decision(7))), Outcome::Nothing, "no eighth button");
+        let first = game.actions.decisions()[0];
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Decision(0))), Outcome::Submit(game.actions.entries[first].action.clone()));
+        game.awaiting = true;
+        // The list of keys: it covers the board, its own key and Escape
+        // close it.
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Help)), Outcome::Redraw);
+        assert!(game.help_open && game.covered());
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Decision(0))), Outcome::Nothing, "no key reaches through it");
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Help)), Outcome::Redraw);
+        assert!(!game.help_open);
+        game.apply(Intent::Shortcut(Shortcut::Help));
+        assert_eq!(game.apply(Intent::Back), Outcome::Redraw);
+        assert!(!game.help_open && !game.confirm_quit, "Escape closes the list and asks nothing");
+        until_the_corps_action_phase(&mut game, &mut handle);
+        assert!(game.clicks_left() > 0);
+        // C is Take 1 credit.
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::GainCredit))), Outcome::Submit(PlayerAction::GainCreditClick { side: Side::Corp }));
+        game.awaiting = true;
+        // A digit presses the open menu's button, not the pop-up's.
+        let hand = game.view.as_ref().unwrap().corp.hq_cards.clone().unwrap();
+        let (card, entries) = hand.iter().map(|c| (c.clone(), game.actions.for_hand_card(c))).find(|(_, e)| !e.is_empty()).expect("something playable");
+        game.apply(Intent::Click { target: Target::HandCard(card), over: Anchor::default() });
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Decision(0))), Outcome::Submit(game.actions.entries[entries[0]].action.clone()));
+        assert!(game.menu.is_none());
+        game.awaiting = true;
+        // Enter with clicks left: the first arms, the second ends.
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::EndTurn))), Outcome::Redraw);
+        assert!(game.end_turn_armed && game.awaiting, "the first Enter sends nothing");
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::EndTurn))), Outcome::Submit(PlayerAction::EndTurn));
+        assert!(!game.end_turn_armed);
+        game.awaiting = true;
+        // Anything between the two stands the first down.
+        game.apply(Intent::Shortcut(Shortcut::Control(Control::EndTurn)));
+        assert_eq!(game.apply(Intent::CloseMenu), Outcome::Redraw, "the notice goes with a redraw");
+        assert!(!game.end_turn_armed);
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::EndTurn))), Outcome::Redraw, "and the next Enter asks again");
+        // With no clicks left, one Enter ends the turn.
+        game.end_turn_armed = false;
+        match &mut game.view {
+            Some(view) => view.corp.clicks = 0,
+            None => unreachable!(),
+        }
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::EndTurn))), Outcome::Submit(PlayerAction::EndTurn));
+        game.awaiting = true;
+        // Tab opens a score area; under it, no key acts.
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::ScoreArea(Side::Runner))), Outcome::Redraw);
+        assert_eq!(game.sheet.as_ref().map(|s| s.target.clone()), Some(Target::Pile(Pile::Agendas(Side::Runner))));
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::Control(Control::GainCredit))), Outcome::Nothing);
         handle.join();
     }
 
