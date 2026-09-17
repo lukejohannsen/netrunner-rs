@@ -1117,18 +1117,9 @@ fn spawn_area(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
 
 #[allow(clippy::too_many_arguments)]
 fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit) {
-    // Every central is a column even when nothing is installed on it,
-    // because a run on an empty central is a click on its header.
-    let mut servers: Vec<ServerView> = view.corp.servers.clone();
-    for central in [ServerId::Hq, ServerId::RnD, ServerId::Archives] {
-        if !servers.iter().any(|s| s.server == central) {
-            servers.push(ServerView { server: central, ice: Vec::new(), root: Vec::new() });
-        }
-    }
-    // The table seen from the chair (`layout::servers_left_to_right`):
-    // the Corp's Archives, R&D, HQ, remotes; the Runner's mirror.
-    let order = layout::servers_left_to_right(servers.iter().map(|s| s.server), game.side);
-    servers.sort_by_key(|s| order.iter().position(|id| *id == s.server));
+    // Archives, R&D, HQ, then the remotes, from either chair, every
+    // central a column even with nothing on it (`board::table_servers`).
+    let servers = netrunner_client::board::table_servers(view);
     let run = view.active_run.as_ref();
     let encountered = run.filter(|r| matches!(r.phase, RunPhase::ApproachIce | RunPhase::EncounterIce)).and_then(|r| r.ice.get(r.position)).map(|i| i.install_id);
     let size = fit.size();

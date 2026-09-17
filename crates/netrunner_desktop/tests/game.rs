@@ -458,11 +458,10 @@ fn clicks_in_tree_order(app: &mut App) -> Vec<Click> {
     clicks
 }
 
-/// The board is the table seen from the chair: the Corp reads their own
-/// servers Archives, R&D, HQ, then the remotes, left to right; the
-/// Runner sees them across the table, mirrored.
+/// The servers keep one order from either chair — Archives, R&D, HQ,
+/// then the remotes — so the centrals never move as remotes are made.
 #[test]
-fn the_servers_are_the_table_seen_from_the_chair() {
+fn the_servers_keep_one_order_from_either_chair() {
     let servers = |app: &mut App| -> Vec<ServerId> {
         clicks_in_tree_order(app).into_iter().filter_map(|c| if let Click::Target(Target::Server(s)) = c { Some(s) } else { None }).collect()
     };
@@ -474,7 +473,7 @@ fn the_servers_are_the_table_seen_from_the_chair() {
     let (mut app, _dir) = headless_client();
     start_a_game_as(&mut app, Side::Runner);
     wait_for(&mut app, "the Runner's first decision", |app| click_entry_count(app) > 0);
-    assert_eq!(servers(&mut app), [ServerId::Hq, ServerId::RnD, ServerId::Archives], "the Runner's chair, across the table");
+    assert_eq!(servers(&mut app), [ServerId::Archives, ServerId::RnD, ServerId::Hq], "the Runner's chair, the same");
 }
 
 /// Both sides have a HUD on the board, each holding its side's readouts

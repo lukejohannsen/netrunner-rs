@@ -985,9 +985,7 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         return;
     };
 
-    let mut corp_lines = vec![
-        Line::from(format!("HQ: {} cards   R&D: {} cards   Archives: {} cards", view.corp.hq_count, view.corp.rd_count, view.corp.archives.len())),
-    ];
+    let mut corp_lines = Vec::new();
     // `Some` only for the viewer's own hand — the masking layer decided
     // that, and this draws exactly what it handed over. Until this line
     // existed the TUI printed the count and nothing else, so a human
@@ -995,10 +993,15 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     // the only way to learn what was in hand was to read the action list.
     if let Some(cards) = &view.corp.hq_cards {
         corp_lines.push(Line::from(hand_line(cards, app.registry())));
+        corp_lines.push(Line::from(""));
     }
-    corp_lines.push(Line::from(""));
-    for server in &view.corp.servers {
-        corp_lines.push(Line::from(format_server(server, app.registry())));
+    // Archives, R&D, HQ — always, with their counts — then the remotes,
+    // from either seat (`board::table_servers`), so a central is on the
+    // same line all game. The engine's order put HQ first and listed a
+    // server only once something was installed on it, so every install
+    // on an empty central moved the lines under it.
+    for server in netrunner_client::board::table_servers(view) {
+        corp_lines.push(Line::from(format_server(&server, view, app.registry())));
     }
     if let Some(run) = &view.active_run {
         corp_lines.push(Line::from(""));
@@ -1054,7 +1057,7 @@ fn hand_line(cards: &[CardId], registry: &CardRegistry) -> String {
     format!("Hand: {}", cards.iter().map(describe).collect::<Vec<_>>().join(" · "))
 }
 
-fn format_server(server: &ServerView, registry: &CardRegistry) -> String {
+fn format_server(server: &ServerView, view: &ClientView, registry: &CardRegistry) -> String {
     let describe = |card: &netrunner_core::rules::PublicInstalledCard| {
         let rez = if card.rezzed { "rezzed" } else { "unrezzed" };
         let label = card.card.as_ref().map(|id| card_title(id, registry)).unwrap_or_else(|| "???".to_string());
@@ -1069,7 +1072,13 @@ fn format_server(server: &ServerView, registry: &CardRegistry) -> String {
     };
     let cards: Vec<String> = server.ice.iter().chain(server.root.iter()).map(describe).collect();
     let contents = if cards.is_empty() { "(empty)".to_string() } else { cards.join(", ") };
-    format!("{}: {contents}", server_label(server.server))
+    let count = match server.server {
+        ServerId::Archives => format!(" ({})", view.corp.archives.len()),
+        ServerId::RnD => format!(" ({})", view.corp.rd_count),
+        ServerId::Hq => format!(" ({})", view.corp.hq_count),
+        ServerId::Remote(_) => String::new(),
+    };
+    format!("{}{count}: {contents}", server_label(server.server))
 }
 
 fn server_label(server: ServerId) -> String {
@@ -1360,6 +1369,14 @@ mod tests {
         assert!(rendered.contains(&runner_hand[0]), "the Runner sees its own cards: {}", runner_hand[0]);
         assert!(corp_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Runner never sees HQ");
         assert!(row_of(&rows, "You — Runner rig") > row_of(&rows, "Opponent — Corp servers"), "the Runner's own block is below the Corp's");
+        // Nothing is installed yet, and the three centrals are listed
+        // anyway, Archives to HQ with their counts, from this seat as from
+        // the Corp's — the lines a remote would join below.
+        let (archives, rnd, hq) = (row_of(&rows, "Archives (0): (empty)"), row_of(&rows, "R&D ("), row_of(&rows, "HQ ("));
+        assert!(archives < rnd && rnd < hq, "Archives, R&D, HQ: {archives} {rnd} {hq}");
+        assert!(!rendered.contains("HQ: "), "the old count line is gone");
+        let rows = render(&as_corp);
+        assert!(row_of(&rows, "Archives (0)") < row_of(&rows, "R&D (") && row_of(&rows, "R&D (") < row_of(&rows, "HQ ("), "the same order from the Corp's seat");
     }
 
     /// `c` lists the places the viewer may look — their hand, never the
