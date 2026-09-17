@@ -1507,3 +1507,143 @@ nothing measurable (`operator` 0.101 on rush decks against `Balanced`'s
 0.118, inside the noise).
 
 Reports under `target/coverage/rush-top-balanced-s{1,2}.json`.
+
+## 16. The Runner profiles audited: `aggressive` was getting itself flatlined, and `cautious` and `wary` have nothing to repair — DONE (16 September 2026)
+
+`feat/runner-profile-audit`. §9's method, on the Runner chair §7 left
+three-quarters unaudited: each Runner profile seated against the fixed
+`heuristic` balanced Corp (`bench --bots heuristic,heuristic:X --pairing
+heuristic/heuristic:X`, six seeds × 384), each knob put back to balanced
+one at a time on an uncommitted override, paired game for game on
+`(game seed, matchup)`. Corp win share, so **lower is a stronger Runner**.
+The override was checked against itself first: `aggressive` with every
+knob at balanced replays balanced's games 2,304 of 2,304.
+
+**Where the profiles stood.** `builder` 0.121 (§7's repair, −0.027 against
+balanced, z 3.7), `balanced` 0.148, `wary` 0.148 (+0.000, z 0.0),
+`cautious` 0.151 (+0.003, z 0.4), **`aggressive` 0.188 (+0.040, z 4.4)**.
+Five sample decks name `aggressive`, the most of any Runner style.
+
+**`aggressive` was paying for its pressure in damage.** Its Corp wins were
+**140 flatlines** of 434, where balanced's were 36 of 341. Knob by knob
+against the shipped profile:
+
+| knob, shipped → balanced | Corp win share | delta | z |
+|---|---|---|---|
+| `grip_floor` 2 → 3 | 0.168 | −0.020 | 3.8 |
+| `grip_shortfall_weight` 0.4 → 0.7 | 0.178 | −0.010 | 3.1 |
+| both | **0.154** | **−0.034** | 5.6 |
+| `active_run_weight` 1.2 → 0.6 | 0.191 | +0.003 | |
+| `pending_subroutine_weight` 0.7 → 1.0 | 0.186 | −0.002 | |
+| `savings_shortfall_weight` 0.15 → 0.3 | 0.200 | +0.012 | |
+| `tag_weight` 2.5 → 4.0 | 0.191 | +0.003 | |
+| `opponent_credit_weight` 0.4 → 0.2 | 0.188 | 0.000 | |
+
+With the grip back at balanced, nothing else beat noise against the
+balanced Corp (run 0.6: 0.155, 0.9: 0.162, 1.8: 0.171; savings 0.0: 0.157;
+tag 1.5: 0.151; subroutine 0.4: 0.178; grip floor 4: 0.153).
+
+**Against the other Corp profiles a second knob showed.** Four seeds × 384
+each, on the grip repair: `pending_subroutine_weight` back to 1.0 is
+−0.011 against `rush` (z 3.1) and −0.010 against `glacier` (z 2.3); and
+`active_run_weight` back to 0.6 is **−0.041 against `rush`** (z 4.4) and
+−0.023 against `glacier` (z 1.8). The run weight is the archetype — a
+Runner that does not run more is not this profile — so it is recorded as
+the profile's cost, as `rush`'s were in §9, and not taken. 0.9 was
+tried as a midpoint and trades `glacier` (−0.022) for `trap` (+0.008)
+without closing `rush`.
+
+**The change:** `grip_floor` 2 → 3, `grip_shortfall_weight` 0.4 → 0.7
+and `pending_subroutine_weight` 0.7 → 1.0 — all three back to balanced,
+so the profile is now its run weight, its savings, its tags and the
+opponent's credits. On the pinned binary, which replays the override 0
+discordant of 2,304 and 1,536 on every leg:
+
+| Corp | before | after | delta | z | against balanced Runner, before → after |
+|---|---|---|---|---|---|
+| `balanced`, six seeds | 0.188 | **0.155** | −0.033 | 5.3 | +0.040 → +0.007 |
+| `rush`, four seeds | 0.155 | 0.118 | −0.036 | 4.7 | +0.073 → +0.036 |
+| `glacier`, four seeds | 0.322 | 0.299 | −0.023 | 2.6 | +0.042 → +0.018 |
+| `trap`, four seeds | 0.260 | 0.218 | −0.042 | 4.8 | +0.048 → +0.007 |
+
+Flatlines 140 → 58. **It is still aggressive**: `diag tempo`, 384 games,
+seed 1 — runs a game 21.6 → 20.7 against balanced's 17.9, credit clicks
+9.8 → 10.5, draws 3.0 → 3.2. Balanced-against-balanced games are
+byte-identical to `main`.
+
+**`cautious`, audited, unchanged.** No knob costs it beyond noise: run
+0.4 → 0.6 −0.007 (z 0.8), subroutine, grip weight, savings, coverage and
+tag all within ±0.003. The one knob that matters helps: its `grip_floor`
+4 back to 3 costs **+0.015** (z 2.2), and 5 reads the same as 4. It is
+the safety profile its doc comment says, and it plays level with balanced.
+
+**`wary`, audited, unchanged.** Its one term, `unrezzed_threat_weight`
+1.5, is level with balanced (208 discordant games, net zero); 0.75 is
+identical, and 3.0 and 6.0 cost +0.007 and +0.009 (z 1.8, 2.3). It
+changes which games the Runner wins, not how many.
+
+**Where it reaches.** Every Runner rung is the one-ply bot, so a style
+reaches every rung its deck seats; §17 measures that ladder.
+
+Workspace tests green, clippy silent. Reports under
+`target/coverage/runner-audit-*.json`.
+
+## 17. The Runner ladder in every Runner style climbs at every step, so no Runner style needs a handicap of its own — DONE, measurement only (16 September 2026)
+
+Same branch as §16, on its pinned binary. The Runner half of §10–§15:
+every Runner rung in each of the five styles (`bench --bots
+heuristic,level:novice:S,…,level:elite:S --pairing heuristic/level:R:S`)
+against the fixed un-handicapped one-ply balanced Corp, 384 games on
+each of seeds 1–4, so **1,536 games a cell**. One bot-list layout per
+style, so the arms play the same matchups on the same seeds. No stalls.
+Runner win share, so **higher is a harder rung for the Corp player**:
+
+| Runner style | novice | apprentice | operator | veteran | elite | steps |
+|---|---|---|---|---|---|---|
+| `balanced` | 0.126 | 0.281 | 0.454 | 0.664 | 0.829 | +0.156 / +0.173 / +0.210 / +0.165 |
+| `aggressive` | 0.126 | 0.294 | 0.472 | 0.632 | 0.831 | +0.168 / +0.178 / +0.160 / +0.199 |
+| `cautious` | 0.126 | 0.275 | 0.443 | 0.644 | 0.827 | +0.149 / +0.168 / +0.201 / +0.184 |
+| `builder` | 0.126 | 0.259 | 0.461 | 0.657 | **0.870** | +0.133 / +0.202 / +0.196 / +0.214 |
+| `wary` | 0.126 | 0.279 | 0.447 | 0.656 | 0.839 | +0.154 / +0.168 / +0.209 / +0.183 |
+
+**Every step of every style is a rise at z ≥ 9.0, and on each of the four
+seeds alone** — no step is flat or inverted in any of the 80 per-seed
+readings. The narrowest is `builder`'s `novice → apprentice`, +0.133
+against an even step of about 0.176. `novice` is byte-identical across
+styles, the apparatus check (at `epsilon` 1.0 the style is never
+consulted), and `balanced` reproduces §2's calibration (0.833 at `elite`
+then, 0.829 now).
+
+**Why the Runner chair did not need what the Corp chair needed.** §10
+found a style broke the Corp's spacing because that ladder changes base
+between rungs 3 and 4 (one ply → `puct@512`) and the handicap on the
+search rungs bit a banking style four times harder. The Runner ladder is
+one base bot at five handicaps, `epsilon` is near-linear in win rate on
+this chair (§2), and a style moves the whole line by about as much as it
+moves any one rung — so the steps survive it.
+
+**On the decks that seat each style** (play seats a Runner rung in its
+deck's style, §9), read from the same reports: `aggressive` on its five
+decks 0.120 / 0.320 / 0.494 / 0.647 / 0.841 (640 games a cell),
+`builder` on its three 0.115 / 0.224 / 0.419 / 0.635 / 0.846 (384),
+`wary` on its two 0.121 / 0.258 / 0.465 / 0.668 / 0.801 (256) — every
+step a rise at z ≥ 3.4 and on each seed. `cautious` has one deck, 128
+games a cell: 0.188 / 0.289 / 0.484 / 0.617 / 0.875, every step a rise
+pooled (the first at z 1.9, as is `balanced`'s on the same deck, 1.6),
+one step flat on one seed of 32 games.
+
+**§16's repair reaches the rungs, and most at the top.** `aggressive`
+before and after, paired on the same games: `apprentice` 0.282 → 0.294
+(z 2.0), `operator` 0.445 → 0.472 (z 3.2), `veteran` 0.598 → 0.632
+(z 3.4), **`elite` 0.782 → 0.831** (z 5.9). Before it, a person playing
+the Corp against one of the five `aggressive` decks met an `elite` 0.047
+softer than the calibrated one; now it is level with it. The shipped
+profile's ladder climbed too (smallest step +0.154), so the repair
+changed how hard the top is, not whether the ladder was one.
+
+**Nothing changes in `difficulty.rs`.** No Runner entry is added to
+`LevelSpec::with_personality`, and the Runner ladder's per-style spacing
+is measured rather than assumed.
+
+Reports under `target/coverage/runner-ladder-{style}-s{1..4}.json` and
+`runner-ladder-aggressive-before-s{1..4}.json`.

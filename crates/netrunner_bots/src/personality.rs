@@ -253,13 +253,36 @@ impl Personality {
                 ..base
             },
             Personality::Aggressive => Weights {
-                // A run at 1.2 beats a draw below the floor (0.4 × ...)
-                // and a credit at every click; a subroutine left unbroken
-                // costs 0.7, so a run through one is still worth it.
+                // A run at 1.2 beats a credit at every click, and the
+                // opponent's credits are worth denying.
+                //
+                // **Audited against the balanced Corp (ROADMAP Phase 5
+                // §16), and the grip and the subroutine went back to
+                // balanced.** Shipped with a thinner grip (floor 2 at
+                // 0.4 a card) and an unbroken subroutine at 0.7, the
+                // profile lost +0.040 of Corp win share to balanced over
+                // the same 2,304 games (z 4.4), and was flatlined 140
+                // times where balanced was 36: the pressure it bought was
+                // paid for in damage it could not absorb. Knob by knob,
+                // back at balanced: `grip_floor` 2 → 3 is −0.020 (z 3.8),
+                // `grip_shortfall_weight` 0.4 → 0.7 −0.010 (z 3.1), both
+                // −0.034 (z 5.6); the rest alone move nothing against the
+                // balanced Corp. Against the other Corp profiles the
+                // subroutine at 0.7 also costs (−0.011 against `rush`,
+                // z 3.1; −0.010 against `glacier`, z 2.3). Repaired, the
+                // Corp's share falls 0.188 → 0.155 (z 5.3), flatlines
+                // 140 → 58, and it falls against every Corp profile
+                // (`rush` 0.155 → 0.118, `glacier` 0.322 → 0.299, `trap`
+                // 0.260 → 0.218) while the profile still runs 20.7 times
+                // a game to balanced's 17.9.
+                //
+                // **The run weight is the archetype, and it is its
+                // remaining cost**, as `Rush`'s knobs are `Rush`'s: back
+                // at 0.6 it is flat against the balanced Corp and −0.041
+                // against `rush` (z 4.4), and 0.9 trades `glacier` for
+                // `trap` without closing either. A Runner that does not
+                // run more is not this profile, so it stays.
                 active_run_weight: 1.2,
-                pending_subroutine_weight: 0.7,
-                grip_shortfall_weight: 0.4,
-                grip_floor: 2,
                 savings_shortfall_weight: 0.15,
                 tag_weight: 2.5,
                 opponent_credit_weight: 0.4,
@@ -407,7 +430,11 @@ mod tests {
             "Trap deviates from balanced in its ambush terms and nothing else"
         );
         let aggressive = Personality::Aggressive.weights();
-        assert!(aggressive.active_run_weight > base.active_run_weight && aggressive.pending_subroutine_weight < base.pending_subroutine_weight);
+        assert!(aggressive.active_run_weight > base.active_run_weight);
+        // A thinner grip got this profile flatlined four times as often as
+        // balanced (ROADMAP Phase 5 §16: repaired, +0.040 → +0.007).
+        assert!(aggressive.grip_floor >= base.grip_floor && aggressive.grip_shortfall_weight >= base.grip_shortfall_weight);
+        assert!(aggressive.pending_subroutine_weight >= base.pending_subroutine_weight);
         let cautious = Personality::Cautious.weights();
         assert!(cautious.active_run_weight < base.active_run_weight && cautious.pending_subroutine_weight > base.pending_subroutine_weight);
         assert!(cautious.breaker_coverage_weight > base.breaker_coverage_weight);
