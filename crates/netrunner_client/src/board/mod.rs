@@ -3,7 +3,8 @@
 //! between one view and the next (`diff`), a run as a trail of steps
 //! read off the entry's own events, one beat at a time (`trail`), and
 //! the words for an install's state — rezzed, advanced, hosting — as a
-//! tile carries them and as its sheet lists them (`facts`). All of
+//! tile carries them and as its sheet lists them (`facts`), and the
+//! numbers a HUD keeps in fixed places (`hud`). All of
 //! it reads only the masked `ClientView` and the masked
 //! `PublicHistoryEntry` a seat receives, so nothing here can show a card
 //! the mask withheld.
@@ -11,6 +12,7 @@
 pub mod action_map;
 pub mod diff;
 pub mod facts;
+pub mod hud;
 pub mod trail;
 
 pub use action_map::{ActionEntry, ActionMap, Control, Pile, Prompt, Target};

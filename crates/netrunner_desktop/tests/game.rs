@@ -18,12 +18,12 @@ use bevy::input::{ButtonState, InputPlugin};
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 
-use netrunner_client::board::{Control, Target};
+use netrunner_client::board::{Control, Pile, Target};
 use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, InstallFact, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, HudPanel, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -391,6 +391,68 @@ fn the_servers_are_the_table_seen_from_the_chair() {
     start_a_game_as(&mut app, Side::Runner);
     wait_for(&mut app, "the Runner's first decision", |app| click_entry_count(app) > 0);
     assert_eq!(servers(&mut app), [ServerId::Hq, ServerId::RnD, ServerId::Archives], "the Runner's chair, across the table");
+}
+
+/// Both sides have a HUD on the board, each holding its side's readouts
+/// in `hud::readouts`' order with the view's numbers — the Runner's
+/// Tags and Damage there at zero, so nothing moves when the first tag
+/// lands.
+#[test]
+fn each_side_has_a_hud_with_every_readout_in_its_place() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let view = app.world().resource::<Model>().0.view.clone().expect("a view has arrived");
+    let world = app.world_mut();
+    let panels: Vec<(Entity, Side)> = world.query::<(Entity, &HudPanel)>().iter(world).map(|(e, p)| (e, p.0)).collect();
+    assert_eq!(panels.len(), 2, "one HUD a side");
+    for (panel, side) in panels {
+        let children: Vec<Entity> = world.entity(panel).get::<Children>().expect("a HUD has readouts").iter().collect();
+        let drawn: Vec<(&str, String)> = children.iter().filter_map(|c| world.entity(*c).get::<HudReadout>()).map(|r| (r.label, r.value.clone())).collect();
+        let expected: Vec<(&str, String)> = netrunner_client::board::hud::readouts(&view, side).into_iter().map(|r| (r.label, r.value)).collect();
+        assert_eq!(drawn, expected, "{side:?}'s HUD");
+    }
+}
+
+/// The Agendas readout is a button that opens the side's score area as
+/// a list; a press on a row opens its details in place, a press on
+/// another moves them, and a second press on the open row closes them.
+#[test]
+fn the_agendas_readout_opens_the_score_area_and_a_row_expands() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    // Put two agendas in the Corp's score area: no game this short
+    // scores one, and the sheet reads the view it is opened over.
+    let registry = netrunner_client::decks::sample_deck_registry();
+    let mut agendas = registry.iter().filter(|c| c.agenda_points.is_some()).map(|c| c.id.clone());
+    let (first, second) = (agendas.next().unwrap(), agendas.next().unwrap());
+    {
+        let mut model = app.world_mut().resource_mut::<Model>();
+        let view = model.0.view.as_mut().unwrap();
+        for (n, card) in [first, second].into_iter().enumerate() {
+            view.corp.scored_agendas.push(netrunner_core::rules::ScoredAgenda { card, install_id: InstallId(9000 + n as u32), agenda_counters: 0 });
+        }
+    }
+    let readout = entity_with(&mut app, &Click::Target(Target::Pile(Pile::Agendas(Side::Corp)))).expect("the Corp's Agendas readout is a button");
+    assert_eq!(app.world().entity(readout).get::<HudReadout>().map(|r| r.label), Some("Agendas"));
+    press_entity(&mut app, readout);
+    assert_eq!(overlays(&mut app), 1, "the score area opened");
+    assert!(texts(&mut app).iter().any(|t| t == "Agendas scored"), "headed by the pile's name");
+    let rows = |app: &mut App| app.world_mut().query::<&ScoreRow>().iter(app.world()).count();
+    let open = |app: &mut App| app.world_mut().query::<&ScoreDetails>().iter(app.world()).map(|d| d.0).collect::<Vec<_>>();
+    assert_eq!(rows(&mut app), 2, "a row per agenda");
+    assert!(open(&mut app).is_empty(), "every row starts closed");
+    let row = |app: &mut App, n: usize| entity_with(app, &Click::Expand(n)).expect("each row is a button");
+    let first_row = row(&mut app, 0);
+    press_entity(&mut app, first_row);
+    assert_eq!(open(&mut app), [0]);
+    let second_row = row(&mut app, 1);
+    press_entity(&mut app, second_row);
+    assert_eq!(open(&mut app), [1], "one row open at a time");
+    let second_row = row(&mut app, 1);
+    press_entity(&mut app, second_row);
+    assert!(open(&mut app).is_empty(), "the open row's second press closes it");
 }
 
 /// A run is a trail in the lane between the two areas: the Runner runs

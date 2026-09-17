@@ -610,6 +610,7 @@ yet a board to play on.
    it at the card and makes the panel the fallback it was designed as.
 6. **A HUD**: credits, clicks, points, tags, damage and hand size for
    both sides, always in the same place, big enough to read at a glance.
+   *Done in §4f: a grid of large numbers in each side's strip.*
 7. **The window must fit the whole game without scrolling.** With the
    faces made readable the board is 1,780 px tall in a 723 px viewport;
    a design is owed that puts every card and piece on one screen —
@@ -1249,3 +1250,70 @@ without a click, only a lone one, offers nothing while it is in flight,
 and puts the pass back on the bar when it is rejected. The desktop's
 headless tests that press Pass during the Corp's turn still pass. No engine file changed,
 so no sweep and no coverage report. No layout change, so no screenshot.
+
+### 4f. A HUD: each side's numbers in fixed places — DONE (17 September 2026)
+
+`feat/desktop-hud`. §3's item 6. The numbers were in the strip as
+sentences — dim and small first, then body size — and "Credits 5 ·
+Clicks 3 · Agenda points 2/7" is a line to read, not a place to glance.
+
+**Decisions taken, with the alternative rejected.**
+
+- **Every readout is always there, at zero too.** Credits, Clicks and
+  Points in the same slots for both sides, the hand (HQ or Grip) in the
+  fourth, then the side's own: Bad publicity for the Corp, Tags and
+  Damage for the Runner. A Tags readout that appeared with the first tag
+  would move the numbers after it at the moment the person needs them,
+  so a live threat is drawn in the danger colour instead, and so is a
+  point total two short of the win.
+- **The words live in `netrunner_client::board::hud`**, beside `facts`,
+  so the terminal can take the same set; its header line is left as it
+  is for now.
+- **In the strip, not a row of its own.** A HUD row would cost the board
+  a row of card height; the grid (three columns, a heading-size number
+  over a small word) replaces the four body lines inside the same
+  `STRIP_CORP`/`STRIP_RUNNER` heights. The Runner's MU and Link, which
+  a person looks up rather than watches, are one small line under it,
+  and its Stack and Heap stay the pile buttons. **The Corp has no such
+  line:** the first cut put "R&D 31 · Archives 2" there, and the person
+  pointed out that both are on the play field already — each is a server
+  column whose header carries its count — so it went.
+- **"Agendas 5/7" is a button onto the score area** (asked for on the
+  PR: "'Agendas' (click) -> open to show cards -> click card expand").
+  The readout is named for what it opens rather than "Points", and
+  `Pile::Agendas(side)` is the zone, beside the stack and heap. The sheet
+  is a *list*, not the piles' spread of faces: a row per agenda (a small
+  face, the title, its points), and a press opens that row in place —
+  the large face, "Scored by the Corp · 2 points · advancement
+  requirement 4", counters, the printed text, and for an agenda the
+  viewer scored, its abilities by the handle it kept. One row open at a
+  time (`Game::expanded`, `Intent::Expand`), closed on a second press and
+  whenever a sheet opens; reading a card *over* the sheet, as the piles
+  do, hid the rest of the list. The strip's "Stolen: …" line went with
+  it — it was the one thing in a fixed-height strip that grew with the
+  game, and the risk this entry's first cut flagged.
+
+**Verified.** `cargo test --workspace` green (1,508 tests), clippy
+silent. New tests: `netrunner_client` checks the fixed order for both
+sides, that only Agendas opens anything, that a threat marks its slot
+rather than adding one, the points alarm, and the score area's rows
+(two copies are two rows, printed points, a stolen agenda has no
+handle); the desktop model opens one row at a time and closes them on
+reopen; the desktop's headless game checks each side has one HUD holding
+exactly `hud::readouts`, and that a press on Agendas opens a row per
+agenda, each row a press that opens its details and a second that
+closes them. No engine file changed, so no
+sweep and no coverage report. Screenshotted from both chairs forty
+decisions in at 2560×1600 (the Runner opponent at 6/7 in red, its
+stolen line wrapping): no hand is clipped and the only scroll area
+logged is the hidden log's, at zero size. The score area screenshotted
+with `NETRUNNER_AGENDAS=corp|runner` (opens it, first row expanded):
+empty ("None yet · 0 of 7 points") and with two stolen agendas. The first
+cut drew the disclosure triangle as a box — Noto Sans has neither
+U+25B8/U+25BE nor U+2212 — so it is drawn in Noto Sans Symbols 2, which
+covers U+25A0–2609, with a plus and an en dash beneath it.
+
+**Seen, not caused here.** Two of eleven screenshot runs hung after
+"Creating new window", before a first frame, and the same command
+passed on a retry; both logged bevy's "Can't select current monitor"
+warning, as every run did. Not investigated.

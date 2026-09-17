@@ -58,17 +58,23 @@ pub enum Target {
     Server(ServerId),
     /// A position in the zone a `ChooseCards` prompt selects from.
     Position(usize),
-    /// The Runner's stack or heap — a zone a click opens, as the Corp's
-    /// centrals are opened through `Server`.
+    /// The Runner's stack or heap, or a side's score area — a zone a
+    /// click opens, as the Corp's centrals are opened through `Server`.
     Pile(Pile),
 }
 
-/// The Runner's two piles. The Corp's are servers (`ServerId::RnD`,
-/// `ServerId::Archives`) and need no second name.
+/// The piles that are not servers: the Runner's two, and each side's
+/// score area. The Corp's deck and discard are servers
+/// (`ServerId::RnD`, `ServerId::Archives`) and need no second name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Pile {
     Stack,
     Heap,
+    /// The agendas a side has scored (the Corp) or stolen (the Runner),
+    /// opened from the HUD's Agendas readout. Nothing in the action map
+    /// targets it: a scored agenda's ability is on `Target::Install`,
+    /// by the handle the agenda kept.
+    Agendas(Side),
 }
 
 impl Pile {
@@ -76,6 +82,8 @@ impl Pile {
         match self {
             Pile::Stack => "Stack",
             Pile::Heap => "Heap",
+            Pile::Agendas(Side::Corp) => "Agendas scored",
+            Pile::Agendas(Side::Runner) => "Agendas stolen",
         }
     }
 }
