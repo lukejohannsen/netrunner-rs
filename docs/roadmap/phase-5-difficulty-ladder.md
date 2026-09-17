@@ -1647,3 +1647,71 @@ is measured rather than assumed.
 
 Reports under `target/coverage/runner-ladder-{style}-s{1..4}.json` and
 `runner-ladder-aggressive-before-s{1..4}.json`.
+
+## 18. A Corp with both `glacier`'s fort and `trap`'s ambush terms is the strongest one-ply Corp, and search takes the gain back — DONE, measurement only (17 September 2026)
+
+`diag/corp-fort-and-ambush`. §4(b)'s candidate and §9's handover: the
+two best Corp levers found so far — `glacier`'s install switch and
+protection (§9) and `trap`'s three card-reading ambush terms (Phase 3
+§1) — came from different profiles and had never been measured together.
+`glacier`'s weights plus `trap`'s `ambush_weight` 3.0,
+`ambush_advancement_weight` 2.8 and `ambush_advancement_cap` 7, on an
+uncommitted override, against the fixed one-ply balanced Runner, paired
+game for game on `(game seed, matchup)`. Corp win share, so higher is a
+stronger Corp.
+
+**At one ply they compose** (six seeds × 384):
+
+| Corp | Corp win share | against it | z | discordant |
+|---|---|---|---|---|
+| `balanced` | 0.148 | | | |
+| `trap` | 0.212 | | | |
+| `glacier` | 0.282 | | | |
+| **`glacier` + ambush** | **0.326** | +0.045 over `glacier` | 6.7 | 239 |
+| | | +0.115 over `trap` | 10.5 | 632 |
+
+It wins both ways: 22.7% of games on agendas (`glacier` 25.8%) and 9.9%
+by flatline (`trap` 8.6%, `glacier` 2.3%). **`ambush_weight` is a
+switch, and it is nearly all of it**: alone on `glacier` it is +0.040
+(z 6.5), flat from 1.5 to 8.0 (0.318 / 0.322 / 0.326 / 0.325), while the
+advancement term alone *costs* `glacier` −0.013 (z 2.6) and at 1.5 or
+2.8 on top of the switch moves nothing (0.324, 0.326; 5.0 with 2.8 reads
+0.330). `trap`'s own finding ran the other way — the advancement term was
+its engine — because `trap` has no fort for an ambush to sit beside.
+Against every Runner profile, four seeds × 384, it is +0.039 to +0.053
+over `glacier` (z ≥ 5.0) and +0.092 to +0.134 over `trap`: `aggressive`
+0.299 → 0.352, `cautious` 0.287 → 0.326, `builder` 0.231 → 0.279, `wary`
+0.286 → 0.334.
+
+**Under search it does not survive.** The `elite` rung, `puct@512`
+un-handicapped (`bench --bots level:elite:glacier,heuristic`, `--threads
+10`), two seeds × 384 on one layout:
+
+| `elite` Corp | seed 1 | seed 2 | pooled | against `glacier` | z | discordant |
+|---|---|---|---|---|---|---|
+| `balanced` | 0.245 | 0.276 | 0.260 | | | |
+| `glacier` | 0.357 | 0.357 | 0.357 | | | |
+| `glacier` + ambush | 0.362 | 0.378 | **0.370** | **+0.013** | 1.1 | 88 |
+
+Flatlines rise 33 → 80 of 768 and agenda wins fall 241 → 204: the search
+does play the ambushes it is told to value, and it wins no more often for
+it. This is §3's finding again from a new lever — a term that encodes a
+decision a tree can find by looking ahead lifts the one-ply rungs and
+not the search rungs — and it contrasts with §9's install switch, which
+did survive `puct@512` (+0.073 on one seed, reproduced here as `glacier`
++0.096 over `balanced`, z 4.7, on both seeds). A plausible reason, not
+tested: an ambush pays off the moment the Runner accesses it, inside a
+512-simulation horizon, where banking to rez later pays off turns away.
+
+**What it decides for §4(b): nothing ships.** The combination does not
+raise the Corp's ceiling, which is what §4(b) is for. And adding the
+terms to `glacier` would break §11's calibration from below: `glacier`'s
+`operator` is one ply and would gain about +0.045 toward its `veteran`'s
+0.309, where `veteran`'s `epsilon` is already 0.02 and has no room left to
+restore the step. The one top-rung lever §4(b) has measured stays §9's:
+`glacier` at `elite` is +0.096 over `balanced` on both seeds, and the
+decks whose top rungs do not play it (`balanced`, `trap`, and `rush` since
+§15) are the open question — a choice about how a deck's top rung plays,
+not a tuning.
+
+Reports under `target/coverage/fort-ambush-{c,x,e}-*.json`.
