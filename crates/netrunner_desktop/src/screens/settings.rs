@@ -16,6 +16,7 @@ use crate::models::settings::{self as model, Intent, Row, MAX_NAME_LEN};
 use netrunner_client::settings::Table;
 use crate::nav::{screen_root, Navigate};
 use crate::screens::AppScreen;
+use crate::skin;
 use crate::table;
 use crate::theme::Theme;
 use crate::widgets::text_field::{TextField, TextFieldEvent};
@@ -123,7 +124,7 @@ fn controls(
             }
             Ok(Control::EditName) => edit.0 = true,
             Ok(Control::Intent(intent)) => {
-                let changed = model::apply(&mut core.settings, intent.clone(), &table::available());
+                let changed = model::apply(&mut core.settings, intent.clone(), &table::available(), &skin::available());
                 if changed {
                     persist(&core, &mut notices);
                     dirty.0 = true;
@@ -175,7 +176,7 @@ fn name_edits(
             TextFieldEvent::Committed(name) => Intent::NameEdited(Some(name.clone())),
             TextFieldEvent::Cancelled => Intent::NameEdited(None),
         };
-        if model::apply(&mut core.settings, intent, &table::available()) {
+        if model::apply(&mut core.settings, intent, &table::available(), &skin::available()) {
             persist(&core, &mut notices);
         }
         commands.entity(entity).despawn();

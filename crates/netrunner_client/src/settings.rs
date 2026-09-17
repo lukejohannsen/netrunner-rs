@@ -114,6 +114,54 @@ pub struct DesktopPrefs {
     /// The field the board is played on.
     #[serde(with = "table_by_name")]
     pub table: Table,
+    /// The art the board's own furniture is dressed in.
+    #[serde(with = "skin_by_name")]
+    pub skin: Skin,
+}
+
+/// Which art dresses the board's tiles, headers, buttons and chips.
+///
+/// Stored as a bare string, for the reason [`Table`] is: a hand-edited
+/// file should read `"skin": "neon-chrome"`. Two reserved names, as
+/// there.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum Skin {
+    /// Whatever the chosen table asks for, and the outlined board when it
+    /// asks for nothing. The default, so a field that ships with matching
+    /// chrome brings it along without the player having to pair them.
+    #[default]
+    Auto,
+    /// The board's own outlined look, whatever the table suggests — for
+    /// somebody who likes a field but not the furniture that came with
+    /// it.
+    Drawn,
+    /// The folder of that name, under `skins/` in either asset tier.
+    Named(String),
+}
+
+/// The two names a skin folder may not use.
+pub const SKIN_AUTO: &str = "auto";
+pub const SKIN_DRAWN: &str = "drawn";
+
+impl Skin {
+    /// How the settings file spells it.
+    pub fn as_name(&self) -> &str {
+        match self {
+            Skin::Auto => SKIN_AUTO,
+            Skin::Drawn => SKIN_DRAWN,
+            Skin::Named(name) => name,
+        }
+    }
+
+    /// The reverse, which cannot fail — see [`Table::from_name`] for why
+    /// an unknown name is a folder rather than an error.
+    pub fn from_name(name: &str) -> Self {
+        match name {
+            SKIN_AUTO => Skin::Auto,
+            SKIN_DRAWN => Skin::Drawn,
+            other => Skin::Named(other.to_string()),
+        }
+    }
 }
 
 /// Which table the board is played on: the painted ground, one named
@@ -171,7 +219,7 @@ impl Table {
 
 impl Default for DesktopPrefs {
     fn default() -> Self {
-        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Painted }
+        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Painted, skin: Skin::Auto }
     }
 }
 
@@ -225,6 +273,21 @@ impl Settings {
 /// The format's flag spelling on disk (see the module comment).
 /// [`Table`] as the bare string the file stores, the way
 /// `format_by_name` stores a format.
+/// [`Skin`] as the bare string the file stores.
+mod skin_by_name {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    use super::Skin;
+
+    pub fn serialize<S: Serializer>(skin: &Skin, serializer: S) -> Result<S::Ok, S::Error> {
+        skin.as_name().serialize(serializer)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Skin, D::Error> {
+        Ok(Skin::from_name(&String::deserialize(deserializer)?))
+    }
+}
+
 mod table_by_name {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

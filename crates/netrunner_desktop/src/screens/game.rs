@@ -118,6 +118,7 @@ use crate::nav::{screen_root, Captures, InputCaptured, Navigate};
 use crate::screens::new_game::{ActiveMatch, LastGame};
 use crate::screens::settings::{self as settings_screen, Control as SettingsControl};
 use crate::screens::AppScreen;
+use crate::skin::{self, Drawn, Slot};
 use crate::table;
 use crate::theme::{size, Theme};
 use crate::widgets::card_face::{spawn_back, spawn_face, FaceSize};
@@ -912,7 +913,7 @@ fn shortcuts(
                     continue;
                 }
                 let row = if shortcut == Shortcut::PhaseBar { Row::PhaseBar } else { Row::PlayHelper };
-                settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(row), &table::available());
+                settings_model::apply(&mut core.settings, settings_model::Intent::Toggle(row), &table::available(), &skin::available());
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
                 }
@@ -976,7 +977,7 @@ fn controls(
         // the file is saved, as on the settings screen; the rail and the
         // log follow the new value on the next redraw.
         if let Ok(SettingsControl::Intent(intent)) = settings_marks.get(*entity) {
-            if settings_model::apply(&mut core.settings, intent.clone(), &table::available()) {
+            if settings_model::apply(&mut core.settings, intent.clone(), &table::available(), &skin::available()) {
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
                 }
@@ -1309,6 +1310,7 @@ fn compact_button(parent: &mut ChildSpawnerCommands, theme: &Theme, text: String
             },
             BackgroundColor(theme.button),
             BorderColor::all(theme.panel_border),
+            widgets::Dressed::button(theme, Slot::CompactButton, Drawn::new(theme.button, theme.panel_border)),
             children![(Text::new(text), theme.font(size::SMALL), TextColor(theme.text))],
         ))
         .id()
@@ -1341,6 +1343,9 @@ fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView
                 let colour = if readout.alarm { theme.danger } else { theme.text };
                 let marker = HudReadout { label: readout.label, value: readout.value.clone() };
                 let node = Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, ..default() };
+                // A readout that opens something is a button; the rest are
+                // bare numbers. Both are slots, so a skin can put a plate
+                // behind every readout and a brighter one behind the door.
                 let mut cell = match readout.opens {
                     Some(pile) => grid.spawn((
                         marker,
@@ -1349,8 +1354,16 @@ fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView
                         Click::Target(Target::Pile(pile)),
                         Node { padding: UiRect::axes(px(6), px(0)), margin: UiRect::left(px(-6)), border_radius: BorderRadius::all(px(6)), ..node },
                         BackgroundColor(theme.button),
+                        widgets::Dressed::button(theme, Slot::HudCellOpens, Drawn::new(theme.button, Color::NONE)),
                     )),
-                    None => grid.spawn((marker, node)),
+                    None => grid.spawn((
+                        marker,
+                        node,
+                        widgets::Dressed::still(
+                            if readout.alarm { Slot::HudCellAlarm } else { Slot::HudCell },
+                            Drawn::new(Color::NONE, Color::NONE),
+                        ),
+                    )),
                 };
                 cell.with_children(|cell| {
                         cell.spawn((Text::new(readout.value), theme.font(size::HEADING), TextColor(colour)));
@@ -1421,12 +1434,12 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
             for server in &servers {
                 let under_run = game.run_on(server.server);
                 let welcomes = places.contains(&Target::Server(server.server));
-                let border = if welcomes {
-                    theme.accent
+                let (border, slot) = if welcomes {
+                    (theme.accent, Slot::ServerColumnWelcomes)
                 } else if under_run {
-                    theme.runner
+                    (theme.runner, Slot::ServerColumnUnderRun)
                 } else {
-                    theme.panel_border
+                    (theme.panel_border, Slot::ServerColumn)
                 };
                 row.spawn((
                     ServerColumn(server.server),
@@ -1447,6 +1460,7 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     // pixel value of the opaque panel it replaces.
                     BackgroundColor(theme.panel.with_alpha(0.82)),
                     BorderColor::all(border),
+                    widgets::Dressed::still(slot, Drawn::new(theme.panel.with_alpha(0.82), border)),
                 ))
                 .with_children(|column| {
                     // Header, root and ice in the chair's order
@@ -1477,6 +1491,14 @@ fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &
     // exist yet, named for what dropping there would make.
     let label = if on_board { format!("{}{count}", server_name(server)) } else { format!("New {}", server_name(server).to_lowercase()) };
     let entity = compact_button(column, theme, label, Click::Target(Target::Server(server)));
+    // A header is a compact button wearing a different hat: the same box,
+    // its own slot, so a skin can draw Archives unlike a Stack button.
+    // Inserting over `compact_button`'s own `Dressed` replaces it.
+    let slot = if welcomes { Slot::ServerHeaderWelcomes } else { Slot::ServerHeader };
+    column
+        .commands()
+        .entity(entity)
+        .insert(widgets::Dressed::button(theme, slot, Drawn::new(theme.button, theme.panel_border)));
     if welcomes {
         column.commands().entity(entity).insert(outline(theme));
     }
@@ -1487,7 +1509,7 @@ fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &
 /// a border in the card's faction colour when it is rezzed. A click
 /// opens the card's sheet; the picture is read there, not here, so the
 /// column costs `layout::TILE` per piece and never a face.
-fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, colour: Color, text_colour: Color, install: InstallId, lit: bool, size: FaceSize) -> Entity {
+fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, colour: Color, text_colour: Color, install: InstallId, lit: bool, size: FaceSize, slot: Slot) -> Entity {
     let mut tile = column.spawn((
         Button,
         widgets::Themed,
@@ -1506,6 +1528,10 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
         },
         BackgroundColor(theme.button),
         BorderColor::all(colour),
+        // The border carries the state — a rezzed ice is its faction's
+        // colour — so that colour is what a picture asking for `"state"`
+        // is washed in.
+        widgets::Dressed::button(theme, slot, Drawn::new(theme.button, colour)),
         children![(Text::new(label), theme.font(size::SMALL - 3.0), TextColor(text_colour))],
     ));
     if lit {
@@ -1525,7 +1551,8 @@ fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
         let colour = if ice.rezzed { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
         let text_colour = if ice.rezzed { theme.text } else { theme.text_dim };
         let is_lit = encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id);
-        spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size);
+        let slot = if ice.rezzed { Slot::TileRezzed } else { Slot::TileUnrezzed };
+        spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size, slot);
     }
 }
 
@@ -1541,7 +1568,8 @@ fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
         let face_up = card.rezzed || def.is_some_and(|d| d.card_type == CardType::Agenda);
         let colour = if face_up { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
         let text_colour = if face_up { theme.text } else { theme.text_dim };
-        spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size);
+        let slot = if face_up { Slot::TileRezzed } else { Slot::TileUnrezzed };
+        spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size, slot);
     }
 }
 
@@ -1872,10 +1900,10 @@ fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game)
             }
             row.spawn((Text::new(segment.title.clone()), theme.font(size::SMALL), TextColor(theme.text)));
             for step in &segment.steps {
-                let (text, background, border) = match step.state {
-                    State::Past => (theme.text_dim, theme.panel, theme.panel),
-                    State::Now => (theme.background, theme.accent, theme.accent),
-                    State::Ahead => (theme.text_dim, theme.background, theme.panel_border),
+                let (text, background, border, slot) = match step.state {
+                    State::Past => (theme.text_dim, theme.panel, theme.panel, Slot::PhaseChipPast),
+                    State::Now => (theme.background, theme.accent, theme.accent, Slot::PhaseChipNow),
+                    State::Ahead => (theme.text_dim, theme.background, theme.panel_border, Slot::PhaseChipAhead),
                 };
                 row.spawn((
                     PhaseStep(step.state),
@@ -1888,6 +1916,7 @@ fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game)
                     },
                     BackgroundColor(background),
                     BorderColor::all(border),
+                    widgets::Dressed::still(slot, Drawn::new(background, border)),
                     children![(Text::new(step.label.clone()), theme.font(size::SMALL), TextColor(text))],
                 ));
             }
@@ -1993,13 +2022,13 @@ enum ChipStyle {
 }
 
 fn chip(row: &mut ChildSpawnerCommands, theme: &Theme, label: String, style: ChipStyle, marker: impl Bundle) -> Entity {
-    let (border, background, text) = match style {
-        ChipStyle::Origin => (theme.runner, theme.runner.with_alpha(0.2), theme.text),
-        ChipStyle::Upcoming => (theme.panel_border, theme.panel, theme.text_dim),
-        ChipStyle::Current => (theme.accent, theme.accent.with_alpha(0.25), theme.text),
-        ChipStyle::Done => (theme.panel_border, theme.button, theme.text_dim),
-        ChipStyle::Success => (theme.runner, theme.runner.with_alpha(0.25), theme.text),
-        ChipStyle::Ended => (theme.corp, theme.corp.with_alpha(0.25), theme.text),
+    let (border, background, text, slot) = match style {
+        ChipStyle::Origin => (theme.runner, theme.runner.with_alpha(0.2), theme.text, Slot::RunChipOrigin),
+        ChipStyle::Upcoming => (theme.panel_border, theme.panel, theme.text_dim, Slot::RunChipUpcoming),
+        ChipStyle::Current => (theme.accent, theme.accent.with_alpha(0.25), theme.text, Slot::RunChipCurrent),
+        ChipStyle::Done => (theme.panel_border, theme.button, theme.text_dim, Slot::RunChipDone),
+        ChipStyle::Success => (theme.runner, theme.runner.with_alpha(0.25), theme.text, Slot::RunChipSuccess),
+        ChipStyle::Ended => (theme.corp, theme.corp.with_alpha(0.25), theme.text, Slot::RunChipEnded),
     };
     row.spawn((
         marker,
@@ -2015,6 +2044,7 @@ fn chip(row: &mut ChildSpawnerCommands, theme: &Theme, label: String, style: Chi
         },
         BackgroundColor(background),
         BorderColor::all(border),
+        widgets::Dressed::still(slot, Drawn::new(background, border)),
         children![(Text::new(label), theme.font(size::SMALL - 2.0), TextColor(text))],
     ))
     .id()

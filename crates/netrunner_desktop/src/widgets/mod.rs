@@ -16,6 +16,7 @@ use bevy::prelude::*;
 use bevy::ui_widgets::{ControlOrientation, Scrollbar, ScrollbarThumb};
 
 use crate::nav::Captures;
+use crate::skin::{Drawn, Skin, Slot};
 use crate::theme::{size, Theme};
 
 pub struct WidgetsPlugin;
@@ -26,7 +27,13 @@ impl Plugin for WidgetsPlugin {
         // and an open list closing is the one that wins.
         app.add_message::<Pressed>()
             .add_message::<dropdown::DropdownChanged>()
-            .add_systems(Update, (button_feedback, (dropdown::dropdowns, text_field::edit_text_fields).chain().in_set(Captures)).chain());
+            .add_systems(Update, (button_feedback, (dropdown::dropdowns, text_field::edit_text_fields).chain().in_set(Captures)).chain())
+            // Registered on its own rather than at the head of that
+            // chain: putting it there moved `button_feedback` relative to
+            // every screen's `controls`, and a dozen board tests stopped
+            // seeing their presses. Dressing has no ordering requirement
+            // of its own — it paints what interaction never touched.
+            .add_systems(Update, dress);
     }
 }
 
@@ -39,6 +46,52 @@ pub struct Pressed(pub Entity);
 /// themed buttons.
 #[derive(Component)]
 pub struct Themed;
+
+/// Marks a node as a part of the board a skin may dress, and records what
+/// it would look like undressed.
+///
+/// The picture is not applied here but by [`dress`], on a later frame,
+/// which is what lets every `widgets::` bundle stay a plain function of
+/// the theme: a bundle has no way to reach the [`Skin`] resource, and
+/// threading one into `button`, `compact_button` and the rest would have
+/// touched every call site in the crate to say something none of them
+/// care about.
+#[derive(Component, Clone, Copy)]
+pub struct Dressed {
+    pub slot: Slot,
+    /// What the board paints here with no skin, and the three states'
+    /// versions of it. `hover` and `pressed` are `None` on anything that
+    /// does not react to a pointer.
+    pub drawn: Drawn,
+    pub hover: Option<Drawn>,
+    pub pressed: Option<Drawn>,
+}
+
+impl Dressed {
+    /// A part of the board that does not react to a pointer.
+    pub fn still(slot: Slot, drawn: Drawn) -> Self {
+        Self { slot, drawn, hover: None, pressed: None }
+    }
+
+    /// A button: the theme's own three background colours over one border.
+    pub fn button(theme: &Theme, slot: Slot, drawn: Drawn) -> Self {
+        Self {
+            slot,
+            drawn,
+            hover: Some(Drawn::new(theme.button_hover, drawn.border)),
+            pressed: Some(Drawn::new(theme.button_press, drawn.border)),
+        }
+    }
+
+    /// The slot and the colours for an interaction.
+    fn at(&self, interaction: Interaction) -> (Slot, Drawn) {
+        match interaction {
+            Interaction::Hovered => (self.slot.hovered().unwrap_or(self.slot), self.hover.unwrap_or(self.drawn)),
+            Interaction::Pressed => (self.slot.pressed().unwrap_or(self.slot), self.pressed.unwrap_or(self.drawn)),
+            Interaction::None => (self.slot, self.drawn),
+        }
+    }
+}
 
 /// A themed button that is drawn but not offered: no hover, no press,
 /// dim text. The board's control bar keeps every basic action in its
@@ -109,6 +162,7 @@ pub fn button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, width: Val, ma
         },
         BackgroundColor(theme.button),
         BorderColor::all(theme.panel_border),
+        Dressed::button(theme, Slot::Button, Drawn::new(theme.button, theme.panel_border)),
         children![(Text::new(text), theme.font(size::BODY), TextColor(theme.text))],
     )
 }
@@ -134,6 +188,7 @@ pub fn disabled_button<T: Into<String>, M: Bundle>(theme: &Theme, text: T, width
         },
         BackgroundColor(theme.panel),
         BorderColor::all(theme.panel_border.with_alpha(0.5)),
+        Dressed::still(Slot::ButtonDisabled, Drawn::new(theme.panel, theme.panel_border.with_alpha(0.5))),
         children![(Text::new(text), theme.font(size::BODY), TextColor(theme.text_dim.with_alpha(0.6)))],
     )
 }
@@ -219,20 +274,64 @@ pub fn notice<T: Into<String>, M: Bundle>(theme: &Theme, text: T, marker: M) -> 
     (Text::new(text), theme.font(size::SMALL), TextColor(theme.danger), marker)
 }
 
+/// Puts a skin's picture on everything marked [`Dressed`], and takes it
+/// off again when the skin changes to one that does not dress it.
+///
+/// Runs on `Added<Dressed>` so a freshly spawned board is dressed the
+/// frame after it appears, and over everything when the [`Skin`] resource
+/// itself changes, which is how the settings row takes effect without
+/// leaving the screen.
+fn dress(mut commands: Commands, skin: Res<Skin>, added: Query<(Entity, &Dressed), Added<Dressed>>, all: Query<(Entity, &Dressed)>) {
+    if skin.is_changed() {
+        for (entity, dressed) in &all {
+            skin.dress(dressed.slot, dressed.drawn).apply(&mut commands.entity(entity));
+        }
+        return;
+    }
+    for (entity, dressed) in &added {
+        skin.dress(dressed.slot, dressed.drawn).apply(&mut commands.entity(entity));
+    }
+}
+
+/// Hover and press, and the `Pressed` message every screen's `controls`
+/// reads. One system for both because the press *is* the feedback: they
+/// were written together and splitting them would let a screen see a
+/// press the button never showed.
+///
+/// A [`Dressed`] button re-dresses itself from the skin — its own hovered
+/// picture if the skin drew one, its base picture otherwise — and an
+/// undressed one recolours as it always did.
 fn button_feedback(
+    mut commands: Commands,
+    skin: Res<Skin>,
     theme: Res<Theme>,
-    mut buttons: Query<(Entity, &Interaction, &mut BackgroundColor), (Changed<Interaction>, With<Themed>, Without<Disabled>)>,
+    mut buttons: Query<(Entity, &Interaction, &mut BackgroundColor, Option<&Dressed>), (Changed<Interaction>, With<Themed>, Without<Disabled>)>,
     mut pressed: MessageWriter<Pressed>,
 ) {
-    for (entity, interaction, mut background) in &mut buttons {
-        *background = BackgroundColor(match interaction {
-            Interaction::Pressed => {
-                pressed.write(Pressed(entity));
-                theme.button_press
+    for (entity, interaction, mut background, dressed) in &mut buttons {
+        if *interaction == Interaction::Pressed {
+            pressed.write(Pressed(entity));
+        }
+        match dressed {
+            Some(dressed) => {
+                let (slot, drawn) = dressed.at(*interaction);
+                skin.dress(slot, drawn).apply(&mut commands.entity(entity));
             }
-            Interaction::Hovered => theme.button_hover,
-            Interaction::None => theme.button,
-        });
+            // Undressed, and the resting colour is the theme's button —
+            // *not* whatever this node was spawned with. That is a real
+            // limitation rather than an oversight: a `Themed` node whose
+            // resting background is something else loses it after the
+            // first hover, which is why the drop-down's selected item now
+            // carries a `Dressed` of its own rather than relying on the
+            // colour it was spawned with.
+            None => {
+                *background = BackgroundColor(match interaction {
+                    Interaction::Pressed => theme.button_press,
+                    Interaction::Hovered => theme.button_hover,
+                    Interaction::None => theme.button,
+                });
+            }
+        }
     }
 }
 

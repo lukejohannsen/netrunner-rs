@@ -41,6 +41,7 @@ pub mod prose;
 pub mod ratings;
 pub mod selection;
 pub mod settings;
+pub mod skin;
 pub mod table;
 pub mod start;
 
