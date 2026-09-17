@@ -86,12 +86,15 @@ pub fn readouts(view: &ClientView, side: Side) -> Vec<Readout> {
 }
 
 /// The smaller line under the readouts: the counts a player looks up
-/// rather than watches. The Runner's stack and heap are not here — they
-/// are the pile buttons beside it, which already carry their counts.
-pub fn details(view: &ClientView, side: Side) -> String {
+/// rather than watches, and only those the table does not already show.
+/// The Corp has none — R&D and Archives are server columns whose headers
+/// carry their counts ("R&D · 31"), and the line repeating them was
+/// dropped as redundant. The Runner's stack and heap are not here either:
+/// they are the pile buttons beside it, which carry their counts.
+pub fn details(view: &ClientView, side: Side) -> Option<String> {
     match side {
-        Side::Corp => format!("R&D {} · Archives {}", view.corp.rd_count, view.corp.archives.len()),
-        Side::Runner => format!("MU {} · Link {}", view.runner.memory_units, view.runner.link_strength),
+        Side::Corp => None,
+        Side::Runner => Some(format!("MU {} · Link {}", view.runner.memory_units, view.runner.link_strength)),
     }
 }
 
@@ -220,5 +223,12 @@ mod tests {
         let facts = stolen[0].facts(Side::Runner, &registry);
         assert!(facts[0].starts_with("Stolen by the Runner"), "{facts:?}");
         assert!(stolen[0].line().contains(&agenda.title));
+    }
+
+    #[test]
+    fn the_details_line_repeats_nothing_the_table_shows() {
+        let view = view();
+        assert_eq!(details(&view, Side::Corp), None, "R&D and Archives are server headers");
+        assert!(details(&view, Side::Runner).is_some_and(|line| line.starts_with("MU ")));
     }
 }

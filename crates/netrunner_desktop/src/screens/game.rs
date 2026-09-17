@@ -891,7 +891,9 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                 let title = identity.as_ref().and_then(|id| core.registry.get(id)).map_or_else(|| format!("{side:?}"), |c| c.title.clone());
                 column.spawn((Text::new(format!("{who} · {title}")), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 spawn_hud(column, theme, view, side);
-                column.spawn((widgets::dim(theme, hud::details(view, side)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                if let Some(line) = hud::details(view, side) {
+                    column.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                }
                 // The Runner's piles are zones a click opens — the stack
                 // for its draw, the heap for what is in it — as the
                 // Corp's centrals are through their server headers.

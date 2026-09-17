@@ -149,7 +149,7 @@ pub const MAX_FACE: f32 = 220.0;
 pub const STRIP_TEXT: f32 = 330.0;
 /// A strip's height when its text is taller than its identity: the
 /// name line, the HUD's two rows of large numbers over their words and
-/// the details line; the Runner's has the pile buttons under them. The
+/// the Runner's details line and pile buttons under them. The
 /// scored agendas are no longer a line here — the Agendas readout opens
 /// them — so nothing in a strip grows with the game. Unchanged when the
 /// HUD replaced four body-size lines, and screenshotted to fit from both

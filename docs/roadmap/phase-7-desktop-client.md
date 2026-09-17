@@ -1272,9 +1272,12 @@ Clicks 3 · Agenda points 2/7" is a line to read, not a place to glance.
 - **In the strip, not a row of its own.** A HUD row would cost the board
   a row of card height; the grid (three columns, a heading-size number
   over a small word) replaces the four body lines inside the same
-  `STRIP_CORP`/`STRIP_RUNNER` heights, and the counts a person looks up
-  rather than watches (R&D and Archives; MU and Link) are one small line
-  under it. The Runner's Stack and Heap stay the pile buttons.
+  `STRIP_CORP`/`STRIP_RUNNER` heights. The Runner's MU and Link, which
+  a person looks up rather than watches, are one small line under it,
+  and its Stack and Heap stay the pile buttons. **The Corp has no such
+  line:** the first cut put "R&D 31 · Archives 2" there, and the person
+  pointed out that both are on the play field already — each is a server
+  column whose header carries its count — so it went.
 - **"Agendas 5/7" is a button onto the score area** (asked for on the
   PR: "'Agendas' (click) -> open to show cards -> click card expand").
   The readout is named for what it opens rather than "Points", and
@@ -1290,7 +1293,7 @@ Clicks 3 · Agenda points 2/7" is a line to read, not a place to glance.
   it — it was the one thing in a fixed-height strip that grew with the
   game, and the risk this entry's first cut flagged.
 
-**Verified.** `cargo test --workspace` green (1,507 tests), clippy
+**Verified.** `cargo test --workspace` green (1,508 tests), clippy
 silent. New tests: `netrunner_client` checks the fixed order for both
 sides, that only Agendas opens anything, that a threat marks its slot
 rather than adding one, the points alarm, and the score area's rows
