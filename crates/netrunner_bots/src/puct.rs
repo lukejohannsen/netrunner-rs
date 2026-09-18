@@ -1320,12 +1320,35 @@ mod tests {
         assert!(mean(&peaky) > 0.85, "the fixed alpha all but picks one: {}", mean(&peaky));
     }
 
+    /// The sample's disagreement used to come from the accessed card: an
+    /// off-Archives `PendingInteractiveTrigger` masked it from the Corp,
+    /// so `determinize` had to guess it. That state no longer exists —
+    /// `masking::PublicAccessPhase::PendingInteractiveTrigger` now names
+    /// the card to whichever side is being asked to pay, because the Corp
+    /// cannot answer "pay 4 credits?" about a card their own view refuses
+    /// to name (and `legal_actions_for` handed them the identity anyway).
+    /// So the Corp having access actions at all now implies they can see
+    /// the card.
+    ///
+    /// The disagreement therefore comes from the Runner's hidden cards
+    /// instead, which is a sturdier source anyway: the grip and the stack
+    /// are masked from the Corp in *every* position, not just this one, so
+    /// `determinize` resamples them and the reconstruction genuinely
+    /// differs from the true state while the two access actions stay
+    /// legal.
     #[test]
     fn search_reports_every_legal_action_even_when_the_sample_disagrees() {
         let mut registry = CardRegistry::new();
         registry.insert(blank_card("snare", CardType::Asset));
         for filler in ["other_asset_a", "other_asset_b", "other_asset_c"] {
             registry.insert(blank_card(filler, CardType::Asset));
+        }
+        // Runner-side cards for the pool `determinize` resamples the grip
+        // and stack from.
+        for filler in ["runner_card_0", "runner_card_1", "runner_card_2", "runner_card_3"] {
+            let mut card = blank_card(filler, CardType::Event);
+            card.side = Side::Runner;
+            registry.insert(card);
         }
 
         let mut state = GameState::new(0);
@@ -1335,6 +1358,10 @@ mod tests {
         state.corp.resources.credits = Credits(9);
         state.runner.resources.clicks = Clicks(3);
         state.corp.r_and_d = vec![CardId("other_asset_a".to_string()), CardId("other_asset_b".to_string())];
+        // Hidden from the Corp in every position, so the determinized
+        // sample cannot reproduce them and must guess.
+        state.runner.grip = vec![CardId("runner_card_0".to_string()), CardId("runner_card_1".to_string())];
+        state.runner.stack = vec![CardId("runner_card_2".to_string()), CardId("runner_card_3".to_string())];
         state.active_run = Some(RunState {
             server: ServerId::Remote(0),
             phase: RunPhase::AccessingCard,
@@ -1354,12 +1381,18 @@ mod tests {
 
         let view = build_client_view(&state, &registry, Side::Corp);
         assert_eq!(view.legal_actions.len(), 2, "the Corp may pay or decline: {:?}", view.legal_actions);
-        // The premise: the Corp's view really does hide which card this is.
+        // The premise, in two halves. The Corp is named the card, because
+        // they are the side being asked to pay for it...
         let masked = view.active_run.as_ref().unwrap().access_state.as_ref().unwrap();
         assert!(
-            matches!(&masked.phase, PublicAccessPhase::PendingInteractiveTrigger { card: None, .. }),
-            "off-Archives access must stay masked from the Corp, or this test proves nothing"
+            matches!(&masked.phase, PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. } if id.0 == "snare"),
+            "the decider is named the card they are paying for: {:?}",
+            masked.phase
         );
+        // ...and the Runner's cards are still hidden, which is what makes
+        // the sample disagree with the truth.
+        assert!(view.runner.grip_cards.is_none(), "the Corp cannot read the grip");
+        assert_eq!(view.runner.stack_count, 2);
 
         let mut agent = small_agent(Side::Corp);
         let stats = agent.search(&view, &registry);

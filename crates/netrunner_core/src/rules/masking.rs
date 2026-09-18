@@ -241,16 +241,30 @@ pub struct PublicRunIceIdentity {
 /// A pending per-card access decision as seen by a particular viewer —
 /// masking mirrors `PublicAccessState::unaccessed_cards`/`resolved_cards`:
 /// the card being decided on is identity-visible to the Runner always, and
-/// to the Corp only when accessing (fully public) Archives.
+/// to the Corp only when accessing (fully public) Archives — plus, for
+/// `PendingInteractiveTrigger` only, to whichever side is being asked to
+/// pay. See that variant for why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PublicAccessPhase {
     SelectNextCard { selectable_cards: MaskedZone },
     /// `decider` is public: which side is being asked to pay is not hidden
     /// information — both players watch the game wait on someone — and a
-    /// client cannot render whose decision it is without it. The card's
-    /// *identity* is still masked by the rule above, so the Corp being
-    /// asked to pay for an unrevealed R&D trap tells the Runner only that
-    /// some interactive trigger fired, which they can already see.
+    /// client cannot render whose decision it is without it.
+    ///
+    /// **`card` is also named to the `decider`, whichever zone the access
+    /// is in**, on top of the rule above. Corrected 17 September 2026: it
+    /// used to follow the rule above alone, on the reasoning that "the
+    /// Corp being asked to pay for an unrevealed R&D trap tells the
+    /// Runner only that some interactive trigger fired". That confused
+    /// two viewers. It is right that the *Runner* learns nothing extra,
+    /// but the Corp is the one being asked, and both cards that ask it of
+    /// them (Snare!, Byte!) carry `Not(AccessingArchives)` — so the
+    /// question was only ever put in the cases the rule blanked, leaving
+    /// the Corp to answer "pay 4 credits?" about a card their own view
+    /// refused to name. `legal_actions_for` handed them
+    /// `PayAccessTrigger { card_id }` with the real identity regardless,
+    /// so the mask withheld the card from the panel rendering the
+    /// decision without withholding it from the player.
     PendingInteractiveTrigger { card: Option<CardId>, cost: Cost, decider: Side, can_pay: bool },
     PendingChoice { card: Option<CardId>, trash_cost: Option<u32>, mandatory_steal: bool, steal_cost: Option<Cost> },
 }
@@ -798,13 +812,29 @@ fn mask_run_ice(ice: &RunIce, owner_view: bool) -> PublicRunIce {
     }
 }
 
-fn mask_access_phase(phase: &AccessPhase, card_visible: bool) -> PublicAccessPhase {
+fn mask_access_phase(phase: &AccessPhase, card_visible: bool, viewer: Viewer) -> PublicAccessPhase {
     match phase {
         AccessPhase::SelectNextCard { selectable_cards } => {
             PublicAccessPhase::SelectNextCard { selectable_cards: mask_zone(selectable_cards, card_visible) }
         }
         AccessPhase::PendingInteractiveTrigger { card_id, cost, decider, can_pay } => PublicAccessPhase::PendingInteractiveTrigger {
-            card: card_visible.then(|| card_id.clone()),
+            // **The decider always learns the card, whatever zone it came
+            // from.** They are being asked to pay a cost for *this card's*
+            // ability, and the only cards that ask it of the Corp — Snare!,
+            // Byte! — carry `Not(AccessingArchives)`, so the base rule
+            // above blanked the card in every case where the question is
+            // ever put. That left the Corp answering "pay 4 credits?" about
+            // a card the view refused to name, while
+            // `legal_actions_for`'s own `PayAccessTrigger { card_id }`
+            // named it anyway: the mask was not protecting the identity,
+            // only withholding it from the panel that had to render the
+            // decision.
+            //
+            // Revealing is also what the printed card does. An on-access
+            // ability that asks the other player a question cannot resolve
+            // in secret — the access is what triggers it, and the answer
+            // (paid or declined) is public either way.
+            card: (card_visible || viewer.is(*decider)).then(|| card_id.clone()),
             cost: cost.clone(),
             decider: *decider,
             can_pay: *can_pay,
@@ -818,13 +848,13 @@ fn mask_access_phase(phase: &AccessPhase, card_visible: bool) -> PublicAccessPha
     }
 }
 
-fn mask_access_state(access: &AccessState, card_visible: bool) -> PublicAccessState {
+fn mask_access_state(access: &AccessState, card_visible: bool, viewer: Viewer) -> PublicAccessState {
     PublicAccessState {
         server: access.server,
         unaccessed_cards: mask_zone(&access.unaccessed_cards, card_visible),
         resolved_cards: mask_zone(&access.resolved_cards, card_visible),
         pending_install: access.pending_install,
-        phase: mask_access_phase(&access.phase, card_visible),
+        phase: mask_access_phase(&access.phase, card_visible, viewer),
     }
 }
 
@@ -838,7 +868,7 @@ fn mask_run_state(run: &RunState, viewer: Viewer) -> PublicRunState {
         phase: run.phase,
         ice: run.ice.iter().map(|ice| mask_run_ice(ice, viewer.is(Side::Corp))).collect(),
         position: run.position,
-        access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible)),
+        access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible, viewer)),
         jack_out_permitted: run.jack_out_permitted,
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
@@ -1508,6 +1538,60 @@ mod tests {
             ));
         }
     }
+    /// The side being asked to pay is named the card, even from HQ, where
+    /// the rule above would blank it for the Corp. Snare! and Byte! are
+    /// the only cards that ask it of the Corp and both refuse to fire on
+    /// Archives, so without this the question was *always* put about a
+    /// card the Corp's own view would not name — while
+    /// `legal_actions_for` handed them `PayAccessTrigger { card_id }`
+    /// carrying the identity anyway.
+    #[test]
+    fn an_interactive_trigger_names_the_card_to_whoever_must_pay() {
+        let trigger = |decider: Side| AccessState {
+            pending_install: None,
+            resolved_installs: Vec::new(),
+            phase: AccessPhase::PendingInteractiveTrigger {
+                card_id: CardId("snare".to_string()),
+                cost: Cost::Credits(4),
+                decider,
+                can_pay: true,
+            },
+            ..Default::default()
+        };
+        let phase_of = |state: &GameState, viewer: Viewer| {
+            mask_state_for_player(state, viewer).active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase.clone()
+        };
+        let named = |phase: &PublicAccessPhase| {
+            matches!(phase, PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. } if *id == CardId("snare".to_string()))
+        };
+
+        // Snare! asks the Corp, on an HQ access: the Corp is named the
+        // card because it is their decision, and the Runner sees it as
+        // ever, because they are the one accessing it.
+        let state = state_with_run(run_state(ServerId::Hq, Vec::new(), Some(trigger(Side::Corp))));
+        assert!(named(&phase_of(&state, Viewer::Player(Side::Corp))), "the decider must know what they are paying for");
+        assert!(named(&phase_of(&state, Viewer::Player(Side::Runner))));
+        // A spectator is not the decider and gains nothing.
+        assert!(!named(&phase_of(&state, Viewer::Spectator)), "a spectator decides nothing");
+
+        // Fetal AI's shape — the Runner pays — leaves the Corp where the
+        // base rule puts them: this is not a general reveal.
+        let state = state_with_run(run_state(ServerId::Hq, Vec::new(), Some(trigger(Side::Runner))));
+        assert!(named(&phase_of(&state, Viewer::Player(Side::Runner))));
+        assert!(!named(&phase_of(&state, Viewer::Player(Side::Corp))), "the Corp is not being asked, so learns nothing");
+
+        // And the neighbouring phase is untouched: a plain access
+        // decision still hides an HQ card from the Corp.
+        let choice = AccessState {
+            pending_install: None,
+            resolved_installs: Vec::new(),
+            phase: AccessPhase::PendingChoice { card_id: CardId("snare".to_string()), trash_cost: Some(0), mandatory_steal: false, steal_cost: None },
+            ..Default::default()
+        };
+        let state = state_with_run(run_state(ServerId::Hq, Vec::new(), Some(choice)));
+        assert!(matches!(phase_of(&state, Viewer::Player(Side::Corp)), PublicAccessPhase::PendingChoice { card: None, .. }));
+    }
+
     // ---- per-viewer action and event masking ----
 
     fn id(s: &str) -> CardId {

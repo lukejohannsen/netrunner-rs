@@ -241,17 +241,20 @@ fn no_client_view_or_log_entry_ever_names_a_card_it_conceals() {
         // step budget on ordinary positions.
         let mut corp = HeuristicAgent::new(Side::Corp, seed);
         let mut runner = RandomAgent::new(seed);
+        let universe = deck_card_universe(&corp_deck.to_deck(), &runner_deck.to_deck());
         let mut session = Session::new(state, registry, Seat::External, Seat::External);
 
         loop {
             match session.step() {
                 SessionStep::Awaiting { side, view } => {
                     assert_no_concealed_card_is_named(&view, session.state(), seed, &matchup, side.into());
+                    assert_actions_name_only_what_the_view_shows(&view, &universe, seed, &matchup, side.into());
                     let spectator = session.view_for(Viewer::Spectator);
                     assert!(spectator.corp.hq_cards.is_none() && spectator.runner.grip_cards.is_none() && spectator.legal_actions.is_empty());
                     assert_no_concealed_card_is_named(&spectator, session.state(), seed, &matchup, Viewer::Spectator);
                     let other = session.view_for(side.other());
                     assert_no_concealed_card_is_named(&other, session.state(), seed, &matchup, side.other().into());
+                    assert_actions_name_only_what_the_view_shows(&other, &universe, seed, &matchup, side.other().into());
                     for (seat_view, viewer) in [(&*view, Viewer::from(side)), (&other, Viewer::from(side.other())), (&spectator, Viewer::Spectator)] {
                         assert_selection_is_the_choosers_alone(seat_view, seed, &matchup, viewer);
                     }
@@ -512,6 +515,57 @@ fn assert_every_install_event_keeps_its_handle(entry: &PublicHistoryEntry, seed:
             );
         }
     }
+}
+
+/// **Every card a viewer's own actions name is one their own view shows
+/// them.** The complement of [`assert_no_concealed_card_is_named`], and
+/// strictly wider: that one starts from the installs the view masks and
+/// so only ever covered cards *on the table*. A card being accessed out
+/// of R&D is in no install and in no zone the Corp's view renders, so it
+/// fell outside the scan entirely — which is how
+/// `PublicAccessPhase::PendingInteractiveTrigger` came to blank the card
+/// for the very side it was asking to pay for it, while
+/// `legal_actions_for` handed them `PayAccessTrigger { card_id }` with
+/// the real identity. Snare! out of R&D is that case exactly, and this
+/// assertion is what now pins it.
+///
+/// Scanned over the `Debug` rendering against the universe of ids in the
+/// two decks, for the reason the sibling gives: a new `PlayerAction`
+/// variant carrying a `CardId` is covered the day it is added. Ids are
+/// matched quoted, so one id cannot match inside a longer one.
+fn assert_actions_name_only_what_the_view_shows(
+    view: &netrunner_core::view::ClientView,
+    universe: &[String],
+    seed: u64,
+    matchup: &str,
+    side: Viewer,
+) {
+    if view.legal_actions.is_empty() {
+        return;
+    }
+    let visible = visible_card_ids(view);
+    let actions = format!("{:?}", view.legal_actions);
+    for id in universe {
+        if visible.contains(id.as_str()) {
+            continue;
+        }
+        assert!(
+            !actions.contains(&format!("\"{id}\"")),
+            "seed {seed} ({matchup}): {side:?}'s legal_actions name {id}, which their own view never shows them — {actions}"
+        );
+    }
+}
+
+/// Every card id either deck can put in play, for the scan above.
+fn deck_card_universe(corp: &Deck, runner: &Deck) -> Vec<String> {
+    let mut ids: Vec<String> = Vec::new();
+    for deck in [corp, runner] {
+        ids.push(deck.identity.0.clone());
+        ids.extend(deck.cards.iter().map(|(id, _copies)| id.0.clone()));
+    }
+    ids.sort();
+    ids.dedup();
+    ids
 }
 
 /// Every card identity `view` legitimately shows its viewer.
