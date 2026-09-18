@@ -83,7 +83,7 @@ pub const TINT_STATE: &str = "state";
 /// change: the column's width feeds the fit that keeps the board inside
 /// the window. Reserving the box for every server whether or not anybody
 /// has drawn one is the way to do it, and that is a change to the board
-/// rather than to a skin. It goes with the panels and the icons.
+/// rather than to a skin. It goes with the remaining icons.
 ///
 /// Flat rather than a slot-and-state pair: every variant is a thing that
 /// can be drawn, and each knows which slot it falls back to. The manifest
@@ -123,11 +123,30 @@ pub enum Slot {
     SubDotPending,
     SubDotBroken,
     SubDotResolved,
+    /// Every [`crate::widgets::panel`] in the client, not only the
+    /// board's: the sheet, the decision pop-up, the actions menu, and the
+    /// main menu, settings, profile and new-game screens. The same reach
+    /// `Button` already has, and the authoring guide says so, because a
+    /// panel picture that stayed on the board would be the surprise.
+    Panel,
+    /// The centred panel an overlay puts up: the card's sheet, a zone's,
+    /// the score area, the options, the list of keys. Its own state so a
+    /// skin can dress the game's surfaces without repainting the main
+    /// menu and the settings, which `Panel` also reaches.
+    PanelSheet,
+    /// The decision pop-up, whose border the board draws in the accent.
+    PanelDecision,
+    /// The menu a card's click opens, drawn the same way.
+    PanelMenu,
+    /// The wash over the board behind a sheet. Not a panel's state — it
+    /// is the thing *behind* the panel, so it falls back to nothing and
+    /// a skin that paints panels leaves it alone unless it means to.
+    OverlayScrim,
 }
 
 impl Slot {
     /// Every slot, in the order the gallery lists them.
-    pub const ALL: [Slot; 33] = [
+    pub const ALL: [Slot; 38] = [
         Slot::ServerColumn,
         Slot::ServerColumnWelcomes,
         Slot::ServerColumnUnderRun,
@@ -161,6 +180,11 @@ impl Slot {
         Slot::SubDotPending,
         Slot::SubDotBroken,
         Slot::SubDotResolved,
+        Slot::Panel,
+        Slot::PanelSheet,
+        Slot::PanelDecision,
+        Slot::PanelMenu,
+        Slot::OverlayScrim,
     ];
 
     /// How the manifest spells it.
@@ -199,6 +223,11 @@ impl Slot {
             Slot::SubDotPending => "sub.dot.pending",
             Slot::SubDotBroken => "sub.dot.broken",
             Slot::SubDotResolved => "sub.dot.resolved",
+            Slot::Panel => "panel",
+            Slot::PanelSheet => "panel.sheet",
+            Slot::PanelDecision => "panel.decision",
+            Slot::PanelMenu => "panel.menu",
+            Slot::OverlayScrim => "overlay.scrim",
         }
     }
 
@@ -244,6 +273,7 @@ impl Slot {
             Slot::PhaseChipPast | Slot::PhaseChipNow | Slot::PhaseChipAhead => Slot::PhaseChip,
             Slot::HudCellAlarm | Slot::HudCellOpens => Slot::HudCell,
             Slot::SubDotPending | Slot::SubDotBroken | Slot::SubDotResolved => Slot::SubDot,
+            Slot::PanelSheet | Slot::PanelDecision | Slot::PanelMenu => Slot::Panel,
             _ => return None,
         })
     }
@@ -520,6 +550,23 @@ mod tests {
         // the base, not to any picture that happens to be loaded.
         assert!(!skin.dress(Slot::Button, fallback).is_art());
         assert!(!skin.dress(Slot::ServerColumn, fallback).is_art());
+    }
+
+    /// The same promise for the panels, which is the case it was written
+    /// for: one `panel.png` dresses the sheet, the decision pop-up and
+    /// the actions menu, and the wash behind a sheet is left alone —
+    /// `overlay.scrim` is not a panel's state, it is the thing behind
+    /// one, so it has no base to borrow from.
+    #[test]
+    fn one_panel_picture_dresses_the_pop_up_and_the_menu_but_not_the_wash() {
+        let mut skin = Skin::default();
+        skin.art.insert(Slot::Panel, Art { image: Handle::default(), mode: NodeImageMode::Stretch });
+        let fallback = Drawn::new(Color::BLACK, Color::WHITE);
+        assert!(skin.dress(Slot::Panel, fallback).is_art());
+        assert!(skin.dress(Slot::PanelSheet, fallback).is_art(), "the sheet borrows `panel`");
+        assert!(skin.dress(Slot::PanelDecision, fallback).is_art(), "the decision pop-up borrows `panel`");
+        assert!(skin.dress(Slot::PanelMenu, fallback).is_art(), "and so does the actions menu");
+        assert!(!skin.dress(Slot::OverlayScrim, fallback).is_art(), "the wash is drawn until somebody draws it");
     }
 
     #[test]

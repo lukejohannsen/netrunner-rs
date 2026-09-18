@@ -17,6 +17,7 @@ use bevy::input::mouse::MouseButtonInput;
 use bevy::window::CursorMoved;
 use bevy::input::{ButtonState, InputPlugin};
 use bevy::prelude::*;
+use bevy::ui::FocusPolicy;
 use bevy::state::app::StatesPlugin;
 
 use netrunner_client::board::{Affordance, Control, Pile, Target};
@@ -30,7 +31,9 @@ use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
 use netrunner_desktop::screens::settings::Control as SettingsControl;
-use netrunner_desktop::widgets::Disabled;
+use netrunner_desktop::widgets::{Disabled, Dressed};
+use netrunner_desktop::skin::Slot;
+use netrunner_desktop::theme::Theme;
 use netrunner_desktop::{AppScreen, NetrunnerDesktopPlugins};
 
 fn headless_client() -> (App, std::path::PathBuf) {
@@ -102,6 +105,37 @@ fn press_entity(app: &mut App, entity: Entity) {
 
 fn overlays(app: &mut App) -> usize {
     app.world_mut().query::<&Overlay>().iter(app.world()).count()
+}
+
+/// What the overlay says, split by node kind: the panel's own `Text`
+/// nodes (a heading is one) and the `TextSpan`s inside them (a card
+/// face's title and rules text are these). The split is the point — it
+/// is how "the name is drawn once, by the card" is stated as an
+/// assertion rather than a count.
+fn overlay_text(app: &mut App) -> (Vec<String>, Vec<String>) {
+    let world = app.world_mut();
+    let Ok(root) = world.query_filtered::<Entity, With<Overlay>>().single(world) else { return (Vec::new(), Vec::new()) };
+    let (mut texts, mut spans) = (Vec::new(), Vec::new());
+    let mut stack = vec![root];
+    while let Some(entity) = stack.pop() {
+        if let Some(text) = world.get::<Text>(entity) {
+            texts.push(text.0.clone());
+        }
+        if let Some(span) = world.get::<TextSpan>(entity) {
+            spans.push(span.0.clone());
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter());
+        }
+    }
+    (texts, spans)
+}
+
+/// The panel inside the overlay: the overlay root's only child.
+fn sheet_panel(app: &mut App) -> Entity {
+    let world = app.world_mut();
+    let root = world.query_filtered::<Entity, With<Overlay>>().single(world).expect("an overlay is up");
+    world.get::<Children>(root).expect("the overlay holds a panel").iter().next().expect("the overlay holds a panel")
 }
 
 fn texts(app: &mut App) -> Vec<String> {
@@ -329,6 +363,24 @@ fn a_secondary_click_opens_the_card_to_read_and_offers_nothing() {
     assert_eq!(menus(&mut app), 0);
     assert_eq!(click_entry_count(&mut app), 0, "the sheet offers no action");
     assert!(!texts(&mut app).iter().any(|t| t == "Actions"));
+    // The card says its own name, once. A heading over the face was the
+    // title twice on the text tier, which draws it in the face's own
+    // title row, and once too often on a cached scan, which *is* the
+    // printed card. So: no `Text` under the overlay is the title (a
+    // heading is a `Text`), and one of the face's `TextSpan`s is.
+    let title = app.world().resource::<ClientCore>().registry.get(&card).expect("the card is in the registry").title.clone();
+    let (headings, spans) = overlay_text(&mut app);
+    assert!(!headings.contains(&title), "the name is not repeated over the card: {headings:?}");
+    assert!(spans.contains(&title), "the face itself prints the name: {spans:?}");
+    // And no Close: Escape and a click that misses the panel are the two
+    // doors, so a third button for the same rule is chrome.
+    assert!(button_labelled(&mut app, "Close").is_none(), "the sheet has no Close button");
+    // A press on the panel does not reach the wash behind it. Asserted
+    // structurally rather than by hit test: `ui_focus_system` stops at
+    // the first hovered node that blocks, and nothing under
+    // `MinimalPlugins` has a window to hit-test against.
+    let panel = sheet_panel(&mut app);
+    assert_eq!(app.world().get::<FocusPolicy>(panel), Some(&FocusPolicy::Block), "the panel holds the press");
     // Through the sheet, neither click opens anything.
     right_click(&mut app, face);
     press_card(&mut app, face);
@@ -336,6 +388,22 @@ fn a_secondary_click_opens_the_card_to_read_and_offers_nothing() {
     assert_eq!(menus(&mut app), 0, "nothing opens through the sheet");
     escape(&mut app);
     assert_eq!(overlays(&mut app), 0, "Escape closes the sheet");
+    assert!(!app.world().resource::<Model>().0.confirm_quit, "and does not ask to quit");
+    // The other door: the wash carries the Close button's old `Click`,
+    // so a press that misses the panel closes the sheet and asks nothing.
+    right_click(&mut app, face);
+    assert_eq!(overlays(&mut app), 1, "the sheet is open again");
+    let scrim = app.world_mut().query_filtered::<Entity, With<Overlay>>().single(app.world()).expect("the wash is the overlay root");
+    assert_eq!(app.world().get::<Click>(scrim), Some(&Click::CloseOverlay), "the wash closes what it covers");
+    // The wash holds the press rather than letting it through to the
+    // board. `Node` requires `FocusPolicy` and defaults it to `Pass`, so
+    // this is not something `Button` supplies — a required component is
+    // kept, not overwritten, on a post-spawn insert. Without it a click
+    // that missed the panel would also press whatever tile or control
+    // sat under the pointer.
+    assert_eq!(app.world().get::<FocusPolicy>(scrim), Some(&FocusPolicy::Block), "the wash holds the press");
+    press_entity(&mut app, scrim);
+    assert_eq!(overlays(&mut app), 0, "a click that misses the panel closes the sheet");
     assert!(!app.world().resource::<Model>().0.confirm_quit, "and does not ask to quit");
     // Ctrl with the primary button is the same click: the card
     // registers the press too, and opens no menu for it.
@@ -679,6 +747,9 @@ fn a_zone_click_opens_its_menu_and_never_acts_and_its_sheet_shows_the_contents()
     assert_eq!(overlays(&mut app), 1, "the zone's sheet is up");
     assert!(texts(&mut app).iter().any(|t| t.contains("in an order nobody is shown")), "a deck's order is never shown");
     assert_eq!(click_entry_count(&mut app), 0, "and it offers no action");
+    // No Close — but the heading stays (asserted for Archives below):
+    // a zone has no face to print its own name on.
+    assert!(button_labelled(&mut app, "Close").is_none(), "a zone's sheet has no Close either");
     escape(&mut app);
     let archives = entity_with(&mut app, &Click::Target(Target::Server(ServerId::Archives))).expect("Archives' header");
     right_click(&mut app, archives);
@@ -694,6 +765,45 @@ fn a_zone_click_opens_its_menu_and_never_acts_and_its_sheet_shows_the_contents()
     assert_eq!(model.applied, before);
 }
 
+
+/// The carve-out: a click that misses the panel closes a *reading*
+/// surface and leaves a question standing.
+///
+/// The options and the list of keys are forms, and they keep their Close
+/// — a setting given up because the pointer landed an inch wide is a
+/// worse failure than a button nobody needed. The quit prompt is asking
+/// something and Escape does not close it either.
+///
+/// Both kinds of wash still **block**, which is the separate half: a form
+/// declining to act on a press is not the same as letting it through to
+/// the board, where the control bar would take it and end the turn.
+#[test]
+fn the_wash_over_a_form_blocks_the_press_without_acting_on_it() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+
+    let gear = entity_with(&mut app, &Click::Options).expect("the gear is in the top bar");
+    press_entity(&mut app, gear);
+    assert_eq!(overlays(&mut app), 1, "the options are open");
+    let scrim = app.world_mut().query_filtered::<Entity, With<Overlay>>().single(app.world()).expect("a wash");
+    assert_eq!(app.world().get::<FocusPolicy>(scrim), Some(&FocusPolicy::Block), "a form's wash still holds the press");
+    assert_eq!(app.world().get::<Click>(scrim), None, "but carries nothing to act on");
+    assert!(button_labelled(&mut app, "Close").is_some(), "a form keeps its Close");
+    press_entity(&mut app, scrim);
+    assert_eq!(overlays(&mut app), 1, "a click that misses a form leaves it open");
+    assert!(app.world().resource::<Model>().0.options_open);
+
+    // Escape closes the options; Escape again asks to quit, and that
+    // question stands against a click away too.
+    escape(&mut app);
+    escape(&mut app);
+    assert!(app.world().resource::<Model>().0.confirm_quit, "the quit prompt is up");
+    let scrim = app.world_mut().query_filtered::<Entity, With<Overlay>>().single(app.world()).expect("a wash");
+    assert_eq!(app.world().get::<Click>(scrim), None, "a question is not dismissed by missing it");
+    press_entity(&mut app, scrim);
+    assert!(app.world().resource::<Model>().0.confirm_quit, "and it stands");
+}
 /// The gear opens the options; the play helper toggle is saved and puts
 /// the flat panel on the rail, the play history toggle shows the log,
 /// and Escape closes the options before it asks to quit.
@@ -935,7 +1045,7 @@ fn a_tile_says_its_rez_state_and_its_sheet_lists_the_facts() {
     let card = view.corp.servers.iter().flat_map(|s| s.ice.iter().chain(s.root.iter())).find(|c| c.install_id == id).unwrap().clone();
     let expected = if card.rezzed { "rezzed" } else if card.slot == netrunner_core::rules::InstallSlot::Ice { "unrezzed" } else { "face down" };
     assert!(words.contains(expected), "the tile reads {words:?}, expected {expected:?}");
-    // Its sheet, on a secondary click: the state lines, then Close.
+    // Its sheet, on a secondary click: the state lines, and nothing else.
     right_click(&mut app, tile);
     let facts: Vec<String> = {
         let world = app.world_mut();
@@ -945,6 +1055,24 @@ fn a_tile_says_its_rez_state_and_its_sheet_lists_the_facts() {
     assert!(facts[0].starts_with("Ice protecting") || facts[0].starts_with("In the root of"), "{facts:?}");
     assert!(facts.iter().any(|l| l == "Rezzed" || l.starts_with("Unrezzed") || l.starts_with("Face down")), "{facts:?}");
     assert_eq!(overlays(&mut app), 1);
+    assert!(button_labelled(&mut app, "Close").is_none(), "an install's sheet has no Close either");
+    // The one heading that survived, and the reason it did: a card the
+    // viewer cannot name is drawn as a card *back*, which says nothing,
+    // so `facts::hidden_title` is all that names it. A card they *can*
+    // name has its title on its face, and a heading would be the second
+    // copy — which is what this branch checks by its absence.
+    let (headings, _) = overlay_text(&mut app);
+    let title = card.card.as_ref().and_then(|c| app.world().resource::<ClientCore>().registry.get(c).map(|d| d.title.clone()));
+    match title {
+        Some(title) => assert!(!headings.contains(&title), "a card the viewer can name is not titled twice: {headings:?}"),
+        // The Runner cannot name an unrezzed Corp card, so this is the
+        // branch an opening board actually takes; the exact words are
+        // `facts::hidden_title`'s two.
+        None => assert!(
+            headings.iter().any(|h| h == "Unrezzed ice" || h == "Face-down card"),
+            "a card the viewer cannot name is named by the sheet: {headings:?}"
+        ),
+    }
     assert_eq!(app.world().resource::<Model>().0.applied, app.world().resource::<Model>().0.applied, "nothing was submitted");
 }
 
@@ -1055,6 +1183,15 @@ fn an_access_puts_the_card_in_the_decision_popup_above_its_actions() {
         }
     }
     assert!(headings.iter().any(|text| *text == access.title()), "the pop-up is titled by the card: {headings:?}");
+    // The pop-up keeps its accent border now that `widgets::panel`
+    // carries a `Dressed` of its own: a caller that draws its border
+    // differently says so with its own slot, or `dress` would repaint it
+    // in the panel's colour a frame after it was spawned. The slot is
+    // half the assertion, the colour the other half.
+    let accent = app.world().resource::<Theme>().accent;
+    let panel = app.world().get::<Children>(popup).expect("the pop-up holds a panel").iter().next().expect("a panel");
+    assert_eq!(app.world().get::<Dressed>(panel).map(|d| d.slot), Some(Slot::PanelDecision), "the pop-up names its own slot");
+    assert_eq!(app.world().get::<BorderColor>(panel).map(|b| b.top), Some(accent), "and keeps the accent border");
 
     // And the actions that follow the access are the buttons under it.
     let labels: Vec<String> = {

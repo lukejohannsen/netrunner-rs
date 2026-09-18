@@ -58,7 +58,10 @@ cycles:
     "button":         { "file": "button.png", "insets": 8 },
     "button.hover":   { "tint": "#8ffff0" },
     "server.header": { "file": "header.png", "insets": 10 },
-    "hud.cell":       { "file": "plate.png", "insets": 5, "tint": "state" }
+    "hud.cell":       { "file": "plate.png", "insets": 5, "tint": "state" },
+    "panel":          { "file": "panel.png", "insets": 24 },
+    "panel.sheet":    { "file": "sheet.png", "insets": 24 },
+    "overlay.scrim":  { "file": "wash.png", "mode": "stretch" }
   }
 }
 ```
@@ -137,17 +140,44 @@ window the *scaling* boxes shrink and the fixed ones do not.
 | `sub.dot` | **8 × 8** | plain | A subroutine on an ice chip. Draw at 32×32 and let it shrink |
 | `sub.dot.pending` / `.broken` / `.resolved` | same | plain | |
 
+### Panels, menus and the sheet
+
+Every box that is not the board. `panel` is the base and it reaches
+*every* panel in the client, the main menu and the settings screen
+included, because `widgets::panel` is one function — so the three states
+below exist to let you dress the game without repainting the menus. Draw
+`panel.png` alone and all four are dressed; draw `panel.sheet.png` as
+well and the sheet parts company with the main menu.
+
+| Key | Logical box | Fit | Notes |
+|---|---|---|---|
+| `panel` | 414–960 wide | 9-slice | The base, and every panel that names no state of its own — the main menu, settings, profile, the new-game form |
+| `panel.sheet` | 414–960 × 300–700 | 9-slice | The centred panel an overlay puts up: a card's sheet (414 × ~570), an install's (800 × ~550), a zone's (960), the options (560), the list of keys |
+| `panel.decision` | **520** × 200–700 | 9-slice | The pop-up that asks you something — at an access it carries the card too, which is what makes it the tall one |
+| `panel.menu` | **280** × grows per row | 9-slice | The menu a card's click opens. About 100 tall for two entries, 40 per entry after |
+| `overlay.scrim` | the whole window | stretch | The wash over the board behind a sheet. **Not** a state of `panel` — it is what sits *behind* one, so it borrows nothing and stays a flat wash until you draw it. Keep it mostly transparent or the board vanishes |
+
+The decision pop-up and the menu are drawn with the accent as their
+border rather than the panel border, so a frame you draw for `panel`
+will read a little differently on them. That is the only difference
+between the four.
+
+**The read sheet has no Close button and nothing above the card**, so do
+not leave room for either: a card says its own name on its face, and the
+sheet closes on Escape or on a click that misses it. A *zone's* sheet,
+the score area and the decision pop-up do still carry a heading, and the
+options and the list of keys still carry a Close.
+
 **A server's own mark — an Archives badge, an R&D badge — is not a slot
 yet**, and it is the first thing you will want. The reason is the first
 rule on this page: a mark needs a box of its own in the header, a header
 with one is wider, and a wider header widens its column, which is a
 layout change rather than a skin. Reserving that box for every server
 whether or not anybody has drawn a mark is the way to do it, and it is a
-change to the board. It comes with the panels and the other icons, next.
+change to the board. It comes with the icons, next.
 
-The panels, menus and sheets, and the remaining icons — the gear, the
-arrows, the card frame — are not slots yet either, for less interesting
-reasons. Also next.
+The remaining icons — the gear, the arrows, the card frame — are not
+slots yet either, for less interesting reasons. Also next.
 
 ## Seeing it
 
@@ -156,6 +186,10 @@ playing one:
 
     NETRUNNER_GAME=runner NETRUNNER_AUTOPLAY=40 \
       NETRUNNER_SCREENSHOT=/tmp/board.png cargo run -p netrunner_desktop
+
+`NETRUNNER_SHEET=1` opens a card's sheet over that board, and
+`NETRUNNER_HOLD_ACCESS=1` stops at an access so the decision pop-up is
+up — the only way to look at either dressed without playing to one.
 
 `NETRUNNER_TABLE_GUIDE=1` draws the board's rows with their real sizes
 over the top, which is also the quickest way to see how wide a tile
