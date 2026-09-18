@@ -2700,6 +2700,77 @@ mod tests {
         );
     }
 
+    /// **The Corp cannot be asked to pay for a card their own view will
+    /// not name.** Snare! and Byte! ask the Corp, and both refuse to fire
+    /// on Archives, so the question only ever lands where the base
+    /// masking rule hides the card from them. Out of R&D there is nowhere
+    /// else in the Corp's view the card appears — HQ they can read, their
+    /// own installs they can read, R&D is a count — so before the mask
+    /// learned about the decider, `legal_actions_for` handed the Corp
+    /// `PayAccessTrigger { card_id }` naming a card `ClientView` blanked.
+    ///
+    /// This is the deterministic version of the sweep's
+    /// `assert_actions_name_only_what_the_view_shows`: the sweep reaches
+    /// it only when a Runner breaches R&D onto the one Byte! in three of
+    /// sixteen Corp decks, which 32 seeds do not manage.
+    #[test]
+    fn the_corp_is_named_the_rnd_card_it_is_asked_to_pay_for() {
+        use crate::rules::{legal_actions_for, PlayerAction, PublicAccessPhase};
+        use crate::view::build_client_view;
+
+        let registry = CardRegistry::from_cards(vec![CardDefinition {
+            interactive_on_access: Some(InteractiveOnAccess {
+                cost: Cost::Credits(4),
+                effects: vec![Effect::GiveTags(1)],
+                interaction: AccessInteraction::CorpPaysToApply,
+                requirement: None,
+            }),
+            trash_cost: None,
+            ..trashable_card("byte", 0)
+        }]);
+        let card = CardId("byte".to_string());
+        // The card is in R&D and nowhere else: not in HQ, not installed,
+        // not in Archives.
+        let mut state = game_state(Vec::new(), vec![card.clone()], Vec::new(), Vec::new(), 0);
+        state.corp.resources.credits = Credits(8);
+        state.phase = crate::rules::state::GamePhase::Action(Side::Runner);
+        state.active_run = Some(run_in_success(ServerId::RnD));
+
+        access_server(&mut state, ServerId::RnD, &registry).unwrap();
+        let phase = &state.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase;
+        assert!(
+            matches!(phase, AccessPhase::PendingInteractiveTrigger { decider: Side::Corp, .. }),
+            "the Corp should be the one parked on the decision: {phase:?}"
+        );
+
+        // The Corp's own actions name the card...
+        let actions = legal_actions_for(&state, &registry, Side::Corp);
+        assert!(
+            actions.iter().any(|a| matches!(a, PlayerAction::PayAccessTrigger { card_id } if *card_id == card)),
+            "the Corp is offered the payment: {actions:?}"
+        );
+        // ...so their view has to name it too, or the panel rendering the
+        // decision cannot say what is being paid for.
+        let view = build_client_view(&state, &registry, Side::Corp);
+        let masked = &view.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase;
+        assert!(
+            matches!(masked, PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. } if *id == card),
+            "the Corp's view must name the card their own actions name: {masked:?}"
+        );
+
+        // The Runner, who is accessing it, sees it as they always did; and
+        // a spectator is asked nothing and told nothing.
+        let runner = build_client_view(&state, &registry, Side::Runner);
+        let runner_phase = &runner.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase;
+        assert!(matches!(runner_phase, PublicAccessPhase::PendingInteractiveTrigger { card: Some(id), .. } if *id == card));
+        let spectator = build_client_view(&state, &registry, crate::rules::Viewer::Spectator);
+        let spectator_phase = &spectator.active_run.as_ref().unwrap().access_state.as_ref().unwrap().phase;
+        assert!(
+            matches!(spectator_phase, PublicAccessPhase::PendingInteractiveTrigger { card: None, .. }),
+            "a spectator decides nothing, so learns nothing: {spectator_phase:?}"
+        );
+    }
+
     #[test]
     fn ordinary_on_accessed_cards_are_unaffected_by_the_interactive_trigger_refactor() {
         let registry = CardRegistry::from_cards(vec![card_with_on_accessed(

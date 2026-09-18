@@ -75,3 +75,91 @@ All 75 playable SG cards read against `stripped_text`, the engine and play evide
 ## Deckbuilding: out-of-faction agendas — DONE (13 September 2026)
 
 `fix/out-of-faction-agendas`, found building the TUI deck builder (Phase 6 §2). **The deckbuilding validator had no out-of-faction agenda rule.** Agendas print no influence, so the influence check priced a Weyland *Above the Law* in a Haas-Bioroid deck at 0 and the deck validated — in `deck add`, in the builder, and at the start of a game. Netrunner allows a Corp deck only its own faction's agendas and neutral ones. Now `DeckValidationError::OutOfFactionAgenda`, a rule of its own rather than an influence charge, beside `RunnerDeckContainsAgenda`. All 28 published sample decks still validate (none fields another faction's agenda), so play and the sweeps are untouched.
+
+## Masking: the Corp was asked to pay for a card it could not see — DONE (17 September 2026)
+
+`fix/access-trigger-names-its-card`, found while building Phase 7 §4o (an
+access shows the card) and deliberately left out of that PR, because it is
+an engine-boundary question rather than a rendering one.
+
+**The finding.** `masking::PublicAccessPhase::PendingInteractiveTrigger`
+masked the accessed card's identity by the rule that covers the whole
+breach — the Runner always, the Corp only on Archives. But the two cards
+that ask the *Corp* to pay, Snare! and Byte!, both carry
+`Not(AccessingArchives)`. So the question was only ever put in the cases
+the rule blanked: the Corp was asked "pay 4 credits?" about a card their
+own `ClientView` refused to name, in every instance that can occur.
+
+Meanwhile `legal_actions_for` handed them
+`PayAccessTrigger { card_id }` / `DeclineAccessTrigger { card_id }`
+carrying the real identity — it filters by `action_owner`, so only the
+decider receives them, but it does not mask. **The mask was therefore not
+protecting the identity from anybody; it was withholding it from the panel
+that had to render the decision.** A client showing the card (which §4o
+now does) could read the name off the action while the view said `None`.
+
+**The fix is to widen the mask, not to narrow the actions.** `card` is now
+named to the `decider` whatever zone the access is in. Narrowing the
+actions was considered and rejected twice over: `apply_action` needs the
+`card_id` to resolve, so a masked action is unsubmittable; and a player
+asked to pay a cost for a specific card's ability cannot answer without
+knowing which card, so hiding it does not model the printed card. An
+on-access ability that asks the other player a question cannot resolve in
+secret — the access is what triggers it, and the answer is public either
+way. Spectators and the non-deciding side are unchanged.
+
+**Measured, 192 games `--all-matchups` at seed 1, pinned binaries.**
+- **Random-vs-random is byte-identical** (same md5), which is the claim
+  that no rule changed: `RandomAgent` ignores the view's contents.
+- **Heuristic Corp vs random Runner is where it shows, and the delta is
+  the mechanism itself: `PayAccessTrigger` 8 → 2, `DeclineAccessTrigger`
+  6 → 12.** The same 14 decisions, 6 of them flipped, because
+  `determinize` no longer has to guess the card the Corp is paying for and
+  the evaluator now scores the real one. Corp wins are unchanged at
+  184/192, with one moving from `Flatline` (121 → 120) to
+  `AgendaThreshold` (63 → 64). Everything else in the diff — `steps`
+  58,662 → 59,383 and a drift of ±1–2 across most counters — is trajectory
+  downstream of those six flips, not an effect in its own right.
+- **Worth a look later, and not fixed here:** better-informed, the
+  heuristic Corp *declines* Byte! far more often than it paid blind. Four
+  credits for 3 net damage and a tag is usually a strong play, so this
+  looks like the Corp evaluator undervaluing the payment rather than the
+  information helping. That is an evaluator question (Phase 2 §5), and
+  192 games cannot settle it.
+
+**Two guards, because the first one nearly missed it.** The sweep already
+asserted that no view names a card it conceals
+(`assert_no_concealed_card_is_named`), and it did not catch this: that
+check starts from the installs a view masks, so it only ever covered cards
+*on the table*, and a card accessed out of R&D is in no install and in no
+zone the Corp's view renders.
+- `assert_actions_name_only_what_the_view_shows` is its complement and is
+  strictly wider — every card a viewer's own `legal_actions` name must be
+  one their own view shows them, scanned over the `Debug` rendering
+  against the two decks' card ids so a new `PlayerAction` carrying a
+  `CardId` is covered the day it is added. Verified by reverting the fix:
+  it fails at **seed 45, `pork_chops vs shootin_n_lootin`**, with
+  `Player(Corp)'s legal_actions name byte`. Note the action there is
+  `DeclineAccessTrigger` alone — the Corp could not afford the 4 credits,
+  so it was made to decline a card it could not see.
+- It needs the 256-seed run: only 3 of 16 Corp decks field a Byte! (no
+  sample deck fields a Snare!), and the leak needs an **R&D** access
+  specifically, since from HQ or a remote the Corp already reads the card
+  elsewhere in its own view. 32 seeds do not reach it. So
+  `the_corp_is_named_the_rnd_card_it_is_asked_to_pay_for`
+  (`rules::run::access`) pins the same thing deterministically, and
+  `an_interactive_trigger_names_the_card_to_whoever_must_pay`
+  (`rules::masking`) pins the rule per viewer.
+
+**One test changed meaning.** `netrunner_bots`'
+`search_reports_every_legal_action_even_when_the_sample_disagrees` built
+its disagreement out of exactly this state — an off-Archives interactive
+trigger the Corp could not identify — and asserted "off-Archives access
+must stay masked from the Corp, or this test proves nothing". That state
+no longer exists: the Corp having access actions now implies it can see
+the card. The disagreement now comes from the Runner's grip and stack,
+which are masked from the Corp in *every* position rather than only this
+one, so the test is sturdier than it was.
+
+**Verified.** `cargo test --workspace` green, clippy silent, and both
+256-seed sweeps green.
