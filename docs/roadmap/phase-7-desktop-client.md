@@ -2690,3 +2690,54 @@ This **supersedes §4u's framing** of the NSG symbols as "the one recorded excep
 - `netrunner_cli cards images --download`, run over a copy of a 300-pixel cache, wrote 159 `.webp` files at 750 × 1050 and left 112 Core `.jpg`s. A second run fetched nothing. `--set sg --set elev` lists 0 low-resolution cards.
 - Browser and game screenshots (both chairs, forty decisions in) show sharp grid cells, sheets and board faces. The only `scroll area` line is the empty zero-sized one.
 - `cargo test --workspace` is green, clippy is silent, and `cargo deny check` passes with `image-webp` added.
+
+### 4x. A choice between cards shows the cards — DONE (18 September 2026)
+
+`feat/choices-show-their-cards`. A report from play, the second of its
+kind: *"I played the Operation card Top-Down Solutions and it drew 2
+cards and then choices to pick… show the human the cards. How are we
+supposed to make decisions without knowing details about what the cards
+do?"* §4o had fixed exactly this for an access and left every other prompt
+that names a card as words: a card selection offered `Select Anthill
+Excavation Contract` and `Select Humanoid Resources`, and the install that
+followed asked where to put a card it did not show.
+
+**Decisions taken, with the alternative rejected.**
+
+- **No engine change.** `ClientView::selection` has carried each
+  candidate's `CardId` to the chooser since §4c, `Placement` knew the card
+  going in since §4d, and every `PendingDecision` carries its asking card.
+  The clients were drawing names from all three.
+- **A selection draws every candidate as its card, and the card is its
+  own button** (`spawn_decision_popup`, `ChoiceCard`). The `Select …`
+  label stays under each card, so keys and a label to click are
+  unchanged. The cards keep their positions' order, so the one just chosen
+  stays where it is (outlined) rather than moving to the end of the list.
+  Folded copies (§4c) are one card marked "2 copies". Pressing a card in
+  the pop-up submits, as its button does: this is the pop-up's own
+  choice, not a card on the board, so §4g's "a click on the board never
+  submits" does not apply. A secondary click reads the card in the sheet,
+  as it does on the board.
+- **The cards give, the window does not** (`layout::choice_faces`).
+  Every row count is tried and the one that draws the cards widest wins,
+  capped at the sheet's 380. There is no floor, because a card cut off the
+  window is no card at all. The alternative, a fixed thumbnail size, is
+  what put the hand below the fold twice.
+- **Otherwise the pop-up shows the one card the prompt is about**
+  (`board::Prompt::card`): the card an install is placing, else the card
+  whose text is asking (a text choice, a server choice, a pay-or-not, a
+  prevention's offer). The access keeps its own card.
+- **The terminal draws the card under the cursor** of a selection, and
+  the card an install is placing, over the board, the way §4o draws an
+  access (`card_in_question`). It does not draw the asking card: a run on
+  a server of the Runner's choice would then cover the servers being
+  chosen between.
+
+**Verified.** A seeded headless game (`fashion_lab` as the Corp) plays to
+a real card selection. The test asserts one `ChoiceCard` per button in
+position order, and that a press on a card (not its label) selects it and
+leaves it drawn and outlined. The terminal test asserts that the
+highlighted card's printed words are on screen. Screenshots of
+Top-Down Solutions' selection and of the install after it show both cards
+and the card going in, with no scroll area. `cargo test --workspace` is
+green and clippy is silent.

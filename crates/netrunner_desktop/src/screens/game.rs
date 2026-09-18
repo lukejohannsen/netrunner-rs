@@ -106,10 +106,10 @@ use bevy::window::PrimaryWindow;
 
 use netrunner_client::access::Access;
 use netrunner_client::board::action_map::server_name;
-use netrunner_client::board::{facts, hud, Affordance, Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Token, TokenKind, Transition, Zone};
+use netrunner_client::board::{facts, hud, Affordance, Control, IceState, Outcome as RunOutcome, Pile, Prompt, Stage, Target, Token, TokenKind, Transition, Zone};
 use netrunner_client::card_face::Face;
 use netrunner_core::dsl::{CardId, CardType};
-use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, RunPhase, ServerId, Side, SubroutineStatus};
+use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, PlayerAction, RunPhase, ServerId, Side, SubroutineStatus};
 use netrunner_core::view::{ClientView, ServerView};
 
 use crate::card_images::CardImages;
@@ -287,6 +287,11 @@ pub struct Overlay;
 /// a sheet opens above it. Respawned with the rail.
 #[derive(Component)]
 pub struct DecisionPopup;
+/// A card the decision pop-up draws — a selection's candidate, the card an
+/// install is placing, the card asking or the card accessed — which a
+/// secondary click reads in the card sheet, as it would on the board.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct ChoiceCard(pub CardId);
 /// A click's menu of a target's actions, above its card.
 /// Respawned with the rail, like the pop-up; over it and under the
 /// overlays.
@@ -804,6 +809,7 @@ fn board_click(
     mouse: Res<ButtonInput<MouseButton>>,
     keys: Res<ButtonInput<KeyCode>>,
     targets: Query<(&Interaction, &Click)>,
+    choice_cards: Query<(&Interaction, &ChoiceCard)>,
     menu_parts: Query<&Interaction, With<MenuPart>>,
     model: Option<Res<Model>>,
     mut pending: ResMut<Pending>,
@@ -811,6 +817,12 @@ fn board_click(
     let Some(model) = model else { return };
     let modifier = secondary_modifier(&keys);
     let secondary = mouse.just_pressed(MouseButton::Right) || (modifier && mouse.just_pressed(MouseButton::Left));
+    // A card in the decision pop-up is read like one on the board: in the
+    // card sheet, over the pop-up, which a click away closes again.
+    if secondary && let Some((_, card)) = choice_cards.iter().find(|(interaction, _)| matches!(interaction, Interaction::Hovered | Interaction::Pressed)) {
+        pending.0.push(Intent::InspectCard(Some(card.0.clone())));
+        return;
+    }
     let hovered = targets.iter().find_map(|(interaction, click)| match (interaction, click) {
         (Interaction::Hovered | Interaction::Pressed, Click::Target(target)) => Some(target.clone()),
         _ => None,
@@ -1015,17 +1027,18 @@ fn controls(
     // shared feedback system never reports it; its press is read here.
     // The first hand-driven game found every card click doing nothing.
     for (entity, interaction, click) in &faces {
-        if *interaction == Interaction::Pressed
-            && !modifier
-            && let Click::Target(target) = click
-        {
+        if *interaction != Interaction::Pressed || modifier {
+            continue;
+        }
+        match click {
             // A card of the person's own hand is `drag_hand`'s: its press
             // is armed there and comes back as this same click if the
             // pointer never moved.
-            if slots.contains(entity) {
-                continue;
-            }
-            intents.push(click_on(entity, target));
+            Click::Target(_) if slots.contains(entity) => {}
+            Click::Target(target) => intents.push(click_on(entity, target)),
+            // A card in the decision pop-up is its own button.
+            Click::Entry(index) => intents.push(Intent::Choose(*index)),
+            _ => {}
         }
     }
     for Pressed(entity) in pressed.read() {
@@ -1144,7 +1157,7 @@ fn redraw(
         let decisions = if game.awaiting && !game.finished() { game.actions.decisions() } else { Vec::new() };
         if let Some(root) = roots.iter().next() {
             if !decisions.is_empty() {
-                commands.entity(root).with_children(|parent| spawn_decision_popup(parent, &theme, &core, &images, game, &decisions));
+                commands.entity(root).with_children(|parent| spawn_decision_popup(parent, &theme, &core, &images, game, &decisions, fit.window));
             }
             if let Some(menu) = &game.menu {
                 commands.entity(root).with_children(|parent| spawn_actions_menu(parent, &theme, game, menu, fit.window));
@@ -2331,7 +2344,56 @@ fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &G
 /// alternative to putting its actions here is a person reading a name
 /// and guessing. The face is `FaceSize::Large`, the same as a sheet's,
 /// and fits the 520px panel with room to spare.
-fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, decisions: &[usize]) {
+fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, decisions: &[usize], window: Vec2) {
+    let view = game.view.as_ref();
+    // The access owns the panel's words when there is one: its title
+    // names the card, and its facts are the live costs (a grid may have
+    // raised the printed trash cost) rather than `Prompt`'s single line.
+    let access = view.and_then(|view| Access::of(view, &core.registry));
+    let (title, detail) = match (&access, &game.prompt) {
+        (Some(access), _) => (access.title(), access.facts().join("\n")),
+        (None, Some(prompt)) => (prompt.title.clone(), prompt.detail.clone()),
+        (None, None) => ("Your decision".to_string(), String::new()),
+    };
+    // A card selection's candidates are drawn as their cards, each with
+    // its own button under it; the rest (the confirm, "Choose none")
+    // stay a list. The cards keep their positions' order, so the one just
+    // selected does not jump to the end of the row.
+    let selection = game.actions.selection();
+    let position_of = |index: usize| match &game.actions.entries[index].action {
+        PlayerAction::ToggleCardSelection { position } if selection.is_some_and(|s| s.candidate(*position).is_some()) => Some(*position),
+        _ => None,
+    };
+    let mut choices: Vec<(usize, usize)> = decisions.iter().filter_map(|index| position_of(*index).map(|position| (position, *index))).collect();
+    choices.sort();
+    let buttons: Vec<usize> = decisions.iter().copied().filter(|index| position_of(*index).is_none()).collect();
+    // Otherwise the one card the prompt is about: the accessed card, the
+    // card going in, or the card whose text is asking.
+    let single: Option<CardId> = match &access {
+        Some(access) => Some(access.card.clone()),
+        None if choices.is_empty() => view.and_then(|view| Prompt::card(view, &core.registry)),
+        None => None,
+    };
+    // What the words and the list of buttons take, estimated as the
+    // actions menu's height is (the layout has not run yet): the panel's
+    // padding, the heading and the lines under it, a button per row, and
+    // the gap between each; the cards get the rest of the window.
+    let lines = |text: &str| if text.is_empty() { 0.0 } else { text.lines().count() as f32 * 22.0 + 8.0 };
+    let chrome = 2.0 * 16.0
+        + 30.0
+        + 8.0
+        + lines(&detail)
+        + game.rejection.as_ref().map_or(0.0, |_| 30.0)
+        + buttons.len() as f32 * (44.0 + 8.0)
+        + if choices.is_empty() { layout::CHOICE_CAPTION } else { 0.0 };
+    let available = (window.x - 2.0 * layout::PADDING - 2.0 * 17.0, window.y - 2.0 * layout::PADDING - chrome);
+    let count = if choices.is_empty() { usize::from(single.is_some()) } else { choices.len() };
+    let (face, per_row) = layout::choice_faces(available, count);
+    let size = if face >= FaceSize::Large.width() { FaceSize::Large } else { FaceSize::Board(face as u16) };
+    let width = if choices.is_empty() { 520.0_f32.max(size.width() + 2.0 * 17.0) } else {
+        let row = per_row as f32 * size.width() + (per_row as f32 - 1.0) * layout::CHOICE_GAP;
+        520.0_f32.max(row + 2.0 * 17.0)
+    };
     parent
         .spawn((
             DecisionPopup,
@@ -2350,26 +2412,17 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
         ))
         .with_children(|screen| {
             let accent = theme.accent;
-            let mut panel = screen.spawn(widgets::panel(theme, px(520)));
+            let mut panel = screen.spawn(widgets::panel(theme, px(width)));
             // As the actions menu does: its own slot over the one the
             // panel supplied, and the immediate recolour kept, because
             // `dress` lands a frame later.
             panel.insert(widgets::Dressed::still(Slot::PanelDecision, Drawn::new(theme.panel, accent)));
             panel.entry::<BorderColor>().and_modify(move |mut border| *border = BorderColor::all(accent));
             panel.with_children(|panel| {
-                // The access owns the panel's words when there is one: its
-                // title names the card, and its facts are the live costs
-                // (a grid may have raised the printed trash cost) rather
-                // than `Prompt`'s single line.
-                let access = game.view.as_ref().and_then(|view| Access::of(view, &core.registry));
-                let (title, detail) = match (&access, &game.prompt) {
-                    (Some(access), _) => (access.title(), access.facts().join("\n")),
-                    (None, Some(prompt)) => (prompt.title.clone(), prompt.detail.clone()),
-                    (None, None) => ("Your decision".to_string(), String::new()),
-                };
-                if let Some(access) = &access {
-                    let image = access.face.code.and_then(|code| images.face(code, FaceSize::Large));
-                    spawn_face(panel, theme, &access.face, FaceSize::Large, image, ());
+                if let Some(card) = &single {
+                    panel.spawn(Node { width: percent(100), justify_content: JustifyContent::Center, ..default() }).with_children(|row| {
+                        spawn_choice_card(row, theme, core, images, Some(card), game.side.other(), size, ());
+                    });
                 }
                 panel.spawn((widgets::heading(theme, title), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 if !detail.is_empty() {
@@ -2378,7 +2431,40 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                 if let Some(rejection) = &game.rejection {
                     panel.spawn((widgets::notice(theme, format!("Rejected: {rejection}"), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 }
-                for index in decisions {
+                if let Some(selection) = selection.filter(|_| !choices.is_empty()) {
+                    panel
+                        .spawn(Node {
+                            width: percent(100),
+                            flex_direction: FlexDirection::Row,
+                            flex_wrap: FlexWrap::Wrap,
+                            justify_content: JustifyContent::Center,
+                            column_gap: px(layout::CHOICE_GAP),
+                            row_gap: px(layout::CHOICE_GAP),
+                            ..default()
+                        })
+                        .with_children(|row| {
+                            for (position, index) in &choices {
+                                let Some(candidate) = selection.candidate(*position) else { continue };
+                                row.spawn(Node { width: px(size.width()), flex_direction: FlexDirection::Column, row_gap: px(4), ..default() }).with_children(|cell| {
+                                    // The card is the button, as its label
+                                    // under it is: the pop-up's own choice,
+                                    // so a press submits it.
+                                    let face = spawn_choice_card(cell, theme, core, images, candidate.card.as_ref(), game.side.other(), size, (Button, Click::Entry(*index)));
+                                    if candidate.selected {
+                                        cell.commands().entity(face).insert(Outline::new(px(3), px(2), theme.accent));
+                                    } else {
+                                        glow(&mut cell.commands(), face, theme, game.actions.affordance_of_entry(*index));
+                                    }
+                                    let copies = selection.copies(*position);
+                                    if copies > 1 {
+                                        cell.spawn(widgets::dim(theme, format!("{copies} copies")));
+                                    }
+                                    entry_button(cell, theme, game, *index);
+                                });
+                            }
+                        });
+                }
+                for index in &buttons {
                     // The pop-up's own buttons glow like the cards do, and
                     // for the same reason: a decision parked on the person
                     // is the clearest case of a moment that will pass.
@@ -2388,6 +2474,24 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                 }
             });
         });
+}
+
+/// A card the pop-up shows: its face at `size`, marked as a
+/// [`ChoiceCard`] so a secondary click reads it in the card sheet, or the
+/// `concealed` side's back for a card the view does not name.
+#[allow(clippy::too_many_arguments)]
+fn spawn_choice_card(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, card: Option<&CardId>, concealed: Side, size: FaceSize, marker: impl Bundle) -> Entity {
+    match card.and_then(|id| core.registry.get(id).map(|def| (id, def))) {
+        Some((id, def)) => {
+            let image = def.numeric_id.and_then(|code| images.face(code, size));
+            let entity = spawn_face(parent, theme, &Face::of(def), size, image, marker);
+            // A face with no `Button` of its own still needs to know it is
+            // hovered, for the secondary click.
+            parent.commands().entity(entity).insert((ChoiceCard(id.clone()), Interaction::None));
+            entity
+        }
+        None => spawn_back(parent, theme, images.back(concealed), concealed, size, marker),
+    }
 }
 
 // ---- the phase bar ----

@@ -337,6 +337,43 @@ pub fn step(n: usize, width: f32, gap: f32, available: f32) -> f32 {
     ((available - width) / (n as f32 - 1.0)).max(width * 0.2).min(natural)
 }
 
+/// The widest a card in the decision pop-up is drawn: the card sheet's.
+pub const CHOICE_FACE_MAX: f32 = 380.0;
+/// What a card in the pop-up keeps under it: its button, room for a
+/// label that wraps once, and the gap.
+pub const CHOICE_CAPTION: f32 = 64.0;
+pub const CHOICE_GAP: f32 = 10.0;
+
+/// The width to draw `n` cards at in the decision pop-up, and how many to
+/// a row, given the `available` box the pop-up's words and its other
+/// buttons leave (width, height). **The cards give, never the window:**
+/// like the board, the pop-up is never a scroll container — a choice
+/// between cards the person has to scroll to see is the complaint this
+/// answers with the words taken away. So every row count from one to `n`
+/// is tried and the one that draws the cards widest wins; each card is
+/// capped at [`CHOICE_FACE_MAX`] and a row is as tall as a card plus its
+/// [`CHOICE_CAPTION`]. There is no floor: at a width too narrow to read,
+/// the card sheet a secondary click opens is the reading, and a card cut
+/// off the window would be no card at all.
+pub fn choice_faces(available: (f32, f32), n: usize) -> (f32, usize) {
+    if n == 0 {
+        return (CHOICE_FACE_MAX, 0);
+    }
+    let (width, height) = available;
+    let mut best = (0.0_f32, n);
+    for rows in 1..=n {
+        let per_row = n.div_ceil(rows);
+        let by_width = (width - (per_row as f32 - 1.0) * CHOICE_GAP) / per_row as f32;
+        let row_height = (height - (rows as f32 - 1.0) * CHOICE_GAP) / rows as f32;
+        let by_height = (row_height - CHOICE_CAPTION) / 1.4;
+        let face = by_width.min(by_height).min(CHOICE_FACE_MAX).floor();
+        if face > best.0 {
+            best = (face, per_row);
+        }
+    }
+    (best.0.max(1.0), best.1)
+}
+
 /// How far from the person's chair a row of the board sits.
 ///
 /// **The depth the board has is two things: a scale and a shadow.** The
@@ -420,6 +457,22 @@ impl Depth {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Two cards drawn by Top-Down Solutions, and a hand of nine, each fit
+    /// the window they are offered in: widest at one row while that is
+    /// the wider, wrapping only when the cards would otherwise shrink.
+    #[test]
+    fn choice_faces_fit_the_pop_up_and_wrap_only_to_grow() {
+        let (face, per_row) = choice_faces((1900.0, 900.0), 2);
+        assert_eq!((face, per_row), (CHOICE_FACE_MAX, 2), "two cards at full size side by side");
+        let (face, per_row) = choice_faces((1900.0, 900.0), 9);
+        assert!(per_row < 9, "nine in one row would be {} wide", (1900.0 - 8.0 * CHOICE_GAP) / 9.0);
+        let rows = 9usize.div_ceil(per_row) as f32;
+        assert!(per_row as f32 * face + (per_row as f32 - 1.0) * CHOICE_GAP <= 1900.0);
+        assert!(rows * (face * 1.4 + CHOICE_CAPTION) + (rows - 1.0) * CHOICE_GAP <= 900.0);
+        let (small, _) = choice_faces((700.0, 500.0), 9);
+        assert!(small < face && small >= 1.0, "a small window shrinks the cards, never the count");
+    }
 
     /// The depth ramp is the one that *may* vary across rows, because it
     /// is paint: every value grows toward the chair, and nothing here is

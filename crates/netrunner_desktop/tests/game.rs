@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, Contact, DecisionPopup, Glowing, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate};
+use netrunner_desktop::screens::game::{ActionsMenu, ChoiceCard, Click, Contact, DecisionPopup, Glowing, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -191,6 +191,10 @@ fn start_a_game(app: &mut App) {
 }
 
 fn start_a_game_as(app: &mut App, human: Side) {
+    start_a_game_with(app, human, DEFAULT_CORP_DECK);
+}
+
+fn start_a_game_with(app: &mut App, human: Side, corp_deck: &str) {
     app.world_mut().write_message(Navigate(AppScreen::NewGame));
     app.update();
     app.update();
@@ -198,7 +202,7 @@ fn start_a_game_as(app: &mut App, human: Side) {
     // The form's choice, made directly rather than through five drop-downs:
     // the bottom rung so the bot answers at once, unrated so no file is
     // written. `start` is the same function the Start button calls.
-    let choice = StartChoice { human, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string(), rated: false };
+    let choice = StartChoice { human, level: Level::Novice, style: None, corp_deck: corp_deck.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string(), rated: false };
     // One seed for every test: the games are real, and a test that leans
     // on a board state (an install by the Runner's first turn, a central
     // left open) must see the same deal each run rather than whatever the
@@ -1393,4 +1397,71 @@ fn a_card_carries_its_contact_shadow_and_its_glow_in_one_component() {
     }
     assert!(found_plain > 0, "the opponent's cards never glow but still sit on the table");
     assert!(found_glowing > 0, "something on the Runner's own turn can be acted on");
+}
+
+/// The report: Top-Down Solutions drew two cards and asked which to
+/// install, and the pop-up named them without showing them. A card
+/// selection now draws every candidate as its card, the card is its own
+/// button (a press selects it, as the label under it does), and the one
+/// selected keeps its place, outlined. Played from a real game: the Corp's
+/// seat takes the engine's actions in turn until it is asked to choose.
+#[test]
+fn a_card_selection_shows_the_cards_and_a_card_is_its_own_button() {
+    use netrunner_client::selection::Selection;
+    let (mut app, _dir) = headless_client();
+    start_a_game_with(&mut app, Side::Corp, "fashion_lab");
+    let deadline = Instant::now() + Duration::from_secs(60);
+    let mut submitted = None;
+    loop {
+        assert!(Instant::now() < deadline, "no card selection in a minute of play");
+        app.update();
+        let model = &app.world().resource::<Model>().0;
+        assert!(!model.finished(), "the game ended before the Corp was asked to choose a card");
+        if !model.awaiting || submitted == Some(model.applied) {
+            std::thread::sleep(Duration::from_millis(2));
+            continue;
+        }
+        let core = app.world().resource::<ClientCore>();
+        if model.view.as_ref().and_then(|view| Selection::of(view, &core.registry)).is_some_and(|s| !s.candidates.is_empty()) {
+            break;
+        }
+        let action = model.actions.entries[model.applied % model.actions.entries.len()].action.clone();
+        submitted = Some(model.applied);
+        app.world().resource::<ActiveMatch>().handle.submit(action).expect("the match is live");
+    }
+    app.update();
+    app.update();
+
+    let (selection, choices) = {
+        let model = &app.world().resource::<Model>().0;
+        let selection = model.actions.selection().expect("the Corp is choosing").clone();
+        let hidden = selection.hidden();
+        let choices: Vec<_> = selection.candidates.iter().filter(|c| !hidden.contains(&c.position)).cloned().collect();
+        (selection, choices)
+    };
+    let cards: Vec<ChoiceCard> = app.world_mut().query::<&ChoiceCard>().iter(app.world()).cloned().collect();
+    let named: Vec<_> = choices.iter().filter_map(|c| c.card.clone()).collect();
+    assert_eq!(cards.iter().map(|c| c.0.clone()).collect::<Vec<_>>(), named, "one card per button, in position order");
+
+    // Press the first candidate's card, not its label.
+    let first = choices[0].position;
+    let index = {
+        let model = &app.world().resource::<Model>().0;
+        model.actions.entries.iter().position(|e| e.action == PlayerAction::ToggleCardSelection { position: first }).expect("the toggle")
+    };
+    let face = {
+        let world = app.world_mut();
+        let mut faces = world.query::<(Entity, &Click, Option<&ChoiceCard>)>();
+        faces.iter(world).find(|(_, click, card)| **click == Click::Entry(index) && card.is_some()).map(|(e, _, _)| e).expect("the card is a button")
+    };
+    let before = selection.chosen().len();
+    press_entity(&mut app, face);
+    wait_for(&mut app, "the selection to take the card", |app| {
+        let model = &app.world().resource::<Model>().0;
+        model.awaiting && model.actions.selection().is_some_and(|s| s.chosen().len() > before)
+    });
+    // The card is still drawn, now outlined as chosen.
+    app.update();
+    let outlined = app.world_mut().query_filtered::<&ChoiceCard, With<Outline>>().iter(app.world()).count();
+    assert_eq!(outlined, 1, "the chosen card is drawn, outlined");
 }

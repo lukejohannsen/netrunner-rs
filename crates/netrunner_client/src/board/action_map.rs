@@ -204,6 +204,12 @@ impl ActionMap {
         Self { entries, selection, collapsed, passing: affordance::in_a_passing_moment(view) }
     }
 
+    /// The card selection this map was built over, when the viewer is
+    /// choosing — what a pop-up reads to draw each candidate's card.
+    pub fn selection(&self) -> Option<&Selection> {
+        self.selection.as_ref()
+    }
+
     /// Whether entry `index` is a selection button another one already
     /// stands for (see `collapsed`).
     pub fn is_collapsed(&self, index: usize) -> bool {
@@ -526,6 +532,47 @@ impl Prompt {
     }
 }
 
+impl Prompt {
+    /// The one card a pop-up shows beside the prompt, so a choice is made
+    /// looking at the card it is about rather than at its name: the card an
+    /// install from a card's text is placing, else the card whose text is
+    /// asking (a "gain 2 or draw 1", a run on a server of the Runner's
+    /// choice, a "pay to…", a prevention's offer). **Not** a card
+    /// selection's — that pop-up shows every candidate, which is the choice
+    /// itself (`selection::Selection`) — and not an access's, which
+    /// `access::Access` shows. `None` when nothing names a card, and (where
+    /// the decision says who is asked) for a viewer who is not.
+    ///
+    /// The asking card is `prompting_card`, falling back to `source_card`
+    /// as `Prompt::of`'s title does: `source_card` is what the decision
+    /// resolves *as*, which after a selection is the selected card.
+    pub fn card(view: &ClientView, registry: &CardRegistry) -> Option<CardId> {
+        let asked_by = |prompting: &Option<CardId>, source: &Option<CardId>| prompting.clone().or_else(|| source.clone());
+        if let Some(decision) = &view.pending_decision {
+            return match decision {
+                PendingDecision::ChooseEffect { chooser, source_card, prompting_card, .. } => {
+                    view.viewer.is(*chooser).then(|| asked_by(prompting_card, source_card)).flatten()
+                }
+                PendingDecision::ChooseServer { chooser, source_card, prompting_card, install, .. } => match Placement::of(view, registry) {
+                    Some(placement) => placement.card().cloned().or_else(|| asked_by(prompting_card, source_card)),
+                    None if install.is_none() && view.viewer.is(*chooser) => asked_by(prompting_card, source_card),
+                    None => None,
+                },
+                PendingDecision::ChooseCards { .. } | PendingDecision::ChooseTriggerOrder { .. } => None,
+            };
+        }
+        if let Some(paid) = &view.pending_paid_choice {
+            return view.viewer.is(paid.side).then(|| asked_by(&paid.prompting_card, &paid.source_card)).flatten();
+        }
+        if let Some(prevention) = &view.pending_prevention {
+            // The prevention carries no chooser: the card offering it is
+            // its owner's, and only its owner is ever asked.
+            return prevention.source_card.clone();
+        }
+        None
+    }
+}
+
 fn title_of(card: Option<&CardId>, registry: &CardRegistry) -> String {
     card.map_or_else(|| "A card".to_string(), |id| card_title(id, registry))
 }
@@ -579,6 +626,30 @@ mod tests {
     use netrunner_bots::RandomAgent;
     use netrunner_core::rules::GameState;
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
+
+    /// A text choice shows the card whose text is asking, and only to the
+    /// side being asked; the asking card wins over the one the decision
+    /// resolves as.
+    #[test]
+    fn a_text_choice_shows_the_card_asking_to_the_one_asked() {
+        use netrunner_core::rules::PendingChoiceResume;
+        let registry = CardRegistry::default();
+        let mut view = netrunner_core::view::build_client_view(&GameState::new(1), &registry, Side::Corp);
+        view.pending_decision = Some(PendingDecision::ChooseEffect {
+            chooser: Side::Corp,
+            options: Vec::new(),
+            option_texts: Vec::new(),
+            source_card: Some(CardId("resolves_as".into())),
+            prompting_card: Some(CardId("asking".into())),
+            source_install: None,
+            resume: PendingChoiceResume::None,
+        });
+        assert_eq!(Prompt::card(&view, &registry), Some(CardId("asking".into())));
+        view.viewer = Side::Runner.into();
+        assert_eq!(Prompt::card(&view, &registry), None, "the Runner is not being asked");
+        view.pending_decision = None;
+        assert_eq!(Prompt::card(&view, &registry), None, "no prompt, no card");
+    }
 
     /// A card in hand names the places it may go, and each place the
     /// entries a drop there could mean — including a remote the Corp has
