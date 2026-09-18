@@ -18,8 +18,9 @@
 //! asset root, and the asset server refuses an absolute path by default
 //! (`UnapprovedPathMode::Forbid`). Reading the file and decoding it with
 //! `Image::from_buffer` needs no asset source and no plugin ordering, and
-//! the decode — a JPEG at card size, a few milliseconds — runs on the
-//! compute pool so a frame never waits for it. A face that wants its
+//! the decode — a 750-pixel WebP, about 57 ms, or a copy kept from an
+//! earlier run, about one — runs on the compute pool, four at a time,
+//! so a frame never waits for it. A face that wants its
 //! picture carries [`WantsImage`]; when the handle exists the face is
 //! swapped for an `ImageNode` in place, so a download finishing while
 //! the browser is open fills the grid without leaving the screen.
@@ -28,8 +29,8 @@
 //! headless tests build the client without an asset plugin, and a face
 //! there stays text.
 
-use std::collections::HashMap;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::path::{Path, PathBuf};
 
 use bevy::asset::RenderAssetUsages;
 use bevy::image::{CompressedImageFormats, ImageSampler, ImageType};
@@ -54,9 +55,14 @@ pub struct CardImagesPlugin;
 impl Plugin for CardImagesPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<CardImages>()
-            .add_systems(Update, (load_backs, request_wanted, poll_decoded).chain().run_if(resource_exists::<Assets<Image>>));
+            .add_systems(Update, (track_scale, load_backs, request_wanted, poll_decoded).chain().run_if(resource_exists::<Assets<Image>>));
     }
 }
+
+/// How many fronts are decoded at once. The rest wait in
+/// [`CardImages::queue`], so a card the person just asked to look at is
+/// the next one started rather than the last of a browser's 271.
+const IN_FLIGHT: usize = 4;
 
 /// A text face that would rather be its picture. Removed when the
 /// picture is put in its place.
@@ -66,10 +72,21 @@ pub struct WantsImage {
     pub size: FaceSize,
 }
 
-#[derive(Resource, Default)]
+/// A front at one width: the card and its [`rung`].
+type FaceKey = (CardId, u32);
+
+#[derive(Resource)]
 pub struct CardImages {
-    faces: HashMap<CardId, Handle<Image>>,
-    pending: HashMap<CardId, Task<Option<Image>>>,
+    faces: HashMap<FaceKey, Handle<Image>>,
+    pending: HashMap<FaceKey, Task<Option<Image>>>,
+    /// Fronts asked for and not yet started, oldest first — except a
+    /// `Large` face, which goes to the front: it is the one card a person
+    /// is looking at.
+    queue: VecDeque<(FaceKey, PathBuf)>,
+    queued: HashSet<FaceKey>,
+    /// The primary window's scale factor, so a face's logical width can
+    /// be turned into the pixels its picture will cover.
+    scale: f32,
     backs: Option<[Handle<Image>; 2]>,
     /// Which backs still hold the painted tier and would take the
     /// official one: false once a file — dropped in, bundled or
@@ -87,10 +104,32 @@ pub struct CardImages {
     pub recheck: bool,
 }
 
+impl Default for CardImages {
+    fn default() -> Self {
+        CardImages {
+            faces: HashMap::new(),
+            pending: HashMap::new(),
+            queue: VecDeque::new(),
+            queued: HashSet::new(),
+            scale: 1.0,
+            backs: None,
+            drawn: [false; 2],
+            fetch: None,
+            gave_up: false,
+            next_look: 0.0,
+            recheck: false,
+        }
+    }
+}
+
 impl CardImages {
-    /// The decoded front for `code`, if it has been.
-    pub fn face(&self, code: CardId) -> Option<Handle<Image>> {
-        self.faces.get(&code).cloned()
+    /// The front for `code` decoded for a face of `size`, if it has been.
+    pub fn face(&self, code: CardId, size: FaceSize) -> Option<Handle<Image>> {
+        self.faces.get(&self.key(code, size)).cloned()
+    }
+
+    fn key(&self, code: CardId, size: FaceSize) -> FaceKey {
+        (code, rung(size.width() * self.scale))
     }
 
     pub fn back(&self, side: Side) -> Option<Handle<Image>> {
@@ -109,20 +148,37 @@ impl CardImages {
         }
     }
 
-    /// Starts decoding the file at `path` for `code`, unless it is known
-    /// or under way.
-    pub fn request(&mut self, code: CardId, path: PathBuf) {
-        if self.faces.contains_key(&code) || self.pending.contains_key(&code) {
+    /// Queues the file at `path` for a face of `size`, unless that width
+    /// is known, under way or already queued.
+    pub fn request(&mut self, code: CardId, size: FaceSize, path: PathBuf) {
+        let key = self.key(code, size);
+        if self.faces.contains_key(&key) || self.pending.contains_key(&key) || !self.queued.insert(key) {
             return;
         }
-        let task = AsyncComputeTaskPool::get().spawn(async move { std::fs::read(&path).ok().and_then(|bytes| decode(&bytes, "jpg")) });
-        self.pending.insert(code, task);
+        if size == FaceSize::Large {
+            self.queue.push_front((key, path));
+        } else {
+            self.queue.push_back((key, path));
+        }
+        self.start_queued();
+    }
+
+    /// Starts queued decodes until [`IN_FLIGHT`] are running.
+    fn start_queued(&mut self) {
+        while self.pending.len() < IN_FLIGHT
+            && let Some((key, path)) = self.queue.pop_front()
+        {
+            self.queued.remove(&key);
+            let task = AsyncComputeTaskPool::get().spawn(async move { load_front(&path, key) });
+            self.pending.insert(key, task);
+        }
     }
 }
 
 /// `bytes` as an image, `None` if the file is not one. `is_srgb` because
-/// card scans are sRGB; a linear sampler because a face is drawn smaller
-/// than the scan.
+/// card scans are sRGB; a linear sampler because a picture is drawn near
+/// its own width (a front, at its [`rung`]) but seldom exactly at it, and
+/// never wants hard pixel edges.
 pub(crate) fn decode(bytes: &[u8], extension: &str) -> Option<Image> {
     Image::from_buffer(bytes, ImageType::Extension(extension), CompressedImageFormats::NONE, true, ImageSampler::linear(), RenderAssetUsages::default())
         .ok()
@@ -150,6 +206,152 @@ fn eight_bit_srgb(image: Image) -> Image {
     );
     eight.sampler = ImageSampler::linear();
     eight
+}
+
+/// The front at `path` for `key`'s width: the copy kept from an earlier
+/// run if it is newer than the scan, else the scan decoded and resampled,
+/// and that copy kept for next time.
+///
+/// **Why keep the copy.** Decoding a 750-pixel WebP costs about 57 ms
+/// and resampling it 15 ms, so a browser of 271 cards filled in over
+/// seconds where the 300-pixel JPEGs it replaced had been instant. The
+/// copy is raw pixels behind a small header — no codec to run — and sits
+/// in `sized/` beside the scans, in the cache, where anything can be
+/// deleted and made again. It is named for the scan's format as well as
+/// the width, so a `.webp` that replaces a `.jpg` is never shown the
+/// smaller scan's copy. A copy that cannot be written costs only the
+/// decode next time.
+fn load_front(path: &Path, (code, width): FaceKey) -> Option<Image> {
+    let extension = path.extension().and_then(|e| e.to_str()).unwrap_or("jpg");
+    let rung_name = if width == WHOLE_SCAN { "whole".to_owned() } else { width.to_string() };
+    let copy = path.parent().map(|dir| dir.join("sized").join(format!("{:05}-{extension}-{rung_name}.rgba", code.0)));
+    let modified = |path: &Path| std::fs::metadata(path).and_then(|meta| meta.modified()).ok();
+    if let Some(copy) = &copy
+        && modified(copy) >= modified(path)
+        && let Some(image) = std::fs::read(copy).ok().and_then(|bytes| from_copy(&bytes))
+    {
+        return Some(image);
+    }
+    let image = fitted(decode(&std::fs::read(path).ok()?, extension)?, width);
+    if let (Some(copy), Some(bytes)) = (&copy, to_copy(&image)) {
+        let _ = write_copy(copy, &bytes);
+    }
+    Some(image)
+}
+
+/// The header a kept copy starts with, then its width and height.
+const COPY_MAGIC: &[u8; 8] = b"NRFACE1\0";
+
+fn to_copy(image: &Image) -> Option<Vec<u8>> {
+    if image.texture_descriptor.format != TextureFormat::Rgba8UnormSrgb {
+        return None;
+    }
+    let size = image.texture_descriptor.size;
+    let data = image.data.as_ref()?;
+    let mut bytes = Vec::with_capacity(16 + data.len());
+    bytes.extend_from_slice(COPY_MAGIC);
+    bytes.extend_from_slice(&size.width.to_le_bytes());
+    bytes.extend_from_slice(&size.height.to_le_bytes());
+    bytes.extend_from_slice(data);
+    Some(bytes)
+}
+
+/// A kept copy as an image, `None` if it is not one or is cut short.
+fn from_copy(bytes: &[u8]) -> Option<Image> {
+    let rest = bytes.strip_prefix(COPY_MAGIC)?;
+    let (width, rest) = rest.split_first_chunk::<4>()?;
+    let (height, data) = rest.split_first_chunk::<4>()?;
+    let (width, height) = (u32::from_le_bytes(*width), u32::from_le_bytes(*height));
+    if data.len() != width as usize * height as usize * 4 {
+        return None;
+    }
+    let mut image = Image::new(
+        Extent3d { width, height, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        data.to_vec(),
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    image.sampler = ImageSampler::linear();
+    Some(image)
+}
+
+/// A temp file and a rename, so a copy cut off halfway is never read as
+/// whole.
+fn write_copy(copy: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(dir) = copy.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let temp = copy.with_extension(format!("tmp{}", std::process::id()));
+    std::fs::write(&temp, bytes)?;
+    std::fs::rename(&temp, copy)
+}
+
+/// The widths a front is decoded at, each 1.25× the last. A face takes
+/// the first at least as wide as the pixels it covers, so its picture is
+/// never shrunk by the sampler more than 1.25×; wider than the last, it
+/// takes the whole scan ([`WHOLE_SCAN`]).
+///
+/// **Why not the scan at every size.** A 750-pixel scan drawn at 280
+/// physical pixels in the browser's grid, and under 150 on the board, is
+/// read by a linear sampler four texels at a time however far it is
+/// shrunk, and the printed text broke into jagged strokes — where the
+/// old 300-pixel scan, at under 2×, had only softened. A mip chain is
+/// the textbook answer and was the first cut, but a scan with its chain
+/// holds 4 MB of GPU memory — over a gigabyte for a browser of every
+/// card. A copy resampled once, on the compute pool, to the width it is
+/// drawn at is as sharp as the scan allows and costs what is on screen:
+/// under 0.7 MB a grid cell at a 2× display scale.
+const RUNGS: [u32; 11] = [72, 90, 113, 141, 176, 220, 275, 344, 430, 537, 671];
+
+/// The rung that stands for "the scan as NetrunnerDB served it".
+const WHOLE_SCAN: u32 = u32::MAX;
+
+/// The width to decode a front at for a face covering `pixels`.
+fn rung(pixels: f32) -> u32 {
+    RUNGS.into_iter().find(|&width| width as f32 >= pixels).unwrap_or(WHOLE_SCAN)
+}
+
+/// `image` resampled to `width` wide, keeping the card's shape, unless it
+/// is already no wider. Catmull-Rom, from `image`.
+///
+/// The main-world copy stays: a face marked render-world only drew every
+/// frame of the card browser black, though nothing reads its pixels
+/// back. At the sizes a face is resampled to the copy is small.
+pub(crate) fn fitted(mut image: Image, width: u32) -> Image {
+
+    let size = image.texture_descriptor.size;
+    if size.width <= width || image.texture_descriptor.format != TextureFormat::Rgba8UnormSrgb {
+        return image;
+    }
+    let Some(scan) = image.data.take().and_then(|data| image::RgbaImage::from_raw(size.width, size.height, data)) else { return image };
+    let height = ((width as f32 * size.height as f32 / size.width as f32).round() as u32).max(1);
+    // `DynamicImage`'s method, not `imageops::resize`: that one is
+    // generic, so it is compiled into this crate, unoptimised in the dev
+    // profile — 446 ms a scan. This is compiled in `image`, at its own
+    // optimisation level.
+    let smaller = image::DynamicImage::ImageRgba8(scan).resize_exact(width, height, image::imageops::FilterType::CatmullRom).into_rgba8();
+    let mut fitted = Image::new(
+        Extent3d { width, height, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        smaller.into_raw(),
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    );
+    fitted.sampler = image.sampler;
+    fitted
+}
+
+/// Keeps [`CardImages::scale`] the primary window's, so a face asks for
+/// the pixels it will actually cover. A window that moves to a screen of
+/// another scale gets its sharper or smaller pictures as faces are next
+/// spawned.
+fn track_scale(mut images: ResMut<CardImages>, windows: Query<&Window, With<bevy::window::PrimaryWindow>>) {
+    if let Ok(window) = windows.single()
+        && images.scale != window.scale_factor()
+    {
+        images.scale = window.scale_factor();
+    }
 }
 
 /// How often the cache is checked for a back that was not there.
@@ -278,10 +480,10 @@ fn request_wanted(
     all: Query<&WantsImage>,
 ) {
     let recheck = std::mem::take(&mut images.recheck);
-    let wanted: Vec<CardId> = if recheck { all.iter().map(|w| w.code).collect() } else { added.iter().map(|w| w.code).collect() };
-    for code in wanted {
-        if let ImageStatus::Cached(path) = core.images.status(code) {
-            images.request(code, path);
+    let wanted: Vec<WantsImage> = if recheck { all.iter().copied().collect() } else { added.iter().copied().collect() };
+    for wants in wanted {
+        if let ImageStatus::Cached(path) = core.images.status(wants.code) {
+            images.request(wants.code, wants.size, path);
         }
     }
 }
@@ -294,22 +496,23 @@ fn poll_decoded(
     mut assets: ResMut<Assets<Image>>,
     wanted: Query<(Entity, &WantsImage, Option<&Node>)>,
 ) {
-    let finished: Vec<(CardId, Option<Image>)> =
-        images.pending.iter_mut().filter_map(|(code, task)| check_ready(task).map(|image| (*code, image))).collect();
-    for (code, image) in finished {
-        images.pending.remove(&code);
+    let finished: Vec<(FaceKey, Option<Image>)> =
+        images.pending.iter_mut().filter_map(|(key, task)| check_ready(task).map(|image| (*key, image))).collect();
+    for (key, image) in finished {
+        images.pending.remove(&key);
         if let Some(image) = image {
             let handle = assets.add(image);
-            images.faces.insert(code, handle);
+            images.faces.insert(key, handle);
         }
     }
+    images.start_queued();
     for (entity, wants, old) in &wanted {
-        if let Some(handle) = images.faces.get(&wants.code) {
+        if let Some(handle) = images.face(wants.code, wants.size) {
             let node = match old {
                 Some(old) => in_place_of(old, picture_node(wants.size)),
                 None => picture_node(wants.size),
             };
-            commands.entity(entity).remove::<WantsImage>().despawn_children().insert(picture(handle.clone(), wants.size)).insert(node);
+            commands.entity(entity).remove::<WantsImage>().despawn_children().insert(picture(handle, wants.size)).insert(node);
         }
     }
 }
@@ -364,6 +567,56 @@ mod tests {
         assert_eq!((node.left, node.top), (px(15), px(30)));
         assert_eq!((node.width, node.height), (px(size.width()), px(size.height())));
         assert_eq!(node.border, UiRect::default());
+    }
+
+    /// A face gets the first rung at least as wide as it is drawn, so
+    /// the sampler never shrinks it more than 1.25×; a face wider than
+    /// every rung gets the scan whole.
+    #[test]
+    fn a_face_is_decoded_at_the_rung_that_covers_it() {
+        assert_eq!(rung(72.0), 72);
+        assert_eq!(rung(73.0), 90);
+        assert_eq!(rung(280.0), 344, "a grid cell at a 2x display scale");
+        assert_eq!(rung(672.0), WHOLE_SCAN);
+        for pair in RUNGS.windows(2) {
+            assert!(pair[1] as f32 <= pair[0] as f32 * 1.26, "{pair:?}");
+        }
+        let images = CardImages { scale: 2.0, ..CardImages::default() };
+        assert_eq!(images.key(CardId(30001), FaceSize::Thumb), (CardId(30001), 344));
+        assert_eq!(images.key(CardId(30001), FaceSize::Large), (CardId(30001), WHOLE_SCAN));
+    }
+
+    /// A scan wider than its rung is resampled to it, keeping the card's
+    /// shape; one no wider is left as served.
+    #[test]
+    fn a_scan_is_resampled_down_to_its_rung_and_never_up() {
+        let size = Extent3d { width: 750, height: 1050, depth_or_array_layers: 1 };
+        let scan = || Image::new(size, TextureDimension::D2, vec![128; 750 * 1050 * 4], TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default());
+        let small = fitted(scan(), 344);
+        assert_eq!(small.texture_descriptor.size, Extent3d { width: 344, height: 482, depth_or_array_layers: 1 });
+        assert_eq!(small.data.as_ref().map(Vec::len), Some(344 * 482 * 4));
+        let whole = fitted(scan(), WHOLE_SCAN);
+        assert_eq!(whole.texture_descriptor.size, size);
+    }
+
+    /// A copy is kept on the first load and read back on the next, the
+    /// same pixels; a scan newer than its copy is decoded again.
+    #[test]
+    fn a_resampled_front_is_kept_and_read_back() {
+        let dir = std::env::temp_dir().join(format!("netrunner_sized_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let scan = dir.join("30001.png");
+        let pixels: Vec<u8> = (0..40 * 56).flat_map(|i| [(i % 251) as u8, 40, 200, 255]).collect();
+        image::RgbaImage::from_raw(40, 56, pixels).unwrap().save(&scan).unwrap();
+        let first = load_front(&scan, (CardId(30001), 20)).unwrap();
+        assert_eq!(first.texture_descriptor.size, Extent3d { width: 20, height: 28, depth_or_array_layers: 1 });
+        let copy = dir.join("sized").join("30001-png-20.rgba");
+        assert!(copy.is_file());
+        std::fs::write(&copy, to_copy(&Image::new(Extent3d { width: 1, height: 1, depth_or_array_layers: 1 }, TextureDimension::D2, vec![9, 9, 9, 9], TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())).unwrap()).unwrap();
+        let read_back = load_front(&scan, (CardId(30001), 20)).unwrap();
+        assert_eq!(read_back.data.as_deref(), Some(&[9, 9, 9, 9][..]), "the kept copy is what is read");
+        assert!(from_copy(b"NRFACE1\0\x02\0\0\0\x02\0\0\0short").is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

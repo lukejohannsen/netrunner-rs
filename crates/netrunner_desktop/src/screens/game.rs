@@ -1455,7 +1455,7 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
             if let Some(id) = &identity
                 && let Some(card) = core.registry.get(id)
             {
-                let image = card.numeric_id.and_then(|code| images.face(code));
+                let image = card.numeric_id.and_then(|code| images.face(code, fit.identity_size(side)));
                 let entity = spawn_face(row, theme, &Face::of(card), fit.identity_size(side), image, (Button, Click::Target(Target::Identity(side))));
                 row.commands().entity(entity).insert(Contact(Depth::strip(side, game.side)));
                 // An identity's own ability has nowhere else to live: it
@@ -1990,7 +1990,7 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                     column.spawn(card_row()).with_children(|cards_row| {
                         for (i, card) in cards.iter().enumerate() {
                             let Some(def) = core.registry.get(&card.card) else { continue };
-                            let image = def.numeric_id.and_then(|code| images.face(code));
+                            let image = def.numeric_id.and_then(|code| images.face(code, size));
                             let mut slot = cards_row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, align_items: AlignItems::Center, row_gap: px(2), ..default() },));
                             if i > 0 && pull < 0.0 {
                                 slot.entry::<Node>().and_modify(move |mut node| node.margin.left = px(pull));
@@ -2059,7 +2059,7 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
                 let mut faces = Vec::new();
                 for (slot, id) in hand.iter().enumerate() {
                     let Some(def) = core.registry.get(id) else { continue };
-                    let image = def.numeric_id.and_then(|code| images.face(code));
+                    let image = def.numeric_id.and_then(|code| images.face(code, size));
                     let entity = spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::HandCard(id.clone()))));
                     if own {
                         // Its place in the row, so a drag knows which card
@@ -2158,7 +2158,7 @@ fn lift_hovered(
     let Some(def) = game.hand.cards().get(slot.0).and_then(|id| core.registry.get(id)) else { return };
     let Some(root) = roots.iter().next() else { return };
     let (left, top) = place(node, transform);
-    let image = def.numeric_id.and_then(|code| images.face(code));
+    let image = def.numeric_id.and_then(|code| images.face(code, size));
     commands.entity(root).with_children(|parent| {
         let face = spawn_face(parent, &theme, &Face::of(def), size, image, (LiftedCard(entity), Pickable::IGNORE, GlobalZIndex(12)));
         parent.commands().entity(face).entry::<Node>().and_modify(move |mut node| {
@@ -2368,7 +2368,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                     (None, None) => ("Your decision".to_string(), String::new()),
                 };
                 if let Some(access) = &access {
-                    let image = access.face.code.and_then(|code| images.face(code));
+                    let image = access.face.code.and_then(|code| images.face(code, FaceSize::Large));
                     spawn_face(panel, theme, &access.face, FaceSize::Large, image, ());
                 }
                 panel.spawn((widgets::heading(theme, title), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -2765,7 +2765,7 @@ fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
         panel.spawn(widgets::dim(theme, format!("{} is not in the registry", id.0)));
         return;
     };
-    let image = def.numeric_id.and_then(|code| images.face(code));
+    let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
     spawn_face(panel, theme, &Face::of(def), FaceSize::Large, image, ());
 }
 
@@ -2792,7 +2792,7 @@ fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
     panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
         match def {
             Some(def) => {
-                let image = def.numeric_id.and_then(|code| images.face(code));
+                let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
                 spawn_face(row, theme, &Face::of(def), FaceSize::Large, image, ());
             }
             None => {
@@ -2872,7 +2872,7 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                         match item {
                             Shown::Card(id) => {
                                 if let Some(def) = core.registry.get(&id) {
-                                    let image = def.numeric_id.and_then(|code| images.face(code));
+                                    let image = def.numeric_id.and_then(|code| images.face(code, FaceSize::Thumb));
                                     spawn_face(row, theme, &Face::of(def), FaceSize::Thumb, image, (Button, Click::Inspect(id.clone())));
                                 }
                             }
@@ -2919,7 +2919,7 @@ fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
             for (row, agenda) in agendas.iter().enumerate() {
                 let open = game.expanded == Some(row);
                 let def = core.registry.get(&agenda.card);
-                let image = def.and_then(|d| d.numeric_id).and_then(|code| images.face(code));
+                let code = def.and_then(|d| d.numeric_id);
                 list.spawn((
                     ScoreRow(row),
                     Button,
@@ -2940,7 +2940,7 @@ fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
                     };
                     button.spawn((Text::new(marker), font, TextColor(theme.text_dim), Node { width: px(18), ..default() }));
                     if let Some(def) = def {
-                        spawn_face(button, theme, &Face::of(def), FaceSize::Board(56), image.clone(), ());
+                        spawn_face(button, theme, &Face::of(def), FaceSize::Board(56), code.and_then(|code| images.face(code, FaceSize::Board(56))), ());
                     }
                     button.spawn(widgets::label(theme, agenda.line()));
                 });
@@ -2949,7 +2949,7 @@ fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
                 }
                 list.spawn((ScoreDetails(row), Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, padding: UiRect::left(px(28)), flex_shrink: 0.0, ..default() })).with_children(|details| {
                     if let Some(def) = def {
-                        spawn_face(details, theme, &Face::of(def), FaceSize::Large, image, ());
+                        spawn_face(details, theme, &Face::of(def), FaceSize::Large, code.and_then(|code| images.face(code, FaceSize::Large)), ());
                     }
                     details.spawn((Node { flex_grow: 1.0, min_width: px(0), flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },)).with_children(|column| {
                         for line in agenda.facts(side, &core.registry) {

@@ -73,7 +73,7 @@ credits everything a player sees, not only what is in the repository.
 | What | Owner | Website | Terms | Fetched from |
 |---|---|---|---|---|
 | Card data: titles, rules and flavour text, illustrator credits | Null Signal Games and the card's illustrators, compiled by NetrunnerDB | https://netrunnerdb.com | theirs, not licensed by this project | NetrunnerDB's public API v2 |
-| Card scans, the printed cards | Null Signal Games and each card's illustrator, named on the card | https://nullsignal.games | theirs, not licensed by this project | card-images.netrunnerdb.com |
+| Card scans, the printed cards | Null Signal Games and each card's illustrator, named on the card | https://nullsignal.games | theirs, not licensed by this project | card-images.netrunnerdb.com (750 × 1050 where it has one, else 300 × 420) |
 | The icon font: faction, set and printed symbols | Null Signal Games' marks, in NetrunnerDB's font | https://netrunnerdb.com | the font's repository is MIT; the marks are NSG's | netrunnerdb.com |
 | The official card backs | Null Signal Games | https://nullsignal.games | theirs, served by jinteki.net by NSG's arrangement | jinteki.net |
 

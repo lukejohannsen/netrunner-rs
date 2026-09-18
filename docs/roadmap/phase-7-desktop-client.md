@@ -2647,3 +2647,46 @@ the project did not make is attributed to its artist and their website.
 This **supersedes §4u's framing** of the NSG symbols as "the one recorded exception" to a GPL-compatible bar. There is no bar left to be an exception to, only a register. The entries are unchanged.
 
 **Verified.** `cargo test --workspace` is green and clippy is silent. The About screen was screenshotted through `NETRUNNER_SCREEN=about`.
+
+### 4w. A card scan is 750 pixels wide wherever Null Signal Games printed it, and drawn at the width it covers — DONE (18 September 2026)
+
+`feat/hires-card-scans`. The person asked for card art that looks good on screens with more pixels than their laptop. Their proposed source was Null Signal Games' print-and-play PDFs, but existing downloads were fine if they held up at high resolution. Every card was to be of similar quality, with any fallback listed so it could be targeted from the PDFs, and the focus was on Null Signal Games' sets.
+
+**Measured first (18 September 2026).**
+
+| Source | Per card | Notes |
+|---|---|---|
+| NetrunnerDB `v2/large/{code}.jpg`, what the store fetched | 300 × 420 | narrower than the 380-point `FaceSize::Large`, so it was stretched even at 1× |
+| NetrunnerDB `v2/xlarge/{code}.webp` | 750 × 1050 | WebP only; `small` (116) and `medium` (165) are the other sizes |
+| NSG's PnP PDFs (`access.nullsignal.games`, 54–129 MB a set) | ≈ 744 × 1039 | one 300 dpi CMYK JPEG per page of a 3 × 3 sheet, text baked in |
+
+- **xlarge covers every Null Signal Games card in the catalog.** All 77 System Gateway codes and all 82 Elevation codes answer 200. Only the Fantasy Flight Core Set (01xxx) answers 403, and it has no NSG PnP.
+- **The PDFs are not sharper.** A crop of René "Loup" Arcemont out of the System Gateway sheet, set beside the xlarge WebP, matched it in pixel density and sharpness.
+- **The PDFs have other costs.** A card on a sheet can be matched to its code only by its place in the set's order. The pages need Adobe-CMYK inversion. NSG's pages allow printing for play ("print on your own printer") but grant no licence to redistribute.
+- **So no PDF cutter was built.** The fallback list it would have been aimed at is empty for NSG sets. It is worth building only if a future NSG card has no xlarge scan.
+
+**Decisions taken, with the alternative rejected.**
+
+- **xlarge first, the API's template on a 403 or 404** (`netrunner_card_sync::images`).
+  - The two files are `<code>.webp` and `<code>.jpg`. The WebP outranks the JPEG, and a new WebP deletes the JPEG it replaces, so an old cache upgrades on its next Download.
+  - Codes with no xlarge are kept in the manifest (`no_hires`, defaulted so old manifests load). This means they are not probed again, and **`CardImageStore::low_res` is the fallback list** the person asked for.
+  - `netrunner_cli cards images [--set sg --set elev] [--download]` prints that list by name. The desktop's download line says "N only at low resolution" and logs the codes.
+  - Bytes are checked for a WebP or JPEG signature before they are kept, because the CDN's 403 body is XML.
+- **Scans are still never committed.** CREDITS.md's "Fetched" row names the new size, and its owner and terms are unchanged.
+- **A face gets a copy resampled to the width it covers, not the scan** (`card_images::{rung, fitted}`).
+  - Drawn at the grid's 280 physical pixels, the 750-pixel scan's printed text broke into jagged strokes: a linear sampler reads four texels however far it shrinks. The old 300-pixel scan at under 2× had only softened.
+  - A face now asks for the first of eleven rungs, each 1.25× the last, that is at least its logical width × the window's scale factor. Above 671 it takes the whole scan. The sampler therefore never shrinks a picture more than 1.25×.
+  - Faces are cached per (card, rung) and are render-world only.
+  - **A mip chain was the first cut and was rejected.** It holds 4 MB of GPU memory a scan, over a gigabyte for a browser of every card. A resampled grid cell at 2× is 344 px wide and under 0.7 MB.
+- **The resample is `DynamicImage::resize_exact`, not `imageops::resize`.** The generic `imageops::resize` is monomorphised into `netrunner_desktop`, which is unoptimised in the dev profile, and took 446 ms a scan. The concrete method is compiled inside `image`, and takes 15.7 ms. `image` is now a direct dependency, the same version Bevy already builds.
+- **Four decodes in flight, the looked-at card first, and each resampled copy kept on disk** (`CardImages::queue`, `load_front`). The person ran it on an upgraded cache: *"a few seconds to appear to load all the cards randomly. Selecting a card sometimes has a moment blip"*, and the same on the board.
+  - Each WebP costs about 57 ms to decode. The browser queued every scan at once, so the grid filled in pool order and the inspector's card waited behind all of it. The screenshot hook also caught whole black frames while that flood was running.
+  - Now at most four decodes run at a time. A `Large` face jumps the queue.
+  - Each copy is kept as raw pixels behind a 16-byte header under `images/sized/<code>-<ext>-<rung>.rgba`, so only a card's first view pays for the decode. A copy older than its scan is made again, and the name carries the scan's format, so a new `.webp` never shows the `.jpg`'s copy.
+  - Measured on this machine: the frame at 30 was black before this change. After it, a cold start is partly drawn at that frame and a warm one is complete. 120 faces' copies come to 22 MB.
+- **`dev`'s screenshot waits for its save.** The hook exited a fixed thirty frames after asking, and with the scans decoding the exit came first and no file was written. It now exits once the observer has saved.
+
+**Verified.**
+- `netrunner_cli cards images --download`, run over a copy of a 300-pixel cache, wrote 159 `.webp` files at 750 × 1050 and left 112 Core `.jpg`s. A second run fetched nothing. `--set sg --set elev` lists 0 low-resolution cards.
+- Browser and game screenshots (both chairs, forty decisions in) show sharp grid cells, sheets and board faces. The only `scroll area` line is the empty zero-sized one.
+- `cargo test --workspace` is green, clippy is silent, and `cargo deny check` passes with `image-webp` added.

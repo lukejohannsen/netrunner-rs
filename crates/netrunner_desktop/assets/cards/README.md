@@ -25,4 +25,9 @@ keeps its shape; a sixteen-bit PNG (the official ones are) is narrowed
 to eight-bit sRGB on load so it is not drawn washed out.
 
 Card *fronts* have no file tier: they are downloaded from NetrunnerDB
-into the cache directory on request and never committed.
+into the cache directory on request and never committed. NetrunnerDB's
+750 × 1050 scan is asked for first, which every System Gateway and
+Elevation card has, and its 300 × 420 one where there is no larger;
+`netrunner_cli cards images` lists the cards still at the smaller size.
+Each face is drawn from a copy resampled to the width it covers, so a
+scan is never shrunk more than 1.25× by the renderer.

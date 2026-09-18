@@ -744,6 +744,20 @@ pub enum CardsAction {
         #[arg(long = "set")]
         set: Vec<String>,
     },
+
+    /// Report the card-image cache: how many printings have a scan, and
+    /// which are only at 300 pixels because NetrunnerDB has no 750-pixel
+    /// scan of them.
+    Images {
+        /// Only these set codes (repeatable), e.g. `--set sg --set elev`.
+        #[arg(long = "set")]
+        set: Vec<String>,
+
+        /// Fetch the missing scans first, at the largest size NetrunnerDB
+        /// has. A network call; the desktop's image setting is not read.
+        #[arg(long)]
+        download: bool,
+    },
 }
 
 #[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]

@@ -31,6 +31,9 @@ pub enum SyncError {
     #[error("NetrunnerDB answered {status} for the image of card {code}")]
     ImageDownload { code: u32, status: u16 },
 
+    #[error("what NetrunnerDB served for the image of card {code} is not a picture")]
+    ImageInvalid { code: u32 },
+
     #[error("failed to write card image {path:?}: {source}")]
     ImageWrite { path: PathBuf, source: std::io::Error },
 

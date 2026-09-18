@@ -66,11 +66,13 @@
 //! the roadmap of what a screen looks like comes from it.
 
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::input::touch::TouchPhase;
 use bevy::prelude::*;
-use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+use bevy::render::view::screenshot::{save_to_disk, Screenshot, ScreenshotCaptured};
 use bevy::window::{CursorMoved, PresentMode, PrimaryWindow, WindowEvent};
 
 use crate::screens::AppScreen;
@@ -132,6 +134,9 @@ pub struct Dev {
     /// to where the cards actually fall rather than guessed at.
     pub table_guide: bool,
     frames: u32,
+    /// Set by the screenshot's observer once the file is written.
+    saved: Arc<AtomicBool>,
+    exiting: bool,
 }
 
 impl Dev {
@@ -171,6 +176,8 @@ impl Dev {
             scroll,
             table_guide: std::env::var_os("NETRUNNER_TABLE_GUIDE").is_some_and(|v| !v.is_empty()),
             frames: 0,
+            saved: Arc::new(AtomicBool::new(false)),
+            exiting: false,
         }
     }
 
@@ -195,8 +202,10 @@ fn present_without_vsync(mut windows: Query<&mut Window, With<PrimaryWindow>>) {
 }
 
 /// Text lays out over the first frames and the font arrives a little
-/// later; thirty frames is past both. The exit follows after another
-/// thirty, which is longer than the save takes.
+/// later; thirty frames is past both. The exit waits for another thirty
+/// frames *and* the save: thirty frames alone was not always longer than
+/// the save took, and with the card browser's scans decoding on every
+/// core the exit came first and no file was written.
 const SCREENSHOT_FRAME: u32 = 30;
 const EXIT_FRAME: u32 = 60;
 /// The pointer is placed, then the wheel turned two frames later, so
@@ -241,9 +250,15 @@ fn screenshot_then_exit(
             info!("dev: scroll area {entity}: size {size:?}, content {content:?}, position {:?}", position.0);
         }
         info!("dev: taking the screenshot");
-        commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path));
+        let mut save = save_to_disk(path);
+        let saved = dev.saved.clone();
+        commands.spawn(Screenshot::primary_window()).observe(move |captured: On<ScreenshotCaptured>| {
+            save(captured);
+            saved.store(true, Ordering::Release);
+        });
     }
-    if dev.frames == EXIT_FRAME {
+    if dev.frames >= EXIT_FRAME && (dev.screenshot.is_none() || dev.saved.load(Ordering::Acquire)) && !dev.exiting {
+        dev.exiting = true;
         info!("dev: exiting");
         exit.write(AppExit::Success);
     }
