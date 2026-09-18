@@ -42,6 +42,15 @@
 //!   greyable control bar and the prompt's decisions sit under the
 //!   prompt, so every legal action is reachable without the flat panel,
 //!   which is an aid a person turns on.
+//! - A reading surface carries no actions, so there is one list of what
+//!   a card can do. Two things are the exception, and both are cards
+//!   with no tile to click: a scored agenda, which is off the board
+//!   (the score area's sheet), and a card being accessed, which is in
+//!   HQ or R&D and exists only in the prompt — its face is in the
+//!   decision pop-up above its own steal/trash/pass buttons
+//!   (`netrunner_client::access`). A name is not a card: a person
+//!   cannot decide whether to steal or trash something they cannot
+//!   read.
 //! - The board is the table seen from the person's chair: the Corp reads
 //!   their servers Archives, R&D, HQ, remotes, ice climbing toward the
 //!   Runner; the Runner sees the mirror across the table. The order is

@@ -1990,3 +1990,120 @@ no sweep.
 cards on the field (item 1's other half), the panels, menus, sheets and
 icons, a server's own mark, the fanned hand, the hovered card, the player
 bars and the right-hand side.
+
+### 4o. An access shows the card, not its name, in both clients — DONE (17 September 2026)
+
+`feat/access-shows-the-card` (#64). The person asked for it plainly:
+"when a player is allowed to access a card, instead of just displaying
+the name of the card, display the card so the human knows what the card
+is — and then the action(s) they can take after accessing the card."
+
+They were right about how little was there. The desktop pop-up printed
+`Accessing Send a Message` and, under it, at most `Trash cost 3`. The
+terminal printed *nothing at all* about the access: it is not a
+`PendingDecision`, so `prose::decision_prompt` returned `None` and the
+actions pane kept its default title, leaving three labels — `Steal Send a
+Message`, `Trash Send a Message`, `Pass on Send a Message` — and no card
+on screen anywhere.
+
+**Decisions taken, with the alternative rejected.**
+
+- **No engine change, because the card was already on the wire.**
+  `PublicAccessPhase::PendingChoice` has carried the accessed card's
+  `CardId` all along, masked by `mask_run_state`'s
+  `viewer.is(Side::Runner) || run.server == ServerId::Archives`. The new
+  `netrunner_client::access` module reads the view and looks the card up
+  in the registry every client already holds. Nothing was added to
+  `ClientView`, and no `netrunner_core` file changed.
+- **The pop-up carries the card and its actions, which is the second
+  exception to "a reading surface carries no actions."** §4g settled that
+  a sheet is read-only and a card's actions live on the menu its tile's
+  click opens; the score area was the one exception, because a scored
+  agenda is off the board. An accessed card is the same shape of problem
+  and worse: it is in HQ or R&D, face down, and the *prompt is the only
+  place it exists*. The alternative was opening the existing sheet
+  beside the pop-up, which puts one card in two panels and still leaves
+  the person reading a name in whichever one has the buttons. Recorded
+  on `spawn_decision_popup` and in `netrunner_desktop/src/lib.rs`.
+- **The terminal's panel covers the board region only, and carries no
+  buttons.** It is deliberately not a `Modal`, which owns the keyboard
+  until dismissed: the actions pane below it keeps Up/Down/Enter and
+  already lists the three choices. Listing them inside the panel as well
+  was the alternative and would have meant either a second key model for
+  one prompt or two lists that could disagree. The panel is sized to its
+  *wrapped* rows rather than its line count — counting lines clipped the
+  facts off the bottom of a card whose text is a paragraph.
+- **Only the side being asked is shown the card.** The mask also names an
+  Archives card to the Corp, so a Corp-side modal was possible; it was
+  rejected because the modal exists to help someone *decide*, and the
+  Corp has no decision at a `PendingChoice`. The one access the Corp can
+  be asked — a `PendingInteractiveTrigger` whose `decider` is the Corp —
+  does show them the card. Screenshotting the Corp chair sixty decisions
+  in confirms it: the pop-up there is an ordinary selection prompt with
+  no face.
+- **`SelectNextCard` gets no face.** Choosing which of several cards to
+  access is a choice *between* cards rather than a decision about one,
+  and its buttons already name each candidate. A face per candidate is
+  the third list's item 5, not this.
+- **`Prompt::of` defers to `access::Access` for an access.** Found by
+  looking at the first screenshot: the rail read `An agenda: it must be
+  stolen` while the pop-up two inches away read `An agenda — it must be
+  stolen`. One set of words now, two separators — `·` for the rail's one
+  line, newlines for the panel's stack.
+
+**Three copies of the numbers line became one.** `Face::numbers_line`
+and `Face::lines` are new on `card_face`, and the terminal's
+`app::card_modal` and the desktop browser's private `numbers_line` both
+go through them now. All three had built the line from `CardDefinition`
+directly, and so all three printed `Cost 0` on an agenda — which prints
+an advancement requirement where a cost would sit — and on an identity,
+which prints no cost at all. Going through the slots fixed it for every
+caller at once. The terminal's card text also now renders printed
+symbols as `Symbol::fallback` (`¢`, `»`) instead of the raw `[credit]`
+tokens of the card JSON; the stand-ins existed for exactly this and the
+tokens were the data showing through.
+
+**Dev hook.** `NETRUNNER_HOLD_ACCESS=1`, following
+`NETRUNNER_HOLD_SELECTION` and `NETRUNNER_HOLD_INSTALL`: the autoplay
+stops at the first card the person is asked to access, so the screenshot
+catches the face in the pop-up with its buttons under it.
+
+**Verified.** `cargo test --workspace` green (1,553 tests, three
+consecutive full runs — the desktop access test was flaky at first
+because it counted frames rather than waiting on `awaiting`, and a
+loaded test runner answers later than a frame budget allows), clippy
+silent across the workspace. New tests:
+- `netrunner_client::access` — an agenda reports its mandatory steal and
+  an asset its live trash cost; only the side being asked is shown the
+  card, at Archives as much as at HQ, and never a spectator; a masked
+  card and the `SelectNextCard` step show nothing; the facts count what
+  is left of the breach and explain a blocked steal (Ansel 1.0); an
+  interactive trigger names its payer and says when they cannot afford
+  it; `ordered` sorts pass last, so a stray Enter cannot give a card
+  away.
+- `netrunner_client::card_face` — the numbers line in the face's own
+  order, with no `Cost 0` on an agenda and none on an identity; `lines`
+  is the printed card and never the DSL.
+- `netrunner_desktop` — the Runner runs R&D, continues and completes the
+  run, and the `DecisionPopup` holds a `BodyText` carrying the accessed
+  card's own words plus a button per access decision. Asserted on the
+  card's *words* rather than the rendered string, because which glyph a
+  `[subroutine]` is drawn with is the theme's choice and would otherwise
+  tie the test to the machine's fonts.
+- `netrunner_cli` — a view parked at an access renders the panel with the
+  card's title, its printed numbers, its own words and the live fact,
+  and the actions pane is still drawn beneath it.
+
+Screenshotted both chairs sixty decisions in. The Runner's pop-up shows
+Offworld Office at the large size — the real scan, since `card_images`
+had it cached — over `Accessing Offworld Office`, `An agenda — it must be
+stolen`, and `Steal Offworld Office`. The only scroll area logged is the
+hidden log's, at zero size. **No engine file changed, so no sweep.**
+
+**Found and deliberately not fixed:** `legal_actions_for` is not masked,
+so at a `PendingInteractiveTrigger` the Corp's own button already reads
+`Pay to avoid Snare!'s trigger` even where `PublicAccessPhase` masked the
+card to `None`. This change shows a face only when the *masked* card is
+`Some`, which is the conservative rule; the discrepancy is pre-existing
+and is an engine-boundary question rather than a rendering one, so it
+wants its own entry.

@@ -436,6 +436,16 @@ impl Prompt {
         }
         if let Some(run) = &view.active_run {
             if let Some(access) = &run.access_state {
+                // The words of an access belong to `access::Access`, which
+                // is also what the pop-up and the terminal's panel draw —
+                // the rail and the panel said the same thing two ways
+                // ("An agenda: it must be stolen" against "An agenda — it
+                // must be stolen") until this deferred to it. It answers
+                // only for the side being asked, so the arms below stay
+                // for everyone else.
+                if let Some(access) = crate::access::Access::of(view, registry) {
+                    return Some(Prompt { title: access.title(), detail: access.facts().join(" · ") });
+                }
                 match &access.phase {
                     PublicAccessPhase::PendingChoice { card, trash_cost, mandatory_steal, .. } => {
                         let mut detail = String::new();

@@ -25,6 +25,8 @@ use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError};
 
+use netrunner_client::access::Access;
+
 use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
@@ -850,6 +852,16 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
     }
     draw_actions(frame, regions.actions, ui);
     draw_action_log(frame, regions.log, ui.action_log());
+    // The accessed card, over the board and only over the board: the
+    // actions pane keeps its keys, and the person reads the card with
+    // `Steal …` / `Trash …` / `Pass on …` already highlighted beneath
+    // it. Drawn after the board and before the overlays that own the
+    // whole screen.
+    if let Some(view) = ui.view()
+        && let Some(access) = Access::of(view, ui.registry())
+    {
+        draw_access(frame, regions.board, &access);
+    }
     if let Some((winner, reason, note)) = game_over {
         let body = match note {
             Some(note) => format!("{winner:?} wins! ({reason:?})\n\n{note}"),
@@ -861,6 +873,63 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
     } else if let Some(picker) = ui.card_picker() {
         draw_card_picker(frame, picker);
     }
+}
+
+/// The card being accessed, centred over the board.
+///
+/// **Not a [`Modal`]**, which owns the keyboard until dismissed: the
+/// person must still be able to act, and the actions pane below this is
+/// where they do it — already listing `Steal …`, `Trash …` and `Pass on
+/// …` with Up/Down/Enter unchanged. So this covers `regions.board` only,
+/// leaving the pane visible, which is also why it carries no buttons of
+/// its own. Listing the actions twice was the alternative, and it would
+/// have meant either a second key model for one prompt or two lists that
+/// could disagree.
+///
+/// The card's lines are `card_face::Face::lines` — the same printed card
+/// the inspector and the desktop show — and the facts under it are
+/// `Access::facts`, which are the live costs rather than the printed
+/// ones.
+fn draw_access(frame: &mut Frame, area: Rect, access: &Access) {
+    let mut text: Vec<Line> = access.face.lines(false).into_iter().map(Line::from).collect();
+    let facts = access.facts();
+    if !facts.is_empty() {
+        text.push(Line::from(""));
+        for fact in facts {
+            text.push(Line::from(Span::styled(fact, Style::default().fg(Color::Cyan))));
+        }
+    }
+    // Sized to the card, not to the region: a card is a tall narrow
+    // thing, and a panel stretched over a wide terminal put four words
+    // on each line with the rest empty. The height counts *wrapped*
+    // rows, not lines — counting lines clipped the facts off the bottom
+    // of a card whose text is a paragraph.
+    let width = 56.min(area.width);
+    let inner = width.saturating_sub(2).max(1) as usize;
+    let rows: usize = text
+        .iter()
+        .map(|line| {
+            let chars = line.spans.iter().map(|span| span.content.chars().count()).sum::<usize>();
+            chars.div_ceil(inner).max(1)
+        })
+        .sum();
+    let height = (rows as u16 + 2).min(area.height);
+    let panel = Rect {
+        x: area.x + (area.width.saturating_sub(width)) / 2,
+        y: area.y + (area.height.saturating_sub(height)) / 2,
+        width,
+        height,
+    };
+    frame.render_widget(Clear, panel);
+    frame.render_widget(
+        Paragraph::new(text).wrap(Wrap { trim: false }).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .title(access.title())
+                .style(Style::default().fg(Color::Yellow)),
+        ),
+        panel,
+    );
 }
 
 /// The inspector's list, centred over the board like a modal, with the
@@ -1486,7 +1555,12 @@ mod tests {
                 for (label, id) in &zone.cards {
                     let card = registry.get(id).unwrap_or_else(|| panic!("{label} is not in the registry"));
                     assert!(card.printed_text.is_some(), "{label} has no printed text");
-                    assert!(card_modal(id, &registry).body.contains(card.printed_text.as_deref().unwrap().lines().next().unwrap()));
+                    // Against the *rendered* first line, not the raw one:
+                    // the modal draws printed symbols as their terminal
+                    // stand-ins (`¢`, `»`), so a card whose text holds a
+                    // `[credit]` token never matches the JSON verbatim.
+                    let rendered = netrunner_client::card_face::Face::of(card).body_text(false);
+                    assert!(card_modal(id, &registry).body.contains(rendered.lines().next().unwrap()), "{label}");
                 }
             }
         }
@@ -1539,6 +1613,62 @@ mod tests {
         terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
         let rendered = format!("{:?}", terminal.backend().buffer());
         assert!(rendered.contains("Bigger Picture asks"), "the pane is titled by the asking card");
+    }
+
+    /// An access draws the card, not its name: the person's report was
+    /// that all they got was a title. The panel sits over the board and
+    /// the actions pane keeps its own list, so the card and the choices
+    /// are both on screen.
+    #[test]
+    fn an_access_draws_the_card_over_the_board_and_leaves_the_actions_pane() {
+        use netrunner_core::rules::{MaskedZone, PublicAccessPhase, PublicAccessState, PublicRunState, RunPhase, ServerId};
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let corp_deck = netrunner_core::decks::by_id("discretion_advised").unwrap().to_deck();
+        let runner_deck = netrunner_core::decks::by_id("stolen_goods").unwrap().to_deck();
+        let (mut state, _events) = GameState::setup(&corp_deck, &runner_deck, &registry, 3).unwrap();
+        state.phase = GamePhase::Action(Side::Runner);
+        let card = netrunner_core::dsl::CardId("send_a_message".to_string());
+        let definition = registry.get(&card).expect("an agenda in the pool");
+
+        let mut view = build_client_view(&state, &registry, Side::Runner);
+        view.active_run = Some(PublicRunState {
+            server: ServerId::Hq,
+            phase: RunPhase::AccessingCard,
+            ice: Vec::new(),
+            position: 0,
+            access_state: Some(PublicAccessState {
+                server: ServerId::Hq,
+                unaccessed_cards: MaskedZone::Hidden { count: 0 },
+                resolved_cards: MaskedZone::Hidden { count: 0 },
+                pending_install: None,
+                phase: PublicAccessPhase::PendingChoice { card: Some(card.clone()), trash_cost: None, mandatory_steal: true, steal_cost: None },
+            }),
+            jack_out_permitted: false,
+            bad_publicity_credits: 0,
+            bonus_run_credits: 0,
+            runner_cannot_steal_or_trash: false,
+            redirect_on_approach: None,
+        });
+        view.legal_actions = vec![PlayerAction::StealAgenda { card_id: card.clone() }];
+
+        let mut ui = LocalUiState::new(registry.clone(), Side::Runner);
+        ui.begin_decision(view);
+        let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+        terminal.draw(|frame| draw_frame(frame, &ui, None)).unwrap();
+        let rendered = format!("{:?}", terminal.backend().buffer());
+
+        assert!(rendered.contains("Accessing Send a Message"), "the panel is titled by the card");
+        assert!(rendered.contains("Advancement"), "the printed numbers are on screen: {rendered}");
+        assert!(rendered.contains("must be stolen"), "the live fact is under the card");
+        // The card's own words, from the top of its printed text. Only
+        // the opening is asserted: the panel wraps, so a whole printed
+        // line is split across buffer rows.
+        let printed = definition.printed_text.as_deref().unwrap();
+        let opening: String = printed.split_whitespace().take(3).collect::<Vec<_>>().join(" ");
+        assert!(rendered.contains(&opening), "the card's own words are shown: {opening}");
+        assert!(rendered.contains("Steal Send a Message"), "the actions pane still lists the choice");
     }
 
     /// A card-selection prompt lists its cards by name — the person's

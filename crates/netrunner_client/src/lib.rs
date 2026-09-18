@@ -28,6 +28,7 @@
 //! `board::diff` says what changed between two views, so a client can
 //! animate without inferring anything from its own last frame.
 
+pub mod access;
 pub mod actions;
 pub mod board;
 pub mod card_face;

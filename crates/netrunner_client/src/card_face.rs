@@ -53,6 +53,26 @@ impl Slot {
         }
     }
 
+    /// The number as a *line* of prose reads it, for a client with a row
+    /// to spare rather than a corner to draw in: `Cost 4`, `3 agenda
+    /// points`, `1 MU`. [`Slot::caption`] is the corner's word and is
+    /// deliberately terser — `advance` fits under a circle, `Advancement
+    /// 3` reads in a sentence — so the two are separate rather than one
+    /// capitalised from the other.
+    pub fn line(self) -> String {
+        match self {
+            Slot::Cost(n) => format!("Cost {n}"),
+            Slot::Strength(n) => format!("Strength {n}"),
+            Slot::Advancement(n) => format!("Advancement {n}"),
+            Slot::AgendaPoints(n) => format!("{n} agenda point{}", if n == 1 { "" } else { "s" }),
+            Slot::TrashCost(n) => format!("Trash {n}"),
+            Slot::Memory(n) => format!("{n} MU"),
+            Slot::DeckSize(n) => format!("Deck {n}"),
+            Slot::InfluenceLimit(_) => format!("Influence limit {}", self.value()),
+            Slot::Link(n) => format!("Link {n}"),
+        }
+    }
+
     /// The word beside the number where a face has room for one.
     pub fn caption(self) -> &'static str {
         match self {
@@ -150,6 +170,56 @@ impl Face {
     pub fn body_text(&self, glyphs: bool) -> String {
         card_text::render(&self.body, glyphs)
     }
+
+    /// Every printed number on one line: `Cost 4 · Strength 3 ·
+    /// Influence 2`, in the order a face lays them out — the cost
+    /// circle, the bottom-left slot, the bottom-right ones, then
+    /// influence and uniqueness, which have no number to sit beside.
+    ///
+    /// **Three copies of this line existed before it lived here** — the
+    /// terminal's `card_modal`, the desktop browser's `numbers_line`,
+    /// and nothing at an access at all. All three built it from
+    /// `CardDefinition` directly, so all three printed `Cost 0` on an
+    /// agenda (which prints an advancement requirement where a cost
+    /// would go) and on an identity (which prints no cost at all).
+    /// Going through the slots fixes that for every caller at once.
+    pub fn numbers_line(&self) -> String {
+        let mut numbers: Vec<String> = Vec::new();
+        numbers.extend(self.cost.map(Slot::line));
+        numbers.extend(self.bottom_left.map(Slot::line));
+        numbers.extend(self.bottom_right.iter().copied().map(Slot::line));
+        if let Some(influence) = self.influence {
+            numbers.push(format!("Influence {influence}"));
+        }
+        if self.unique {
+            numbers.push("Unique".to_string());
+        }
+        numbers.join(" · ")
+    }
+
+    /// The card as a text client prints it: the type line, the numbers,
+    /// the printed text with its own line breaks, the flavour in quotes.
+    /// Blank lines separate them, so a `Paragraph` can render the lot.
+    ///
+    /// The engine's reading of the DSL is deliberately *not* here.
+    /// `prose::engine_reading` is the troubleshooting view — for a player
+    /// who thinks a card is doing something its text does not say — and
+    /// the card inspector appends it itself. A person being asked to
+    /// steal or trash a card wants the card, not the engine.
+    pub fn lines(&self, glyphs: bool) -> Vec<String> {
+        let mut lines = vec![self.type_line.clone(), self.numbers_line(), String::new()];
+        let body = self.body_text(glyphs);
+        if body.is_empty() {
+            lines.push("(no printed text on record)".to_string());
+        } else {
+            lines.extend(body.lines().map(str::to_string));
+        }
+        if let Some(flavor) = &self.flavor {
+            lines.push(String::new());
+            lines.extend(flavor.lines().map(|line| format!("\"{line}\"")));
+        }
+        lines
+    }
 }
 
 #[cfg(test)]
@@ -231,6 +301,56 @@ mod tests {
         assert!(face.bottom_right.is_empty());
         assert!(face.body.is_empty());
         assert_eq!(face.type_line, "Event", "no type line on record, so the type's name");
+    }
+
+    /// The numbers line reads in the face's own order, and an agenda no
+    /// longer claims a cost it does not print — the bug all three
+    /// hand-rolled copies of this line shared.
+    #[test]
+    fn the_numbers_line_prints_what_the_card_prints() {
+        let mut ice = card(CardType::Ice(IceType::Barrier), Side::Corp);
+        ice.cost = 4;
+        ice.strength = Some(3);
+        ice.influence_cost = Some(2);
+        assert_eq!(Face::of(&ice).numbers_line(), "Cost 4 · Strength 3 · Influence 2");
+
+        let mut agenda = card(CardType::Agenda, Side::Corp);
+        agenda.advancement_requirement = Some(3);
+        agenda.agenda_points = Some(1);
+        assert_eq!(Face::of(&agenda).numbers_line(), "Advancement 3 · 1 agenda point", "no Cost 0 on an agenda");
+
+        let mut program = card(CardType::Program, Side::Runner);
+        program.cost = 3;
+        program.memory_cost = Some(1);
+        program.unique = true;
+        assert_eq!(Face::of(&program).numbers_line(), "Cost 3 · 1 MU · Unique");
+
+        let mut id = card(CardType::Identity, Side::Runner);
+        id.min_deck_size = Some(45);
+        id.influence_limit = Some(15);
+        id.base_link = Some(1);
+        assert_eq!(Face::of(&id).numbers_line(), "Deck 45 · Influence limit 15 · Link 1", "an identity prints no cost");
+    }
+
+    /// The printed card as a text client lays it down: type line,
+    /// numbers, a blank, the text, a blank, the flavour in quotes.
+    #[test]
+    fn lines_are_the_printed_card_and_never_the_dsl() {
+        let mut asset = card(CardType::Asset, Side::Corp);
+        asset.type_line = Some("Asset: Advertisement".to_string());
+        asset.trash_cost = Some(2);
+        asset.printed_text = Some("Gain 3[credit].\nTrash this asset.".to_string());
+        asset.flavor = Some("Buy now.".to_string());
+        let face = Face::of(&asset);
+        assert_eq!(
+            face.lines(false),
+            vec!["Asset: Advertisement", "Cost 0 · Trash 2", "", "Gain 3¢.", "Trash this asset.", "", "\"Buy now.\""]
+        );
+        assert_eq!(face.lines(true)[3], format!("Gain 3{}.", card_text::Symbol::Credit.glyph()), "the glyph replaces the stand-in");
+
+        let bare = Face::of(&card(CardType::Event, Side::Runner));
+        assert_eq!(bare.lines(false)[3], "(no printed text on record)");
+        assert!(bare.lines(false).iter().all(|line| !line.contains("Sequence")), "the DSL is the inspector's business");
     }
 
     /// Every printing lays out: ice has a strength, agendas have points,

@@ -195,7 +195,17 @@ fn the_card_browser_lists_faces_filters_as_typed_and_escapes_in_three() {
     let all = faces(&mut app);
     assert!(all > 200, "{all} faces: every printing in the catalog");
     let texts = |app: &mut App| app.world_mut().query::<&Text>().iter(app.world()).map(|t| t.0.clone()).collect::<Vec<_>>();
-    assert!(texts(&mut app).iter().any(|t| t.starts_with("Cost ")), "the first card is open in the inspector from the start");
+    // The first card's numbers line, whatever kind of card it is: the
+    // line comes from `card_face::Face`, so an agenda leads with its
+    // advancement requirement and an identity with its deck size rather
+    // than the `Cost 0` the browser used to print on both.
+    let first = thumbs_in_order(&mut app)[0].1;
+    let numbers = {
+        let core = app.world().resource::<ClientCore>();
+        let card = core.registry.get_by_numeric_id(first).expect("the thumb's card is in the registry");
+        netrunner_client::card_face::Face::of(card).numbers_line()
+    };
+    assert!(texts(&mut app).contains(&numbers), "the first card is open in the inspector from the start: {numbers}");
 
     // Press a thumb the way a pointer would: the second, so the
     // inspector visibly changes.
