@@ -2569,3 +2569,45 @@ Screenshots taken from both chairs forty decisions in, with the
 buildings on the plates and the names legible on their bands; the dev
 log's one `scroll area` line is the hidden log at zero size. No engine
 file changed, so no sweep.
+
+### 4u. A tile shows what kind of card it is, and a counter shows its kind — DONE (18 September 2026)
+
+`feat/desktop-tile-art`, stacked on §4t. This is the rest of the same
+request: *"different images for rezzed and unrezzed locations/viruses/ICE
+— let the game space become prettier"*. Partway through, the person
+pointed at Null Signal Games' public visual-assets pack (*"Null Signal
+does allow access to some Glyphs"*).
+
+**Decisions taken, with the alternative rejected.**
+
+- **A tile's picture is its kind, never the card.** The kinds are:
+  - `ice.unrezzed`: hatching. It is one picture for every face-down ICE, because a type would leak what the Runner may not know.
+  - `ice.rezzed.barrier`, `.code-gate` and `.sentry`: bricks, a gated lock and rings. They fall back to `ice.rezzed`, which is scanlines.
+  - `root.unrezzed`, `root.rezzed.asset` and `root.rezzed.upgrade`, plus `root.agenda`.
+
+  The key is read from the registry through the viewer's own masked `card`, so a face-down card can only ever be `*.unrezzed`. The card's own picture is still the sheet's.
+- **Drawn tiles are grey, washed in the state colour.** That is the faction's colour when rezzed and the Corp's dimmed when face down, the same colour as the border. So the drawn tier is one image per kind for every faction. A file is drawn as painted (`Picture::drawn`), because an artist's colours are not the client's to wash.
+- **Tokens became badges, and the words stayed.** `facts::tile_label` split into `tile_title` and `tile_tokens` (a `Token` of a `TokenKind` and its amount), and `tile_label` is rebuilt from them, so the terminal client's words are byte-identical.
+  - The desktop draws each token as its kind's glyph beside the number. The rig's `N ctr` chip became the card's counter kind (`CardDefinition::counter_kind`), which is what makes a virus program's counters read as virus.
+  - With no pictures at all (the headless tests) a badge is the old words, so nothing the tests read changed. The tile's words now sit on a band over the picture, and the tile test reads them from anywhere under the tile.
+- **The glyphs are Null Signal Games' own, committed under CC BY-ND 4.0.** This is the person's explicit decision, taken after being shown the two conflicts:
+  - AGENTS.md's bar for a committed asset is a GPL-compatible grant, which "no derivatives" is not.
+  - The pack's term 4 speaks against combining its symbols with NSG card art, and the client shows NetrunnerDB scans.
+
+  Recorded as the one exception in AGENTS.md §5 and `assets/board/LICENSE-NSG.txt`, which credits each file and its source SVG. The changes are conversion to a 128 × 128 PNG and recolouring the black symbols `#eef1f8` for a dark board. NSG's terms name recolouring as not a derivative, and nothing was reshaped. The pack's SVGs are not committed; only the ten PNGs used are.
+  - Counters use the advancement, virus, generic (power) and credit symbols, over a drawn ring for a kind with none.
+  - The HUD uses credit, click, agenda, bad publicity, tag and core damage, before each readout's number. The word stays under it.
+
+  The strip's text column widened 400 → 480 so an icon, "5/7" and the next number no longer collide.
+- **A central's mark in the plate's corner was tried and removed.** It was the NSG Archives, R&D and HQ icons in the plate's top-left. The person's verdict on seeing it: *"looks stupid and wasteful — remove them"*. The plate's building already says which server it is. The files, the keys and the docs went with it. So "a server's mark", owed since §4n, is answered by the plate's picture rather than a badge.
+
+**Verified.** `cargo test --workspace` is green and clippy is silent across the workspace.
+- **New unit tests:**
+  - The ten tile patterns are 512 × 128 and pairwise different.
+  - A face-down ICE is `ice.unrezzed` whatever its type, and an agenda is `root.agenda` face up or not.
+  - Every key reaches a drawing except the optional HUD glyphs.
+  - A drawn picture takes its state's tint and a file does not.
+  - Every counter kind reaches a picture.
+  - The guide lists every key.
+- **Screenshots** were taken from both chairs sixty decisions in: hatched face-down ICE, a rezzed asset's coins in its faction's red with its advancement badge, and the HUD glyphs. The dev log's one `scroll area` line is the hidden log.
+- **No sweep.** No engine file changed; the client crate's facts split is covered by its existing tests, whose output is unchanged.

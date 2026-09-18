@@ -63,12 +63,50 @@ fn counter_word(kind: Option<CounterKind>, n: u32) -> String {
     format!("{n} {name}{}", if n == 1 { "" } else { "s" })
 }
 
+/// A token or a counter on a tile, apart from its words, so a client
+/// with a picture for the kind can draw the picture beside the number
+/// and one without can print [`Token::words`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Token {
+    pub kind: TokenKind,
+    /// The number as the tile shows it: `2/3` for an agenda whose
+    /// requirement the viewer knows, else the count.
+    pub amount: String,
+}
+
+/// What a [`Token`] counts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenKind {
+    Advancement,
+    /// Counters on the card, of the card's kind when the viewer may know
+    /// the card (`CardDefinition::counter_kind`).
+    Counter(Option<CounterKind>),
+}
+
+impl Token {
+    /// The token as words, as [`tile_label`] has always printed it.
+    pub fn words(&self) -> String {
+        match self.kind {
+            TokenKind::Advancement => format!("{} adv", self.amount),
+            TokenKind::Counter(_) => format!("{} ctr", self.amount),
+        }
+    }
+}
+
 /// The words a tile carries: the title (or `ICE` / `Card` when the
 /// viewer may not name it), then whether it is rezzed — or face down,
 /// for a card that cannot be — its strength, its tokens and counters,
 /// joined by ` · `. An agenda is never "unrezzed": it is advanced,
 /// `2/3 adv` when the viewer knows the requirement.
 pub fn tile_label(view: &ClientView, id: InstallId, registry: &CardRegistry) -> String {
+    let mut parts = vec![tile_title(view, id, registry)];
+    parts.extend(tile_tokens(view, id, registry).iter().map(Token::words));
+    parts.join(" · ")
+}
+
+/// [`tile_label`] without its tokens: the title, the rez state and the
+/// strength.
+pub fn tile_title(view: &ClientView, id: InstallId, registry: &CardRegistry) -> String {
     let Some(Found::Corp { card, .. }) = find(view, id) else {
         return match find(view, id) {
             Some(Found::Rig(rig)) => card_title(&rig.card, registry),
@@ -105,17 +143,29 @@ pub fn tile_label(view: &ClientView, id: InstallId, registry: &CardRegistry) -> 
             parts.push("face down".to_string());
         }
     }
+    parts.join(" · ")
+}
+
+/// A Corp tile's advancement tokens and counters, in [`tile_label`]'s
+/// order: advancement first (with the requirement when the viewer knows
+/// it, and on an agenda the viewer knows even at zero), then counters,
+/// of the card's kind when the viewer may know the card. Empty for a rig
+/// card, which has its own chip line.
+pub fn tile_tokens(view: &ClientView, id: InstallId, registry: &CardRegistry) -> Vec<Token> {
+    let Some(Found::Corp { card, .. }) = find(view, id) else { return Vec::new() };
+    let def = card.card.as_ref().and_then(|c| registry.get(c));
+    let mut tokens = Vec::new();
     if card.advancement_tokens > 0 || def.is_some_and(|d| d.card_type == CardType::Agenda) {
         match def.and_then(|d| d.advancement_requirement) {
-            Some(need) => parts.push(format!("{}/{need} adv", card.advancement_tokens)),
-            None if card.advancement_tokens > 0 => parts.push(format!("{} adv", card.advancement_tokens)),
+            Some(need) => tokens.push(Token { kind: TokenKind::Advancement, amount: format!("{}/{need}", card.advancement_tokens) }),
+            None if card.advancement_tokens > 0 => tokens.push(Token { kind: TokenKind::Advancement, amount: card.advancement_tokens.to_string() }),
             None => {}
         }
     }
     if let Some(n) = card.counters.filter(|n| *n > 0) {
-        parts.push(format!("{n} ctr"));
+        tokens.push(Token { kind: TokenKind::Counter(def.and_then(|d| d.counter_kind)), amount: n.to_string() });
     }
-    parts.join(" · ")
+    tokens
 }
 
 /// The lines an install's sheet lists, for the viewer: everything the

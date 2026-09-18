@@ -1,5 +1,7 @@
-//! The board's pictures: what a server's plate shows, in the three
-//! tiers every asset in the client has (AGENTS.md §5).
+//! The board's pictures: what a server's plate shows, the slab behind an
+//! ICE's or a root card's name, the badge beside a counter and a HUD
+//! readout's glyph — in the three tiers every asset in the
+//! client has (AGENTS.md §5).
 //!
 //! **A picture, not a frame.** A skin slot is a nine-sliced frame that a
 //! box is dressed in, and it stretches its middle to whatever the box
@@ -14,14 +16,29 @@
 //!    carry its own buildings;
 //! 2. `board/<key>.png` under the override directory, then the bundled
 //!    one (`assets::read`);
-//! 3. the drawn default here, for a base key — so every plate has a
+//! 3. the drawn default here — so every plate, tile and counter has a
 //!    picture with no file anywhere.
 //!
-//! A state key (`server.hq.run`) is only ever a file: with none drawn it
-//! falls back to its base (`server.hq`), one level deep, as a skin slot
-//! does. The drawn defaults are deliberately plain — a silhouette in the
-//! Corp's colour against a dusk, lit windows — so they read as places at
-//! plate size and never pretend to be anybody's art.
+//! A key with no file and no drawn default falls back to its base, one
+//! level deep, as a skin slot does: `server.hq.run` to `server.hq`,
+//! `counter.virus` to `counter`. A HUD glyph has
+//! neither — they are optional, and a board without them is the words
+//! it always had. The drawn defaults are deliberately plain — a
+//! silhouette in the Corp's colour, a pattern in grey washed in the
+//! card's own colour — so they read at board size and never pretend to
+//! be anybody's art.
+//!
+//! **The bundled counters and HUD glyphs are Null Signal Games'
+//! own game symbols** (`assets/board/LICENSE-NSG.txt`, CC BY-ND 4.0),
+//! converted to PNG and the black ones recoloured light for a dark
+//! board, which NSG's terms name as not a derivative. They are the one
+//! committed asset not under a GPL-compatible grant, by the person's
+//! explicit decision; AGENTS.md §5 records it.
+//!
+//! **A drawn tile is grey and washed in its state's colour**
+//! ([`Picture::drawn`]): the faction's for a rezzed card, the Corp's
+//! dimmed for one face down — the same colour the tile's border carries.
+//! A file is drawn as its author painted it.
 //!
 //! **Every picture is cropped to cover its box** ([`cover_rect`]): a plate
 //! is 16:9 at any card width, but a file need not be, and a stretched
@@ -44,6 +61,11 @@ pub const DIR: &str = "board";
 /// The drawn plates' size: 16:9, twice the plate at the widest card.
 pub const PLATE_WIDTH: u32 = 512;
 pub const PLATE_HEIGHT: u32 = 288;
+/// The drawn tiles' size: 4:1, twice the tallest tile at the widest card.
+pub const TILE_WIDTH: u32 = 512;
+pub const TILE_HEIGHT: u32 = 128;
+/// The drawn counter badge's size: twice the badge.
+pub const BADGE: u32 = 64;
 
 /// Every key the board asks for, with the base a state falls back to and
 /// the painter a base is drawn by when no file exists.
@@ -62,6 +84,27 @@ const KEYS: &[Key] = &[
     Key { key: "server.rnd.run", base: Some("server.rnd"), paint: None },
     Key { key: "server.hq.run", base: Some("server.hq"), paint: None },
     Key { key: "server.remote.run", base: Some("server.remote"), paint: None },
+    Key { key: "ice.unrezzed", base: None, paint: Some(|_| paint_tile(Pattern::Hatch)) },
+    Key { key: "ice.rezzed", base: None, paint: Some(|_| paint_tile(Pattern::Scanlines)) },
+    Key { key: "ice.rezzed.barrier", base: Some("ice.rezzed"), paint: Some(|_| paint_tile(Pattern::Bricks)) },
+    Key { key: "ice.rezzed.code-gate", base: Some("ice.rezzed"), paint: Some(|_| paint_tile(Pattern::Gate)) },
+    Key { key: "ice.rezzed.sentry", base: Some("ice.rezzed"), paint: Some(|_| paint_tile(Pattern::Rings)) },
+    Key { key: "root.unrezzed", base: None, paint: Some(|_| paint_tile(Pattern::BackHatch)) },
+    Key { key: "root.rezzed", base: None, paint: Some(|_| paint_tile(Pattern::Rivets)) },
+    Key { key: "root.rezzed.asset", base: Some("root.rezzed"), paint: Some(|_| paint_tile(Pattern::Coins)) },
+    Key { key: "root.rezzed.upgrade", base: Some("root.rezzed"), paint: Some(|_| paint_tile(Pattern::Chevrons)) },
+    Key { key: "root.agenda", base: None, paint: Some(|_| paint_tile(Pattern::Diamonds)) },
+    Key { key: "counter", base: None, paint: Some(|_| paint_badge()) },
+    Key { key: "counter.advancement", base: Some("counter"), paint: None },
+    Key { key: "counter.virus", base: Some("counter"), paint: None },
+    Key { key: "counter.power", base: Some("counter"), paint: None },
+    Key { key: "counter.credit", base: Some("counter"), paint: None },
+    Key { key: "hud.credits", base: None, paint: None },
+    Key { key: "hud.clicks", base: None, paint: None },
+    Key { key: "hud.agendas", base: None, paint: None },
+    Key { key: "hud.bad-publicity", base: None, paint: None },
+    Key { key: "hud.tags", base: None, paint: None },
+    Key { key: "hud.damage", base: None, paint: None },
 ];
 
 /// Every key the board can ask for, for the README's test and for a
@@ -75,6 +118,17 @@ pub fn keys() -> impl Iterator<Item = &'static str> {
 pub struct Picture {
     pub image: Handle<Image>,
     pub size: Vec2,
+    /// Whether this is the drawn default rather than a file: a drawn
+    /// tile is grey, and is washed in its state's colour.
+    pub drawn: bool,
+}
+
+impl Picture {
+    /// The colour to draw the picture in: `state` for a drawn default,
+    /// white — the picture as painted — for a file.
+    pub fn tint(&self, state: Color) -> Color {
+        if self.drawn { state } else { Color::WHITE }
+    }
 }
 
 /// The pictures the board draws from, built once per match and again when
@@ -96,9 +150,10 @@ impl BoardArt {
                 .and_then(|folder| crate::assets::read(&format!("{}/{folder}/{DIR}/{}.png", crate::skin::DIR, entry.key)))
                 .or_else(|| crate::assets::read(&format!("{DIR}/{}.png", entry.key)))
                 .and_then(|bytes| crate::card_images::decode(&bytes, "png"));
+            let drawn = file.is_none();
             let Some(image) = file.or_else(|| entry.paint.map(|paint| paint(theme))) else { continue };
             let size = image.size().as_vec2();
-            pictures.insert(entry.key, Picture { image: images.add(image), size });
+            pictures.insert(entry.key, Picture { image: images.add(image), size, drawn });
         }
         Self { pictures, skin: skin.map(str::to_string) }
     }
@@ -126,6 +181,66 @@ pub fn server_key(server: ServerId, under_run: bool) -> &'static str {
     }
 }
 
+/// An ICE tile's key: its state, and a rezzed one's type.
+pub fn ice_key(rezzed: bool, kind: Option<netrunner_core::dsl::IceType>) -> &'static str {
+    use netrunner_core::dsl::IceType;
+    match (rezzed, kind) {
+        (false, _) => "ice.unrezzed",
+        (true, Some(IceType::Barrier)) => "ice.rezzed.barrier",
+        (true, Some(IceType::CodeGate)) => "ice.rezzed.code-gate",
+        (true, Some(IceType::Sentry)) => "ice.rezzed.sentry",
+        (true, None) => "ice.rezzed",
+    }
+}
+
+/// A root card's key: an agenda is always itself, face up or not to the
+/// viewer; a rezzed asset or upgrade is its type.
+pub fn root_key(face_up: bool, card_type: Option<&netrunner_core::dsl::CardType>) -> &'static str {
+    use netrunner_core::dsl::CardType;
+    match (face_up, card_type) {
+        (_, Some(CardType::Agenda)) => "root.agenda",
+        (false, _) => "root.unrezzed",
+        (true, Some(CardType::Asset)) => "root.rezzed.asset",
+        (true, Some(CardType::Upgrade)) => "root.rezzed.upgrade",
+        (true, _) => "root.rezzed",
+    }
+}
+
+/// A token's badge key.
+pub fn token_key(kind: netrunner_client::board::TokenKind) -> &'static str {
+    use netrunner_client::board::TokenKind;
+    use netrunner_core::dsl::CounterKind;
+    match kind {
+        TokenKind::Advancement => "counter.advancement",
+        TokenKind::Counter(Some(CounterKind::Virus)) => "counter.virus",
+        TokenKind::Counter(Some(CounterKind::Power)) => "counter.power",
+        TokenKind::Counter(Some(CounterKind::Credit)) => "counter.credit",
+        TokenKind::Counter(None) => "counter",
+    }
+}
+
+/// A HUD readout's glyph, by the readout's label (`hud::readouts`).
+pub fn hud_key(label: &str) -> Option<&'static str> {
+    Some(match label {
+        "Credits" => "hud.credits",
+        "Clicks" => "hud.clicks",
+        "Agendas" => "hud.agendas",
+        "Bad pub." => "hud.bad-publicity",
+        "Tags" => "hud.tags",
+        "Damage" => "hud.damage",
+        _ => return None,
+    })
+}
+
+/// A glyph at `size` logical pixels, kept to its shape.
+pub fn glyph(picture: &Picture, size: f32) -> impl Bundle {
+    (
+        ImageNode { image_mode: NodeImageMode::Auto, ..ImageNode::new(picture.image.clone()) },
+        Node { width: px(size), height: px(size), flex_shrink: 0.0, ..default() },
+        bevy::picking::Pickable::IGNORE,
+    )
+}
+
 /// The part of an `image`-sized picture that covers a `target`-sized box
 /// without stretching: the largest centred rectangle of the box's shape,
 /// in the image's pixels, for `ImageNode::rect`.
@@ -140,10 +255,11 @@ pub fn cover_rect(image: Vec2, target: Vec2) -> Rect {
 }
 
 /// The picture as a node filling its parent's box, cropped to cover it,
-/// drawn under its siblings: a plate's label is spawned after it.
-pub fn backdrop(picture: &Picture, box_size: Vec2) -> impl Bundle {
+/// drawn under its siblings: a plate's label is spawned after it. `tint`
+/// is the state's colour, which only a drawn picture takes.
+pub fn backdrop(picture: &Picture, box_size: Vec2, tint: Color) -> impl Bundle {
     (
-        ImageNode { rect: Some(cover_rect(picture.size, box_size)), image_mode: NodeImageMode::Stretch, ..ImageNode::new(picture.image.clone()) },
+        ImageNode { rect: Some(cover_rect(picture.size, box_size)), image_mode: NodeImageMode::Stretch, color: picture.tint(tint), ..ImageNode::new(picture.image.clone()) },
         Node { position_type: PositionType::Absolute, left: px(0), top: px(0), width: percent(100), height: percent(100), ..default() },
         bevy::picking::Pickable::IGNORE,
     )
@@ -335,6 +451,120 @@ fn paint_plate(theme: &Theme, building: Building) -> Image {
     )
 }
 
+/// A drawn tile's pattern: one per key, in grey, so the tile's state
+/// colour washes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Pattern {
+    /// Face-down ICE: diagonal hatching, the back of a card.
+    Hatch,
+    /// Face-down root card: hatching the other way.
+    BackHatch,
+    /// Rezzed ICE of no type the board knows: scanlines.
+    Scanlines,
+    /// A barrier: a wall of bricks.
+    Bricks,
+    /// A code gate: bars with a lock in the middle.
+    Gate,
+    /// A sentry: rings around a sight.
+    Rings,
+    /// A rezzed root card: a riveted panel.
+    Rivets,
+    /// An asset: a row of coins.
+    Coins,
+    /// An upgrade: chevrons pointing up.
+    Chevrons,
+    /// An agenda: diamonds.
+    Diamonds,
+}
+
+/// How bright the pattern is at pixel `(x, y)` of a tile, 0..1.
+fn pattern(pattern: Pattern, x: f32, y: f32) -> f32 {
+    let (w, h) = (TILE_WIDTH as f32, TILE_HEIGHT as f32);
+    let (cx, cy) = (w / 2.0, h / 2.0);
+    let low = 0.28;
+    let high = 0.62;
+    let on = |yes: bool| if yes { high } else { low };
+    match pattern {
+        Pattern::Hatch => on((x + y).rem_euclid(28.0) < 7.0),
+        Pattern::BackHatch => on((x - y).rem_euclid(28.0) < 7.0),
+        Pattern::Scanlines => on(y.rem_euclid(10.0) < 3.0),
+        Pattern::Bricks => {
+            let row = (y / 32.0).floor();
+            let offset = if row as i32 % 2 == 0 { 0.0 } else { 32.0 };
+            on(!(y.rem_euclid(32.0) < 5.0 || (x + offset).rem_euclid(64.0) < 5.0))
+        }
+        Pattern::Gate => {
+            let lock = ((x - cx).powi(2) + (y - cy).powi(2)).sqrt();
+            if lock < 34.0 {
+                return if lock < 12.0 || ((x - cx).abs() < 5.0 && y > cy) { 0.12 } else { 0.72 };
+            }
+            on(x.rem_euclid(40.0) < 10.0)
+        }
+        Pattern::Rings => {
+            let d = ((x - cx).powi(2) + ((y - cy) * 1.0).powi(2)).sqrt();
+            let sight = (x - cx).abs() < 2.0 || (y - cy).abs() < 2.0;
+            on(d.rem_euclid(22.0) < 4.0 || (sight && d < 60.0))
+        }
+        Pattern::Rivets => {
+            let (fx, fy) = (x.rem_euclid(48.0) - 24.0, y.rem_euclid(48.0) - 24.0);
+            on(fx * fx + fy * fy < 36.0)
+        }
+        Pattern::Coins => {
+            let (fx, fy) = (x.rem_euclid(64.0) - 32.0, y.rem_euclid(64.0) - 32.0);
+            let r = (fx * fx + fy * fy).sqrt();
+            on(r < 18.0 && r > 12.0 || r < 6.0)
+        }
+        Pattern::Chevrons => on((x.rem_euclid(56.0) - 28.0).abs() + y.rem_euclid(40.0) < 34.0 && (x.rem_euclid(56.0) - 28.0).abs() + y.rem_euclid(40.0) > 24.0),
+        Pattern::Diamonds => {
+            let (fx, fy) = (x.rem_euclid(64.0) - 32.0, y.rem_euclid(64.0) - 32.0);
+            on(fx.abs() + fy.abs() < 16.0)
+        }
+    }
+}
+
+/// A drawn tile: `kind` in grey, darker toward the ends so a label in
+/// the middle reads, for the tile's state colour to wash.
+fn paint_tile(kind: Pattern) -> Image {
+    let mut data = Vec::with_capacity((TILE_WIDTH * TILE_HEIGHT * 4) as usize);
+    for y in 0..TILE_HEIGHT {
+        for x in 0..TILE_WIDTH {
+            let (fx, fy) = (x as f32 + 0.5, y as f32 + 0.5);
+            let edge = (fx.min(TILE_WIDTH as f32 - fx) / 40.0).min(1.0);
+            let value = (pattern(kind, fx, fy) * (0.55 + 0.45 * edge)).clamp(0.0, 1.0);
+            let byte = (value * 255.0).round() as u8;
+            data.extend_from_slice(&[byte, byte, byte, 255]);
+        }
+    }
+    Image::new(
+        Extent3d { width: TILE_WIDTH, height: TILE_HEIGHT, depth_or_array_layers: 1 },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    )
+}
+
+/// The drawn counter: a light ring on a dark disc, transparent outside,
+/// for a counter of a kind nobody has drawn.
+fn paint_badge() -> Image {
+    let mut data = Vec::with_capacity((BADGE * BADGE * 4) as usize);
+    let centre = BADGE as f32 / 2.0;
+    for y in 0..BADGE {
+        for x in 0..BADGE {
+            let d = ((x as f32 + 0.5 - centre).powi(2) + (y as f32 + 0.5 - centre).powi(2)).sqrt();
+            let pixel = if d > centre - 1.0 {
+                [0, 0, 0, 0]
+            } else if d > centre - 8.0 {
+                [228, 232, 242, 255]
+            } else {
+                [40, 44, 56, 255]
+            };
+            data.extend_from_slice(&pixel);
+        }
+    }
+    Image::new(Extent3d { width: BADGE, height: BADGE, depth_or_array_layers: 1 }, TextureDimension::D2, data, TextureFormat::Rgba8UnormSrgb, RenderAssetUsages::default())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -371,7 +601,14 @@ mod tests {
             }
         }
         for key in KEYS {
-            assert!(key.paint.is_some() != key.base.is_some(), "{}: a base is drawn, a state falls back", key.key);
+            // Every base names a key in the table; HUD glyphs are the
+            // only keys allowed to have nothing at all.
+            if let Some(base) = key.base {
+                assert!(KEYS.iter().any(|k| k.key == base), "{}'s base {base} is not a key", key.key);
+            }
+            let optional = key.key.starts_with("hud.");
+            let reaches_a_drawing = key.paint.is_some() || key.base.and_then(|b| KEYS.iter().find(|k| k.key == b)).is_some_and(|b| b.paint.is_some());
+            assert!(optional || reaches_a_drawing, "{} has no drawn default to fall back to", key.key);
         }
     }
 
@@ -385,16 +622,48 @@ mod tests {
         }
     }
 
+    /// Each tile pattern is a different picture, at the tile's shape.
+    #[test]
+    fn every_tile_kind_has_its_own_drawn_pattern() {
+        let all = [Pattern::Hatch, Pattern::BackHatch, Pattern::Scanlines, Pattern::Bricks, Pattern::Gate, Pattern::Rings, Pattern::Rivets, Pattern::Coins, Pattern::Chevrons, Pattern::Diamonds];
+        let tiles: Vec<Image> = all.iter().map(|p| paint_tile(*p)).collect();
+        for (i, a) in tiles.iter().enumerate() {
+            assert_eq!(a.size(), UVec2::new(TILE_WIDTH, TILE_HEIGHT));
+            for b in tiles.iter().skip(i + 1) {
+                assert_ne!(a.data, b.data, "two tile kinds drew the same pattern");
+            }
+        }
+        use netrunner_core::dsl::{CardType, IceType};
+        assert_eq!(ice_key(false, Some(IceType::Sentry)), "ice.unrezzed", "a face-down ICE never shows its type");
+        assert_eq!(ice_key(true, Some(IceType::CodeGate)), "ice.rezzed.code-gate");
+        assert_eq!(root_key(false, Some(&CardType::Agenda)), "root.agenda");
+        assert_eq!(root_key(false, Some(&CardType::Asset)), "root.unrezzed");
+        assert_eq!(root_key(true, Some(&CardType::Upgrade)), "root.rezzed.upgrade");
+    }
+
     /// With no files anywhere, a state finds its base's drawn picture.
     #[test]
     fn a_state_with_no_picture_falls_back_to_its_base() {
         let mut images = Assets::<Image>::default();
-        let art = BoardArt { skin: None, pictures: HashMap::new() };
+        let art = BoardArt::default();
         assert!(art.get("server.hq.run").is_none());
         let loaded = BoardArt::load(Some("no-such-skin"), &Theme::default(), &mut images);
         let base = loaded.get("server.hq").expect("drawn").image.clone();
         assert_eq!(loaded.get("server.hq.run").expect("falls back").image, base);
         assert_eq!(loaded.get(server_key(ServerId::Remote(3), true)).unwrap().image, loaded.get("server.remote").unwrap().image);
         assert_eq!(loaded.get("server.remote").unwrap().size, Vec2::new(PLATE_WIDTH as f32, PLATE_HEIGHT as f32));
+        // A drawn picture is washed in its state's colour; a file is not.
+        let drawn = loaded.get("ice.unrezzed").unwrap();
+        assert!(drawn.drawn);
+        assert_eq!(drawn.tint(Color::BLACK), Color::BLACK);
+        // The bundled glyphs load as files, and every counter reaches a
+        // picture whether or not they are there.
+        for kind in ["counter.virus", "counter.advancement", "counter.power", "counter.credit", "counter"] {
+            assert!(loaded.get(kind).is_some(), "{kind}");
+        }
+        let virus = loaded.get("counter.virus").unwrap();
+        if crate::assets::resolve("board/counter.virus.png").is_some() {
+            assert!(!virus.drawn && virus.tint(Color::BLACK) == Color::WHITE, "a file is drawn as painted");
+        }
     }
 }

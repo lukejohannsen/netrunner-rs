@@ -20,5 +20,5 @@ pub mod trail;
 pub use action_map::{table_servers, ActionEntry, ActionMap, Control, Pile, Prompt, Target};
 pub use affordance::Affordance;
 pub use diff::{transitions, Transition, Zone};
-pub use facts::{install_facts, tile_label};
+pub use facts::{install_facts, tile_label, tile_title, tile_tokens, Token, TokenKind};
 pub use trail::{IceState, IceStep, Outcome, RunTrail, Stage};

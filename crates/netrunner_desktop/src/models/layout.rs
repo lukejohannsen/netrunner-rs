@@ -203,7 +203,7 @@ pub const PLATE_ASPECT: f32 = 9.0 / 16.0;
 pub const MIN_FACE: f32 = 72.0;
 pub const MAX_FACE: f32 = 220.0;
 /// The strip beside a hand: the identity plus its lines of numbers.
-pub const STRIP_TEXT: f32 = 400.0;
+pub const STRIP_TEXT: f32 = 480.0;
 /// A strip's text column: the name line, the HUD as one row of large
 /// numbers over their words, and — the Runner's — the details line with
 /// the pile buttons beside it. Nothing in a strip grows with the game.

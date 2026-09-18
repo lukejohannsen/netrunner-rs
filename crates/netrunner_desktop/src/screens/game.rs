@@ -106,7 +106,7 @@ use bevy::window::PrimaryWindow;
 
 use netrunner_client::access::Access;
 use netrunner_client::board::action_map::server_name;
-use netrunner_client::board::{facts, hud, Affordance, Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Transition, Zone};
+use netrunner_client::board::{facts, hud, Affordance, Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Token, TokenKind, Transition, Zone};
 use netrunner_client::card_face::Face;
 use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, RunPhase, ServerId, Side, SubroutineStatus};
@@ -196,6 +196,15 @@ pub struct ServerPlate(pub ServerId);
 /// The picture on a server's plate.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlatePicture(pub ServerId);
+
+/// The picture behind a tile's words, and the key it was drawn from.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct TileArt(pub &'static str);
+
+/// A token's badge — on a tile or under a rig card — and the key of the
+/// glyph it shows.
+#[derive(Component, Debug, Clone, PartialEq, Eq)]
+pub struct TokenBadge(pub &'static str);
 /// Where the pointer was last seen, in logical window pixels: read off
 /// `CursorMoved`, because the window's own `cursor_position` needs a
 /// window and the headless tests have none.
@@ -1240,7 +1249,7 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     let mut opponent_row = strip_row();
     opponent_row.align_items = AlignItems::FlexStart;
     parent.spawn(opponent_row).with_children(|row| {
-        spawn_strip(row, theme, core, images, game, view, opponent, fit);
+        spawn_strip(row, theme, core, images, art, game, view, opponent, fit);
         spawn_opponent_hand(row, theme, images, view, opponent, fit);
     });
     let lane = |parent: &mut ChildSpawnerCommands| {
@@ -1253,7 +1262,7 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     spawn_area(parent, theme, core, images, art, game, view, human, &lit, fit);
     control_bar(parent, game);
     parent.spawn(strip_row()).with_children(|row| {
-        spawn_strip(row, theme, core, images, game, view, human, fit);
+        spawn_strip(row, theme, core, images, art, game, view, human, fit);
         spawn_hand(row, theme, core, images, game, view, human, &lit, fit, drag);
     });
     with_phase_bar(parent, game);
@@ -1421,7 +1430,7 @@ fn overlap(parent: &mut ChildSpawnerCommands, entities: &[Entity], width: f32, a
 
 /// A side's identity and numbers, at the strip's smaller size.
 #[allow(clippy::too_many_arguments)]
-fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, fit: &BoardFit) {
+fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, view: &ClientView, side: Side, fit: &BoardFit) {
     let identity = match side {
         Side::Corp => view.corp.identity.clone(),
         Side::Runner => view.runner.identity.clone(),
@@ -1456,7 +1465,7 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
             row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 1.0, min_width: px(0), row_gap: px(2), ..default() },)).with_children(|column| {
                 let title = identity.as_ref().and_then(|id| core.registry.get(id)).map_or_else(|| format!("{side:?}"), |c| c.title.clone());
                 column.spawn((Text::new(format!("{who} · {title}")), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                spawn_hud(column, theme, view, side);
+                spawn_hud(column, theme, art, view, side);
                 // The details line and the Runner's piles share one row, so
                 // the strip is no taller than a hand's peek. The piles are
                 // zones a click opens — the stack for its draw, the heap
@@ -1513,7 +1522,7 @@ fn compact_button(parent: &mut ChildSpawnerCommands, theme: &Theme, text: String
 /// live threat is drawn in the danger colour rather than added, which is
 /// `hud`'s rule. A readout that opens a zone — Agendas, the score area —
 /// is a button, drawn with the buttons' fill so it reads as one.
-fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, side: Side) {
+fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, view: &ClientView, side: Side) {
     let readouts = hud::readouts(view, side);
     parent
         .spawn((
@@ -1555,7 +1564,15 @@ fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView
                     )),
                 };
                 cell.with_children(|cell| {
-                        cell.spawn((Text::new(readout.value), theme.font(size::HEADING), TextColor(colour)));
+                        // The number, after Null Signal Games' own glyph for
+                        // what it counts when the board has one; the word
+                        // stays under it either way.
+                        cell.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(4), ..default() }).with_children(|line| {
+                            if let Some(picture) = board_art::hud_key(readout.label).and_then(|key| art?.get(key)) {
+                                line.spawn(board_art::glyph(picture, 18.0));
+                            }
+                            line.spawn((Text::new(readout.value), theme.font(size::HEADING), TextColor(colour)));
+                        });
                         // One line: the HUD is a single row, and a word that
                         // wrapped ("Bad / pub.") made the strip a line taller.
                         cell.spawn((Text::new(readout.label), theme.font(size::SMALL), TextColor(if readout.alarm { theme.danger } else { theme.text_dim }), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
@@ -1611,7 +1628,7 @@ fn spawn_area(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     let depth = Depth::area(side, game.side);
     match side {
         Side::Corp => spawn_servers(parent, theme, core, art, game, view, lit, fit, depth),
-        Side::Runner => spawn_rig(parent, theme, core, images, game, view, lit, fit, depth),
+        Side::Runner => spawn_rig(parent, theme, core, images, art, game, view, lit, fit, depth),
     }
 }
 
@@ -1703,8 +1720,8 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                             for piece in pieces {
                                 match piece {
                                     layout::Piece::Header => {}
-                                    layout::Piece::Ice => tiles.extend(spawn_server_ice(stack_parent, theme, core, game, view, server, game.side, encountered, lit, size, stack.0, depth)),
-                                    layout::Piece::Root => tiles.extend(spawn_server_root(stack_parent, theme, core, game, view, server, lit, size, stack.0, depth)),
+                                    layout::Piece::Ice => tiles.extend(spawn_server_ice(stack_parent, theme, core, art, game, view, server, game.side, encountered, lit, size, stack.0, depth)),
+                                    layout::Piece::Root => tiles.extend(spawn_server_root(stack_parent, theme, core, art, game, view, server, lit, size, stack.0, depth)),
                                 }
                             }
                             // Pulled together by the stack's advance: its
@@ -1776,7 +1793,8 @@ fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, art: Opt
         // The picture first, so the label draws over it; inside the
         // border, which is what the crop covers.
         if let Some(picture) = art.and_then(|art| art.get(board_art::server_key(server, under_run))) {
-            plate.spawn((PlatePicture(server), board_art::backdrop(picture, Vec2::new(width - 2.0, height - 2.0))));
+            // The drawn plates are painted in the Corp's colour already.
+            plate.spawn((PlatePicture(server), board_art::backdrop(picture, Vec2::new(width - 2.0, height - 2.0), Color::WHITE)));
         }
         // The name on a band of the panel, so it reads over any picture.
         plate.spawn((
@@ -1794,21 +1812,54 @@ fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, art: Opt
     glow(&mut column.commands(), entity, theme, mood);
 }
 
-/// A tile in a server column — an ice or a root card — the same block
-/// the plate's label is: the title when it may be named, a number or
-/// two, and a border in the card's faction colour when it is rezzed. A
-/// click opens the card's menu and a secondary click its sheet; the
+/// A token beside a number: the kind's glyph when the board has one
+/// (`board_art::token_key`, falling back to a drawn disc), and the words
+/// alone when it has no pictures at all — the headless tests, which read
+/// the same `2/3 adv` the terminal client prints.
+fn spawn_badge(parent: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, token: &Token, glyph: f32, text_size: f32, colour: Color) {
+    let key = board_art::token_key(token.kind);
+    match art.and_then(|art| art.get(key)) {
+        Some(picture) => {
+            parent
+                .spawn((TokenBadge(key), Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(2), flex_shrink: 0.0, ..default() }))
+                .with_children(|badge| {
+                    badge.spawn(board_art::glyph(picture, glyph));
+                    badge.spawn((Text::new(token.amount.clone()), theme.font(text_size), TextColor(colour)));
+                });
+        }
+        None => {
+            parent.spawn((TokenBadge(key), Text::new(token.words()), theme.font(text_size), TextColor(colour)));
+        }
+    }
+}
+
+/// What a tile shows: its words, its tokens, its picture and the colour
+/// of its state — the border's, and what a drawn picture is washed in.
+struct TileLook {
+    title: String,
+    tokens: Vec<Token>,
+    key: &'static str,
+    colour: Color,
+    text_colour: Color,
+}
+
+/// A tile in a server column — an ice or a root card: a picture of what
+/// kind of card it is (`board_art`: a face-down card, a barrier, an
+/// asset…) behind the title when it may be named, its tokens as badges,
+/// and a border in the card's faction colour when it is rezzed. A click
+/// opens the card's menu and a secondary click its sheet; the card's own
 /// picture is read there, not here, so a column is tiles `height` tall
 /// (`layout::tile_stack`) and never a face.
 #[allow(clippy::too_many_arguments)]
-fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, colour: Color, text_colour: Color, install: InstallId, lit: bool, size: FaceSize, height: f32, slot: Slot, mood: Option<Affordance>, depth: Depth) -> Entity {
+fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, look: TileLook, install: InstallId, lit: bool, size: FaceSize, height: f32, slot: Slot, mood: Option<Affordance>, depth: Depth) -> Entity {
+    let width = size.width() + 4.0;
     let mut tile = column.spawn((
         Button,
         widgets::Themed,
         Click::Target(Target::Install(install)),
         DropPlace(Target::Install(install)),
         Node {
-            width: px(size.width() + 4.0),
+            width: px(width),
             height: px(height),
             flex_shrink: 0.0,
             align_items: AlignItems::Center,
@@ -1819,13 +1870,30 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
             ..default()
         },
         BackgroundColor(theme.button),
-        BorderColor::all(colour),
+        BorderColor::all(look.colour),
         // The border carries the state — a rezzed ice is its faction's
         // colour — so that colour is what a picture asking for `"state"`
         // is washed in.
-        widgets::Dressed::button(theme, slot, Drawn::new(theme.button, colour)),
-        children![(Text::new(label), theme.font(size::SMALL - 3.0), TextColor(text_colour))],
+        widgets::Dressed::button(theme, slot, Drawn::new(theme.button, look.colour)),
     ));
+    tile.with_children(|tile| {
+        if let Some(picture) = art.and_then(|art| art.get(look.key)) {
+            tile.spawn((TileArt(look.key), board_art::backdrop(picture, Vec2::new(width - 2.0, height - 2.0), look.colour)));
+        }
+        // The words on a band, so they read over any picture; the badges
+        // beside them at the tile's text size.
+        let text_size = size::SMALL - 3.0;
+        tile.spawn((
+            Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), padding: UiRect::axes(px(6), px(1)), border_radius: BorderRadius::all(px(3)), ..default() },
+            BackgroundColor(theme.panel.with_alpha(0.7)),
+        ))
+        .with_children(|band| {
+            band.spawn((Text::new(look.title), theme.font(text_size), TextColor(look.text_colour)));
+            for token in &look.tokens {
+                spawn_badge(band, theme, art, token, (height - 8.0).clamp(12.0, 18.0), text_size, look.text_colour);
+            }
+        });
+    });
     if lit {
         tile.insert(outline(theme));
     }
@@ -1835,40 +1903,54 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
     entity
 }
 
-/// A server's ice as tiles, labelled by `board::facts::tile_label` —
-/// the title when it may be named, rezzed or unrezzed, its strength
-/// now, its tokens — with the run's marker on the piece being approached.
+/// A server's ice as tiles, titled by `board::facts::tile_title` — the
+/// title when it may be named, rezzed or unrezzed, its strength now —
+/// with its tokens as badges (`facts::tile_tokens`) and the run's
+/// marker on the piece being approached.
 #[allow(clippy::too_many_arguments)]
-fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize, height: f32, depth: Depth) -> Vec<Entity> {
+fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, art: Option<&BoardArt>, game: &Game, view: &ClientView, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize, height: f32, depth: Depth) -> Vec<Entity> {
     let mut tiles = Vec::new();
     for ice in layout::ice_top_down(&server.ice, chair) {
         let def = ice.card.as_ref().and_then(|id| core.registry.get(id));
-        let label = facts::tile_label(view, ice.install_id, &core.registry);
-        let colour = if ice.rezzed { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
-        let text_colour = if ice.rezzed { theme.text } else { theme.text_dim };
+        let kind = def.and_then(|d| match &d.card_type {
+            CardType::Ice(kind) => Some(*kind),
+            _ => None,
+        });
+        let look = TileLook {
+            title: facts::tile_title(view, ice.install_id, &core.registry),
+            tokens: facts::tile_tokens(view, ice.install_id, &core.registry),
+            key: board_art::ice_key(ice.rezzed, kind),
+            colour: if ice.rezzed { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) },
+            text_colour: if ice.rezzed { theme.text } else { theme.text_dim },
+        };
         let is_lit = encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id);
         let slot = if ice.rezzed { Slot::TileRezzed } else { Slot::TileUnrezzed };
-        tiles.push(spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size, height, slot, game.affordance_for(&Target::Install(ice.install_id)), depth));
+        tiles.push(spawn_tile(column, theme, art, look, ice.install_id, is_lit, size, height, slot, game.affordance_for(&Target::Install(ice.install_id)), depth));
     }
     tiles
 }
 
-/// The cards in a server's root as tiles, labelled by
-/// `board::facts::tile_label`: rezzed or unrezzed for an asset or an
-/// upgrade, `2/3 adv` for an agenda the viewer knows, `face down` with
-/// its tokens for a card the viewer cannot name (advancement is public).
-/// An agenda's border is its faction's: it has no rez to wait for.
+/// The cards in a server's root as tiles, titled by
+/// `board::facts::tile_title`: rezzed or unrezzed for an asset or an
+/// upgrade, the title alone for an agenda the viewer knows, `face down`
+/// for a card the viewer cannot name — with its advancement (public) and
+/// counters as badges. An agenda's border is its faction's: it has no rez
+/// to wait for.
 #[allow(clippy::too_many_arguments)]
-fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, lit: &Lit, size: FaceSize, height: f32, depth: Depth) -> Vec<Entity> {
+fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, art: Option<&BoardArt>, game: &Game, view: &ClientView, server: &ServerView, lit: &Lit, size: FaceSize, height: f32, depth: Depth) -> Vec<Entity> {
     let mut tiles = Vec::new();
     for card in &server.root {
         let def = card.card.as_ref().and_then(|id| core.registry.get(id));
-        let label = facts::tile_label(view, card.install_id, &core.registry);
         let face_up = card.rezzed || def.is_some_and(|d| d.card_type == CardType::Agenda);
-        let colour = if face_up { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
-        let text_colour = if face_up { theme.text } else { theme.text_dim };
+        let look = TileLook {
+            title: facts::tile_title(view, card.install_id, &core.registry),
+            tokens: facts::tile_tokens(view, card.install_id, &core.registry),
+            key: board_art::root_key(face_up, def.map(|d| &d.card_type)),
+            colour: if face_up { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) },
+            text_colour: if face_up { theme.text } else { theme.text_dim },
+        };
         let slot = if face_up { Slot::TileRezzed } else { Slot::TileUnrezzed };
-        tiles.push(spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size, height, slot, game.affordance_for(&Target::Install(card.install_id)), depth));
+        tiles.push(spawn_tile(column, theme, art, look, card.install_id, lit.installs.contains(&card.install_id), size, height, slot, game.affordance_for(&Target::Install(card.install_id)), depth));
     }
     tiles
 }
@@ -1880,7 +1962,7 @@ fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
 /// `layout::rig_height` whether or not anything is installed, so the
 /// first install moves nothing.
 #[allow(clippy::too_many_arguments)]
-fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
+fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
     let group = |kind: &CardType| match kind {
         CardType::Program => 0,
         CardType::Hardware => 1,
@@ -1920,18 +2002,27 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                                 if lit.installs.contains(&card.install_id) {
                                     slot.commands().entity(entity).insert(outline(theme));
                                 }
+                                // The chip line: strength and hosted cards as
+                                // words, the counters as their kind's badge
+                                // (a virus program's virus counters, a
+                                // credit resource's credits).
                                 let mut chips = Vec::new();
                                 if def.card_type == CardType::Program && def.strength.is_some() {
                                     chips.push(format!("str {}", card.current_strength));
                                 }
-                                if card.counters > 0 {
-                                    chips.push(format!("{} ctr", card.counters));
-                                }
                                 if !card.hosted_cards.is_empty() {
                                     chips.push(format!("{} hosted", card.hosted_cards.len()));
                                 }
-                                if !chips.is_empty() {
-                                    slot.spawn(widgets::dim(theme, chips.join(" · ")));
+                                if !chips.is_empty() || card.counters > 0 {
+                                    slot.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), height: px(layout::CHIPS - 2.0), ..default() }).with_children(|line| {
+                                        if !chips.is_empty() {
+                                            line.spawn(widgets::dim(theme, chips.join(" · ")));
+                                        }
+                                        if card.counters > 0 {
+                                            let token = Token { kind: TokenKind::Counter(def.counter_kind), amount: card.counters.to_string() };
+                                            spawn_badge(line, theme, art, &token, 16.0, size::SMALL, theme.text_dim);
+                                        }
+                                    });
                                 }
                             });
                         }
