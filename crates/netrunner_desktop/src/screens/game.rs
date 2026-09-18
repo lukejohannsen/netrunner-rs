@@ -16,21 +16,25 @@
 //! window is fullscreen and the board fits it — a static card size put
 //! the person's own hand below the fold twice, and a scroll container
 //! is not a fix for a card table. `models::layout::face_width` computes
-//! the card width the window has room for from the window's size and
-//! what is on the board (the tallest server's ICE, the number of
-//! servers), `fit` recomputes it whenever either changes, and a row that
-//! is still too wide overlaps its cards like a held hand
-//! (`layout::step`) rather than wrapping or scrolling. Top to bottom:
-//! the top bar (the status line, Quit, the gear); the board beside the
-//! rail — the opponent's strip and hand as backs in one row, their
-//! area, the person's area, the person's strip and hand in one row; and
-//! the control bar (`board::Control::for_side`, one button each, always
-//! in the same place) centred along the bottom, next to the hand, so
-//! acting never means crossing the opponent's side. The Corp's servers
-//! are columns — ICE as bars above the root, the way ICE lies on a
-//! table, since a rotated `UiTransform` is laid out as its unrotated
-//! box and would overlap its neighbours — and the Runner's rig is one
-//! row of three groups, with the stack and the heap as buttons in the
+//! the card width the window has room for from the window's size, the
+//! chair and the number of servers — never from what is installed, so
+//! nothing the opponent does moves a card — `fit` recomputes it whenever
+//! one of those changes, and a row that is still too wide overlaps its
+//! cards like a held hand (`layout::step`) rather than wrapping or
+//! scrolling. Top to bottom: the top bar (the status line, Quit, the
+//! gear); the board beside the rail — the opponent's strip and the bottom
+//! of their hand as backs, their area and the person's with the run lane
+//! between, the control bar (`board::Control::for_side`, one button each,
+//! always in the same place) directly above the person's hand, then the
+//! person's strip and the top of their hand. The opponent's side is
+//! drawn at `layout::OPPONENT_SCALE` of the person's own. The Corp's
+//! servers are the area that grows: each a column with its plate on the
+//! Corp's edge of the table and its ICE as tiles out toward the Runner —
+//! bars rather than rotated cards, since a rotated `UiTransform` is laid
+//! out as its unrotated box and would overlap its neighbours — sharing
+//! the ICE field's height (`layout::tile_stack`). The Runner's rig is one
+//! row of three groups in a row reserved whether or not anything is in
+//! it, with the stack and the heap as buttons in the
 //! Runner's strip. The rail is the prompt (`board::Prompt`, the card's
 //! own words), the decisions the prompt is asking
 //! (`ActionMap::decisions`), the flat panel if the play helper is on,
@@ -137,7 +141,7 @@ impl Plugin for GamePlugin {
             .init_resource::<Pointer>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, relane, redraw, table_guide).chain().run_if(in_state(AppScreen::Game)))
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, relane, redraw, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
             // Its own registration rather than a link in that chain: it
             // has no ordering requirement against any of them, and adding
             // a system to an existing `.chain()` reorders everything after
@@ -182,6 +186,11 @@ pub struct RunLane;
 /// A server's column, for a test that reads what a column holds.
 #[derive(Component)]
 pub struct ServerColumn(pub ServerId);
+
+/// A server's plate, on the Corp's edge of its column: the box its name
+/// and — once drawn — its picture sit in.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ServerPlate(pub ServerId);
 /// Where the pointer was last seen, in logical window pixels: read off
 /// `CursorMoved`, because the window's own `cursor_position` needs a
 /// window and the headless tests have none.
@@ -308,24 +317,37 @@ struct Pending(Vec<Intent>);
 /// for. `fit` keeps it current; a change redraws the board.
 #[derive(Resource, Debug, Clone, Copy, PartialEq)]
 pub struct BoardFit {
+    /// The person's own face width; the opponent's side is drawn at
+    /// `layout::OPPONENT_SCALE` of it.
     pub face: f32,
     pub window: Vec2,
+    /// The chair the width was computed for.
+    pub chair: Side,
+    /// The ICE field's height at this width: what the fixed rows leave.
+    pub field: f32,
 }
 
 impl Default for BoardFit {
     fn default() -> Self {
         // The headless tests' window: no `Window` exists there.
-        Self { face: 0.0, window: Vec2::new(1280.0, 800.0) }
+        Self { face: 0.0, window: Vec2::new(1280.0, 800.0), chair: Side::Runner, field: 0.0 }
     }
 }
 
 impl BoardFit {
-    fn size(&self) -> FaceSize {
-        FaceSize::Board(self.face.round() as u16)
+    /// The face width a side's cards are drawn at from this chair.
+    fn area_face(&self, side: Side) -> f32 {
+        layout::area_face(side, self.chair, self.face)
     }
 
-    fn identity_size(&self) -> FaceSize {
-        FaceSize::Board((self.face * layout::IDENTITY_SCALE).round() as u16)
+    /// A side's cards, at the size their side of the table is drawn.
+    fn size_of(&self, side: Side) -> FaceSize {
+        FaceSize::Board(self.area_face(side).round() as u16)
+    }
+
+    /// A side's identity in its strip.
+    fn identity_size(&self, side: Side) -> FaceSize {
+        FaceSize::Board((self.area_face(side) * layout::IDENTITY_SCALE).round() as u16)
     }
 
     fn board_width(&self) -> f32 {
@@ -336,11 +358,9 @@ impl BoardFit {
 /// What the view puts on the board, for the fit.
 fn counts(game: &Game, phase_bar: bool) -> Counts {
     let human_is_runner = game.side == Side::Runner;
-    let Some(view) = &game.view else { return Counts { human_is_runner, phase_bar, ..Counts::default() } };
-    let pieces = view.corp.servers.iter().map(|s| s.ice.len() + s.root.len()).max().unwrap_or(0);
     // The three centrals are always drawn.
-    let remotes = view.corp.servers.iter().filter(|s| matches!(s.server, ServerId::Remote(_))).count();
-    Counts { pieces, servers: 3 + remotes, human_is_runner, rig: !view.runner.rig.is_empty(), phase_bar }
+    let remotes = game.view.as_ref().map_or(0, |view| view.corp.servers.iter().filter(|s| matches!(s.server, ServerId::Remote(_))).count());
+    Counts { servers: 3 + remotes, human_is_runner, phase_bar }
 }
 
 /// Recomputes the face width from the window and the view, and marks the
@@ -349,10 +369,13 @@ fn counts(game: &Game, phase_bar: bool) -> Counts {
 fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, fit: Option<ResMut<BoardFit>>, core: Res<ClientCore>, mut dirty: ResMut<Dirty>) {
     let (Some(model), Some(mut fit)) = (model, fit) else { return };
     let window = windows.single().map_or(fit.window, |w| Vec2::new(w.width(), w.height()));
-    let face = layout::face_width((window.x, window.y), counts(&model.0, core.settings.desktop.phase_bar));
-    if (face - fit.face).abs() > 0.5 || window != fit.window {
+    let counts = counts(&model.0, core.settings.desktop.phase_bar);
+    let face = layout::face_width((window.x, window.y), counts);
+    if (face - fit.face).abs() > 0.5 || window != fit.window || model.0.side != fit.chair {
         fit.face = face;
         fit.window = window;
+        fit.chair = model.0.side;
+        fit.field = layout::field_height(window.y, face, counts);
         dirty.board = true;
     }
 }
@@ -383,7 +406,6 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
                 min_height: px(0),
                 height: percent(100),
                 flex_direction: FlexDirection::Column,
-                justify_content: JustifyContent::SpaceBetween,
                 row_gap: px(layout::ROW_GAP),
                 overflow: Overflow::clip(),
                 ..default()
@@ -432,23 +454,6 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
             parent.spawn(widgets::gear_button(&theme, images.as_deref_mut(), Click::Options));
         })
         .id();
-    // The control bar along the bottom, centred: next to the person's
-    // hand, so acting never means crossing the opponent's side.
-    let bar = commands
-        .spawn((
-            ControlBar,
-            Node {
-                width: percent(100),
-                height: px(layout::CONTROL_BAR),
-                flex_shrink: 0.0,
-                flex_direction: FlexDirection::Row,
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                column_gap: px(8),
-                ..default()
-            },
-        ))
-        .id();
     // The field, chosen once for the match rather than per redraw, and
     // spawned before everything else so every later sibling paints over
     // it. Only where `Assets<Image>` exists: the headless tests build the
@@ -479,7 +484,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
     for backdrop in backdrops {
         root.add_child(backdrop);
     }
-    root.add_child(top).add_child(body).add_child(bar);
+    root.add_child(top).add_child(body);
     commands.insert_resource(BoardFit::default());
     commands.insert_resource(Model(game));
     let mut dirty = Dirty::default();
@@ -1089,7 +1094,9 @@ fn redraw(
         if let Ok(rail) = rail.single() {
             commands.entity(rail).despawn_children().with_children(|parent| spawn_rail(parent, &theme, game, prefs.play_helper));
         }
-        if let Ok(bar) = bar.single() {
+        // The bar is a row of the board, so a redrawn board brought a
+        // fresh one with it; only a rail-only redraw refills the old one.
+        if !reboard && let Ok(bar) = bar.single() {
             commands.entity(bar).despawn_children().with_children(|parent| spawn_control_bar(parent, &theme, game));
         }
         for (entity, _, _, _) in floating.iter().filter(|(_, _, popup, menu)| *popup || *menu) {
@@ -1154,34 +1161,66 @@ fn overlay_needed(game: &Game) -> bool {
 
 fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, transitions: &[Transition], fit: &BoardFit) {
     let drag = game.dragged_slot();
-    // The phase bar is drawn last, below the hand and above the control
-    // bar: where the game is belongs beside what the person may do about
-    // it, and a row at the top would have sat among the opponent's cards.
+    // The phase bar is drawn last, below the hand: where the game is
+    // belongs beside what the person may do about it, and a row at the
+    // top would have sat among the opponent's cards.
     let with_phase_bar = |parent: &mut ChildSpawnerCommands, game: &Game| {
         if core.settings.desktop.phase_bar {
             parent.spawn((PhaseBarRow, phase_bar_node())).with_children(|row| fill_phase_bar(row, theme, game));
         }
     };
+    // The control bar, directly above the person's hand: what they may do
+    // sits between what they hold and the table, and acting never means
+    // crossing the opponent's side. A row of the board, so it is redrawn
+    // with it; a rail-only redraw refills it in place.
+    let control_bar = |parent: &mut ChildSpawnerCommands, game: &Game| {
+        parent
+            .spawn((
+                ControlBar,
+                Node {
+                    width: percent(100),
+                    height: px(layout::CONTROL_BAR),
+                    flex_shrink: 0.0,
+                    flex_direction: FlexDirection::Row,
+                    justify_content: JustifyContent::Center,
+                    align_items: AlignItems::Center,
+                    column_gap: px(8),
+                    ..default()
+                },
+            ))
+            .with_children(|bar| spawn_control_bar(bar, theme, game));
+    };
     let Some(view) = &game.view else {
-        parent.spawn(widgets::dim(theme, "Waiting for the match to start…"));
+        parent.spawn((widgets::dim(theme, "Waiting for the match to start…"), Node { flex_grow: 1.0, ..default() }));
+        control_bar(parent, game);
         with_phase_bar(parent, game);
         return;
     };
     let human = game.side;
     let opponent = human.other();
     let lit = Lit::of(transitions);
-    // Four rows, top to bottom, sized by `fit` so they never scroll: the
-    // opponent's strip with their hand as backs, their area, the
-    // person's area, the person's strip with their hand.
-    parent.spawn(strip_row()).with_children(|row| {
+    // Top to bottom from either chair: the opponent's strip with their
+    // hand as backs, the far area, the near area with the run lane on
+    // whichever side of the ICE field faces the Runner, the control bar,
+    // the person's strip with their hand. The Corp's servers are always
+    // the area that grows (`layout::field_height`), with their plates on
+    // the Corp's edge; the rig's row is reserved at its size whether or
+    // not anything is in it, so nothing installed moves the middle.
+    let mut opponent_row = strip_row();
+    opponent_row.align_items = AlignItems::FlexStart;
+    parent.spawn(opponent_row).with_children(|row| {
         spawn_strip(row, theme, core, images, game, view, opponent, fit);
         spawn_opponent_hand(row, theme, images, view, opponent, fit);
     });
+    let lane = |parent: &mut ChildSpawnerCommands| {
+        // The run lane, between the servers and the rig from either
+        // chair, reserved whether or not a run is on (`layout::RUN_LANE`).
+        parent.spawn((RunLane, run_lane_node())).with_children(|lane| fill_run_lane(lane, theme, core, game));
+    };
     spawn_area(parent, theme, core, images, game, view, opponent, &lit, fit);
-    // The run lane, between the servers and the rig from either chair,
-    // reserved whether or not a run is on (`layout::RUN_LANE`).
-    parent.spawn((RunLane, run_lane_node())).with_children(|lane| fill_run_lane(lane, theme, core, game));
+    lane(parent);
     spawn_area(parent, theme, core, images, game, view, human, &lit, fit);
+    control_bar(parent, game);
     parent.spawn(strip_row()).with_children(|row| {
         spawn_strip(row, theme, core, images, game, view, human, fit);
         spawn_hand(row, theme, core, images, game, view, human, &lit, fit, drag);
@@ -1363,7 +1402,7 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
             Node {
                 flex_direction: FlexDirection::Row,
                 flex_shrink: 0.0,
-                width: px(fit.identity_size().width() + layout::STRIP_TEXT),
+                width: px(fit.identity_size(side).width() + layout::STRIP_TEXT),
                 align_items: AlignItems::Center,
                 column_gap: px(10),
                 padding: UiRect::axes(px(6), px(2)),
@@ -1377,7 +1416,7 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                 && let Some(card) = core.registry.get(id)
             {
                 let image = card.numeric_id.and_then(|code| images.face(code));
-                let entity = spawn_face(row, theme, &Face::of(card), fit.identity_size(), image, (Button, Click::Target(Target::Identity(side))));
+                let entity = spawn_face(row, theme, &Face::of(card), fit.identity_size(side), image, (Button, Click::Target(Target::Identity(side))));
                 row.commands().entity(entity).insert(Contact(Depth::strip(side, game.side)));
                 // An identity's own ability has nowhere else to live: it
                 // is not an install and not in hand.
@@ -1387,17 +1426,22 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
                 let title = identity.as_ref().and_then(|id| core.registry.get(id)).map_or_else(|| format!("{side:?}"), |c| c.title.clone());
                 column.spawn((Text::new(format!("{who} · {title}")), theme.font(size::SMALL), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 spawn_hud(column, theme, view, side);
-                if let Some(line) = hud::details(view, side) {
-                    column.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-                }
-                // The Runner's piles are zones a click opens — the stack
-                // for its draw, the heap for what is in it — as the
-                // Corp's centrals are through their server headers.
-                if side == Side::Runner {
-                    column.spawn(widgets::row(6.0)).with_children(|piles| {
-                        for (pile, label) in [(Pile::Stack, format!("Stack · {}", view.runner.stack_count)), (Pile::Heap, format!("Heap · {}", view.runner.heap.len()))] {
-                            let entity = compact_button(piles, theme, label, Click::Target(Target::Pile(pile)));
-                            glow(&mut piles.commands(), entity, theme, game.affordance_for(&Target::Pile(pile)));
+                // The details line and the Runner's piles share one row, so
+                // the strip is no taller than a hand's peek. The piles are
+                // zones a click opens — the stack for its draw, the heap
+                // for what is in it — as the Corp's centrals are through
+                // their server plates.
+                let details = hud::details(view, side);
+                if details.is_some() || side == Side::Runner {
+                    column.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), ..default() }).with_children(|piles| {
+                        if let Some(details) = details {
+                            piles.spawn(widgets::dim(theme, details));
+                        }
+                        if side == Side::Runner {
+                            for (pile, label) in [(Pile::Stack, format!("Stack · {}", view.runner.stack_count)), (Pile::Heap, format!("Heap · {}", view.runner.heap.len()))] {
+                                let entity = compact_button(piles, theme, label, Click::Target(Target::Pile(pile)));
+                                glow(&mut piles.commands(), entity, theme, game.affordance_for(&Target::Pile(pile)));
+                            }
                         }
                     });
                 }
@@ -1481,30 +1525,52 @@ fn spawn_hud(parent: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView
                 };
                 cell.with_children(|cell| {
                         cell.spawn((Text::new(readout.value), theme.font(size::HEADING), TextColor(colour)));
-                        cell.spawn((Text::new(readout.label), theme.font(size::SMALL), TextColor(if readout.alarm { theme.danger } else { theme.text_dim })));
+                        // One line: the HUD is a single row, and a word that
+                        // wrapped ("Bad / pub.") made the strip a line taller.
+                        cell.spawn((Text::new(readout.label), theme.font(size::SMALL), TextColor(if readout.alarm { theme.danger } else { theme.text_dim }), TextLayout::new(Justify::Left, LineBreak::NoWrap)));
                     });
             }
         });
 }
 
-/// The space a strip row leaves for its cards.
-fn beside_strip(fit: &BoardFit) -> f32 {
-    fit.board_width() - (fit.identity_size().width() + layout::STRIP_TEXT) - 12.0
+/// The space a side's strip row leaves for its cards.
+fn beside_strip(fit: &BoardFit, side: Side) -> f32 {
+    fit.board_width() - (fit.identity_size(side).width() + layout::STRIP_TEXT) - 12.0
 }
 
-/// The opponent's hand as backs at the strip's size, overlapped when
-/// there are many — a count is in the strip, and a row of backs is
-/// what a table shows.
+/// The window a hand of `n` cards is seen through: `layout::PEEK` of a
+/// card's height, clipping the rest. The cards stay whole and laid out at
+/// their full size inside it — only what shows is cut — so a drag, a
+/// click and the hover lift all measure the card, not the sliver.
+///
+/// Its width is the row's, overlap included, and it has to be said: a
+/// clipping node contributes nothing to its parent's size, so left to
+/// the layout the window was as wide as the "Your hand" label over it.
+fn peek_window(size: FaceSize, n: usize, available: f32) -> Node {
+    let width = if n == 0 { 0.0 } else { layout::step(n, size.width(), layout::CARD_GAP, available) * (n - 1) as f32 + size.width() };
+    Node { width: px(width), height: px((layout::PEEK * size.height()).round()), flex_shrink: 0.0, flex_direction: FlexDirection::Column, overflow: Overflow::clip(), ..default() }
+}
+
+/// The opponent's hand as backs at their side's size, the bottom
+/// `layout::PEEK` of each hanging into the table from its far edge, and
+/// overlapped when there are many — a count is in the strip, and a row
+/// of backs is what a table shows.
 fn spawn_opponent_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, images: &CardImages, view: &ClientView, side: Side, fit: &BoardFit) {
     let count = match side {
         Side::Corp => view.corp.hq_count,
         Side::Runner => view.runner.grip_count,
     };
-    let size = fit.identity_size();
-    let available = beside_strip(fit);
-    parent.spawn(card_row()).with_children(|row| {
-        let backs: Vec<Entity> = (0..count).map(|_| spawn_back(row, theme, images.back(side), side, size, Contact(Depth::Far))).collect();
-        overlap(row, &backs, size.width(), available);
+    let size = fit.size_of(side);
+    let available = beside_strip(fit, side);
+    // Hung from the top: the row is pulled up by the part that does not
+    // show, so the window sees the backs' lower edge.
+    let mut row_node = card_row();
+    row_node.margin.top = px(-((1.0 - layout::PEEK) * size.height()).round());
+    parent.spawn(peek_window(size, count, available)).with_children(|window| {
+        window.spawn(row_node).with_children(|row| {
+            let backs: Vec<Entity> = (0..count).map(|_| spawn_back(row, theme, images.back(side), side, size, Contact(Depth::Far))).collect();
+            overlap(row, &backs, size.width(), available);
+        });
     });
 }
 
@@ -1537,14 +1603,19 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     }
     let run = view.active_run.as_ref();
     let encountered = run.filter(|r| matches!(r.phase, RunPhase::ApproachIce | RunPhase::EncounterIce)).and_then(|r| r.ice.get(r.position)).map(|i| i.install_id);
-    let size = fit.size();
-    // The columns line up along the Corp's edge of the table: their
-    // headers at the top from the Runner's chair, at the bottom from
-    // the Corp's, however tall their ice makes them.
-    let mut row_node = card_row();
-    row_node.align_items = if game.side == Side::Corp { AlignItems::FlexEnd } else { AlignItems::FlexStart };
-    parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|area| {
+    let size = fit.size_of(Side::Corp);
+    // Every column's tiles share one height, sized by the tallest: a
+    // row of columns whose tiles differed by column read as a bar chart.
+    let pieces = servers.iter().map(|s| s.ice.len() + s.root.len()).max().unwrap_or(0);
+    let stack = layout::tile_stack(fit.field, pieces, size.width());
+    // The area is the one row that grows: its columns span the ICE field
+    // and end in their plates on the Corp's edge of the table.
+    parent.spawn((Node { flex_direction: FlexDirection::Column, flex_grow: 1.0, min_height: px(0), ..default() },)).with_children(|area| {
         section_label(area, theme, "Servers");
+        let mut row_node = card_row();
+        row_node.flex_grow = 1.0;
+        row_node.min_height = px(0);
+        row_node.align_items = AlignItems::Stretch;
         area.spawn(row_node).with_children(|row| {
             for server in &servers {
                 let under_run = game.run_on(server.server);
@@ -1570,26 +1641,55 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                         min_width: px(size.width() + 2.0 * layout::SERVER_CHROME - 2.0),
                         ..default()
                     },
-                    // Slightly translucent so the table shows through a
-                    // column. Over the old flat ground this is within a
-                    // pixel value of the opaque panel it replaces.
-                    BackgroundColor(theme.panel.with_alpha(0.82)),
+                    // Mostly translucent: the column spans the whole ICE
+                    // field now, and an opaque one walled the table off.
+                    BackgroundColor(theme.panel.with_alpha(0.45)),
                     BorderColor::all(border),
-                    widgets::Dressed::still(slot, Drawn::new(theme.panel.with_alpha(0.82), border)),
+                    widgets::Dressed::still(slot, Drawn::new(theme.panel.with_alpha(0.45), border)),
                     // The column is what sits on the table; its tiles sit
                     // on the column, one row nearer the light.
                     Contact(depth),
                 ))
                 .with_children(|column| {
-                    // Header, root and ice in the chair's order
-                    // (`layout::column_top_down`): the header nearest the
-                    // Corp, the ice out toward the Runner, outermost nearest.
-                    for piece in layout::column_top_down(game.side) {
-                        match piece {
-                            layout::Piece::Header => spawn_server_header(column, theme, view, server.server, welcomes, game.affordance_for(&Target::Server(server.server))),
-                            layout::Piece::Ice => spawn_server_ice(column, theme, core, game, view, server, game.side, encountered, lit, size, depth),
-                            layout::Piece::Root => spawn_server_root(column, theme, core, game, view, server, lit, size, depth),
-                        }
+                    // Plate, root and ice in the chair's order
+                    // (`layout::column_top_down`): the plate nearest the
+                    // Corp, the ice out toward the Runner, outermost
+                    // nearest. The root and the ice share the stack, which
+                    // takes the field's height and is pinned to the plate.
+                    let mut tiles = Vec::new();
+                    let pieces = layout::column_top_down(game.side);
+                    let stack_node = Node {
+                        flex_direction: FlexDirection::Column,
+                        flex_grow: 1.0,
+                        min_height: px(0),
+                        align_items: AlignItems::Center,
+                        justify_content: if game.side == Side::Corp { JustifyContent::FlexEnd } else { JustifyContent::FlexStart },
+                        overflow: Overflow::clip(),
+                        ..default()
+                    };
+                    let mut spawn_stack = |column: &mut ChildSpawnerCommands| {
+                        column.spawn(stack_node.clone()).with_children(|stack_parent| {
+                            for piece in pieces {
+                                match piece {
+                                    layout::Piece::Header => {}
+                                    layout::Piece::Ice => tiles.extend(spawn_server_ice(stack_parent, theme, core, game, view, server, game.side, encountered, lit, size, stack.0, depth)),
+                                    layout::Piece::Root => tiles.extend(spawn_server_root(stack_parent, theme, core, game, view, server, lit, size, stack.0, depth)),
+                                }
+                            }
+                            // Pulled together by the stack's advance: its
+                            // natural gap while they fit, overlapping past it.
+                            let gap = stack.1 - stack.0;
+                            for tile in tiles.iter().skip(1) {
+                                stack_parent.commands().entity(*tile).entry::<Node>().and_modify(move |mut node| node.margin.top = px(gap));
+                            }
+                        });
+                    };
+                    if game.side == Side::Corp {
+                        spawn_stack(column);
+                        spawn_server_plate(column, theme, view, server.server, size, welcomes, game.affordance_for(&Target::Server(server.server)));
+                    } else {
+                        spawn_server_plate(column, theme, view, server.server, size, welcomes, game.affordance_for(&Target::Server(server.server)));
+                        spawn_stack(column);
                     }
                 });
             }
@@ -1597,7 +1697,13 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     });
 }
 
-fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, server: ServerId, welcomes: bool, mood: Option<Affordance>) {
+/// A server's plate: its name and count on the Corp's edge of the
+/// table, in a box `layout::plate_height` tall that is reserved for
+/// every server — the place a picture of the server goes, so a picture
+/// never changes the layout (the skins README's "a server's mark needs a
+/// box of its own"). A click is the server's, as the header's was.
+#[allow(clippy::too_many_arguments)]
+fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, server: ServerId, size: FaceSize, welcomes: bool, mood: Option<Affordance>) {
     let on_board = view.corp.servers.iter().any(|s| s.server == server) || !matches!(server, ServerId::Remote(_));
     let count = match server {
         ServerId::Hq => format!(" · {}", view.corp.hq_count),
@@ -1608,29 +1714,49 @@ fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &
     // The column a drag conjured says what it is: a server that does not
     // exist yet, named for what dropping there would make.
     let label = if on_board { format!("{}{count}", server_name(server)) } else { format!("New {}", server_name(server).to_lowercase()) };
-    let entity = compact_button(column, theme, label, Click::Target(Target::Server(server)));
-    // A header is a compact button wearing a different hat: the same box,
-    // its own slot, so a skin can draw Archives unlike a Stack button.
-    // Inserting over `compact_button`'s own `Dressed` replaces it.
+    // A plate is a button wearing the header's hat: its own slot, so a
+    // skin can draw Archives unlike a Stack button.
     let slot = if welcomes { Slot::ServerHeaderWelcomes } else { Slot::ServerHeader };
-    column
-        .commands()
-        .entity(entity)
-        .insert(widgets::Dressed::button(theme, slot, Drawn::new(theme.button, theme.panel_border)));
+    let mut plate = column.spawn((
+        ServerPlate(server),
+        Button,
+        widgets::Themed,
+        Click::Target(Target::Server(server)),
+        Node {
+            width: px(size.width() + 4.0),
+            height: px(layout::plate_height(size.width())),
+            flex_shrink: 0.0,
+            flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::FlexEnd,
+            align_items: AlignItems::Center,
+            padding: UiRect::all(px(4)),
+            border: UiRect::all(px(1)),
+            border_radius: BorderRadius::all(px(6)),
+            overflow: Overflow::clip(),
+            ..default()
+        },
+        BackgroundColor(theme.button),
+        BorderColor::all(theme.panel_border),
+        widgets::Dressed::button(theme, slot, Drawn::new(theme.button, theme.panel_border)),
+        children![(Text::new(label), theme.font(size::SMALL), TextColor(theme.text))],
+    ));
     if welcomes {
-        column.commands().entity(entity).insert(outline(theme));
+        plate.insert(outline(theme));
     }
+    let entity = plate.id();
     // A server glows for the run or the install the engine offers on it,
     // which is the only affordance on the board with no card to carry it.
     glow(&mut column.commands(), entity, theme, mood);
 }
 
 /// A tile in a server column — an ice or a root card — the same block
-/// the header is: the title when it may be named, a number or two, and
-/// a border in the card's faction colour when it is rezzed. A click
-/// opens the card's sheet; the picture is read there, not here, so the
-/// column costs `layout::TILE` per piece and never a face.
-fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, colour: Color, text_colour: Color, install: InstallId, lit: bool, size: FaceSize, slot: Slot, mood: Option<Affordance>, depth: Depth) -> Entity {
+/// the plate's label is: the title when it may be named, a number or
+/// two, and a border in the card's faction colour when it is rezzed. A
+/// click opens the card's menu and a secondary click its sheet; the
+/// picture is read there, not here, so a column is tiles `height` tall
+/// (`layout::tile_stack`) and never a face.
+#[allow(clippy::too_many_arguments)]
+fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, colour: Color, text_colour: Color, install: InstallId, lit: bool, size: FaceSize, height: f32, slot: Slot, mood: Option<Affordance>, depth: Depth) -> Entity {
     let mut tile = column.spawn((
         Button,
         widgets::Themed,
@@ -1638,7 +1764,7 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
         DropPlace(Target::Install(install)),
         Node {
             width: px(size.width() + 4.0),
-            height: px(layout::TILE - 4.0),
+            height: px(height),
             flex_shrink: 0.0,
             align_items: AlignItems::Center,
             justify_content: JustifyContent::Center,
@@ -1668,7 +1794,8 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
 /// the title when it may be named, rezzed or unrezzed, its strength
 /// now, its tokens — with the run's marker on the piece being approached.
 #[allow(clippy::too_many_arguments)]
-fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize, depth: Depth) {
+fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize, height: f32, depth: Depth) -> Vec<Entity> {
+    let mut tiles = Vec::new();
     for ice in layout::ice_top_down(&server.ice, chair) {
         let def = ice.card.as_ref().and_then(|id| core.registry.get(id));
         let label = facts::tile_label(view, ice.install_id, &core.registry);
@@ -1676,8 +1803,9 @@ fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
         let text_colour = if ice.rezzed { theme.text } else { theme.text_dim };
         let is_lit = encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id);
         let slot = if ice.rezzed { Slot::TileRezzed } else { Slot::TileUnrezzed };
-        spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size, slot, game.affordance_for(&Target::Install(ice.install_id)), depth);
+        tiles.push(spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size, height, slot, game.affordance_for(&Target::Install(ice.install_id)), depth));
     }
+    tiles
 }
 
 /// The cards in a server's root as tiles, labelled by
@@ -1685,7 +1813,9 @@ fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
 /// upgrade, `2/3 adv` for an agenda the viewer knows, `face down` with
 /// its tokens for a card the viewer cannot name (advancement is public).
 /// An agenda's border is its faction's: it has no rez to wait for.
-fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, lit: &Lit, size: FaceSize, depth: Depth) {
+#[allow(clippy::too_many_arguments)]
+fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, lit: &Lit, size: FaceSize, height: f32, depth: Depth) -> Vec<Entity> {
+    let mut tiles = Vec::new();
     for card in &server.root {
         let def = card.card.as_ref().and_then(|id| core.registry.get(id));
         let label = facts::tile_label(view, card.install_id, &core.registry);
@@ -1693,19 +1823,25 @@ fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
         let colour = if face_up { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
         let text_colour = if face_up { theme.text } else { theme.text_dim };
         let slot = if face_up { Slot::TileRezzed } else { Slot::TileUnrezzed };
-        spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size, slot, game.affordance_for(&Target::Install(card.install_id)), depth);
+        tiles.push(spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size, height, slot, game.affordance_for(&Target::Install(card.install_id)), depth));
     }
+    tiles
 }
 
 /// The rig as one row of three groups; the cards of every group overlap
-/// by the same amount when the whole rig would not fit across.
+/// by the same amount when the whole rig would not fit across. Drawn at
+/// the Runner's side of the table's size — full from the Runner's chair,
+/// `layout::OPPONENT_SCALE` from the Corp's — in a row reserved at
+/// `layout::rig_height` whether or not anything is installed, so the
+/// first install moves nothing.
+#[allow(clippy::too_many_arguments)]
 fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
     let group = |kind: &CardType| match kind {
         CardType::Program => 0,
         CardType::Hardware => 1,
         _ => 2,
     };
-    let size = fit.size();
+    let size = fit.size_of(Side::Runner);
     let groups: Vec<Vec<_>> = (0..3).map(|wanted| view.runner.rig.iter().filter(|c| core.registry.get(&c.card).is_some_and(|def| group(&def.card_type) == wanted)).collect()).collect();
     let filled = groups.iter().filter(|g| !g.is_empty()).count();
     let total: usize = groups.iter().map(Vec::len).sum();
@@ -1714,7 +1850,8 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
     let available = fit.board_width() - (filled.saturating_sub(1) as f32) * 16.0;
     let step = layout::step(total, size.width(), layout::CARD_GAP, available);
     let pull = (step - (size.width() + layout::CARD_GAP)).min(0.0);
-    parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|area| {
+    let reserved = layout::rig_height(fit.area_face(Side::Runner));
+    parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, height: px(reserved), overflow: Overflow::clip(), ..default() },)).with_children(|area| {
         section_label(area, theme, if view.runner.rig.is_empty() { "Rig · nothing installed" } else { "Rig" });
         area.spawn((Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
             for (wanted, cards) in groups.iter().enumerate() {
@@ -1760,7 +1897,9 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
     });
 }
 
-/// The person's hand beside their strip, overlapped when it is wide.
+/// The person's hand beside their strip, the top `layout::PEEK` of each
+/// card showing and the rest below the table's edge, overlapped when it
+/// is wide. A hovered card lifts out whole (`lift_hovered`).
 #[allow(clippy::too_many_arguments)]
 fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit, drag: Option<usize>) {
     // The person's own order for their own hand, the view's for the
@@ -1772,43 +1911,126 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
     }
     .unwrap_or(&[]);
     let hand = if own { game.hand.cards() } else { from_view };
-    let size = fit.size();
-    let available = beside_strip(fit);
+    let size = fit.size_of(side);
+    let available = beside_strip(fit, side);
     parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|column| {
         section_label(column, theme, format!("Your hand · {}", hand.len()));
-        column.spawn(card_row()).with_children(|row| {
-            // A hand is a multiset; the first copy of a lit card is the one
-            // outlined, which is as much as a highlight can say.
-            let mut lit_left = lit.hand.clone();
-            let mut faces = Vec::new();
-            for (slot, id) in hand.iter().enumerate() {
-                let Some(def) = core.registry.get(id) else { continue };
-                let image = def.numeric_id.and_then(|code| images.face(code));
-                let entity = spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::HandCard(id.clone()))));
-                if own {
-                    // Its place in the row, so a drag knows which card it
-                    // picked up and where the others sit.
-                    row.commands().entity(entity).insert(HandSlot(slot));
+        column.spawn(peek_window(size, hand.len(), available)).with_children(|window| {
+            window.spawn(card_row()).with_children(|row| {
+                // A hand is a multiset; the first copy of a lit card is the
+                // one outlined, which is as much as a highlight can say.
+                let mut lit_left = lit.hand.clone();
+                let mut faces = Vec::new();
+                for (slot, id) in hand.iter().enumerate() {
+                    let Some(def) = core.registry.get(id) else { continue };
+                    let image = def.numeric_id.and_then(|code| images.face(code));
+                    let entity = spawn_face(row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::HandCard(id.clone()))));
+                    if own {
+                        // Its place in the row, so a drag knows which card
+                        // it picked up and where the others sit.
+                        row.commands().entity(entity).insert(HandSlot(slot));
+                    }
+                    row.commands().entity(entity).insert(Contact(Depth::strip(side, game.side)));
+                    if own {
+                        glow(&mut row.commands(), entity, theme, game.affordance_for(&Target::HandCard(id.clone())));
+                    }
+                    if let Some(at) = lit_left.iter().position(|c| c == id) {
+                        lit_left.swap_remove(at);
+                        row.commands().entity(entity).insert(outline(theme));
+                    }
+                    // The card being dragged is lifted out of the row by its
+                    // outline: the row itself never moves under the pointer,
+                    // because a hand that re-flowed mid-drag moved the gap
+                    // the person was aiming at.
+                    if own && drag.is_some_and(|dragged| dragged == slot) {
+                        row.commands().entity(entity).insert(outline(theme));
+                    }
+                    faces.push(entity);
                 }
-                row.commands().entity(entity).insert(Contact(Depth::strip(side, game.side)));
-                if own {
-                    glow(&mut row.commands(), entity, theme, game.affordance_for(&Target::HandCard(id.clone())));
-                }
-                if let Some(at) = lit_left.iter().position(|c| c == id) {
-                    lit_left.swap_remove(at);
-                    row.commands().entity(entity).insert(outline(theme));
-                }
-                // The card being dragged is lifted out of the row by its
-                // outline: the row itself never moves under the pointer,
-                // because a hand that re-flowed mid-drag moved the gap the
-                // person was aiming at.
-                if own && drag.is_some_and(|dragged| dragged == slot) {
-                    row.commands().entity(entity).insert(outline(theme));
-                }
-                faces.push(entity);
-            }
-            overlap(row, &faces, size.width(), available);
+                overlap(row, &faces, size.width(), available);
+            });
         });
+    });
+}
+
+/// The full card a hovered hand card lifts out as, pointing back at the
+/// face it lifted from.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LiftedCard(pub Entity);
+
+/// How far above the table's edge a lifted card's bottom sits.
+const LIFT: f32 = 12.0;
+
+/// A hand shows a third of each card (`layout::PEEK`); the card the
+/// pointer rests on lifts out whole, drawn over the board above its
+/// slot, so a hand can be read without a click.
+///
+/// **Paint, not play.** The lifted card is a second, non-interactive
+/// copy in a floating layer: the face in the row never moves, so a
+/// drag, a click and the hand's own order measure the same box they
+/// always did, and nothing about it enters a `PlayerAction`, the log or
+/// a `ClientView` — considering a card is not a game event (the third
+/// list's item 3). It carries no `Button`, so the focus system passes
+/// through it to the face beneath and the hover holds. Nothing lifts
+/// while a card is being dragged, a menu is open or the board is
+/// covered: each of those is already showing the person something.
+#[allow(clippy::too_many_arguments)]
+fn lift_hovered(
+    mut commands: Commands,
+    theme: Res<Theme>,
+    core: Res<ClientCore>,
+    images: Res<CardImages>,
+    model: Option<Res<Model>>,
+    fit: Option<Res<BoardFit>>,
+    slots: Query<(Entity, &HandSlot, &Interaction, &ComputedNode, &UiGlobalTransform)>,
+    mut lifted: Query<(Entity, &LiftedCard, &mut Node)>,
+    roots: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
+    dev: Option<Res<crate::dev::Dev>>,
+) {
+    let (Some(model), Some(fit)) = (model, fit) else { return };
+    let game = &model.0;
+    let quiet = game.dragging.is_none() && game.menu.is_none() && !game.covered();
+    // `NETRUNNER_LIFT`: the first card is held lifted for a screenshot,
+    // as if the pointer rested on it.
+    let forced = dev.is_some_and(|dev| dev.lift && dev.autoplayed >= dev.autoplay);
+    let hovered = if quiet { slots.iter().find(|(_, slot, interaction, _, _)| **interaction == Interaction::Hovered || (forced && slot.0 == 0)) } else { None };
+    let size = fit.size_of(game.side);
+    // The face's box is the whole card, laid out below the peek window;
+    // the lifted copy is raised until its bottom clears that window.
+    // Placed every frame rather than once: the face under a freshly drawn
+    // board has no laid-out box until the frame after it is spawned.
+    let place = |node: &ComputedNode, transform: &UiGlobalTransform| {
+        let anchor = anchor_of(node, transform);
+        let top = anchor.y - anchor.height / 2.0 - (1.0 - layout::PEEK) * size.height() - LIFT;
+        let left = (anchor.x - size.width() / 2.0).clamp(layout::PADDING, (fit.window.x - size.width() - layout::PADDING).max(layout::PADDING));
+        (left, top.max(0.0))
+    };
+    if let Some((entity, _, _, node, transform)) = hovered
+        && let Some((_, _, mut lifted_node)) = lifted.iter_mut().find(|(_, over, _)| over.0 == entity)
+    {
+        let (left, top) = place(node, transform);
+        if lifted_node.left != px(left) || lifted_node.top != px(top) {
+            lifted_node.left = px(left);
+            lifted_node.top = px(top);
+        }
+        return;
+    }
+    for (entity, _, _) in &lifted {
+        commands.entity(entity).despawn();
+    }
+    let Some((entity, slot, _, node, transform)) = hovered else { return };
+    let Some(def) = game.hand.cards().get(slot.0).and_then(|id| core.registry.get(id)) else { return };
+    let Some(root) = roots.iter().next() else { return };
+    let (left, top) = place(node, transform);
+    let image = def.numeric_id.and_then(|code| images.face(code));
+    commands.entity(root).with_children(|parent| {
+        let face = spawn_face(parent, &theme, &Face::of(def), size, image, (LiftedCard(entity), Pickable::IGNORE, GlobalZIndex(12)));
+        parent.commands().entity(face).entry::<Node>().and_modify(move |mut node| {
+            node.position_type = PositionType::Absolute;
+            node.left = px(left);
+            node.top = px(top);
+        });
+        parent.commands().entity(face).insert(Contact(Depth::Near));
     });
 }
 

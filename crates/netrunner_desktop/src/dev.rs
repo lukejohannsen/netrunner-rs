@@ -31,6 +31,9 @@
 //!   arrived (after any autoplay), the actions menu a click on a card
 //!   would open is opened above the first hand card with an action (or
 //!   the first card), so the menu can be looked at.
+//! - `NETRUNNER_LIFT=1` — on the board, once the autoplay is done, the
+//!   first card in the person's hand is lifted out whole as a hover lifts
+//!   it, so the lifted card over the board can be looked at.
 //! - `NETRUNNER_SHEET=1` — on the board, once the person's decision has
 //!   arrived (after any autoplay), the sheet a secondary click opens on
 //!   the first installed Corp card on the board is opened, so an install's state can be looked at.
@@ -108,6 +111,8 @@ pub struct Dev {
     pub drag: bool,
     /// Open the actions menu above a hand card, once.
     pub menu: bool,
+    /// Lift the first hand card out of the hand as a hover would.
+    pub lift: bool,
     /// Hold a run at its first encounter for the screenshot.
     pub hold_run: bool,
     /// Stop the autoplay at the first card-selection prompt.
@@ -151,6 +156,7 @@ impl Dev {
             keys: std::env::var_os("NETRUNNER_KEYS").is_some_and(|v| !v.is_empty()),
             drag: std::env::var_os("NETRUNNER_DRAG").is_some_and(|v| !v.is_empty()),
             menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
+            lift: std::env::var_os("NETRUNNER_LIFT").is_some_and(|v| !v.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
             hold_install: std::env::var_os("NETRUNNER_HOLD_INSTALL").is_some_and(|v| !v.is_empty()),
