@@ -1778,10 +1778,10 @@ delivers.
    order of *building* differs from the order of this list — the table
    is item 6 below and is the first PR, because everything else reads
    against it and because it is what unblocks the person making art.
-   *Half done in §4m: the field carries the perspective. The shadows
-   that sit the cards on it are still owed, and are now deliberately
-   after the skin (§4n), because art with its own baked shadow would
-   double up with a drawn one.*
+   *Done: §4m gave the field its perspective and §4q put the cards on
+   it. The shadows came deliberately after the skin (§4n), because art
+   with its own baked shadow would double up with a drawn one — which is
+   why a skin can turn them off.*
 2. **Each player has an avatar and a bar of quick data**, the active
    player's bar lit and the inactive one's muted grey. The avatar is the
    identity card's art cropped to a disc — the Netrunner-native answer,
@@ -2215,3 +2215,80 @@ yellow and the rest of the board dark.
 Its buttons are already greyed when the engine does not list them, which
 is the same information in the shape that bar has used since §4a; glowing
 them as well would be saying it twice.
+
+---
+
+### 4q. The cards sit on the table: contact shadows, and the one BoxShadow they share — DONE (18 September 2026)
+
+`feat/desktop-contact-shadows` (#67, stacked on #66). The second half of
+the third list's item 1, and the item's last owed piece: §4m painted the
+perspective into the field, and this puts the cards *on* it. Held back
+until after the skin (§4n) on purpose — art carrying its own baked shadow
+would have doubled up with a drawn one, and §4n left `Manifest::shadows`
+and `Skin::wants_shadows` in place for exactly this PR to consume. They
+are consumed now; nothing else reads them.
+
+**The depth that was rejected, and the one that was not.** The third list
+rejected a per-row *face-width* ramp on more than taste: the natural form
+is not monotone in the face width, `face_width`'s binary search is
+licensed only by `rows_height` being monotone, and the ramp would have
+returned a silently wrong width with every existing test still green. A
+shadow has no such problem, **because it is paint and not layout** — a
+`BoxShadow` is drawn outside the node and measured by nothing. So the
+cards stay one size and their shadows say which row is nearer, which is
+the half of "closer objects larger" that can be had for free.
+`models::layout::Depth` is `spawn_board`'s four rows, top to bottom (the
+opponent's strip and hand, their area, the person's area, the person's own
+strip and hand), each with a `(y, blur, alpha)` that grows toward the
+chair; `Depth::nearer` raises a tile off the column it is stacked on. The
+ramp is tested for monotonicity in all three values, which is the property
+the eye is actually reading.
+
+**One `BoxShadow`, composed in one place.** A node has exactly one, and
+§4p had already spent it on the glow. Two `insert`s would have meant
+whichever system ran second silently won, and the board would have lost
+either its depth or its affordances depending on system order — a bug that
+would have looked like a rendering flicker rather than a logic error. So
+the two are components that *declare* intent (`Contact(Depth)`,
+`Glowing(Affordance)`) and a single `shadows` system builds the vector
+from whichever are present. The glow goes first, which is the entry drawn
+on top: a halo the contact shadow has washed grey is not a signal.
+Anything wanting a third shadow adds it there.
+
+**Registered like `widgets::dress`, and for its reasons**: on `Added<..>`
+so a freshly spawned board is shadowed the frame after it appears, and
+over everything when the `Skin` resource changes, so a skin that carries
+its own baked shadows turns the drawn ones off without the person leaving
+the screen. It is its own `add_systems` call rather than a link in the
+board's existing `.chain()`, because §4n's lesson stands: adding a system
+to an existing chain reorders everything after it, which moved
+`button_feedback` and broke twelve board tests.
+
+**What casts, and what does not.** Cards (hand, rig, identities, the
+opponent's backs), server tiles and server columns — the objects on the
+field. Not the control bar, the pop-up, the phase bar or the rail: those
+are chrome, not things on a table, and shadowing everything is how a board
+ends up looking like a web page from 2013.
+
+**Tuned by looking, once.** The first values (alpha 0.30–0.45, blur 3–10)
+were nearly invisible: this table is close to black, and a black shadow on
+a near-black ground is a no-op. What reads on a dark field is *area*
+rather than darkness, so the ramp went to alpha 0.50–0.65 with blur 5–16
+and the cards sit. Recorded because the next person to add a light table
+will find these too strong, and the fix is the table's business rather
+than the shadow's.
+
+**Verified.** `cargo test --workspace` green, clippy silent. New tests:
+`models::layout` — a nearer row casts a bigger, softer, darker shadow, and
+the rows are read from the person's own chair (the Corp sees their own
+servers in the near row, the Runner sees the same servers in the far one);
+`netrunner_desktop` — a glowing card carries *both* shadows in one
+component with the glow first, and a card with nothing to do carries the
+contact shadow alone.
+
+Screenshotted both chairs forty decisions in; the only scroll area logged
+is the hidden log's at zero size. The Corp shot landed mid-run with the
+Runner holding priority and **nothing glowing at all** — which is §4p's
+`awaiting` gate visible in a picture, since that board has an unrezzed
+Tithe the Corp could rez and a map-based gate would have lit it. No engine
+file changed, so no sweep.

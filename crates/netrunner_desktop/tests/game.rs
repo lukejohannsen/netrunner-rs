@@ -25,7 +25,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, Glowing, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, Contact, DecisionPopup, Glowing, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -1115,4 +1115,44 @@ fn the_board_glows_exactly_what_the_engine_offers_and_in_the_right_mood() {
         !lit.iter().any(|(_, drawn, _)| *drawn == Some(Affordance::Conditional)),
         "no window is open in the Runner's action phase, so nothing should warn"
     );
+}
+
+/// The contact shadow sits a card on the table, and it shares its one
+/// `BoxShadow` with the glow rather than replacing it.
+///
+/// That sharing is the whole reason the composer exists: a node has
+/// exactly one `BoxShadow`, so two `insert`s would mean whichever ran
+/// second silently won, and the board would have lost either its depth or
+/// its affordances depending on system order.
+#[test]
+fn a_card_carries_its_contact_shadow_and_its_glow_in_one_component() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    // The composer runs on `Added`, so let the frame after the board's
+    // own spawn go by.
+    app.update();
+
+    let theme = app.world().resource::<netrunner_desktop::theme::Theme>().clone();
+    let mut found_plain = 0;
+    let mut found_glowing = 0;
+    let mut query = app.world_mut().query::<(&Contact, Option<&Glowing>, &BoxShadow)>();
+    let rows: Vec<(bool, Vec<Color>)> = query.iter(app.world()).map(|(_, glowing, shadow)| (glowing.is_some(), shadow.0.iter().map(|s| s.color).collect())).collect();
+    assert!(!rows.is_empty(), "the board's cards and tiles sit on the table");
+    for (glowing, colours) in rows {
+        if glowing {
+            found_glowing += 1;
+            assert_eq!(colours.len(), 2, "a glowing card carries both shadows");
+            // The glow is first, which is the one drawn on top: a halo
+            // the contact shadow has washed grey is not a signal.
+            assert!(colours[0] == theme.glow_usable || colours[0] == theme.glow_conditional, "the glow comes first, got {:?}", colours[0]);
+            let contact = colours[1].to_srgba();
+            assert!(contact.alpha > 0.0 && contact.red == 0.0 && contact.green == 0.0 && contact.blue == 0.0, "the contact shadow is black at an alpha, got {contact:?}");
+        } else {
+            found_plain += 1;
+            assert_eq!(colours.len(), 1, "a card with nothing to do carries the contact shadow alone");
+        }
+    }
+    assert!(found_plain > 0, "the opponent's cards never glow but still sit on the table");
+    assert!(found_glowing > 0, "something on the Runner's own turn can be acted on");
 }

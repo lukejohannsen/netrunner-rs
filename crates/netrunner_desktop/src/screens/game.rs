@@ -111,7 +111,7 @@ use netrunner_core::view::{ClientView, ServerView};
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, Notices};
 use crate::models::game::{Anchor, Game, Intent, MatchMessageRef, Outcome};
-use crate::models::layout::{self, Counts};
+use crate::models::layout::{self, Counts, Depth};
 use crate::models::pace::{Beat, Pacer};
 use crate::models::settings::{self as settings_model, Row};
 use crate::models::shortcuts::{self, Shortcut};
@@ -137,7 +137,13 @@ impl Plugin for GamePlugin {
             .init_resource::<Pointer>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, relane, redraw, table_guide).chain().run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, relane, redraw, table_guide).chain().run_if(in_state(AppScreen::Game)))
+            // Its own registration rather than a link in that chain: it
+            // has no ordering requirement against any of them, and adding
+            // a system to an existing `.chain()` reorders everything after
+            // it (§4n moved `button_feedback` that way and broke twelve
+            // board tests).
+            .add_systems(Update, shadows.run_if(in_state(AppScreen::Game)));
     }
 }
 
@@ -1232,20 +1238,81 @@ fn outline(theme: &Theme) -> Outline {
 /// is owed next (ROADMAP Phase 7, the third list's item 1) can be a
 /// second entry in the same component rather than a second component
 /// contending for the same slot.
-fn glow(commands: &mut Commands, entity: Entity, theme: &Theme, mood: Option<Affordance>) {
+fn glow(commands: &mut Commands, entity: Entity, _theme: &Theme, mood: Option<Affordance>) {
     let Some(mood) = mood else { return };
-    let colour = match mood {
-        Affordance::Usable => theme.glow_usable,
-        Affordance::Conditional => theme.glow_conditional,
-    };
     commands.entity(entity).insert(Glowing(mood));
-    commands.entity(entity).insert(BoxShadow::new(colour, px(0), px(0), px(1), px(7)));
 }
 
 /// Marks a glowing entity with its mood, so a test can ask the board
 /// what it lit without reading a colour off a shadow.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Glowing(pub Affordance);
+
+/// Marks something that sits *on the table* — a card, a tile, a server
+/// column — with the row it sits in, so it casts a contact shadow.
+///
+/// The board's chrome does not carry one: a control-bar button, a pop-up
+/// or the phase bar is not an object on the field, and giving everything
+/// a shadow is how a board ends up looking like a web page from 2013.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Contact(pub Depth);
+
+/// Composes the one `BoxShadow` a node may have from the two things that
+/// want one: the contact shadow that sits it on the table, and the glow
+/// that says the engine will accept something on it.
+///
+/// **They cannot be two components** — a node has exactly one `BoxShadow`
+/// — and they must not be two `insert`s either, because the second would
+/// silently replace the first. `BoxShadow` is a `Vec<ShadowStyle>`, so
+/// this is the one place that builds the vector, and anything wanting a
+/// third shadow later adds it here rather than contending for the slot.
+///
+/// Registered like `widgets::dress` and for the same reasons: on
+/// `Added<..>` so a freshly spawned board is shadowed the frame after it
+/// appears, and over everything when the [`Skin`] changes, because a skin
+/// whose own pictures carry baked shadows turns the drawn ones off
+/// (`Skin::wants_shadows`) and the settings row must take effect without
+/// leaving the screen.
+fn shadows(
+    mut commands: Commands,
+    theme: Res<Theme>,
+    skin: Res<crate::skin::Skin>,
+    added: Query<(Entity, Option<&Contact>, Option<&Glowing>), Or<(Added<Contact>, Added<Glowing>)>>,
+    all: Query<(Entity, Option<&Contact>, Option<&Glowing>), Or<(With<Contact>, With<Glowing>)>>,
+) {
+    let wants = skin.wants_shadows();
+    let compose = |commands: &mut Commands, entity: Entity, contact: Option<&Contact>, glowing: Option<&Glowing>| {
+        let mut styles = Vec::new();
+        // The glow goes first, which is the one that draws on top: a
+        // halo the contact shadow has washed grey is not a signal.
+        if let Some(Glowing(mood)) = glowing {
+            let colour = match mood {
+                Affordance::Usable => theme.glow_usable,
+                Affordance::Conditional => theme.glow_conditional,
+            };
+            styles.push(ShadowStyle { color: colour, x_offset: px(0), y_offset: px(0), spread_radius: px(1), blur_radius: px(7) });
+        }
+        if let (Some(Contact(depth)), true) = (contact, wants) {
+            let (y, blur, alpha) = depth.shadow();
+            styles.push(ShadowStyle { color: Color::BLACK.with_alpha(alpha), x_offset: px(0), y_offset: px(y), spread_radius: px(0), blur_radius: px(blur) });
+        }
+        let mut entity = commands.entity(entity);
+        if styles.is_empty() {
+            entity.remove::<BoxShadow>();
+        } else {
+            entity.insert(BoxShadow(styles));
+        }
+    };
+    if skin.is_changed() {
+        for (entity, contact, glowing) in &all {
+            compose(&mut commands, entity, contact, glowing);
+        }
+        return;
+    }
+    for (entity, contact, glowing) in &added {
+        compose(&mut commands, entity, contact, glowing);
+    }
+}
 
 fn section_label(parent: &mut ChildSpawnerCommands, theme: &Theme, text: impl Into<String>) {
     parent.spawn((widgets::dim(theme, text), Node { height: px(layout::LABEL), flex_shrink: 0.0, ..default() }));
@@ -1311,6 +1378,7 @@ fn spawn_strip(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
             {
                 let image = card.numeric_id.and_then(|code| images.face(code));
                 let entity = spawn_face(row, theme, &Face::of(card), fit.identity_size(), image, (Button, Click::Target(Target::Identity(side))));
+                row.commands().entity(entity).insert(Contact(Depth::strip(side, game.side)));
                 // An identity's own ability has nowhere else to live: it
                 // is not an install and not in hand.
                 glow(&mut row.commands(), entity, theme, game.affordance_for(&Target::Identity(side)));
@@ -1435,7 +1503,7 @@ fn spawn_opponent_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, images:
     let size = fit.identity_size();
     let available = beside_strip(fit);
     parent.spawn(card_row()).with_children(|row| {
-        let backs: Vec<Entity> = (0..count).map(|_| spawn_back(row, theme, images.back(side), side, size, ())).collect();
+        let backs: Vec<Entity> = (0..count).map(|_| spawn_back(row, theme, images.back(side), side, size, Contact(Depth::Far))).collect();
         overlap(row, &backs, size.width(), available);
     });
 }
@@ -1443,14 +1511,15 @@ fn spawn_opponent_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, images:
 /// A side's board: the Corp's servers, or the Runner's rig.
 #[allow(clippy::too_many_arguments)]
 fn spawn_area(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit) {
+    let depth = Depth::area(side, game.side);
     match side {
-        Side::Corp => spawn_servers(parent, theme, core, game, view, lit, fit),
-        Side::Runner => spawn_rig(parent, theme, core, images, game, view, lit, fit),
+        Side::Corp => spawn_servers(parent, theme, core, game, view, lit, fit, depth),
+        Side::Runner => spawn_rig(parent, theme, core, images, game, view, lit, fit, depth),
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit) {
+fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
     // Archives, R&D, HQ, then the remotes, from either chair, every
     // central a column even with nothing on it (`board::table_servers`).
     let mut servers = netrunner_client::board::table_servers(view);
@@ -1507,6 +1576,9 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     BackgroundColor(theme.panel.with_alpha(0.82)),
                     BorderColor::all(border),
                     widgets::Dressed::still(slot, Drawn::new(theme.panel.with_alpha(0.82), border)),
+                    // The column is what sits on the table; its tiles sit
+                    // on the column, one row nearer the light.
+                    Contact(depth),
                 ))
                 .with_children(|column| {
                     // Header, root and ice in the chair's order
@@ -1515,8 +1587,8 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     for piece in layout::column_top_down(game.side) {
                         match piece {
                             layout::Piece::Header => spawn_server_header(column, theme, view, server.server, welcomes, game.affordance_for(&Target::Server(server.server))),
-                            layout::Piece::Ice => spawn_server_ice(column, theme, core, game, view, server, game.side, encountered, lit, size),
-                            layout::Piece::Root => spawn_server_root(column, theme, core, game, view, server, lit, size),
+                            layout::Piece::Ice => spawn_server_ice(column, theme, core, game, view, server, game.side, encountered, lit, size, depth),
+                            layout::Piece::Root => spawn_server_root(column, theme, core, game, view, server, lit, size, depth),
                         }
                     }
                 });
@@ -1558,7 +1630,7 @@ fn spawn_server_header(column: &mut ChildSpawnerCommands, theme: &Theme, view: &
 /// a border in the card's faction colour when it is rezzed. A click
 /// opens the card's sheet; the picture is read there, not here, so the
 /// column costs `layout::TILE` per piece and never a face.
-fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, colour: Color, text_colour: Color, install: InstallId, lit: bool, size: FaceSize, slot: Slot, mood: Option<Affordance>) -> Entity {
+fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, colour: Color, text_colour: Color, install: InstallId, lit: bool, size: FaceSize, slot: Slot, mood: Option<Affordance>, depth: Depth) -> Entity {
     let mut tile = column.spawn((
         Button,
         widgets::Themed,
@@ -1587,6 +1659,7 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
         tile.insert(outline(theme));
     }
     let entity = tile.id();
+    column.commands().entity(entity).insert(Contact(depth.nearer()));
     glow(&mut column.commands(), entity, theme, mood);
     entity
 }
@@ -1595,7 +1668,7 @@ fn spawn_tile(column: &mut ChildSpawnerCommands, theme: &Theme, label: String, c
 /// the title when it may be named, rezzed or unrezzed, its strength
 /// now, its tokens — with the run's marker on the piece being approached.
 #[allow(clippy::too_many_arguments)]
-fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize) {
+fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, chair: Side, encountered: Option<InstallId>, lit: &Lit, size: FaceSize, depth: Depth) {
     for ice in layout::ice_top_down(&server.ice, chair) {
         let def = ice.card.as_ref().and_then(|id| core.registry.get(id));
         let label = facts::tile_label(view, ice.install_id, &core.registry);
@@ -1603,7 +1676,7 @@ fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
         let text_colour = if ice.rezzed { theme.text } else { theme.text_dim };
         let is_lit = encountered == Some(ice.install_id) || lit.installs.contains(&ice.install_id);
         let slot = if ice.rezzed { Slot::TileRezzed } else { Slot::TileUnrezzed };
-        spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size, slot, game.affordance_for(&Target::Install(ice.install_id)));
+        spawn_tile(column, theme, label, colour, text_colour, ice.install_id, is_lit, size, slot, game.affordance_for(&Target::Install(ice.install_id)), depth);
     }
 }
 
@@ -1612,7 +1685,7 @@ fn spawn_server_ice(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cli
 /// upgrade, `2/3 adv` for an agenda the viewer knows, `face down` with
 /// its tokens for a card the viewer cannot name (advancement is public).
 /// An agenda's border is its faction's: it has no rez to wait for.
-fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, lit: &Lit, size: FaceSize) {
+fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, server: &ServerView, lit: &Lit, size: FaceSize, depth: Depth) {
     for card in &server.root {
         let def = card.card.as_ref().and_then(|id| core.registry.get(id));
         let label = facts::tile_label(view, card.install_id, &core.registry);
@@ -1620,13 +1693,13 @@ fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
         let colour = if face_up { theme.faction(def.and_then(|c| c.faction)) } else { theme.corp.with_alpha(0.5) };
         let text_colour = if face_up { theme.text } else { theme.text_dim };
         let slot = if face_up { Slot::TileRezzed } else { Slot::TileUnrezzed };
-        spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size, slot, game.affordance_for(&Target::Install(card.install_id)));
+        spawn_tile(column, theme, label, colour, text_colour, card.install_id, lit.installs.contains(&card.install_id), size, slot, game.affordance_for(&Target::Install(card.install_id)), depth);
     }
 }
 
 /// The rig as one row of three groups; the cards of every group overlap
 /// by the same amount when the whole rig would not fit across.
-fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit) {
+fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
     let group = |kind: &CardType| match kind {
         CardType::Program => 0,
         CardType::Hardware => 1,
@@ -1660,6 +1733,7 @@ fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
                             }
                             slot.with_children(|slot| {
                                 let entity = spawn_face(slot, theme, &Face::of(def), size, image, (Button, Click::Target(Target::Install(card.install_id))));
+                                slot.commands().entity(entity).insert(Contact(depth));
                                 glow(&mut slot.commands(), entity, theme, game.affordance_for(&Target::Install(card.install_id)));
                                 if lit.installs.contains(&card.install_id) {
                                     slot.commands().entity(entity).insert(outline(theme));
@@ -1716,6 +1790,7 @@ fn spawn_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCor
                     // picked up and where the others sit.
                     row.commands().entity(entity).insert(HandSlot(slot));
                 }
+                row.commands().entity(entity).insert(Contact(Depth::strip(side, game.side)));
                 if own {
                     glow(&mut row.commands(), entity, theme, game.affordance_for(&Target::HandCard(id.clone())));
                 }

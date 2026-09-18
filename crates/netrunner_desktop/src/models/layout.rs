@@ -221,9 +221,114 @@ pub fn step(n: usize, width: f32, gap: f32, available: f32) -> f32 {
     ((available - width) / (n as f32 - 1.0)).max(width * 0.2).min(natural)
 }
 
+/// How far from the person's chair a row of the board sits.
+///
+/// **This is the depth the board has, and the only one it is getting.**
+/// §4m put the perspective in the table's paint and the third list's item
+/// 1 rejected a per-row *face-width* ramp on more than taste: the natural
+/// form is not monotone in the face width, and `face_width`'s binary
+/// search is licensed only by `rows_height` being monotone, so the ramp
+/// would have returned a silently wrong width with every test still
+/// green. A shadow has no such problem, because **it is paint and not
+/// layout**: a `BoxShadow` is drawn outside the node and measured by
+/// nothing. So the cards stay one size and their shadows say which row is
+/// nearer, which is the half of "closer objects larger" that can be had
+/// for free.
+///
+/// The four values are `spawn_board`'s four rows, top to bottom.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Depth {
+    /// The opponent's strip and their hand, drawn as backs: the far edge.
+    Far,
+    /// The opponent's area — their servers, or their rig.
+    Upper,
+    /// The person's own area, this side of the run lane.
+    Lower,
+    /// The person's own strip and their hand: the near edge, where the
+    /// table meets the chair.
+    Near,
+}
+
+impl Depth {
+    /// The row an area belongs to: the person's own is the near one.
+    pub fn area(side: Side, chair: Side) -> Depth {
+        if side == chair {
+            Depth::Lower
+        } else {
+            Depth::Upper
+        }
+    }
+
+    /// The row a strip and its hand belong to.
+    pub fn strip(side: Side, chair: Side) -> Depth {
+        if side == chair {
+            Depth::Near
+        } else {
+            Depth::Far
+        }
+    }
+
+    /// One step nearer the chair, for something stacked *on* something
+    /// else: a tile sits on its server column, so it is raised off the
+    /// table by the column's own thickness and its shadow says so. The
+    /// near edge has nowhere further to go and stays put.
+    pub fn nearer(self) -> Depth {
+        match self {
+            Depth::Far => Depth::Upper,
+            Depth::Upper => Depth::Lower,
+            Depth::Lower | Depth::Near => Depth::Near,
+        }
+    }
+
+    /// The contact shadow this row casts: `(y offset, blur, alpha)`, in
+    /// logical pixels and a black alpha.
+    ///
+    /// Nearer is bigger, softer and darker, which is what a shallow
+    /// perspective does to a shadow — not a physical model, and it does
+    /// not need to be: the point is that the four rows do not all sit at
+    /// the same height off the same table. Spread stays 0 throughout, so
+    /// a shadow never reads as a second border.
+    pub fn shadow(self) -> (f32, f32, f32) {
+        match self {
+            Depth::Far => (1.0, 5.0, 0.50),
+            Depth::Upper => (2.0, 8.0, 0.55),
+            Depth::Lower => (3.0, 11.0, 0.60),
+            Depth::Near => (5.0, 16.0, 0.65),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The depth ramp is the one that *may* vary across rows, because it
+    /// is paint: every value grows toward the chair, and nothing here is
+    /// read by `face_width` or by any other size.
+    #[test]
+    fn a_nearer_row_casts_a_bigger_softer_shadow() {
+        let rows = [Depth::Far, Depth::Upper, Depth::Lower, Depth::Near];
+        for pair in rows.windows(2) {
+            let (near_y, near_blur, near_alpha) = pair[1].shadow();
+            let (far_y, far_blur, far_alpha) = pair[0].shadow();
+            assert!(near_y > far_y && near_blur > far_blur && near_alpha > far_alpha, "{:?} should sit nearer than {:?}", pair[1], pair[0]);
+        }
+    }
+
+    /// Which row a thing belongs to is the chair's question, not the
+    /// side's: the Corp sees their own servers in the near row and the
+    /// Runner sees the same servers in the far one.
+    #[test]
+    fn the_rows_are_read_from_the_persons_own_chair() {
+        assert_eq!(Depth::area(Side::Corp, Side::Corp), Depth::Lower);
+        assert_eq!(Depth::area(Side::Corp, Side::Runner), Depth::Upper);
+        assert_eq!(Depth::strip(Side::Runner, Side::Runner), Depth::Near);
+        assert_eq!(Depth::strip(Side::Runner, Side::Corp), Depth::Far);
+        // Stacked on something else is one row nearer, and the near edge
+        // has nowhere left to go.
+        assert_eq!(Depth::Upper.nearer(), Depth::Lower);
+        assert_eq!(Depth::Near.nearer(), Depth::Near);
+    }
 
     #[test]
     fn the_columns_are_the_table_seen_from_the_chair() {
