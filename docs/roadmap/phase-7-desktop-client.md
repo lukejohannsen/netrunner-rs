@@ -2315,6 +2315,19 @@ the space back; the third is the slots §4n left owed.
   says nothing, so `facts::hidden_title` is all that names it. A zone's
   sheet and the score area keep theirs for the same reason — there is no
   face there at all.
+- **The browser's inspector took the same cut**, asked for once the
+  sheet had it: it drew the title *below* the face, which is the same
+  name twice whenever the picture had not arrived. The lines left are
+  deliberately not the same case even though the text face also draws a
+  type line and the printed text — with a scan cached the face is one
+  picture and nothing else, so that block is the only place the type,
+  the numbers and the text exist as text. The title is the one of them
+  the picture always carries legibly at this size. It costs one thing,
+  recorded rather than discovered later: that column *scrolls*, so the
+  name is off-screen once you have scrolled past the face, and the
+  grid's outline on the selected card is what says which card it is.
+  Removing the heading only ever shortens the column, so nothing that
+  fitted before scrolls now.
 - **Close was a third door to a two-door rule.** Escape already closed
   the sheet; the second door is a click that misses the panel. Between
   them that is about eighty-six logical pixels of chrome off a panel
