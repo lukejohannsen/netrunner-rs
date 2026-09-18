@@ -60,22 +60,39 @@ pub fn available() -> Vec<String> {
 
 /// Which folder a choice resolves to, or `None` for the painted ground.
 ///
-/// Pure, so the fallbacks are testable: a named table whose folder has
-/// gone falls back to the painted ground rather than to a random one —
-/// a player who named a table meant that table, and surprising them with
-/// a different picture is worse than showing them the plain ground and
-/// letting them notice. `nonce` decides a random pick and is expected to
-/// change once per match.
-pub fn resolve(choice: &Table, installed: &[String], nonce: u64) -> Option<String> {
+/// Pure, so the fallbacks are testable. **The painted ground is only ever
+/// a fallback** — what `None` means when nothing is installed, when a
+/// named table has gone, or when the player asked for basic graphics
+/// (`basic`) — and never one of random's picks: it is the no-frills tier,
+/// not a table the client ships. A named table whose folder has gone
+/// falls back to it rather than to a random one — a player who named a
+/// table meant that table, and surprising them with a different picture
+/// is worse than showing them the plain ground and letting them notice.
+///
+/// `nonce` decides a random pick and is expected to change once per
+/// match. `last` is the table the previous match drew, which a random
+/// pick avoids whenever there is anything else to draw: two matches in a
+/// row on the same field reads as the shuffle not working.
+pub fn resolve(choice: &Table, installed: &[String], nonce: u64, last: Option<&str>, basic: bool) -> Option<String> {
+    if basic {
+        return None;
+    }
     match choice {
-        Table::Painted => None,
         Table::Named(name) => installed.contains(name).then(|| name.clone()),
         Table::Random => {
-            let index = usize::try_from(nonce % installed.len().max(1) as u64).ok()?;
-            installed.get(index).cloned()
+            let fresh: Vec<&String> = installed.iter().filter(|name| Some(name.as_str()) != last).collect();
+            let pool: Vec<&String> = if fresh.is_empty() { installed.iter().collect() } else { fresh };
+            let index = usize::try_from(nonce % pool.len().max(1) as u64).ok()?;
+            pool.get(index).map(|name| (*name).clone())
         }
     }
 }
+
+/// The table the previous match was played on, so the next random pick
+/// can avoid it. Kept for the life of the process, which is the span over
+/// which a repeat would be noticed.
+#[derive(Resource, Default)]
+pub struct LastTable(pub Option<String>);
 
 /// A folder's manifest, or what a folder without one is worth.
 pub fn manifest(folder: &str) -> Manifest {
@@ -240,18 +257,44 @@ mod tests {
     }
 
     #[test]
-    fn a_choice_resolves_to_a_folder_or_to_the_painted_ground() {
+    fn a_choice_resolves_to_a_folder_and_the_painted_ground_is_only_a_fallback() {
         let installed = names(&["neon-alley", "orbital"]);
-        assert_eq!(resolve(&Table::Painted, &installed, 0), None);
-        assert_eq!(resolve(&Table::Named("orbital".to_string()), &installed, 7), Some("orbital".to_string()));
+        assert_eq!(resolve(&Table::Named("orbital".to_string()), &installed, 7, None, false), Some("orbital".to_string()));
         // A named table that is gone falls back to the painted ground,
         // never to some other picture.
-        assert_eq!(resolve(&Table::Named("gone".to_string()), &installed, 7), None);
+        assert_eq!(resolve(&Table::Named("gone".to_string()), &installed, 7, None, false), None);
         // Random walks the installed list and never panics on an empty one.
-        assert_eq!(resolve(&Table::Random, &installed, 0), Some("neon-alley".to_string()));
-        assert_eq!(resolve(&Table::Random, &installed, 1), Some("orbital".to_string()));
-        assert_eq!(resolve(&Table::Random, &installed, 2), Some("neon-alley".to_string()));
-        assert_eq!(resolve(&Table::Random, &[], 3), None);
+        assert_eq!(resolve(&Table::Random, &installed, 0, None, false), Some("neon-alley".to_string()));
+        assert_eq!(resolve(&Table::Random, &installed, 1, None, false), Some("orbital".to_string()));
+        assert_eq!(resolve(&Table::Random, &[], 3, None, false), None);
+        // Basic graphics is the painted ground, whatever was chosen.
+        assert_eq!(resolve(&Table::Random, &installed, 0, None, true), None);
+        assert_eq!(resolve(&Table::Named("orbital".to_string()), &installed, 0, None, true), None);
+    }
+
+    /// With anything installed, no nonce ever draws the painted ground:
+    /// it is the fallback, never in the rotation.
+    #[test]
+    fn random_never_draws_the_painted_ground_when_a_table_is_installed() {
+        for installed in [names(&["only"]), names(&["neon-alley", "orbital", "rooftop"])] {
+            for nonce in 0..64 {
+                for last in [None, Some("only"), Some("orbital")] {
+                    assert!(resolve(&Table::Random, &installed, nonce, last, false).is_some(), "{installed:?} nonce {nonce} last {last:?}");
+                }
+            }
+        }
+    }
+
+    /// A random pick avoids the previous match's table when it can, and
+    /// takes it when it is the only one.
+    #[test]
+    fn random_does_not_repeat_the_last_table_when_it_can_avoid_it() {
+        let installed = names(&["neon-alley", "orbital", "rooftop"]);
+        for nonce in 0..32 {
+            assert_ne!(resolve(&Table::Random, &installed, nonce, Some("orbital"), false).as_deref(), Some("orbital"));
+        }
+        let one = names(&["only"]);
+        assert_eq!(resolve(&Table::Random, &one, 5, Some("only"), false).as_deref(), Some("only"));
     }
 
     /// The reserved names cannot be chosen, so they are not offered.

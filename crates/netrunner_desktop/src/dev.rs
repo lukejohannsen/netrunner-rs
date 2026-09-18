@@ -184,7 +184,13 @@ impl Dev {
     /// Where boot goes: the requested screen, else the board when a dev
     /// game was asked for, else the menu.
     pub fn first_screen(&self) -> AppScreen {
-        self.screen.unwrap_or(if self.game.is_some() { AppScreen::Game } else { AppScreen::MainMenu })
+        self.named_screen().unwrap_or(AppScreen::MainMenu)
+    }
+
+    /// The screen a hook asked for, if any — `NETRUNNER_SCREEN`, or the
+    /// board for `NETRUNNER_GAME` — which boot goes to without a splash.
+    pub fn named_screen(&self) -> Option<AppScreen> {
+        self.screen.or(self.game.is_some().then_some(AppScreen::Game))
     }
 }
 

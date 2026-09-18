@@ -2755,3 +2755,93 @@ text face until its own size of scan had decoded. It now draws the
 sharpest copy the board has already decoded, which it almost always has
 because the candidates are usually in hand, and swaps in its own size
 when that lands (`CardImages::nearest_face`, `WantsImage`).
+
+### 4y. Every place has an asset slot before its art exists, and the drawn tier is only the fallback — DONE (18 September 2026)
+
+`feat/desktop-asset-slots`. The person asked for places for more art: a
+splash at startup, a background for the start screen and a different one
+for each sub-menu (the deck builder included), Corp-specific server
+styles *"chosen based on the Corporation's Identity card"*, and several
+shipped tables drawn at random. The standing instruction was to *"always
+be keeping locations prepped to have assets made"*, and the correction
+that shaped the table rule was that the drawn pictures are *"no frills.
+It should only be fallback not in rotation"*.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A screen's backdrop slot comes from its root, not its code.**
+  `nav::screen_root` carries a `ScreenBackdrop`, and `backdrop::dress`
+  inserts the picture and a dimming scrim as the root's first children.
+  Every screen, the five stubs included, got a slot without a line of
+  its own. `AppScreen::asset_key` names the slot with an exhaustive match,
+  so a new screen does not compile until it has one, and
+  `the_guide_lists_every_screen` fails until `assets/backdrops/README.md`
+  lists it. That is the "always prepped" rule turned into a test rather
+  than a habit.
+- **One shared `menu.jpg` dresses every screen nobody drew for.** A
+  screen's own picture improves on it rather than being needed before it
+  (`netrunner_client::backdrop::candidates`). One picture is therefore a
+  finished set of menus.
+- **Cropped to cover, not stretched like a table.** A table's
+  perspective was painted for the window, and cropping it would move the
+  vanishing point. A backdrop has no vanishing point, and a menu's content
+  is centred. The dim under the text is per key in an optional
+  `backdrops.json`, because only the author knows how bright the picture
+  is.
+- **The splash is skippable and never shown to a window nobody sees.**
+  It holds for 1.5 s and until the fonts load (5 s at most), and any key
+  or click skips it. Boot goes there only with a primary window and no
+  dev hook naming a screen. So the headless tests still boot to the menu,
+  a `NETRUNNER_SCREEN` screenshot is unchanged, and no test-only flag was
+  needed (the plan had one). Its logo is `backdrops/splash-logo.png`,
+  beside the pictures rather than in a folder of its own, so one guide
+  covers it.
+- **A Corp faction may restyle every board key, not only the plates.**
+  `board/corp/<faction>/` sits between the skin and the generic art.
+  The faction comes from `CorpClientView::identity`, which is public to
+  both chairs, so nothing reaches around masking.
+  - **A state falls back to its base inside a layer before the next layer
+    is tried.** Otherwise a Jinteki HQ would turn generic whenever it was
+    run on, if a generic `server.hq.run.png` existed.
+  - **The drawn plates are lit in the faction's colour**, so the style
+    shows before anyone draws it. A neutral Corp keeps the Corp's blue
+    rather than a grey.
+  - **Per-identity styles were deferred**, at the person's choice. They
+    would be one more layer, and no file would have to move.
+- **The painted ground left the table choices.**
+  - **The default is Random.** Random draws only from installed tables and
+    avoids the previous match's table (`table::LastTable`) when there is
+    another.
+  - **`Table::Painted` is gone.** A settings file still carrying
+    `painted` reads as Random: it was the old default, so it cannot say
+    whether anybody meant it.
+  - **The plain ground is now the fallback and one switch, Settings →
+    Basic graphics (slow machines).** That switch loads no pictures:
+    table, backdrops, splash logo, board art, skin.
+  - **A skin on Auto follows the table the random pick drew**, not only
+    a named table.
+
+**Verified.** `cargo test --workspace` green and clippy silent. New tests:
+
+- the backdrop candidates and dim fallback;
+- every non-board screen has its own slot and the guide lists it;
+- the Corp style layer's order and its guide rows;
+- the drawn plate differs by faction;
+- basic graphics loads only drawn pictures, for board art and backdrops alike;
+- the table row never offers the ground, and Random never draws it with a
+  table installed, over 64 nonces;
+- a random pick avoids the last table;
+- the splash moves on by a key and by itself.
+
+End to end, throwaway files went under a scratch `XDG_DATA_HOME` and never
+into the repo:
+
+- a `cards.jpg` dressed the card browser and the shared `menu.jpg` dressed
+  Settings and the splash;
+- `board/corp/jinteki/server.hq.png` appeared on an Advanced Yomi board
+  (Jinteki) and not on a Brutal Efficiency one (Haas-Bioroid);
+- the drawn plates were red for the first and purple for the second;
+- one of two test tables was drawn under both.
+
+The only `scroll area` logged was the hidden log's, at zero size. No
+engine file changed, so no sweep.

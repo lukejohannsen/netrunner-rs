@@ -15,6 +15,7 @@ pub mod main_menu;
 pub mod new_game;
 pub mod profile;
 pub mod settings;
+pub mod splash;
 pub mod stubs;
 
 use bevy::prelude::*;
@@ -25,6 +26,9 @@ pub enum AppScreen {
     /// drawn.
     #[default]
     Boot,
+    /// The title card while the fonts load: a moment, skipped by any key
+    /// or click, and never shown to a window nobody can see.
+    Splash,
     MainMenu,
     Profile,
     Settings,
@@ -41,8 +45,9 @@ pub enum AppScreen {
 }
 
 impl AppScreen {
-    pub const ALL: [AppScreen; 13] = [
+    pub const ALL: [AppScreen; 14] = [
         AppScreen::Boot,
+        AppScreen::Splash,
         AppScreen::MainMenu,
         AppScreen::Profile,
         AppScreen::Settings,
@@ -64,10 +69,37 @@ impl AppScreen {
         AppScreen::ALL.into_iter().find(|screen| format!("{screen:?}").eq_ignore_ascii_case(name) || screen.title().eq_ignore_ascii_case(name))
     }
 
+    /// The name of the screen's backdrop slot (`backdrop`), which is also
+    /// its file name under `assets/backdrops/`: `None` for a screen that
+    /// has no backdrop of its own — Boot is never drawn, and the board
+    /// stands on its table.
+    ///
+    /// **Exhaustive on purpose**: a new screen does not compile until it
+    /// has a slot, and a test then fails until the slot is in the guide,
+    /// so there is always somewhere to put a picture before anybody has
+    /// drawn one.
+    pub fn asset_key(self) -> Option<&'static str> {
+        match self {
+            AppScreen::Boot | AppScreen::Game => None,
+            AppScreen::Splash => Some("splash"),
+            AppScreen::MainMenu => Some("main-menu"),
+            AppScreen::Profile => Some("profile"),
+            AppScreen::Settings => Some("settings"),
+            AppScreen::Decks => Some("decks"),
+            AppScreen::DeckEditor => Some("deck-editor"),
+            AppScreen::CardBrowser => Some("cards"),
+            AppScreen::NewGame => Some("new-game"),
+            AppScreen::Learn => Some("learn"),
+            AppScreen::Online => Some("online"),
+            AppScreen::Replay => Some("replay"),
+            AppScreen::About => Some("about"),
+        }
+    }
+
     /// The heading a screen shows.
     pub fn title(self) -> &'static str {
         match self {
-            AppScreen::Boot => "",
+            AppScreen::Boot | AppScreen::Splash => "",
             AppScreen::MainMenu => "Netrunner",
             AppScreen::Profile => "Profile",
             AppScreen::Settings => "Settings",

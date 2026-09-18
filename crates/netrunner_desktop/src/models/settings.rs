@@ -17,10 +17,11 @@ pub enum Row {
     PhaseBar,
     Table,
     Skin,
+    BasicGraphics,
 }
 
 impl Row {
-    pub const ALL: [Row; 11] = [Row::Player, Row::Format, Row::Table, Row::Skin, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
+    pub const ALL: [Row; 12] = [Row::Player, Row::Format, Row::Table, Row::Skin, Row::BasicGraphics, Row::AnimationSpeed, Row::SfxVolume, Row::MusicVolume, Row::DownloadImages, Row::PlayHelper, Row::PlayHistory, Row::PhaseBar];
 
     /// The rows the board's gear menu shows: what changes how a game is
     /// played and looks, and nothing that would want a text field. A
@@ -41,6 +42,7 @@ impl Row {
             Row::PhaseBar => "Phase bar",
             Row::Table => "Table",
             Row::Skin => "Board art",
+            Row::BasicGraphics => "Basic graphics (slow machines)",
         }
     }
 
@@ -81,21 +83,18 @@ pub fn skin_cycle(installed: &[String]) -> Vec<Skin> {
     cycle
 }
 
-/// Every value the table row steps through, in order: the painted
-/// ground, then each installed table, then random.
+/// Every value the table row steps through, in order: random, then each
+/// installed table.
 ///
-/// The painted ground is first because it is the default and the tier
-/// that always works, and random is last so a person stepping rightward
-/// walks past the actual tables before being offered a shuffle of them.
-/// Random is offered only when there is more than one table to choose
-/// between — with one installed it would be that table under a name that
-/// says otherwise, and with none it would be the painted ground.
+/// Random leads because it is the default: the client ships several
+/// tables and a match draws one. **The painted ground is not in the
+/// cycle** — it is the fallback under a missing table and the whole of
+/// [`Row::BasicGraphics`], never a table somebody picks beside the real
+/// ones. With nothing installed the row has one value, and random then
+/// resolves to the fallback because there is nothing else to draw.
 pub fn table_cycle(installed: &[String]) -> Vec<Table> {
-    let mut cycle = vec![Table::Painted];
+    let mut cycle = vec![Table::Random];
     cycle.extend(installed.iter().cloned().map(Table::Named));
-    if installed.len() > 1 {
-        cycle.push(Table::Random);
-    }
     cycle
 }
 
@@ -154,6 +153,10 @@ pub fn apply(settings: &mut Settings, intent: Intent, tables: &[String], skins: 
             settings.desktop.phase_bar = !settings.desktop.phase_bar;
             true
         }
+        Intent::Toggle(Row::BasicGraphics) => {
+            settings.desktop.basic_graphics = !settings.desktop.basic_graphics;
+            true
+        }
         Intent::Toggle(Row::PlayHistory) => {
             settings.desktop.play_history = !settings.desktop.play_history;
             true
@@ -200,6 +203,7 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
         Row::PlayHelper => on_off(prefs.play_helper),
         Row::PlayHistory => on_off(prefs.play_history),
         Row::PhaseBar => on_off(prefs.phase_bar),
+        Row::BasicGraphics => on_off(prefs.basic_graphics),
         // The folder's own name. A table carrying a `table.json` with a
         // prettier one is relabelled by the screen that draws the row,
         // which is the only layer that may read the disk.
@@ -209,7 +213,6 @@ pub fn value(settings: &Settings, row: Row, login_name: &str) -> String {
             Skin::Named(name) => name.clone(),
         },
         Row::Table => match &prefs.table {
-            Table::Painted => "Painted ground".to_string(),
             Table::Random => "Random".to_string(),
             Table::Named(name) => name.clone(),
         },
@@ -281,34 +284,31 @@ mod tests {
         assert!(!apply(&mut settings, Intent::Toggle(Row::Format), &[], &[]), "not a toggle");
     }
 
-    /// The table row cycles the painted ground, the installed tables and
-    /// random — and offers random only when there is something to
-    /// shuffle.
+    /// The table row cycles random and the installed tables, and never
+    /// the painted ground: that is the fallback and the basic-graphics
+    /// mode, not a table anybody picks beside the shipped ones.
     #[test]
-    fn the_table_cycles_the_ground_then_what_is_installed_then_random() {
+    fn the_table_cycles_random_then_what_is_installed_and_never_the_ground() {
         let none: [String; 0] = [];
-        assert_eq!(table_cycle(&none), vec![Table::Painted], "nothing installed is not a choice");
-        let one = ["neon-alley".to_string()];
-        assert_eq!(table_cycle(&one), vec![Table::Painted, Table::Named("neon-alley".to_string())], "one table needs no random");
+        assert_eq!(table_cycle(&none), vec![Table::Random], "nothing installed leaves random, which falls back");
         let two = ["neon-alley".to_string(), "orbital".to_string()];
-        assert_eq!(table_cycle(&two).len(), 4);
-        assert_eq!(table_cycle(&two).last(), Some(&Table::Random), "random comes after the tables");
+        assert_eq!(table_cycle(&two), vec![Table::Random, Table::Named("neon-alley".to_string()), Table::Named("orbital".to_string())]);
 
         let mut settings = Settings::default();
-        assert_eq!(settings.desktop.table, Table::Painted);
+        assert_eq!(settings.desktop.table, Table::Random);
+        assert_eq!(value(&settings, Row::Table, "luke"), "Random");
         assert!(apply(&mut settings, Intent::Step(Row::Table, 1), &two, &[]));
         assert_eq!(settings.desktop.table, Table::Named("neon-alley".to_string()));
         assert_eq!(value(&settings, Row::Table, "luke"), "neon-alley");
         // It wraps both ways, like the format row.
         assert!(apply(&mut settings, Intent::Step(Row::Table, -1), &two, &[]));
-        assert_eq!(value(&settings, Row::Table, "luke"), "Painted ground");
-        assert!(apply(&mut settings, Intent::Step(Row::Table, -1), &two, &[]));
         assert_eq!(settings.desktop.table, Table::Random);
+        assert!(apply(&mut settings, Intent::Step(Row::Table, -1), &two, &[]));
+        assert_eq!(settings.desktop.table, Table::Named("orbital".to_string()));
 
         // With nothing installed the row has one value and cannot move.
         let mut alone = Settings::default();
         assert!(!apply(&mut alone, Intent::Step(Row::Table, 1), &none, &[]), "nowhere to step");
-        assert_eq!(alone.desktop.table, Table::Painted);
 
         // A table the player has since deleted is not in the cycle; a
         // step from it starts the cycle rather than doing nothing.
@@ -316,6 +316,16 @@ mod tests {
         gone.desktop.table = Table::Named("deleted".to_string());
         assert!(apply(&mut gone, Intent::Step(Row::Table, 1), &two, &[]));
         assert_eq!(gone.desktop.table, Table::Named("neon-alley".to_string()));
+    }
+
+    /// Basic graphics is off until a player on a slow machine turns it on.
+    #[test]
+    fn basic_graphics_is_off_until_turned_on() {
+        let mut settings = Settings::default();
+        assert_eq!(value(&settings, Row::BasicGraphics, "luke"), "off");
+        assert!(apply(&mut settings, Intent::Toggle(Row::BasicGraphics), &[], &[]));
+        assert!(settings.desktop.basic_graphics);
+        assert!(Row::ALL.contains(&Row::BasicGraphics));
     }
 
     /// Board art leads with following the table, because that is the
