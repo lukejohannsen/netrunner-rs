@@ -139,6 +139,7 @@ impl Plugin for GamePlugin {
         // plugin already has, and lets a test drive a drag by message.
         app.add_message::<CursorMoved>()
             .init_resource::<Pending>()
+            .init_resource::<table::LastTable>()
             .init_resource::<Pointer>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
@@ -382,25 +383,32 @@ fn counts(game: &Game, phase_bar: bool) -> Counts {
     Counts { servers: 3 + remotes, human_is_runner, phase_bar }
 }
 
-/// Loads the board's pictures (`board_art`) for the skin in use, and again
-/// when the skin changes, redrawing the board so a new skin's buildings
-/// replace the old ones without leaving the screen. Loading decodes
-/// files, so it happens on a change and never per frame. Nothing without
-/// `Assets<Image>`, which is the headless tests: a plate there is its
-/// label alone.
+/// Loads the board's pictures (`board_art`) for the skin in use and the
+/// Corp's faction, and again when either changes, redrawing the board so
+/// a new skin's buildings replace the old ones without leaving the
+/// screen. The faction is the Corp identity's, which is public to both
+/// chairs (`CorpClientView::identity`), so it is known from the first
+/// view and fixed for the match. Loading decodes files, so it happens on
+/// a change and never per frame. Nothing without `Assets<Image>`, which
+/// is the headless tests: a plate there is its label alone.
+#[allow(clippy::too_many_arguments)]
 fn board_pictures(
     mut commands: Commands,
     theme: Res<Theme>,
+    core: Res<ClientCore>,
+    model: Option<Res<Model>>,
     skin: Res<crate::skin::Skin>,
     art: Option<Res<BoardArt>>,
     images: Option<ResMut<Assets<Image>>>,
     mut dirty: ResMut<Dirty>,
 ) {
     let Some(mut images) = images else { return };
-    if art.is_some_and(|art| art.skin == skin.folder) {
+    let faction = model.as_ref().and_then(|model| model.0.view.as_ref()).and_then(|view| view.corp.identity.as_ref()).and_then(|id| core.registry.get(id)).and_then(|card| card.faction);
+    let style = board_art::Style { skin: skin.folder.clone(), faction, basic: core.settings.desktop.basic_graphics };
+    if art.is_some_and(|art| art.loaded_for == style) {
         return;
     }
-    commands.insert_resource(BoardArt::load(skin.folder.as_deref(), &theme, &mut images));
+    commands.insert_resource(BoardArt::load(style, &theme, &mut images));
     dirty.board = true;
 }
 
@@ -421,7 +429,7 @@ fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, 
     }
 }
 
-fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, active: Option<Res<ActiveMatch>>, mut images: Option<ResMut<Assets<Image>>>, dev: Option<Res<crate::dev::Dev>>) {
+fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, active: Option<Res<ActiveMatch>>, mut images: Option<ResMut<Assets<Image>>>, dev: Option<Res<crate::dev::Dev>>, mut last_table: ResMut<table::LastTable>) {
     commands.init_resource::<Dirty>();
     let Some(active) = active else {
         commands.spawn((screen_root(AppScreen::Game, theme.background), children![
@@ -503,7 +511,9 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
     let backdrops: Vec<Entity> = match images.as_deref_mut() {
         Some(images) => {
             let installed = table::available();
-            let folder = table::resolve(&core.settings.desktop.table, &installed, table_nonce());
+            let last = last_table.0.take();
+            let folder = table::resolve(&core.settings.desktop.table, &installed, table_nonce(), last.as_deref(), core.settings.desktop.basic_graphics);
+            last_table.0 = folder.clone().or(last);
             // A named table whose files have gone falls back to the
             // painted ground, which is the tier that always works.
             let field = folder.as_deref().and_then(table::base).unwrap_or_else(|| table::paint(&theme));

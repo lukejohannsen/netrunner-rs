@@ -21,13 +21,48 @@ First found wins:
 | Tier | Path |
 |---|---|
 | The skin in use | `skins/<skin>/board/<key>.png` (bundled or yours) |
-| Yours | `<data dir>/netrunner/assets/board/<key>.png` |
-| Bundled | `crates/netrunner_desktop/assets/board/<key>.png` |
+| The Corp's style | `board/corp/<faction>/<key>.png` (bundled or yours) |
+| Generic | `board/<key>.png` (yours, then bundled) |
 | Drawn | — (always works) |
 
-On Linux `<data dir>` is `~/.local/share`. A skin that carries a `board/`
-folder brings its buildings with it, so a table, its chrome and its
-skyline can travel together.
+Each file tier is looked for under `<data dir>/netrunner/assets/` first
+and then under `crates/netrunner_desktop/assets/`. On Linux `<data dir>`
+is `~/.local/share`. A skin that carries a `board/` folder brings its
+buildings with it, so a table, its chrome and its skyline can travel
+together.
+
+A state with no file (`server.hq.run`) uses its base (`server.hq`) **from
+the same tier before the next tier is tried**, so a faction's HQ stays
+that faction's HQ when it is run on, even if a generic run picture
+exists.
+
+**Under Settings → Basic graphics no file is read at all**: every plate,
+tile and counter is drawn, and the HUD has no glyphs. That is the
+no-frills mode for a slow machine; the drawn pictures are otherwise only
+the fallback for a key nobody has drawn.
+
+## Corp styles
+
+The Corp's board can be styled by the **faction of the Corp's identity**,
+so a Jinteki board stands on Jinteki buildings and a Weyland board on
+Weyland's. The identity is public, so both chairs see the same style.
+
+| Folder | Chosen when the Corp's identity is |
+|---|---|
+| `corp/haas-bioroid/` | Haas-Bioroid |
+| `corp/jinteki/` | Jinteki |
+| `corp/nbn/` | NBN |
+| `corp/weyland-consortium/` | Weyland Consortium |
+| `corp/neutral-corp/` | a neutral Corp identity |
+
+**Any key below can go in a faction's folder**, not only the plates: the
+ICE and root tiles, the counters and the HUD's glyphs as well. A folder
+holding a single picture is a real style, and every key it leaves out is
+the generic one, so a style can be built one building at a time. The
+sizes are the same as the generic keys'.
+
+With no files at all the style still shows: the drawn buildings are lit
+in the Corp faction's colour (a neutral Corp keeps the Corp's blue).
 
 ## A picture is cropped to cover its box, never stretched
 

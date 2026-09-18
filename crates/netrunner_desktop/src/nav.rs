@@ -52,6 +52,10 @@ pub fn screen_root(screen: AppScreen, background: Color) -> impl Bundle + use<> 
     (
         Name::new(format!("{screen:?}")),
         DespawnOnExit(screen),
+        // Every screen's slot for a picture behind it, dressed by
+        // `backdrop` when one is installed: a screen gets it by being
+        // built on this root, with no code of its own.
+        crate::backdrop::ScreenBackdrop(screen),
         Node {
             width: percent(100),
             height: percent(100),
@@ -69,7 +73,7 @@ pub fn screen_root(screen: AppScreen, background: Color) -> impl Bundle + use<> 
 /// quitting is an explicit entry, never a stray key.
 pub fn back_from(screen: AppScreen) -> Option<AppScreen> {
     match screen {
-        AppScreen::Boot | AppScreen::MainMenu => None,
+        AppScreen::Boot | AppScreen::Splash | AppScreen::MainMenu => None,
         AppScreen::DeckEditor => Some(AppScreen::Decks),
         AppScreen::Game | AppScreen::Replay => Some(AppScreen::MainMenu),
         _ => Some(AppScreen::MainMenu),

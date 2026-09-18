@@ -5,8 +5,10 @@ of depth comes from: every card on the board is drawn at one size, so the
 perspective has to be in the art.
 
 Nothing is committed here yet. The client paints a ground of its own
-(`src/table.rs`) that needs no files at all, so the game looks finished
-without this directory existing.
+(`src/table.rs`) that needs no files at all, so the game runs without
+this directory existing — but that ground is the fallback and the
+basic-graphics mode, not the look. **This folder is where the shipped
+tables go**, several of them, one drawn at random per match.
 
 ## Where they go
 
@@ -84,15 +86,24 @@ because the name stops changing.
 ## Choosing one
 
 Settings → **Table**, and the same row in the board's gear menu. It
-cycles the painted ground, then each installed table, then **Random**,
-which is offered once there is more than one table to shuffle.
+cycles **Random**, which is the default, and then each installed table.
 
 Random draws **once per match**, not per frame — a ground that changed
-under the cards mid-game would be a distraction rather than a flourish.
+under the cards mid-game would be a distraction rather than a flourish —
+and never the same table twice running when there is another to draw.
+
+**The painted ground is never in the rotation and never a choice.** It
+is the no-frills fallback: what the board stands on when no table is
+installed, when a named table's folder has gone, or when the player turns
+on Settings → **Basic graphics (slow machines)**, which draws everything
+in code and loads no pictures. The client is meant to ship tables that
+look good, several of them, and a match draws one.
 
 `painted` and `random` are reserved, so a folder by either name is
 ignored: the setting is stored as a bare string, and a table by one of
-those names could never be selected.
+those names could never be selected. (`painted` is the old spelling of
+the ground from when it was a choice; a settings file still carrying it
+reads as Random.)
 
 ## Painting one that fits the board
 

@@ -14,14 +14,27 @@
 //!
 //! 1. the active skin's `skins/<folder>/board/<key>.png`, so a skin can
 //!    carry its own buildings;
-//! 2. `board/<key>.png` under the override directory, then the bundled
-//!    one (`assets::read`);
-//! 3. the drawn default here — so every plate, tile and counter has a
-//!    picture with no file anywhere.
+//! 2. the Corp's style, `board/corp/<faction>/<key>.png`, chosen by the
+//!    faction of the Corp's identity — so a Jinteki board can stand on
+//!    Jinteki buildings and a Weyland one on Weyland's. Any key may be
+//!    styled, not only the plates: a faction folder holding one picture
+//!    is a real style, and every key it leaves out is the generic one;
+//! 3. `board/<key>.png`;
+//! 4. the drawn default here — so every plate, tile and counter has a
+//!    picture with no file anywhere. The drawn plates are lit in the
+//!    Corp's faction colour, so the style shows before anybody draws it.
 //!
-//! A key with no file and no drawn default falls back to its base, one
-//! level deep, as a skin slot does: `server.hq.run` to `server.hq`,
-//! `counter.virus` to `counter`. A HUD glyph has
+//! Each of 1–3 is looked up under the override directory, then the
+//! bundled one (`assets::read`). A state with no file falls back to its
+//! base, one level deep, as a skin slot does — `server.hq.run` to
+//! `server.hq`, `counter.virus` to `counter` — **inside a layer before
+//! the next layer is tried**: a faction's HQ beats the generic HQ under a
+//! run, or a Jinteki board would turn generic every time it was attacked.
+//!
+//! **Under basic graphics nothing is read from a file** and every key is
+//! its drawn default: the no-frills client for a slow machine. A drawn
+//! default is otherwise only the fallback, never the look the client
+//! ships. A HUD glyph has
 //! neither — they are optional, and a board without them is the words
 //! it always had. The drawn defaults are deliberately plain — a
 //! silhouette in the Corp's colour, a pattern in grey washed in the
@@ -51,12 +64,35 @@ use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+use netrunner_core::card::Faction;
 use netrunner_core::rules::ServerId;
 
 use crate::theme::Theme;
 
 /// Where board art lives, under either asset tier and inside a skin.
 pub const DIR: &str = "board";
+
+/// Where the Corp's per-faction styles live, under [`DIR`].
+pub const CORP_DIR: &str = "corp";
+
+/// Every faction a Corp's style can be chosen by, for the guide's test
+/// and for a person listing folders to draw.
+pub const CORP_FACTIONS: [Faction; 5] = [Faction::HaasBioroid, Faction::Jinteki, Faction::Nbn, Faction::WeylandConsortium, Faction::NeutralCorp];
+
+/// The folder a Corp faction's style lives in, `None` for a Runner's.
+///
+/// Spelled out rather than derived from the variant's name so a rename
+/// in the engine cannot move somebody's art out from under them.
+pub fn faction_slug(faction: Faction) -> Option<&'static str> {
+    match faction {
+        Faction::HaasBioroid => Some("haas-bioroid"),
+        Faction::Jinteki => Some("jinteki"),
+        Faction::Nbn => Some("nbn"),
+        Faction::WeylandConsortium => Some("weyland-consortium"),
+        Faction::NeutralCorp => Some("neutral-corp"),
+        Faction::Anarch | Faction::Criminal | Faction::Shaper | Faction::NeutralRunner => None,
+    }
+}
 
 /// The drawn plates' size: 16:9, twice the plate at the widest card.
 pub const PLATE_WIDTH: u32 = 512;
@@ -72,29 +108,29 @@ pub const BADGE: u32 = 64;
 struct Key {
     key: &'static str,
     base: Option<&'static str>,
-    paint: Option<fn(&Theme) -> Image>,
+    paint: Option<fn(&Theme, Option<Faction>) -> Image>,
 }
 
 const KEYS: &[Key] = &[
-    Key { key: "server.archives", base: None, paint: Some(|theme| paint_plate(theme, Building::Archives)) },
-    Key { key: "server.rnd", base: None, paint: Some(|theme| paint_plate(theme, Building::RnD)) },
-    Key { key: "server.hq", base: None, paint: Some(|theme| paint_plate(theme, Building::Hq)) },
-    Key { key: "server.remote", base: None, paint: Some(|theme| paint_plate(theme, Building::Remote)) },
+    Key { key: "server.archives", base: None, paint: Some(|theme, faction| paint_plate(theme, faction, Building::Archives)) },
+    Key { key: "server.rnd", base: None, paint: Some(|theme, faction| paint_plate(theme, faction, Building::RnD)) },
+    Key { key: "server.hq", base: None, paint: Some(|theme, faction| paint_plate(theme, faction, Building::Hq)) },
+    Key { key: "server.remote", base: None, paint: Some(|theme, faction| paint_plate(theme, faction, Building::Remote)) },
     Key { key: "server.archives.run", base: Some("server.archives"), paint: None },
     Key { key: "server.rnd.run", base: Some("server.rnd"), paint: None },
     Key { key: "server.hq.run", base: Some("server.hq"), paint: None },
     Key { key: "server.remote.run", base: Some("server.remote"), paint: None },
-    Key { key: "ice.unrezzed", base: None, paint: Some(|_| paint_tile(Pattern::Hatch)) },
-    Key { key: "ice.rezzed", base: None, paint: Some(|_| paint_tile(Pattern::Scanlines)) },
-    Key { key: "ice.rezzed.barrier", base: Some("ice.rezzed"), paint: Some(|_| paint_tile(Pattern::Bricks)) },
-    Key { key: "ice.rezzed.code-gate", base: Some("ice.rezzed"), paint: Some(|_| paint_tile(Pattern::Gate)) },
-    Key { key: "ice.rezzed.sentry", base: Some("ice.rezzed"), paint: Some(|_| paint_tile(Pattern::Rings)) },
-    Key { key: "root.unrezzed", base: None, paint: Some(|_| paint_tile(Pattern::BackHatch)) },
-    Key { key: "root.rezzed", base: None, paint: Some(|_| paint_tile(Pattern::Rivets)) },
-    Key { key: "root.rezzed.asset", base: Some("root.rezzed"), paint: Some(|_| paint_tile(Pattern::Coins)) },
-    Key { key: "root.rezzed.upgrade", base: Some("root.rezzed"), paint: Some(|_| paint_tile(Pattern::Chevrons)) },
-    Key { key: "root.agenda", base: None, paint: Some(|_| paint_tile(Pattern::Diamonds)) },
-    Key { key: "counter", base: None, paint: Some(|_| paint_badge()) },
+    Key { key: "ice.unrezzed", base: None, paint: Some(|_, _| paint_tile(Pattern::Hatch)) },
+    Key { key: "ice.rezzed", base: None, paint: Some(|_, _| paint_tile(Pattern::Scanlines)) },
+    Key { key: "ice.rezzed.barrier", base: Some("ice.rezzed"), paint: Some(|_, _| paint_tile(Pattern::Bricks)) },
+    Key { key: "ice.rezzed.code-gate", base: Some("ice.rezzed"), paint: Some(|_, _| paint_tile(Pattern::Gate)) },
+    Key { key: "ice.rezzed.sentry", base: Some("ice.rezzed"), paint: Some(|_, _| paint_tile(Pattern::Rings)) },
+    Key { key: "root.unrezzed", base: None, paint: Some(|_, _| paint_tile(Pattern::BackHatch)) },
+    Key { key: "root.rezzed", base: None, paint: Some(|_, _| paint_tile(Pattern::Rivets)) },
+    Key { key: "root.rezzed.asset", base: Some("root.rezzed"), paint: Some(|_, _| paint_tile(Pattern::Coins)) },
+    Key { key: "root.rezzed.upgrade", base: Some("root.rezzed"), paint: Some(|_, _| paint_tile(Pattern::Chevrons)) },
+    Key { key: "root.agenda", base: None, paint: Some(|_, _| paint_tile(Pattern::Diamonds)) },
+    Key { key: "counter", base: None, paint: Some(|_, _| paint_badge()) },
     Key { key: "counter.advancement", base: Some("counter"), paint: None },
     Key { key: "counter.virus", base: Some("counter"), paint: None },
     Key { key: "counter.power", base: Some("counter"), paint: None },
@@ -137,25 +173,35 @@ impl Picture {
 #[derive(Resource, Debug, Default, Clone)]
 pub struct BoardArt {
     pictures: HashMap<&'static str, Picture>,
-    /// The skin folder these were loaded for, so a change is noticed.
+    /// What these were loaded for, so a change is noticed.
+    pub loaded_for: Style,
+}
+
+/// Everything that decides which pictures the board loads: the skin
+/// folder, the Corp's faction and whether graphics are basic.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct Style {
     pub skin: Option<String>,
+    pub faction: Option<Faction>,
+    pub basic: bool,
 }
 
 impl BoardArt {
     /// Loads every key through the tiers above.
-    pub fn load(skin: Option<&str>, theme: &Theme, images: &mut Assets<Image>) -> Self {
+    pub fn load(style: Style, theme: &Theme, images: &mut Assets<Image>) -> Self {
         let mut pictures = HashMap::new();
+        let layers = if style.basic { Vec::new() } else { layers(style.skin.as_deref(), style.faction) };
         for entry in KEYS {
-            let file = skin
-                .and_then(|folder| crate::assets::read(&format!("{}/{folder}/{DIR}/{}.png", crate::skin::DIR, entry.key)))
-                .or_else(|| crate::assets::read(&format!("{DIR}/{}.png", entry.key)))
+            let file = layers
+                .iter()
+                .find_map(|layer| entry_files(entry).find_map(|key| crate::assets::read(&format!("{layer}/{key}.png"))))
                 .and_then(|bytes| crate::card_images::decode(&bytes, "png"));
             let drawn = file.is_none();
-            let Some(image) = file.or_else(|| entry.paint.map(|paint| paint(theme))) else { continue };
+            let Some(image) = file.or_else(|| entry.paint.map(|paint| paint(theme, style.faction))) else { continue };
             let size = image.size().as_vec2();
             pictures.insert(entry.key, Picture { image: images.add(image), size, drawn });
         }
-        Self { pictures, skin: skin.map(str::to_string) }
+        Self { pictures, loaded_for: style }
     }
 
     /// The picture for `key`, or its base's when the state has none.
@@ -164,6 +210,36 @@ impl BoardArt {
             let base = KEYS.iter().find(|k| k.key == key)?.base?;
             self.pictures.get(base)
         })
+    }
+}
+
+/// The folders a picture is looked for in, first found wins: the skin's,
+/// the Corp faction's, then the generic one.
+fn layers(skin: Option<&str>, faction: Option<Faction>) -> Vec<String> {
+    let mut layers = Vec::new();
+    if let Some(folder) = skin {
+        layers.push(format!("{}/{folder}/{DIR}", crate::skin::DIR));
+    }
+    if let Some(slug) = faction.and_then(faction_slug) {
+        layers.push(format!("{DIR}/{CORP_DIR}/{slug}"));
+    }
+    layers.push(DIR.to_string());
+    layers
+}
+
+/// A key's own file name and then its base's, which is the order a state
+/// is looked for inside one layer.
+fn entry_files(entry: &Key) -> impl Iterator<Item = &'static str> {
+    std::iter::once(entry.key).chain(entry.base)
+}
+
+/// The colour a Corp's drawn buildings are lit in: its faction's, or the
+/// Corp's own for a neutral identity or none — a neutral's grey would
+/// read as a board with the lights off.
+fn corp_colour(theme: &Theme, faction: Option<Faction>) -> Color {
+    match faction {
+        Some(faction) if faction_slug(faction).is_some() && faction != Faction::NeutralCorp => theme.faction(Some(faction)),
+        _ => theme.corp,
     }
 }
 
@@ -412,10 +488,10 @@ fn surface(building: Building, u: f32, v: f32) -> Surface {
 }
 
 /// A plate's drawn default: `building` against a dusk in the Corp's
-/// colour, the lights in the accent.
-fn paint_plate(theme: &Theme, building: Building) -> Image {
+/// faction colour, the lights in the accent.
+fn paint_plate(theme: &Theme, faction: Option<Faction>, building: Building) -> Image {
     let sky = theme.background.to_srgba();
-    let corp = theme.corp.to_srgba();
+    let corp = corp_colour(theme, faction).to_srgba();
     let accent = theme.accent.to_srgba();
     let mix = |a: Srgba, b: Srgba, t: f32| [a.red + (b.red - a.red) * t, a.green + (b.green - a.green) * t, a.blue + (b.blue - a.blue) * t];
     let scale = |c: Srgba, k: f32| [c.red * k, c.green * k, c.blue * k];
@@ -591,7 +667,7 @@ mod tests {
     #[test]
     fn every_server_has_a_drawn_plate_and_they_differ() {
         let theme = Theme::default();
-        let plates: Vec<Image> = [Building::Archives, Building::RnD, Building::Hq, Building::Remote].into_iter().map(|b| paint_plate(&theme, b)).collect();
+        let plates: Vec<Image> = [Building::Archives, Building::RnD, Building::Hq, Building::Remote].into_iter().map(|b| paint_plate(&theme, None, b)).collect();
         for plate in &plates {
             assert_eq!(plate.size(), UVec2::new(PLATE_WIDTH, PLATE_HEIGHT));
         }
@@ -622,6 +698,57 @@ mod tests {
         }
     }
 
+    /// The Corp's style is looked for between the skin's and the generic
+    /// folder, and a Runner's faction has no style to look for.
+    #[test]
+    fn the_corp_style_sits_between_the_skin_and_the_generic_art() {
+        assert_eq!(layers(Some("brass"), Some(Faction::Jinteki)), vec!["skins/brass/board", "board/corp/jinteki", "board"]);
+        assert_eq!(layers(None, Some(Faction::WeylandConsortium)), vec!["board/corp/weyland-consortium", "board"]);
+        assert_eq!(layers(None, Some(Faction::Shaper)), vec!["board"], "a Runner faction styles nothing");
+        assert_eq!(layers(None, None), vec!["board"]);
+        for faction in CORP_FACTIONS {
+            assert!(faction_slug(faction).is_some(), "{faction:?} has a folder");
+        }
+    }
+
+    /// The drawn plates are lit in the Corp's faction colour, so a style
+    /// is visible before anybody has drawn one — and a neutral Corp keeps
+    /// the Corp's own colour rather than a grey.
+    #[test]
+    fn a_drawn_plate_is_lit_in_the_corps_faction_colour() {
+        let theme = Theme::default();
+        let jinteki = paint_plate(&theme, Some(Faction::Jinteki), Building::Hq);
+        let nbn = paint_plate(&theme, Some(Faction::Nbn), Building::Hq);
+        let plain = paint_plate(&theme, None, Building::Hq);
+        assert_ne!(jinteki.data, nbn.data);
+        assert_ne!(jinteki.data, plain.data);
+        assert_eq!(paint_plate(&theme, Some(Faction::NeutralCorp), Building::Hq).data, plain.data);
+    }
+
+    /// Basic graphics reads no file: every picture is a drawn one, even
+    /// the bundled glyphs.
+    #[test]
+    fn basic_graphics_loads_only_the_drawn_tier() {
+        let mut images = Assets::<Image>::default();
+        let basic = BoardArt::load(Style { basic: true, faction: Some(Faction::Jinteki), ..Style::default() }, &Theme::default(), &mut images);
+        for key in keys() {
+            if let Some(picture) = basic.pictures.get(key) {
+                assert!(picture.drawn, "{key} was read from a file under basic graphics");
+            }
+        }
+        assert!(basic.get("hud.credits").is_none(), "a HUD glyph has no drawn tier");
+    }
+
+    /// The guide names every Corp style folder.
+    #[test]
+    fn the_guide_lists_every_corp_style() {
+        let guide = include_str!("../assets/board/README.md");
+        for faction in CORP_FACTIONS {
+            let folder = format!("`corp/{}/`", faction_slug(faction).unwrap());
+            assert!(guide.contains(&folder), "assets/board/README.md does not list {folder}");
+        }
+    }
+
     /// Each tile pattern is a different picture, at the tile's shape.
     #[test]
     fn every_tile_kind_has_its_own_drawn_pattern() {
@@ -647,7 +774,7 @@ mod tests {
         let mut images = Assets::<Image>::default();
         let art = BoardArt::default();
         assert!(art.get("server.hq.run").is_none());
-        let loaded = BoardArt::load(Some("no-such-skin"), &Theme::default(), &mut images);
+        let loaded = BoardArt::load(Style { skin: Some("no-such-skin".to_string()), ..Style::default() }, &Theme::default(), &mut images);
         let base = loaded.get("server.hq").expect("drawn").image.clone();
         assert_eq!(loaded.get("server.hq.run").expect("falls back").image, base);
         assert_eq!(loaded.get(server_key(ServerId::Remote(3), true)).unwrap().image, loaded.get("server.remote").unwrap().image);

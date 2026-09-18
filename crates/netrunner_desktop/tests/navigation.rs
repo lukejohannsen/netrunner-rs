@@ -347,3 +347,39 @@ fn about_credits_every_owner_in_the_register() {
     app.update();
     assert_eq!(screen(&app), AppScreen::MainMenu);
 }
+
+/// The splash is skipped by a key, and moves on by itself once it has
+/// been up long enough — the fonts count as loaded with no asset server,
+/// which is the headless case. Boot itself never comes here without a
+/// window, so it is entered the way a screen is.
+#[test]
+fn the_splash_moves_on_by_itself_or_on_a_key() {
+    use bevy::time::TimeUpdateStrategy;
+    use netrunner_desktop::screens::splash::SPLASH_MIN;
+
+    let (mut app, _dir) = headless_client();
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::MainMenu, "no window, no splash");
+
+    app.world_mut().write_message(Navigate(AppScreen::Splash));
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Splash);
+    assert_eq!(roots(&mut app, AppScreen::Splash), 1);
+    press(&mut app, KeyCode::Space, Key::Space);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::MainMenu, "any key skips it");
+    assert_eq!(roots(&mut app, AppScreen::Splash), 0);
+
+    app.insert_resource(TimeUpdateStrategy::ManualDuration(SPLASH_MIN / 4));
+    app.world_mut().write_message(Navigate(AppScreen::Splash));
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::Splash, "it holds for a moment");
+    for _ in 0..8 {
+        app.update();
+    }
+    assert_eq!(screen(&app), AppScreen::MainMenu, "and then goes on without a key");
+}

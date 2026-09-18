@@ -29,6 +29,7 @@
 //! animate without inferring anything from its own last frame.
 
 pub mod access;
+pub mod backdrop;
 pub mod actions;
 pub mod board;
 pub mod card_face;

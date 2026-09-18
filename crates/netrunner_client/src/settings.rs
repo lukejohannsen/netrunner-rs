@@ -117,6 +117,13 @@ pub struct DesktopPrefs {
     /// The art the board's own furniture is dressed in.
     #[serde(with = "skin_by_name")]
     pub skin: Skin,
+    /// The no-frills client, for a slow machine: every picture the
+    /// client would load from a file — the table, each screen's
+    /// backdrop, the splash, the board's buildings and tiles, a skin — is
+    /// drawn in code instead. Off by default, because the drawn tier is
+    /// the fallback that always works and not the look the client ships.
+    /// Card scans keep their own switch, [`DesktopPrefs::download_images`].
+    pub basic_graphics: bool,
 }
 
 /// Which art dresses the board's tiles, headers, buttons and chips.
@@ -164,8 +171,16 @@ impl Skin {
     }
 }
 
-/// Which table the board is played on: the painted ground, one named
-/// folder of art, or one of those chosen at random.
+/// Which table the board is played on: one named folder of art, or one
+/// of the installed folders chosen at random.
+///
+/// **The painted ground is not a choice here.** It is the no-frills
+/// fallback: what the board stands on when no table is installed, when a
+/// named one has gone, or when the player has asked for
+/// [`DesktopPrefs::basic_graphics`] on a slow machine. The client is
+/// meant to ship with tables that look good, and a plain grid offered
+/// beside them — or drawn by a random pick among them — would be the
+/// look nobody chose.
 ///
 /// Stored in the file as a plain string rather than a tagged enum, so a
 /// hand-edited settings file reads `"table": "neon-alley"` rather than
@@ -173,22 +188,20 @@ impl Skin {
 /// the trade [`Table::from_name`] documents.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub enum Table {
-    /// The drawn ground: the first asset tier, which needs no files and
-    /// so always works. The default, and what a named table falls back
-    /// to when its folder has gone.
-    #[default]
-    Painted,
     /// One of the installed tables, drawn afresh at the start of each
     /// **match** — not each frame, and not each redraw. A field that
     /// changed under the cards mid-game would be a distraction rather
-    /// than a flourish.
+    /// than a flourish. The default: the shipped tables are the look.
+    #[default]
     Random,
     /// The folder of that name, under `tables/` in either asset tier.
     Named(String),
 }
 
 /// The two names a table folder may not use, because the file spells
-/// [`Table`] as a bare string.
+/// [`Table`] as a bare string. `painted` is the old spelling of the
+/// painted ground, from when it was a choice; it is still reserved so
+/// that a file written then reads the same way now.
 pub const TABLE_PAINTED: &str = "painted";
 pub const TABLE_RANDOM: &str = "random";
 
@@ -196,7 +209,6 @@ impl Table {
     /// How the settings file spells it.
     pub fn as_name(&self) -> &str {
         match self {
-            Table::Painted => TABLE_PAINTED,
             Table::Random => TABLE_RANDOM,
             Table::Named(name) => name,
         }
@@ -204,14 +216,18 @@ impl Table {
 
     /// The reverse, and **it cannot fail**: a name that is neither
     /// reserved word is a table folder, and one whose folder is missing
-    /// resolves to [`Table::Painted`] when the board looks for it rather
+    /// resolves to the painted ground when the board looks for it rather
     /// than refusing to load the file. A settings file is hand-editable
     /// and a table is a folder someone can delete; neither is a reason
     /// to lose the rest of a player's preferences.
+    ///
+    /// `painted` reads as [`Table::Random`]: it was the default when it
+    /// was a choice, so a file carrying it cannot say whether anybody
+    /// meant it, and the player who wants the plain ground on purpose
+    /// now has [`DesktopPrefs::basic_graphics`] for it.
     pub fn from_name(name: &str) -> Self {
         match name {
-            TABLE_PAINTED => Table::Painted,
-            TABLE_RANDOM => Table::Random,
+            TABLE_PAINTED | TABLE_RANDOM => Table::Random,
             other => Table::Named(other.to_string()),
         }
     }
@@ -219,7 +235,7 @@ impl Table {
 
 impl Default for DesktopPrefs {
     fn default() -> Self {
-        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Painted, skin: Skin::Auto }
+        Self { animation_speed: 1.0, sfx_volume: 0.8, music_volume: 0.5, download_images: false, window_size: None, play_helper: false, play_history: false, phase_bar: true, table: Table::Random, skin: Skin::Auto, basic_graphics: false }
     }
 }
 
@@ -331,10 +347,11 @@ mod tests {
     /// deleted folder must not cost a player the rest of their settings.
     #[test]
     fn the_table_is_stored_as_a_bare_name_and_an_unknown_one_is_a_folder() {
-        assert_eq!(Table::default(), Table::Painted);
-        for table in [Table::Painted, Table::Random, Table::Named("neon-alley".to_string())] {
+        assert_eq!(Table::default(), Table::Random, "the shipped tables are the look");
+        for table in [Table::Random, Table::Named("neon-alley".to_string())] {
             assert_eq!(Table::from_name(table.as_name()), table, "{table:?} round-trips through its name");
         }
+        assert_eq!(Table::from_name(TABLE_PAINTED), Table::Random, "the old default reads as the new one");
         assert_eq!(Table::from_name("no-such-table"), Table::Named("no-such-table".to_string()));
         let mut settings = Settings::default();
         settings.desktop.table = Table::Named("neon-alley".to_string());

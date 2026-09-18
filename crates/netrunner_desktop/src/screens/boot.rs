@@ -52,6 +52,11 @@ fn boot(world: &mut World) {
             Err(error) => world.resource_mut::<Notices>().push(format!("dev game not started: {error}")),
         }
     }
-    let first = world.get_resource::<crate::dev::Dev>().map_or(AppScreen::MainMenu, |dev| dev.first_screen());
+    // The splash is for a person: a dev hook that named a screen goes
+    // straight there, and a client with no window — the headless tests —
+    // goes straight to the menu, so neither waits on a title card.
+    let named = world.get_resource::<crate::dev::Dev>().and_then(|dev| dev.named_screen());
+    let windowed = world.query_filtered::<(), With<bevy::window::PrimaryWindow>>().iter(world).next().is_some();
+    let first = named.unwrap_or(if windowed { AppScreen::Splash } else { AppScreen::MainMenu });
     world.write_message(Navigate(first));
 }

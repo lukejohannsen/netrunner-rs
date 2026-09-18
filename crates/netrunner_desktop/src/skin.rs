@@ -57,14 +57,32 @@ impl Plugin for SkinPlugin {
 ///
 /// Does nothing without `Assets<Image>`, which is the headless tests: the
 /// skin stays empty there and every slot is drawn.
-fn refresh(mut commands: Commands, core: Res<crate::core::ClientCore>, images: Option<ResMut<Assets<Image>>>, mut last: Local<Option<(Choice, Table)>>) {
-    let now = (core.settings.desktop.skin.clone(), core.settings.desktop.table.clone());
+fn refresh(
+    mut commands: Commands,
+    core: Res<crate::core::ClientCore>,
+    drawn: Option<Res<crate::table::LastTable>>,
+    images: Option<ResMut<Assets<Image>>>,
+    mut last: Local<Option<(Choice, Option<String>, bool)>>,
+) {
+    let in_play = in_play(&core.settings.desktop.table, drawn.and_then(|drawn| drawn.0.clone()));
+    let now = (core.settings.desktop.skin.clone(), in_play.clone(), core.settings.desktop.basic_graphics);
     if last.as_ref() == Some(&now) {
         return;
     }
     let Some(mut images) = images else { return };
     *last = Some(now);
-    commands.insert_resource(rebuild(&core.settings, &mut images));
+    commands.insert_resource(rebuild(&core.settings, in_play.as_deref(), &mut images));
+}
+
+/// The table folder the board is on, for `Auto` to follow: the named one,
+/// or under random the one the last match drew — which is the match in
+/// play, since a pick is made on entering the board. Before any match has
+/// drawn one, random suggests nothing.
+fn in_play(table: &Table, drawn: Option<String>) -> Option<String> {
+    match table {
+        Table::Named(folder) => Some(folder.clone()),
+        Table::Random => drawn,
+    }
 }
 
 /// Where skins live, under either asset tier.
@@ -407,12 +425,9 @@ pub fn resolve(choice: &Choice, suggested: Option<&str>, installed: &[String]) -
     installed.iter().find(|name| *name == wanted).cloned()
 }
 
-/// The skin a table suggests, if the player's choice lets it.
-pub fn suggested_by(table: &Table) -> Option<String> {
-    match table {
-        Table::Named(folder) => crate::table::manifest(folder).skin,
-        _ => None,
-    }
+/// The skin a table folder suggests, if it has a manifest naming one.
+pub fn suggested_by(folder: &str) -> Option<String> {
+    crate::table::manifest(folder).skin
 }
 
 /// Loads `folder`'s manifest and every picture it names.
@@ -485,9 +500,13 @@ fn node_mode(entry: &SlotArt) -> NodeImageMode {
     }
 }
 
-/// Rebuilds [`Skin`] from the settings and the table in play.
-pub fn rebuild(settings: &Settings, images: &mut Assets<Image>) -> Skin {
-    let suggested = suggested_by(&settings.desktop.table);
+/// Rebuilds [`Skin`] from the settings and the table in play — or the
+/// undressed board under basic graphics, which loads no file at all.
+pub fn rebuild(settings: &Settings, table_in_play: Option<&str>, images: &mut Assets<Image>) -> Skin {
+    if settings.desktop.basic_graphics {
+        return Skin::default();
+    }
+    let suggested = table_in_play.and_then(suggested_by);
     match resolve(&settings.desktop.skin, suggested.as_deref(), &available()) {
         Some(folder) => load(&folder, images),
         None => Skin::default(),
