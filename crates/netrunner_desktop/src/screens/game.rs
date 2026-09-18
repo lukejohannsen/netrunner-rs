@@ -112,7 +112,7 @@ use netrunner_core::dsl::{CardId, CardType};
 use netrunner_core::rules::{GamePhase, InstallId, InstallSlot, PendingDecision, PlayerAction, RunPhase, ServerId, Side, SubroutineStatus};
 use netrunner_core::view::{ClientView, ServerView};
 
-use crate::card_images::CardImages;
+use crate::card_images::{CardImages, WantsImage};
 use crate::core::{ClientCore, Notices};
 use crate::models::game::{Anchor, Game, Intent, MatchMessageRef, Outcome};
 use crate::board_art::{self, BoardArt};
@@ -2459,7 +2459,17 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                                     if copies > 1 {
                                         cell.spawn(widgets::dim(theme, format!("{copies} copies")));
                                     }
-                                    entry_button(cell, theme, game, *index);
+                                    // A button the card's width in pixels,
+                                    // not the cell's 100%: inside a wrapping
+                                    // row a percentage has nothing to resolve
+                                    // against while the row is measured, so
+                                    // the label was measured a word to a line
+                                    // and every row kept that height — two
+                                    // rows of cards ran off the window.
+                                    if let Some(button) = entry_button(cell, theme, game, *index) {
+                                        let width = size.width();
+                                        cell.commands().entity(button).entry::<Node>().and_modify(move |mut node| node.width = px(width));
+                                    }
                                 });
                             }
                         });
@@ -2483,11 +2493,19 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
 fn spawn_choice_card(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, card: Option<&CardId>, concealed: Side, size: FaceSize, marker: impl Bundle) -> Entity {
     match card.and_then(|id| core.registry.get(id).map(|def| (id, def))) {
         Some((id, def)) => {
-            let image = def.numeric_id.and_then(|code| images.face(code, size));
+            let exact = def.numeric_id.and_then(|code| images.face(code, size));
+            // Its own width not decoded yet: the sharpest copy the board
+            // already has, stretched, and still asking for its own width,
+            // which `poll_decoded` puts in place when it lands.
+            let stand_in = if exact.is_none() { def.numeric_id.and_then(|code| images.nearest_face(code).map(|handle| (code, handle))) } else { None };
+            let image = exact.or_else(|| stand_in.as_ref().map(|(_, handle)| handle.clone()));
             let entity = spawn_face(parent, theme, &Face::of(def), size, image, marker);
             // A face with no `Button` of its own still needs to know it is
             // hovered, for the secondary click.
             parent.commands().entity(entity).insert((ChoiceCard(id.clone()), Interaction::None));
+            if let Some((code, _)) = stand_in {
+                parent.commands().entity(entity).insert(WantsImage { code, size });
+            }
             entity
         }
         None => spawn_back(parent, theme, images.back(concealed), concealed, size, marker),
