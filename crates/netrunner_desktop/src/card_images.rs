@@ -292,7 +292,7 @@ fn poll_decoded(
     mut commands: Commands,
     mut images: ResMut<CardImages>,
     mut assets: ResMut<Assets<Image>>,
-    wanted: Query<(Entity, &WantsImage)>,
+    wanted: Query<(Entity, &WantsImage, Option<&Node>)>,
 ) {
     let finished: Vec<(CardId, Option<Image>)> =
         images.pending.iter_mut().filter_map(|(code, task)| check_ready(task).map(|image| (*code, image))).collect();
@@ -303,9 +303,13 @@ fn poll_decoded(
             images.faces.insert(code, handle);
         }
     }
-    for (entity, wants) in &wanted {
+    for (entity, wants, old) in &wanted {
         if let Some(handle) = images.faces.get(&wants.code) {
-            commands.entity(entity).remove::<WantsImage>().despawn_children().insert(picture(handle.clone(), wants.size));
+            let node = match old {
+                Some(old) => in_place_of(old, picture_node(wants.size)),
+                None => picture_node(wants.size),
+            };
+            commands.entity(entity).remove::<WantsImage>().despawn_children().insert(picture(handle.clone(), wants.size)).insert(node);
         }
     }
 }
@@ -315,21 +319,52 @@ fn poll_decoded(
 pub fn picture(handle: Handle<Image>, size: FaceSize) -> impl Bundle {
     (
         ImageNode { image_mode: NodeImageMode::Stretch, ..ImageNode::new(handle) },
-        Node {
-            width: px(size.width()),
-            height: px(size.height()),
-            flex_shrink: 0.0,
-            border_radius: BorderRadius::all(px(8)),
-            ..default()
-        },
+        picture_node(size),
         BackgroundColor(Color::NONE),
         BorderColor::all(Color::NONE),
     )
 }
 
+fn picture_node(size: FaceSize) -> Node {
+    Node { width: px(size.width()), height: px(size.height()), flex_shrink: 0.0, border_radius: BorderRadius::all(px(8)), ..default() }
+}
+
+/// The picture's node, keeping where the text face it replaces was put.
+///
+/// A face's size and border are its own, but its *placement* belongs to
+/// whoever laid it out after spawning it: a hand's or rig's overlap pull
+/// (`margin.left`), an ICE tile's gap (`margin.top`), a lifted copy's
+/// absolute position. Swapping the whole `Node` reset those to zero, so
+/// the card drawn last — the one whose scan was still decoding — slid a
+/// full width right, past the hand's peek window, and was cut in half.
+fn in_place_of(old: &Node, new: Node) -> Node {
+    Node { margin: old.margin, position_type: old.position_type, left: old.left, right: old.right, top: old.top, bottom: old.bottom, ..new }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_picture_keeps_the_placement_of_the_face_it_replaces() {
+        let size = FaceSize::Board(200);
+        let face = Node {
+            width: px(200),
+            height: px(280),
+            border: UiRect::all(px(2)),
+            margin: UiRect::left(px(-40)),
+            position_type: PositionType::Absolute,
+            left: px(15),
+            top: px(30),
+            ..default()
+        };
+        let node = in_place_of(&face, picture_node(size));
+        assert_eq!(node.margin.left, px(-40));
+        assert_eq!(node.position_type, PositionType::Absolute);
+        assert_eq!((node.left, node.top), (px(15), px(30)));
+        assert_eq!((node.width, node.height), (px(size.width()), px(size.height())));
+        assert_eq!(node.border, UiRect::default());
+    }
 
     #[test]
     fn a_sixteen_bit_image_is_narrowed_to_eight_bit_srgb_and_an_eight_bit_one_is_left_alone() {
