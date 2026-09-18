@@ -182,6 +182,9 @@ fn until_the_runners_turn(app: &mut App) {
     });
 }
 
+/// The seed every test game is dealt from.
+const TEST_SEED: u64 = 1;
+
 /// Play vs Computer → Start (Novice, unrated) → the board, as the Runner.
 fn start_a_game(app: &mut App) {
     start_a_game_as(app, Side::Runner);
@@ -196,7 +199,11 @@ fn start_a_game_as(app: &mut App, human: Side) {
     // the bottom rung so the bot answers at once, unrated so no file is
     // written. `start` is the same function the Start button calls.
     let choice = StartChoice { human, level: Level::Novice, style: None, corp_deck: DEFAULT_CORP_DECK.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string(), rated: false };
-    let active = new_game::start(app.world().resource::<ClientCore>(), &choice).expect("the default decks start a game");
+    // One seed for every test: the games are real, and a test that leans
+    // on a board state (an install by the Runner's first turn, a central
+    // left open) must see the same deal each run rather than whatever the
+    // clock dealt. `new_game::start` itself still seeds from the clock.
+    let active = new_game::start_seeded(app.world().resource::<ClientCore>(), &choice, TEST_SEED).expect("the default decks start a game");
     app.world_mut().insert_resource(active);
     app.world_mut().write_message(Navigate(AppScreen::Game));
     app.update();
@@ -1008,9 +1015,21 @@ fn the_card_width_holds_while_the_board_fills_and_the_bar_sits_on_the_board() {
     assert_eq!(plates(&mut app), servers, "a plate per server");
     let keep = button_labelled(&mut app, "Keep hand").expect("Keep hand is a decision");
     press_entity(&mut app, keep);
-    until_the_runners_turn(&mut app);
-    let pieces: usize = app.world().resource::<Model>().0.view.as_ref().unwrap().corp.servers.iter().map(|s| s.ice.len() + s.root.len()).sum();
-    assert!(pieces > 0, "the Corp has installed something by the Runner's first turn");
+    // The game is seeded from the clock, so the Corp's first install may
+    // be a turn or two away: end the Runner's turns until it has made one,
+    // as the tile test does.
+    let pieces = |app: &App| -> usize { app.world().resource::<Model>().0.view.as_ref().map_or(0, |v| v.corp.servers.iter().map(|s| s.ice.len() + s.root.len()).sum()) };
+    for _ in 0..6 {
+        until_the_runners_turn(&mut app);
+        if pieces(&app) > 0 {
+            break;
+        }
+        let (end, disabled) = control_button(&mut app, Control::EndTurn);
+        assert!(!disabled);
+        press_entity(&mut app, end);
+        wait_for(&mut app, "the turn to end", |app| app.world().resource::<Model>().0.view.as_ref().is_some_and(|v| !matches!(v.phase, GamePhase::Action(Side::Runner)) || v.paid_ability_window.is_some()));
+    }
+    assert!(pieces(&app) > 0, "the Corp installed something within six turns");
     if columns(&mut app) == servers {
         assert_eq!(app.world().resource::<BoardFit>().face, face, "the Corp's installs moved no card");
     }
@@ -1160,12 +1179,22 @@ fn an_access_puts_the_card_in_the_decision_popup_above_its_actions() {
     let (mut app, _dir) = headless_client();
     start_a_game(&mut app);
     to_the_runners_turn(&mut app);
-    let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
-    press_entity(&mut app, rnd);
+    // A central the Corp has not protected yet: this presses only Continue
+    // and Complete, so a run into ICE ends before any breach. The game is
+    // seeded from the clock and the Corp's first turn sometimes puts ICE
+    // on R&D, which made R&D-only a one-in-five timeout. R&D and HQ both
+    // always hold cards, so either one breaches to an access.
+    let target = {
+        let view = app.world().resource::<Model>().0.view.clone().expect("a view");
+        let bare = |server: ServerId| view.corp.servers.iter().find(|s| s.server == server).is_none_or(|s| s.ice.is_empty());
+        [ServerId::RnD, ServerId::Hq].into_iter().find(|s| bare(*s)).expect("R&D or HQ is still unprotected on the Runner's first turn")
+    };
+    let header = entity_with(&mut app, &Click::Target(Target::Server(target))).expect("the central's plate");
+    press_entity(&mut app, header);
     let run = {
         let model = &app.world().resource::<Model>().0;
         let menu = model.menu.clone().expect("the zone's menu is open");
-        *menu.entries.iter().find(|i| matches!(model.actions.entries[**i].action, PlayerAction::InitiateRun { server: ServerId::RnD })).expect("R&D offers the run")
+        *menu.entries.iter().find(|i| matches!(model.actions.entries[**i].action, PlayerAction::InitiateRun { server } if server == target)).expect("the central offers the run")
     };
     let button = entity_with(&mut app, &Click::Entry(run)).expect("the run's button");
     press_entity(&mut app, button);

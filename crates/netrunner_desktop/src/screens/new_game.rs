@@ -149,6 +149,14 @@ fn seed_from_clock() -> u64 {
 /// Puts the match together from a choice and the client's files. Every
 /// failure is a `String` for the notice line.
 pub fn start(core: &ClientCore, choice: &StartChoice) -> Result<ActiveMatch, String> {
+    start_seeded(core, choice, seed_from_clock())
+}
+
+/// [`start`] on a given seed: the same deal and the same bot every time,
+/// which is what a test needs — a board state the test depends on (an
+/// unprotected central, a Corp install by turn one) otherwise holds on
+/// some clock seeds and not others, and the test flakes.
+pub fn start_seeded(core: &ClientCore, choice: &StartChoice, seed: u64) -> Result<ActiveMatch, String> {
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
     let format = core.settings.format.unwrap_or(NsgFormat::Startup);
     let (corp, runner) = decks_for_match(&decks_dir, &choice.corp_deck, &choice.runner_deck, &core.registry, format)?;
@@ -163,7 +171,7 @@ pub fn start(core: &ClientCore, choice: &StartChoice) -> Result<ActiveMatch, Str
         human: choice.human,
         level: choice.level,
         style: choice.style,
-        seed: seed_from_clock(),
+        seed,
         rating,
     };
     let handle = MatchHandle::start_local(spec)?;
