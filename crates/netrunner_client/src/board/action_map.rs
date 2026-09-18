@@ -40,6 +40,7 @@ use netrunner_core::rules::{
 use netrunner_core::view::{ClientView, ServerView};
 
 use crate::actions::{card_title, describe_action, explain_action};
+use crate::board::affordance::{self, Affordance};
 use crate::prose;
 use crate::placement::Placement;
 use crate::selection::Selection;
@@ -184,6 +185,11 @@ pub struct ActionMap {
     /// — a second copy of a card in the same place (`Selection::hidden`).
     /// Still entries, so the play helper lists them; not decisions.
     collapsed: BTreeSet<usize>,
+    /// Whether this view is a moment that will pass, which is what the
+    /// two dual actions read to know their mood (`affordance`). Kept here
+    /// rather than asked of the view per card, so every target of one
+    /// view is judged against the same moment.
+    passing: bool,
 }
 
 impl ActionMap {
@@ -195,7 +201,7 @@ impl ActionMap {
             .collect();
         let selection = Selection::of(view, registry);
         let collapsed = selection.as_ref().map(|selection| selection.hidden()).unwrap_or_default();
-        Self { entries, selection, collapsed }
+        Self { entries, selection, collapsed, passing: affordance::in_a_passing_moment(view) }
     }
 
     /// Whether entry `index` is a selection button another one already
@@ -236,6 +242,37 @@ impl ActionMap {
 
     pub fn for_pile(&self, pile: Pile) -> Vec<usize> {
         self.with_target(&Target::Pile(pile))
+    }
+
+    /// The entries on any target, by the target itself. The `for_*`
+    /// lookups above are this with the target spelled out; a screen that
+    /// already holds a [`Target`] — because a click produced one — wants
+    /// this one, and both clients had written the same six-armed `match`
+    /// to get here.
+    pub fn for_target(&self, target: &Target) -> Vec<usize> {
+        self.with_target(target)
+    }
+
+    /// The mood `target` earns from its legal actions, or `None` when the
+    /// engine offers nothing on it — which is what the board draws no
+    /// glow for.
+    ///
+    /// The caller gates on priority first: a view a person cannot act in
+    /// has no `legal_actions`, so this is `None` throughout, but a client
+    /// that is holding the last view while the opponent thinks must not
+    /// keep lighting it (`Game::awaiting` in the desktop).
+    pub fn affordance(&self, target: &Target) -> Option<Affordance> {
+        self.for_target(target)
+            .into_iter()
+            .map(|index| affordance::affordance_of(&self.entries[index].action, self.passing))
+            .reduce(Affordance::stronger)
+    }
+
+    /// The mood of one entry by index, for a surface that lists entries
+    /// rather than targets — the decision buttons under a prompt, the
+    /// control bar, the play helper's rows.
+    pub fn affordance_of_entry(&self, index: usize) -> Option<Affordance> {
+        self.entries.get(index).map(|entry| affordance::affordance_of(&entry.action, self.passing))
     }
 
     /// Where a card in hand may be taken: every place on the board an

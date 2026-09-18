@@ -19,13 +19,13 @@ use bevy::input::{ButtonState, InputPlugin};
 use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 
-use netrunner_client::board::{Control, Pile, Target};
+use netrunner_client::board::{Affordance, Control, Pile, Target};
 use netrunner_client::card_text::Segment;
 use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, DecisionPopup, Glowing, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -1068,4 +1068,51 @@ fn an_access_puts_the_card_in_the_decision_popup_above_its_actions() {
     for label in &labels {
         assert!(button_labelled(&mut app, label).is_some(), "{label} has a button");
     }
+}
+
+/// The board lights what the engine will accept and nothing else.
+///
+/// The assertion is *agreement*, not a count: for every clickable target
+/// on the board, the glow it wears is exactly the mood the model gives
+/// it. A glow derived from anything but `legal_actions` — a card type, a
+/// credit total, what a system can see on screen — would fail here the
+/// first time the engine disagreed with the guess.
+#[test]
+fn the_board_glows_exactly_what_the_engine_offers_and_in_the_right_mood() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+
+    let mut lit: Vec<(Target, Option<Affordance>, Option<Affordance>)> = Vec::new();
+    {
+        let mut targets = app.world_mut().query::<(Entity, &Click)>();
+        let clickable: Vec<(Entity, Target)> = targets
+            .iter(app.world())
+            .filter_map(|(entity, click)| match click {
+                Click::Target(target) => Some((entity, target.clone())),
+                _ => None,
+            })
+            .collect();
+        for (entity, target) in clickable {
+            let drawn = app.world().get::<Glowing>(entity).map(|g| g.0);
+            let wanted = app.world().resource::<Model>().0.affordance_for(&target);
+            lit.push((target, drawn, wanted));
+        }
+    }
+    assert!(!lit.is_empty(), "the board draws clickable targets on the Runner's turn");
+    for (target, drawn, wanted) in &lit {
+        assert_eq!(drawn, wanted, "{target:?} is drawn {drawn:?} but the engine offers {wanted:?}");
+    }
+    // The Runner's own turn: a playable card in hand is the commonest
+    // glow there is, and it is purple, not the warning colour.
+    assert!(
+        lit.iter().any(|(target, drawn, _)| matches!(target, Target::HandCard(_)) && *drawn == Some(Affordance::Usable)),
+        "a card in hand should be playable on the Runner's own turn"
+    );
+    // And nothing on this board is a passing moment yet, so nothing is
+    // yellow: the mood tracks the moment rather than being decoration.
+    assert!(
+        !lit.iter().any(|(_, drawn, _)| *drawn == Some(Affordance::Conditional)),
+        "no window is open in the Runner's action phase, so nothing should warn"
+    );
 }

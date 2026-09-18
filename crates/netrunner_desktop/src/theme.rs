@@ -56,6 +56,17 @@ pub struct Theme {
     pub corp: Color,
     pub runner: Color,
     pub danger: Color,
+    /// The ring on a card the engine will accept an ordinary move on
+    /// (`board::Affordance::Usable`). Purple because the two colours
+    /// already spoken for on a card are the sides' own — Corp blue and
+    /// Runner red — and their mixture belongs to neither side, so it
+    /// reads the same on both chairs.
+    pub glow_usable: Color,
+    /// The ring on a card whose moment will pass
+    /// (`board::Affordance::Conditional`). Yellow as a warning, and kept
+    /// clear of `danger`: danger is a number that has gone wrong, this is
+    /// an opportunity about to be lost.
+    pub glow_conditional: Color,
 }
 
 impl Default for Theme {
@@ -76,6 +87,8 @@ impl Default for Theme {
             corp: Color::srgb(0.16, 0.42, 0.85),
             runner: Color::srgb(0.80, 0.16, 0.20),
             danger: Color::srgb(0.90, 0.35, 0.30),
+            glow_usable: Color::srgb(0.62, 0.40, 0.95),
+            glow_conditional: Color::srgb(0.98, 0.80, 0.25),
         }
     }
 }

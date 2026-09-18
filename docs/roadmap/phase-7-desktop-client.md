@@ -2107,3 +2107,111 @@ card to `None`. This change shows a face only when the *masked* card is
 `Some`, which is the conservative rule; the discrepancy is pre-existing
 and is an engine-boundary question rather than a rendering one, so it
 wants its own entry.
+
+---
+
+### 4p. The board says what can act, and in which of two moods — DONE (18 September 2026)
+
+`feat/playable-cards-glow` (#66). Not from any of the three lists — the
+person asked for it on being told what was next, having expected to find
+it there: *"when player has priority highlight around cards those that
+have a playable action … green glow standard playable, yellow like during
+a run to pump strength or use ability or rez … No glow for unplayable.
+Help the player during the action phase when they own priority."* It is
+the debt §4g opened. Once a click stopped submitting and started opening
+a menu, nothing on the board said which cards *had* a menu worth opening,
+so the only way to find out what was playable was to click everything or
+turn on the play helper — which is the flat panel the whole of §4 was
+built to stop being the way in.
+
+**The knowledge was already there.** A target with entries in the
+`ActionMap` is a target the engine will accept an action on, and both
+clients already built one. So this is a rendering of `legal_actions` and
+nothing else: no engine change, no masking change, no new `PlayerAction`,
+and the 192-game random-vs-random report is untouched because no engine
+file was touched.
+
+**Decisions taken, with the alternative rejected.**
+
+- **Two moods, classified per action rather than per moment.**
+  `netrunner_client::board::affordance` gives every legal action a mood:
+  `Usable` for a move at the person's own pace (play, install, run,
+  advance, score) and `Conditional` for a moment that will pass (a run,
+  an open paid-ability window, a prompt parked on the person). The
+  rejected alternative was to read the mood off the clock alone — "a run
+  or a window is open, so everything listed is conditional" — which is
+  true of today's engine and would have been half the code. It colours by
+  *when* rather than by *what*, so a `PlayerAction` added later would
+  inherit the mood of whatever moment it was first listed in, with no test
+  failing and nobody deciding. The match is exhaustive instead: a new
+  variant does not compile until someone says which mood it is.
+- **Two actions are genuinely both, and take the moment as a tie-break.**
+  `RezIce` is an asset flipped up at leisure on the Corp's own turn and an
+  ICE rezzed on the Runner's approach; `ActivateAbility` is a Corp asset's
+  click ability and a breaker's pump. Same action, two moments, and they
+  are worth telling apart precisely because one of them expires. Every
+  other variant is context-free.
+- **Purple and yellow, chosen by the person over the green first
+  proposed.** Purple because the two colours already spoken for on a card
+  are the sides' own — Corp blue, Runner red — and their mixture belongs
+  to neither, so it reads the same from both chairs. Yellow is kept clear
+  of `danger`: danger is a number that has gone wrong, this is an
+  opportunity about to be lost. The person also asked that a pop-up's
+  buttons count as conditional, which they do — a parked decision is the
+  clearest case of a moment that will pass.
+- **A `BoxShadow`, not an `Outline`.** `Outline` is spoken for three times
+  over on this board already — the transition highlight, the dragged
+  card's lift, and the ice being encountered — and a node has exactly one.
+  A shadow is a second component, so a card can glow *and* be outlined in
+  the same frame, which is the common case: the card just drawn is usually
+  also a card that can be played. Neither costs any layout, so
+  `face_width`'s budget and the no-scroll rule are untouched. `BoxShadow`
+  is a `Vec<ShadowStyle>`, so the contact shadows still owed (the third
+  list's item 1) can be a second entry in the same component rather than a
+  fourth claimant on the same slot.
+- **Gated on `awaiting`, not on the map being empty**, and the test is
+  what forced the distinction. A seat off priority keeps legal actions of
+  its own — the Corp's standing rez is in the Corp's `legal_actions` all
+  through the Runner's turn, 57 times over six games — so a board that lit
+  whatever the map held would glow at a person who cannot act. The
+  side-agnostic `legal_actions` the Session Rule relies on is exactly why
+  the gate has to be the client's own.
+
+**In both clients**, because the rule is one rule: the classification and
+its tests are in `netrunner_client`, the desktop draws the glow, and the
+terminal colours each card's title on the hand and rig lines (Magenta and
+Yellow — the pane's palette is the terminal's sixteen, and a truecolour
+purple would be the only exception in the file). The terminal turns it off
+wholesale in a replay (a recorded board is not the viewer's to act on) and
+under a lesson (a lesson narrows the offered actions to the step's own,
+and a board glowing at the rest would be arguing with it).
+
+**Verified.** `cargo test --workspace` green, clippy silent across the
+workspace. Over six real games, both viewers, the classification was
+exercised 3,663 times as `Usable` (1,230 of them hand cards) and 494 as
+`Conditional` (411 on installs), against 53,909 target-views with no glow
+at all — the ratio the colour depends on, since a glow on everything says
+nothing. New tests:
+- `netrunner_client::board::affordance` — a target takes a mood exactly
+  when the engine offers something on it, over six real games as both
+  viewers; the two dual actions follow the moment and nothing else does;
+  `Conditional` wins a target that offers both.
+- `netrunner_desktop` — the board's glow *agrees with the model* for every
+  clickable target on it, rather than being counted: a glow derived from a
+  card type, a credit total or what a system can see on screen would fail
+  there the first time the engine disagreed. Plus: a hand card is purple
+  on the Runner's own turn, and nothing is yellow while no window is open.
+
+Screenshotted both chairs forty decisions in, and the only scroll area
+logged is the hidden log's at zero size. The Runner's board lights four
+playable hand cards, every runnable server header and both piles in
+purple. The Corp's landed on its discard step with all seven cards yellow
+under `Discard down to your hand size`, which is the classification
+reading correctly: the turn cannot end until they act. A second Corp shot
+caught a parked `Send a Message: choose 1 card` with its one pop-up button
+yellow and the rest of the board dark.
+
+**Owed, and deliberately not done here:** the control bar is unchanged.
+Its buttons are already greyed when the engine does not list them, which
+is the same information in the shape that bar has used since §4a; glowing
+them as well would be saying it twice.

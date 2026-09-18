@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
+use netrunner_client::board::ActionMap;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
@@ -265,6 +266,24 @@ pub trait RenderableView {
     /// The running action log. Both paths have one now, so both render the
     /// same four-region layout.
     fn action_log(&self) -> &[String];
+    /// What the board may act on right now, and in which mood, so a card
+    /// the engine will accept something on is drawn in colour
+    /// (`netrunner_client::board::affordance`). Built from the view the
+    /// surface is already holding, which is also the list the actions
+    /// pane draws — so the board and the pane agree by construction.
+    ///
+    /// `None` turns the colour off wholesale, which is what a surface
+    /// with no decision to offer wants (the replay viewer) and what a
+    /// lesson wants: a lesson narrows the offered actions to the step's
+    /// own (`tui::LocalUiState::offered_actions`), and a board glowing at
+    /// the rest would be arguing with the lesson.
+    fn action_map(&self) -> Option<ActionMap> {
+        if self.coaching().is_some() {
+            return None;
+        }
+        self.view().map(|view| ActionMap::build(view, self.registry()))
+    }
+
     /// A title for the actions pane other than the live game's — the
     /// replay viewer lists a step's events there, where a title promising
     /// "Enter to act" would lie. `None` keeps the default.

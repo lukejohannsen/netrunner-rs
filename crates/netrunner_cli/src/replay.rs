@@ -209,6 +209,12 @@ impl RenderableView for Replay {
         self.current_events().to_vec()
     }
 
+    /// Nothing glows in a replay, for the same reason: the cards on a
+    /// recorded board are not the viewer's to act on.
+    fn action_map(&self) -> Option<netrunner_client::board::ActionMap> {
+        None
+    }
+
     fn actions_title(&self) -> Option<String> {
         Some(match self.cursor {
             0 => "Events (none yet — → to step)".to_string(),
