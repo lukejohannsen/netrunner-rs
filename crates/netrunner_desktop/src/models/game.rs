@@ -68,7 +68,7 @@
 use std::sync::Arc;
 
 use netrunner_client::actions::push_log_line;
-use netrunner_client::board::{transitions, ActionMap, Control, Pile, Prompt, RunTrail, Target, Transition};
+use netrunner_client::board::{transitions, ActionMap, Affordance, Control, Pile, Prompt, RunTrail, Target, Transition};
 use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
 use netrunner_client::ratings::RatingReport;
 use netrunner_core::cards::CardRegistry;
@@ -362,14 +362,22 @@ impl Game {
         if !self.awaiting {
             return Vec::new();
         }
-        match target {
-            Target::HandCard(card) => self.actions.for_hand_card(card),
-            Target::Install(id) => self.actions.for_install(*id),
-            Target::Server(server) => self.actions.for_server(*server),
-            Target::Identity(side) => self.actions.for_identity(*side),
-            Target::Position(position) => self.actions.for_position(*position),
-            Target::Pile(pile) => self.actions.for_pile(*pile),
+        self.actions.for_target(target)
+    }
+
+    /// The glow `target` earns: what the engine will accept on it, and in
+    /// which mood (`netrunner_client::board::affordance`).
+    ///
+    /// **Gated on `awaiting`, not on the map being empty**, and the
+    /// difference is load-bearing: a seat off priority keeps legal
+    /// actions of its own — the Corp's standing rez is in the Corp's
+    /// `legal_actions` all through the Runner's turn — so a board that
+    /// lit whatever the map held would glow at a person who cannot act.
+    pub fn affordance_for(&self, target: &Target) -> Option<Affordance> {
+        if !self.awaiting {
+            return None;
         }
+        self.actions.affordance(target)
     }
 
     pub fn apply(&mut self, intent: Intent) -> Outcome {

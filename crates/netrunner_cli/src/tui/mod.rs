@@ -25,6 +25,7 @@ use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError};
 
+use netrunner_client::board::{ActionMap, Affordance, Target};
 use netrunner_client::access::Access;
 
 use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
@@ -1054,6 +1055,9 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         return;
     };
 
+    // One map per frame rather than per card: `ActionMap::build` labels
+    // every legal action, and the hand and the rig both ask it.
+    let actions = app.action_map();
     let mut corp_lines = Vec::new();
     // `Some` only for the viewer's own hand — the masking layer decided
     // that, and this draws exactly what it handed over. Until this line
@@ -1061,7 +1065,7 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     // chose "keep or mulligan" over five cards they could not see, and
     // the only way to learn what was in hand was to read the action list.
     if let Some(cards) = &view.corp.hq_cards {
-        corp_lines.push(Line::from(hand_line(cards, app.registry())));
+        corp_lines.push(hand_line(cards, app.registry(), actions.as_ref()));
         corp_lines.push(Line::from(""));
     }
     // Archives, R&D, HQ — always, with their counts — then the remotes,
@@ -1088,7 +1092,7 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         Line::from(format!("Grip: {} cards   Stack: {} cards   Heap: {} cards", view.runner.grip_count, view.runner.stack_count, view.runner.heap.len())),
     ];
     if let Some(cards) = &view.runner.grip_cards {
-        runner_lines.push(Line::from(hand_line(cards, app.registry())));
+        runner_lines.push(hand_line(cards, app.registry(), actions.as_ref()));
     }
     runner_lines.push(Line::from(""));
     if view.runner.rig.is_empty() {
@@ -1096,7 +1100,8 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     } else {
         runner_lines.extend(view.runner.rig.iter().map(|card| {
             let counters = counter_label(Some(&card.card), card.counters, app.registry());
-            Line::from(format!("{} (str {}{counters})", card_title(&card.card, app.registry()), card.current_strength))
+            let mood = actions.as_ref().and_then(|map| map.affordance(&Target::Install(card.install_id)));
+            Line::from(Span::styled(format!("{} (str {}{counters})", card_title(&card.card, app.registry()), card.current_strength), mood_style(mood)))
         }));
     }
     frame.render_widget(
@@ -1109,9 +1114,9 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
 /// (Operation, 5c) · Palisade (Barrier ICE, 3c)`. One line rather than
 /// one per card because the Corp area also holds the servers and, during
 /// a run, the phase strip, inside 60% of a `Min(10)` board.
-fn hand_line(cards: &[CardId], registry: &CardRegistry) -> String {
+fn hand_line(cards: &[CardId], registry: &CardRegistry, actions: Option<&ActionMap>) -> Line<'static> {
     if cards.is_empty() {
-        return "Hand: (empty)".to_string();
+        return Line::from("Hand: (empty)");
     }
     let describe = |id: &CardId| match registry.get(id) {
         Some(card) => {
@@ -1123,7 +1128,33 @@ fn hand_line(cards: &[CardId], registry: &CardRegistry) -> String {
         }
         None => id.0.clone(),
     };
-    format!("Hand: {}", cards.iter().map(describe).collect::<Vec<_>>().join(" · "))
+    // A span per card rather than one string, so each carries its own
+    // mood: what the engine will accept on that card right now
+    // (`netrunner_client::board::affordance`). The desktop draws the same
+    // two moods as a glow; here they are the only colour on the line, so
+    // a plain title is a card with nothing to do.
+    let mut line = Line::from("Hand: ");
+    for (i, id) in cards.iter().enumerate() {
+        if i > 0 {
+            line.push_span(Span::raw(" · "));
+        }
+        let mood = actions.and_then(|map| map.affordance(&Target::HandCard(id.clone())));
+        line.push_span(Span::styled(describe(id), mood_style(mood)));
+    }
+    line
+}
+
+/// The colour a mood is drawn in: purple for a move at the person's own
+/// pace, yellow for a moment that will pass, unstyled for a card the
+/// engine offers nothing on. Named colours rather than RGB, because this
+/// pane's palette is the terminal's sixteen and a truecolour purple would
+/// be the only exception in the file.
+fn mood_style(mood: Option<Affordance>) -> Style {
+    match mood {
+        Some(Affordance::Usable) => Style::default().fg(Color::Magenta),
+        Some(Affordance::Conditional) => Style::default().fg(Color::Yellow),
+        None => Style::default(),
+    }
 }
 
 fn format_server(server: &ServerView, view: &ClientView, registry: &CardRegistry) -> String {

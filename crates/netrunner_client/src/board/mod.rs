@@ -10,6 +10,7 @@
 //! the mask withheld.
 
 pub mod action_map;
+pub mod affordance;
 pub mod diff;
 pub mod facts;
 pub mod hud;
@@ -17,6 +18,7 @@ pub mod phase;
 pub mod trail;
 
 pub use action_map::{table_servers, ActionEntry, ActionMap, Control, Pile, Prompt, Target};
+pub use affordance::Affordance;
 pub use diff::{transitions, Transition, Zone};
 pub use facts::{install_facts, tile_label};
 pub use trail::{IceState, IceStep, Outcome, RunTrail, Stage};
