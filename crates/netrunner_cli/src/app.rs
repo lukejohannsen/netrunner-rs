@@ -390,6 +390,7 @@ impl CardPicker {
     }
 }
 
+pub use netrunner_client::card_face::Face;
 pub use netrunner_client::prose::engine_reading;
 
 /// One card as a person reads it: the type line, the printed numbers,
@@ -400,39 +401,17 @@ pub fn card_modal(id: &CardId, registry: &CardRegistry) -> Modal {
     let Some(card) = registry.get(id) else {
         return Modal::new(&id.0, "This card is not in the registry.", "Esc to close");
     };
-    let mut lines: Vec<String> = vec![card.type_line.clone().unwrap_or_else(|| format!("{:?}", card.card_type))];
-    let mut numbers: Vec<String> = vec![format!("Cost {}", card.cost)];
-    if let Some(strength) = card.strength {
-        numbers.push(format!("Strength {strength}"));
-    }
-    if let Some(required) = card.advancement_requirement {
-        numbers.push(format!("Advancement {required}"));
-    }
-    if let Some(points) = card.agenda_points {
-        numbers.push(format!("{points} agenda point{}", if points == 1 { "" } else { "s" }));
-    }
-    if let Some(trash) = card.trash_cost {
-        numbers.push(format!("Trash {trash}"));
-    }
-    if let Some(mu) = card.memory_cost {
-        numbers.push(format!("{mu} MU"));
-    }
-    if let Some(influence) = card.influence_cost {
-        numbers.push(format!("Influence {influence}"));
-    }
-    if card.unique {
-        numbers.push("Unique".to_string());
-    }
-    lines.push(numbers.join(" · "));
-    lines.push(String::new());
-    match &card.printed_text {
-        Some(text) => lines.extend(text.lines().map(str::to_string)),
-        None => lines.push("(no printed text on record)".to_string()),
-    }
-    if let Some(flavor) = &card.flavor {
-        lines.push(String::new());
-        lines.extend(flavor.lines().map(|line| format!("\"{line}\"")));
-    }
+    // The printed card comes from `card_face::Face`, which is the one
+    // authority on what a card prints and where. Three copies of this
+    // used to exist — here, the desktop browser's `numbers_line`, and
+    // nothing at all at an access — and all three built the numbers off
+    // `CardDefinition`, so all three printed `Cost 0` on an agenda.
+    // Symbols render as `Symbol::fallback` (`¢`, `»`) rather than the
+    // `[credit]` tokens this printed before: a terminal has the
+    // stand-ins for exactly this, and the tokens were the raw JSON
+    // showing through.
+    let mut lines = Face::of(card).lines(false);
+
     // What the engine will actually do, beside the words it was written
     // from: each trigger, ability and subroutine as the engine reads it
     // (`prose::describe_effect` over the DSL), and the printed clause the
@@ -539,7 +518,10 @@ mod tests {
         assert_eq!(modal.title, "Hedge Fund");
         assert!(modal.body.contains("Operation"), "{}", modal.body);
         assert!(modal.body.contains("Cost 5"), "{}", modal.body);
-        assert!(modal.body.contains("Gain 9[credit]"), "{}", modal.body);
+        // `Symbol::fallback`, not the `[credit]` token the card JSON
+        // holds: a terminal has a stand-in for every printed symbol, and
+        // the token was the raw data showing through.
+        assert!(modal.body.contains("Gain 9¢"), "{}", modal.body);
         assert_eq!(modal.footer, "Esc to close");
         let unknown = card_modal(&CardId("no_such_card".to_string()), &registry);
         assert!(unknown.body.contains("not in the registry"));

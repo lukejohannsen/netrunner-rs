@@ -49,6 +49,9 @@
 //! - `NETRUNNER_HOLD_INSTALL=1` — the same at the first server choice a
 //!   card's text installs into (Scatter Field, Ansel 1.0), so the
 //!   screenshot catches where the card may go.
+//! - `NETRUNNER_HOLD_ACCESS=1` — the same at the first card the person is
+//!   asked to access, so the screenshot catches the accessed card's face
+//!   in the pop-up with its steal/trash/pass buttons under it.
 //! - `NETRUNNER_SCROLL=<x>,<y>,<lines>` — before the screenshot, the
 //!   pointer is put at window position (x, y) and the wheel turned by
 //!   that many lines, through the same window events winit would send;
@@ -111,6 +114,8 @@ pub struct Dev {
     pub hold_selection: bool,
     /// Stop the autoplay at the first "where to install" a card asks.
     pub hold_install: bool,
+    /// Stop the autoplay at the first card the person is asked to access.
+    pub hold_access: bool,
     /// Open the sheet of the first installed Corp card, once.
     pub sheet: bool,
     /// Open this side's score area with its first row expanded, once.
@@ -149,6 +154,7 @@ impl Dev {
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
             hold_install: std::env::var_os("NETRUNNER_HOLD_INSTALL").is_some_and(|v| !v.is_empty()),
+            hold_access: std::env::var_os("NETRUNNER_HOLD_ACCESS").is_some_and(|v| !v.is_empty()),
             sheet: std::env::var_os("NETRUNNER_SHEET").is_some_and(|v| !v.is_empty()),
             agendas: std::env::var("NETRUNNER_AGENDAS").ok().and_then(|side| match side.trim().to_ascii_lowercase().as_str() {
                 "corp" => Some(netrunner_core::rules::Side::Corp),

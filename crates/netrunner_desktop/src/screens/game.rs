@@ -100,6 +100,7 @@ use bevy::prelude::*;
 use bevy::ui::FocusPolicy;
 use bevy::window::PrimaryWindow;
 
+use netrunner_client::access::Access;
 use netrunner_client::board::action_map::server_name;
 use netrunner_client::board::{facts, hud, Control, IceState, Outcome as RunOutcome, Pile, Stage, Target, Transition, Zone};
 use netrunner_client::card_face::Face;
@@ -623,7 +624,13 @@ fn poll(active: Option<ResMut<ActiveMatch>>, model: Option<ResMut<Model>>, pace:
 /// `applied`th entry, so the choice wanders through the list and the
 /// game develops rather than clicking for credits forever. Off, and
 /// ignored, for a person.
-fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut pending: ResMut<Pending>, nodes: Query<(&Click, &ComputedNode, &UiGlobalTransform)>) {
+fn autoplay(
+    dev: Option<ResMut<crate::dev::Dev>>,
+    model: Option<Res<Model>>,
+    mut pending: ResMut<Pending>,
+    nodes: Query<(&Click, &ComputedNode, &UiGlobalTransform)>,
+    client: Res<ClientCore>,
+) {
     let (Some(mut dev), Some(model)) = (dev, model) else { return };
     if dev.options && model.0.awaiting && dev.autoplayed >= dev.autoplay {
         // The gear, pressed once the board has settled.
@@ -691,12 +698,14 @@ fn autoplay(dev: Option<ResMut<crate::dev::Dev>>, model: Option<Res<Model>>, mut
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
         return;
     }
-    // Held at a card-selection prompt, or a card's install, for a
-    // screenshot: the autoplay is done, and the pop-up is what is shot.
+    // Held at a card-selection prompt, a card's install, or an access,
+    // for a screenshot: the autoplay is done, and the pop-up is what is
+    // shot. An access is not a `PendingDecision`, so it is asked of
+    // `access::Access` rather than matched here.
     let held = model.0.view.as_ref().is_some_and(|view| match view.pending_decision {
         Some(PendingDecision::ChooseCards { .. }) => dev.hold_selection,
         Some(PendingDecision::ChooseServer { install: Some(_), .. }) => dev.hold_install,
-        _ => false,
+        _ => dev.hold_access && Access::of(view, &client.registry).is_some(),
     });
     if held {
         dev.autoplayed = dev.autoplay;
@@ -1083,7 +1092,7 @@ fn redraw(
         let decisions = if game.awaiting && !game.finished() { game.actions.decisions() } else { Vec::new() };
         if let Some(root) = roots.iter().next() {
             if !decisions.is_empty() {
-                commands.entity(root).with_children(|parent| spawn_decision_popup(parent, &theme, game, &decisions));
+                commands.entity(root).with_children(|parent| spawn_decision_popup(parent, &theme, &core, &images, game, &decisions));
             }
             if let Some(menu) = &game.menu {
                 commands.entity(root).with_children(|parent| spawn_actions_menu(parent, &theme, game, menu, fit.window));
@@ -1825,7 +1834,19 @@ fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &G
 /// so the board beneath stays clickable; only the panel and its
 /// buttons are hit. Under the overlays (`GlobalZIndex(20)`), so a
 /// sheet opened to read a card covers it.
-fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, decisions: &[usize]) {
+///
+/// **At an access the card itself is in the panel, above the heading**
+/// (`netrunner_client::access`), which makes this the second thing on
+/// the board to carry a card and actions together — the score area
+/// being the first. §4g's rule that a reading surface offers nothing
+/// holds everywhere it can: a card on the table has a tile, so its
+/// actions belong on the menu that tile's click opens, and its sheet
+/// stays read-only. An accessed card has no tile. It is in HQ or R&D,
+/// face down, and this panel is the only place it exists, so the
+/// alternative to putting its actions here is a person reading a name
+/// and guessing. The face is `FaceSize::Large`, the same as a sheet's,
+/// and fits the 520px panel with room to spare.
+fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, decisions: &[usize]) {
     parent
         .spawn((
             DecisionPopup,
@@ -1847,10 +1868,20 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, game: 
             let mut panel = screen.spawn(widgets::panel(theme, px(520)));
             panel.entry::<BorderColor>().and_modify(move |mut border| *border = BorderColor::all(accent));
             panel.with_children(|panel| {
-                let (title, detail) = match &game.prompt {
-                    Some(prompt) => (prompt.title.clone(), prompt.detail.clone()),
-                    None => ("Your decision".to_string(), String::new()),
+                // The access owns the panel's words when there is one: its
+                // title names the card, and its facts are the live costs
+                // (a grid may have raised the printed trash cost) rather
+                // than `Prompt`'s single line.
+                let access = game.view.as_ref().and_then(|view| Access::of(view, &core.registry));
+                let (title, detail) = match (&access, &game.prompt) {
+                    (Some(access), _) => (access.title(), access.facts().join("\n")),
+                    (None, Some(prompt)) => (prompt.title.clone(), prompt.detail.clone()),
+                    (None, None) => ("Your decision".to_string(), String::new()),
                 };
+                if let Some(access) = &access {
+                    let image = access.face.code.and_then(|code| images.face(code));
+                    spawn_face(panel, theme, &access.face, FaceSize::Large, image, ());
+                }
                 panel.spawn((widgets::heading(theme, title), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
                 if !detail.is_empty() {
                     panel.spawn((widgets::dim(theme, detail), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));

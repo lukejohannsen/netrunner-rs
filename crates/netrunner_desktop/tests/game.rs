@@ -20,6 +20,7 @@ use bevy::prelude::*;
 use bevy::state::app::StatesPlugin;
 
 use netrunner_client::board::{Control, Pile, Target};
+use netrunner_client::card_text::Segment;
 use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
@@ -945,4 +946,126 @@ fn a_tile_says_its_rez_state_and_its_sheet_lists_the_facts() {
     assert!(facts.iter().any(|l| l == "Rezzed" || l.starts_with("Unrezzed") || l.starts_with("Face down")), "{facts:?}");
     assert_eq!(overlays(&mut app), 1);
     assert_eq!(app.world().resource::<Model>().0.applied, app.world().resource::<Model>().0.applied, "nothing was submitted");
+}
+
+/// An access shows the card, not its name: the person's report was that
+/// all they got was a title. The Runner runs R&D, breaches it, and the
+/// decision pop-up carries the accessed card's printed face above the
+/// steal/trash/pass buttons — the one place on the board where a card
+/// and its actions sit together, because an accessed card has no tile.
+#[test]
+fn an_access_puts_the_card_in_the_decision_popup_above_its_actions() {
+    use netrunner_client::access::Access;
+
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
+    press_entity(&mut app, rnd);
+    let run = {
+        let model = &app.world().resource::<Model>().0;
+        let menu = model.menu.clone().expect("the zone's menu is open");
+        *menu.entries.iter().find(|i| matches!(model.actions.entries[**i].action, PlayerAction::InitiateRun { server: ServerId::RnD })).expect("R&D offers the run")
+    };
+    let button = entity_with(&mut app, &Click::Entry(run)).expect("the run's button");
+    press_entity(&mut app, button);
+    // A run does not breach by itself: the Runner continues it through
+    // initiation and approach, and an unprotected R&D then breaches. The
+    // bar's Continue run is the one button pressed, so the test never
+    // takes a jack-out by accident.
+    let parked = |app: &App| {
+        let core = app.world().resource::<ClientCore>();
+        app.world().resource::<Model>().0.view.as_ref().and_then(|view| Access::of(view, &core.registry)).is_some()
+    };
+    // Continue through the phases, then Complete run at the success
+    // phase, which is what opens the breach. Only those two are pressed,
+    // so the test never takes a jack-out by accident. Waiting on
+    // `awaiting` between presses rather than counting frames: the match
+    // is a real thread, and under a loaded test runner it answers later
+    // than a fixed frame budget allows.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !parked(&app) {
+        assert!(Instant::now() < deadline, "waited ten seconds for the breach");
+        if !app.world().resource::<Model>().0.awaiting {
+            std::thread::sleep(Duration::from_millis(5));
+            app.update();
+            continue;
+        }
+        let live = [Control::ContinueRun, Control::CompleteRun]
+            .into_iter()
+            .map(|control| control_button(&mut app, control))
+            .find(|(_, greyed)| !greyed);
+        match live {
+            Some((button, _)) => press_entity(&mut app, button),
+            None => {
+                std::thread::sleep(Duration::from_millis(5));
+                app.update();
+            }
+        }
+    }
+    app.update();
+    app.update();
+
+    let access = {
+        let core = app.world().resource::<ClientCore>();
+        let view = app.world().resource::<Model>().0.view.clone().expect("a view");
+        Access::of(&view, &core.registry).expect("still parked at the access")
+    };
+
+    // The card is inside the pop-up, drawn as a face: its printed text
+    // is on a `BodyText` node under the `DecisionPopup`.
+    let world = app.world_mut();
+    let popup = world.query_filtered::<Entity, With<DecisionPopup>>().single(world).expect("the pop-up is up");
+    // A face's rules text is a `Text` marked `BodyText` whose runs are
+    // `TextSpan` children, one per word-run and one per icon, so the
+    // card's words are the spans joined rather than the node's own text.
+    let mut body = None;
+    let mut headings = Vec::new();
+    let mut stack = vec![popup];
+    while let Some(entity) = stack.pop() {
+        if let Some(text) = world.get::<Text>(entity) {
+            headings.push(text.0.clone());
+        }
+        if world.get::<BodyText>(entity).is_some() {
+            let mut runs = String::new();
+            let mut spans = world.get::<Children>(entity).map(|c| c.iter().collect::<Vec<_>>()).unwrap_or_default();
+            spans.reverse();
+            while let Some(span) = spans.pop() {
+                if let Some(run) = world.get::<TextSpan>(span) {
+                    runs.push_str(&run.0);
+                }
+            }
+            body = Some(runs);
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter().rev());
+        }
+    }
+    let body = body.expect("the accessed card's face is in the pop-up");
+    // The words, not the symbols: which glyph a `[subroutine]` is drawn
+    // with is the theme's choice (the icon font when it is cached, a
+    // stand-in when it is not), so asserting the whole rendered string
+    // would make this test depend on what fonts the machine has.
+    for run in &access.face.body {
+        if let Segment::Text(text) = run {
+            let text = text.trim();
+            if !text.is_empty() {
+                assert!(body.contains(text), "the face carries the card's own words: {text:?} missing from {body:?}");
+            }
+        }
+    }
+    assert!(headings.iter().any(|text| *text == access.title()), "the pop-up is titled by the card: {headings:?}");
+
+    // And the actions that follow the access are the buttons under it.
+    let labels: Vec<String> = {
+        let model = &app.world().resource::<Model>().0;
+        model.actions.decisions().iter().map(|i| model.actions.entries[*i].label.clone()).collect()
+    };
+    assert!(
+        labels.iter().any(|label| label.starts_with("Steal ") || label.starts_with("Trash ") || label.starts_with("Pass on ")),
+        "the access decisions are the pop-up's buttons: {labels:?}"
+    );
+    for label in &labels {
+        assert!(button_labelled(&mut app, label).is_some(), "{label} has a button");
+    }
 }

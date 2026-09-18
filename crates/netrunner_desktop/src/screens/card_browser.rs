@@ -10,7 +10,8 @@
 //! inspector. The status row holds the image download beside its own
 //! progress bar, the count, and the keys. The grid is a scrolling CSS grid of thumb faces, each a
 //! button, with a scrollbar beside it. The inspector is the large face,
-//! the numbers line the terminal's `card_modal` prints, the faction and
+//! the numbers line `card_face::Face::numbers_line` lays out (shared
+//! with the terminal's card modal and the access pop-up), the faction and
 //! set with their marks, which formats allow the card, the flavour, the
 //! engine's reading (`prose::engine_reading`), whether the engine plays
 //! it, and whether its picture is cached.
@@ -398,7 +399,7 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
     });
     parent.spawn((widgets::heading(theme, card.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     parent.spawn(widgets::dim(theme, face.type_line.clone()));
-    parent.spawn((widgets::dim(theme, numbers_line(card)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    parent.spawn((widgets::dim(theme, Face::of(card).numbers_line()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     // The faction with its mark, the set with its, the code.
     if let Some(faction) = card.faction {
         parent.spawn((Text::new(""), theme.font(size::SMALL), TextColor(theme.text_dim))).with_children(|spans| {
@@ -443,34 +444,6 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
         };
         parent.spawn(widgets::dim(theme, status));
     }
-}
-
-/// The numbers line the terminal's `card_modal` prints, so the two
-/// clients say the same thing about a card.
-fn numbers_line(card: &netrunner_core::dsl::CardDefinition) -> String {
-    let mut numbers: Vec<String> = vec![format!("Cost {}", card.cost)];
-    if let Some(strength) = card.strength {
-        numbers.push(format!("Strength {strength}"));
-    }
-    if let Some(required) = card.advancement_requirement {
-        numbers.push(format!("Advancement {required}"));
-    }
-    if let Some(points) = card.agenda_points {
-        numbers.push(format!("{points} agenda point{}", if points == 1 { "" } else { "s" }));
-    }
-    if let Some(trash) = card.trash_cost {
-        numbers.push(format!("Trash {trash}"));
-    }
-    if let Some(mu) = card.memory_cost {
-        numbers.push(format!("{mu} MU"));
-    }
-    if let Some(influence) = card.influence_cost {
-        numbers.push(format!("Influence {influence}"));
-    }
-    if card.unique {
-        numbers.push("Unique".to_string());
-    }
-    numbers.join(" · ")
 }
 
 /// Which formats allow the card, by the tables `cards::legal_in` reads.
