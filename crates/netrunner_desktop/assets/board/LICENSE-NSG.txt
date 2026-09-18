@@ -2,7 +2,8 @@ Game symbols by Null Signal Games, licensed under the Creative Commons
 Attribution-NoDerivatives 4.0 International license (CC BY-ND 4.0):
 https://creativecommons.org/licenses/by-nd/4.0/
 
-Source: Null Signal Games Visual Assets v1.5 ("SVG/Game Symbols").
+Source: Null Signal Games Visual Assets v1.5 ("SVG/Game Symbols"),
+https://nullsignal.games/about/nsg-visual-assets/
 This project is not affiliated with or endorsed by Null Signal Games.
 
 Modifications: each symbol was converted from SVG to a 128 x 128 PNG
@@ -23,5 +24,7 @@ derivative work. No symbol was otherwise edited.
   hud.tags.png              NSG_TAG.svg                   as published
 
 These files are NOT covered by this project's GPL-3.0-or-later license.
-They are distributed alongside it, unmodified beyond the above, under
-CC BY-ND 4.0, and must not be edited into new symbols.
+Each is a separately licensed work, owned by Null Signal Games and
+distributed alongside the project under CC BY-ND 4.0, unmodified beyond
+the above, and must not be edited into new symbols. See
+../CREDITS.md for the project's register of every committed asset.

@@ -197,10 +197,13 @@ actually is on your monitor.
 
 ## Licensing
 
-Nothing goes in *this* directory — the one inside the repository —
-without a `LICENSE-<name>.txt` beside it granting redistribution under
-terms compatible with this project's GPL-3.0-or-later.
-`assets/fonts/LICENSE-OFL.txt` is the worked example.
+A file committed here is a separately licensed work and needs a row in
+[`../CREDITS.md`](../CREDITS.md): its owner, their website, its licence
+and anything changed. If the project made it, including with AI
+assistance, it is GPL-3.0-or-later. If someone else did, it keeps their
+licence, with the licence text beside it as `LICENSE-<name>.txt`, and
+the artist is credited by name and website. Find out who made it before
+committing it.
 
 Your own skins in `<data dir>` are yours and are not covered by any of
 this.

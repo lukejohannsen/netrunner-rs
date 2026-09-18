@@ -9,6 +9,10 @@ under `<data dir>/netrunner/assets/sfx/` replaces that.
 The file names are the `Sfx` variants in `src/audio/mod.rs`, lowercase,
 once that module lands (Phase 7 §4). Nothing is committed here yet.
 
-A file committed here must be licensed for redistribution under terms
-compatible with this repository's GPL-3.0-or-later — CC0 or an OFL-like
-grant — and say so in a `LICENSE-<name>.txt` beside it.
+A file committed here is a separately licensed work and needs a row in
+[`../CREDITS.md`](../CREDITS.md): its owner, their website, its licence
+and anything changed. If the project made it, including with AI
+assistance, it is GPL-3.0-or-later. If someone else did, it keeps their
+licence, with the licence text beside it as `LICENSE-<name>.txt`, and
+its maker is credited by name and website. Find out who made it before
+committing it.

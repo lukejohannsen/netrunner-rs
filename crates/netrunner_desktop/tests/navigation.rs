@@ -320,3 +320,30 @@ fn the_card_browser_filters_through_drop_downs_that_escape_closes_first() {
     let side = app.world_mut().query::<(Entity, &Filter)>().iter(app.world()).find(|(_, f)| **f == Filter::Side).map(|(e, _)| e).unwrap();
     assert_eq!(app.world_mut().query::<&Dropdown>().get(app.world(), side).unwrap().selected, 2, "the respawned drop-down shows Runner");
 }
+
+/// About credits every third party the register names, bundled or
+/// fetched, and Escape leads back to the menu like any other screen.
+#[test]
+fn about_credits_every_owner_in_the_register() {
+    use netrunner_desktop::screens::about::CreditLine;
+    let (mut app, _dir) = headless_client();
+    app.update();
+    app.update();
+    app.world_mut().write_message(Navigate(AppScreen::About));
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::About);
+    let lines: Vec<String> = app.world_mut().query::<&CreditLine>().iter(app.world()).map(|l| l.0.clone()).collect();
+    let credits = netrunner_desktop::credits::bundled();
+    let others = netrunner_desktop::credits::fetched().into_iter().chain(netrunner_desktop::credits::software());
+    for owner in credits.iter().map(|a| a.owner.clone()).chain(others.map(|c| c.owner)) {
+        assert!(lines.iter().any(|l| l.contains(&owner)), "About does not credit {owner}: {lines:?}");
+    }
+    for website in credits.iter().map(|a| a.website.clone()) {
+        assert!(lines.iter().any(|l| l.contains(&website)), "About does not link {website}");
+    }
+    press(&mut app, KeyCode::Escape, Key::Escape);
+    app.update();
+    app.update();
+    assert_eq!(screen(&app), AppScreen::MainMenu);
+}

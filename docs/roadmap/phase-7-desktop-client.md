@@ -2611,3 +2611,39 @@ does allow access to some Glyphs"*).
   - The guide lists every key.
 - **Screenshots** were taken from both chairs sixty decisions in: hatched face-down ICE, a rezzed asset's coins in its faction's red with its advancement badge, and the HUD glyphs. The dev log's one `scroll area` line is the hidden log.
 - **No sweep.** No engine file changed; the client crate's facts split is covered by its existing tests, whose output is unchanged.
+
+### 4v. Every asset is its own licensed work, with a register that cannot drift — DONE (18 September 2026)
+
+`chore/asset-credits`. The person asked for asset art to be *"wholly
+separate licenseable entities"* that can be added and removed as needed.
+An imported asset has its maker found and credited; one made in the
+project, *"as part of AI"*, is GPL; and art behind the start screen that
+the project did not make is attributed to its artist and their website.
+
+**Decisions taken, with the alternative rejected.**
+
+- **One register, `assets/CREDITS.md`, replaces the licence bar.**
+  - The old rule was that a committed asset had to be CC0 or OFL-style, compatible with the GPL. That made every other licence a special exception (§4u's NSG symbols were the first).
+  - Now the GPL covers the code, and each asset is a work of its own. Its row gives the file, what it is, the owner, their website, the licence, where the licence text is, the origin and what was changed.
+  - `project` means made here, by hand, in code or with AI assistance: the contributors', GPL-3.0-or-later. `third-party` keeps its owner's licence, and the licence text ships beside it.
+  - The drawn defaults painted at runtime are code and need no row.
+- **A test, not a promise.** `tests/credits.rs` walks `assets/` and fails in any of these cases:
+  - a committed file has no row
+  - a row outlives its file
+  - a `project` row is anything but GPL-3.0-or-later and the contributors'
+  - a `third-party` row has no owner, has a website that isn't a link or `—`, has no committed licence text, or leaves its changes blank
+
+  Checked by adding a stray PNG, which it named.
+- **Attribution is found out, never guessed.** AGENTS.md §5 now says to ask whoever supplied an asset for its maker, their website and the licence before committing it. An unknown owner means the file is not committed.
+  - It says so in practice too: NSG's pack names only its old site (nisei.net). The register's link, `https://nullsignal.games/about/nsg-visual-assets/`, was checked against the live site rather than assumed.
+- **About, in the client, reads the same register** (asked for mid-item: *"An 'About' page and credits should show all of 3rd party info too"*).
+  - `crate::credits` parses `CREDITS.md`, compiled in, into three tables: the committed assets, the things fetched on the player's opt-in (card data, card scans, the icon font, the official backs), and the software (Bevy, and every crate under cargo-deny).
+  - `screens::about` shows the committed assets grouped by owner and licence: Null Signal Games' ten symbols are one credit, and each change is listed once, without its source file.
+  - The screen is a main-menu entry of its own. It scrolls, because it is a reading screen and not the board.
+  - A second list in Rust would have been the one that fell behind, so there is none. A navigation test checks that every owner and website in the register appears on the screen.
+- **The start screen's art** has no picture yet. When one comes, the rule is the same as for any picture a person looks at: the artist by name, with their website. The register says the client may later show these credits.
+- The root README's licence section now says the assets are licensed one by one and points at the register. Every folder guide's "licensing" paragraph (board, tables, skins, sfx) now says the same.
+
+This **supersedes §4u's framing** of the NSG symbols as "the one recorded exception" to a GPL-compatible bar. There is no bar left to be an exception to, only a register. The entries are unchanged.
+
+**Verified.** `cargo test --workspace` is green and clippy is silent. The About screen was screenshotted through `NETRUNNER_SCREEN=about`.
