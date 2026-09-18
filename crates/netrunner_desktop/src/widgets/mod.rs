@@ -117,6 +117,19 @@ pub fn dim<T: Into<String>>(theme: &Theme, text: T) -> impl Bundle + use<T> {
 }
 
 /// A bordered panel that stacks its children vertically.
+///
+/// [`Dressed`] with [`Slot::Panel`], which reaches every panel in the
+/// client and not only the board's — the sheet, the decision pop-up, the
+/// actions menu, the main menu, settings, profile and new-game screens.
+/// That is the same reach `Slot::Button` already has, so it is the rule
+/// rather than an exception; the authoring guide says so, because a panel
+/// picture that stopped at the board's edge would be the surprise.
+///
+/// A caller that draws its border differently — the decision pop-up and
+/// the actions menu both use the accent — replaces this `Dressed` with
+/// one naming its own slot, which is the "the caller says what it would
+/// have drawn" rule. It does *not* drag panels into [`button_feedback`]:
+/// that query is `With<Themed>`, and a panel is not themed.
 pub fn panel(theme: &Theme, width: Val) -> impl Bundle + use<> {
     (
         Node {
@@ -130,6 +143,7 @@ pub fn panel(theme: &Theme, width: Val) -> impl Bundle + use<> {
         },
         BackgroundColor(theme.panel),
         BorderColor::all(theme.panel_border),
+        Dressed::still(Slot::Panel, Drawn::new(theme.panel, theme.panel_border)),
     )
 }
 

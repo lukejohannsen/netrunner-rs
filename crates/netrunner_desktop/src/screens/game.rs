@@ -1928,6 +1928,12 @@ fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &G
     let top = if above >= layout::PADDING { above } else { below.min(window.y - height - layout::PADDING) };
     let accent = theme.accent;
     let mut panel = parent.spawn((ActionsMenu, MenuPart, Interaction::None, FocusPolicy::Block, GlobalZIndex(15), widgets::panel(theme, px(MENU_WIDTH))));
+    // Its own slot, replacing the one `widgets::panel` supplied, so a
+    // skin can paint the menu apart from the sheet. The `and_modify`
+    // below stays: `dress` only runs on `Added<Dressed>`, a frame after
+    // the commands flush, so leaving the accent to it would show the
+    // panel's own border colour for that frame.
+    panel.insert(widgets::Dressed::still(Slot::PanelMenu, Drawn::new(theme.panel, accent)));
     panel.entry::<Node>().and_modify(move |mut node| {
         node.position_type = PositionType::Absolute;
         node.left = px(left);
@@ -1987,6 +1993,10 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
         .with_children(|screen| {
             let accent = theme.accent;
             let mut panel = screen.spawn(widgets::panel(theme, px(520)));
+            // As the actions menu does: its own slot over the one the
+            // panel supplied, and the immediate recolour kept, because
+            // `dress` lands a frame later.
+            panel.insert(widgets::Dressed::still(Slot::PanelDecision, Drawn::new(theme.panel, accent)));
             panel.entry::<BorderColor>().and_modify(move |mut border| *border = BorderColor::all(accent));
             panel.with_children(|panel| {
                 // The access owns the panel's words when there is one: its
@@ -2240,24 +2250,72 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     } else {
         px(960)
     };
-    parent
-        .spawn((
-            Overlay,
-            GlobalZIndex(20),
-            Node {
-                position_type: PositionType::Absolute,
-                left: px(0),
-                top: px(0),
-                width: percent(100),
-                height: percent(100),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                ..default()
-            },
-            BackgroundColor(theme.background.with_alpha(0.75)),
-        ))
+    // A reading surface closes on a click that misses it, so the wash is
+    // a button carrying the same `Click::CloseOverlay` the Close button
+    // used to — no new system and no new intent, and because it resolves
+    // to `Intent::Back` it pops one level, taking an inspected card back
+    // to the zone sheet under it exactly as Escape does. A form and the
+    // three panels that are asking a question stay modal
+    // (`Game::dismissed_by_a_click_away`), so the wash is inert there.
+    //
+    // **`FocusPolicy::Block` is in the spawn bundle, unconditionally, and
+    // both halves of that matter.** `Node` *requires* `FocusPolicy`, whose
+    // default is `Pass` — so a wash that did not say `Block` would let
+    // `ui_focus_system` walk straight past it into the board behind, and
+    // the board's tiles and control-bar buttons are `Themed` buttons that
+    // would take the press. A click that missed the panel could close the
+    // sheet and end the turn in the same frame. It is unconditional
+    // because a *form*'s wash has to hold a press too: it declines to act
+    // on one, which is not the same as letting it through. Inheriting the
+    // `Block` from `Button` would not have worked either — a required
+    // component is inserted with `Keep`, and the spawn above has already
+    // given the entity `Node`'s `Pass`, so `Button`'s `Block` is silently
+    // skipped on a post-spawn `insert`. Both facts are the opposite of
+    // what they look like, which is why they are written down rather
+    // than left to a requirement to express.
+    //
+    // The `Dressed` is not decoration either. `button_feedback` resets a
+    // `Themed` node's background to `theme.button` on every interaction
+    // change unless it carries one — the limitation recorded in place on
+    // that system — so an undressed scrim would turn button-grey after
+    // the first hover. `Dressed::still` hands back the same `Drawn` for
+    // all three interactions, so the wash never moves under the pointer.
+    let wash = theme.background.with_alpha(0.75);
+    let mut overlay = parent.spawn((
+        Overlay,
+        FocusPolicy::Block,
+        GlobalZIndex(20),
+        Node {
+            position_type: PositionType::Absolute,
+            left: px(0),
+            top: px(0),
+            width: percent(100),
+            height: percent(100),
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        BackgroundColor(wash),
+    ));
+    if game.dismissed_by_a_click_away() {
+        overlay.insert((Button, Interaction::None, widgets::Themed, Click::CloseOverlay, widgets::Dressed::still(Slot::OverlayScrim, Drawn::new(wash, Color::NONE))));
+    }
+    overlay
         .with_children(|screen| {
-            screen.spawn(widgets::panel(theme, width)).with_children(|panel| {
+            // And the panel blocks for the same reason, so a press on its
+            // padding, its row gaps or the empty column beside an
+            // install's face is not a press on the wash behind it. No
+            // `Interaction` with it: `spawn_actions_menu` carries one
+            // because `board_click` reads the menu's, and nothing reads
+            // this panel's.
+            let mut sheet = screen.spawn((FocusPolicy::Block, widgets::panel(theme, width)));
+            // Its own slot over the one `widgets::panel` supplied, so a
+            // skin can dress the game's surfaces without also repainting
+            // the main menu and the settings, which `Slot::Panel` reaches
+            // too. Inserted rather than bundled: two `Dressed` in one
+            // bundle is a duplicate-component panic.
+            sheet.insert(widgets::Dressed::still(Slot::PanelSheet, Drawn::new(theme.panel, theme.panel_border)));
+            sheet.with_children(|panel| {
                 if let Some(reason) = &game.stalled {
                     panel.spawn(widgets::heading(theme, "The match stopped"));
                     panel.spawn((widgets::dim(theme, reason.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
@@ -2329,21 +2387,28 @@ fn help_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme) {
     panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
 }
 
-/// The card large, and nothing else: the picture, or the text layout
-/// (which carries the printed text) while no picture is cached. What
-/// may be done with it is the menu's — the sheet once listed the actions
-/// under the card's text, and the person asked for reading and acting to
-/// be two clicks rather than one panel.
+/// The card large, and nothing else at all: the picture, or the text
+/// layout (which carries the printed text) while no picture is cached.
+/// What may be done with it is the menu's — the sheet once listed the
+/// actions under the card's text, and the person asked for reading and
+/// acting to be two clicks rather than one panel.
+///
+/// **No heading over it and no Close under it.** The card says its own
+/// name in both tiers — a cached scan *is* the printed card, and the
+/// text face draws the title in its own title row — so a heading was the
+/// name twice on the fallback face and once too often on the other. The
+/// button was a third door to a rule Escape already had; a click that
+/// misses the panel is the second. Between them that is about eighty-six
+/// logical pixels of chrome off a panel whose whole content is a
+/// 380-wide face. The registry-miss arm keeps its line because there is
+/// no face there to say anything.
 fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, id: &CardId) {
     let Some(def) = core.registry.get(id) else {
         panel.spawn(widgets::dim(theme, format!("{} is not in the registry", id.0)));
-        panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
         return;
     };
-    panel.spawn(widgets::heading(theme, def.title.clone()));
     let image = def.numeric_id.and_then(|code| images.face(code));
     spawn_face(panel, theme, &Face::of(def), FaceSize::Large, image, ());
-    panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
 }
 
 /// An installed card: the face (or the back, for a card the viewer
@@ -2353,11 +2418,19 @@ fn card_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
 /// encounter, tokens, counters, trash cost, what it hosts. The state is
 /// the one thing beside the card, because the printed face cannot show
 /// it and a tile has no room; the printed text is on the face.
+///
+/// **The heading survives here for exactly one case**, which is why it
+/// moved inside the match rather than going the way `card_sheet`'s did:
+/// a card the viewer cannot name is drawn as a card *back*, and a back
+/// says nothing, so `facts::hidden_title` is the only thing naming it.
+/// With a card in hand the face prints its own title and a heading would
+/// be the second copy.
 fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, id: InstallId, card: Option<&CardId>) {
     let Some(view) = &game.view else { return };
     let def = card.and_then(|c| core.registry.get(c));
-    let heading = def.map_or_else(|| facts::hidden_title(view, id), |d| d.title.clone());
-    panel.spawn(widgets::heading(theme, heading));
+    if def.is_none() {
+        panel.spawn(widgets::heading(theme, facts::hidden_title(view, id)));
+    }
     panel.spawn((Node { flex_direction: FlexDirection::Row, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
         match def {
             Some(def) => {
@@ -2375,7 +2448,6 @@ fn install_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientC
             }
         });
     });
-    panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
 }
 
 /// A zone: what is in it as far as the viewer may see — its actions are
@@ -2388,7 +2460,6 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
     panel.spawn(widgets::heading(theme, target_title(game, target)));
     if let Target::Pile(Pile::Agendas(side)) = target {
         score_area_sheet(panel, theme, core, images, game, view, *side);
-        panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
         return;
     }
     // What the zone holds, for the viewer.
@@ -2459,7 +2530,6 @@ fn zone_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore
             row.spawn(widgets::scrollbar(theme, scroll));
         });
     }
-    panel.spawn(widgets::button(theme, "Close", Val::Auto, Click::CloseOverlay));
 }
 
 /// A side's score area as a list: a row per agenda — its face small,

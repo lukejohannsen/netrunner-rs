@@ -2292,3 +2292,123 @@ Runner holding priority and **nothing glowing at all** — which is §4p's
 `awaiting` gate visible in a picture, since that board has an unrezzed
 Tithe the Corp could rez and a map-based gate would have lit it. No engine
 file changed, so no sweep.
+
+### 4r. The sheet is the card: no name over it, no Close under it, and a panel a skin can paint — DONE (18 September 2026)
+
+`feat/desktop-sheet-frame`. Not from the third list: the person looked at
+a card's sheet and named three things at once — *"the name of the card is
+displayed bold at the top - this seems redundant as it should be in the
+image of the card"*, *"the 'Close' button doesn't need to be there - Esc
+Key to exit or any mouse click off of the card"*, and a want for *"a
+thematic background image to this pop-up"* because *"the plain black and
+blah text box will (ultimately) need to look nicer"*. The first two are
+the space back; the third is the slots §4n left owed.
+
+**Decisions taken, with the alternative rejected.**
+
+- **The card names itself, so the sheet does not.** A cached NetrunnerDB
+  scan *is* the printed card, and the text tier draws the title in the
+  face's own title row — so the heading was the name **twice** on the
+  fallback face and once too often on the other. It survives in exactly
+  one place, which is why it moved inside the match rather than going:
+  a card the viewer cannot name is drawn as a card *back*, and a back
+  says nothing, so `facts::hidden_title` is all that names it. A zone's
+  sheet and the score area keep theirs for the same reason — there is no
+  face there at all.
+- **The browser's inspector took the same cut**, asked for once the
+  sheet had it: it drew the title *below* the face, which is the same
+  name twice whenever the picture had not arrived. The lines left are
+  deliberately not the same case even though the text face also draws a
+  type line and the printed text — with a scan cached the face is one
+  picture and nothing else, so that block is the only place the type,
+  the numbers and the text exist as text. The title is the one of them
+  the picture always carries legibly at this size. It costs one thing,
+  recorded rather than discovered later: that column *scrolls*, so the
+  name is off-screen once you have scrolled past the face, and the
+  grid's outline on the selected card is what says which card it is.
+  Removing the heading only ever shortens the column, so nothing that
+  fitted before scrolls now.
+- **Close was a third door to a two-door rule.** Escape already closed
+  the sheet; the second door is a click that misses the panel. Between
+  them that is about eighty-six logical pixels of chrome off a panel
+  whose whole content is a 380-wide face. **No hint line and no `×`**,
+  which was the person's own call when asked — `shortcuts::LIST` already
+  carries `Esc`, and the list of keys is a keypress away.
+- **A form is not a reading surface.** `Game::dismissed_by_a_click_away`
+  draws the line: the card, the install, the zone and the score area
+  close on a miss; the options and the list of keys keep their Close,
+  because a setting given up because the pointer landed an inch wide is
+  a worse failure than a button nobody needed; and the end of the match,
+  a stall and the quit prompt are *asking* something with nowhere to
+  dismiss to — Escape does not close them either, so a wash that did
+  would be the only way out and would mean something different there
+  from everywhere else.
+- **The wash blocks whether or not it acts.** This is the bug the item
+  found, and it was already live on `main` for every overlay. `Node`
+  **requires** `FocusPolicy`, whose default is `Pass` — so the wash let
+  `ui_focus_system` walk straight past it into the board, whose tiles and
+  control-bar buttons are `Themed` buttons that take a press. A click
+  through an open sheet onto where "End turn" is drawn ended the turn.
+  Worse, the fix that looks obvious does not work: `Button` requires
+  `FocusPolicy::Block`, but a required component is inserted with
+  `Keep`, and the spawn has already given the entity `Node`'s `Pass`, so
+  a post-spawn `insert((Button, ..))` silently skips it. The `Block` is
+  therefore in the spawn bundle, unconditionally, with the reason beside
+  it. **Found by a test written to assert the opposite** — the first
+  reading of `focus.rs:323`'s `unwrap_or(&FocusPolicy::Block)` took the
+  default to be `Block`, and the code and its comment both said so until
+  `assert_eq!(get::<FocusPolicy>(scrim), Some(&Block))` printed
+  `Some(Pass)`. The comment now records the trap rather than the wrong
+  fact.
+- **Four slots, not one.** `panel` is the base and reaches *every*
+  `widgets::panel` in the client, the main menu and settings included,
+  because it is one function — the same reach `button` already has. So
+  `panel.sheet`, `panel.decision` and `panel.menu` exist as states of it,
+  or a skin could not dress the game's own surfaces without repainting
+  the menus; the two-level fallback means a skin holding one `panel.png`
+  still dresses all four. `overlay.scrim` is deliberately **not** a state
+  of `panel`: it is the thing *behind* a panel, so it borrows nothing.
+- **The caller still says what it would have drawn.** The decision
+  pop-up and the actions menu draw their border in the accent, so each
+  replaces `widgets::panel`'s `Dressed` with one naming its own slot —
+  without that, `dress` repaints the accent in the panel's own colour a
+  frame after the spawn. The immediate `BorderColor` write stays beside
+  it, because `dress` only runs on `Added<Dressed>` after the commands
+  flush. Two `Dressed` in one bundle is a duplicate-component panic, so
+  it is an `insert` on the spawned entity, not a bundle member.
+
+**Two things recorded rather than fixed**, both pre-existing and neither
+this item's to take on. `"tint": "state"` is documented in the skins
+guide but **not wired** — `skin::wants_state_tint` has no caller outside
+its own unit tests, so `Skin::dress` hands back `Color::WHITE`; the new
+rows therefore do not repeat the promise. And
+`an_access_puts_the_card_in_the_decision_popup_above_its_actions` carries
+a ten-second wall-clock deadline (`tests/game.rs`) that it can miss when
+the machine is compiling at the same time: it failed twice on runs that
+took 10.19s and was then clean six times in a row, and clean three times
+on `main` and three on the branch under forced rebuilds. Timing, not the
+change.
+
+**Verified.** `cargo test --workspace` green, clippy silent across the
+workspace. New tests: the card's name appears once under the overlay and
+as a `TextSpan` rather than a heading (the split is the assertion); no
+`Close` on the card, install or zone sheet, and the options *keep*
+theirs; the wash carries `Click::CloseOverlay` and pressing it closes,
+while a form's carries none and pressing it does not, and the quit
+prompt stands against both; both washes and the panel carry
+`FocusPolicy::Block`; the decision pop-up names `Slot::PanelDecision` and
+keeps `theme.accent` on its border; the install sheet's heading is
+present for a card the viewer cannot name and absent for one they can;
+one `panel.png` dresses the sheet, the pop-up and the menu while
+`overlay.scrim` stays drawn. Proved end to end with a throwaway skin — a
+64×64 plate, orange rim and yellow corner notches, 12px insets — which
+dressed the sheet, the decision pop-up and the actions menu at their
+different widths with the notches intact, then deleted; no art is
+committed. Screenshots taken from both chairs forty and sixty decisions
+in; the dev log's one `scroll area` line is the hidden log at zero size,
+never the board. No engine file changed, so no sweep.
+
+**Open, for the rest of the list:** the panels' own art (the slots exist;
+nobody has drawn one), a server's mark, the remaining icons, the player
+bars, the fanned hand, the hovered card and the right-hand side — and,
+separately, wiring `"tint": "state"` so the guide stops promising it.

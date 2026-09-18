@@ -352,6 +352,26 @@ impl Game {
         self.finished() || self.confirm_quit || self.options_open || self.help_open || self.sheet.is_some() || self.inspecting.is_some()
     }
 
+    /// Whether a click that misses the panel closes what is open.
+    ///
+    /// Only a *reading* surface: the card, the install, the zone, the
+    /// score area. Those lost their Close button because the name was
+    /// already on the card and the button was a third door to a rule
+    /// Escape already had, so missing the panel is the second door.
+    ///
+    /// Three kinds of panel are deliberately excluded. The options and
+    /// the list of keys are **forms**, and they keep their Close: a
+    /// setting given up because the pointer landed an inch wide is a
+    /// worse failure than a button nobody needed. The end of the match,
+    /// a stall and the quit prompt have nowhere to dismiss *to* — they
+    /// are asking a question, and Escape does not close them either
+    /// (`Intent::Back` falls through to `RequestQuit`), so a scrim that
+    /// closed them would be the only way out and would mean something
+    /// different from every other panel's.
+    pub fn dismissed_by_a_click_away(&self) -> bool {
+        !self.finished() && !self.confirm_quit && !self.options_open && !self.help_open && (self.sheet.is_some() || self.inspecting.is_some())
+    }
+
     pub fn take_transitions(&mut self) -> Vec<Transition> {
         std::mem::take(&mut self.transitions)
     }
@@ -971,6 +991,47 @@ mod tests {
         assert!(game.menu.is_none(), "an applied action closes the menu");
         assert!(game.sheet.is_some(), "and leaves the sheet");
         handle.join();
+    }
+
+    /// Which panels a click that misses them closes.
+    ///
+    /// The rule is not "every overlay": a form keeps its Close because a
+    /// setting lost to a stray click is worse than a button nobody
+    /// needed, and the three panels that are *asking* something have
+    /// nowhere to dismiss to — Escape does not close them either, so a
+    /// wash that did would be the only way out and would mean something
+    /// different there from everywhere else.
+    #[test]
+    fn a_click_away_closes_a_reading_surface_and_leaves_a_question_standing() {
+        let mut game = Game::new(Arc::new(netrunner_client::decks::sample_deck_registry()), Side::Runner);
+        assert!(!game.dismissed_by_a_click_away(), "nothing is open");
+
+        game.sheet = Some(Sheet { target: Target::Server(ServerId::RnD) });
+        assert!(game.dismissed_by_a_click_away(), "a sheet closes");
+        game.inspecting = Some(CardId("01001".into()));
+        assert!(game.dismissed_by_a_click_away(), "a card read over it closes");
+        game.sheet = None;
+        assert!(game.dismissed_by_a_click_away(), "a card read on its own closes");
+        game.inspecting = None;
+
+        // The forms keep their Close, so the wash is inert over them.
+        game.options_open = true;
+        assert!(!game.dismissed_by_a_click_away(), "the options are a form");
+        game.options_open = false;
+        game.help_open = true;
+        assert!(!game.dismissed_by_a_click_away(), "the list of keys is a form");
+        game.help_open = false;
+
+        // And the questions stand: note each of these is true even with a
+        // sheet underneath, because the panel on top is the one asking.
+        game.sheet = Some(Sheet { target: Target::Server(ServerId::RnD) });
+        game.confirm_quit = true;
+        assert!(!game.dismissed_by_a_click_away(), "the quit prompt is asking");
+        game.confirm_quit = false;
+        game.stalled = Some("the match stopped".to_string());
+        assert!(!game.dismissed_by_a_click_away(), "a stall has nowhere to dismiss to");
+        game.stalled = None;
+        assert!(game.dismissed_by_a_click_away(), "and the sheet under them still closes");
     }
 
     /// A key is the button it stands for: at the mulligan Space and C do

@@ -397,7 +397,22 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
     parent.spawn((Node { justify_content: JustifyContent::Center, ..default() },)).with_children(|centre| {
         spawn_face(centre, theme, &face, FaceSize::Large, image, ());
     });
-    parent.spawn((widgets::heading(theme, card.title.clone()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    // No title under the face, for the reason the game's card sheet has
+    // none over it: the card prints its own name in both tiers — a
+    // cached NetrunnerDB scan *is* the printed card, and the text face
+    // draws the title in its own title row — so a heading here was the
+    // name twice whenever the picture had not arrived.
+    //
+    // The lines that follow are deliberately *not* the same case, even
+    // though the text face draws a type line and the printed text too:
+    // with a scan cached the face is one picture and nothing else, so
+    // this block is the only place the type, the numbers and the text
+    // exist as text. The title is the one of them the picture always
+    // carries legibly at this size.
+    //
+    // What it costs: this column scrolls, so the name is off-screen once
+    // you have scrolled past the face. The grid keeps the selected card
+    // outlined (`outline`), which is what says which card this is.
     parent.spawn(widgets::dim(theme, face.type_line.clone()));
     parent.spawn((widgets::dim(theme, Face::of(card).numbers_line()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     // The faction with its mark, the set with its, the code.
