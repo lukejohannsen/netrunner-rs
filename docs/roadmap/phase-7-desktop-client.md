@@ -1560,6 +1560,10 @@ hidden log's, at zero size. No engine file changed, so no sweep.
 
 ### 4j. A phase bar: where the turn is, and where a run is — DONE (17 September 2026)
 
+*Superseded in part by §4z: the bar is now a panel in the right column,
+not a row of the board, and turning it off moves no card. Its words and
+marks are unchanged.*
+
 `feat/desktop-phase-bar`. Item 3 of the person's second list. The status
 line named the phase the engine was in ("Turn 12 · Runner's turn") but
 not what came before or after it, and a run's step was only in the
@@ -2845,3 +2849,95 @@ into the repo:
 
 The only `scroll area` logged was the hidden log's, at zero size. No
 engine file changed, so no sweep.
+
+### 4z. The board runs the window's full height; the status, the phase and a run's Runner are the right column's — DONE (18 September 2026)
+
+`feat/desktop-board-edge-to-edge`. Asked for in one message: too much
+wasted space still. The "Game" heading and the turn line were in a bar
+across the top, and the same kind of information sat in the right
+column. The person wanted all of it on the right. They wanted cards on
+the window's top edge, and on its bottom edge always ("it looks good
+when the phase bar is gone"). The phase should be its own panel further
+right. And during a run, the Runner's identity should appear on the
+right "to indicate they are hacking into a system": the upper image
+portion of the card if there is a scan, just the name if not.
+
+**Decisions taken, with the alternative rejected.**
+
+- **One right column, no top bar.** From top to bottom it holds the
+  status line with Quit and the gear, the phase panel, the run panel,
+  the rail and the log. The "Game" heading is gone because it named the
+  screen and nothing else. The root pads only its left and right
+  sides. The column carries its own vertical padding, so its buttons
+  keep off the edges. `layout::board_height` is now the whole window.
+- **The hands are on the edges.** The opponent's backs already hung
+  from the top of their row. The person's strip row is now
+  `FlexEnd`-aligned and is the board's last row. Height the fixed rows
+  leave goes to the ICE field between the two rows, never under the
+  hand.
+- **The phase is a panel, not a row.** It keeps the same
+  `board::phase::bar` words and the same `PhaseStep` marks. Each segment
+  is a column (the turn in one, a run in the next) with its steps top
+  to bottom, and the window's line sits under both. `Counts::phase_bar`
+  and `PHASE_BAR` are gone, so `face_width` depends on the window, the
+  chair and the servers only. L and the options row now hide the panel
+  rather than despawning it, and no card moves either way. This
+  reverses §4j's "turning it off gives the cards the row back": there
+  is no row to give.
+- **The Runner on a run follows the trail, not the view.** The panel
+  appears on the run's first paced beat and goes when the trail ends,
+  so it is never ahead of the lane. It reads "Hacking into <server>",
+  then the top of the identity's scan, then the name.
+  - **The crop** is the name banner and the art, stopping where the
+    text box begins: `layout::IDENTITY_ART` = 0.63 of the card's
+    height, measured off Null Signal Games' frame (the text box starts
+    at 665 of 1050 on both Zahya Sadeghi and The Catalyst). It is an
+    `ImageNode::rect` taken as a fraction of the decoded copy's own
+    size, because the resampled copies differ in pixels.
+  - **The panel asks for its own copy.** The first cut drew
+    `nearest_face`, which was the strip's identity at a fifth of the
+    width, and the result was blurry. The panel now requests a copy at
+    its own width and redraws when that copy lands.
+  - **With no scan** the panel shows the name alone, at heading size,
+    in the Runner's colour.
+  - **It is paint only:** no button and no action.
+- **Two new skin slots**, `panel.phase` and `panel.run`. Both fall back
+  to `panel`, and both have rows in the skins guide.
+- **A text line in the right column states its width in pixels.** The
+  column sizes a panel before a percentage has anything to resolve
+  against, so each of the run panel's two lines was measured at one
+  word per line. The panel kept 101 px of nothing under a one-line
+  name. The layout was dumped to find this; the picture and the skin
+  were ruled out first.
+
+**Measured** (`face_width`, five servers, at HEAD with the phase bar on
+against this branch):
+
+| Window (logical) | Chair | Face before → after | ICE field before → after |
+|---|---|---|---|
+| 2048×1280 | Corp | 220 → 220 | 292 → 430 |
+| 2048×1280 | Runner | 220 → 220 | 267 → 405 |
+| 1920×1080 | Corp | 218 → 220 | 97 → 230 |
+| 1920×1080 | Runner | 209 → 220 | 97 → 205 |
+| 1366×768 | Corp | 72 → 134 | 59 → 97 |
+| 1366×768 | Runner | 72 → 119 | 44 → 97 |
+
+A laptop screen was at the floor width before and is not now.
+
+**Verified.** `cargo test --workspace` green and clippy silent.
+
+- **Changed test:** the phase-bar test now asserts that L hides and
+  shows the panel with the face width unchanged.
+- **New tests:**
+  - a run on R&D puts the Runner's name and "Hacking into R&D" in the
+    right column, with none before the run;
+  - the root has no top or bottom padding, and the board's last row is
+    the person's strip and hand, pinned to the bottom;
+  - the layout unit test asserts that `board_height` is the window's.
+
+Screenshotted at 2560×1600 from both chairs forty decisions in. The run
+was screenshotted with `NETRUNNER_HOLD_RUN=1`, under a scratch
+`XDG_DATA_HOME` with the phase panel on, because the person's own
+settings have it off. The backs touch the top edge, the hand touches
+the bottom, and the only `scroll area` logged is the hidden log's, at
+zero size. No engine file changed, so no sweep.

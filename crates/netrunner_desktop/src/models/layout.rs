@@ -108,9 +108,11 @@ pub fn ice_top_down<T>(ice: &[T], chair: Side) -> Vec<&T> {
 /// opponent did anything. Now the rig's row is reserved whether or not
 /// anything is in it, and the ICE grows into the flexible field between
 /// the server plates and the run lane ([`tile_stack`]), so the face
-/// width is a function of the window, the chair, the servers and the
-/// phase bar alone. A new remote can still narrow the cards, because
-/// server columns cannot overlap.
+/// width is a function of the window, the chair and the servers alone.
+/// A new remote can still narrow the cards, because server columns cannot
+/// overlap. (The phase bar was a count too, while it was a row of the
+/// board; it is a panel in the right column now and costs the cards
+/// nothing.)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Counts {
     /// Corp servers, centrals included: the widest row of columns.
@@ -119,8 +121,6 @@ pub struct Counts {
     /// the person's own size and which at [`OPPONENT_SCALE`], and which
     /// strip carries the pile buttons and is taller.
     pub human_is_runner: bool,
-    /// Whether the phase bar is on, which costs the board its row.
-    pub phase_bar: bool,
 }
 
 impl Counts {
@@ -130,22 +130,25 @@ impl Counts {
     }
 }
 
-/// The rail beside the board.
+/// The right column beside the board: the status line, Quit and the gear,
+/// the phase panel, the run's Runner, the prompt and the log.
 pub const RAIL_WIDTH: f32 = 380.0;
-/// The screen root's padding, on each side.
+/// The screen root's padding on its left and right, and the right
+/// column's at its top and bottom. **The board has none above or below:**
+/// the opponent's hand hangs from the window's top edge and the person's
+/// own sits on its bottom edge, the way a table runs off the edge of a
+/// photograph of it.
 pub const PADDING: f32 = 12.0;
 /// Between the board and the rail.
 pub const BODY_GAP: f32 = 10.0;
-/// The top bar's height, and the control bar's. The control bar is a row
-/// of the board now — directly above the person's hand — so it is
-/// counted in [`fixed_height`], not taken off [`board_height`].
+/// The right column's header row (the status line, Quit, the gear), and
+/// the control bar's height. The header is the right column's, not the
+/// board's: a top bar across the window cost every card its height, and
+/// the words in it were the same kind as the rail's beside it. The
+/// control bar is a row of the board — directly above the person's hand
+/// — so it is counted in [`fixed_height`].
 pub const TOP_BAR: f32 = 44.0;
 pub const CONTROL_BAR: f32 = 44.0;
-/// The phase bar's height when it is on: a row of step chips with the
-/// window's line under it. It is a row of the board like any other — the
-/// cards shrink by its height rather than the board scrolling — so
-/// turning it off gives the cards the row back.
-pub const PHASE_BAR: f32 = 54.0;
 /// Between the root's rows, and between the board's rows.
 pub const ROW_GAP: f32 = 8.0;
 /// A section label ("Servers", "Your hand · 5") and a chip line under
@@ -185,6 +188,15 @@ pub const PEEK: f32 = 1.0 / 3.0;
 /// The identity in a strip is drawn at this fraction of its side's face
 /// width.
 pub const IDENTITY_SCALE: f32 = 0.4;
+/// How much of a Runner identity's scan the run panel shows, from the
+/// top, as a fraction of the card's height: the name banner and the
+/// picture, stopping where the text box begins. Measured off Null Signal
+/// Games' identity frame (the text box's top edge sits at 665 of 1050 on
+/// Zahya Sadeghi and The Catalyst alike), and the one place that knows a
+/// scan's geometry. A fraction of the laid-out card rather than a pixel
+/// `rect`, because the scan is drawn from whichever resampled copy fits
+/// (Phase 7 §4w) and their pixel sizes differ.
+pub const IDENTITY_ART: f32 = 0.63;
 /// The gap between cards in a row.
 pub const CARD_GAP: f32 = 6.0;
 /// A server column's padding and border beyond its card, each side.
@@ -220,10 +232,11 @@ pub fn board_width(window_width: f32) -> f32 {
     (window_width - 2.0 * PADDING - RAIL_WIDTH - BODY_GAP).max(200.0)
 }
 
-/// The height the board column has: the window less the padding, the
-/// top bar and the gap under it.
+/// The height the board column has: the whole window. The top bar went
+/// to the right column, the phase bar with it, and the root pads only
+/// its sides, so the hands sit on the window's two edges.
 pub fn board_height(window_height: f32) -> f32 {
-    window_height - 2.0 * PADDING - TOP_BAR - ROW_GAP
+    window_height
 }
 
 /// The face width a side's cards are drawn at from `chair`: the
@@ -257,7 +270,7 @@ pub fn rig_height(rig_face: f32) -> f32 {
 
 /// Everything on the board but the ICE field, at face width `face`: the
 /// two strip rows, the servers' label and plates, the run lane, the rig,
-/// the control bar, the phase bar and the gaps between them. Each term
+/// the control bar and the gaps between them. Each term
 /// is a non-decreasing function of `face`, so the sum is monotone, which
 /// is what lets [`face_width`] search it.
 pub fn fixed_height(face: f32, counts: Counts) -> f32 {
@@ -267,10 +280,9 @@ pub fn fixed_height(face: f32, counts: Counts) -> f32 {
     let rig_face = area_face(Side::Runner, chair, face);
     let strips = strip_height(opponent, area_face(opponent, chair, face)) + strip_height(chair, face);
     let servers = LABEL + plate_height(server_face) + SERVER_CHROME_V;
-    let phase = if counts.phase_bar { PHASE_BAR + ROW_GAP } else { 0.0 };
     // Six rows — two strips, the servers, the lane, the rig, the control
     // bar — and five gaps between them.
-    strips + servers + RUN_LANE + rig_height(rig_face) + CONTROL_BAR + phase + 5.0 * ROW_GAP
+    strips + servers + RUN_LANE + rig_height(rig_face) + CONTROL_BAR + 5.0 * ROW_GAP
 }
 
 /// The height the ICE field has at face width `face`: what the fixed
@@ -514,7 +526,7 @@ mod tests {
 
     #[test]
     fn the_face_shrinks_with_the_window_and_stays_in_range() {
-        let none = Counts { servers: 4, human_is_runner: true, phase_bar: true };
+        let none = Counts { servers: 4, human_is_runner: true };
         let large = face_width((1920.0, 1080.0), none);
         let small = face_width((1280.0, 800.0), none);
         assert!(large > small, "{large} > {small}");
@@ -523,16 +535,15 @@ mod tests {
         // Nine servers across a laptop width cap it below what the
         // height would allow.
         assert!(face_width((1280.0, 1080.0), Counts { servers: 9, ..none }) < face_width((1280.0, 1080.0), none));
-        // The phase bar is a row of the board's height, so the cards are
-        // never larger with it on.
-        assert!(face_width((1280.0, 900.0), Counts { phase_bar: false, ..none }) >= face_width((1280.0, 900.0), none));
-        assert_eq!(fixed_height(100.0, none) - fixed_height(100.0, Counts { phase_bar: false, ..none }), PHASE_BAR + ROW_GAP, "the bar is a row of the board");
+        // The board is the window's whole height: nothing above the
+        // opponent's hand and nothing under the person's.
+        assert_eq!(board_height(900.0), 900.0);
     }
 
     /// The rule the whole field exists for: the ICE and the rig are not
     /// counts, so nothing the opponent installs moves a card. The face
-    /// width is a function of the window, the chair, the servers and the
-    /// phase bar alone — `Counts` has nowhere to put an ICE count.
+    /// width is a function of the window, the chair and the servers
+    /// alone — `Counts` has nowhere to put an ICE count.
     #[test]
     fn the_far_side_is_smaller_by_one_constant() {
         for chair in [Side::Corp, Side::Runner] {
@@ -542,7 +553,7 @@ mod tests {
         // From the Runner's chair the rig is the near row and the plates
         // the far one; from the Corp's the reverse. Either way the near
         // side costs more of the height.
-        let runner = Counts { servers: 4, human_is_runner: true, phase_bar: false };
+        let runner = Counts { servers: 4, human_is_runner: true };
         let corp = Counts { human_is_runner: false, ..runner };
         assert!(rig_height(area_face(Side::Runner, Side::Runner, 200.0)) > rig_height(area_face(Side::Runner, Side::Corp, 200.0)));
         assert!(fixed_height(200.0, runner) > fixed_height(200.0, corp), "a full-size rig is taller than full-size plates");
@@ -552,8 +563,8 @@ mod tests {
     /// one pixel more would not: the invariant the module exists for.
     #[test]
     fn the_rows_at_the_computed_width_fit_the_window_and_no_wider_would() {
-        for (window, runner, phase_bar) in [((1280.0, 800.0), true, true), ((1280.0, 800.0), false, false), ((1920.0, 1080.0), true, false), ((1366.0, 768.0), true, true), ((2560.0, 1440.0), false, true), ((2000.0, 1250.0), true, false)] {
-            let counts = Counts { servers: 5, human_is_runner: runner, phase_bar };
+        for (window, runner) in [((1280.0, 800.0), true), ((1280.0, 800.0), false), ((1920.0, 1080.0), true), ((1366.0, 768.0), true), ((2560.0, 1440.0), false), ((2000.0, 1250.0), true)] {
+            let counts = Counts { servers: 5, human_is_runner: runner };
             let w = face_width(window, counts);
             assert!(field_height(window.1, w, counts) >= ICE_FIELD_MIN || w == MIN_FACE, "{window:?}: field {}", field_height(window.1, w, counts));
             if w < MAX_FACE && w > MIN_FACE {

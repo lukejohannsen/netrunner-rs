@@ -144,9 +144,9 @@ window the *scaling* boxes shrink and the fixed ones do not.
 
 Every box that is not the board. `panel` is the base and it reaches
 *every* panel in the client, the main menu and the settings screen
-included, because `widgets::panel` is one function — so the three states
+included, because `widgets::panel` is one function — so the five states
 below exist to let you dress the game without repainting the menus. Draw
-`panel.png` alone and all four are dressed; draw `panel.sheet.png` as
+`panel.png` alone and all six are dressed; draw `panel.sheet.png` as
 well and the sheet parts company with the main menu.
 
 | Key | Logical box | Fit | Notes |
@@ -155,12 +155,14 @@ well and the sheet parts company with the main menu.
 | `panel.sheet` | 414–960 × 300–700 | 9-slice | The centred panel an overlay puts up: a card's sheet (414 × ~570), an install's (800 × ~550), a zone's (960), the options (560), the list of keys |
 | `panel.decision` | **520** × 200–700 | 9-slice | The pop-up that asks you something — at an access it carries the card too, which is what makes it the tall one |
 | `panel.menu` | **280** × grows per row | 9-slice | The menu a card's click opens. About 100 tall for two entries, 40 per entry after |
+| `panel.phase` | **380** × ~150 | 9-slice | The phase panel at the top of the right column: the turn's steps in one column and a run's in the next |
+| `panel.run` | **380** × ~300 | 9-slice | Where the Runner's identity appears while a run is on — its picture cropped to the name and the art, or its name alone. Frame it like a monitor someone is breaking into |
 | `overlay.scrim` | the whole window | stretch | The wash over the board behind a sheet. **Not** a state of `panel` — it is what sits *behind* one, so it borrows nothing and stays a flat wash until you draw it. Keep it mostly transparent or the board vanishes |
 
 The decision pop-up and the menu are drawn with the accent as their
 border rather than the panel border, so a frame you draw for `panel`
 will read a little differently on them. That is the only difference
-between the four.
+between them.
 
 **The read sheet has no Close button and nothing above the card**, so do
 not leave room for either: a card says its own name on its face, and the

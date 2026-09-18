@@ -1058,8 +1058,13 @@ fn the_phase_bar_marks_the_step_in_play_and_l_turns_it_off() {
         let world = app.world_mut();
         world.query::<&PhaseStep>().iter(world).map(|s| s.0).collect()
     };
-    let rows = |app: &mut App| app.world_mut().query::<&PhaseBarRow>().iter(app.world()).count();
-    assert_eq!(rows(&mut app), 1);
+    // The panel is in the right column and is hidden, not despawned, when
+    // the setting is off.
+    let shown = |app: &mut App| {
+        let world = app.world_mut();
+        world.query_filtered::<&Node, With<PhaseBarRow>>().iter(world).filter(|node| node.display != Display::None).count()
+    };
+    assert_eq!(shown(&mut app), 1);
     // The mulligan is its own segment: one step, and the game is in it.
     assert_eq!(steps(&mut app), [State::Now]);
     assert!(texts(&mut app).iter().any(|t| t == "Opening hands"));
@@ -1070,16 +1075,16 @@ fn the_phase_bar_marks_the_step_in_play_and_l_turns_it_off() {
     assert_eq!(marked, [State::Past, State::Now, State::Ahead]);
     assert!(texts(&mut app).iter().any(|t| t.starts_with("Actions · ")), "the clicks left are on the step");
     let face = app.world().resource::<netrunner_desktop::screens::game::BoardFit>().face;
-    // L turns it off: the row goes, the cards are re-fitted larger, and
-    // the choice is saved.
+    // L turns it off: the panel goes, the choice is saved, and no card
+    // moves — the panel was never a row of the board.
     letter(&mut app, KeyCode::KeyL, "l");
-    assert_eq!(rows(&mut app), 0, "the row is gone");
+    assert_eq!(shown(&mut app), 0, "the panel is hidden");
     assert!(steps(&mut app).is_empty());
     assert!(!app.world().resource::<ClientCore>().settings.desktop.phase_bar);
-    let wider = app.world().resource::<netrunner_desktop::screens::game::BoardFit>().face;
-    assert!(wider >= face, "the cards have the row back: {face} then {wider}");
+    let after = app.world().resource::<netrunner_desktop::screens::game::BoardFit>().face;
+    assert_eq!(after, face, "the cards keep their size");
     letter(&mut app, KeyCode::KeyL, "l");
-    assert_eq!(rows(&mut app), 1, "and back on");
+    assert_eq!(shown(&mut app), 1, "and back on");
     // A run adds a second segment, and the run's own step is marked.
     let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
     press_entity(&mut app, rnd);
@@ -1095,6 +1100,58 @@ fn the_phase_bar_marks_the_step_in_play_and_l_turns_it_off() {
     app.update();
     assert!(texts(&mut app).iter().any(|t| t == "Run on R&D"), "{:?}", texts(&mut app));
     assert!(steps(&mut app).len() >= 3 + 4, "the turn's steps and the run's");
+}
+
+/// The Runner appears in the right column while a run is on, and only
+/// then: the text tier here, since the headless client has no scans.
+#[test]
+fn a_run_puts_the_runner_in_the_right_column() {
+    use netrunner_desktop::screens::game::{RunIdentity, RunIdentityName};
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let names = |app: &mut App| -> Vec<String> {
+        let world = app.world_mut();
+        world.query_filtered::<&Text, With<RunIdentityName>>().iter(world).map(|t| t.0.clone()).collect()
+    };
+    assert_eq!(app.world_mut().query::<&RunIdentity>().iter(app.world()).count(), 1, "the panel's slot is always there");
+    assert!(names(&mut app).is_empty(), "no run, no Runner");
+    let rnd = entity_with(&mut app, &Click::Target(Target::Server(ServerId::RnD))).expect("R&D's header");
+    press_entity(&mut app, rnd);
+    let run = {
+        let model = &app.world().resource::<Model>().0;
+        let menu = model.menu.clone().expect("the zone's menu is open");
+        *menu.entries.iter().find(|i| matches!(model.actions.entries[**i].action, PlayerAction::InitiateRun { server: ServerId::RnD })).expect("R&D offers the run")
+    };
+    let button = entity_with(&mut app, &Click::Entry(run)).expect("the run's button");
+    press_entity(&mut app, button);
+    wait_for(&mut app, "the Runner in the right column", |app| !names(app).is_empty());
+    let identity = {
+        let model = &app.world().resource::<Model>().0;
+        let id = model.view.as_ref().and_then(|v| v.runner.identity.clone()).expect("the Runner has an identity");
+        app.world().resource::<ClientCore>().registry.get(&id).expect("a known card").title.clone()
+    };
+    assert_eq!(names(&mut app), [identity]);
+    assert!(texts(&mut app).iter().any(|t| t == "Hacking into R&D"), "{:?}", texts(&mut app));
+}
+
+/// The board has no margin above the opponent's hand or below the
+/// person's: the root pads its sides only, and the person's strip is the
+/// board's last row, pinned to its bottom.
+#[test]
+fn the_hands_sit_on_the_windows_edges() {
+    use netrunner_desktop::screens::game::Board;
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let world = app.world_mut();
+    let board = world.query_filtered::<Entity, With<Board>>().single(world).expect("the board");
+    let root = world.get::<ChildOf>(board).and_then(|body| world.get::<ChildOf>(body.parent())).expect("the board is in the body, in the root").parent();
+    let padding = world.get::<Node>(root).expect("the root is a node").padding;
+    assert_eq!((padding.top, padding.bottom), (Val::Px(0.0), Val::Px(0.0)), "nothing above or below the board");
+    let last = *world.get::<Children>(board).expect("the board has rows").last().expect("a last row");
+    assert_eq!(world.get::<Node>(last).expect("a row").align_items, AlignItems::FlexEnd, "the hand is pinned to the bottom edge");
+    assert!(world.get::<Children>(last).is_some_and(|row| row.iter().count() == 2), "the last row is the person's strip and hand");
 }
 
 /// A tile says whether its card is rezzed — or face down, from the
