@@ -128,6 +128,16 @@ impl CardImages {
         self.faces.get(&self.key(code, size)).cloned()
     }
 
+    /// The sharpest copy of `code` already decoded, at whatever width it
+    /// was decoded for — a stand-in for a face whose own width is still
+    /// decoding. A card in the decision pop-up is nearly always one the
+    /// board already drew (a hand card, a card in Archives), so drawing
+    /// that copy stretched for the moment beats flashing the text face
+    /// first. `None` when no copy of the card has been decoded at all.
+    pub fn nearest_face(&self, code: CardId) -> Option<Handle<Image>> {
+        self.faces.iter().filter(|((c, _), _)| *c == code).max_by_key(|((_, width), _)| *width).map(|(_, handle)| handle.clone())
+    }
+
     fn key(&self, code: CardId, size: FaceSize) -> FaceKey {
         (code, rung(size.width() * self.scale))
     }

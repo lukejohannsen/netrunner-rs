@@ -2741,3 +2741,17 @@ highlighted card's printed words are on screen. Screenshots of
 Top-Down Solutions' selection and of the install after it show both cards
 and the card going in, with no scroll area. `cargo test --workspace` is
 green and clippy is silent.
+
+**Two follow-ups, the same day** (`fix/choice-popup-gap-and-scans`).
+First, each row of cards carried about 64 px of empty space under its
+buttons. That was cosmetic in a single row, but it made a two-row pop-up
+(Seamless Launch offering six cards) run off the top and bottom of the
+window, because `choice_faces` did not know about the space. The cause
+was the caption button's `width: 100%`: while a wrapping row is being
+measured, a percentage has nothing to resolve against, so the label was
+measured one word to a line and the row kept that height. The button now
+has the card's width in pixels. Second, a card in the pop-up drew its
+text face until its own size of scan had decoded. It now draws the
+sharpest copy the board has already decoded, which it almost always has
+because the candidates are usually in hand, and swaps in its own size
+when that lands (`CardImages::nearest_face`, `WantsImage`).
