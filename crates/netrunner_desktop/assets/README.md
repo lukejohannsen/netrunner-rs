@@ -5,8 +5,8 @@ comes in the three tiers AGENTS.md §5 sets out:
 
 1. **Drawn or synthesized**: made in code, needs no file, always works.
    The client ships looking finished with every folder below empty.
-2. **Bundled**: a file in this directory, committed with a licence that
-   allows redistribution.
+2. **Bundled**: a file in this directory. Each is a separately licensed
+   work, with its owner and licence recorded in [CREDITS.md](CREDITS.md).
 3. **Yours**: the same path under `<data dir>/netrunner/assets/`
    (`~/.local/share/netrunner/assets/` on Linux). It wins over both and
    is never version-controlled, so it is where to work.
@@ -49,8 +49,9 @@ tiers above, so a skin can bring its buildings with it.
   real skin, table or set of plates.
 - **SVG is not supported.** Bevy has no SVG rasteriser. Author in SVG if
   you like, and export PNG (or JPEG for a table).
-- **Licensing.** A file committed here needs a `LICENSE-<name>.txt`
-  beside it granting redistribution compatible with GPL-3.0-or-later:
-  CC0 or an OFL-style grant. The one recorded exception is Null Signal
-  Games' game symbols under `board/`, which are CC BY-ND 4.0 and credited
-  in `board/LICENSE-NSG.txt`.
+- **Every file committed here has a row in [CREDITS.md](CREDITS.md)**:
+  its owner, their website, its licence and anything changed. An asset
+  made in the project, including with AI assistance, is GPL-3.0-or-later.
+  Anyone else's keeps its owner's licence, with the licence text beside
+  it. Find out who made a file before it goes in. A test fails on a file
+  without a row, or a row without a file.

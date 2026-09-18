@@ -88,6 +88,7 @@ pub mod board_art;
 pub mod card_back;
 pub mod card_images;
 pub mod core;
+pub mod credits;
 pub mod dev;
 pub mod downloads;
 pub mod icon_font;
@@ -142,6 +143,7 @@ impl PluginGroup for NetrunnerDesktopPlugins {
             .add(screens::boot::BootPlugin)
             .add(screens::main_menu::MainMenuPlugin)
             .add(screens::profile::ProfilePlugin)
+            .add(screens::about::AboutPlugin)
             .add(screens::settings::SettingsPlugin)
             .add(screens::card_browser::CardBrowserPlugin)
             .add(screens::new_game::NewGamePlugin)

@@ -135,13 +135,12 @@ A glyph keeps its own shape (it is fitted, not cropped). Draw it square
 on a transparent background.
 
 **The bundled counters and glyphs are Null Signal Games' own game
-symbols**, from their public visual-assets pack, under CC BY-ND 4.0. See
-[`LICENSE-NSG.txt`](LICENSE-NSG.txt) for the attribution, the source of
-each file and the two changes made: conversion to PNG, and recolouring
-the black ones light. They are the one committed asset in this client
-that is not under a GPL-compatible grant, and they must not be edited
-into new symbols. A file of the same name in your own directory
-replaces any of them.
+symbols**, from [their visual-assets pack](https://nullsignal.games/about/nsg-visual-assets/),
+under CC BY-ND 4.0. Each is recorded in [`../CREDITS.md`](../CREDITS.md),
+and [`LICENSE-NSG.txt`](LICENSE-NSG.txt) holds the attribution and the two
+changes made: conversion to PNG, and recolouring the black ones light.
+They must not be edited into new symbols. A file of the same name in
+your own directory replaces any of them.
 
 ## Seeing it
 
@@ -153,10 +152,10 @@ folder is not found.
 
 ## Licensing
 
-Nothing goes in *this* directory, the one inside the repository, without
-a `LICENSE-<name>.txt` beside it. The project's bar is a grant compatible
-with its GPL-3.0-or-later: CC0 or an OFL-style licence, as
-`assets/fonts/LICENSE-OFL.txt` shows. **NSG's symbols are the recorded
-exception** (`LICENSE-NSG.txt`, CC BY-ND 4.0), bundled by the project
-owner's decision. Anything new still meets the bar. Your own directory
-under `<data dir>` has no such rule. It is yours.
+Every file in *this* directory, the one inside the repository, is a
+separately licensed work with a row in [`../CREDITS.md`](../CREDITS.md).
+If the project made it, including with AI assistance, it is
+GPL-3.0-or-later. If someone else did, it keeps its owner's licence,
+the licence text sits beside it, and the row names the owner and their
+website. Find out who made a picture before committing it. Your own
+directory under `<data dir>` has no such rule. It is yours.

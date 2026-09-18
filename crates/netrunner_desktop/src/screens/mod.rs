@@ -7,6 +7,7 @@
 //! a screen that is not built yet is a stub (`stubs`) with a heading and
 //! a way back, so every menu entry leads somewhere from the first PR.
 
+pub mod about;
 pub mod boot;
 pub mod card_browser;
 pub mod game;
@@ -35,10 +36,12 @@ pub enum AppScreen {
     Online,
     Game,
     Replay,
+    /// Whose work is in the client, and under what terms.
+    About,
 }
 
 impl AppScreen {
-    pub const ALL: [AppScreen; 12] = [
+    pub const ALL: [AppScreen; 13] = [
         AppScreen::Boot,
         AppScreen::MainMenu,
         AppScreen::Profile,
@@ -51,6 +54,7 @@ impl AppScreen {
         AppScreen::Online,
         AppScreen::Game,
         AppScreen::Replay,
+        AppScreen::About,
     ];
 
     /// The screen named by its variant or its heading, any case —
@@ -75,6 +79,7 @@ impl AppScreen {
             AppScreen::Online => "Play Online",
             AppScreen::Game => "Game",
             AppScreen::Replay => "Replay",
+            AppScreen::About => "About",
         }
     }
 }

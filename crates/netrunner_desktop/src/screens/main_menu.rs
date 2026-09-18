@@ -30,12 +30,13 @@ pub enum Entry {
     Cards,
     Profile,
     Settings,
+    About,
     Quit,
 }
 
 impl Entry {
-    pub const ALL: [Entry; 8] =
-        [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Cards, Entry::Profile, Entry::Settings, Entry::Quit];
+    pub const ALL: [Entry; 9] =
+        [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Cards, Entry::Profile, Entry::Settings, Entry::About, Entry::Quit];
 
     pub fn label(self) -> &'static str {
         match self {
@@ -46,6 +47,7 @@ impl Entry {
             Entry::Cards => "Cards",
             Entry::Profile => "Profile",
             Entry::Settings => "Settings",
+            Entry::About => "About",
             Entry::Quit => "Quit",
         }
     }
@@ -59,6 +61,7 @@ impl Entry {
             Entry::Cards => "Every card, with the printed text and how the engine reads it",
             Entry::Profile => "Your name, your rating on both chairs, and where your files live",
             Entry::Settings => "Name, format, animation, sound, card images",
+            Entry::About => "Credits and licences: whose fonts, symbols, cards and art are in the client",
             Entry::Quit => "",
         }
     }
@@ -73,6 +76,7 @@ impl Entry {
             Entry::Cards => Some(AppScreen::CardBrowser),
             Entry::Profile => Some(AppScreen::Profile),
             Entry::Settings => Some(AppScreen::Settings),
+            Entry::About => Some(AppScreen::About),
             Entry::Quit => None,
         }
     }

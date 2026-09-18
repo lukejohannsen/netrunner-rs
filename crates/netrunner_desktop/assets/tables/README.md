@@ -122,11 +122,13 @@ Two things worth knowing while you paint:
 
 ## Licensing
 
-Nothing goes in *this* directory — the one inside the repository —
-without a `LICENSE-<name>.txt` beside it granting redistribution under
-terms compatible with this project's GPL-3.0-or-later. CC0 or an
-OFL-style grant is the bar; `assets/fonts/LICENSE-OFL.txt` is the worked
-example.
+A file committed here is a separately licensed work and needs a row in
+[`../CREDITS.md`](../CREDITS.md): its owner, their website, its licence
+and anything changed. If the project made it, including with AI
+assistance, it is GPL-3.0-or-later. If someone else did, it keeps their
+licence, with the licence text beside it as `LICENSE-<name>.txt`. A
+painted field is a picture people look at, so its artist is credited by
+name and website. Find out who made it before committing it.
 
 Your own tables in `<data dir>` are yours and are not covered by any of
 this.

@@ -141,3 +141,12 @@ The source code in this repository is licensed under the
 and include card titles, rules text, flavor text and illustrator credits. **That content is not
 covered by this license** and is not this project's to license — it remains the property of its
 respective copyright holders, as stated in the disclaimer above.
+
+**Assets are licensed separately, one by one.** Every font, picture and sound committed under
+`crates/netrunner_desktop/assets/` is its own work with its own owner and licence, listed in
+[`assets/CREDITS.md`](crates/netrunner_desktop/assets/CREDITS.md). Assets made in this project,
+including with AI assistance, are GPL-3.0-or-later. Everything else stays its owner's, under
+the owner's licence, credited with its author and their website: the Noto fonts (OFL-1.1, the
+Noto Project Authors) and Null Signal Games' game symbols (CC BY-ND 4.0, from
+[their visual assets](https://nullsignal.games/about/nsg-visual-assets/)). The desktop client's
+**About** screen shows the same credits, and those for what it fetches on the player's opt-in.

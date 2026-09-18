@@ -29,11 +29,11 @@
 //! be anybody's art.
 //!
 //! **The bundled counters and HUD glyphs are Null Signal Games'
-//! own game symbols** (`assets/board/LICENSE-NSG.txt`, CC BY-ND 4.0),
-//! converted to PNG and the black ones recoloured light for a dark
-//! board, which NSG's terms name as not a derivative. They are the one
-//! committed asset not under a GPL-compatible grant, by the person's
-//! explicit decision; AGENTS.md §5 records it.
+//! own game symbols** (CC BY-ND 4.0), converted to PNG and the black
+//! ones recoloured light for a dark board, which NSG's terms name as not
+//! a derivative. Like every committed asset they are a separately
+//! licensed work with a row in `assets/CREDITS.md`
+//! (`assets/board/LICENSE-NSG.txt` holds the attribution).
 //!
 //! **A drawn tile is grey and washed in its state's colour**
 //! ([`Picture::drawn`]): the faction's for a rezzed card, the Corp's
