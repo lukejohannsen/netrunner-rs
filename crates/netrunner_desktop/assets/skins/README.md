@@ -114,12 +114,12 @@ window the *scaling* boxes shrink and the fixed ones do not.
 
 | Key | Logical box | Fit | Notes |
 |---|---|---|---|
-| `server.column` | 242 × grows with its tiles | 9-slice | The frame around a server. Width is the card width + 22, so it shrinks on a small window |
+| `server.column` | card width + 22 × the whole ICE field | 9-slice | The frame around a server. Width is the card width + 22, so it shrinks on a small window |
 | `server.column.welcomes` | same | 9-slice | A card is being dragged and could land here |
 | `server.column.run` | same | 9-slice | A run is on this server |
-| `server.header` | fits its text (~97) × **31** | 9-slice | "Archives · 2", "R&D · 35", "New remote 1" |
+| `server.header` | card width + 4 × **9/16 of that** (~169 × 95 from the Runner's chair, ~224 × 126 from the Corp's) | 9-slice | The server's plate on the Corp's edge of the table: "Archives · 2", "R&D · 35", "New remote 1" along its lower edge |
 | `server.header.welcomes` | same | 9-slice | |
-| `tile` | card width + 4 (~224) × **26** | 9-slice | An ice, or a card in a root. Wide and short — draw the detail at the ends |
+| `tile` | card width + 4 × **24 to 0.3 × card width** | 9-slice | An ice, or a card in a root. Its height is its share of the ICE field — tall with one ICE, down to 24 as the column fills, then overlapping. Wide and short — draw the detail at the ends |
 | `tile.rezzed` / `tile.unrezzed` | same | 9-slice | `"tint": "state"` gives you the faction colour free |
 
 ### Buttons and chips
@@ -168,13 +168,11 @@ sheet closes on Escape or on a click that misses it. A *zone's* sheet,
 the score area and the decision pop-up do still carry a heading, and the
 options and the list of keys still carry a Close.
 
-**A server's own mark — an Archives badge, an R&D badge — is not a slot
-yet**, and it is the first thing you will want. The reason is the first
-rule on this page: a mark needs a box of its own in the header, a header
-with one is wider, and a wider header widens its column, which is a
-layout change rather than a skin. Reserving that box for every server
-whether or not anybody has drawn a mark is the way to do it, and it is a
-change to the board. It comes with the icons, next.
+**A server's own picture — Archives as a vault, R&D as a tower — has its
+box now**: the header became a plate, reserved at 16:9 for every server
+whether or not anybody has drawn one, so a picture can never change the
+layout. The picture itself is board art rather than a skin slot (a
+nine-sliced frame is the wrong shape for a building); it comes next.
 
 The remaining icons — the gear, the arrows, the card frame — are not
 slots yet either, for less interesting reasons. Also next.

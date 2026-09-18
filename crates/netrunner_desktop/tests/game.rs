@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, Click, Contact, DecisionPopup, Glowing, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn};
+use netrunner_desktop::screens::game::{ActionsMenu, Click, Contact, DecisionPopup, Glowing, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -957,6 +957,68 @@ fn a_hand_card_dragged_along_the_hand_reorders_it_and_plays_nothing() {
     press_card(&mut app, face);
     assert_eq!(menus(&mut app), 1, "a still press opens the menu");
     assert_eq!(app.world().resource::<Model>().0.applied, before);
+}
+
+/// A hand shows a third of each card, and the one the pointer rests on
+/// lifts out whole as a second, inert copy: the face in the row stays
+/// where it was, nothing is submitted, and the copy goes when the pointer
+/// does.
+#[test]
+fn a_hovered_hand_card_lifts_out_whole_and_nothing_is_sent() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    to_the_runners_turn(&mut app);
+    let before = app.world().resource::<Model>().0.applied;
+    let lifted = |app: &mut App| app.world_mut().query::<&LiftedCard>().iter(app.world()).map(|l| l.0).collect::<Vec<_>>();
+    let slot = {
+        let world = app.world_mut();
+        world.query_filtered::<Entity, With<HandSlot>>().iter(world).next().expect("a hand card")
+    };
+    assert!(lifted(&mut app).is_empty(), "nothing is lifted until something is hovered");
+    app.world_mut().entity_mut(slot).insert(Interaction::Hovered);
+    app.update();
+    assert_eq!(lifted(&mut app), [slot], "the hovered card lifts out");
+    let copy = {
+        let world = app.world_mut();
+        world.query_filtered::<Entity, With<LiftedCard>>().single(world).unwrap()
+    };
+    assert!(!app.world().entity(copy).contains::<Button>(), "the lifted copy is not a button, so the hover holds on the face under it");
+    app.update();
+    assert_eq!(lifted(&mut app), [slot], "and stays while the pointer does");
+    app.world_mut().entity_mut(slot).insert(Interaction::None);
+    app.update();
+    assert!(lifted(&mut app).is_empty(), "and goes when it leaves");
+    let model = &app.world().resource::<Model>().0;
+    assert!(model.applied == before && model.menu.is_none(), "considering a card is not a game event");
+}
+
+/// The middle of the table does not move: the card width is a function
+/// of the window, the chair and the servers, so the Corp's ICE and the
+/// Runner's installs never re-fit it. The control bar is a row of the
+/// board, above the hand, and every server has its plate.
+#[test]
+fn the_card_width_holds_while_the_board_fills_and_the_bar_sits_on_the_board() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    let columns = |app: &mut App| app.world_mut().query::<&ServerColumn>().iter(app.world()).count();
+    let plates = |app: &mut App| app.world_mut().query::<&ServerPlate>().iter(app.world()).count();
+    let (face, servers) = (app.world().resource::<BoardFit>().face, columns(&mut app));
+    assert!(face > 0.0, "fitted");
+    assert_eq!(plates(&mut app), servers, "a plate per server");
+    let keep = button_labelled(&mut app, "Keep hand").expect("Keep hand is a decision");
+    press_entity(&mut app, keep);
+    until_the_runners_turn(&mut app);
+    let pieces: usize = app.world().resource::<Model>().0.view.as_ref().unwrap().corp.servers.iter().map(|s| s.ice.len() + s.root.len()).sum();
+    assert!(pieces > 0, "the Corp has installed something by the Runner's first turn");
+    if columns(&mut app) == servers {
+        assert_eq!(app.world().resource::<BoardFit>().face, face, "the Corp's installs moved no card");
+    }
+    // The bar is inside the board now, so it is redrawn with it: one bar,
+    // with its buttons, after the redraw.
+    assert_eq!(app.world_mut().query::<&ControlBar>().iter(app.world()).count(), 1);
+    let (_, disabled) = control_button(&mut app, Control::GainCredit);
+    assert!(!disabled, "the bar offers what the engine does");
 }
 
 /// The phase bar is a row of the board: the turn's steps with the one in

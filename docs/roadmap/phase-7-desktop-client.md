@@ -2412,3 +2412,106 @@ never the board. No engine file changed, so no sweep.
 nobody has drawn one), a server's mark, the remaining icons, the player
 bars, the fanned hand, the hovered card and the right-hand side — and,
 separately, wiring `"tint": "state"` so the guide stops promising it.
+
+### 4s. The table has a near side and a far side, and its middle holds still — DONE (18 September 2026)
+
+`feat/desktop-board-depth-layout`. Not from the third list, though it
+lands two of its items (3, the hovered card, and part of 4, the space
+used). The person asked for the board space to be used better: once a
+player knows the cards by name and picture the opponent's side can be
+smaller, which gives the table depth; **"when an opponent adds to their
+rig it doesn't adjust the middle of the play field"**; both grips shown
+as the top third of a card; the actions bar above the cards; and the
+Corp's servers pulled to the Corp's edge so the middle is where ICE
+grows — with room for each server to carry a picture of its own, and a
+documented list of every asset the client can load. This entry is the
+layout; the plates' pictures and the tiles' art are the two PRs stacked
+on it.
+
+**Decisions taken, with the alternative rejected.**
+
+- **The card width no longer reads what is installed.** `Counts` lost
+  `pieces` (the tallest server's ICE and root) and `rig` (empty or not):
+  both were in `rows_height`, so the Corp's third ICE or the Runner's
+  first install shrank every card and redrew the board — the middle
+  moved whenever anyone did anything. Now `face_width` is a function of
+  the window, the chair, the servers and the phase bar; the rig's row is
+  reserved at `layout::rig_height` empty or not, and the ICE grows into
+  the **ICE field** — the one flexible row, between the server plates
+  and the run lane — whose tiles share its height
+  (`layout::tile_stack`: as tall as their share allows between 24px and
+  0.3 of the server's width, then overlapping by `step`'s rule on its
+  side). A new remote can still narrow the cards, because columns cannot
+  overlap; that is the one count left.
+- **The far side is one constant, not a ramp.** `OPPONENT_SCALE = 0.75`
+  for the opponent's strip, hand and area: the Runner sees the Corp's
+  servers at three quarters and their own rig at full size, the Corp the
+  reverse. §4m and the third list's item 1 rejected a per-row width ramp
+  because its natural form is not monotone in the face width, which
+  would have silently broken `face_width`'s binary search. A constant
+  factor keeps every row a non-decreasing function of one width — the
+  affine form item 1 had already called safe — and the `Depth` doc,
+  which said the board was getting no scale at all, now says why this one
+  is allowed.
+- **A hand is a peek, and the hovered card lifts out whole.** Both hands
+  show `layout::PEEK` (a third) of each card — the person's own from the
+  top, the opponent's backs hanging from the far edge. The two hands had
+  been a full card each: the largest things on the board and the least
+  looked at. The lift is a second, inert copy drawn in a floating layer
+  (`lift_hovered`) rather than the face moved: the face in the row stays
+  put, so a drag, a click and the hand's order measure the same box they
+  always did, and the copy carries no `Button`, so the focus system
+  passes through it and the hover holds. It is paint only — never an
+  action, never the log, never a view (item 3's rule) — and nothing lifts
+  while a card is dragged, a menu is open or the board is covered.
+  **The peek window's width has to be said:** a clipping node
+  contributes nothing to its parent's size, so the first cut showed one
+  card of eight, as wide as the "Your hand" label.
+- **The strips went to one row.** At 175 and 210 tall they would have
+  swallowed what the peeks saved, so the HUD is one row of six
+  (`hud::PER_ROW` 3 → 6: both sides' shared readouts still sit in the
+  same columns) and the Runner's details share a line with the pile
+  buttons: 84 and 120. The identity in a strip is 0.4 of its side's
+  width, down from 0.6.
+- **The control bar is a row of the board**, directly above the
+  person's hand, instead of a full-width row under the board and the
+  rail. It is respawned with the board, so a rail-only redraw refills
+  it in place and a board redraw brings a fresh one — refilling the old
+  one as well would have written to an entity the board had just
+  despawned.
+- **A server's header became its plate**: `card width + 4` wide and
+  9/16 of that tall, on the Corp's edge of the column — the bottom from
+  the Corp's chair, the top from the Runner's — with the name along its
+  lower edge. The box is reserved for every server, which is the
+  condition the skins guide set for a server's own picture: art in a box
+  that already exists cannot change the layout.
+
+**Measured, 2048×1280 logical (2560×1600 at 1.25), phase bar on.**
+Before, the person's strip row was 330 tall and the opponent's 185, and
+at two ICE on the tallest server the board was already at 1,163 of its
+1,188 — so a Runner seat's cards fell below the 220 cap at the Corp's
+third piece. After, the rows are 125 and 99, the fixed rows cost 937 of
+1,204, and the ICE field has 267 to itself; the face stays at 220 from
+the first decision to the last, and seven ICE on one server overlap in
+the field rather than moving a card.
+
+**Verified.** `cargo test --workspace` green and clippy silent across
+the workspace. New tests: the far side is 0.75 of the near side from
+either chair; the fixed rows at the computed width leave the ICE field
+its minimum and one pixel more would not (replacing the old fit
+invariant); tiles share the field within their bounds and overlap past
+the floor; on a real match the card width holds between the first
+decision and the Runner's first turn while the Corp installs, every
+server has its plate and the bar is on the board; a hovered hand card
+lifts out as a non-button copy, holds, and goes with the pointer, with
+nothing applied and no menu opened. `NETRUNNER_LIFT=1` holds the first
+card lifted for a screenshot. Screenshots taken from both chairs forty
+decisions in; the dev log's one `scroll area` line is the hidden log at
+zero size, never the board. No engine file changed, so no sweep. The
+access test §4r recorded as timing-sensitive missed its ten-second
+deadline once (10.22s) on a run that was compiling alongside it, then
+passed three times alone and on the full re-run.
+
+**Reading stays on the secondary click.** The request said a card is
+inspected "with left-click"; the primary click is the actions menu
+(§4g), and the lift now covers reading a card in hand without either.

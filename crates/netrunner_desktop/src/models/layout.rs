@@ -32,15 +32,31 @@
 //! rules ("does not matter" — the learn-to-play guide), so the rig
 //! keeps its three groups in the one order for both chairs.
 //!
-//! **A server column is a stack of tiles.** The header, every card in
-//! the root and every piece of ice are the same small block — a title
-//! and a number — so a column costs [`TILE`] per piece and never a card
-//! face: a root drawn as a face was the one thing on the board at card
-//! size that was not in a hand or a rig, and it cost the whole board its
-//! card width. A tile opens the card's sheet when clicked, so nothing
-//! is lost but the picture.
+//! **A server column is a plate and a stack of tiles.** The plate — the
+//! server's name and count, and the box its picture goes in — sits on
+//! the Corp's edge of the table, and every card in the root and every
+//! piece of ice is the same small block — a title and a number — in the
+//! column out toward the Runner, never a card face: a root drawn as a
+//! face was the one thing on the board at card size that was not in a
+//! hand or a rig, and it cost the whole board its card width. A tile
+//! opens the card's sheet when read, so nothing is lost but the picture.
 //!
-//! **The run lane is a fifth row, always there.** Between the Corp's
+//! **The middle of the table is the ICE field, and it is the only thing
+//! that grows.** Between the plates and the run lane the columns get
+//! whatever height the fixed rows leave ([`field_height`]); a tile is as
+//! tall as its share of it allows and overlaps past a floor
+//! ([`tile_stack`]), so the Corp's ICE and the Runner's installs never
+//! move a card: the rig's row is reserved empty or not. From the Corp's
+//! chair the plates are at the bottom, next to the Corp, and the ICE
+//! climbs; from the Runner's they are at the top and it comes down.
+//!
+//! **The far side is smaller.** The opponent's strip, hand and area are
+//! drawn at [`OPPONENT_SCALE`] of the person's own width — the Runner
+//! sees the Corp's servers smaller and their own rig at full size, the
+//! Corp the reverse — and both hands show a [`PEEK`] of each card, the
+//! person's own lifting out whole when hovered.
+//!
+//! **The run lane is a row of its own, always there.** Between the Corp's
 //! servers and the Runner's rig — adjacent to the outermost ice from
 //! either chair — [`RUN_LANE`] is reserved whether or not a run is on,
 //! so the cards keep their size when one begins; a lane that appeared
@@ -84,21 +100,34 @@ pub fn ice_top_down<T>(ice: &[T], chair: Side) -> Vec<&T> {
 }
 
 /// What the board has to make room for.
+///
+/// **Nothing here grows with the game.** The ICE on the tallest server
+/// and whether the rig is empty were once counts too, so the Corp's
+/// third ICE or the Runner's first install shrank every card on the
+/// board and redrew it — the middle of the table moved whenever the
+/// opponent did anything. Now the rig's row is reserved whether or not
+/// anything is in it, and the ICE grows into the flexible field between
+/// the server plates and the run lane ([`tile_stack`]), so the face
+/// width is a function of the window, the chair, the servers and the
+/// phase bar alone. A new remote can still narrow the cards, because
+/// server columns cannot overlap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Counts {
-    /// The most pieces — ice and root cards together — on any one
-    /// server: the tallest server column, in tiles.
-    pub pieces: usize,
     /// Corp servers, centrals included: the widest row of columns.
     pub servers: usize,
-    /// Which strip is the person's: the Runner's carries the pile
-    /// buttons and is taller.
+    /// Which chair the person is in: it decides which side is drawn at
+    /// the person's own size and which at [`OPPONENT_SCALE`], and which
+    /// strip carries the pile buttons and is taller.
     pub human_is_runner: bool,
-    /// Whether the rig has anything in it: an empty rig is a short
-    /// row, and the cards can be larger.
-    pub rig: bool,
     /// Whether the phase bar is on, which costs the board its row.
     pub phase_bar: bool,
+}
+
+impl Counts {
+    /// The chair the person is in.
+    pub fn chair(&self) -> Side {
+        if self.human_is_runner { Side::Runner } else { Side::Corp }
+    }
 }
 
 /// The rail beside the board.
@@ -107,7 +136,9 @@ pub const RAIL_WIDTH: f32 = 380.0;
 pub const PADDING: f32 = 12.0;
 /// Between the board and the rail.
 pub const BODY_GAP: f32 = 10.0;
-/// The top bar's height, and the control bar's.
+/// The top bar's height, and the control bar's. The control bar is a row
+/// of the board now — directly above the person's hand — so it is
+/// counted in [`fixed_height`], not taken off [`board_height`].
 pub const TOP_BAR: f32 = 44.0;
 pub const CONTROL_BAR: f32 = 44.0;
 /// The phase bar's height when it is on: a row of step chips with the
@@ -121,38 +152,66 @@ pub const ROW_GAP: f32 = 8.0;
 /// a card ("2 adv"), at the small text size with its leading.
 pub const LABEL: f32 = 22.0;
 pub const CHIPS: f32 = 20.0;
-/// A tile's height — an ice, or a card in a root — with the gap under it.
-pub const TILE: f32 = 30.0;
+/// The shortest a tile — an ice, or a card in a root — is drawn while it
+/// still has the ICE field to itself: one line of small text in a
+/// border. Past this the tiles overlap rather than shrink ([`tile_stack`]).
+pub const TILE_MIN: f32 = 24.0;
+/// The tallest a tile grows, as a fraction of its server's face width:
+/// a server with one ICE draws it as a slab, not a card, so a column
+/// never reads as a face.
+pub const TILE_MAX_SCALE: f32 = 0.3;
+/// The gap between two tiles in a column.
+pub const TILE_GAP: f32 = 4.0;
+/// The least height the ICE field is ever given: a few tiles at their
+/// floor before any overlap. It is what the face width gives up to the
+/// field; everything above it is the field's anyway.
+pub const ICE_FIELD_MIN: f32 = 96.0;
 /// The run lane between the two areas: a row of chips and a line of
 /// words beneath, with the gaps around it.
 pub const RUN_LANE: f32 = 64.0;
-/// The identity in a strip is drawn at this fraction of the face width.
-pub const IDENTITY_SCALE: f32 = 0.6;
+/// The opponent's side of the table — their area, their strip and their
+/// hand — is drawn at this fraction of the person's own card width, so
+/// the table has a near side and a far side. **A constant factor keeps
+/// [`fixed_height`] monotone in the face width**, which is what licenses
+/// [`face_width`]'s binary search; the per-row ramp §4m rejected was not
+/// (see [`Depth`]).
+pub const OPPONENT_SCALE: f32 = 0.75;
+/// How much of a card in a hand shows: its top third for the person's
+/// own (a hovered one lifts out whole), the bottom third of a back for
+/// the opponent's. A hand is a fan held at the table's edge, and the
+/// two hands were a full card each — the largest thing on the board and
+/// the least looked at.
+pub const PEEK: f32 = 1.0 / 3.0;
+/// The identity in a strip is drawn at this fraction of its side's face
+/// width.
+pub const IDENTITY_SCALE: f32 = 0.4;
 /// The gap between cards in a row.
 pub const CARD_GAP: f32 = 6.0;
 /// A server column's padding and border beyond its card, each side.
 pub const SERVER_CHROME: f32 = 12.0;
+/// A server column's vertical padding, borders and the gap under its
+/// plate.
+pub const SERVER_CHROME_V: f32 = 14.0;
+/// A server's plate — where its picture goes — is this fraction of its
+/// width tall: 16:9, so art has a fixed shape to be drawn to whatever
+/// the card width is. The box is reserved for every server whether or
+/// not anybody has drawn one, so art never changes the layout.
+pub const PLATE_ASPECT: f32 = 9.0 / 16.0;
 /// The widest and narrowest a board face is drawn. Below the floor the
 /// text is unreadable and a picture is a smudge; above the cap a board
 /// with little on it need not fill a large monitor with card.
 pub const MIN_FACE: f32 = 72.0;
 pub const MAX_FACE: f32 = 220.0;
 /// The strip beside a hand: the identity plus its lines of numbers.
-pub const STRIP_TEXT: f32 = 330.0;
-/// A strip's height when its text is taller than its identity: the
-/// name line, the HUD's two rows of large numbers over their words and
-/// the Runner's details line and pile buttons under them. The
-/// scored agendas are no longer a line here — the Agendas readout opens
-/// them — so nothing in a strip grows with the game. Unchanged when the
-/// HUD replaced four body-size lines, and screenshotted to fit from both
-/// chairs at 2560×1600 forty decisions in.
-/// Over-estimates absorb into the gaps between rows; under-estimates
-/// clip the hand, which is the thing that must not
-/// happen.
-pub const STRIP_CORP: f32 = 175.0;
-pub const STRIP_RUNNER: f32 = 210.0;
-/// A server column's header button, and the rig's group label.
-pub const SERVER_HEADER: f32 = 36.0;
+pub const STRIP_TEXT: f32 = 400.0;
+/// A strip's text column: the name line, the HUD as one row of large
+/// numbers over their words, and — the Runner's — the details line with
+/// the pile buttons beside it. Nothing in a strip grows with the game.
+/// Over-estimates are the ICE field's; under-estimates clip the hand,
+/// which is the thing that must not happen.
+pub const STRIP_CORP: f32 = 84.0;
+pub const STRIP_RUNNER: f32 = 120.0;
+/// The rig's group label.
 pub const GROUP_LABEL: f32 = 22.0;
 
 /// The width the board column has: the window less the padding, the
@@ -162,41 +221,78 @@ pub fn board_width(window_width: f32) -> f32 {
 }
 
 /// The height the board column has: the window less the padding, the
-/// top bar, the control bar and the gaps between them.
+/// top bar and the gap under it.
 pub fn board_height(window_height: f32) -> f32 {
-    window_height - 2.0 * PADDING - TOP_BAR - CONTROL_BAR - 2.0 * ROW_GAP
+    window_height - 2.0 * PADDING - TOP_BAR - ROW_GAP
 }
 
-/// The height of the board's five rows at face width `face`: the
-/// opponent's strip (its identity at `IDENTITY_SCALE`, or its text,
-/// whichever is taller), the Corp's servers (label, header, the tiles
-/// of the tallest), the run lane, the Runner's rig (label, group label,
-/// a card, a chip line) and the person's strip beside their hand (label
-/// and a card, or the strip's text). Monotone in `face`, which is what
-/// lets [`face_width`] search it.
-pub fn rows_height(face: f32, counts: Counts) -> f32 {
-    let (opponent_strip, own_strip) = if counts.human_is_runner { (STRIP_CORP, STRIP_RUNNER) } else { (STRIP_RUNNER, STRIP_CORP) };
-    let card = 1.4 * face;
-    let top = (1.4 * IDENTITY_SCALE * face).max(opponent_strip);
-    let servers = LABEL + SERVER_HEADER + counts.pieces as f32 * TILE;
-    let rig = LABEL + if counts.rig { GROUP_LABEL + card + CHIPS } else { 0.0 };
-    let bottom = (LABEL + card).max(own_strip);
+/// The face width a side's cards are drawn at from `chair`: the
+/// person's own at `face`, the opponent's at [`OPPONENT_SCALE`] of it.
+pub fn area_face(side: Side, chair: Side, face: f32) -> f32 {
+    if side == chair { face } else { (face * OPPONENT_SCALE).floor() }
+}
+
+/// A server plate's height at its server's face width.
+pub fn plate_height(server_face: f32) -> f32 {
+    ((server_face + 4.0) * PLATE_ASPECT).round()
+}
+
+/// A strip row's height: the hand's peek (with its label), the identity,
+/// or the strip's text, whichever is tallest.
+pub fn strip_height(side: Side, side_face: f32) -> f32 {
+    let text = match side {
+        Side::Corp => STRIP_CORP,
+        Side::Runner => STRIP_RUNNER,
+    };
+    let peek = LABEL + PEEK * 1.4 * side_face;
+    let identity = 1.4 * IDENTITY_SCALE * side_face;
+    peek.max(identity).max(text)
+}
+
+/// The rig's row: its label, a group label, a card and its chip line —
+/// reserved whether or not anything is installed.
+pub fn rig_height(rig_face: f32) -> f32 {
+    LABEL + GROUP_LABEL + 1.4 * rig_face + CHIPS
+}
+
+/// Everything on the board but the ICE field, at face width `face`: the
+/// two strip rows, the servers' label and plates, the run lane, the rig,
+/// the control bar, the phase bar and the gaps between them. Each term
+/// is a non-decreasing function of `face`, so the sum is monotone, which
+/// is what lets [`face_width`] search it.
+pub fn fixed_height(face: f32, counts: Counts) -> f32 {
+    let chair = counts.chair();
+    let opponent = chair.other();
+    let server_face = area_face(Side::Corp, chair, face);
+    let rig_face = area_face(Side::Runner, chair, face);
+    let strips = strip_height(opponent, area_face(opponent, chair, face)) + strip_height(chair, face);
+    let servers = LABEL + plate_height(server_face) + SERVER_CHROME_V;
     let phase = if counts.phase_bar { PHASE_BAR + ROW_GAP } else { 0.0 };
-    top + servers + RUN_LANE + rig + bottom + phase + 4.0 * ROW_GAP
+    // Six rows — two strips, the servers, the lane, the rig, the control
+    // bar — and five gaps between them.
+    strips + servers + RUN_LANE + rig_height(rig_face) + CONTROL_BAR + phase + 5.0 * ROW_GAP
+}
+
+/// The height the ICE field has at face width `face`: what the fixed
+/// rows leave of the board. Never less than [`ICE_FIELD_MIN`] unless the
+/// face is already at its floor.
+pub fn field_height(window_height: f32, face: f32, counts: Counts) -> f32 {
+    (board_height(window_height) - fixed_height(face, counts)).max(0.0)
 }
 
 /// The face width the board has room for, in pixels: the largest for
-/// which [`rows_height`] fits [`board_height`], capped by the servers,
-/// which are columns that cannot overlap, within [`MIN_FACE`]..[`MAX_FACE`].
+/// which [`fixed_height`] and [`ICE_FIELD_MIN`] fit [`board_height`],
+/// capped by the servers, which are columns that cannot overlap, within
+/// [`MIN_FACE`]..[`MAX_FACE`].
 pub fn face_width(window: (f32, f32), counts: Counts) -> f32 {
     let (width, height) = window;
-    let room = board_height(height);
+    let room = board_height(height) - ICE_FIELD_MIN;
     // Binary search over whole pixels: the rows grow with the face and
     // the answer is the last width that still fits.
     let (mut low, mut high) = (MIN_FACE as u32, MAX_FACE as u32);
     while low < high {
         let mid = (low + high).div_ceil(2);
-        if rows_height(mid as f32, counts) <= room {
+        if fixed_height(mid as f32, counts) <= room {
             low = mid;
         } else {
             high = mid - 1;
@@ -204,8 +300,28 @@ pub fn face_width(window: (f32, f32), counts: Counts) -> f32 {
     }
     let by_height = low as f32;
     let servers = counts.servers.max(1) as f32;
-    let by_width = (board_width(width) - (servers - 1.0) * CARD_GAP) / servers - 2.0 * SERVER_CHROME;
+    let server_face = (board_width(width) - (servers - 1.0) * CARD_GAP) / servers - 2.0 * SERVER_CHROME;
+    // The servers are the opponent's from the Runner's chair, drawn at the
+    // smaller scale, so the cap on the person's own face is looser there.
+    let by_width = if counts.human_is_runner { server_face / OPPONENT_SCALE } else { server_face };
     by_height.min(by_width).clamp(MIN_FACE, MAX_FACE).floor()
+}
+
+/// A server column's tiles in its share of the ICE field: `(height,
+/// advance)`, where `advance` is the distance from one tile's top to
+/// the next's. `pieces` tiles — the ICE and the root cards — share
+/// `field` pixels: each as tall as its share allows between [`TILE_MIN`]
+/// and [`TILE_MAX_SCALE`] of the server's face, and past the floor they
+/// overlap by [`step`]'s rule turned on its side, so the ICE grows into
+/// the middle of the table rather than shrinking every card on it.
+pub fn tile_stack(field: f32, pieces: usize, server_face: f32) -> (f32, f32) {
+    let max = (server_face * TILE_MAX_SCALE).max(TILE_MIN);
+    if pieces == 0 {
+        return (max, max + TILE_GAP);
+    }
+    let share = field / pieces as f32 - TILE_GAP;
+    let height = share.clamp(TILE_MIN, max).floor();
+    (height, step(pieces, height, TILE_GAP, field))
 }
 
 /// The horizontal advance from one card to the next in a row of `n`
@@ -223,17 +339,20 @@ pub fn step(n: usize, width: f32, gap: f32, available: f32) -> f32 {
 
 /// How far from the person's chair a row of the board sits.
 ///
-/// **This is the depth the board has, and the only one it is getting.**
-/// §4m put the perspective in the table's paint and the third list's item
-/// 1 rejected a per-row *face-width* ramp on more than taste: the natural
-/// form is not monotone in the face width, and `face_width`'s binary
-/// search is licensed only by `rows_height` being monotone, so the ramp
-/// would have returned a silently wrong width with every test still
-/// green. A shadow has no such problem, because **it is paint and not
-/// layout**: a `BoxShadow` is drawn outside the node and measured by
-/// nothing. So the cards stay one size and their shadows say which row is
-/// nearer, which is the half of "closer objects larger" that can be had
-/// for free.
+/// **The depth the board has is two things: a scale and a shadow.** The
+/// opponent's side is drawn at [`OPPONENT_SCALE`] of the person's own —
+/// the far side of a table is smaller — and every row's contact shadow
+/// says how near it is. §4m first put the perspective in the table's
+/// paint and the third list's item 1 rejected a per-row *face-width*
+/// ramp on more than taste: the natural form is not monotone in the face
+/// width, and `face_width`'s binary search is licensed only by the rows'
+/// height being monotone, so the ramp would have returned a silently
+/// wrong width with every test still green. A *constant* factor has no
+/// such problem — every row is still a non-decreasing function of one
+/// width — which is why the scale is one number for the whole far side
+/// and not a ramp. A shadow is paint and not layout: a `BoxShadow` is
+/// drawn outside the node and measured by nothing, so it may vary by row
+/// freely.
 ///
 /// The four values are `spawn_board`'s four rows, top to bottom.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -341,40 +460,73 @@ mod tests {
     }
 
     #[test]
-    fn the_face_shrinks_with_the_window_and_with_ice_and_stays_in_range() {
-        let none = Counts { pieces: 0, servers: 4, human_is_runner: true, rig: true, phase_bar: true };
-        assert!(face_width((1280.0, 800.0), Counts { rig: false, ..none }) > face_width((1280.0, 800.0), none), "an empty board has room for larger cards");
+    fn the_face_shrinks_with_the_window_and_stays_in_range() {
+        let none = Counts { servers: 4, human_is_runner: true, phase_bar: true };
         let large = face_width((1920.0, 1080.0), none);
         let small = face_width((1280.0, 800.0), none);
         assert!(large > small, "{large} > {small}");
-        assert!(face_width((1920.0, 1080.0), Counts { pieces: 4, ..none }) < large, "four tiles cost card height");
-        assert_eq!(face_width((800.0, 400.0), Counts { pieces: 6, ..none }), MIN_FACE, "never below the floor");
+        assert_eq!(face_width((800.0, 400.0), none), MIN_FACE, "never below the floor");
         assert_eq!(face_width((4000.0, 3000.0), none), MAX_FACE, "never above the cap");
         // Nine servers across a laptop width cap it below what the
         // height would allow.
         assert!(face_width((1280.0, 1080.0), Counts { servers: 9, ..none }) < face_width((1280.0, 1080.0), none));
         // The phase bar is a row of the board's height, so the cards are
         // never larger with it on.
-        assert!(face_width((1280.0, 1080.0), Counts { phase_bar: false, ..none }) >= face_width((1280.0, 1080.0), none));
-        assert_eq!(rows_height(100.0, none) - rows_height(100.0, Counts { phase_bar: false, ..none }), PHASE_BAR + ROW_GAP, "the bar is a row of the board");
+        assert!(face_width((1280.0, 900.0), Counts { phase_bar: false, ..none }) >= face_width((1280.0, 900.0), none));
+        assert_eq!(fixed_height(100.0, none) - fixed_height(100.0, Counts { phase_bar: false, ..none }), PHASE_BAR + ROW_GAP, "the bar is a row of the board");
     }
 
-    /// The five rows at the computed width fit the board's height, and
-    /// one pixel more would not: the invariant the whole module exists
-    /// for.
+    /// The rule the whole field exists for: the ICE and the rig are not
+    /// counts, so nothing the opponent installs moves a card. The face
+    /// width is a function of the window, the chair, the servers and the
+    /// phase bar alone — `Counts` has nowhere to put an ICE count.
+    #[test]
+    fn the_far_side_is_smaller_by_one_constant() {
+        for chair in [Side::Corp, Side::Runner] {
+            assert_eq!(area_face(chair, chair, 200.0), 200.0);
+            assert_eq!(area_face(chair.other(), chair, 200.0), 150.0);
+        }
+        // From the Runner's chair the rig is the near row and the plates
+        // the far one; from the Corp's the reverse. Either way the near
+        // side costs more of the height.
+        let runner = Counts { servers: 4, human_is_runner: true, phase_bar: false };
+        let corp = Counts { human_is_runner: false, ..runner };
+        assert!(rig_height(area_face(Side::Runner, Side::Runner, 200.0)) > rig_height(area_face(Side::Runner, Side::Corp, 200.0)));
+        assert!(fixed_height(200.0, runner) > fixed_height(200.0, corp), "a full-size rig is taller than full-size plates");
+    }
+
+    /// The rows at the computed width leave the ICE field its minimum, and
+    /// one pixel more would not: the invariant the module exists for.
     #[test]
     fn the_rows_at_the_computed_width_fit_the_window_and_no_wider_would() {
-        for (window, pieces, runner) in [((1280.0, 800.0), 0, true), ((1280.0, 800.0), 3, false), ((1920.0, 1080.0), 5, true), ((1366.0, 768.0), 2, true), ((2560.0, 1440.0), 0, false), ((2000.0, 1250.0), 2, true)] {
-            let counts = Counts { pieces, servers: 5, human_is_runner: runner, rig: pieces % 2 == 0, phase_bar: pieces % 3 == 0 };
+        for (window, runner, phase_bar) in [((1280.0, 800.0), true, true), ((1280.0, 800.0), false, false), ((1920.0, 1080.0), true, false), ((1366.0, 768.0), true, true), ((2560.0, 1440.0), false, true), ((2000.0, 1250.0), true, false)] {
+            let counts = Counts { servers: 5, human_is_runner: runner, phase_bar };
             let w = face_width(window, counts);
-            let room = board_height(window.1);
-            assert!(rows_height(w, counts) <= room || w == MIN_FACE, "{window:?} with {pieces} tiles: {} of {room}", rows_height(w, counts));
+            assert!(field_height(window.1, w, counts) >= ICE_FIELD_MIN || w == MIN_FACE, "{window:?}: field {}", field_height(window.1, w, counts));
             if w < MAX_FACE && w > MIN_FACE {
                 let wider = (w + 1.0).min(MAX_FACE);
-                let servers_cap = (board_width(window.0) - 4.0 * CARD_GAP) / 5.0 - 2.0 * SERVER_CHROME;
-                assert!(rows_height(wider, counts) > room || wider > servers_cap, "{window:?}: {w} could have been {wider}");
+                let server_face = (board_width(window.0) - 4.0 * CARD_GAP) / 5.0 - 2.0 * SERVER_CHROME;
+                let cap = if runner { server_face / OPPONENT_SCALE } else { server_face };
+                assert!(field_height(window.1, wider, counts) < ICE_FIELD_MIN || wider > cap, "{window:?}: {w} could have been {wider}");
             }
         }
+    }
+
+    /// A tile is as tall as its share of the field allows, within its
+    /// bounds, and past the floor the tiles overlap rather than leave the
+    /// field.
+    #[test]
+    fn tiles_share_the_field_and_overlap_past_the_floor() {
+        let face = 160.0;
+        let max = face * TILE_MAX_SCALE;
+        assert_eq!(tile_stack(400.0, 1, face).0, max.floor(), "one ICE is a slab at most");
+        assert_eq!(tile_stack(400.0, 0, face).0, max);
+        let (height, advance) = tile_stack(200.0, 5, face);
+        assert!((TILE_MIN..=max).contains(&height), "{height}");
+        assert_eq!(advance, height + TILE_GAP, "five fit without overlapping");
+        let (height, advance) = tile_stack(120.0, 10, face);
+        assert_eq!(height, TILE_MIN);
+        assert!(advance < height + TILE_GAP && 9.0 * advance + height <= 120.0 + 1e-3, "ten overlap to fit: {advance}");
     }
 
     #[test]

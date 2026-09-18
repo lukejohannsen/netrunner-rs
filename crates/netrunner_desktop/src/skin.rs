@@ -76,14 +76,11 @@ pub const TINT_STATE: &str = "state";
 
 /// A part of the board that can be dressed.
 ///
-/// **There is deliberately no slot for a server's own mark yet** — an
-/// Archives badge, an R&D badge — even though that is the first thing
-/// anyone asks for. A mark needs a box of its own in the header, and a
-/// header that grew by one would widen its column, which is a *layout*
-/// change: the column's width feeds the fit that keeps the board inside
-/// the window. Reserving the box for every server whether or not anybody
-/// has drawn one is the way to do it, and that is a change to the board
-/// rather than to a skin. It goes with the remaining icons.
+/// **A server's own picture is not a slot** — an Archives vault, an R&D
+/// tower. The box it needs is reserved now (the header became a plate,
+/// 16:9 for every server, `layout::plate_height`), so a picture cannot
+/// change the layout; the picture itself is board art rather than a
+/// nine-sliced frame, which is the wrong shape for a building.
 ///
 /// Flat rather than a slot-and-state pair: every variant is a thing that
 /// can be drawn, and each knows which slot it falls back to. The manifest

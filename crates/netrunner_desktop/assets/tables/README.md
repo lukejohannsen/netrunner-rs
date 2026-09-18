@@ -97,7 +97,9 @@ those names could never be selected.
 ## Painting one that fits the board
 
 The board is laid out to the window and never scrolls, so where the rows
-fall depends on the window and on what is on the table. Rather than guess:
+fall depends on the window, the chair and the number of servers — never
+on what is installed, since the ICE grows into the field in the middle
+rather than moving a row. Rather than guess:
 
     NETRUNNER_GAME=runner NETRUNNER_AUTOPLAY=40 NETRUNNER_TABLE_GUIDE=1 \
       NETRUNNER_SCREENSHOT=/tmp/guide.png cargo run -p netrunner_desktop
@@ -112,8 +114,10 @@ Two things worth knowing while you paint:
 - **Keep the perspective shallow.** The cards are flat rectangles at one
   size. A steeply-raked floor under them reads as stickers on a
   photograph; a gentle one reads as a table.
-- **Leave the middle quiet.** The cards sit across the centre and the
-  run lane runs between the two sides. Detail belongs at the edges, where
+- **Leave the middle quiet.** The ICE grows into the centre and the run
+  lane runs between the two sides; the far side of the table is drawn at
+  three quarters of the near side's card size, so the perspective you
+  paint agrees with the cards on it. Detail belongs at the edges, where
   the vignette is.
 
 ## Licensing

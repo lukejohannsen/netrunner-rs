@@ -43,9 +43,10 @@ pub struct Readout {
     pub opens: Option<Pile>,
 }
 
-/// How many readouts a HUD row holds before it wraps, so both sides'
-/// shared four and their own sit in the same columns.
-pub const PER_ROW: usize = 3;
+/// How many readouts a HUD row holds before it wraps: all of either
+/// side's, so a strip is one row of numbers no taller than a hand's peek,
+/// and both sides' shared readouts sit in the same columns.
+pub const PER_ROW: usize = 6;
 
 /// A side's readouts, in their fixed order: Credits, Clicks, Agendas, then
 /// the side's own — Bad publicity for the Corp; the Grip, Tags and Core
