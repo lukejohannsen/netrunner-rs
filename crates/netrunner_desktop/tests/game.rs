@@ -1101,8 +1101,18 @@ fn a_tile_says_its_rez_state_and_its_sheet_lists_the_facts() {
     // Runner cannot name an unrezzed Corp card.
     let tile = entity_with(&mut app, &Click::Target(Target::Install(id))).expect("the install has a tile");
     let world = app.world_mut();
-    let children = world.get::<Children>(tile).expect("a tile has a text").iter().collect::<Vec<_>>();
-    let words: String = children.iter().filter_map(|c| world.get::<Text>(*c).map(|t| t.0.clone())).collect();
+    // The words sit on a band over the tile's picture, so they are read
+    // from anywhere under the tile.
+    let mut stack = vec![tile];
+    let mut words = String::new();
+    while let Some(entity) = stack.pop() {
+        if let Some(text) = world.get::<Text>(entity) {
+            words.push_str(&text.0);
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter());
+        }
+    }
     let view = world.resource::<Model>().0.view.clone().unwrap();
     let card = view.corp.servers.iter().flat_map(|s| s.ice.iter().chain(s.root.iter())).find(|c| c.install_id == id).unwrap().clone();
     let expected = if card.rezzed { "rezzed" } else if card.slot == netrunner_core::rules::InstallSlot::Ice { "unrezzed" } else { "face down" };

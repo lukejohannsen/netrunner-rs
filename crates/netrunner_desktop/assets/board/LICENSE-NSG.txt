@@ -1,0 +1,27 @@
+Game symbols by Null Signal Games, licensed under the Creative Commons
+Attribution-NoDerivatives 4.0 International license (CC BY-ND 4.0):
+https://creativecommons.org/licenses/by-nd/4.0/
+
+Source: Null Signal Games Visual Assets v1.5 ("SVG/Game Symbols").
+This project is not affiliated with or endorsed by Null Signal Games.
+
+Modifications: each symbol was converted from SVG to a 128 x 128 PNG
+(centred, transparent background), and the symbols published in black
+were recoloured to #eef1f8 so they read on a dark board. Null Signal
+Games' terms for the pack state that recolouring a symbol is not a
+derivative work. No symbol was otherwise edited.
+
+  counter.advancement.png   NSG_ADVANCEMENT_COUNTER.svg   recoloured
+  counter.credit.png        NSG_CREDIT.svg                recoloured
+  counter.power.png         NSG_GENERIC_COUNTER_BLUE.svg  as published
+  counter.virus.png         NSG_VIRUS_COUNTER.svg         as published
+  hud.agendas.png           NSG_AGENDA.svg                recoloured
+  hud.bad-publicity.png     NSG_BAD_PUBLICITY.svg         as published
+  hud.clicks.png            NSG_CLICK.svg                 recoloured
+  hud.credits.png           NSG_CREDIT.svg                recoloured
+  hud.damage.png            NSG_CORE_DAMAGE.svg           as published
+  hud.tags.png              NSG_TAG.svg                   as published
+
+These files are NOT covered by this project's GPL-3.0-or-later license.
+They are distributed alongside it, unmodified beyond the above, under
+CC BY-ND 4.0, and must not be edited into new symbols.

@@ -31,6 +31,9 @@ scale: 1.25 on the machine these were measured on, 2 on many laptops.
 | Table | `tables/<name>/base.jpg`, optional `overlay.png` and `table.json` | the whole window | the monitor's full physical resolution (2560 × 1600 here) | stretch, not cropped | a painted perspective grid (`src/table.rs`, 640 × 360) | [tables/](tables/README.md) |
 | Skin | `skins/<name>/skin.json` and its PNGs | per slot: 33 slots, from an 8 × 8 dot to a 960-wide panel | per slot, usually a small nine-slice | nine-slice, stretch or fit | the outlines: flat colours and one-pixel borders | [skins/](skins/README.md) |
 | Server plates | `board/server.<archives\|rnd\|hq\|remote>[.run].png` | 224 × 126 at the largest card, 16:9 | **512 × 288** | cover (cropped, never stretched) | drawn buildings (`src/board_art.rs`) | [board/](board/README.md) |
+| ICE and root tiles | `board/ice.*.png`, `board/root.*.png` | card width + 4 × 24 to 66, 4:1 at the tallest | **512 × 128** | cover | drawn grey patterns, washed in the tile's state colour | [board/](board/README.md) |
+| Counter badges | `board/counter[.advancement\|.virus\|.power\|.credit].png` | 12 to 18 square | **64 × 64** | fit | bundled NSG symbols over a drawn ring | [board/](board/README.md) |
+| HUD glyphs | `board/hud.<credits\|clicks\|agendas\|bad-publicity\|tags\|damage>.png` | 18 square | **64 × 64** or larger | fit | bundled NSG symbols (optional) | [board/](board/README.md) |
 | Sound | `sfx/<effect>.ogg` | — | — | — | synthesized; planned, nothing loads yet | [sfx/](sfx/README.md) |
 
 A skin may carry its own `board/` folder, which wins over the board art
@@ -48,4 +51,6 @@ tiers above, so a skin can bring its buildings with it.
   you like, and export PNG (or JPEG for a table).
 - **Licensing.** A file committed here needs a `LICENSE-<name>.txt`
   beside it granting redistribution compatible with GPL-3.0-or-later:
-  CC0 or an OFL-style grant.
+  CC0 or an OFL-style grant. The one recorded exception is Null Signal
+  Games' game symbols under `board/`, which are CC BY-ND 4.0 and credited
+  in `board/LICENSE-NSG.txt`.
