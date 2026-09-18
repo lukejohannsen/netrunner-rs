@@ -79,8 +79,9 @@ pub const TINT_STATE: &str = "state";
 /// **A server's own picture is not a slot** — an Archives vault, an R&D
 /// tower. The box it needs is reserved now (the header became a plate,
 /// 16:9 for every server, `layout::plate_height`), so a picture cannot
-/// change the layout; the picture itself is board art rather than a
-/// nine-sliced frame, which is the wrong shape for a building.
+/// change the layout; the picture itself is board art
+/// (`crate::board_art`) rather than a nine-sliced frame, which is the
+/// wrong shape for a building.
 ///
 /// Flat rather than a slot-and-state pair: every variant is a thing that
 /// can be drawn, and each knows which slot it falls back to. The manifest

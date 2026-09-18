@@ -172,7 +172,9 @@ options and the list of keys still carry a Close.
 box now**: the header became a plate, reserved at 16:9 for every server
 whether or not anybody has drawn one, so a picture can never change the
 layout. The picture itself is board art rather than a skin slot (a
-nine-sliced frame is the wrong shape for a building); it comes next.
+nine-sliced frame is the wrong shape for a building): see
+[`../board/README.md`](../board/README.md). A skin can still carry its
+own buildings, in a `board/` folder beside its `skin.json`.
 
 The remaining icons — the gear, the arrows, the card frame — are not
 slots yet either, for less interesting reasons. Also next.

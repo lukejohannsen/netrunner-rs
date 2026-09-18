@@ -2515,3 +2515,57 @@ passed three times alone and on the full re-run.
 **Reading stays on the secondary click.** The request said a card is
 inspected "with left-click"; the primary click is the actions menu
 (§4g), and the lift now covers reading a card in hand without either.
+
+### 4t. Every server has a picture, drawn until somebody draws one, and one list of every asset — DONE (18 September 2026)
+
+`feat/desktop-server-plates`, stacked on §4s. The same request's second
+half: the servers *"end up having asset art work of their own ... that is
+bigger than the thin tile"*, so someone can draw *"buildings"* that are
+protected and attacked, with *"a default set of assets in all cases"* and
+the list of them *"along with expected sizes"* documented.
+
+**Decisions taken, with the alternative rejected.**
+
+- **Board art is its own tier, not a skin slot.** A slot is a
+  nine-sliced frame stretched to its box, which is right for a border
+  and wrong for a building, which has to keep its proportions. So
+  `board_art` is a folder of pictures drawn *inside* the plate, and
+  the plate's skin slot (`server.header`) still frames it. A skin can
+  still bring its own buildings, as `skins/<skin>/board/<key>.png`,
+  which wins over `board/<key>.png` in the override and then the
+  bundled directory, which wins over the drawn default.
+- **Cropped to cover, never stretched** (`cover_rect`, into
+  `ImageNode::rect`). The plate is 16:9 at every card width, but a file
+  need not be, and a squashed building is worse than a cropped one. The
+  guide says to draw at 16:9 and keep the middle busy.
+- **A drawn default for every base key, and none for a state.**
+  Archives is a vault under a pediment, R&D a tower of data lines, HQ an
+  office block with a lit lobby, a remote a rack under a mast, each in
+  the Corp's colour against a dusk. They are plain on purpose, so they
+  read as places at plate size and never pretend to be anybody's art.
+  `server.<x>.run` exists only as a file: undrawn, it borrows its base,
+  one level deep, as a skin slot's state does. A drawn "under attack"
+  variant would have been a second silhouette nobody asked to see.
+- **Loaded on a change, not per frame.** `board_pictures` loads the set
+  when the skin in use differs from the one it was built for, and marks
+  the board for a redraw, so changing the skin from the gear menu swaps
+  the skyline without leaving the screen. It is absent in the headless
+  tests, which have no `Assets<Image>`, so a plate there is its label.
+- **One list of every asset** (`assets/README.md`): fonts, card backs,
+  card fronts, tables, skins, server plates and sounds. Each row gives
+  the path, the logical box, the size to draw at, how it is fitted, what
+  always works without a file, and the folder guide that says the rest.
+  `assets/board/README.md` is the new folder guide, and a test checks it
+  names every key `board_art` asks for, so a new key cannot land
+  undocumented.
+
+**Verified.** `cargo test --workspace` green and clippy silent across
+the workspace. New unit tests: the crop covers without stretching in
+both directions and survives a zero-sized box; the four drawn plates
+are 512 × 288 and pairwise different, and every key is either drawn or
+falls back, never both; a state with no file finds its base's picture,
+and a remote under a run finds the remote's; the guide lists every key.
+Screenshots taken from both chairs forty decisions in, with the
+buildings on the plates and the names legible on their bands; the dev
+log's one `scroll area` line is the hidden log at zero size. No engine
+file changed, so no sweep.
