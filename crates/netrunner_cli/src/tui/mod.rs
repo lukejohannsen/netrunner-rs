@@ -27,6 +27,9 @@ use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session,
 
 use netrunner_client::board::{ActionMap, Affordance, Target};
 use netrunner_client::access::Access;
+use netrunner_client::card_face::Face;
+use netrunner_client::placement::Placement;
+use netrunner_client::selection::Selection;
 
 use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
@@ -861,7 +864,11 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
     if let Some(view) = ui.view()
         && let Some(access) = Access::of(view, ui.registry())
     {
-        draw_access(frame, regions.board, &access);
+        draw_card(frame, regions.board, &access.face, &access.title(), &access.facts());
+    } else if let Some(view) = ui.view()
+        && let Some((title, face)) = card_in_question(view, ui)
+    {
+        draw_card(frame, regions.board, &face, &title, &[]);
     }
     if let Some((winner, reason, note)) = game_over {
         let body = match note {
@@ -876,7 +883,29 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
     }
 }
 
-/// The card being accessed, centred over the board.
+/// The card a choice is about, when it is a card and not a place: the
+/// card under the cursor of a card selection ("Select Hedge Fund" shows
+/// Hedge Fund), or the card an install from a card's text is placing.
+/// Drawn like an access, over the board with the actions pane still
+/// live, because the person cannot choose between cards by their names.
+/// Not the card *asking* (`Prompt::card`'s other answer): a run on a
+/// server of the Runner's choice would then cover the servers being
+/// chosen between, and the prompt's title already names it.
+fn card_in_question(view: &ClientView, ui: &impl RenderableView) -> Option<(String, Face)> {
+    let registry = ui.registry();
+    let face = |id: &CardId| registry.get(id).map(Face::of);
+    if let Some(selection) = Selection::of(view, registry) {
+        let Some(PlayerAction::ToggleCardSelection { position }) = ui.selected_action() else { return None };
+        let candidate = selection.candidate(position)?;
+        let title = if candidate.selected { format!("Selected — {}", selection.display(candidate)) } else { selection.display(candidate) };
+        return Some((title, face(candidate.card.as_ref()?)?));
+    }
+    let placement = Placement::of(view, registry)?;
+    Some((format!("Installing {}", placement.card_name()), face(placement.card()?)?))
+}
+
+/// A card, centred over the board: the card being accessed, or the one a
+/// choice is about (`card_in_question`).
 ///
 /// **Not a [`Modal`]**, which owns the keyboard until dismissed: the
 /// person must still be able to act, and the actions pane below this is
@@ -891,13 +920,12 @@ fn draw_frame(frame: &mut Frame, ui: &impl RenderableView, game_over: Option<(Si
 /// the inspector and the desktop show — and the facts under it are
 /// `Access::facts`, which are the live costs rather than the printed
 /// ones.
-fn draw_access(frame: &mut Frame, area: Rect, access: &Access) {
-    let mut text: Vec<Line> = access.face.lines(false).into_iter().map(Line::from).collect();
-    let facts = access.facts();
+fn draw_card(frame: &mut Frame, area: Rect, face: &Face, title: &str, facts: &[String]) {
+    let mut text: Vec<Line> = face.lines(false).into_iter().map(Line::from).collect();
     if !facts.is_empty() {
         text.push(Line::from(""));
         for fact in facts {
-            text.push(Line::from(Span::styled(fact, Style::default().fg(Color::Cyan))));
+            text.push(Line::from(Span::styled(fact.clone(), Style::default().fg(Color::Cyan))));
         }
     }
     // Sized to the card, not to the region: a card is a tall narrow
@@ -926,7 +954,7 @@ fn draw_access(frame: &mut Frame, area: Rect, access: &Access) {
         Paragraph::new(text).wrap(Wrap { trim: false }).block(
             Block::default()
                 .borders(Borders::ALL)
-                .title(access.title())
+                .title(title.to_string())
                 .style(Style::default().fg(Color::Yellow)),
         ),
         panel,
@@ -1748,6 +1776,12 @@ mod tests {
         let rendered = format!("{:?}", terminal.backend().buffer());
         assert!(rendered.contains("Nothing selected yet"), "the pane says nothing is chosen");
         assert!(!rendered.contains("Toggle selection"));
+        // The card under the cursor is drawn over the board, its own words
+        // and all: a choice between cards is not made from their names.
+        let printed = registry.get(&first).unwrap().printed_text.clone().unwrap_or_default();
+        // Its first plain words: a `[subroutine]` is drawn as a glyph.
+        let opening: String = printed.split_whitespace().skip_while(|w| w.contains('[')).take(3).collect::<Vec<_>>().join(" ");
+        assert!(rendered.contains(&opening), "the highlighted card's text is shown: {opening}");
 
         state.pending_decision = Some(decision(vec![2]));
         ui.begin_decision(build_client_view(&state, &registry, Side::Corp));

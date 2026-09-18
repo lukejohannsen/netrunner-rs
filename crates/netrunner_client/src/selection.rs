@@ -171,6 +171,14 @@ impl Selection {
         hidden
     }
 
+    /// How many candidates the button at `position` stands for: itself
+    /// and every copy [`Selection::hidden`] folds into it. What a client
+    /// draws as "×2" on the one face it shows for two Sure Gambles.
+    pub fn copies(&self, position: usize) -> usize {
+        let Some(candidate) = self.candidate(position) else { return 0 };
+        self.candidates.iter().filter(|c| c.name == candidate.name && c.place == candidate.place && c.selected == candidate.selected).count()
+    }
+
     /// Where `action` sits in the prompt's list: the cards still to choose
     /// from, then the confirm, then the way back from what is chosen — so
     /// a full single choice reads "Confirm Hedge Fund", "Select a different
@@ -329,6 +337,7 @@ mod tests {
         assert_eq!(selection.hidden(), BTreeSet::from([1]), "the second Sure Gamble is the first one's button");
         assert_eq!(selection.toggle_label(0).as_deref(), Some("Select Sure Gamble"));
         assert_eq!(selection.toggle_label(2).as_deref(), Some("Select Daily Casts"));
+        assert_eq!((selection.copies(0), selection.copies(2)), (2, 1), "one face for two Sure Gambles, marked as two");
         assert_eq!(selection.summary(), "Nothing selected yet");
         let shown = shown(&view.legal_actions, Some(&view), &registry);
         assert!(!shown.contains(&PlayerAction::ToggleCardSelection { position: 1 }));
@@ -338,6 +347,7 @@ mod tests {
         let view = build_client_view(&state, &registry, Side::Runner);
         let selection = Selection::of(&view, &registry).unwrap();
         assert!(selection.hidden().is_empty(), "one copy on each side of the selection");
+        assert_eq!(selection.copies(0), 1);
         assert_eq!(selection.toggle_label(1).as_deref(), Some("Select another Sure Gamble"));
         assert_eq!(selection.toggle_label(0).as_deref(), Some("Deselect Sure Gamble"));
         assert_eq!(selection.summary(), "Selected: Sure Gamble");

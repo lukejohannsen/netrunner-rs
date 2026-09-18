@@ -58,6 +58,12 @@ impl<'a> Placement<'a> {
         Some(Placement { view, registry, pay_cost: install.pay_cost, discount: install.discount, card, allowed: allowed_servers.as_deref() })
     }
 
+    /// The card going in, when the view shows it — what a pop-up draws
+    /// above the destinations, so where it goes is chosen looking at it.
+    pub fn card(&self) -> Option<&CardId> {
+        self.card.as_ref()
+    }
+
     /// The card's title, or "the card" when the view does not show it.
     pub fn card_name(&self) -> String {
         self.card.as_ref().map_or_else(|| "the card".to_string(), |card| card_title(card, self.registry))
@@ -238,6 +244,8 @@ mod tests {
         assert_eq!(placement.label(ServerId::Remote(0)), "Install in Remote 0 — trashes Nico Campaign");
         assert_eq!(placement.label(ServerId::Remote(1)), "Install in a new remote server");
         assert_eq!(placement.question(), "where to install PAD Campaign?");
+        assert_eq!(placement.card(), Some(&id("pad_campaign")), "the card a pop-up shows above the destinations");
+        assert_eq!(crate::board::Prompt::card(&view, &registry), Some(id("pad_campaign")), "the card going in, not the card asking");
         assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Scatter Field asks — where to install PAD Campaign?"), "the terminal pane's title");
         assert_eq!(
             placement.detail(),
