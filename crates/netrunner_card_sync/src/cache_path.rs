@@ -20,9 +20,10 @@ pub fn resolve_cache_file() -> Result<PathBuf, SyncError> {
 }
 
 /// Where downloaded card images live: `resolve_cache_dir()/images`, one
-/// `<code>.jpg` per NetrunnerDB printing. Under the *cache* directory,
-/// not the data one, because every file in it can be fetched again and
-/// none of it is the player's own.
+/// `<code>.webp` (or `<code>.jpg` where NetrunnerDB has no larger scan)
+/// per NetrunnerDB printing. Under the *cache* directory, not the data
+/// one, because every file in it can be fetched again and none of it is
+/// the player's own.
 pub fn resolve_images_dir() -> Result<PathBuf, SyncError> {
     resolve_cache_dir().map(|dir| dir.join("images"))
 }

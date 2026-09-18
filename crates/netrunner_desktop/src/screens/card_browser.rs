@@ -374,7 +374,7 @@ fn spawn_download(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clien
 fn spawn_grid(parent: &mut ChildSpawnerCommands, theme: &Theme, browser: &Browser, images: &CardImages) {
     for card in browser.visible() {
         let face = Face::of(card);
-        let image = card.numeric_id.and_then(|code| images.face(code));
+        let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Thumb));
         let marker = (Button, FaceButton(card.numeric_id.unwrap_or(CardId(0))));
         let entity = spawn_face(parent, theme, &face, FaceSize::Thumb, image, marker);
         if browser.selected == card.numeric_id && card.numeric_id.is_some() {
@@ -393,7 +393,7 @@ fn spawn_inspector(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
         return;
     };
     let face = Face::of(card);
-    let image = card.numeric_id.and_then(|code| images.face(code));
+    let image = card.numeric_id.and_then(|code| images.face(code, FaceSize::Large));
     parent.spawn((Node { justify_content: JustifyContent::Center, ..default() },)).with_children(|centre| {
         spawn_face(centre, theme, &face, FaceSize::Large, image, ());
     });

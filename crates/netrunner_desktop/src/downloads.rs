@@ -93,10 +93,20 @@ impl Downloads {
                 0 => format!("Downloading {} of {}", p.done, p.total),
                 failed => format!("Downloading {} of {} ({failed} failed)", p.done, p.total),
             },
-            State::Finished(report) => match report.failed.len() {
-                0 => format!("Downloaded {} ({} were already cached)", report.fetched, report.already_cached),
-                failed => format!("Downloaded {}, {failed} failed ({} were already cached)", report.fetched, report.already_cached),
-            },
+            State::Finished(report) => {
+                let line = match report.failed.len() {
+                    0 => format!("Downloaded {} ({} were already cached)", report.fetched, report.already_cached),
+                    failed => format!("Downloaded {}, {failed} failed ({} were already cached)", report.fetched, report.already_cached),
+                };
+                // Which cards NetrunnerDB has no 750-pixel scan of is
+                // the one thing a person cannot see from the grid; the
+                // codes go to the log, `netrunner_cli cards images`
+                // lists them by name.
+                match report.low_res.len() {
+                    0 => line,
+                    low => format!("{line}; {low} only at low resolution"),
+                }
+            }
         }
     }
 }
@@ -110,6 +120,10 @@ fn poll_downloads(mut downloads: ResMut<Downloads>, mut notices: ResMut<Notices>
     }
     match report.try_recv() {
         Ok(report) => {
+            if !report.low_res.is_empty() {
+                let codes: Vec<String> = report.low_res.iter().map(|code| format!("{:05}", code.0)).collect();
+                info!("card scans only at 300 pixels: {}", codes.join(" "));
+            }
             notices.push(downloads.status_line_for(&report));
             downloads.state = State::Finished(report);
             images.recheck = true;
@@ -129,5 +143,20 @@ fn poll_downloads(mut downloads: ResMut<Downloads>, mut notices: ResMut<Notices>
 impl Downloads {
     fn status_line_for(&self, report: &DownloadReport) -> String {
         Downloads { state: State::Finished(report.clone()) }.status_line()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A finished download says how many cards are still at 300 pixels,
+    /// and says nothing about it when none are.
+    #[test]
+    fn the_status_line_counts_the_low_resolution_scans() {
+        let sharp = DownloadReport { fetched: 159, ..DownloadReport::default() };
+        assert_eq!(Downloads::default().status_line_for(&sharp), "Downloaded 159 (0 were already cached)");
+        let mixed = DownloadReport { fetched: 2, already_cached: 1, low_res: vec![CardId(1001), CardId(1002)], ..DownloadReport::default() };
+        assert_eq!(Downloads::default().status_line_for(&mixed), "Downloaded 2 (1 were already cached); 2 only at low resolution");
     }
 }

@@ -27,7 +27,7 @@ scale: 1.25 on the machine these were measured on, 2 on many laptops.
 | Body font | `fonts/NotoSans-Regular.ttf` | — | — | — | committed (OFL) | `fonts/LICENSE-OFL.txt` |
 | Symbol font | `fonts/NotoSansSymbols2-Regular.ttf` | — | — | — | committed (OFL); NetrunnerDB's icon font is fetched over it on opt-in | `fonts/LICENSE-OFL.txt` |
 | Card backs | `cards/back-corp.png`, `cards/back-runner.png` | a card: 72–220 wide on the board, 380 in a sheet, always 5:7 | **500 × 700** | stretch | drawn circuit backs (`src/card_back.rs`, 250 × 350); the official backs are fetched on opt-in | [cards/](cards/README.md) |
-| Card fronts | — (cache only) | as a card back | — | stretch | the text face, drawn from the card's data | [cards/](cards/README.md) |
+| Card fronts | — (cache only) | as a card back | NetrunnerDB's 750 × 1050, resampled to each face's width | stretch | the text face, drawn from the card's data | [cards/](cards/README.md) |
 | Table | `tables/<name>/base.jpg`, optional `overlay.png` and `table.json` | the whole window | the monitor's full physical resolution (2560 × 1600 here) | stretch, not cropped | a painted perspective grid (`src/table.rs`, 640 × 360) | [tables/](tables/README.md) |
 | Skin | `skins/<name>/skin.json` and its PNGs | per slot: 33 slots, from an 8 × 8 dot to a 960-wide panel | per slot, usually a small nine-slice | nine-slice, stretch or fit | the outlines: flat colours and one-pixel borders | [skins/](skins/README.md) |
 | Server plates | `board/server.<archives\|rnd\|hq\|remote>[.run].png` | 224 × 126 at the largest card, 16:9 | **512 × 288** | cover (cropped, never stretched) | drawn buildings (`src/board_art.rs`) | [board/](board/README.md) |
