@@ -84,6 +84,7 @@ use bevy::app::PluginGroupBuilder;
 use bevy::prelude::*;
 
 pub mod assets;
+pub mod board_art;
 pub mod card_back;
 pub mod card_images;
 pub mod core;

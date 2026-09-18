@@ -115,6 +115,7 @@ use netrunner_core::view::{ClientView, ServerView};
 use crate::card_images::CardImages;
 use crate::core::{ClientCore, Notices};
 use crate::models::game::{Anchor, Game, Intent, MatchMessageRef, Outcome};
+use crate::board_art::{self, BoardArt};
 use crate::models::layout::{self, Counts, Depth};
 use crate::models::pace::{Beat, Pacer};
 use crate::models::settings::{self as settings_model, Row};
@@ -141,7 +142,7 @@ impl Plugin for GamePlugin {
             .init_resource::<Pointer>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, relane, redraw, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, relane, redraw, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
             // Its own registration rather than a link in that chain: it
             // has no ordering requirement against any of them, and adding
             // a system to an existing `.chain()` reorders everything after
@@ -188,9 +189,13 @@ pub struct RunLane;
 pub struct ServerColumn(pub ServerId);
 
 /// A server's plate, on the Corp's edge of its column: the box its name
-/// and — once drawn — its picture sit in.
+/// and its picture sit in.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServerPlate(pub ServerId);
+
+/// The picture on a server's plate.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlatePicture(pub ServerId);
 /// Where the pointer was last seen, in logical window pixels: read off
 /// `CursorMoved`, because the window's own `cursor_position` needs a
 /// window and the headless tests have none.
@@ -361,6 +366,28 @@ fn counts(game: &Game, phase_bar: bool) -> Counts {
     // The three centrals are always drawn.
     let remotes = game.view.as_ref().map_or(0, |view| view.corp.servers.iter().filter(|s| matches!(s.server, ServerId::Remote(_))).count());
     Counts { servers: 3 + remotes, human_is_runner, phase_bar }
+}
+
+/// Loads the board's pictures (`board_art`) for the skin in use, and again
+/// when the skin changes, redrawing the board so a new skin's buildings
+/// replace the old ones without leaving the screen. Loading decodes
+/// files, so it happens on a change and never per frame. Nothing without
+/// `Assets<Image>`, which is the headless tests: a plate there is its
+/// label alone.
+fn board_pictures(
+    mut commands: Commands,
+    theme: Res<Theme>,
+    skin: Res<crate::skin::Skin>,
+    art: Option<Res<BoardArt>>,
+    images: Option<ResMut<Assets<Image>>>,
+    mut dirty: ResMut<Dirty>,
+) {
+    let Some(mut images) = images else { return };
+    if art.is_some_and(|art| art.skin == skin.folder) {
+        return;
+    }
+    commands.insert_resource(BoardArt::load(skin.folder.as_deref(), &theme, &mut images));
+    dirty.board = true;
 }
 
 /// Recomputes the face width from the window and the view, and marks the
@@ -1071,7 +1098,9 @@ fn redraw(
     mut status: Query<&mut Text, With<StatusLine>>,
     theme: Res<Theme>,
     core: Res<ClientCore>,
-    images: Res<CardImages>,
+    // The card pictures and the board's own, as one parameter: the system
+    // is at Bevy's sixteen.
+    (images, art): (Res<CardImages>, Option<Res<BoardArt>>),
     fit: Option<Res<BoardFit>>,
 ) {
     let (Some(mut model), Some(fit)) = (model, fit) else { return };
@@ -1083,7 +1112,8 @@ fn redraw(
     if reboard {
         let transitions = game.take_transitions();
         if let Ok(board) = board.single() {
-            commands.entity(board).despawn_children().with_children(|parent| spawn_board(parent, &theme, &core, &images, game, &transitions, &fit));
+            let art = art.as_deref();
+            commands.entity(board).despawn_children().with_children(|parent| spawn_board(parent, &theme, &core, &images, art, game, &transitions, &fit));
         }
         for mut text in &mut status {
             text.0 = status_line(game);
@@ -1159,7 +1189,8 @@ fn overlay_needed(game: &Game) -> bool {
 
 // ---- the board ----
 
-fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, transitions: &[Transition], fit: &BoardFit) {
+#[allow(clippy::too_many_arguments)]
+fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, transitions: &[Transition], fit: &BoardFit) {
     let drag = game.dragged_slot();
     // The phase bar is drawn last, below the hand: where the game is
     // belongs beside what the person may do about it, and a row at the
@@ -1217,9 +1248,9 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
         // chair, reserved whether or not a run is on (`layout::RUN_LANE`).
         parent.spawn((RunLane, run_lane_node())).with_children(|lane| fill_run_lane(lane, theme, core, game));
     };
-    spawn_area(parent, theme, core, images, game, view, opponent, &lit, fit);
+    spawn_area(parent, theme, core, images, art, game, view, opponent, &lit, fit);
     lane(parent);
-    spawn_area(parent, theme, core, images, game, view, human, &lit, fit);
+    spawn_area(parent, theme, core, images, art, game, view, human, &lit, fit);
     control_bar(parent, game);
     parent.spawn(strip_row()).with_children(|row| {
         spawn_strip(row, theme, core, images, game, view, human, fit);
@@ -1576,16 +1607,16 @@ fn spawn_opponent_hand(parent: &mut ChildSpawnerCommands, theme: &Theme, images:
 
 /// A side's board: the Corp's servers, or the Runner's rig.
 #[allow(clippy::too_many_arguments)]
-fn spawn_area(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit) {
+fn spawn_area(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, view: &ClientView, side: Side, lit: &Lit, fit: &BoardFit) {
     let depth = Depth::area(side, game.side);
     match side {
-        Side::Corp => spawn_servers(parent, theme, core, game, view, lit, fit, depth),
+        Side::Corp => spawn_servers(parent, theme, core, art, game, view, lit, fit, depth),
         Side::Runner => spawn_rig(parent, theme, core, images, game, view, lit, fit, depth),
     }
 }
 
 #[allow(clippy::too_many_arguments)]
-fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
+fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, art: Option<&BoardArt>, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
     // Archives, R&D, HQ, then the remotes, from either chair, every
     // central a column even with nothing on it (`board::table_servers`).
     let mut servers = netrunner_client::board::table_servers(view);
@@ -1686,9 +1717,9 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                     };
                     if game.side == Side::Corp {
                         spawn_stack(column);
-                        spawn_server_plate(column, theme, view, server.server, size, welcomes, game.affordance_for(&Target::Server(server.server)));
+                        spawn_server_plate(column, theme, art, view, server.server, size, welcomes, under_run, game.affordance_for(&Target::Server(server.server)));
                     } else {
-                        spawn_server_plate(column, theme, view, server.server, size, welcomes, game.affordance_for(&Target::Server(server.server)));
+                        spawn_server_plate(column, theme, art, view, server.server, size, welcomes, under_run, game.affordance_for(&Target::Server(server.server)));
                         spawn_stack(column);
                     }
                 });
@@ -1697,13 +1728,15 @@ fn spawn_servers(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
     });
 }
 
-/// A server's plate: its name and count on the Corp's edge of the
-/// table, in a box `layout::plate_height` tall that is reserved for
-/// every server — the place a picture of the server goes, so a picture
-/// never changes the layout (the skins README's "a server's mark needs a
-/// box of its own"). A click is the server's, as the header's was.
+/// A server's plate: its picture (`board_art`, a drawn building until
+/// somebody draws one) with its name and count along the lower edge, on
+/// the Corp's edge of the table, in a box `layout::plate_height` tall
+/// that is reserved for every server — so a picture never changes the
+/// layout. Under a run it shows the server's `.run` picture, which is
+/// its plain one until one is drawn. A click is the server's, as the
+/// header's was.
 #[allow(clippy::too_many_arguments)]
-fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, view: &ClientView, server: ServerId, size: FaceSize, welcomes: bool, mood: Option<Affordance>) {
+fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, art: Option<&BoardArt>, view: &ClientView, server: ServerId, size: FaceSize, welcomes: bool, under_run: bool, mood: Option<Affordance>) {
     let on_board = view.corp.servers.iter().any(|s| s.server == server) || !matches!(server, ServerId::Remote(_));
     let count = match server {
         ServerId::Hq => format!(" · {}", view.corp.hq_count),
@@ -1717,19 +1750,19 @@ fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, view: &C
     // A plate is a button wearing the header's hat: its own slot, so a
     // skin can draw Archives unlike a Stack button.
     let slot = if welcomes { Slot::ServerHeaderWelcomes } else { Slot::ServerHeader };
+    let (width, height) = (size.width() + 4.0, layout::plate_height(size.width()));
     let mut plate = column.spawn((
         ServerPlate(server),
         Button,
         widgets::Themed,
         Click::Target(Target::Server(server)),
         Node {
-            width: px(size.width() + 4.0),
-            height: px(layout::plate_height(size.width())),
+            width: px(width),
+            height: px(height),
             flex_shrink: 0.0,
             flex_direction: FlexDirection::Column,
             justify_content: JustifyContent::FlexEnd,
-            align_items: AlignItems::Center,
-            padding: UiRect::all(px(4)),
+            align_items: AlignItems::Stretch,
             border: UiRect::all(px(1)),
             border_radius: BorderRadius::all(px(6)),
             overflow: Overflow::clip(),
@@ -1738,8 +1771,20 @@ fn spawn_server_plate(column: &mut ChildSpawnerCommands, theme: &Theme, view: &C
         BackgroundColor(theme.button),
         BorderColor::all(theme.panel_border),
         widgets::Dressed::button(theme, slot, Drawn::new(theme.button, theme.panel_border)),
-        children![(Text::new(label), theme.font(size::SMALL), TextColor(theme.text))],
     ));
+    plate.with_children(|plate| {
+        // The picture first, so the label draws over it; inside the
+        // border, which is what the crop covers.
+        if let Some(picture) = art.and_then(|art| art.get(board_art::server_key(server, under_run))) {
+            plate.spawn((PlatePicture(server), board_art::backdrop(picture, Vec2::new(width - 2.0, height - 2.0))));
+        }
+        // The name on a band of the panel, so it reads over any picture.
+        plate.spawn((
+            Node { justify_content: JustifyContent::Center, padding: UiRect::axes(px(6), px(3)), ..default() },
+            BackgroundColor(theme.panel.with_alpha(0.72)),
+            children![(Text::new(label), theme.font(size::SMALL), TextColor(theme.text))],
+        ));
+    });
     if welcomes {
         plate.insert(outline(theme));
     }
