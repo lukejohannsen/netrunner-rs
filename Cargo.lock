@@ -4198,6 +4198,7 @@ dependencies = [
  "netrunner_core",
  "netrunner_rating",
  "netrunner_session",
+ "rand 0.9.5",
  "serde",
  "serde_json",
 ]

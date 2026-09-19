@@ -163,6 +163,8 @@ pub enum Click {
     Target(Target),
     /// An entry of the action map.
     Entry(usize),
+    /// A route through the encountered ICE (`Game::breaks`).
+    Break(usize),
     /// A control-bar button.
     Control(Control),
     /// A face in a zone sheet: read the card over the sheet.
@@ -806,15 +808,15 @@ fn autoplay(
     if dev.autoplayed >= dev.autoplay || !model.0.awaiting || model.0.actions.is_empty() {
         return;
     }
-    // Held at a card-selection prompt, a card's install, or an access,
-    // for a screenshot: the autoplay is done, and the pop-up is what is
+    // Held at a card-selection prompt, a card's install, an access, or
+    // an encounter with a way through, for a screenshot: the autoplay is done, and the pop-up is what is
     // shot. An access is not a `PendingDecision`, so it is asked of
     // `access::Access` rather than matched here.
     let held = model.0.view.as_ref().is_some_and(|view| match view.pending_decision {
         Some(PendingDecision::ChooseCards { .. }) => dev.hold_selection,
         Some(PendingDecision::ChooseServer { install: Some(_), .. }) => dev.hold_install,
         _ => dev.hold_access && Access::of(view, &client.registry).is_some(),
-    });
+    }) || (dev.hold_break && !model.0.breaks.is_empty());
     if held {
         dev.autoplayed = dev.autoplay;
         return;
@@ -1120,6 +1122,7 @@ fn controls(
             Ok(Click::Target(_)) if modifier => {}
             Ok(Click::Target(target)) => intents.push(click_on(*entity, target)),
             Ok(Click::Entry(index)) => intents.push(Intent::Choose(*index)),
+            Ok(Click::Break(index)) => intents.push(Intent::Break(*index)),
             Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
             Ok(Click::Inspect(card)) => intents.push(Intent::InspectCard(Some(card.clone()))),
             Ok(Click::Expand(row)) => intents.push(Intent::Expand(*row)),
@@ -2257,6 +2260,9 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     if let Some(rejection) = &game.rejection {
         parent.spawn((widgets::notice(theme, format!("Rejected: {rejection}"), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
+    if let Some(reason) = &game.break_stopped {
+        parent.spawn((widgets::notice(theme, reason.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
     if game.end_turn_armed {
         let clicks = match game.clicks_left() {
             1 => "1 click".to_string(),
@@ -2278,7 +2284,19 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     }
     // The decisions are the pop-up's (`spawn_decision_popup`), not the
     // rail's; the rail keeps the prompt's words and, when on, the flat
-    // panel.
+    // panel. An encounter's routes are the exception: they sit under the
+    // prompt, because an encounter has no pop-up and one on every piece
+    // of ICE would cover the ICE it is about. The number keys press them
+    // as they press the pop-up's.
+    let view = game.view.as_ref();
+    for (index, route) in game.breaks.iter().enumerate() {
+        let label = view.map_or_else(|| route.price(), |view| route.label(view, game.registry()));
+        let mut button = parent.spawn(widgets::button(theme, label, percent(100), Click::Break(index)));
+        button.entry::<Node>().and_modify(|mut node| {
+            node.justify_content = JustifyContent::FlexStart;
+            node.padding = UiRect::axes(px(10), px(6));
+        });
+    }
     if !helper {
         if game.prompt.is_none() {
             parent.spawn((widgets::dim(theme, "Your turn: click a card or a zone for what it can do, right-click to read it, or use the bar. ? lists the keys."), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));

@@ -68,7 +68,7 @@
 use std::sync::Arc;
 
 use netrunner_client::actions::push_log_line;
-use netrunner_client::board::{transitions, ActionMap, Affordance, Control, Pile, Prompt, RunTrail, Target, Transition};
+use netrunner_client::board::{routes, transitions, ActionMap, Affordance, AutoBreak, Control, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
 use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
 use netrunner_client::ratings::RatingReport;
 use netrunner_core::cards::CardRegistry;
@@ -121,6 +121,9 @@ pub enum Intent {
     /// the row, before the card whose centre the pointer is left of
     /// (`slots`, the laid-out centres of the hand's faces).
     DragRelease { over: Anchor, slots: Vec<f32> },
+    /// A route of the encountered ICE's (`Game::breaks`), by index:
+    /// break every subroutine with that card, one step a view.
+    Break(usize),
     /// A key the board reads (`shortcuts`). The ones about the pointer
     /// or the settings file are the screen's; the model answers the rest.
     Shortcut(Shortcut),
@@ -295,6 +298,17 @@ pub struct Game {
     /// so one stray Enter would have thrown them away.
     pub end_turn_armed: bool,
     pub rejection: Option<String>,
+    /// Every card's way through the encountered ICE, with its price
+    /// (`netrunner_client::board::breaks`), while the person is awaiting
+    /// mid-encounter; empty otherwise.
+    pub breaks: Vec<Route>,
+    /// The route being carried out: each `Awaiting` asks it for the next
+    /// step before the person is asked anything.
+    pub breaking: Option<AutoBreak>,
+    /// Why a route stopped before every subroutine was broken. Not a
+    /// rejection — the engine refused nothing; the driver saw the price
+    /// or the ICE change and handed the controls back.
+    pub break_stopped: Option<String>,
     pub over: Option<Over>,
     pub stalled: Option<String>,
     pub confirm_quit: bool,
@@ -327,6 +341,9 @@ impl Game {
             help_open: false,
             end_turn_armed: false,
             rejection: None,
+            breaks: Vec::new(),
+            breaking: None,
+            break_stopped: None,
             over: None,
             stalled: None,
             confirm_quit: false,
@@ -454,6 +471,8 @@ impl Game {
                     Some(entry) if self.awaiting => {
                         self.awaiting = false;
                         self.rejection = None;
+                        self.breaking = None;
+                        self.break_stopped = None;
                         Outcome::Submit(entry.action.clone())
                     }
                     _ => Outcome::Nothing,
@@ -463,6 +482,7 @@ impl Game {
                 Some(index) if self.awaiting => self.apply(Intent::Choose(index)),
                 _ => Outcome::Nothing,
             },
+            Intent::Break(index) => self.start_break(index),
             Intent::InspectCard(card) => {
                 self.inspecting = card;
                 Outcome::Redraw
@@ -574,6 +594,7 @@ impl Game {
                 self.applied += 1;
                 self.awaiting = false;
                 self.actions = ActionMap::default();
+                self.breaks.clear();
                 self.prompt = None;
                 // The board moved under any open sheet, but what it
                 // shows — Archives, a card — is still worth reading. A
@@ -599,12 +620,24 @@ impl Game {
             MatchMessage::Awaiting { view } => {
                 self.actions = ActionMap::build(&view, &self.registry);
                 self.prompt = Prompt::of(&view, &self.registry);
+                // A route under way takes its next step before the person
+                // is asked anything; the board still shows the view.
+                if let Some(step) = self.continue_break(&view) {
+                    self.view = Some(*view);
+                    self.follow_hand();
+                    self.awaiting = false;
+                    return Outcome::Submit(step);
+                }
+                self.breaks = routes(&view, &self.registry);
                 self.view = Some(*view);
                 self.follow_hand();
                 self.awaiting = true;
                 Outcome::Redraw
             }
             MatchMessage::Rejected { reason } => {
+                // The engine refused a route's step: the route is over
+                // and the refusal is the thing to read.
+                self.breaking = None;
                 self.rejection = Some(reason);
                 self.awaiting = true;
                 Outcome::Redraw
@@ -621,6 +654,8 @@ impl Game {
                 self.options_open = false;
                 self.help_open = false;
                 self.confirm_quit = false;
+                self.breaks.clear();
+                self.breaking = None;
                 self.over = Some(Over { winner, reason, report, notice });
                 Outcome::Redraw
             }
@@ -628,8 +663,53 @@ impl Game {
                 self.awaiting = false;
                 self.actions = ActionMap::default();
                 self.menu = None;
+                self.breaks.clear();
+                self.breaking = None;
                 self.stalled = Some(reason);
                 Outcome::Redraw
+            }
+        }
+    }
+
+    /// Starts route `index`: its first step is submitted now, the rest on
+    /// the views that follow (`continue_break`).
+    fn start_break(&mut self, index: usize) -> Outcome {
+        if !self.awaiting || self.covered() {
+            return Outcome::Nothing;
+        }
+        let (Some(route), Some(view)) = (self.breaks.get(index), self.view.as_ref()) else { return Outcome::Nothing };
+        let driver = AutoBreak::new(route, view);
+        match driver.next(view, &self.registry) {
+            Next::Submit(step) => {
+                self.menu = None;
+                self.awaiting = false;
+                self.rejection = None;
+                self.break_stopped = None;
+                self.breaking = Some(driver);
+                Outcome::Submit(step)
+            }
+            Next::Stopped(reason) => {
+                self.break_stopped = Some(reason);
+                Outcome::Redraw
+            }
+            Next::Wait | Next::Done => Outcome::Nothing,
+        }
+    }
+
+    /// The running route's next step on `view`, if it has one; a route
+    /// that finished or stopped is cleared, the latter with its reason.
+    fn continue_break(&mut self, view: &ClientView) -> Option<PlayerAction> {
+        match self.breaking.as_ref()?.next(view, &self.registry) {
+            Next::Submit(step) => Some(step),
+            Next::Wait => None,
+            Next::Done => {
+                self.breaking = None;
+                None
+            }
+            Next::Stopped(reason) => {
+                self.breaking = None;
+                self.break_stopped = Some(reason);
+                None
             }
         }
     }
@@ -707,6 +787,9 @@ impl Game {
                 };
                 match buttons.get(n) {
                     Some(index) => self.apply(Intent::Choose(*index)),
+                    // An encounter has no decisions of its own, so the
+                    // number keys are the rail's route buttons there.
+                    None if buttons.is_empty() && self.menu.is_none() => self.apply(Intent::Break(n)),
                     None => Outcome::Nothing,
                 }
             }
@@ -1432,5 +1515,74 @@ mod tests {
         let prompt = game.prompt.as_ref().expect("an install is a prompt");
         assert_eq!(prompt.title, "Scatter Field: where to install PAD Campaign?");
         assert!(prompt.detail.starts_with("A new remote server is an option."), "{}", prompt.detail);
+    }
+
+    /// Mid-encounter with Wall of Static (a strength-3 barrier) and a
+    /// Corroder: the rail offers the route with its price, the number key
+    /// starts it, and every later step goes back without a press on the
+    /// view where the Runner has priority again — the engine applying each
+    /// one and the Corp passing between, as the match thread does. The
+    /// last break leaves the person on the encounter with nothing pending
+    /// and their controls back.
+    #[test]
+    fn a_route_through_the_ice_is_one_press_and_runs_one_step_a_view() {
+        use netrunner_core::dsl::{CardType, CardId};
+        use netrunner_core::rules::{
+            apply_action, EncounteredSubroutine, GameState, InstallSlot, InstalledCard, InstalledRunnerCard, PaidAbilityWindow, RunIce,
+            RunPhase, RunState, ServerId, SubroutineStatus, WindowCheckpoint,
+        };
+        use netrunner_core::view::build_client_view;
+
+        let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
+        let wall = registry.get(&CardId("wall_of_static".to_string())).unwrap();
+        let CardType::Ice(ice_type) = wall.card_type else { panic!() };
+        let mut state = GameState::new(1);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits.0 = 5;
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(100), base_strength: 2, ..Default::default() });
+        state.corp.installed.push(InstalledCard { install_id: InstallId(1), card: wall.id.clone(), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce {
+                card_id: wall.id.clone(),
+                install_id: InstallId(1),
+                current_strength: 3,
+                ice_type,
+                subroutines: wall.subroutines.iter().enumerate().map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: SubroutineStatus::Pending }).collect(),
+                rezzed: true,
+            }],
+            ..Default::default()
+        });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Run,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+        let awaiting = |game: &mut Game, state: &GameState| {
+            let view = build_client_view(state, &registry, Side::Runner);
+            game.apply(Intent::Message(MatchMessageRef(MatchMessage::Awaiting { view: Box::new(view) })))
+        };
+
+        let mut game = Game::new(registry.clone(), Side::Runner);
+        assert_eq!(awaiting(&mut game, &state), Outcome::Redraw);
+        assert_eq!(game.breaks.len(), 1);
+        let view = game.view.clone().unwrap();
+        assert_eq!(game.breaks[0].label(&view, &registry), "Break Wall of Static with Corroder · 2 credits");
+
+        let mut outcome = game.apply(Intent::Shortcut(Shortcut::Decision(0)));
+        let mut steps = 0;
+        while let Outcome::Submit(action) = outcome {
+            steps += 1;
+            assert!(steps <= 2, "one pump and one break");
+            state = apply_action(&state, &registry, action).expect("each step is legal").0;
+            state = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).unwrap().0;
+            outcome = awaiting(&mut game, &state);
+        }
+        assert_eq!(steps, 2);
+        assert_eq!(state.runner.resources.credits.0, 3, "the price on the button");
+        assert!(game.awaiting && game.breaking.is_none() && game.breaks.is_empty(), "done: the person's controls, and nothing left to break");
+        assert!(game.break_stopped.is_none());
     }
 }

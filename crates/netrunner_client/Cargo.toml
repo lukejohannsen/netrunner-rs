@@ -22,6 +22,9 @@ serde_json = { workspace = true }
 # same version `netrunner_card_sync` uses for the cache directory, so there
 # is one `dirs` in the tree.
 dirs = "5"
+# Seeds `netrunner_bots::determinize` for `board::breaks`, which plays a
+# break route on a sample of the view. The same version the bots use.
+rand = "0.9"
 
 [features]
 # Forwarded so a client built with a policy network gets the bots' ONNX

@@ -25,7 +25,7 @@ use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError};
 
-use netrunner_client::board::{ActionMap, Affordance, Target};
+use netrunner_client::board::{routes, ActionMap, Affordance, AutoBreak, Next, Route, Target};
 use netrunner_client::access::Access;
 use netrunner_client::card_face::Face;
 use netrunner_client::placement::Placement;
@@ -452,7 +452,25 @@ fn drive_local(
                 log_last(session, ui, human_side);
             }
             SessionStep::Awaiting { side, view } if side == human_side => {
+                // A route through the ICE takes its next step before the
+                // person is asked; a step the engine refuses ends the
+                // route and the person is asked on the same view.
+                let stopped = match ui.continue_break(&view) {
+                    Ok(Some(step)) => match session.submit(step) {
+                        Ok(()) => {
+                            log_last(session, ui, human_side);
+                            continue;
+                        }
+                        Err(error) => {
+                            ui.breaking = None;
+                            Some(error.to_string())
+                        }
+                    },
+                    Ok(None) => None,
+                    Err(reason) => Some(reason),
+                };
                 ui.begin_decision(*view);
+                ui.last_rejection = stopped;
                 if prompt_human(terminal, ui, |action| session.submit(action))? {
                     if let Some(rating) = rating.take()
                         && let Some(outcome) = ratings::quit_outcome(session.state().turn, human_side)
@@ -550,7 +568,7 @@ fn prompt_human(
                 KeyCode::Down | KeyCode::Char('j') => ui.move_selection(1),
                 KeyCode::Char('a') => ui.toggle_show_all(),
                 KeyCode::Enter | KeyCode::Char(' ') => {
-                    if let Some(action) = ui.selected_action() {
+                    if let Some(action) = ui.selected_action().or_else(|| ui.start_break()) {
                         match submit(action) {
                             Ok(()) => return Ok(false),
                             // `Display`, not `Debug` — see the same
@@ -623,6 +641,13 @@ struct LocalUiState {
     /// The card inspector, while it is open (`c`).
     card_picker: Option<CardPicker>,
     last_rejection: Option<String>,
+    /// Every card's way through the encountered ICE
+    /// (`netrunner_client::board::breaks`), listed after the actions.
+    /// None under a lesson: the lessons teach the pump and the break.
+    breaks: Vec<Route>,
+    /// The route under way; `drive_local` asks it for the next step
+    /// before the person is asked anything.
+    breaking: Option<AutoBreak>,
 }
 
 impl LocalUiState {
@@ -639,6 +664,8 @@ impl LocalUiState {
             modal: None,
             card_picker: None,
             last_rejection: None,
+            breaks: Vec::new(),
+            breaking: None,
         }
     }
 
@@ -697,6 +724,10 @@ impl LocalUiState {
         self.card_picker = None;
         self.allowed.clear();
         self.last_rejection = None;
+        self.breaks = match (&self.view, &self.coaching) {
+            (Some(view), None) => routes(view, &self.registry),
+            _ => Vec::new(),
+        };
     }
 
     /// `begin_decision` under a lesson: the step's filtered list and its
@@ -705,6 +736,8 @@ impl LocalUiState {
     fn begin_gated_decision(&mut self, view: ClientView, allowed: Vec<PlayerAction>, mut coaching: Coaching) {
         debug_assert!(allowed.iter().all(|action| view.legal_actions.contains(action)), "a lesson may only narrow the legal list");
         self.begin_decision(view);
+        // The lessons teach the pump and the break; a route would skip them.
+        self.breaks.clear();
         coaching.gated = !allowed.is_empty();
         coaching.showing_all = self.show_all;
         self.allowed = allowed;
@@ -744,8 +777,46 @@ impl LocalUiState {
         }
     }
 
+    /// Starts the selected row's route, if the selection is one: its
+    /// first step, for the caller to submit. A route that no longer holds
+    /// says why on the rejection line.
+    fn start_break(&mut self) -> Option<PlayerAction> {
+        let route = self.breaks.get(self.selected.checked_sub(self.offered_actions().len())?)?;
+        let view = self.view.as_ref()?;
+        let driver = AutoBreak::new(route, view);
+        match driver.next(view, &self.registry) {
+            Next::Submit(step) => {
+                self.breaking = Some(driver);
+                Some(step)
+            }
+            Next::Stopped(reason) => {
+                self.last_rejection = Some(reason);
+                None
+            }
+            Next::Wait | Next::Done => None,
+        }
+    }
+
+    /// The running route's next step on `view`, or why it stopped; a
+    /// route that finished or stopped is cleared.
+    fn continue_break(&mut self, view: &ClientView) -> Result<Option<PlayerAction>, String> {
+        let Some(driver) = &self.breaking else { return Ok(None) };
+        match driver.next(view, &self.registry) {
+            Next::Submit(step) => Ok(Some(step)),
+            Next::Wait => Ok(None),
+            Next::Done => {
+                self.breaking = None;
+                Ok(None)
+            }
+            Next::Stopped(reason) => {
+                self.breaking = None;
+                Err(reason)
+            }
+        }
+    }
+
     fn move_selection(&mut self, delta: i32) {
-        let len = self.offered_actions().len();
+        let len = self.offered_actions().len() + self.breaks.len();
         if len == 0 {
             return;
         }
@@ -772,7 +843,11 @@ impl RenderableView for LocalUiState {
     }
 
     fn legal_action_labels(&self) -> Vec<String> {
-        self.offered_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect()
+        let mut labels: Vec<String> = self.offered_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect();
+        if let Some(view) = &self.view {
+            labels.extend(self.breaks.iter().map(|route| route.label(view, &self.registry)));
+        }
+        labels
     }
 
     fn selected_action(&self) -> Option<PlayerAction> {
@@ -1889,5 +1964,65 @@ mod tests {
                 .collect();
             assert_eq!(lit, vec![expected], "{phase:?}");
         }
+    }
+
+    /// Mid-encounter with Wall of Static and a Corroder: the route is a
+    /// row after the actions, with its price, and Enter on it hands back
+    /// its first step — the pump — and leaves the route running for
+    /// `drive_local`, which takes the break on the next view.
+    #[test]
+    fn a_route_through_the_ice_is_a_row_after_the_actions() {
+        use netrunner_core::dsl::{CardId, CardType};
+        use netrunner_core::rules::{
+            apply_action, EncounteredSubroutine, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, PaidAbilityWindow, RunIce,
+            RunPhase, RunState, ServerId, SubroutineStatus, WindowCheckpoint,
+        };
+        use netrunner_core::view::build_client_view;
+
+        let registry = decks::sample_deck_registry();
+        let wall = registry.get(&CardId("wall_of_static".to_string())).unwrap().clone();
+        let CardType::Ice(ice_type) = wall.card_type else { panic!() };
+        let mut state = GameState::new(1);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits.0 = 5;
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: InstallId(100), base_strength: 2, ..Default::default() });
+        state.corp.installed.push(InstalledCard { install_id: InstallId(1), card: wall.id.clone(), server: ServerId::Hq, slot: InstallSlot::Ice, rezzed: true, ..Default::default() });
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce {
+                card_id: wall.id.clone(),
+                install_id: InstallId(1),
+                current_strength: 3,
+                ice_type,
+                subroutines: wall.subroutines.iter().enumerate().map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: SubroutineStatus::Pending }).collect(),
+                rezzed: true,
+            }],
+            ..Default::default()
+        });
+        state.paid_ability_window = Some(PaidAbilityWindow {
+            active_priority: Side::Runner,
+            consecutive_passes: 0,
+            checkpoint: WindowCheckpoint::Run,
+            return_phase: Box::new(GamePhase::Action(Side::Runner)),
+        });
+
+        let mut ui = LocalUiState::new(registry.clone(), Side::Runner);
+        ui.begin_decision(build_client_view(&state, &registry, Side::Runner));
+        let labels = ui.legal_action_labels();
+        assert_eq!(labels.last().map(String::as_str), Some("Break Wall of Static with Corroder · 2 credits"));
+        ui.selected = labels.len() - 1;
+        assert_eq!(ui.selected_action(), None, "a route is not an action");
+
+        let pump = ui.start_break().expect("the route's first step");
+        state = apply_action(&state, &registry, pump).unwrap().0;
+        state = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).unwrap().0;
+        let view = build_client_view(&state, &registry, Side::Runner);
+        let step = ui.continue_break(&view).expect("still on route").expect("the break");
+        state = apply_action(&state, &registry, step).unwrap().0;
+        assert_eq!(state.runner.resources.credits.0, 3);
+        let view = build_client_view(&state, &registry, Side::Runner);
+        assert_eq!(ui.continue_break(&view), Ok(None), "done");
+        assert!(ui.breaking.is_none());
     }
 }

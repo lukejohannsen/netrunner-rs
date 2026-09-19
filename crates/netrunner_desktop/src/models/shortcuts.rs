@@ -53,7 +53,8 @@ pub enum Shortcut {
     /// A control on the bar.
     Control(Control),
     /// The `n`th button, from zero, of the open menu, else of the decision
-    /// pop-up.
+    /// pop-up, else — mid-encounter, where there is no pop-up — of the
+    /// ICE's routes on the rail.
     Decision(usize),
     /// A side's score area, as its Agendas readout opens it.
     ScoreArea(Side),
@@ -107,7 +108,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("P", "Purge viruses (Corp)"),
     ("J", "Jack out"),
     ("A", "Complete the run"),
-    ("1 – 9", "The open menu's buttons, else the pop-up's"),
+    ("1 – 9", "The open menu's buttons, else the pop-up's, else a way through the ICE"),
     ("M", "Actions of the card under the pointer"),
     ("I", "Read the card under the pointer"),
     ("Tab", "Your score area (Shift: your opponent's)"),
