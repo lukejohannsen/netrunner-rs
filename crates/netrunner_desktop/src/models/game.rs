@@ -716,11 +716,15 @@ impl Game {
     }
 
     /// Opens the target's menu over `over`, or closes it if it was this
-    /// target's. Two exceptions: a selection position is a toggle on a
+    /// target's. Three exceptions: a selection position is a toggle on a
     /// card the prompt lists, so its one entry is submitted as the rail's
-    /// button would; and the Agendas readout is a door to the score area,
+    /// button would; the Agendas readout is a door to the score area,
     /// not a card, so it opens that list — where a scored agenda's
-    /// abilities are.
+    /// abilities are; and the heap is public to both sides and no action
+    /// is ever on it (a card installed from the heap is offered on the
+    /// prompt, not the pile), so a click opens its contents. Its menu was
+    /// always empty, and the person asked that a click on the heap show
+    /// every card in it, as the secondary click already did.
     fn click(&mut self, target: Target, over: Anchor) -> Outcome {
         if self.covered() {
             return Outcome::Nothing;
@@ -735,6 +739,7 @@ impl Game {
                 }
             }
             Target::Pile(Pile::Agendas(_)) => self.apply(Intent::Inspect(target)),
+            Target::Pile(Pile::Heap) if entries.is_empty() => self.apply(Intent::Inspect(target)),
             _ if self.menu.as_ref().is_some_and(|menu| menu.target == target) => {
                 self.menu = None;
                 Outcome::Redraw
@@ -1221,6 +1226,23 @@ mod tests {
             assert!(game.dragging.is_none() && game.menu.is_none(), "a drop it does not name puts it back");
         }
         handle.join();
+    }
+
+    /// A click on the heap opens its contents, from either chair and
+    /// whether or not the seat is on priority: the heap is public, and
+    /// no action is ever on it, so its menu could only ever be empty.
+    #[test]
+    fn a_click_on_the_heap_opens_every_card_in_it() {
+        let heap = Target::Pile(netrunner_client::board::Pile::Heap);
+        for chair in [Side::Runner, Side::Corp] {
+            for awaiting in [false, true] {
+                let mut game = Game::new(Arc::new(netrunner_client::decks::sample_deck_registry()), chair);
+                game.awaiting = awaiting;
+                assert_eq!(game.apply(Intent::Click { target: heap.clone(), over: Anchor::default() }), Outcome::Redraw);
+                assert_eq!(game.sheet.as_ref().map(|s| s.target.clone()), Some(heap.clone()), "{chair:?}, awaiting {awaiting}");
+                assert!(game.menu.is_none(), "a sheet, not an empty menu");
+            }
+        }
     }
 
     /// The score area opens as a sheet from the HUD, one row's details

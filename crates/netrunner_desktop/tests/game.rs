@@ -564,6 +564,23 @@ fn clicks_in_tree_order(app: &mut App) -> Vec<Click> {
     clicks
 }
 
+/// Every `Text` on the screen in tree order, as [`clicks_in_tree_order`].
+fn texts_in_tree_order(app: &mut App) -> Vec<String> {
+    let world = app.world_mut();
+    let roots: Vec<Entity> = world.query_filtered::<Entity, (With<Node>, Without<ChildOf>)>().iter(world).collect();
+    let mut stack: Vec<Entity> = roots.into_iter().rev().collect();
+    let mut texts = Vec::new();
+    while let Some(entity) = stack.pop() {
+        if let Some(text) = world.get::<Text>(entity) {
+            texts.push(text.0.clone());
+        }
+        if let Some(children) = world.get::<Children>(entity) {
+            stack.extend(children.iter().rev());
+        }
+    }
+    texts
+}
+
 /// The servers keep one order from either chair — Archives, R&D, HQ,
 /// then the remotes — so the centrals never move as remotes are made.
 #[test]
@@ -774,6 +791,34 @@ fn a_zone_click_opens_its_menu_and_never_acts_and_its_sheet_shows_the_contents()
     let model = &app.world().resource::<Model>().0;
     assert!(model.menu.as_ref().unwrap().entries.iter().any(|i| matches!(model.actions.entries[*i].action, PlayerAction::DrawCardClick { .. })));
     assert_eq!(model.applied, before);
+    escape(&mut app);
+    // The heap has no action on it, so its plain click is its sheet: every
+    // card in it, face up, without a secondary click.
+    let heap = entity_with(&mut app, &Click::Target(Target::Pile(netrunner_client::board::Pile::Heap))).expect("the heap is a button");
+    press_entity(&mut app, heap);
+    assert_eq!(overlays(&mut app), 1, "the heap's sheet is up");
+    assert!(texts(&mut app).iter().any(|t| t.contains("all face up")), "{:?}", texts(&mut app));
+    assert_eq!(app.world().resource::<Model>().0.applied, before);
+}
+
+/// The rig's rows are labelled in the order the chair sees the table:
+/// programs next to the ICE — the top of the Runner's rig, the bottom of
+/// the Corp's view of it — and every row is there before anything is
+/// installed in it.
+#[test]
+fn the_rig_is_three_rows_with_programs_next_to_the_ice_from_either_chair() {
+    // The first three: a card face below the rig can print its own type
+    // ("Hardware") on its type line.
+    let rows = |app: &mut App| -> Vec<String> { texts_in_tree_order(app).into_iter().filter(|t| ["Programs", "Hardware", "Resources"].contains(&t.as_str())).take(3).collect() };
+    let (mut app, _dir) = headless_client();
+    start_a_game_as(&mut app, Side::Runner);
+    wait_for(&mut app, "the Runner's first decision", |app| click_entry_count(app) > 0);
+    assert_eq!(rows(&mut app), ["Programs", "Hardware", "Resources"], "the Runner's chair");
+
+    let (mut app, _dir) = headless_client();
+    start_a_game_as(&mut app, Side::Corp);
+    wait_for(&mut app, "the Corp's first decision", |app| click_entry_count(app) > 0);
+    assert_eq!(rows(&mut app), ["Resources", "Hardware", "Programs"], "the Corp's chair");
 }
 
 

@@ -2017,81 +2017,77 @@ fn spawn_server_root(column: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
     tiles
 }
 
-/// The rig as one row of three groups; the cards of every group overlap
-/// by the same amount when the whole rig would not fit across. Drawn at
-/// the Runner's side of the table's size — full from the Runner's chair,
-/// `layout::OPPONENT_SCALE` from the Corp's — in a row reserved at
-/// `layout::rig_height` whether or not anything is installed, so the
-/// first install moves nothing.
+/// The rig as three rows — programs, hardware, resources — in the order
+/// the chair sees the table (`netrunner_client::board::rig::rows_top_down`: programs the row
+/// nearest the ICE), each the top `layout::PEEK` of its cards over their
+/// chip line, overlapped by `layout::step` when a row would not fit
+/// across. Drawn at the Runner's side of the table's size — full from the
+/// Runner's chair, `layout::OPPONENT_SCALE` from the Corp's — with every
+/// row reserved at `layout::rig_row_height` whether or not anything is in
+/// it, so the first install moves nothing. A row's label sits at its left
+/// rather than over it: the rig has width to spare and no height.
 #[allow(clippy::too_many_arguments)]
 fn spawn_rig(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, view: &ClientView, lit: &Lit, fit: &BoardFit, depth: Depth) {
-    let group = |kind: &CardType| match kind {
-        CardType::Program => 0,
-        CardType::Hardware => 1,
-        _ => 2,
-    };
     let size = fit.size_of(Side::Runner);
-    let groups: Vec<Vec<_>> = (0..3).map(|wanted| view.runner.rig.iter().filter(|c| core.registry.get(&c.card).is_some_and(|def| group(&def.card_type) == wanted)).collect()).collect();
-    let filled = groups.iter().filter(|g| !g.is_empty()).count();
-    let total: usize = groups.iter().map(Vec::len).sum();
-    // The step every group uses: the whole rig, less the gaps between
-    // groups, as if it were one row.
-    let available = fit.board_width() - (filled.saturating_sub(1) as f32) * 16.0;
-    let step = layout::step(total, size.width(), layout::CARD_GAP, available);
-    let pull = (step - (size.width() + layout::CARD_GAP)).min(0.0);
-    let reserved = layout::rig_height(fit.area_face(Side::Runner));
-    parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, height: px(reserved), overflow: Overflow::clip(), ..default() },)).with_children(|area| {
-        section_label(area, theme, if view.runner.rig.is_empty() { "Rig · nothing installed" } else { "Rig" });
-        area.spawn((Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, column_gap: px(16), align_items: AlignItems::FlexStart, ..default() },)).with_children(|row| {
-            for (wanted, cards) in groups.iter().enumerate() {
-                if cards.is_empty() {
-                    continue;
-                }
-                row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: px(2), ..default() },)).with_children(|column| {
-                    column.spawn(widgets::dim(theme, ["Programs", "Hardware", "Resources"][wanted]));
-                    column.spawn(card_row()).with_children(|cards_row| {
+    let row_height = layout::rig_row_height(fit.area_face(Side::Runner));
+    let available = fit.board_width() - layout::RIG_LABEL_WIDTH;
+    parent.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, row_gap: px(layout::RIG_ROW_GAP), height: px(layout::rig_height(fit.area_face(Side::Runner))), overflow: Overflow::clip(), ..default() },)).with_children(|area| {
+        for (wanted, cards) in netrunner_client::board::rig::rows(view, &core.registry, fit.chair) {
+            let step = layout::step(cards.len(), size.width(), layout::CARD_GAP, available);
+            let pull = (step - (size.width() + layout::CARD_GAP)).min(0.0);
+            area.spawn((Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, height: px(row_height), ..default() },)).with_children(|row| {
+                row.spawn((widgets::dim(theme, wanted.label()), Node { width: px(layout::RIG_LABEL_WIDTH), flex_shrink: 0.0, ..default() }));
+                row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, ..default() },)).with_children(|column| {
+                    column.spawn(peek_window(size, cards.len(), available)).with_children(|window| {
+                        window.spawn(card_row()).with_children(|cards_row| {
+                            for (i, card) in cards.iter().enumerate() {
+                                let Some(def) = core.registry.get(&card.card) else { continue };
+                                let image = def.numeric_id.and_then(|code| images.face(code, size));
+                                let entity = spawn_face(cards_row, theme, &Face::of(def), size, image, (Button, Click::Target(Target::Install(card.install_id))));
+                                if i > 0 && pull < 0.0 {
+                                    cards_row.commands().entity(entity).entry::<Node>().and_modify(move |mut node| node.margin.left = px(pull));
+                                }
+                                cards_row.commands().entity(entity).insert(Contact(depth));
+                                glow(&mut cards_row.commands(), entity, theme, game.affordance_for(&Target::Install(card.install_id)));
+                                if lit.installs.contains(&card.install_id) {
+                                    cards_row.commands().entity(entity).insert(outline(theme));
+                                }
+                            }
+                        });
+                    });
+                    // The chip line under the peek, one slot per card at the
+                    // row's own step, so a card's numbers sit under it:
+                    // strength and hosted cards as words, the counters as
+                    // their kind's badge (a virus program's virus counters,
+                    // a credit resource's credits).
+                    column.spawn(Node { flex_direction: FlexDirection::Row, flex_shrink: 0.0, column_gap: px(layout::CARD_GAP), height: px(layout::CHIPS), ..default() }).with_children(|line| {
                         for (i, card) in cards.iter().enumerate() {
                             let Some(def) = core.registry.get(&card.card) else { continue };
-                            let image = def.numeric_id.and_then(|code| images.face(code, size));
-                            let mut slot = cards_row.spawn((Node { flex_direction: FlexDirection::Column, flex_shrink: 0.0, align_items: AlignItems::Center, row_gap: px(2), ..default() },));
+                            let mut slot = line.spawn(Node { width: px(size.width()), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, justify_content: JustifyContent::Center, column_gap: px(8), overflow: Overflow::clip(), ..default() });
                             if i > 0 && pull < 0.0 {
                                 slot.entry::<Node>().and_modify(move |mut node| node.margin.left = px(pull));
                             }
+                            let mut chips = Vec::new();
+                            if def.card_type == CardType::Program && def.strength.is_some() {
+                                chips.push(format!("str {}", card.current_strength));
+                            }
+                            if !card.hosted_cards.is_empty() {
+                                chips.push(format!("{} hosted", card.hosted_cards.len()));
+                            }
                             slot.with_children(|slot| {
-                                let entity = spawn_face(slot, theme, &Face::of(def), size, image, (Button, Click::Target(Target::Install(card.install_id))));
-                                slot.commands().entity(entity).insert(Contact(depth));
-                                glow(&mut slot.commands(), entity, theme, game.affordance_for(&Target::Install(card.install_id)));
-                                if lit.installs.contains(&card.install_id) {
-                                    slot.commands().entity(entity).insert(outline(theme));
+                                if !chips.is_empty() {
+                                    slot.spawn(widgets::dim(theme, chips.join(" · ")));
                                 }
-                                // The chip line: strength and hosted cards as
-                                // words, the counters as their kind's badge
-                                // (a virus program's virus counters, a
-                                // credit resource's credits).
-                                let mut chips = Vec::new();
-                                if def.card_type == CardType::Program && def.strength.is_some() {
-                                    chips.push(format!("str {}", card.current_strength));
-                                }
-                                if !card.hosted_cards.is_empty() {
-                                    chips.push(format!("{} hosted", card.hosted_cards.len()));
-                                }
-                                if !chips.is_empty() || card.counters > 0 {
-                                    slot.spawn(Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), height: px(layout::CHIPS - 2.0), ..default() }).with_children(|line| {
-                                        if !chips.is_empty() {
-                                            line.spawn(widgets::dim(theme, chips.join(" · ")));
-                                        }
-                                        if card.counters > 0 {
-                                            let token = Token { kind: TokenKind::Counter(def.counter_kind), amount: card.counters.to_string() };
-                                            spawn_badge(line, theme, art, &token, 16.0, size::SMALL, theme.text_dim);
-                                        }
-                                    });
+                                if card.counters > 0 {
+                                    let token = Token { kind: TokenKind::Counter(def.counter_kind), amount: card.counters.to_string() };
+                                    spawn_badge(slot, theme, art, &token, 16.0, size::SMALL, theme.text_dim);
                                 }
                             });
                         }
                     });
                 });
-            }
-        });
+            });
+        }
     });
 }
 
