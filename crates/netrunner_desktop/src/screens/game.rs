@@ -21,12 +21,16 @@
 //! nothing the opponent does moves a card — `fit` recomputes it whenever
 //! one of those changes, and a row that is still too wide overlaps its
 //! cards like a held hand (`layout::step`) rather than wrapping or
-//! scrolling. Top to bottom: the top bar (the status line, Quit, the
-//! gear); the board beside the rail — the opponent's strip and the bottom
-//! of their hand as backs, their area and the person's with the run lane
-//! between, the control bar (`board::Control::for_side`, one button each,
+//! scrolling. The board runs the window's full height beside one right
+//! column: nothing above the opponent's hand and nothing under the
+//! person's. Top to bottom on the board: the opponent's strip and the
+//! bottom of their hand as backs, hung from the window's top edge; their
+//! area and the person's with the run lane between; the control bar (`board::Control::for_side`, one button each,
 //! always in the same place) directly above the person's hand, then the
-//! person's strip and the top of their hand. The opponent's side is
+//! person's strip and the top of their hand on the window's bottom edge.
+//! The right column is the status line with Quit and the gear, the phase
+//! panel (`board::phase`, hidden with L), the Runner's identity while a
+//! run is on, the rail and the log. The opponent's side is
 //! drawn at `layout::OPPONENT_SCALE` of the person's own. The Corp's
 //! servers are the area that grows: each a column with its plate on the
 //! Corp's edge of the table and its ICE as tiles out toward the Runner —
@@ -143,7 +147,7 @@ impl Plugin for GamePlugin {
             .init_resource::<Pointer>()
             .add_systems(OnEnter(AppScreen::Game), spawn)
             .add_systems(OnExit(AppScreen::Game), leave)
-            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, relane, redraw, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
+            .add_systems(Update, (poll, autoplay, escape.in_set(Captures), board_click, drag_hand, shortcuts, controls, fit, board_pictures, side_panels, relane, redraw, lift_hovered, table_guide).chain().run_if(in_state(AppScreen::Game)))
             // Its own registration rather than a link in that chain: it
             // has no ordering requirement against any of them, and adding
             // a system to an existing `.chain()` reorders everything after
@@ -222,9 +226,25 @@ pub struct DropPlace(pub Target);
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HandSlot(pub usize);
 
-/// The phase bar's row, and one step chip on it, for a test to read.
+/// The phase panel in the right column, and one step chip on it, for a
+/// test to read. Hidden rather than despawned when the setting is off.
 #[derive(Component)]
 pub struct PhaseBarRow;
+
+/// The right column's panel that shows the Runner's identity while a run
+/// is on; empty, and taking no room, when none is.
+#[derive(Component)]
+pub struct RunIdentity;
+
+/// The Runner's name in the run panel, for a test to read.
+#[derive(Component)]
+pub struct RunIdentityName;
+
+/// The cropped scan in the run panel, when one is cached, and the copy
+/// it was drawn from: a smaller copy stands in until the panel's own
+/// width has decoded, and the panel is redrawn when it has.
+#[derive(Component)]
+pub struct RunIdentityArt(Handle<Image>);
 
 #[derive(Component)]
 pub struct PhaseStep(pub netrunner_client::board::phase::State);
@@ -303,7 +323,7 @@ pub struct ActionsMenu;
 #[derive(Component)]
 struct MenuPart;
 #[derive(Component)]
-struct StatusLine;
+pub struct StatusLine;
 
 #[derive(Resource)]
 pub struct Model(pub Game);
@@ -316,6 +336,9 @@ struct Dirty {
     overlay: bool,
     /// The run lane alone: a beat of the trail, with the board still.
     lane: bool,
+    /// The right column's status line, phase panel and run panel, which
+    /// follow the board and the lane and also a setting.
+    side: bool,
 }
 
 impl Dirty {
@@ -325,6 +348,7 @@ impl Dirty {
         self.log = true;
         self.overlay = true;
         self.lane = true;
+        self.side = true;
     }
 }
 
@@ -376,11 +400,11 @@ impl BoardFit {
 }
 
 /// What the view puts on the board, for the fit.
-fn counts(game: &Game, phase_bar: bool) -> Counts {
+fn counts(game: &Game) -> Counts {
     let human_is_runner = game.side == Side::Runner;
     // The three centrals are always drawn.
     let remotes = game.view.as_ref().map_or(0, |view| view.corp.servers.iter().filter(|s| matches!(s.server, ServerId::Remote(_))).count());
-    Counts { servers: 3 + remotes, human_is_runner, phase_bar }
+    Counts { servers: 3 + remotes, human_is_runner }
 }
 
 /// Loads the board's pictures (`board_art`) for the skin in use and the
@@ -415,10 +439,10 @@ fn board_pictures(
 /// Recomputes the face width from the window and the view, and marks the
 /// board for a redraw when it moved. Runs every frame and is cheap: a
 /// handful of comparisons.
-fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, fit: Option<ResMut<BoardFit>>, core: Res<ClientCore>, mut dirty: ResMut<Dirty>) {
+fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, fit: Option<ResMut<BoardFit>>, mut dirty: ResMut<Dirty>) {
     let (Some(model), Some(mut fit)) = (model, fit) else { return };
     let window = windows.single().map_or(fit.window, |w| Vec2::new(w.width(), w.height()));
-    let counts = counts(&model.0, core.settings.desktop.phase_bar);
+    let counts = counts(&model.0);
     let face = layout::face_width((window.x, window.y), counts);
     if (face - fit.face).abs() > 0.5 || window != fit.window || model.0.side != fit.chair {
         fit.face = face;
@@ -482,8 +506,40 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
             parent.spawn(widgets::scrollbar(&theme, log_scroll));
         })
         .id();
+    // The right column's head: where the match is, Quit and the gear.
+    // It was a bar across the top of the window, which cost every card
+    // on the board its height to say what the column beside it says.
+    let header = commands
+        .spawn((Node { width: percent(100), min_height: px(layout::TOP_BAR), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(8), ..default() },))
+        .with_children(|parent| {
+            parent.spawn((StatusLine, widgets::dim(&theme, "Setting up…"), TextLayout::new(Justify::Left, LineBreak::WordBoundary), Node { flex_grow: 1.0, flex_shrink: 1.0, min_width: px(0), ..default() }));
+            parent.spawn(widgets::button(&theme, "Quit", Val::Auto, Click::Quit));
+            // The gear in the corner, where a person looks for options.
+            parent.spawn(widgets::gear_button(&theme, images.as_deref_mut(), Click::Options));
+        })
+        .id();
+    let phase_panel = commands
+        .spawn((PhaseBarRow, Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, ..default() }))
+        .id();
+    let run_panel = commands
+        .spawn((RunIdentity, Node { width: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, ..default() }))
+        .id();
+    // The one column on the right: the header, the phase, the Runner on a
+    // run, the prompt and the log. It carries the vertical padding the
+    // root no longer does, so its buttons keep off the window's edges.
     let rail_column = commands
-        .spawn((Node { width: px(layout::RAIL_WIDTH), height: percent(100), flex_shrink: 0.0, flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },))
+        .spawn((Node {
+            width: px(layout::RAIL_WIDTH),
+            height: percent(100),
+            flex_shrink: 0.0,
+            flex_direction: FlexDirection::Column,
+            row_gap: px(8),
+            padding: UiRect::vertical(px(layout::PADDING)),
+            ..default()
+        },))
+        .add_child(header)
+        .add_child(phase_panel)
+        .add_child(run_panel)
         .add_child(rail)
         .add_child(log_row)
         .id();
@@ -491,17 +547,6 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
         .spawn((Node { width: percent(100), flex_grow: 1.0, min_height: px(0), flex_direction: FlexDirection::Row, column_gap: px(layout::BODY_GAP), ..default() },))
         .add_child(board)
         .add_child(rail_column)
-        .id();
-    let top = commands
-        .spawn((Node { width: percent(100), height: px(layout::TOP_BAR), flex_shrink: 0.0, flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(16), ..default() },))
-        .with_children(|parent| {
-            parent.spawn(widgets::heading(&theme, AppScreen::Game.title()));
-            parent.spawn((StatusLine, widgets::dim(&theme, "Setting up…")));
-            let mut quit = parent.spawn(widgets::button(&theme, "Quit", Val::Auto, Click::Quit));
-            quit.entry::<Node>().and_modify(|mut node| node.margin = UiRect::left(Val::Auto));
-            // The gear in the corner, where a person looks for options.
-            parent.spawn(widgets::gear_button(&theme, images.as_deref_mut(), Click::Options));
-        })
         .id();
     // The field, chosen once for the match rather than per redraw, and
     // spawned before everything else so every later sibling paints over
@@ -528,14 +573,15 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, activ
     let mut root = commands.spawn(screen_root(AppScreen::Game, theme.background));
     root.entry::<Node>().and_modify(|mut node| {
         node.align_items = AlignItems::Stretch;
-        node.padding = UiRect::all(px(layout::PADDING));
-        node.row_gap = px(layout::ROW_GAP);
+        // Sides only: the hands sit on the window's top and bottom edges.
+        node.padding = UiRect::horizontal(px(layout::PADDING));
+        node.row_gap = px(0);
         node.overflow = Overflow::clip();
     });
     for backdrop in backdrops {
         root.add_child(backdrop);
     }
-    root.add_child(top).add_child(body);
+    root.add_child(body);
     commands.insert_resource(BoardFit::default());
     commands.insert_resource(Model(game));
     let mut dirty = Dirty::default();
@@ -995,10 +1041,10 @@ fn shortcuts(
                 if let Err(error) = core.save_settings() {
                     notices.push(format!("Settings not saved: {error}"));
                 }
-                // The phase bar is a row of the board, so the cards are
-                // re-fitted around it; the helper is the rail's.
+                // The phase panel is the right column's and costs the
+                // cards nothing; the helper is the rail's.
                 dirty.rail = true;
-                dirty.board = shortcut == Shortcut::PhaseBar;
+                dirty.side = true;
             }
             _ => pending.0.push(Intent::Shortcut(shortcut)),
         }
@@ -1066,6 +1112,7 @@ fn controls(
                 dirty.rail = true;
                 dirty.log = true;
                 dirty.overlay = true;
+                dirty.side = true;
             }
             continue;
         }
@@ -1127,7 +1174,6 @@ fn redraw(
     // parameters at most, and this one is at the limit.
     floating: Query<(Entity, Has<Overlay>, Has<DecisionPopup>, Has<ActionsMenu>), Or<(With<Overlay>, With<DecisionPopup>, With<ActionsMenu>)>>,
     roots: Query<Entity, (With<DespawnOnExit<AppScreen>>, With<Node>)>,
-    mut status: Query<&mut Text, With<StatusLine>>,
     theme: Res<Theme>,
     core: Res<ClientCore>,
     // The card pictures and the board's own, as one parameter: the system
@@ -1139,16 +1185,13 @@ fn redraw(
     if !(dirty.board || dirty.rail || dirty.log || dirty.overlay) {
         return;
     }
-    let Dirty { board: reboard, rail: rerail, log: relog, overlay: reoverlay, lane: _ } = std::mem::take(&mut *dirty);
+    let Dirty { board: reboard, rail: rerail, log: relog, overlay: reoverlay, lane: _, side: _ } = std::mem::take(&mut *dirty);
     let game = &mut model.0;
     if reboard {
         let transitions = game.take_transitions();
         if let Ok(board) = board.single() {
             let art = art.as_deref();
             commands.entity(board).despawn_children().with_children(|parent| spawn_board(parent, &theme, &core, &images, art, game, &transitions, &fit));
-        }
-        for mut text in &mut status {
-            text.0 = status_line(game);
         }
     }
     let prefs = &core.settings.desktop;
@@ -1224,14 +1267,6 @@ fn overlay_needed(game: &Game) -> bool {
 #[allow(clippy::too_many_arguments)]
 fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, art: Option<&BoardArt>, game: &Game, transitions: &[Transition], fit: &BoardFit) {
     let drag = game.dragged_slot();
-    // The phase bar is drawn last, below the hand: where the game is
-    // belongs beside what the person may do about it, and a row at the
-    // top would have sat among the opponent's cards.
-    let with_phase_bar = |parent: &mut ChildSpawnerCommands, game: &Game| {
-        if core.settings.desktop.phase_bar {
-            parent.spawn((PhaseBarRow, phase_bar_node())).with_children(|row| fill_phase_bar(row, theme, game));
-        }
-    };
     // The control bar, directly above the person's hand: what they may do
     // sits between what they hold and the table, and acting never means
     // crossing the opponent's side. A row of the board, so it is redrawn
@@ -1256,7 +1291,6 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     let Some(view) = &game.view else {
         parent.spawn((widgets::dim(theme, "Waiting for the match to start…"), Node { flex_grow: 1.0, ..default() }));
         control_bar(parent, game);
-        with_phase_bar(parent, game);
         return;
     };
     let human = game.side;
@@ -1284,11 +1318,16 @@ fn spawn_board(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCo
     lane(parent);
     spawn_area(parent, theme, core, images, art, game, view, human, &lit, fit);
     control_bar(parent, game);
-    parent.spawn(strip_row()).with_children(|row| {
+    // The person's strip is the board's last row and sits on the window's
+    // bottom edge: the hand's peek touches it, as the opponent's backs
+    // touch the top, and whatever height the rows leave goes to the ICE
+    // field between them rather than under the hand.
+    let mut own_row = strip_row();
+    own_row.align_items = AlignItems::FlexEnd;
+    parent.spawn(own_row).with_children(|row| {
         spawn_strip(row, theme, core, images, art, game, view, human, fit);
         spawn_hand(row, theme, core, images, game, view, human, &lit, fit, drag);
     });
-    with_phase_bar(parent, game);
 }
 
 /// What the last transitions touched, so the redraw can outline it.
@@ -2524,70 +2563,205 @@ fn spawn_choice_card(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Cl
 
 // ---- the phase bar ----
 
-fn phase_bar_node() -> Node {
-    Node {
-        width: percent(100),
-        height: px(layout::PHASE_BAR - layout::ROW_GAP),
-        flex_shrink: 0.0,
-        flex_direction: FlexDirection::Column,
-        justify_content: JustifyContent::Center,
-        align_items: AlignItems::Center,
-        row_gap: px(2),
-        overflow: Overflow::clip(),
-        ..default()
-    }
-}
-
-/// The turn's steps, and a run's, from `board::phase`: a chip per step in
-/// order, the one in play in the accent colour and outlined, the ones
-/// behind it dim. A segment's title is a chip of its own at the head of
-/// its row, so "Corp turn 12" and "Run on HQ" read as the headings they
-/// are, and the window's line sits under the lot.
+/// The turn's steps, and a run's, from `board::phase`, as a panel at the
+/// head of the right column: a column per segment — its title, then its
+/// steps top to bottom — the one in play in the accent colour, the ones
+/// behind it dim, and the window's line under the lot.
+///
+/// **A panel of the right column, not a row of the board.** It was a bar
+/// under the person's hand, which kept the hand off the window's bottom
+/// edge and cost every card its height; the column beside the board had
+/// room it was not using. Turned off, it is hidden rather than despawned,
+/// and the cards do not move either way.
 fn fill_phase_bar(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game) {
     use netrunner_client::board::phase::{self, State};
-    let Some(view) = &game.view else {
-        parent.spawn(widgets::dim(theme, "Setting up…"));
-        return;
+    let panel = Node {
+        width: percent(100),
+        flex_direction: FlexDirection::Column,
+        padding: UiRect::all(px(10)),
+        row_gap: px(6),
+        border: UiRect::all(px(1)),
+        border_radius: BorderRadius::all(px(8)),
+        ..default()
     };
-    let bar = phase::bar(view);
-    parent.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::Center, column_gap: px(6), overflow: Overflow::clip(), ..default() },)).with_children(|row| {
-        for (n, segment) in bar.segments.iter().enumerate() {
-            if n > 0 {
-                row.spawn((Text::new("·"), theme.font(size::SMALL), TextColor(theme.text_dim)));
+    parent
+        .spawn((panel, BackgroundColor(theme.panel), BorderColor::all(theme.panel_border), widgets::Dressed::still(Slot::PanelPhase, Drawn::new(theme.panel, theme.panel_border))))
+        .with_children(|panel| {
+            let Some(view) = &game.view else {
+                panel.spawn(widgets::dim(theme, "Setting up…"));
+                return;
+            };
+            let bar = phase::bar(view);
+            panel.spawn((Node { flex_direction: FlexDirection::Row, align_items: AlignItems::FlexStart, column_gap: px(10), ..default() },)).with_children(|row| {
+                for segment in &bar.segments {
+                    row.spawn((Node { flex_direction: FlexDirection::Column, align_items: AlignItems::FlexStart, flex_grow: 1.0, flex_basis: px(0), min_width: px(0), row_gap: px(4), ..default() },)).with_children(|column| {
+                        column.spawn((Text::new(segment.title.clone()), theme.font(size::SMALL), TextColor(theme.text), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                        for step in &segment.steps {
+                            let (text, background, border, slot) = match step.state {
+                                State::Past => (theme.text_dim, theme.panel, theme.panel_border, Slot::PhaseChipPast),
+                                State::Now => (theme.background, theme.accent, theme.accent, Slot::PhaseChipNow),
+                                State::Ahead => (theme.text_dim, theme.background, theme.panel_border, Slot::PhaseChipAhead),
+                            };
+                            column.spawn((
+                                PhaseStep(step.state),
+                                Node {
+                                    padding: UiRect::axes(px(8), px(3)),
+                                    border: UiRect::all(px(1)),
+                                    border_radius: BorderRadius::all(px(10)),
+                                    max_width: percent(100),
+                                    ..default()
+                                },
+                                BackgroundColor(background),
+                                BorderColor::all(border),
+                                widgets::Dressed::still(slot, Drawn::new(background, border)),
+                                children![(Text::new(step.label.clone()), theme.font(size::SMALL), TextColor(text), TextLayout::new(Justify::Left, LineBreak::WordBoundary))],
+                            ));
+                        }
+                    });
+                }
+            });
+            // A line only when a window is open: the panel is not a row of
+            // the board, so its height changing moves no card.
+            if let Some(note) = &bar.note {
+                panel.spawn((Text::new(note.clone()), theme.font(size::SMALL), TextColor(theme.accent), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
             }
-            row.spawn((Text::new(segment.title.clone()), theme.font(size::SMALL), TextColor(theme.text)));
-            for step in &segment.steps {
-                let (text, background, border, slot) = match step.state {
-                    State::Past => (theme.text_dim, theme.panel, theme.panel, Slot::PhaseChipPast),
-                    State::Now => (theme.background, theme.accent, theme.accent, Slot::PhaseChipNow),
-                    State::Ahead => (theme.text_dim, theme.background, theme.panel_border, Slot::PhaseChipAhead),
-                };
-                row.spawn((
-                    PhaseStep(step.state),
-                    Node {
-                        padding: UiRect::axes(px(8), px(3)),
-                        border: UiRect::all(px(1)),
-                        border_radius: BorderRadius::all(px(10)),
-                        flex_shrink: 0.0,
-                        ..default()
-                    },
-                    BackgroundColor(background),
-                    BorderColor::all(border),
-                    widgets::Dressed::still(slot, Drawn::new(background, border)),
-                    children![(Text::new(step.label.clone()), theme.font(size::SMALL), TextColor(text))],
-                ));
+        });
+}
+
+/// The Runner's identity while a run is on, in the right column: the
+/// person asked for the Runner to appear there "hacking into" the server,
+/// so a run reads at a glance from across the room, not only from the
+/// lane's chips.
+///
+/// **Its picture is the top of the scan** — the name banner and the art,
+/// cut where the text box begins (`layout::IDENTITY_ART`) — as an
+/// `ImageNode::rect` over the decoded copy's own pixel size, read from
+/// `Assets<Image>`, so whichever resampled copy is cached crops the same.
+/// With no scan
+/// cached it is the identity's name alone, large, in the Runner's colour.
+/// It follows the paced trail, not the view, so it appears on the run's
+/// first beat and goes when the trail ends, never ahead of the lane. It
+/// is paint: no button, no action, nothing the engine offered.
+fn fill_run_identity(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &ClientCore, images: &CardImages, assets: Option<&Assets<Image>>, game: &Game) {
+    let (Some(trail), Some(view)) = (&game.trail, &game.view) else { return };
+    if trail.ended() {
+        return;
+    }
+    let card = view.runner.identity.as_ref().and_then(|id| core.registry.get(id));
+    let name = card.map_or_else(|| "The Runner".to_string(), |card| card.title.clone());
+    let colour = theme.side(Side::Runner);
+    let panel = Node {
+        width: percent(100),
+        flex_direction: FlexDirection::Column,
+        padding: UiRect::all(px(10)),
+        row_gap: px(8),
+        border: UiRect::all(px(2)),
+        border_radius: BorderRadius::all(px(8)),
+        ..default()
+    };
+    parent
+        .spawn((panel, BackgroundColor(theme.panel), BorderColor::all(colour), widgets::Dressed::still(Slot::PanelRun, Drawn::new(theme.panel, colour))))
+        .with_children(|panel| {
+            // Each line says its width in pixels. The right column sizes
+            // this panel before the percentage has anything to resolve
+            // against, so a line left to it was measured one word to a
+            // line — and the panel kept that height, a hundred pixels of
+            // nothing under a one-line name.
+            let line = || Node { width: px(RUN_ART_WIDTH), ..default() };
+            panel.spawn((Text::new(format!("Hacking into {}", server_name(trail.server))), theme.font(size::SMALL), TextColor(colour), line()));
+            // The top of the scan at the panel's inner width: the panel's
+            // own copy once it has decoded, the sharpest other until then.
+            // The rect is a fraction of whichever copy's own size.
+            let width = RUN_ART_WIDTH;
+            let scan = card.and_then(|card| card.numeric_id).and_then(|code| images.face(code, FaceSize::Board(width as u16)).or_else(|| images.nearest_face(code)));
+            let size = scan.as_ref().and_then(|scan| assets?.get(scan)).map(|image| image.size_f32());
+            match scan.zip(size) {
+                Some((scan, size)) => {
+                    let rect = Rect::new(0.0, 0.0, size.x, size.y * layout::IDENTITY_ART);
+                    let height = (width * rect.height() / rect.width()).round();
+                    panel.spawn((
+                        RunIdentityArt(scan.clone()),
+                        ImageNode { image_mode: NodeImageMode::Stretch, rect: Some(rect), ..ImageNode::new(scan) },
+                        Node { width: px(width), height: px(height), flex_shrink: 0.0, border_radius: BorderRadius::all(px(6)), ..default() },
+                    ));
+                    // The name is on the banner; this one is for a test and
+                    // a screen reader, so it is drawn small.
+                    panel.spawn((RunIdentityName, Text::new(name), theme.font(size::SMALL), TextColor(theme.text_dim), line()));
+                }
+                None => {
+                    panel.spawn((RunIdentityName, Text::new(name), theme.font(size::HEADING), TextColor(colour), TextLayout::new(Justify::Left, LineBreak::WordBoundary), line()));
+                }
             }
-        }
+        });
+}
+
+/// The run panel's picture width: the right column less the panel's
+/// padding and border.
+const RUN_ART_WIDTH: f32 = layout::RAIL_WIDTH - 2.0 * 12.0;
+
+/// Refills the right column's three parts that follow the match rather
+/// than the prompt: the status line, the phase panel and the run panel.
+/// Runs before `relane` and `redraw`, and reads their flags rather than
+/// taking them, so a new view and a beat of the trail both reach it;
+/// `side` is its own, for a setting.
+#[allow(clippy::too_many_arguments)]
+fn side_panels(
+    mut commands: Commands,
+    mut dirty: ResMut<Dirty>,
+    model: Option<Res<Model>>,
+    mut status: Query<&mut Text, With<StatusLine>>,
+    mut phase: Query<(Entity, &mut Node), (With<PhaseBarRow>, Without<RunIdentity>)>,
+    run: Query<Entity, With<RunIdentity>>,
+    theme: Res<Theme>,
+    core: Res<ClientCore>,
+    mut images: ResMut<CardImages>,
+    assets: Option<Res<Assets<Image>>>,
+    drawn: Query<&RunIdentityArt>,
+) {
+    // While a run is on, the panel wants the Runner's scan at its own
+    // width: ask for it once, and redraw when it lands, since the strip's
+    // identity copy that stands in for it is a fifth as wide.
+    let running = model.as_ref().and_then(|model| {
+        let game = &model.0;
+        game.trail.as_ref().filter(|trail| !trail.ended())?;
+        let id = game.view.as_ref()?.runner.identity.as_ref()?;
+        core.registry.get(id)?.numeric_id
     });
-    match &bar.note {
-        Some(note) => {
-            parent.spawn((Text::new(note.clone()), theme.font(size::SMALL), TextColor(theme.accent)));
+    if let Some(code) = running {
+        let size = FaceSize::Board(RUN_ART_WIDTH as u16);
+        match images.face(code, size) {
+            Some(sharp) => {
+                if drawn.iter().any(|art| art.0 != sharp) {
+                    dirty.side = true;
+                }
+            }
+            None => {
+                if let netrunner_card_sync::ImageStatus::Cached(path) = core.images.status(code) {
+                    images.request(code, size, path);
+                }
+            }
         }
-        // A line only when a window is open, and a blank one to hold the
-        // row's height when it is not, so the bar never changes the board.
-        None => {
-            parent.spawn((Text::new(" "), theme.font(size::SMALL), TextColor(theme.text_dim)));
+    }
+    if !(dirty.board || dirty.lane || dirty.side) {
+        return;
+    }
+    dirty.side = false;
+    let Some(model) = model else { return };
+    let game = &model.0;
+    for mut text in &mut status {
+        text.0 = status_line(game);
+    }
+    let shown = core.settings.desktop.phase_bar;
+    for (entity, mut node) in &mut phase {
+        node.display = if shown { Display::Flex } else { Display::None };
+        let mut panel = commands.entity(entity);
+        panel.despawn_children();
+        if shown {
+            panel.with_children(|parent| fill_phase_bar(parent, &theme, game));
         }
+    }
+    for entity in &run {
+        commands.entity(entity).despawn_children().with_children(|parent| fill_run_identity(parent, &theme, &core, &images, assets.as_deref(), game));
     }
 }
 

@@ -37,8 +37,9 @@
 //!   or onto a place the board lit for it, which plays it there — the one
 //!   gesture on the board that submits;
 //!   a key (`models::shortcuts`, listed on `?`) presses one of those
-//!   buttons, never anything else; the phase bar along the bottom says
-//!   where the turn and any run are (`board::phase`, toggled with L); the basic actions are a fixed,
+//!   buttons, never anything else; the phase panel in the right column
+//!   says where the turn and any run are (`board::phase`, toggled with L),
+//!   and during a run the Runner's identity appears under it; the basic actions are a fixed,
 //!   greyable control bar above the hand and the prompt's decisions sit under the
 //!   prompt, so every legal action is reachable without the flat panel,
 //!   which is an aid a person turns on.
