@@ -2944,7 +2944,7 @@ zero size. No engine file changed, so no sweep.
 
 ### 4aa. The rig is three rows, programs next to the ICE, and the heap opens on a click — DONE (19 September 2026)
 
-`feat/rig-rows-and-open-heap`, the first item of §5 (borrowed from
+`feat/rig-rows-and-open-heap`, the first item of §8 (borrowed from
 jinteki.net). The person pointed out that a real table lays a rig out
 in three rows. The board drew one row of three side-by-side groups.
 
@@ -3001,7 +3001,7 @@ changed, so no sweep.
 
 ### 4ab. A piece of ICE is broken with one press, at the price on the button — DONE (19 September 2026)
 
-`feat/auto-pump-and-break`, item 2 of §5. Getting through a piece of ICE
+`feat/auto-pump-and-break`, item 2 of §8. Getting through a piece of ICE
 used to take one press per pump and per break, each from the breaker's
 own menu, with no total shown until the credits were gone. Mid-encounter
 the right column now lists one route for each card that can break
@@ -3069,17 +3069,124 @@ no ICE by turn 8. The hook stays, since it is how the shot gets taken
 once a seeded dev game exists. Until then the look of the rail is
 unverified, and the first hand-played encounter is the check.
 
-## 5. Borrowed from jinteki — OPEN (19 September 2026)
+### 4ac. Broken and fired subroutines are marked where the encounter is decided — DONE (19 September 2026)
+
+`feat/subroutines-on-the-ice`, item 3 of §8. §4ab made a piece of ICE
+one press to get through; it did not make the result visible. The state
+of an encounter — which subroutine is broken, which has fired, which is
+still waiting — was only in the ICE's sheet, a click away and a click
+back, or in the log. The right column now carries it: the ICE being
+encountered, its strength, and a line per subroutine marked `[x]`
+broken, `[!]` fired or `[ ]` pending, directly above the routes that
+change it. The terminal clients, local and remote, list the same lines
+under the ICE in the run block, with a broken one genuinely struck
+through (`Modifier::CROSSED_OUT`).
+
+**The words come off the view, not the registry.**
+`netrunner_client::board::facts::encounter_subroutines` reads
+`PublicRunIceIdentity::subroutines`, which carries the run's own
+`SubroutineDef` and its `SubroutineStatus`. That is the copy the engine
+is resolving, so a subroutine a card *added* to the ICE is listed and
+one it removed is not — the registry's printed list would be wrong in
+both cases. It also needs no masking rule of its own: `mask_run_ice`
+already gives the identity only to the Corp or on a rezzed ICE, so a
+derezzed ICE mid-encounter tells the Runner nothing, which is tested.
+
+**`EncounterIce` only, not the approach.** Nothing has happened to a
+subroutine at the approach, so the list would be a second copy of the
+card's text with nothing to mark; the encounter is also exactly the
+window `breaks::routes` offers a route in, so the marks and the buttons
+that change them appear and disappear together.
+
+**Not gated on `awaiting`**, unlike the glow and the routes, and the
+Corp screenshot is why: Brân 1.0's first subroutine fires, the Corp is
+asked where to install, and both sides want to see `[!]` against that
+clause while the question is open. The marks are something to read, not
+something to press.
+
+**The marks are one vocabulary across three surfaces.** `subroutine_word`
+gives "broken", "fired", "pending" and `install_facts`' sheet lines now
+call it too, so the sheet and the board cannot drift apart — a test over
+real games asserts the two produce the same strings for the encountered
+ICE. The desktop uses the terminal's `[x]`/`[!]`/`[ ]` characters rather
+than a tick glyph, for two reasons: the bundled Noto fallback is not
+guaranteed to carry one, and a person moving between the clients should
+not have to learn the marks twice. Colour is what the desktop adds.
+
+**A pip per subroutine on the ICE tile was the other candidate and was
+rejected.** The run lane already draws exactly that — a dot per
+subroutine in these three colours, on the chip for each piece of ICE —
+so a tile pip would be the same fact a third time and still not say
+*which* subroutine. The words were what was missing, and they need a
+column's width. The tiles are untouched, so no card moved.
+
+**A dev hook was needed to see it at all, and that is the debt §4ab
+recorded.** `NETRUNNER_HOLD_RUN` stops the *pacer*, which holds the
+beats before the view has caught up — so the rail is still on the
+previous decision — and it counts an undefended server's approach as an
+encounter, which the sample Corps' first run very often is (the first
+attempt here shot a run on an empty Archives at turn 2). `NETRUNNER_HOLD_ICE=1`
+holds the *autoplay* on the settled view the way `NETRUNNER_HOLD_BREAK`
+does, but without needing a rig that can break the whole piece — which
+is what defeated §4ab's two attempts at 600 and 2,000 decisions.
+
+**Verified.** `cargo test --workspace` green and clippy silent. New
+tests:
+- three in `board::facts`: the three marks in the subroutines' own order
+  against the clauses Brân 1.0 prints, from both chairs; a derezzed ICE
+  and every non-encounter phase giving nothing to the Runner while the
+  Corp still reads its own card; and, over real games at six seeds, the
+  board's marks and the sheet's lines agreeing string for string
+- the desktop model test now reads `Game::encounter` before and after
+  the route runs: `("End the run.", "pending")` then `("End the run.",
+  "broken")`
+- the terminal test renders the board at the same two moments and finds
+  `[ ] End the run` then `[x] End the run`
+
+**There is no headless test of the desktop rail's own drawing**, and the
+reason is worth writing down rather than rediscovering: `redraw` is
+gated on the private `Dirty` resource, so an integration test in
+`tests/game.rs` cannot make the rail respawn without a real match
+played into an encounter against a live bot. That is why the marks are
+computed on `Game` — `Game::encounter`, a reading of the view, not a
+field — where the model test can reach them, and why the drawing is
+verified by screenshot. Marker components were written for a test to
+find and then removed unused rather than left as a comment that lies.
+
+Screenshotted at 2560×1600 from both chairs, at a real encounter under
+`NETRUNNER_HOLD_ICE`. The Runner's chair: Brân 1.0 at strength 6 on
+Archives with all three subroutines `[ ]`. The Corp's chair: the same
+ICE on HQ with its first subroutine `[!]` in red, the install choice it
+fired open in the pop-up, and the lane's first dot filled to match. The
+only `scroll area` logged in either is the hidden log's, at zero size.
+**`[x]` is the one mark not shot in the desktop** — it needs a break to
+land while still encountering, which no hook stops at; the terminal
+render test and the desktop model test both cover it, so what is
+unverified is the dim colour, not the mark. No engine file changed, so
+no sweep.
+
+## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
-order they would matter to a person playing. Each follows the §5 client
+order they would matter to a person playing.
+
+**This list was numbered §5 when it was written on 19 September 2026, and
+that was a collision.** §5, §6 and §7 were reserved for the deck builder,
+lessons and replay, and online in this file's own header, which says in
+as many words that they keep their addresses however long §4's alphabet
+runs — so "Phase 7 §5" resolved to two different things for a day.
+Renumbered to §8 on 19 September 2026, the next free address. **§4aa and
+§4ab, and the commit messages and PR bodies of #81 and #82, say "item 1
+of §5" and "item 2 of §5" and mean items 1 and 2 of this list**; those
+are published and are not being rewritten. Nothing else ever cited it. Each follows the §5 client
 rules in `AGENTS.md`: every one is a door to legal actions that already
 exist, never a new action.
 
 1. ~~**The rig in three rows**, programs nearest the ICE.~~ Done in §4aa.
 2. ~~**Auto-pump and break**, with the price on the button.~~ Done in
    §4ab.
-3. **Broken and fired subroutines marked on the encountered ICE.**
+3. ~~**Broken and fired subroutines marked on the encountered ICE.**~~
+   Done in §4ac.
 4. **Undo a click or a turn, in local unrated games only.** State is a
    value and the history is kept, so this is cheap here.
 5. **A replay viewer over `MatchHistory`**, with notes.

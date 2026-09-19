@@ -3,7 +3,8 @@
 //! between one view and the next (`diff`), a run as a trail of steps
 //! read off the entry's own events, one beat at a time (`trail`), and
 //! the words for an install's state — rezzed, advanced, hosting — as a
-//! tile carries them and as its sheet lists them (`facts`), and the
+//! tile carries them and as its sheet lists them, and the state of an
+//! encounter as marks on its subroutines (`facts`), and the
 //! numbers a HUD keeps in fixed places (`hud`), and the rig's three rows
 //! in the order the chair sees them (`rig`), and every card's way through
 //! the encountered ICE with its price (`breaks`). All of
@@ -25,6 +26,6 @@ pub use action_map::{table_servers, ActionEntry, ActionMap, Control, Pile, Promp
 pub use affordance::Affordance;
 pub use breaks::{routes, AutoBreak, Next, Route};
 pub use diff::{transitions, Transition, Zone};
-pub use facts::{install_facts, tile_label, tile_title, tile_tokens, Token, TokenKind};
+pub use facts::{encounter_subroutines, install_facts, subroutine_word, tile_label, tile_title, tile_tokens, Encounter, Subroutine, Token, TokenKind};
 pub use rig::RigRow;
 pub use trail::{IceState, IceStep, Outcome, RunTrail, Stage};

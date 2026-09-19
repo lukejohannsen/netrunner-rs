@@ -13,6 +13,13 @@
 //! the masked view only, so a face-down card the viewer cannot name is
 //! "face down" with its tokens, never its title.
 //!
+//! **An encounter is the one state a sheet is too slow for**, because
+//! it is the state a person is deciding in. So it is written a third
+//! way: [`encounter_subroutines`] gives the ice being encountered with
+//! every subroutine marked broken, fired or pending, for a client to
+//! put where the person is already looking. All three readings share
+//! one vocabulary ([`subroutine_word`]).
+//!
 //! **Why here and not in the desktop crate:** the words are the same
 //! for any client, and a rule about which facts a viewer may be told
 //! belongs beside the other board words, tested over real views.
@@ -51,6 +58,81 @@ fn encounter(view: &ClientView, id: InstallId) -> Option<(i32, Vec<SubroutineSta
     let identity = piece.identity.as_ref()?;
     let at = i == run.position && matches!(run.phase, RunPhase::ApproachIce | RunPhase::EncounterIce);
     Some((identity.current_strength, identity.subroutines.iter().map(|s| s.status).collect(), at))
+}
+
+/// One subroutine of the ice a run is at: the clause the card prints and
+/// what has become of it this encounter.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Subroutine {
+    /// `SubroutineDef::text` — the printed clause, which the Linked
+    /// Clause Rule requires a subroutine to carry, read off the view's
+    /// own copy rather than the registry's. The run's copy is the one
+    /// the engine is resolving, so a subroutine a card *added* to the
+    /// ice is listed and one it removed is not.
+    pub text: String,
+    pub status: SubroutineStatus,
+}
+
+impl Subroutine {
+    /// This subroutine's [`subroutine_word`].
+    pub fn word(&self) -> &'static str {
+        subroutine_word(self.status)
+    }
+}
+
+/// The word for what has become of a subroutine. The one vocabulary:
+/// the board's marks and [`install_facts`]'s sheet lines both say it, so
+/// a person reads "broken" in the same sense wherever they look.
+pub fn subroutine_word(status: SubroutineStatus) -> &'static str {
+    match status {
+        SubroutineStatus::Broken => "broken",
+        SubroutineStatus::Resolved => "fired",
+        SubroutineStatus::Pending => "pending",
+    }
+}
+
+/// The ice a run is encountering and the state of its subroutines.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Encounter {
+    pub install: InstallId,
+    /// The ice, when the viewer may name it. A client with no name says
+    /// "Ice"; it never reaches around this for one.
+    pub card: Option<CardId>,
+    /// Its strength as the encounter has it, not as printed.
+    pub strength: i32,
+    /// In the order the subroutines resolve.
+    pub subroutines: Vec<Subroutine>,
+}
+
+/// The ice the run is encountering, with each subroutine marked broken,
+/// fired or still pending — the state of an encounter, so it can be read
+/// off the board instead of out of the log.
+///
+/// **`RunPhase::EncounterIce` only, not the approach.** Nothing has
+/// happened to a subroutine at the approach, so there is nothing to mark
+/// and the list would be a second copy of the card's text; the
+/// encounter is also exactly the window `breaks::routes` offers a route
+/// in, so in a client the marks and the buttons that change them appear
+/// and disappear together. `None` outside one, and for an ice whose face
+/// the viewer may not see — an unrezzed ice reveals nothing, subroutines
+/// included (`masking::mask_run_ice`).
+pub fn encounter_subroutines(view: &ClientView) -> Option<Encounter> {
+    let run = view.active_run.as_ref()?;
+    if run.phase != RunPhase::EncounterIce {
+        return None;
+    }
+    let ice = run.ice.get(run.position)?;
+    let identity = ice.identity.as_ref()?;
+    Some(Encounter {
+        install: ice.install_id,
+        card: Some(identity.card.clone()),
+        strength: identity.current_strength,
+        subroutines: identity
+            .subroutines
+            .iter()
+            .map(|sub| Subroutine { text: sub.definition.text.clone(), status: sub.status })
+            .collect(),
+    })
 }
 
 fn counter_word(kind: Option<CounterKind>, n: u32) -> String {
@@ -218,10 +300,8 @@ pub fn install_facts(view: &ClientView, id: InstallId, registry: &CardRegistry) 
                     let statuses = encounter(view, id).map(|(_, subs, at)| (subs, at));
                     for (i, sub) in def.subroutines.iter().enumerate() {
                         let status = match statuses.as_ref().and_then(|(subs, at)| at.then(|| subs.get(i)).flatten()) {
-                            Some(SubroutineStatus::Broken) => " — broken",
-                            Some(SubroutineStatus::Resolved) => " — fired",
-                            Some(SubroutineStatus::Pending) => " — pending",
-                            None => "",
+                            Some(status) => format!(" — {}", subroutine_word(*status)),
+                            None => String::new(),
                         };
                         lines.push(format!("» {}{status}", sub.text));
                     }
@@ -368,5 +448,136 @@ mod tests {
         assert!(hidden > 50, "{hidden} hidden installs seen from the other chair");
         assert!(encountered > 0, "an ice was met in a run");
         assert!(agendas > 0, "an agenda was installed");
+    }
+
+    /// A mid-encounter state: `ice` rezzed on HQ and being encountered,
+    /// with `statuses` already on its subroutines.
+    fn encountering(registry: &CardRegistry, ice: &str, statuses: &[SubroutineStatus]) -> GameState {
+        use netrunner_core::dsl::CardType;
+        use netrunner_core::rules::{EncounteredSubroutine, InstalledCard, RunIce, RunState, ServerId};
+
+        let mut state = GameState::new(1);
+        let definition = registry.get(&CardId(ice.to_string())).expect("ICE in the pool");
+        let CardType::Ice(ice_type) = definition.card_type else { panic!("{ice} is not ICE") };
+        let install_id = InstallId(1);
+        state.corp.installed.push(InstalledCard {
+            install_id,
+            card: definition.id.clone(),
+            server: ServerId::Hq,
+            slot: InstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        });
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce {
+                card_id: definition.id.clone(),
+                install_id,
+                current_strength: definition.strength.unwrap_or(0),
+                ice_type,
+                subroutines: definition
+                    .subroutines
+                    .iter()
+                    .enumerate()
+                    .map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: statuses.get(id).copied().unwrap_or(SubroutineStatus::Pending) })
+                    .collect(),
+                rezzed: true,
+            }],
+            position: 0,
+            ..Default::default()
+        });
+        state
+    }
+
+    /// The marks are the three states, in the subroutines' own order,
+    /// against the clauses the card prints.
+    #[test]
+    fn the_encountered_ice_carries_a_mark_on_every_subroutine() {
+        use netrunner_core::view::build_client_view;
+
+        let registry: CardRegistry = crate::decks::sample_deck_registry();
+        // Three subroutines, so all three marks fit on one piece of ICE.
+        let statuses = [SubroutineStatus::Broken, SubroutineStatus::Resolved, SubroutineStatus::Pending];
+        let state = encountering(&registry, "bran_1_0", &statuses);
+        let printed = &registry.get(&CardId("bran_1_0".into())).unwrap().subroutines;
+        assert_eq!(printed.len(), 3, "the fixture wants an ice with three subroutines");
+
+        for side in [Side::Corp, Side::Runner] {
+            let view = build_client_view(&state, &registry, side);
+            let met = encounter_subroutines(&view).expect("the run is encountering a rezzed ice");
+            assert_eq!(met.install, InstallId(1));
+            assert_eq!(met.card, Some(CardId("bran_1_0".into())), "a rezzed ice is named to both chairs");
+            assert_eq!(met.subroutines.iter().map(|sub| sub.text.clone()).collect::<Vec<_>>(), printed.iter().map(|sub| sub.text.clone()).collect::<Vec<_>>());
+            assert_eq!(met.subroutines.iter().map(Subroutine::word).collect::<Vec<_>>(), ["broken", "fired", "pending"], "{side:?}");
+        }
+    }
+
+    /// The ice's face is the gate, not the run: a derezzed ice mid-
+    /// encounter tells the Runner nothing, while the Corp still reads
+    /// its own card. Outside an encounter there is nothing to mark —
+    /// the approach included, which is where the routes stop too.
+    #[test]
+    fn an_ice_the_viewer_cannot_see_is_not_marked_and_nor_is_an_approach() {
+        use netrunner_core::view::build_client_view;
+
+        let registry: CardRegistry = crate::decks::sample_deck_registry();
+        let mut state = encountering(&registry, "bran_1_0", &[]);
+        assert!(encounter_subroutines(&build_client_view(&state, &registry, Side::Runner)).is_some());
+
+        for phase in [RunPhase::ApproachIce, RunPhase::AccessingCard, RunPhase::Success] {
+            state.active_run.as_mut().unwrap().phase = phase;
+            assert_eq!(encounter_subroutines(&build_client_view(&state, &registry, Side::Runner)), None, "{phase:?}");
+        }
+        state.active_run.as_mut().unwrap().phase = RunPhase::EncounterIce;
+
+        state.active_run.as_mut().unwrap().ice[0].rezzed = false;
+        state.corp.installed[0].rezzed = false;
+        assert_eq!(encounter_subroutines(&build_client_view(&state, &registry, Side::Runner)), None, "a derezzed ice reveals nothing");
+        assert!(encounter_subroutines(&build_client_view(&state, &registry, Side::Corp)).is_some(), "the Corp reads its own card");
+
+        state.active_run = None;
+        assert_eq!(encounter_subroutines(&build_client_view(&state, &registry, Side::Runner)), None, "no run, no marks");
+    }
+
+    /// Real games: whenever a view is mid-encounter, the marks are the
+    /// same words the sheet lists for that ice — one vocabulary, so a
+    /// person reads "broken" in one sense wherever they look.
+    #[test]
+    fn the_marks_and_the_sheet_say_the_same_words() {
+        let mut marked = 0;
+        for seed in 0..6u64 {
+            let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
+            let registry: CardRegistry = crate::decks::sample_deck_registry();
+            let (state, _) = GameState::setup(&corp_deck.to_deck(), &runner_deck.to_deck(), &registry, seed).unwrap();
+            let mut session = Session::new(state, registry.clone(), Seat::External, Seat::External);
+            let mut corp = HeuristicAgent::new(Side::Corp, seed);
+            let mut runner = RandomAgent::new(seed + 7);
+            loop {
+                match session.step() {
+                    SessionStep::Awaiting { side, view } => {
+                        let action = match side {
+                            Side::Corp => corp.select_action(&view, &registry),
+                            Side::Runner => runner.select_action(&view, &registry),
+                        };
+                        session.submit(action).unwrap();
+                        for viewer in [Viewer::Player(Side::Corp), Viewer::Player(Side::Runner)] {
+                            let view = session.view_for(viewer);
+                            let Some(met) = encounter_subroutines(&view) else { continue };
+                            marked += 1;
+                            let facts = install_facts(&view, met.install, &registry).expect("the encountered ice is on the board");
+                            let lines: Vec<String> = facts.iter().filter(|line| line.starts_with("» ")).cloned().collect();
+                            let marks: Vec<String> = met.subroutines.iter().map(|sub| format!("» {} — {}", sub.text, sub.word())).collect();
+                            assert_eq!(lines, marks, "{viewer:?}: the board and the sheet disagree");
+                            assert!(facts.iter().any(|line| line.starts_with(&format!("Strength {}", met.strength))), "{facts:?}");
+                        }
+                    }
+                    SessionStep::Applied { .. } => {}
+                    SessionStep::Ended { .. } => break,
+                    SessionStep::Stalled(reason) => panic!("seed {seed}: {reason:?}"),
+                }
+            }
+        }
+        assert!(marked > 0, "an encounter was marked");
     }
 }

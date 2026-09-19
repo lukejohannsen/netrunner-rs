@@ -19,7 +19,7 @@ use netrunner_core::dsl::{CardId, CounterKind};
 use netrunner_bots::Personality;
 use netrunner_core::rules::Viewer;
 use netrunner_core::rules::{
-    get_action_mask, ActionSpace, DeckOrder, GamePhase, GameState, PlayerAction, RunPhase, ServerId, Side,
+    get_action_mask, ActionSpace, DeckOrder, GamePhase, GameState, PlayerAction, RunPhase, ServerId, Side, SubroutineStatus,
 };
 use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
@@ -1182,9 +1182,7 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     if let Some(run) = &view.active_run {
         corp_lines.push(Line::from(""));
         corp_lines.push(run_phase_strip(run.phase));
-        for line in format_run(run, app.registry()) {
-            corp_lines.push(Line::from(line));
-        }
+        corp_lines.extend(format_run(view, run, app.registry()));
     }
     frame.render_widget(
         Paragraph::new(corp_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(corp_title)),
@@ -1339,14 +1337,34 @@ fn run_phase_strip(phase: RunPhase) -> Line<'static> {
     Line::from(spans)
 }
 
-fn format_run(run: &netrunner_core::rules::PublicRunState, registry: &CardRegistry) -> Vec<String> {
-    let mut lines = vec![format!("Run on {} (ICE {}/{})", server_label(run.server), run.position, run.ice.len())];
+/// The run as lines: the server and how far in, then each piece of ice
+/// with the one being met marked — and, while it is being encountered,
+/// its subroutines under it, each struck through when broken, red when
+/// it has fired, plain while it is still pending
+/// (`board::facts::encounter_subroutines`). The marks are here rather
+/// than a keypress away in the card sheet because an encounter is
+/// decided in, not read about afterwards.
+fn format_run(view: &ClientView, run: &netrunner_core::rules::PublicRunState, registry: &CardRegistry) -> Vec<Line<'static>> {
+    let mut lines = vec![Line::from(format!("Run on {} (ICE {}/{})", server_label(run.server), run.position, run.ice.len()))];
+    let met = netrunner_client::board::encounter_subroutines(view);
     for (index, ice) in run.ice.iter().enumerate() {
         let marker = if index == run.position { ">" } else { " " };
         let rez = if ice.rezzed { "rezzed" } else { "unrezzed" };
         match &ice.identity {
-            Some(identity) => lines.push(format!("{marker} {} [{rez}, str {}]", card_title(&identity.card, registry), identity.current_strength)),
-            None => lines.push(format!("{marker} ??? [{rez}]")),
+            Some(identity) => lines.push(Line::from(format!("{marker} {} [{rez}, str {}]", card_title(&identity.card, registry), identity.current_strength))),
+            None => lines.push(Line::from(format!("{marker} ??? [{rez}]"))),
+        }
+        let Some(met) = met.as_ref().filter(|met| met.install == ice.install_id) else { continue };
+        for sub in &met.subroutines {
+            let (style, mark) = match sub.status {
+                SubroutineStatus::Broken => (Style::default().fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT), "x"),
+                SubroutineStatus::Resolved => (Style::default().fg(Color::Red), "!"),
+                SubroutineStatus::Pending => (Style::default(), " "),
+            };
+            lines.push(Line::from(vec![
+                Span::raw(format!("    [{mark}] ")),
+                Span::styled(sub.text.clone(), style),
+            ]));
         }
     }
     lines
@@ -2007,8 +2025,22 @@ mod tests {
             return_phase: Box::new(GamePhase::Action(Side::Runner)),
         });
 
+        // The board itself says the state of the encounter: the wall's
+        // subroutine is listed under it, unticked, before anything is
+        // broken.
+        let board = |ui: &LocalUiState| -> String {
+            let mut terminal = Terminal::new(TestBackend::new(160, 50)).unwrap();
+            terminal.draw(|frame| draw_frame(frame, ui, None)).unwrap();
+            let buffer = terminal.backend().buffer();
+            (0..buffer.area.height)
+                .map(|y| (0..buffer.area.width).map(|x| buffer[(x, y)].symbol().to_string()).collect::<String>())
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
         let mut ui = LocalUiState::new(registry.clone(), Side::Runner);
         ui.begin_decision(build_client_view(&state, &registry, Side::Runner));
+        assert!(board(&ui).contains("[ ] End the run"), "the pending subroutine is on the board:\n{}", board(&ui));
         let labels = ui.legal_action_labels();
         assert_eq!(labels.last().map(String::as_str), Some("Break Wall of Static with Corroder · 2 credits"));
         ui.selected = labels.len() - 1;
@@ -2024,5 +2056,10 @@ mod tests {
         let view = build_client_view(&state, &registry, Side::Runner);
         assert_eq!(ui.continue_break(&view), Ok(None), "done");
         assert!(ui.breaking.is_none());
+
+        // And once the route has run, the same line is ticked — the
+        // state of the encounter read off the board, not the log.
+        ui.begin_decision(view);
+        assert!(board(&ui).contains("[x] End the run"), "the broken subroutine is ticked:\n{}", board(&ui));
     }
 }

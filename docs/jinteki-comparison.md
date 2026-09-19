@@ -9,7 +9,7 @@ licensed and netrunner-rs is GPL-3.0-or-later; what we take from it is ideas,
 and any idea taken is written fresh in this codebase's own terms.
 
 This file is a finding, not a status page. The gaps it names are tracked as
-open items in `ROADMAP.md` (Rules Audit, *jinteki comparison*; Phase 7 §5),
+open items in `ROADMAP.md` (Rules Audit, *jinteki comparison*; Phase 7 §8),
 which point back here.
 
 jinteki paths are relative to its repository root; ours to this one.

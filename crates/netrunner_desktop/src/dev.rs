@@ -46,6 +46,15 @@
 //!   meet) and the autoplay counts as done, so the
 //!   screenshot catches a run in flight: the lane, its chips, the line
 //!   to the server.
+//! - `NETRUNNER_HOLD_ICE=1` — stop the autoplay at the first encounter
+//!   the person is asked anything in, so the screenshot catches the
+//!   marks on the ice's subroutines. **Not `HOLD_RUN` narrowed**: that
+//!   one holds the *pace*, which stops the beats before the view has
+//!   caught up, so the rail is still on the previous decision — and it
+//!   counts an undefended server's approach as an encounter, which the
+//!   sample Corps' first run very often is. This one holds the autoplay
+//!   on the settled view, the way `HOLD_BREAK` does, without needing a
+//!   rig that can break the whole piece.
 //! - `NETRUNNER_HOLD_SELECTION=1` — on the board, the autoplay stops at
 //!   the first card-selection prompt the person is asked, so the
 //!   screenshot catches the pop-up's buttons naming the cards.
@@ -120,6 +129,9 @@ pub struct Dev {
     pub lift: bool,
     /// Hold a run at its first encounter for the screenshot.
     pub hold_run: bool,
+    /// Stop the autoplay at the first encounter the person is asked
+    /// anything in, whether or not their rig can break it.
+    pub hold_ice: bool,
     /// Stop the autoplay at the first card-selection prompt.
     pub hold_selection: bool,
     /// Stop the autoplay at the first "where to install" a card asks.
@@ -169,6 +181,7 @@ impl Dev {
             menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
             lift: std::env::var_os("NETRUNNER_LIFT").is_some_and(|v| !v.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
+            hold_ice: std::env::var_os("NETRUNNER_HOLD_ICE").is_some_and(|v| !v.is_empty()),
             hold_selection: std::env::var_os("NETRUNNER_HOLD_SELECTION").is_some_and(|v| !v.is_empty()),
             hold_install: std::env::var_os("NETRUNNER_HOLD_INSTALL").is_some_and(|v| !v.is_empty()),
             hold_access: std::env::var_os("NETRUNNER_HOLD_ACCESS").is_some_and(|v| !v.is_empty()),
