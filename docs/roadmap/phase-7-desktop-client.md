@@ -2941,3 +2941,28 @@ was screenshotted with `NETRUNNER_HOLD_RUN=1`, under a scratch
 settings have it off. The backs touch the top edge, the hand touches
 the bottom, and the only `scroll area` logged is the hidden log's, at
 zero size. No engine file changed, so no sweep.
+
+## 5. Borrowed from jinteki — OPEN (19 September 2026)
+
+From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
+order they would matter to a person playing. Each follows the §5 client
+rules in `AGENTS.md`: every one is a door to legal actions that already
+exist, never a new action.
+
+1. **The rig in three rows**, programs nearest the ICE. Taken up in §4aa.
+2. **Auto-pump and break:** one button that submits the pumps and the
+   breaks as a sequence, each chosen from `legal_actions`, and shows the
+   price before it is pressed.
+3. **Broken and fired subroutines marked on the encountered ICE.**
+4. **Undo a click or a turn, in local unrated games only.** State is a
+   value and the history is kept, so this is cheap here.
+5. **A replay viewer over `MatchHistory`**, with notes.
+6. **The Corp's run auto-pass toggle.**
+7. **Space as the one "continue" key.**
+8. **Ghost Trojans in the program row.**
+9. **Identical rig cards stacked** with a count.
+10. **Run and turn timing diagrams.**
+11. **A spectator seat.**
+
+Not borrowed, with the reasons in the doc: slash commands that edit state,
+and diffs on the wire.
