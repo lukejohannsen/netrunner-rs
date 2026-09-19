@@ -29,8 +29,11 @@
 //! the Runner once saw the row mirrored, remotes first, and every remote
 //! the Corp made moved the three centrals a column over; the person asked
 //! for them to stay put, so a Runner reads the Corp's own order too. The Runner's installed cards have no position in the
-//! rules ("does not matter" — the learn-to-play guide), so the rig
-//! keeps its three groups in the one order for both chairs.
+//! rules ("does not matter" — the learn-to-play guide), but the table
+//! gives them one: programs, hardware and resources each in their own
+//! row, programs the row nearest the ICE they break
+//! (`netrunner_client::board::rig::rows_top_down`),
+//! which is how a real table and jinteki.net both lay a rig out.
 //!
 //! **A server column is a plate and a stack of tiles.** The plate — the
 //! server's name and count, and the box its picture goes in — sits on
@@ -46,7 +49,7 @@
 //! whatever height the fixed rows leave ([`field_height`]); a tile is as
 //! tall as its share of it allows and overlaps past a floor
 //! ([`tile_stack`]), so the Corp's ICE and the Runner's installs never
-//! move a card: the rig's row is reserved empty or not. From the Corp's
+//! move a card: the rig's rows are reserved empty or not. From the Corp's
 //! chair the plates are at the bottom, next to the Corp, and the ICE
 //! climbs; from the Runner's they are at the top and it comes down.
 //!
@@ -105,8 +108,8 @@ pub fn ice_top_down<T>(ice: &[T], chair: Side) -> Vec<&T> {
 /// and whether the rig is empty were once counts too, so the Corp's
 /// third ICE or the Runner's first install shrank every card on the
 /// board and redrew it — the middle of the table moved whenever the
-/// opponent did anything. Now the rig's row is reserved whether or not
-/// anything is in it, and the ICE grows into the flexible field between
+/// opponent did anything. Now the rig's rows are reserved whether or not
+/// anything is in them, and the ICE grows into the flexible field between
 /// the server plates and the run lane ([`tile_stack`]), so the face
 /// width is a function of the window, the chair and the servers alone.
 /// A new remote can still narrow the cards, because server columns cannot
@@ -179,11 +182,13 @@ pub const RUN_LANE: f32 = 64.0;
 /// [`face_width`]'s binary search; the per-row ramp §4m rejected was not
 /// (see [`Depth`]).
 pub const OPPONENT_SCALE: f32 = 0.75;
-/// How much of a card in a hand shows: its top third for the person's
-/// own (a hovered one lifts out whole), the bottom third of a back for
-/// the opponent's. A hand is a fan held at the table's edge, and the
-/// two hands were a full card each — the largest thing on the board and
-/// the least looked at.
+/// How much of a card in a hand or a rig row shows: its top third for
+/// the person's own hand (a hovered one lifts out whole) and for every
+/// rig card, the bottom third of a back for the opponent's hand. A hand
+/// is a fan held at the table's edge, and the two hands were a full card
+/// each — the largest thing on the board and the least looked at. The
+/// rig's three rows are three peeks for the same reason: three whole
+/// rows did not fit a laptop's board ([`rig_row_height`]).
 pub const PEEK: f32 = 1.0 / 3.0;
 /// The identity in a strip is drawn at this fraction of its side's face
 /// width.
@@ -223,8 +228,15 @@ pub const STRIP_TEXT: f32 = 480.0;
 /// which is the thing that must not happen.
 pub const STRIP_CORP: f32 = 84.0;
 pub const STRIP_RUNNER: f32 = 120.0;
-/// The rig's group label.
-pub const GROUP_LABEL: f32 = 22.0;
+/// The rig's three rows, each the top [`PEEK`] of its cards over their
+/// chip line, with [`RIG_ROW_GAP`] between them.
+pub const RIG_ROWS: usize = 3;
+
+pub const RIG_ROW_GAP: f32 = 4.0;
+/// The column of row labels at the rig's left ("Programs", "Hardware",
+/// "Resources"), on the row rather than over it, so a label costs the
+/// rig width, which it has, rather than height, which it does not.
+pub const RIG_LABEL_WIDTH: f32 = 84.0;
 
 /// The width the board column has: the window less the padding, the
 /// rail and the gap.
@@ -262,10 +274,25 @@ pub fn strip_height(side: Side, side_face: f32) -> f32 {
     peek.max(identity).max(text)
 }
 
-/// The rig's row: its label, a group label, a card and its chip line —
-/// reserved whether or not anything is installed.
+/// One rig row: the top [`PEEK`] of a card at its side's face width, and
+/// the chip line under it. Measured before choosing (5 servers, the
+/// Runner's chair): three rows of whole cards at half the width took the
+/// face at 1366×768 from 119 px to 85 and left a rig card 42 px wide;
+/// three peeked rows at the full width cost the face nothing — 220 at
+/// 1920×1080 and 119 at 1366×768, as the one row did — because a peek
+/// of three is the height of one card. The title and cost are the top
+/// of a card; the strength and the counters are the chip line; the rest
+/// is the sheet's.
+pub fn rig_row_height(rig_face: f32) -> f32 {
+    (PEEK * 1.4 * rig_face).round() + CHIPS
+}
+
+/// The rig: its three rows and the gaps between them — every row
+/// reserved whether or not anything is installed in it, so the first
+/// program, the first piece of hardware or the first resource moves no
+/// card.
 pub fn rig_height(rig_face: f32) -> f32 {
-    LABEL + GROUP_LABEL + 1.4 * rig_face + CHIPS
+    RIG_ROWS as f32 * rig_row_height(rig_face) + (RIG_ROWS - 1) as f32 * RIG_ROW_GAP
 }
 
 /// Everything on the board but the ICE field, at face width `face`: the
@@ -522,6 +549,25 @@ mod tests {
         let ice = ["outer", "middle", "inner"];
         assert_eq!(ice_top_down(&ice, Side::Corp), [&"outer", &"middle", &"inner"]);
         assert_eq!(ice_top_down(&ice, Side::Runner), [&"inner", &"middle", &"outer"]);
+    }
+
+    /// Three peeked rows cost the board no more than the one row of whole
+    /// cards they replaced, so splitting the rig shrank no card: at most
+    /// one row gap and one chip line more than a card, at any width.
+    #[test]
+    fn three_peeked_rig_rows_are_about_one_card_tall() {
+        for face in [MIN_FACE, 119.0, 165.0, MAX_FACE] {
+            let one_row_of_whole_cards = 1.4 * face + CHIPS;
+            let rig = rig_height(face);
+            assert!(rig >= 1.4 * face, "{face}: {rig}");
+            assert!(rig <= one_row_of_whole_cards + 2.0 * CHIPS + 2.0 * RIG_ROW_GAP + 2.0, "{face}: {rig}");
+        }
+        // And it never falls as the face grows, which `face_width`'s
+        // search needs.
+        for face in MIN_FACE as u32..MAX_FACE as u32 {
+            assert!(rig_height(face as f32) <= rig_height(face as f32 + 1.0), "{face}");
+        }
+        assert!(rig_height(MIN_FACE) < rig_height(MAX_FACE));
     }
 
     #[test]

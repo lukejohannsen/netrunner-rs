@@ -2942,6 +2942,63 @@ settings have it off. The backs touch the top edge, the hand touches
 the bottom, and the only `scroll area` logged is the hidden log's, at
 zero size. No engine file changed, so no sweep.
 
+### 4aa. The rig is three rows, programs next to the ICE, and the heap opens on a click — DONE (19 September 2026)
+
+`feat/rig-rows-and-open-heap`, the first item of §5 (borrowed from
+jinteki.net). The person pointed out that a real table lays a rig out
+in three rows. The board drew one row of three side-by-side groups.
+
+**Order.** From the Runner's chair, top to bottom: programs, hardware,
+resources. That puts programs next to the ICE they break and resources
+next to the Runner, which is jinteki's order and the physical table's.
+From the Corp's chair the rig sits across the table with the ICE below
+it, so the order is reversed and programs are still the row next to the
+ICE. `netrunner_client::board::rig::rows_top_down` is that rule, and
+both clients read it. The TUI draws a `Programs:` / `Hardware:` /
+`Resources:` line each, in the same order.
+
+**Size: three peeks, not three small cards.** Measured before choosing
+(`face_width`, five servers):
+
+| Window | Chair | One row (before) | 3 whole rows at ½ width | 3 rows, top third (chosen) |
+|---|---|---|---|---|
+| 1920×1080 | Runner | face 220, field 205 | face 205, rig card 102 | face 220, field 206 |
+| 1920×1080 | Corp | face 220, field 230 | face 220, rig card 82 | face 220, field 229 |
+| 1366×768 | Runner | face 119 | face 85, rig card 42 | face 119 |
+| 1366×768 | Corp | face 134 | face 101, rig card 37 | face 133 |
+
+Three whole rows left a laptop's rig 42 px wide and shrank every other
+card on the board with it. A row that shows the top `layout::PEEK` of its
+cards is the hand's rule. The title and cost are at the top of a card;
+strength, hosted cards and counters are on the chip line under each row;
+the rest is a secondary click away. Three rows are then the height of one
+card, so the split cost the board nothing. Row labels sit at the row's
+left (`RIG_LABEL_WIDTH`) rather than over it, because the rig has width
+to spare and no height. Every row is reserved whether or not anything is
+in it, so the first program moves no card.
+
+**The heap.** A primary click on a pile opened its actions menu. No
+action is ever on the heap (a card installed from it is offered on the
+prompt), so the menu was always empty, and the list of its cards took a
+secondary click. A plain click on the heap now opens its sheet, as the
+Agendas readout does. The count stays as it was. jinteki also shows the
+top card of the heap and of Archives face up on the board; the person
+chose to keep the count.
+
+**Verified.** `cargo test --workspace` green and clippy silent. New tests:
+- `rig::the_rows_are_the_table_seen_from_the_chair`
+- `layout::three_peeked_rig_rows_are_about_one_card_tall`, which also
+  checks the rig height is monotone over every face width
+- `a_click_on_the_heap_opens_every_card_in_it`, for both chairs, on
+  priority or not
+- the board test `the_rig_is_three_rows_with_programs_next_to_the_ice_from_either_chair`
+- the zone-sheet test now clicks the Heap button
+- the TUI board test checks the row order from both chairs
+
+Screenshotted at 2560×1600 from both chairs forty decisions in. The only
+`scroll area` logged is the hidden log's, at zero size. No engine file
+changed, so no sweep.
+
 ## 5. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -2949,7 +3006,7 @@ order they would matter to a person playing. Each follows the §5 client
 rules in `AGENTS.md`: every one is a door to legal actions that already
 exist, never a new action.
 
-1. **The rig in three rows**, programs nearest the ICE. Taken up in §4aa.
+1. ~~**The rig in three rows**, programs nearest the ICE.~~ Done in §4aa.
 2. **Auto-pump and break:** one button that submits the pumps and the
    breaks as a sequence, each chosen from `legal_actions`, and shows the
    price before it is pressed.

@@ -1123,14 +1123,28 @@ fn draw_board(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
         runner_lines.push(hand_line(cards, app.registry(), actions.as_ref()));
     }
     runner_lines.push(Line::from(""));
-    if view.runner.rig.is_empty() {
-        runner_lines.push(Line::from("(rig empty)"));
-    } else {
-        runner_lines.extend(view.runner.rig.iter().map(|card| {
+    // The rig in its three rows, programs the line nearest the Corp's
+    // block from either chair (`board::rig::rows_top_down`) — the same
+    // rows the desktop draws. Every row is listed, so the first install
+    // of a kind moves no line.
+    let chair = if matches!(viewer, Viewer::Player(Side::Corp)) { Side::Corp } else { Side::Runner };
+    for (row, cards) in netrunner_client::board::rig::rows(view, app.registry(), chair) {
+        let mut spans = vec![Span::raw(format!("{:<10} ", format!("{}:", row.label())))];
+        if cards.is_empty() {
+            spans.push(Span::raw("—"));
+        }
+        for (i, card) in cards.iter().enumerate() {
+            if i > 0 {
+                spans.push(Span::raw(" · "));
+            }
             let counters = counter_label(Some(&card.card), card.counters, app.registry());
+            let strength = app.registry().get(&card.card).and_then(|def| def.strength).map(|_| format!("str {}", card.current_strength));
+            let facts = [strength.unwrap_or_default(), counters.trim_start_matches(", ").to_string()].into_iter().filter(|f| !f.is_empty()).collect::<Vec<_>>().join(", ");
+            let label = if facts.is_empty() { card_title(&card.card, app.registry()) } else { format!("{} ({facts})", card_title(&card.card, app.registry())) };
             let mood = actions.as_ref().and_then(|map| map.affordance(&Target::Install(card.install_id)));
-            Line::from(Span::styled(format!("{} (str {}{counters})", card_title(&card.card, app.registry()), card.current_strength), mood_style(mood)))
-        }));
+            spans.push(Span::styled(label, mood_style(mood)));
+        }
+        runner_lines.push(Line::from(spans));
     }
     frame.render_widget(
         Paragraph::new(runner_lines).wrap(Wrap { trim: false }).block(Block::default().borders(Borders::ALL).title(runner_title)),
@@ -1497,6 +1511,13 @@ mod tests {
         assert!(rendered.contains(&runner_hand[0]), "the Runner sees its own cards: {}", runner_hand[0]);
         assert!(corp_hand.iter().all(|title| !rendered.contains(title.as_str())), "the Runner never sees HQ");
         assert!(row_of(&rows, "You — Runner rig") > row_of(&rows, "Opponent — Corp servers"), "the Runner's own block is below the Corp's");
+        // The rig is three rows, listed before anything is installed, with
+        // programs the line nearest the Corp's block from either chair.
+        let (programs, hardware, resources) = (row_of(&rows, "Programs:"), row_of(&rows, "Hardware:"), row_of(&rows, "Resources:"));
+        assert!(programs < hardware && hardware < resources, "the Runner's chair: {programs} {hardware} {resources}");
+        let corp_rows = render(&as_corp);
+        let (programs, hardware, resources) = (row_of(&corp_rows, "Programs:"), row_of(&corp_rows, "Hardware:"), row_of(&corp_rows, "Resources:"));
+        assert!(resources < hardware && hardware < programs, "the Corp's chair: {resources} {hardware} {programs}");
         // Nothing is installed yet, and the three centrals are listed
         // anyway, Archives to HQ with their counts, from this seat as from
         // the Corp's — the lines a remote would join below.
