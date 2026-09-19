@@ -163,3 +163,31 @@ one, so the test is sturdier than it was.
 
 **Verified.** `cargo test --workspace` green, clippy silent, and both
 256-seed sweeps green.
+
+## jinteki comparison: the engine gaps it shows — OPEN (19 September 2026)
+
+`docs/jinteki-comparison`. The finding is
+[`docs/jinteki-comparison.md`](../jinteki-comparison.md) §2. These are open items for the next card set, not bugs:
+every *System Gateway* and *Elevation* card resolves correctly without them.
+Each would be one design decision, taken before a set builds on its absence.
+
+1. **A continuous-effect layer** (§2.1). One `{ kind, value: Amount, while:
+   EffectRequirement }` shape, with a `GameState` list for lingering
+   effects, replacing `StrengthModifier`, the nine one-off fields on
+   `CardDefinition` (cost, MU, hand size, hosted bonuses), and the three `*_strength_buff` fields.
+   This is the largest remaining pressure on the DSL Growth Rule's ratio.
+   Prohibitions (§2.5) fall out of it as boolean kinds.
+2. **Generic prevention** (§2.2). Give the existing
+   `WindowCheckpoint::Prevention` window a kind parameter, so tags,
+   end-the-run, jack-out and expose use the same window that damage and
+   trash use, rather than a third special case.
+3. **A checkpoint audit against CR 10.3** (§2.3): where the state-based
+   checks (MU, unique, wins, empty remotes, expired durations) run, and in
+   what order, relative to trigger dispatch.
+4. **A movement phase in the run** (§2.6), before a card needs "when the
+   Runner passes ICE".
+5. **Cost types** (§2.4). jinteki's 50 are the backlog, taken as cards
+   need them.
+6. **A scenario builder for card tests** (§4). A deck-and-hand spec that
+   reaches a real state through `setup` and actions, plus helpers that
+   address cards by name. It is test code only.
