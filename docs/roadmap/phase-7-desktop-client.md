@@ -2999,6 +2999,76 @@ Screenshotted at 2560×1600 from both chairs forty decisions in. The only
 `scroll area` logged is the hidden log's, at zero size. No engine file
 changed, so no sweep.
 
+### 4ab. A piece of ICE is broken with one press, at the price on the button — DONE (19 September 2026)
+
+`feat/auto-pump-and-break`, item 2 of §5. Getting through a piece of ICE
+used to take one press per pump and per break, each from the breaker's
+own menu, with no total shown until the credits were gone. Mid-encounter
+the right column now lists one route for each card that can break
+**every** pending subroutine, with its price: "Break Wall of Static with
+Corroder · 2 credits". One press, or a number key, carries the whole
+route out. The terminal clients, local and remote, list the same routes
+after the actions.
+
+**A route is found by playing it, not by pricing it.** The first design
+read each breaker's JSON (pump cost over pump amount, break cost over
+break count), which is how `netrunner_bots::eval::break_cost` prices a
+break for the evaluator. That design was rejected because the view does
+not hold enough to price a route. `PublicInstalledRunnerCard::current_strength`
+leaves out Echelon's and Rising Tide's `strength_modifier` and
+GAMEDRAGON's bonus. Mayfly's break is the first of a `Sequence`.
+Chromatophores gives the ICE a subtype, and Semak-samun has a
+fracter-only subroutine. Instead, `netrunner_client::board::breaks`
+searches each card's abilities on `netrunner_bots::determinize`'s sample
+of the view, using `apply_action` with a Corp pass between steps. A
+route therefore contains only what the engine accepts, and costs what
+the engine charges. Nothing hidden can move the price, and the sample is
+seeded from a constant. Echelon is the test: the view says strength 0,
+the engine counts three icebreakers, and the route is two breaks for 2
+credits. Priced off the view, it would have been two 3-credit pumps
+first. The one blind spot is Sang Kancil's discount, whose condition
+(who started the run) is not in the view, so its price can read high.
+
+**One route per card, not the cheapest plan.** Mayfly breaks for the
+same credits as Corroder and is trashed when the run ends. Botulus
+spends a virus counter the next ICE might want. Which route is best is
+the person's call. The list is sorted by price, and mixing two cards on
+one ICE stays on the card menus.
+
+**One legal action per view.** Every activation hands priority to the
+Corp (`paid_ability::note_window_action`), so a route cannot go as a
+batch. `AutoBreak::next` is asked on each view where the Runner holds
+priority, re-plans from that view, and submits the next step only if it
+is in `legal_actions` and the total has not risen past what the button
+said. It stops, and says why, if the ICE grew, a credit went elsewhere,
+the engine refused a step, or the encounter ended. It never passes at
+the end: the subroutines are broken, and moving on is the person's
+press. The Session Rule holds, since every step is an ordinary `submit`
+of a listed action. `NETRUNNER_HOLD_BREAK` stops the autoplay at the
+first encounter that offers a route.
+
+**Verified.** `cargo test --workspace` green and clippy silent. New tests:
+- seven in `board::breaks`: routes cheapest first with the wrong type
+  left out, a card that cannot afford the whole ICE not offered, nothing
+  off priority or outside an encounter, a two-subroutine break, Echelon's
+  hidden strength, the driver end to end spending exactly the route's
+  price, and the driver stopping when the ICE grows
+- the desktop model: one press and one number key, carried to the end
+  through the engine
+- the local TUI: a route row with its price
+
+No engine file changed, so no sweep.
+Screenshotted at 2560×1600 from both chairs forty decisions in. The rail
+change moves no card, and the only `scroll area` logged is the hidden
+log's, at zero size. **The route buttons themselves were not shot.** Two
+autoplay runs under `NETRUNNER_HOLD_BREAK` (600 and 2,000 decisions, 5
+and 25 minutes) never reached an encounter the rig could break: the dev
+game's seed is random, its autoplay walks the list without aiming at
+anything, and the Operator Corp in the forty-decision shot had installed
+no ICE by turn 8. The hook stays, since it is how the shot gets taken
+once a seeded dev game exists. Until then the look of the rail is
+unverified, and the first hand-played encounter is the check.
+
 ## 5. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
@@ -3007,9 +3077,8 @@ rules in `AGENTS.md`: every one is a door to legal actions that already
 exist, never a new action.
 
 1. ~~**The rig in three rows**, programs nearest the ICE.~~ Done in §4aa.
-2. **Auto-pump and break:** one button that submits the pumps and the
-   breaks as a sequence, each chosen from `legal_actions`, and shows the
-   price before it is pressed.
+2. ~~**Auto-pump and break**, with the price on the button.~~ Done in
+   §4ab.
 3. **Broken and fired subroutines marked on the encountered ICE.**
 4. **Undo a click or a turn, in local unrated games only.** State is a
    value and the history is kept, so this is cheap here.

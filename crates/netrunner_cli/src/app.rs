@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
-use netrunner_client::board::ActionMap;
+use netrunner_client::board::{routes, ActionMap, AutoBreak, Next, Route};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
@@ -58,6 +58,12 @@ pub struct App {
     pub modal: Option<Modal>,
     /// The card inspector, while it is open.
     pub card_picker: Option<CardPicker>,
+    /// Every card's way through the encountered ICE
+    /// (`netrunner_client::board::breaks`), listed after the actions.
+    pub breaks: Vec<Route>,
+    /// The route under way: each `StateUpdate` asks it for the next step,
+    /// which goes back without a keypress.
+    breaking: Option<AutoBreak>,
 }
 
 impl App {
@@ -83,6 +89,8 @@ impl App {
             decision_clock: None,
             modal: None,
             card_picker: None,
+            breaks: Vec::new(),
+            breaking: None,
         };
         app.drain_messages();
         app
@@ -132,13 +140,37 @@ impl App {
                     {
                         let _ = self.tx.send(ClientMessage::SubmitAction(pass));
                     }
-                    self.view = Some(*view);
                     self.last_rejection = None;
+                    self.breaks.clear();
+                    // A route under way sends its next step on the update
+                    // where the seat has priority again; otherwise the
+                    // update's routes are listed for the person.
+                    match self.breaking.as_ref().map(|driver| driver.next(&view, &self.registry)) {
+                        Some(Next::Submit(step)) if !self.connection_lost => {
+                            let _ = self.tx.send(ClientMessage::SubmitAction(step));
+                        }
+                        Some(Next::Wait) => {}
+                        Some(Next::Stopped(reason)) => {
+                            self.breaking = None;
+                            self.last_rejection = Some(reason);
+                        }
+                        Some(Next::Submit(_) | Next::Done) | None => {
+                            self.breaking = None;
+                            self.breaks = routes(&view, &self.registry);
+                        }
+                    }
+                    if self.selected >= self.offered_actions_in(&view).len() + self.breaks.len() {
+                        self.selected = 0;
+                    }
+                    self.view = Some(*view);
                 }
                 ServerMessage::ActionLog(entry) => {
                     push_log_line(&mut self.action_log, &entry, &self.registry, self.view.as_ref())
                 }
-                ServerMessage::ActionRejected { reason } => self.last_rejection = Some(reason),
+                ServerMessage::ActionRejected { reason } => {
+                    self.breaking = None;
+                    self.last_rejection = Some(reason);
+                }
                 ServerMessage::GameEnded { winner, reason } => {
                     self.game_ended = Some((winner, reason));
                     self.decision_clock = None;
@@ -171,14 +203,32 @@ impl App {
         netrunner_client::selection::shown(self.legal_actions(), self.view.as_ref(), &self.registry)
     }
 
+    fn offered_actions_in(&self, view: &ClientView) -> Vec<PlayerAction> {
+        netrunner_client::selection::shown(&view.legal_actions, Some(view), &self.registry)
+    }
+
     fn submit_selected_action(&mut self) {
         // The action would vanish into a closed channel, and the view it
         // was chosen from may be stale by the time the seat is back.
         if self.connection_lost {
             return;
         }
-        let Some(action) = self.offered_actions().get(self.selected).cloned() else { return };
-        let _ = self.tx.send(ClientMessage::SubmitAction(action));
+        let offered = self.offered_actions();
+        if let Some(action) = offered.get(self.selected).cloned() {
+            let _ = self.tx.send(ClientMessage::SubmitAction(action));
+            return;
+        }
+        // Past the actions: a route through the encountered ICE.
+        let (Some(route), Some(view)) = (self.breaks.get(self.selected - offered.len()), self.view.as_ref()) else { return };
+        let driver = AutoBreak::new(route, view);
+        match driver.next(view, &self.registry) {
+            Next::Submit(step) => {
+                self.breaking = Some(driver);
+                let _ = self.tx.send(ClientMessage::SubmitAction(step));
+            }
+            Next::Stopped(reason) => self.last_rejection = Some(reason),
+            Next::Wait | Next::Done => {}
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -238,7 +288,7 @@ impl App {
     }
 
     fn move_selection(&mut self, delta: i32) {
-        let len = self.offered_actions().len();
+        let len = self.offered_actions().len() + self.breaks.len();
         if len == 0 {
             return;
         }
@@ -491,7 +541,11 @@ impl RenderableView for App {
     }
 
     fn legal_action_labels(&self) -> Vec<String> {
-        self.offered_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect()
+        let mut labels: Vec<String> = self.offered_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect();
+        if let Some(view) = &self.view {
+            labels.extend(self.breaks.iter().map(|route| route.label(view, &self.registry)));
+        }
+        labels
     }
 
     fn selected_action(&self) -> Option<PlayerAction> {
