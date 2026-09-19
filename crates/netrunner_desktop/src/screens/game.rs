@@ -816,7 +816,8 @@ fn autoplay(
         Some(PendingDecision::ChooseCards { .. }) => dev.hold_selection,
         Some(PendingDecision::ChooseServer { install: Some(_), .. }) => dev.hold_install,
         _ => dev.hold_access && Access::of(view, &client.registry).is_some(),
-    }) || (dev.hold_break && !model.0.breaks.is_empty());
+    }) || (dev.hold_break && !model.0.breaks.is_empty())
+        || (dev.hold_ice && model.0.encounter().is_some());
     if held {
         dev.autoplayed = dev.autoplay;
         return;
@@ -2277,6 +2278,44 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     if game.over.is_some() {
         parent.spawn(widgets::dim(theme, "The match is over."));
         return;
+    }
+    // The state of the encounter, above the routes that change it: the
+    // ice being met and every subroutine marked broken, fired or still
+    // pending (`Game::encounter`). It is here and not only in the ice's
+    // own sheet because an encounter is a thing a person decides *in*,
+    // and a sheet is a click away and a click back.
+    //
+    // **Above the `awaiting` return, so the marks stay up while the Corp
+    // thinks.** They are something to read, not something to press.
+    //
+    // **The marks are the terminal client's, character for character** —
+    // `[x]`, `[!]`, `[ ]` — rather than a tick glyph: the bundled Noto
+    // fallback is not guaranteed to carry one, and a person moving
+    // between the two clients should not have to learn the marks twice.
+    // The colour is what this client adds.
+    //
+    // **The tiles are deliberately left alone.** A pip per subroutine on
+    // the encountered tile was the other candidate and was rejected: the
+    // run lane already draws exactly that, a dot per subroutine in these
+    // three colours, so a tile pip would be the same fact a third time
+    // and still not say *which* subroutine. The words are what was
+    // missing, and they need a column's width.
+    if let Some(met) = game.encounter() {
+        let name = met.card.as_ref().and_then(|id| game.registry().get(id)).map_or_else(|| "Ice".to_string(), |def| def.title.clone());
+        parent.spawn((widgets::label(theme, format!("{name} · strength {}", met.strength)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        for sub in &met.subroutines {
+            let (mark, colour) = match sub.status {
+                SubroutineStatus::Broken => ("[x]", theme.text_dim),
+                SubroutineStatus::Resolved => ("[!]", theme.danger),
+                SubroutineStatus::Pending => ("[ ]", theme.text),
+            };
+            parent.spawn((
+                Text::new(format!("{mark} {}", sub.text)),
+                theme.font(size::SMALL),
+                TextColor(colour),
+                TextLayout::new(Justify::Left, LineBreak::WordBoundary),
+            ));
+        }
     }
     if !game.awaiting {
         parent.spawn(widgets::dim(theme, if game.view.is_some() { "Opponent is thinking…" } else { "Setting up…" }));

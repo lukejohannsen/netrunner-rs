@@ -68,7 +68,7 @@
 use std::sync::Arc;
 
 use netrunner_client::actions::push_log_line;
-use netrunner_client::board::{routes, transitions, ActionMap, Affordance, AutoBreak, Control, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
+use netrunner_client::board::{encounter_subroutines, routes, transitions, ActionMap, Affordance, AutoBreak, Control, Encounter, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
 use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
 use netrunner_client::ratings::RatingReport;
 use netrunner_core::cards::CardRegistry;
@@ -350,6 +350,20 @@ impl Game {
             applied: 0,
             trail: None,
         }
+    }
+
+    /// The ice being encountered and the state of its subroutines
+    /// (`netrunner_client::board::encounter_subroutines`), for the rail
+    /// to mark broken, fired or pending. Derived rather than a field,
+    /// because it is a reading of the current view and nothing else —
+    /// unlike `breaks`, which is a search and is worth keeping.
+    ///
+    /// **Not gated on `awaiting`**, unlike the glow and the routes: the
+    /// marks are something to read, not something to press, and a person
+    /// watching the Corp think mid-encounter still wants to know what is
+    /// left pending.
+    pub fn encounter(&self) -> Option<Encounter> {
+        self.view.as_ref().and_then(encounter_subroutines)
     }
 
     pub fn registry(&self) -> &CardRegistry {
@@ -1567,6 +1581,11 @@ mod tests {
 
         let mut game = Game::new(registry.clone(), Side::Runner);
         assert_eq!(awaiting(&mut game, &state), Outcome::Redraw);
+        // The rail's marks, before anything is broken.
+        let met = game.encounter().expect("the run is encountering the wall");
+        assert_eq!(met.card.as_ref().map(|id| id.0.as_str()), Some("wall_of_static"));
+        assert_eq!(met.strength, 3);
+        assert_eq!(met.subroutines.iter().map(|sub| (sub.text.as_str(), sub.word())).collect::<Vec<_>>(), [("End the run.", "pending")]);
         assert_eq!(game.breaks.len(), 1);
         let view = game.view.clone().unwrap();
         assert_eq!(game.breaks[0].label(&view, &registry), "Break Wall of Static with Corroder · 2 credits");
@@ -1584,5 +1603,9 @@ mod tests {
         assert_eq!(state.runner.resources.credits.0, 3, "the price on the button");
         assert!(game.awaiting && game.breaking.is_none() && game.breaks.is_empty(), "done: the person's controls, and nothing left to break");
         assert!(game.break_stopped.is_none());
+        // And the same line now reads broken: the state of the encounter
+        // off the rail, without the log.
+        let met = game.encounter().expect("still encountering — breaking a subroutine does not pass the ice");
+        assert_eq!(met.subroutines.iter().map(|sub| (sub.text.as_str(), sub.word())).collect::<Vec<_>>(), [("End the run.", "broken")]);
     }
 }
