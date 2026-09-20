@@ -8,6 +8,12 @@ not a port:** no jinteki code is copied into netrunner-rs. jinteki is MIT
 licensed and netrunner-rs is GPL-3.0-or-later; what we take from it is ideas,
 and any idea taken is written fresh in this codebase's own terms.
 
+**A second pass on 20 September 2026 (§6) audited this file** against both
+codebases. The six gaps of §2 hold; §2.1's proposed shape was too narrow,
+§2.3 understated the largest gap, §5 item 4 was wrong about where an undo
+may exist, and several things were missed outright. Each correction is
+marked where the claim stands, and §6 carries the detail.
+
 This file is a finding, not a status page. The gaps it names are tracked as
 open items in `ROADMAP.md` (Rules Audit, *jinteki comparison*; Phase 7 §8),
 which point back here.
@@ -26,7 +32,7 @@ jinteki paths are relative to its repository root; ours to this one.
 | Randomness | Host RNG | `seed` + `rng_step` inside the state |
 | Wire format | Per-seat privatized **diffs** (`core/diffs.clj`, the `differ` library) with a sequence number and resync | Per-seat masked **snapshots** (`view::build_client_view`) |
 | Card count | 2,056 `defcard`s — every card Null Signal Games and FFG printed | 178 card files: *System Gateway* 77/77, *Elevation* 82/82, a 19-card Core subset |
-| Card tests | 3,553 `deftest`s under `test/clj/game/cards/` | 247 in `crates/netrunner_core/src/cards/tests.rs`, plus the engine's own and the sweeps |
+| Card tests | 3,536 `deftest`s (first written as 3,553; recounted in the second pass) under `test/clj/game/cards/` | 247 in `crates/netrunner_core/src/cards/tests.rs`, plus the engine's own and the sweeps |
 
 **What each shape buys.** jinteki's closures can express any card the day it
 is printed, which is how it covers the whole card pool; the cost is that a
@@ -72,6 +78,10 @@ field above. It is state that survives a parked decision, so lingering
 entries belong on `GameState` by the State Hygiene Rule's own test, not on
 `ResolutionContext`.
 
+**Corrected in the second pass (§6.2): that shape is too narrow.** It has no
+way to say *which* cards an effect applies to, and it assumes every value is
+a number; five of jinteki's twelve most-used kinds are not.
+
 ### 2.2 Prevention is two special cases, not a mechanism
 
 jinteki's `core/prevention.clj` is one mechanism for everything that can be
@@ -106,6 +116,10 @@ which the state-based checks run in a defined order. `memory.rs` runs the MU
 check on its own, and win checks happen in `win.rs`. **Worth an audit against
 CR 10.3** before a set with more "when … is trashed" and "after you install"
 interactions than *Elevation* has.
+
+**Understated — see §6.1.** The ordering is the smaller half. The larger is
+that *which cards hear an event* is decided in Rust, event by event, and that
+an event an effect produces is never offered to a trigger at all.
 
 ### 2.4 Costs
 
@@ -216,7 +230,9 @@ In the order they would matter to a person playing:
 4. **Undo a click, undo a turn** (`/undo-click`, `/undo-turn`). jinteki keeps
    the last few snapshots. For us state is a value and the history is
    already kept, so undo is cheap *in a local game against a bot*. It would
-   rate as unrated, and it never exists online.
+   rate as unrated, and it never exists online. **Wrong on both counts —
+   see §6.5:** jinteki's undo *is* online and unilateral, and an undo that
+   reveals nothing has no reason to be unrated or offline.
 5. **Replays with notes and bookmarks** (`nr/gameboard/replay.cljs`). We have
    `MatchHistory` and a masked per-seat log; a replay viewer is a client
    over data we already store.
@@ -246,3 +262,231 @@ In the order they would matter to a person playing:
 - **Diffs on the wire.** Already recorded as a later optimization (Phase 4
   §4), to be profiled first. jinteki needs sequence numbers and a resync path
   because diffs can be lost; snapshots cannot.
+
+---
+
+## 6. Second pass (20 September 2026)
+
+The first pass asked what jinteki's *engine shape* shows about ours. This one
+asked whether those findings were right and complete, read the modules the
+first did not (`access`, `installing`, `pick_counters`, `play_instants`,
+`prompts`, `events`, `ice`, `turns`, `commands`, the newer-mechanic files, and
+the whole ClojureScript client), and measured rather than estimated. jinteki
+is still at `d94d18cdc`.
+
+**What holds.** All six gaps of §2 are real and correctly described as far as
+they go. The counts are right (2,056 `defcard`s, 50 cost types) bar the
+`deftest` count, corrected above. `RunPhase` is `Initiation`, `ApproachIce`,
+`EncounterIce`, `AccessingCard`, `Success`, `Ended` — no movement, no
+approach-server. §3 stands.
+
+### 6.1 Who hears an event is decided in Rust — the largest gap, and §2.3 missed it
+
+In jinteki every active card may register a handler for any event
+(`:events [{:event :play-operation :req … }]`), every state change goes
+through `queue-event`, and `checkpoint` gathers the handlers whose `:req`
+passes. *Audience* is never a question: a card listens, and its requirement
+filters.
+
+Ours decides the audience per event, by hand. `rules/dispatcher.rs`'s
+`dispatch_event` is a `match` that, for each event, names the cards to ask:
+`fire_direct` (22 call sites — this card, or this side's identity),
+`fire_runner_side` (identity plus rig), `both_sides_candidates` (rezzed
+installs plus rig, for the two prevention events). `OperationPlayed` offers
+`OnTransactionPlayed` and `OnOperationPlayed` to **the Corp identity only**;
+`fire_runner_side`'s own comment records the audience being "widened (M5)"
+when a card needed it. And an event produced *by an effect* is returned to
+the caller, not dispatched — `ability.rs`'s `dispatch_damage_taken` exists
+because "`DamageTaken` is produced deep inside `damage::apply_damage` and
+returned, never dispatched", and #85's roadmap entry turns on the same fact.
+
+Two consequences:
+
+- **A new card can need a Rust edit with no new mechanic in it.** An asset
+  that reacts to operations being played is card text the DSL can already
+  say and the dispatcher will not deliver. That is the "never hardcode card
+  rules in Rust" rule bent quietly, one audience at a time.
+- **`Trigger` grows by audience, not by event.** `OnSuccessfulRun`,
+  `OnSuccessfulRunOnHq`, `OnSuccessfulRunOnRnD` and
+  `OnSuccessfulRunOnCentralServer` are one event and a filter. It is the
+  `StrengthModifier` pattern of §2.1 in the *when* vocabulary.
+
+**The shape to aim for:** one listener scan — for a dispatched event, every
+active card (rezzed installs, the rig and what it hosts, both identities,
+scored agendas) whose `TriggeredEffect::trigger` matches and whose
+requirement passes, ordered active-player-first as `order_active_first`
+already does — with `Trigger` variants parameterised by a filter, events
+from effects routed through the same queue, and the state-based checks of
+§2.3 run at one point after it. §2.3's audit and this are one piece of work.
+The risk is real and is why it goes first rather than never: every trigger
+in 178 cards re-fires through a new path, so it is a change to measure
+byte-for-byte on both seatings before and after.
+
+### 6.2 The continuous-effect layer needs a target and a payload
+
+§2.1 proposed `{ kind, value: Amount, while: EffectRequirement }`. Counting
+jinteki's `:type`s in use (86 distinct) shows what that leaves out:
+
+| kind | uses | value is |
+|---|---|---|
+| `:ice-strength` | 31 | a number |
+| `:additional-subroutines` | 23 | **a subroutine** |
+| `:gain-subtype` | 19 | **a subtype** |
+| `:steal-additional-cost` | 12 | **a cost** |
+| `:rez-cost`, `:install-cost`, `:trash-cost`, `:hand-size` | 12, 9, 7, 7 | a number |
+| `:can-host` | 12 | **a card filter** |
+| `:disable-card` | 10 | **nothing — a fact about a card** |
+| `:cannot-jack-out`, `:cannot-steal`, `:cannot-run-on-server`, … | 5, 4, 4 | a boolean |
+
+and every one of them carries a `:req` that answers *which card is this
+about* — this ICE, ICE protecting this server, the card being accessed — as
+well as *is it on*. So the layer is a closed enum with a payload per kind
+(`IceStrength(Amount)`, `GainSubtype(CardSubtype)`,
+`AdditionalSubroutine(SubroutineDef)`, `AdditionalCost { of, cost: Cost }`,
+`Cannot(Prohibition)`, …), plus `applies_to: CardFilter` and `while:
+EffectRequirement`. That is still data, still `deny_unknown_fields`, and it
+absorbs `host_ice_gains_subtypes` along with the numeric fields.
+
+It also reaches two mechanics we do not model at all and the first pass did
+not list: **ICE gaining or losing subroutines** (jinteki's
+`get-expected-subroutines` recomputes the list and `reconcile-subroutines`
+keeps each sub's broken and fired marks across the recomputation — ours
+builds `RunIce::subroutines` from the definition once) and **"cannot be
+broken"**. Durations in use: 18, of which `:end-of-run` is 125 of about 190
+registrations, then `:end-of-turn` 25 and `:end-of-encounter` 14 — our three
+`BoostDuration`s are the right three to start from.
+
+### 6.3 "The first time each turn" is a query there and a field here
+
+jinteki keeps the turn's and the run's events and asks them questions:
+`first-event?` is called 136 times in card code, `no-event?` 38, `last-turn?`
+30, `first-run-event?` 12, `event-count` 8 (`core/events.clj`). A card says
+*the first time you install a program each turn* by filtering a log.
+
+Ours answers each such question with its own field on `GameState` and its
+own `EffectRequirement`: `first_install_used_this_turn`,
+`first_install_discount_used_this_turn`, `first_hq_run_used_this_turn`,
+`played_operation_this_turn`, `made_successful_run_this_turn` and
+`…_last_turn`, `agenda_points_scored_this_turn`, `servers_run_this_turn`,
+`actions_taken_this_turn`, against `FirstInstallThisTurn`,
+`FirstSuccessfulHqRunThisTurn`, `MadeSuccessfulRunThisTurn`,
+`PlayedOperationThisTurn`, `NoActionTakenThisTurn`, ….
+`once_per_turn_used` was the right generalisation for *once per turn*;
+nothing generalises *first time* or *how many times*. These fields rightly
+live on `GameState` (they survive a parked decision), so the State Hygiene
+Rule is not broken — the DSL Growth Rule is what they press on.
+
+A full event `Vec` per turn is the obvious port and probably the wrong one:
+`GameState` is cloned on every action and thousands of times per search. The
+candidate is **per-turn and per-run counters keyed by a small event-kind
+enum with a filter** (`Count { of: TurnFact, at_least / exactly }`), which is
+constant-size, replaces the fields above, and makes `last turn` a second
+copy of the same map.
+
+### 6.4 Smaller things the first pass did not see
+
+- **Where a payment comes from.** §2.4 covered *what* is paid. jinteki's
+  `core/pick_counters.clj` covers *from which pool, chosen by whom*: stealth
+  credits, recurring credits restricted to a purpose, cost reducers
+  (`pick-credit-providing-cards`, `pick-credit-reducers`,
+  `pick-virus-counters-to-spend`). Ours spends automatically —
+  `hosted_credits_usable_for`, recurring before the wallet, bad-publicity and
+  bonus run credits on `RunState` — which is right while no two pools
+  compete. Stealth is the card family that makes them compete.
+- **No numeric decision.** `PendingDecision` is `ChooseEffect`,
+  `ChooseCards`, `ChooseServer`, `ChooseTriggerOrder`; the only number a
+  player ever types is a trace bid. X costs and "pay up to N" have nowhere
+  to park. jinteki has number, credit and counter prompts as kinds.
+- **One replacement per run.** `RunState::access_replacement` is a single
+  `Option`; jinteki collects every `:successful-run` replacement and
+  `choose-replacement-ability` asks the Runner which, adding "Breach" unless
+  one is mandatory.
+- **Concepts with no home yet**, each small, none needed by a shipped set:
+  reveal as an event other cards can hear (`core/revealing.clj`; ours is a
+  `reveal: bool` on a selection), a set-aside zone with per-viewer
+  visibility (`set_aside.clj` — this one touches masking, so it wants an
+  explicit who-may-see rule), expose, facedown Runner installs, the mark,
+  charge, per-host limits (`:max-cards`, `:max-mu`), and agenda points or
+  advancement requirements that change while installed (`agendas.clj`
+  recomputes both every checkpoint — two more kinds for §6.2's enum).
+- **One thing jinteki does that we should check we do:** when Archives is
+  breached it shuffles the unseen cards before turning them up
+  (`turn-archives-faceup`), so the order they were trashed in leaks nothing.
+  Ours flips them in place (`run/access.rs`), and `PublicArchivedCard`
+  already shows the Runner each facedown card's position, so a breach ties
+  every card to the moment it arrived. Whether the rules entitle the Runner
+  to that is a question for the Comprehensive Rules, not for jinteki; it is
+  listed so that it gets asked.
+
+### 6.5 Taking a move back — §5 item 4 corrected
+
+**The report from play:** Red Team — "[click]: Run a central server you have
+not run this turn" — spends its click and only then shows which servers are
+left. A person who does not remember which they ran cannot look first and
+cannot put it down. The events that park the same `ChooseServer` (Jailbreak,
+Overclock, Tread Lightly, …) have already paid and gone to the heap by the
+time the prompt is up (`engine::play_event`).
+
+**jinteki does no better at the card, and worse at the undo.** Costs are
+paid before the prompt (`play_instants.clj`, `continue-play-instant`), a
+prompt has a Cancel only where the card's author wrapped its choices in
+`cancellable`, and the run-event helpers do not. What it has instead is
+`/undo-click`: the last four whole-state snapshots, taken before each click,
+restored **unilaterally, online, with no guard on hidden information** —
+undoing a draw or an access rewinds it, and the only cost is a log line.
+`/undo-turn` needs both players. So "it never exists online" was simply
+false, and "unrated" was half right.
+
+**The line that matters is what the undo teaches.** Three things, in the
+order a person meets them:
+
+1. **Look first.** Before the card is played, its entry says what it will
+   ask — which servers, which options. A determinized sample and the real
+   `apply_action`, exactly as `board::breaks` prices a route; client only.
+2. **A free take-back.** While the person is still on the prompt their own
+   action opened, and nothing hidden was revealed, `rng_step` has not moved
+   and the other seat has not acted, going back gives them nothing they did
+   not have. It is fair in a rated game, and would be online — the opponent
+   has seen which card was played, which costs only the person taking it
+   back. This is also the install back-out Phase 7 §4d declined: its blocker
+   was a new `PlayerAction` and `ActionSpace` 1646 → 1647, and a restore in
+   the *session* needs neither.
+3. **Undo a click, against a bot.** Past that line the undo has taught
+   something, so the game stops being rated the first time it is used.
+
+Tracked as Phase 7 §8 item 4.
+
+### 6.6 More from the client, after §5's eleven
+
+Read from `src/cljs/nr/gameboard/` and `nr/help.cljs`, whose FAQ is a decade
+of support questions. In the order they would matter here:
+
+12. **One Continue button that names what is next** — "Continue to Approach
+    ice", "Breach server", "No further actions". Run timing made legible by
+    the label, not by the player knowing the CR.
+13. **The encounter panel always on during an encounter**: the ICE's name,
+    subtypes, live strength and every subroutine. §4ac marks the subs; this
+    is the rest.
+14. **Per-card "always / never / ask" for an optional trigger**
+    (`core/optional.clj`'s autoresolve) — the same prompt answered the same
+    way forty times a game is the FAQ's quietest complaint.
+15. **A report-a-bug bundle.** jinteki's `/bug` opens an issue with a log.
+    Ours can attach the seed and the action record and the game *replays
+    exactly* — the strongest form of this feature anyone could have, and the
+    honest answer to the need behind jinteki's state-editing commands: a
+    wedged game is a bug to reproduce, not a table to fix by hand.
+16. **An end-of-game table** (clicks spent, credits, cards drawn, runs, by
+    side) and **a start-of-game box** (both identities, the opening hand
+    turned up, keep or mulligan).
+17. **Card names in the log open the card** on hover or secondary click.
+18. **A colour-blind-safe palette** for the card-state colours (jinteki ships
+    Okabe–Ito). Ours are purple and yellow affordances and the transition
+    outline; they should be checked against it.
+19. **Open decklists** as a game option, and **hand sort** by name or type
+    (ours has the person's own order; this is a second, offered one).
+
+Looked at and **not** borrowed: the ± counters on every stat and drag between
+zones (the same objection as the slash commands, §5), "indicate action" and
+canned chat (human-to-human etiquette with nothing to say to a bot; revisit
+with Phase 4), and the tournament and lobby machinery.
+
