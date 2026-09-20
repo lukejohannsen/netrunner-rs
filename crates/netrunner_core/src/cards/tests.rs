@@ -522,7 +522,7 @@ fn cleaver_pumps_strength_and_breaks_up_to_two_barrier_subroutines() {
     // activate and passes back.
     let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "cleaver"), ability_index: 1 })
         .expect("pump strength");
-    assert_eq!(state.runner.rig[0].effective_strength(), 4);
+    assert_eq!(crate::rules::lingering::rig_strength(&state, &state.runner.rig[0]), 4);
     let (state, _) =
         apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back to the runner");
 
@@ -656,7 +656,7 @@ fn gordian_blades_pump_lasts_the_whole_run_and_no_longer() {
     // Pump once during the first encounter…
     let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: gordian, ability_index: 0 })
         .expect("pump gordian for the run");
-    assert_eq!(state.runner.rig[0].effective_strength(), 3);
+    assert_eq!(crate::rules::lingering::rig_strength(&state, &state.runner.rig[0]), 3);
     // …break both subroutines and move on.
     let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back");
     let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: gordian, ability_index: 1 })
@@ -674,17 +674,18 @@ fn gordian_blades_pump_lasts_the_whole_run_and_no_longer() {
     let run = state.active_run.as_ref().expect("the run survived the first enigma");
     assert_eq!(run.position, 1, "standing on the second enigma");
     assert_eq!(
-        state.runner.rig[0].effective_strength(),
+        crate::rules::lingering::rig_strength(&state, &state.runner.rig[0]),
         3,
         "the run-duration pump holds into the second encounter"
     );
-    assert_eq!(state.runner.rig[0].run_strength_buff, 1);
+    assert_eq!(state.lingering.len(), 1);
+    assert_eq!(state.lingering[0].until, crate::rules::lingering::Until::EndOfRun);
 
     // Let the second enigma bounce the run: the buff dies with the run.
     let (state, _) = pass_until_settled(state, &registry);
     assert!(state.active_run.is_none(), "enigma's end-the-run fired");
-    assert_eq!(state.runner.rig[0].run_strength_buff, 0, "the pump ended with the run");
-    assert_eq!(state.runner.rig[0].effective_strength(), 2);
+    assert!(state.lingering.is_empty(), "the pump ended with the run");
+    assert_eq!(crate::rules::lingering::rig_strength(&state, &state.runner.rig[0]), 2);
 }
 
 mod system_gateway {
@@ -1333,7 +1334,7 @@ mod system_gateway {
         // needed, but exercise the pump ability too for coverage.
         let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "buzzsaw"), ability_index: 1 })
             .expect("pump strength");
-        assert_eq!(state.runner.rig[0].effective_strength(), 4);
+        assert_eq!(crate::rules::lingering::rig_strength(&state, &state.runner.rig[0]), 4);
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("corp passes back to the runner");
 
@@ -3951,7 +3952,13 @@ mod system_gateway {
         )
         .expect("spend the hosted counter to weaken the ice");
         assert_eq!(state.runner.rig[0].counters, 0);
-        assert_eq!(state.active_run.as_ref().unwrap().ice[0].current_strength, 2, "3 - 1 (Leech)");
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!(crate::rules::lingering::ice_strength(&state, &run.ice[0]), 2, "3 - 1 (Leech)");
+        // "For the remainder of this encounter": it was written into the
+        // run's copy of the ice, where it lasted the run.
+        assert_eq!(state.lingering[0].until, crate::rules::lingering::Until::EndOfEncounter(run.ice[0].install_id));
+        let view = crate::rules::mask_state_for_player(&state, Side::Corp);
+        assert_eq!(view.active_run.unwrap().ice[0].identity.as_ref().unwrap().current_strength, 2, "and both players see it");
     }
 
     #[test]
@@ -4663,7 +4670,7 @@ mod system_gateway {
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "unity"), ability_index: 1 })
                 .expect("pump unity");
-        assert_eq!(state.runner.rig[1].effective_strength(), 4, "Unity: 1 base + 3 (installed icebreaker count)");
+        assert_eq!(crate::rules::lingering::rig_strength(&state, &state.runner.rig[1]), 4, "Unity: 1 base + 3 (installed icebreaker count)");
     }
 
     /// The win-reverting bug (ROADMAP Rules Audit §4). Clearinghouse's
@@ -6098,8 +6105,8 @@ mod system_gateway {
             e,
             crate::rules::GameEvent::StrengthBoosted { duration: crate::dsl::BoostDuration::Run, .. }
         )));
-        assert_eq!(state.runner.rig[0].run_strength_buff, 1);
-        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
+        assert_eq!(state.lingering.len(), 1);
+        assert_eq!(state.lingering[0].until, crate::rules::lingering::Until::EndOfRun, "not the end of the encounter");
 
         // The host leaving the rig takes the hardware with it.
         let mut state = state;
@@ -6660,7 +6667,7 @@ mod system_gateway {
         let hantu = install_of(&state, "hantu");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: hantu, ability_index: 1 }).expect("hosted virus counter: +2 strength");
         assert_eq!(state.runner.rig[0].counters, 1);
-        assert_eq!(state.runner.rig[0].effective_strength(), 4);
+        assert_eq!(crate::rules::lingering::rig_strength(&state, &state.runner.rig[0]), 4);
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the corp passes back");
         let (state, events) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: hantu, ability_index: 0 }).expect("break a sentry subroutine");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::SubroutineBroken { .. })));
@@ -7069,7 +7076,7 @@ mod system_gateway {
         let before = state.runner.resources.credits;
         let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: install_of(&state, "sang_kancil"), ability_index: 1 }).expect("boost");
         assert_eq!(before.0 - state.runner.resources.credits.0, 1, "3 - 2 during a run event");
-        assert_eq!(state.runner.rig[0].encounter_strength_buff, 2);
+        assert_eq!(crate::rules::lingering::strength(&state, state.runner.rig[0].install_id), 2);
 
         let state = encounter(false);
         let before = state.runner.resources.credits;

@@ -1240,9 +1240,6 @@ fn seed_rig_card(
         install_id: state.allocate_install_id(),
         base_strength,
         card: card_id,
-        encounter_strength_buff: 0,
-        run_strength_buff: 0,
-        turn_strength_buff: 0,
         counters: 0,
         hosted_on_ice: None,
         hosted_on_program: None,
@@ -4663,7 +4660,7 @@ mod tests {
         .expect("action should succeed");
 
         assert_eq!(next.runner.resources.credits, Credits(4));
-        assert_eq!(next.active_run.unwrap().ice[0].current_strength, 1);
+        assert_eq!(crate::rules::lingering::ice_strength(&next, &next.active_run.as_ref().unwrap().ice[0]), 1);
         assert_eq!(
             events,
             vec![
@@ -4709,7 +4706,7 @@ mod tests {
         .expect("action should succeed");
 
         assert_eq!(next.runner.resources.credits, Credits(4));
-        assert_eq!(next.runner.rig[0].effective_strength(), 3);
+        assert_eq!(crate::rules::lingering::rig_strength(&next, &next.runner.rig[0]), 3);
         assert_eq!(
             events,
             vec![
@@ -6646,7 +6643,7 @@ mod tests {
             PlayerAction::ActivateAbility { target: install_of(&state, &card_id.0), ability_index: 0 },
         )
         .expect("boost should succeed");
-        assert_eq!(state.runner.rig[0].effective_strength(), 2);
+        assert_eq!(crate::rules::lingering::rig_strength(&state, &state.runner.rig[0]), 2);
         assert_eq!(
             state.paid_ability_window.as_ref().unwrap().active_priority,
             Side::Corp,
@@ -6658,7 +6655,7 @@ mod tests {
             .expect("pass should succeed");
         assert_eq!(state.paid_ability_window.as_ref().unwrap().active_priority, Side::Runner);
         // The pass alone (no encounter exit) must not have reset the boost.
-        assert_eq!(state.runner.rig[0].effective_strength(), 2);
+        assert_eq!(crate::rules::lingering::rig_strength(&state, &state.runner.rig[0]), 2);
 
         // Runner now breaks the subroutine — only possible because the
         // boost from the first activation persisted through the pass.

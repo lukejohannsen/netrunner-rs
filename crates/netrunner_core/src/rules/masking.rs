@@ -3,9 +3,10 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::{CardId, CardTarget, Cost, IceType};
 use crate::rules::action::{PlayerAction, TargetZone};
 use crate::rules::event::GameEvent;
+use crate::rules::lingering;
 use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
 use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
-    PendingPrevention, PlayerResources, RunnerState, Side, TraceState,
+    PendingPrevention, PlayerResources, Side, TraceState,
 };
 
 /// A card zone whose contents are secret to everyone but its owner. The
@@ -393,9 +394,9 @@ pub fn mask_state_for_player(state: &GameState, viewer: impl Into<Viewer>) -> Pu
     let viewer = viewer.into();
     PublicGameState {
         corp: mask_corp_state(&state.corp, viewer.is(Side::Corp)),
-        runner: mask_runner_state(&state.runner, viewer.is(Side::Runner)),
+        runner: mask_runner_state(state, viewer.is(Side::Runner)),
         phase: state.phase,
-        active_run: state.active_run.as_ref().map(|run| mask_run_state(run, viewer)),
+        active_run: state.active_run.as_ref().map(|run| mask_run_state(state, run, viewer)),
         paid_ability_window: state.paid_ability_window.clone(),
         active_trace: state.active_trace.clone(),
         pending_prevention: state.pending_prevention.clone(),
@@ -809,14 +810,14 @@ fn corp_card_concealed_from_runner(state: &GameState, card: &CardId) -> bool {
         || state.corp.archives.iter().any(|archived| archived.card == *card && archived.facedown)
 }
 
-fn mask_run_ice(ice: &RunIce, owner_view: bool) -> PublicRunIce {
+fn mask_run_ice(state: &GameState, ice: &RunIce, owner_view: bool) -> PublicRunIce {
     let identity_visible = owner_view || ice.rezzed;
     PublicRunIce {
         install_id: ice.install_id,
         rezzed: ice.rezzed,
         identity: identity_visible.then(|| PublicRunIceIdentity {
             card: ice.card_id.clone(),
-            current_strength: ice.current_strength,
+            current_strength: lingering::ice_strength(state, ice),
             ice_type: ice.ice_type,
             subroutines: ice.subroutines.clone(),
         }),
@@ -869,7 +870,7 @@ fn mask_access_state(access: &AccessState, card_visible: bool, viewer: Viewer) -
     }
 }
 
-fn mask_run_state(run: &RunState, viewer: Viewer) -> PublicRunState {
+fn mask_run_state(state: &GameState, run: &RunState, viewer: Viewer) -> PublicRunState {
     // Only the Runner sees accessed-card identities before the accessed
     // server is Archives (an always-public zone) — the Corp, and a
     // spectator, learn what was hit when it lands in a public zone.
@@ -877,7 +878,7 @@ fn mask_run_state(run: &RunState, viewer: Viewer) -> PublicRunState {
     PublicRunState {
         server: run.server,
         phase: run.phase,
-        ice: run.ice.iter().map(|ice| mask_run_ice(ice, viewer.is(Side::Corp))).collect(),
+        ice: run.ice.iter().map(|ice| mask_run_ice(state, ice, viewer.is(Side::Corp))).collect(),
         position: run.position,
         access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible, viewer)),
         jack_out_permitted: run.jack_out_permitted,
@@ -959,7 +960,7 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
     }
 }
 
-/// **Still `effective_strength()`, which is the stored half alone** — what
+/// **Still `lingering::rig_strength`, which is the stored half alone** — what
 /// the table adds (`continuous::breaker_strength`: Echelon, Rising Tide, a
 /// GAMEDRAGON™ Pro's host) is missing from every view, so the number shown
 /// can lag the one the break contest uses. The reason once given here, that
@@ -968,11 +969,11 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
 /// one. It is a stage of its own (Rules Audit backlog item 2) because
 /// `netrunner_bots::determinize` folds the displayed number back into
 /// `base_strength`, so correcting this alone would count the bonus twice.
-fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
+fn mask_installed_runner_card(state: &GameState, card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
     PublicInstalledRunnerCard {
         card: card.card.clone(),
         install_id: card.install_id,
-        current_strength: card.effective_strength(),
+        current_strength: lingering::rig_strength(state, card),
         hosted_on_ice: card.hosted_on_ice,
         hosted_on_program: card.hosted_on_program,
         hosted_cards: card.hosted_cards.clone(),
@@ -981,7 +982,8 @@ fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunn
     }
 }
 
-fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerState {
+fn mask_runner_state(state: &GameState, owner_view: bool) -> PublicRunnerState {
+    let runner = &state.runner;
     PublicRunnerState {
         identity: runner.identity.clone(),
         resources: runner.resources.clone(),
@@ -990,7 +992,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
         tags: runner.tags,
         grip: mask_zone(&runner.grip, owner_view),
         stack: mask_zone(&runner.stack, owner_view),
-        rig: runner.rig.iter().map(mask_installed_runner_card).collect(),
+        rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, card)).collect(),
         heap: runner.heap.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         link_strength: runner.link_strength,
@@ -1004,6 +1006,7 @@ fn mask_runner_state(runner: &RunnerState, owner_view: bool) -> PublicRunnerStat
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::rules::state::RunnerState;
     use crate::rules::state::{AgendaPoints, Clicks, Credits, InstallSlot};
 
     fn game_state(corp: CorpState) -> GameState {
@@ -1126,7 +1129,6 @@ mod tests {
             rig: vec![InstalledRunnerCard {
                 card: CardId("gordian_blade".to_string()),
                 base_strength: 2,
-                encounter_strength_buff: 1,
                 ..Default::default()
             }],
             heap: vec![CardId("easy_mark".to_string())],
@@ -1135,13 +1137,20 @@ mod tests {
         }
     }
 
+    /// With a +1 still running on every rig card, so a view's
+    /// `current_strength` is visibly more than the printed number.
     fn game_state_with_runner(runner: RunnerState) -> GameState {
-        GameState {
-            corp: corp_state_with_cards(),
-            runner,
-            phase: GamePhase::Action(Side::Runner),
-            ..Default::default()
-        }
+        let lingering = runner
+            .rig
+            .iter()
+            .map(|card| lingering::LingeringEffect {
+                what: lingering::Lingering::Strength(1),
+                on: card.install_id,
+                until: lingering::Until::EndOfTurn(0),
+                source: card.card.clone(),
+            })
+            .collect();
+        GameState { corp: corp_state_with_cards(), runner, phase: GamePhase::Action(Side::Runner), lingering, ..Default::default() }
     }
 
     #[test]
@@ -1369,8 +1378,7 @@ mod tests {
         let masked_for_corp = mask_state_for_player(&state, Side::Corp);
         let masked_for_runner = mask_state_for_player(&state, Side::Runner);
 
-        // base_strength 2 + encounter_strength_buff 1 = 3, from
-        // runner_state_with_cards().
+        // base_strength 2 + the +1 `game_state_with_runner` leaves running.
         assert_eq!(masked_for_corp.runner.rig[0].current_strength, 3);
         assert_eq!(masked_for_runner.runner.rig[0].current_strength, 3);
     }

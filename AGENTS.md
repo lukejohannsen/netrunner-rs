@@ -110,7 +110,9 @@ What a card does for as long as it is active — "+1[mu]", "costs 2[c] less to i
 
 **Who is asked is the Listener Rule's sentence:** what a card says about itself applies wherever it is (a program prices itself from the grip); everything else needs an active source. Which cards are active is `rules::active`, read by `listeners`, `checkpoint` and this scan — do not write the sentence out a fourth time. **Declared effects are scanned, never stored:** there is no registry of effects in play to keep in sync with the table, the way `memory::memory_balance` never kept one. `CardDefinition::validate` refuses an effect that cannot reach anything, and a continuous effect on a sample-deck card carries its printed clause like an ability does.
 
-Four `StrengthModifier` variants (the Corp's ice) and the `*_strength_buff` fields still stand beside the layer; Rules Audit backlog item 2 in `docs/roadmap/rules-audit.md` has the stages that take them.
+**An effect with a duration is the other thing, and is stored:** "+1 strength for the remainder of this run" is created once by something that resolved and outlives it, so it is a `rules::lingering::LingeringEffect` in `GameState::lingering` — resolved to a flat number when it is made, and holding for as long as the *state* says its duration is running (`LingeringEffect::holds`, asked at every read), so no call site has to remember to end one. Never add a per-duration field to an installed card, and never write a temporary change into the thing it changes: three `*_strength_buff` fields with five reset sites were the first, and Leech's "for the remainder of this encounter" written into the run's copy of the ice, where it lasted the run, was the second.
+
+Four `StrengthModifier` variants (the Corp's ice) still stand beside the layer; Rules Audit backlog item 2 in `docs/roadmap/rules-audit.md` has the stages that take them.
 
 ### DSL Growth Rule
 

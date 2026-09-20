@@ -8,6 +8,7 @@ use netrunner_core::dsl::{
     card_matches_filter, Amount, CardDefinition, CardFilter, CardType, CardZoneRef, Cost, Effect, IceType,
     SubroutineBreakCount, Trigger,
 };
+use netrunner_core::rules::lingering;
 use netrunner_core::rules::{
     current_actor, GamePhase, GameState, InstalledCard, InstalledRunnerCard, PendingDecision, RunIce, RunPhase,
     RunState, Side, SubroutineStatus,
@@ -1218,7 +1219,7 @@ fn cheapest_break_cost(state: &GameState, ice: &RunIce, registry: &CardRegistry)
     if pending_on(ice) == 0 {
         return Some(0);
     }
-    state.runner.rig.iter().filter_map(|card| break_cost(card, ice, registry)).min()
+    state.runner.rig.iter().filter_map(|card| break_cost(state, card, ice, registry)).min()
 }
 
 /// What `card` would spend to break `ice` outright: pump credits to close
@@ -1230,10 +1231,11 @@ fn cheapest_break_cost(state: &GameState, ice: &RunIce, registry: &CardRegistry)
 /// shortfall and no pump. `BoostStrengthAmount` (Unity's +X) is priced as
 /// +1 per activation: X counts Unity itself so it is at least 1, and
 /// over-estimating a cost only makes the Runner save one click longer.
-fn break_cost(card: &InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> Option<u32> {
+fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> Option<u32> {
     let def = registry.get(&card.card)?;
     let pending = pending_on(ice);
-    let shortfall = (ice.current_strength - card.effective_strength()).max(0) as u32;
+    // A pump bought inside the search is a lingering effect of the sample.
+    let shortfall = (lingering::ice_strength(state, ice) - lingering::rig_strength(state, card)).max(0) as u32;
     let mut cheapest_break: Option<u32> = None;
     let mut cheapest_pump: Option<u32> = None;
     let keep_min = |slot: &mut Option<u32>, cost: u32| *slot = Some(slot.map_or(cost, |c| c.min(cost)));
@@ -1281,9 +1283,9 @@ fn strength_shortfall(state: &GameState, run: &RunState, registry: &CardRegistry
         .rig
         .iter()
         .filter(|card| breaks_subtype(card, ice.ice_type, registry))
-        .map(|card| card.effective_strength())
+        .map(|card| lingering::rig_strength(state, card))
         .max();
-    best.map_or(0, |strength| (ice.current_strength - strength).max(0))
+    best.map_or(0, |strength| (lingering::ice_strength(state, ice) - strength).max(0))
 }
 
 /// Whether `card`'s abilities include a `BreakSubroutines` that applies to

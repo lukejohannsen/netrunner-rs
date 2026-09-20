@@ -180,11 +180,6 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     next.resources_mut(side).clicks = Clicks(0);
 
     if side == Side::Runner {
-        // `BoostDuration::Turn` strength buffs last until end of turn, not
-        // until the Runner's next turn — `end_turn` already guards
-        // `CannotEndTurnWhileRunActive`, so there's no run-boundary
-        // ambiguity to worry about here.
-        next.runner.reset_turn_strength_buffs();
         // Snapshot before `enter_start_of_turn` (reached via this same
         // `EndOfTurn` window, or via `discard_card` if a mandatory discard
         // intervenes first) resets `made_successful_run_this_turn` for the
@@ -719,28 +714,6 @@ mod tests {
         assert!(events.contains(&GameEvent::TurnEnded { side: Side::Runner }));
         assert!(events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
         assert!(events.contains(&GameEvent::CardDrawn { side: Side::Corp }));
-    }
-
-    #[test]
-    fn end_turn_for_runner_resets_turn_strength_buff() {
-        use crate::rules::state::InstalledRunnerCard;
-
-        let mut state = game_state(Side::Runner, 0, 5, 0, 2);
-        state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
-        state.runner.rig = vec![InstalledRunnerCard {
-            card: CardId("corroder".to_string()),
-            base_strength: 2,
-            encounter_strength_buff: 1,
-            turn_strength_buff: 3,
-            ..Default::default()
-        }];
-
-        let (next, _events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
-
-        assert_eq!(next.runner.rig[0].turn_strength_buff, 0);
-        // Encounter-duration buffs are a separate cleanup hook
-        // (`run::engine::continue_run`), untouched here.
-        assert_eq!(next.runner.rig[0].encounter_strength_buff, 1);
     }
 
     #[test]

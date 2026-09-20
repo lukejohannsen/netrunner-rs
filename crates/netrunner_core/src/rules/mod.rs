@@ -11,6 +11,7 @@ mod engine;
 mod error;
 mod event;
 mod legal_actions;
+pub mod lingering;
 mod listeners;
 mod masking;
 pub mod memory;
