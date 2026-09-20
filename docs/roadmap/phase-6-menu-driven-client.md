@@ -204,6 +204,6 @@ both keep, the log agrees on both screens — quit on each lands on Play
 Online, and the port is closed afterwards; Esc while hosting stops the
 server too.
 
-**Open:** hosted games are unrated; a lobby place still cannot be resumed
+**Open:** hosted games are unrated (**closed as by design, 20 September 2026**, Phase 4 §5: the host's process holds the seed, so a rating is only ever a separate server's); a lobby place still cannot be resumed
 from the client (Phase 4 §3); the last-used server address is not
 remembered between sessions.
