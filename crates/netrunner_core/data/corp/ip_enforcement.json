@@ -26,7 +26,7 @@
                   "EffectIf": {
                     "condition": "IsTagged",
                     "effect": {
-                      "AddAdvancementTokens": 1
+                      "PlaceAdvancementCounters": 1
                     }
                   }
                 }

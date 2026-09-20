@@ -139,7 +139,13 @@ pub fn transitions(before: &ClientView, after: &ClientView, entry: &PublicHistor
                 out.push(Transition::CardMoved { card: Some(card.clone()), install: None, from: Zone::Scored(side), to: Zone::Discard(Side::Corp) });
             }
             GameEvent::IceRezzed { install, card, .. } => out.push(Transition::Revealed { install: *install, card: card.clone() }),
-            GameEvent::CardAdvanced { install, advancement_tokens, .. } => {
+            // Both advance events animate identically: the counter moves on
+            // the board the same way whichever rule put it there. They are
+            // two events for what may *trigger* on them (CR 1.18.2), and
+            // this match ends in a catch-all, so the second one has to be
+            // named here or a placed counter would appear with no beat.
+            GameEvent::CardAdvanced { install, advancement_tokens, .. }
+            | GameEvent::AdvancementCountersPlaced { install, advancement_tokens, .. } => {
                 let from = corp_install(before, *install).map_or(0, |c| c.advancement_tokens);
                 out.push(Transition::Advancement { install: *install, from, to: *advancement_tokens });
             }

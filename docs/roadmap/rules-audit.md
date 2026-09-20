@@ -191,3 +191,94 @@ Each would be one design decision, taken before a set builds on its absence.
 6. **A scenario builder for card tests** (§4). A deck-and-hand spec that
    reaches a real state through `setup` and actions, plus helpers that
    address cards by name. It is test code only.
+
+## Advancing a card and placing a counter on it were one event — DONE (20 September 2026)
+
+`fix/placing-a-counter-is-not-advancing` (#85), from a report while
+playing: *"some card for the Corp says 'Play and Advance two any card
+that hasn't been advanced'… when I play it seems as if every card is
+available to choose (including ICE) but that can't be correct because
+the only cards that can 'Advance' are Agendas and those that explicitly
+say 'can be advanced'."*
+
+**The card is Seamless Launch, and the prompt is right.** Its printed
+text is "Place 2 advancement counters on 1 installed card that you did
+not install this turn" — no "you can advance" clause. Null Signal Games'
+Comprehensive Rules:
+
+> **1.18.2.** Resolving an instruction that directly places an
+> advancement counter onto a card is not the same as advancing a card.
+>
+> **1.18.3.** The Corp can only advance certain installed cards. Agendas
+> can always be advanced. If a card other than an agenda says that it
+> "can be advanced" or that "you can advance" that card, the card can be
+> advanced even while it is unrezzed.
+
+1.18.3 restricts *advancing*, so it never reaches Seamless Launch, and
+the rules' own worked example places counters on ice (§1.12.3a, Priority
+Construction installing a piece of ice and placing counters on it). The
+DSL already had the keyword — `CardFilter::Advanceable`, which is
+`advancement_requirement.is_some()` — on exactly the six cards that print
+the clause. Nothing pinned it in either direction, which is why the
+prompt read as a bug; both directions now have a test.
+
+**The finding, and a claim this entry corrects.** `Effect::
+AddAdvancementTokens` emitted `GameEvent::CardAdvanced`, the same event
+`PlayerAction::AdvanceCard` emits. The first reading of that was that
+`Trigger::OnAdvance` fired on a placement and Weyland Consortium: Built
+to Last was being paid 2 credits when Key Performance Indicators or
+Syailendra merely placed one — **and that was wrong.** An effect's events
+are *returned*, never put through `dispatcher::dispatch_event`, which
+`engine::advance_card` calls by hand (`engine.rs:2071`), so the trigger
+never saw a placement at all. Measured rather than assumed, both ways:
+
+| | before → after |
+|---|---|
+| 192 random-vs-random games over `matchups()`, seed 1 | games, steps, end reasons, actions, cards, `triggers_fired` **all identical** |
+| `CardAdvanced` | 514 → 425, the other 89 now `AdvancementCountersPlaced` |
+| `built_to_last/OnAdvance` | 52 → 52 |
+| 96 heuristic games on `brick_stack` (Built to Last + KPI + Syailendra), seed 3 | 66 counters placed; the identity's trigger 47/66/64/67 → unchanged on all four runner decks |
+
+So this was a **trap, not a live bug**: the plumbing was the only thing
+holding the two rules apart, and one `dispatch_event` added for another
+card's sake would have turned it into a scoring bug with no test
+watching. Split anyway, on that reasoning.
+
+**Decisions taken, with the alternative rejected.**
+
+- **A new `GameEvent`, not a new `Effect`.** All seven cards that touch
+  advancement counters *place* them, so an advancing effect would have
+  had nothing to do. Growth goes into the vocabulary of *when* something
+  happens, which is the shape the DSL Growth Rule asks for, and the
+  variant ratio is unmoved.
+- **The effect is renamed `PlaceAdvancementCounters`**, so the card JSON
+  says which of the two rules it means. `deny_unknown_fields` made the
+  rename a parse error rather than a silent default in any file it
+  missed — seven card files.
+- **The dispatcher gets an explicit arm that fires nothing**, rather than
+  falling through its catch-all, so the next person to write an "on
+  advance" card finds the rule at the dispatch site instead of deriving
+  it again.
+- **`board::diff` had to name the new event explicitly**: its match ends
+  in `_ => {}`, so a placed counter would have appeared on the board with
+  no animation. The log says which of the two happened, because a reader
+  wondering why Built to Last did not pay is reading that line to find
+  out.
+- **No blanket advanceability check inside the effect.** That would break
+  Seamless Launch, which is the whole point above. Whether a target must
+  be advanceable is the card's business, expressed as its prompt's
+  filter.
+
+**A real error one card over.** Sericulture Expansion prints "place 2
+advancement counters on 1 installed card" with no clause and filtered
+`Advanceable` anyway, so it refused a PAD Campaign or a plain piece of
+ice — the opposite mistake, from the same confusion, found looking for
+the reported one. Its filter is now `Any`; the source stays
+`OwnInstalled`, because only a Corp install can hold an advancement
+counter (`acting_corp_install_mut`).
+
+**Still open, noticed here and not fixed:** `Trigger::OnAdvance` is
+reachable *only* from the basic action. CR 1.18.1 says "card abilities
+can also advance cards", and if one ever does, its trigger will not fire
+until the advancing path dispatches its event. No card in the set
+advances by ability today.

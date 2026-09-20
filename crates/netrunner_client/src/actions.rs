@@ -249,6 +249,14 @@ pub fn narrate_event(
             at(install),
             if *advancement_tokens == 1 { "" } else { "s" }
         ),
+        // The log says which of the two happened, because the rules do
+        // (CR 1.18.2) and because a reader wondering why Built to Last did
+        // not pay is reading this line to find out.
+        GameEvent::AdvancementCountersPlaced { install, advancement_tokens, .. } => format!(
+            "placed advancement counters on {}, now at {advancement_tokens} advancement token{}",
+            at(install),
+            if *advancement_tokens == 1 { "" } else { "s" }
+        ),
         GameEvent::IceSwapped { a, b, .. } if a == b => format!("swapped the ice at {} for another", at(a)),
         GameEvent::IceSwapped { a, b, .. } => format!("swapped {} with {}", at(a), at(b)),
         GameEvent::CardMoved { install, from, to, .. } => {

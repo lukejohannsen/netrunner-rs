@@ -23,7 +23,7 @@
             "then": {
               "Sequence": [
                 {
-                  "AddAdvancementTokens": 2
+                  "PlaceAdvancementCounters": 2
                 },
                 {
                   "PresentChoice": {

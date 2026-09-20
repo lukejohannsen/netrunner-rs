@@ -584,6 +584,18 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             })
         }
         GameEvent::CardAdvanced { .. } => visible(),
+        // Placing counters is the same secret as advancing (none, beyond
+        // the identity), so it is masked the same way. The two are separate
+        // events because of what may *trigger* on them — CR 1.18.2 — not
+        // because either shows the Runner anything the other does not.
+        GameEvent::AdvancementCountersPlaced { install, card: Some(card), advancement_tokens } if concealed(card) => {
+            Some(GameEvent::AdvancementCountersPlaced {
+                install: *install,
+                card: None,
+                advancement_tokens: *advancement_tokens,
+            })
+        }
+        GameEvent::AdvancementCountersPlaced { .. } => visible(),
         // Tāo Salonga swaps ice the Runner may not be able to identify.
         // Each identity is struck on its own condition — one of the two is
         // often a rezzed piece the Runner can name — and both handles stay,
