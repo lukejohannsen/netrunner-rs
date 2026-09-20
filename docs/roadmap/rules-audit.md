@@ -344,6 +344,56 @@ one.
    **identical four times** (the fix moves no game because no sample deck
    plays that identity; the md5s are the previous stage's). The audit clean
    over both 256-seed sweeps in a debug build (1,536 games).
+
+   **The checkpoint — DONE (20 September 2026, `feat/one-checkpoint`), and
+   it is two rules corrections, not a refactor.** `rules::checkpoint` runs
+   the standing checks of CR 10.3 — a side at the agenda-point threshold has
+   won; an older *active* copy of a unique card is trashed — from one place:
+   at the top of `dispatch_event`, **before** a single trigger is planned,
+   and again in `apply_action`'s tail after the drain, for whatever changed
+   them without an event a card can hear. The ten hand calls are gone (the
+   win check's two, the unique rule's eight).
+
+   *The win was checked after the reactions.* A steal pushed the agenda,
+   dispatched `AgendaStolen`, and only then looked at the score area — so a
+   Runner who stole the winning agenda out of Jinteki: Personal Evolution
+   with an empty grip was flatlined by the identity's reaction to a steal
+   that had already won them the game. The checkpoint comes first now, and a
+   finished game plans nothing.
+
+   *The unique rule was an install rule, and it is a rule about active
+   cards.* `trash_earlier_unique_copy` ran in eight install handlers (and
+   not in a ninth, `Effect::InstallFromZoneIgnoringCost`), trashing the
+   earlier copy whatever its state — so a second *facedown* Spin Doctor
+   destroyed the first, which the rules leave alone: a facedown card is not
+   active. Now the copy that most recently became active stays — the one a
+   rez just turned faceup, otherwise the newest install — and the rest go;
+   an agenda installed faceup (BANGUN) is no more active for this than for
+   `listeners`. The Runner's side is unchanged in effect: a rig card is
+   active from install.
+
+   *Left where they were, each for a reason now written in the module:*
+   deck-out and flatline (failed attempts, not standing conditions), the
+   memory limit (it parks a decision, so it belongs at the end of the
+   action), the console limit (a restriction on installing), empty remotes
+   (derived), expired durations (backlog item 2's).
+
+   *Measured* (`scripts/coverage_identical.py main --head-worktree`, 192
+   games a report, seed 1, all to `GameOver`) — not identical, and the
+   movement is the unique rule's: **Spin Doctor rezzed 120 → 151 and
+   trashed 23 → 58** on the heuristic seating, because two facedown copies
+   now coexist and each is rezzed for its draw in turn; Manegarm Skunkworks
+   trashed 0 → 6 the same way.
+
+   | | steps | Corp wins | `CardTrashed` | triggers fired |
+   |---|---|---|---|---|
+   | random (view = index) | 68,714 → 68,364 | 94 → 93 | 1,201 → 1,169 | 5,738 → 5,785 |
+   | heuristic by view | 82,813 → 79,437 | 39 → 42 | 158 → 212 | 4,462 → 4,081 |
+   | heuristic by index | 82,534 → 79,587 | 38 → 42 | 158 → 211 | 4,447 → 4,086 |
+
+   Outcomes inside the 0.026–0.047 band; games about 4% shorter on the
+   heuristic seating because the Corp draws more. Both 256-seed sweeps clean
+   in release, and again in a debug build with `dispatcher::audit` on.
 2. **A continuous-effect layer, with a target and a payload** (§2.1 as
    corrected by §6.2; was item 1). Not `{ kind, value: Amount, while }`: a
    closed enum with a payload per kind — a number, a subtype, a subroutine,

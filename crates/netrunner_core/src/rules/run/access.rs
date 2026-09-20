@@ -6,7 +6,6 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessPhase, AccessState, RunPhase, ServerId};
 use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, Side};
-use crate::rules::win::check_win_conditions;
 
 /// Root (non-ICE) installs on `server` — ICE is excluded via
 /// `InstalledCard::slot`, which the installing action declares explicitly
@@ -627,9 +626,11 @@ pub fn resolve_steal(
     let stolen_event = GameEvent::AgendaStolen { card: card_id.clone(), agenda_points };
     // Jinteki: Personal Evolution-style identity reaction to a steal —
     // unconditional dispatch, no per-turn gate.
+    // …after the checkpoint, which `dispatch_event` runs first: a steal
+    // that reaches the threshold has won, and the identity does not get to
+    // flatline the winner.
     dispatcher::emit(state, registry, &mut events, stolen_event)?;
 
-    events.extend(check_win_conditions(state, registry));
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)
 }

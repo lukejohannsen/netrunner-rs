@@ -756,8 +756,8 @@ pub enum GamePhase {
     /// each time.
     Discard { side: Side, required: usize },
     /// Terminal phase; carries the winning side. Reachable via
-    /// `win::check_win_conditions` (agenda-point threshold, checked from
-    /// `run::access_server` after a steal), `turn::enter_start_of_turn`'s
+    /// `win::check_win_conditions` (agenda-point threshold, checked by
+    /// `rules::checkpoint` before anything reacts), `turn::enter_start_of_turn`'s
     /// deck-out check, and `damage::apply_damage`'s flatline check.
     /// Included as its own phase (rather than a separate flag) so a
     /// win-condition check only needs to set `state.phase =
