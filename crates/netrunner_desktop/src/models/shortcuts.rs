@@ -112,7 +112,7 @@ pub const LIST: &[(&str, &str)] = &[
     ("P", "Purge viruses (Corp)"),
     ("J", "Jack out"),
     ("A", "Complete the run"),
-    ("U", "Take the last move back (twice, when it costs the game its rating)"),
+    ("U", "Take the last move back"),
     ("1 – 9", "The open menu's buttons, else the pop-up's, else a way through the ICE"),
     ("M", "Actions of the card under the pointer"),
     ("I", "Read the card under the pointer"),

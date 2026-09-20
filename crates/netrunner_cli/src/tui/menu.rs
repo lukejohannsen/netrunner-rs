@@ -11,7 +11,7 @@
 //! `Config` the equivalent flags would have produced, and the loop hands it
 //! to the same `play_local` / `learn::play` / `play_remote` the flag path
 //! calls. So there
-//! is still one seating rule, one rating rule and one deck resolver; the
+//! is still one seating rule, one record rule and one deck resolver; the
 //! menu is a way of filling in their inputs.
 //!
 //! **Each launch clones `base`** rather than mutating one shared config:
@@ -44,7 +44,7 @@ use super::start::{self, StartChoice, StartKey, StartMenu};
 use crate::config::{Config, FormatArg};
 use netrunner_client::decks;
 use crate::learn::{self, LearnPick};
-use crate::ratings;
+use crate::record;
 use crate::settings::{self, Settings};
 
 /// The main menu's entries, top to bottom.
@@ -54,13 +54,13 @@ pub enum Entry {
     Online,
     Learn,
     Decks,
-    Ratings,
+    Record,
     Settings,
     Quit,
 }
 
 impl Entry {
-    const ALL: [Entry; 7] = [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Ratings, Entry::Settings, Entry::Quit];
+    const ALL: [Entry; 7] = [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Record, Entry::Settings, Entry::Quit];
 
     fn label(self) -> &'static str {
         match self {
@@ -68,7 +68,7 @@ impl Entry {
             Entry::Online => "Play Online",
             Entry::Learn => "Learn to Play",
             Entry::Decks => "Decks",
-            Entry::Ratings => "Ratings",
+            Entry::Record => "Record",
             Entry::Settings => "Settings",
             Entry::Quit => "Quit",
         }
@@ -80,7 +80,7 @@ impl Entry {
             Entry::Online => "Host a game for someone to join, join one by address, or watch",
             Entry::Learn => "Guided lessons for each side, then the starter game",
             Entry::Decks => "Build, copy and edit your own decks, or read the built-in ones",
-            Entry::Ratings => "Your standing on the local ladder, and the rung to try next",
+            Entry::Record => "Your wins and losses against each rung, and the rung to try next",
             Entry::Settings => "Your name and the format decks are checked against",
             Entry::Quit => "Back to the shell",
         }
@@ -193,7 +193,7 @@ enum SettingsRow {
 
 const SETTINGS_ROWS: [SettingsRow; 2] = [SettingsRow::Player, SettingsRow::Format];
 
-/// Longest player name the form accepts. A rating id, not an essay.
+/// Longest player name the form accepts. An id, not an essay.
 const MAX_NAME: usize = 32;
 
 #[derive(Debug, Clone)]
@@ -202,7 +202,7 @@ struct SettingsForm {
     /// The name being typed, while the name row is open for editing.
     editing: Option<String>,
     settings: Settings,
-    /// The name games are rated under right now — the setting, a
+    /// The name games are recorded under right now — the setting, a
     /// `--player` flag or the login name — which editing starts from.
     current_name: String,
 }
@@ -284,7 +284,7 @@ enum Screen {
     Learn(LearnMenu),
     Decks(Box<DeckScreen>),
     Online(Box<OnlineScreen>),
-    Ratings { lines: Vec<String>, scroll: u16 },
+    Record { lines: Vec<String>, scroll: u16 },
     Settings(SettingsForm),
 }
 
@@ -325,9 +325,9 @@ impl Menu {
         Entry::ALL[self.cursor]
     }
 
-    /// Opens the new-game form on the decks and ratings as they are now —
-    /// re-read every time, so a rated game's result moves the suggested
-    /// rung before the next one.
+    /// Opens the new-game form on the decks and the record as they are now
+    /// — re-read every time, so a game's result moves the suggested rung
+    /// before the next one.
     fn open_new_game(&mut self) {
         match start::open(&self.base, &self.registry) {
             Ok(mut form) => {
@@ -348,7 +348,7 @@ impl Menu {
             Entry::PlayComputer => self.open_new_game(),
             Entry::Online => {
                 let opened = netrunner_client::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref()).and_then(|dir| {
-                    OnlineScreen::open(&dir, &self.registry, self.base.format.into(), ratings::player_name(&self.base), self.base.server.clone())
+                    OnlineScreen::open(&dir, &self.registry, self.base.format.into(), record::player_name(&self.base), self.base.server.clone())
                 });
                 match opened {
                     Ok(screen) => self.screen = Screen::Online(Box::new(screen)),
@@ -366,12 +366,12 @@ impl Menu {
                     Err(error) => self.notice = Some(error),
                 }
             }
-            Entry::Ratings => {
-                let lines = ratings::standing_lines(&self.base).unwrap_or_else(|error| vec![format!("Could not read the ratings: {error}")]);
-                self.screen = Screen::Ratings { lines, scroll: 0 };
+            Entry::Record => {
+                let lines = record::standing_lines(&self.base).unwrap_or_else(|error| vec![format!("Could not read the record: {error}")]);
+                self.screen = Screen::Record { lines, scroll: 0 };
             }
             Entry::Settings => {
-                self.screen = Screen::Settings(SettingsForm::new(self.settings.clone(), ratings::player_name(&self.base)));
+                self.screen = Screen::Settings(SettingsForm::new(self.settings.clone(), record::player_name(&self.base)));
             }
             Entry::Quit => return MenuStep::Quit,
         }
@@ -450,7 +450,7 @@ impl Menu {
                 let step = online.key(key);
                 self.online_step(step)
             }
-            Screen::Ratings { scroll, .. } => {
+            Screen::Record { scroll, .. } => {
                 match key {
                     KeyCode::Up | KeyCode::Char('k') => *scroll = scroll.saturating_sub(1),
                     KeyCode::Down | KeyCode::Char('j') => *scroll = scroll.saturating_add(1),
@@ -502,7 +502,7 @@ impl Menu {
     /// the game just played; a lesson leaves the Learn screen where it was;
     /// an online game stops the server this player hosted, if they did.
     /// A game that stopped on an error — a deck that failed validation, a
-    /// ratings file that would not open — says why under the screen instead
+    /// record file that would not open — says why under the screen instead
     /// of dropping the player out of the TUI.
     pub fn returned(&mut self, played: Played, error: Option<String>) {
         match played {
@@ -528,13 +528,13 @@ impl Menu {
             Screen::Learn(learn) => draw_learn(frame, body, learn),
             Screen::Decks(decks) => decks.draw(frame, body),
             Screen::Online(online) => online.draw(frame, body),
-            Screen::Ratings { lines, scroll } => draw_ratings(frame, body, lines, *scroll),
+            Screen::Record { lines, scroll } => draw_record(frame, body, lines, *scroll),
             Screen::Settings(form) => self.draw_settings(frame, body, form),
         }
         let line = match &self.notice {
             Some(notice) => Line::from(Span::styled(notice.clone(), Style::default().fg(Color::Red))),
             None => Line::from(Span::styled(
-                format!("Playing as {} · {} format", ratings::player_name(&self.base), format_name(self.base.format)),
+                format!("Playing as {} · {} format", record::player_name(&self.base), format_name(self.base.format)),
                 Style::default().fg(Color::DarkGray),
             )),
         };
@@ -590,12 +590,12 @@ impl Menu {
         );
         let path = |result: Result<PathBuf, String>| result.map_or_else(|error| error, |path| path.display().to_string());
         let about_lines = vec![
-            Line::from("Your name is what local games are rated under. The format is what deck legality is checked against:"),
+            Line::from("Your name is what your games are recorded under and what a server sees. The format is what deck legality is checked against:"),
             Line::from("Startup is System Gateway and Elevation, the pool this game ships; the Core Set needs Eternal."),
             Line::from(""),
             Line::from(format!("Settings     {}", self.settings_path.as_ref().map_or_else(|| "not saved".to_string(), |p| p.display().to_string()))),
             Line::from(format!("Saved decks  {}", path(netrunner_client::deck_store::resolve_decks_dir(self.base.decks_dir.as_deref())))),
-            Line::from(format!("Ratings      {}", path(ratings::resolve_ratings_file(self.base.ratings_file.as_deref())))),
+            Line::from(format!("Record       {}", path(record::resolve_record_file(self.base.record_file.as_deref())))),
         ];
         frame.render_widget(Paragraph::new(about_lines).wrap(Wrap { trim: false }), about);
     }
@@ -625,11 +625,11 @@ fn draw_learn(frame: &mut Frame, area: Rect, learn: &LearnMenu) {
     );
 }
 
-fn draw_ratings(frame: &mut Frame, area: Rect, lines: &[String], scroll: u16) {
+fn draw_record(frame: &mut Frame, area: Rect, lines: &[String], scroll: u16) {
     let text: Vec<Line> = lines.iter().map(|line| Line::from(line.clone())).collect();
     frame.render_widget(
         Paragraph::new(text)
-            .block(Block::default().borders(Borders::ALL).title("Ratings — Up/Down scroll, Esc goes back"))
+            .block(Block::default().borders(Borders::ALL).title("Record — Up/Down scroll, Esc goes back"))
             .scroll((scroll, 0)),
         area,
     );
@@ -695,19 +695,19 @@ mod tests {
 
     use crate::config::BotKind;
 
-    /// A menu whose decks, ratings and settings all live in a fresh temp
+    /// A menu whose decks, record and settings all live in a fresh temp
     /// directory, so no test reads or writes the player's real files.
     fn menu(name: &str) -> (Menu, PathBuf) {
         let dir = std::env::temp_dir().join(format!("netrunner_menu_{name}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         let decks = dir.join("decks");
-        let ratings = dir.join("ratings.json");
+        let record = dir.join("record.json");
         let config = Config::try_parse_from([
             "netrunner_cli",
             "--decks-dir",
             decks.to_str().unwrap(),
-            "--ratings-file",
-            ratings.to_str().unwrap(),
+            "--record-file",
+            record.to_str().unwrap(),
             "--player",
             "tester",
         ])
@@ -751,7 +751,6 @@ mod tests {
         assert_eq!(choice.human, Side::Corp);
         assert_eq!((config.corp, config.runner), (BotKind::Human, BotKind::Heuristic));
         assert_eq!(config.runner_level, Some(choice.level));
-        assert!(!config.unrated);
         assert_eq!((menu.base.corp, menu.base.runner), (BotKind::Human, BotKind::Human), "a launch clones base");
         let _ = std::fs::remove_dir_all(dir);
     }
@@ -760,12 +759,12 @@ mod tests {
     fn a_game_returns_to_the_form_on_the_game_just_played() {
         let (mut menu, dir) = menu("returns");
         go_to(&mut menu, Entry::PlayComputer);
-        // The Runner chair, unrated.
-        let MenuStep::Launch(launch) = press(&mut menu, &[KeyCode::Down, KeyCode::Char('r'), KeyCode::Enter]) else { panic!() };
+        // The Runner chair.
+        let MenuStep::Launch(launch) = press(&mut menu, &[KeyCode::Down, KeyCode::Enter]) else { panic!() };
         menu.returned(launch.kind(), None);
         let Screen::NewGame(form) = &menu.screen else { panic!("back on the form") };
         let again = form.choice().unwrap();
-        assert_eq!((again.human, again.rated), (Side::Runner, false));
+        assert_eq!(again.human, Side::Runner);
         assert!(menu.notice.is_none());
         menu.returned(launch.kind(), Some("deck is not legal".to_string()));
         assert_eq!(menu.notice.as_deref(), Some("That game stopped: deck is not legal"));
@@ -830,7 +829,7 @@ mod tests {
         press(&mut menu, &[KeyCode::Esc]);
         go_to(&mut menu, Entry::PlayComputer);
         let MenuStep::Launch(Launch::Local { config }) = menu.key(KeyCode::Enter) else { panic!() };
-        assert_eq!(ratings::player_name(&config), "testerqu");
+        assert_eq!(record::player_name(&config), "testerqu");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -848,7 +847,7 @@ mod tests {
 
     #[test]
     fn escape_from_every_screen_goes_back_to_the_main_menu() {
-        for entry in [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Ratings, Entry::Settings] {
+        for entry in [Entry::PlayComputer, Entry::Online, Entry::Learn, Entry::Decks, Entry::Record, Entry::Settings] {
             let (mut menu, dir) = menu(&format!("esc_{entry:?}"));
             go_to(&mut menu, entry);
             assert!(!matches!(menu.screen, Screen::Main), "{entry:?} opens a screen");
@@ -867,18 +866,18 @@ mod tests {
         assert_eq!(seats(&["netrunner_cli"]), (false, false), "the menu");
         assert_eq!(seats(&["netrunner_cli", "--corp-deck", "brick_stack"]), (false, false), "a deck is not a seat");
         assert_eq!(seats(&["netrunner_cli", "--runner", "heuristic"]), (false, true));
-        // What `ratings` tells a new player to type: a rung is a bot.
+        // What `record` tells a new player to type: a rung is a bot.
         assert_eq!(seats(&["netrunner_cli", "--runner-level", "3"]), (false, true));
         assert_eq!(seats(&["netrunner_cli", "--runner", "human", "--corp-level", "veteran"]), (true, false));
     }
 
     #[test]
-    fn a_fresh_ladder_says_so_on_the_ratings_screen() {
-        let (mut menu, dir) = menu("ratings");
-        go_to(&mut menu, Entry::Ratings);
-        let Screen::Ratings { lines, .. } = &menu.screen else { panic!() };
+    fn a_fresh_record_says_so_on_the_record_screen() {
+        let (mut menu, dir) = menu("record");
+        go_to(&mut menu, Entry::Record);
+        let Screen::Record { lines, .. } = &menu.screen else { panic!() };
         assert!(lines[0].starts_with("tester"), "{lines:?}");
-        assert!(lines.iter().any(|line| line.contains("no rated games yet")), "{lines:?}");
+        assert!(lines.iter().any(|line| line.contains("no games yet")), "{lines:?}");
         let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -83,24 +83,6 @@ impl ServeBotKind {
         }
     }
 
-    /// The bot's participant id in the rating book. Prefixed so no human
-    /// name can collide with it on the human-vs-bot track — a player is
-    /// free to call themselves "heuristic".
-    fn rating_id(self) -> &'static str {
-        match self {
-            ServeBotKind::Heuristic => "bot:heuristic",
-            ServeBotKind::Mcts => "bot:mcts",
-            ServeBotKind::None => unreachable!("a human-vs-human daemon seats no bot"),
-        }
-    }
-
-    /// Which ladder a match on this daemon counts toward.
-    fn track(self) -> Track {
-        match self {
-            ServeBotKind::None => Track::HumanVsHuman,
-            ServeBotKind::Heuristic | ServeBotKind::Mcts => Track::HumanVsBot,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -110,15 +92,12 @@ pub struct ServeOptions {
     pub bot_runner: ServeBotKind,
     /// Seat a rung of the difficulty ladder instead of `bot_runner`'s
     /// kind — the same override `netrunner_cli --corp-level` makes, so a
-    /// daemon's `veteran` and a local `veteran` are the same bot and are
-    /// rated under the same id (`Level::rating_id`, `bot:veteran`). The
+    /// daemon's `veteran` and a local `veteran` are the same bot. The
     /// personality still crosses it. Meaningless with `ServeBotKind::None`,
     /// which `bind` refuses.
     pub bot_level: Option<Level>,
     /// The bot's `Personality`, or `None` for the style its dealt deck
-    /// names (`DeckFile::style`, balanced when the deck names none). Part
-    /// of its rating id when not balanced, so a rush Corp and a glacier
-    /// Corp are different opponents on the human-vs-bot ladder.
+    /// names (`DeckFile::style`, balanced when the deck names none).
     pub bot_personality: Option<Personality>,
     /// Base seed every match's seed is derived from (`base + match
     /// index`, the headless driver's policy). `None` picks one at random.
@@ -153,6 +132,9 @@ pub struct ServeOptions {
     /// rename, like the deck store and the card cache), and the only
     /// thing that makes a rating *persistent*. `None` rates nothing: a
     /// daemon with no file is stateless, which is what every test wants.
+    /// **Only a match between two people is rated.** A game against a
+    /// seated bot is practice wherever it is played, so a bot daemon given
+    /// a file never writes to it (`netrunner_rating::Track`).
     pub ratings_file: Option<PathBuf>,
 }
 
@@ -297,7 +279,7 @@ struct PendingHuman {
 
 impl PendingHuman {
     fn seated(self) -> SeatedPlayer {
-        SeatedPlayer { rating_id: self.player_name.clone(), name: self.player_name, token: self.token, slot: self.slot, deck: self.deck }
+        SeatedPlayer { rating_id: Some(self.player_name.clone()), name: self.player_name, token: self.token, slot: self.slot, deck: self.deck }
     }
 
     /// The side this player must play, if their deck fixes one.
@@ -314,15 +296,15 @@ fn compatible(a: &PendingHuman, b: &PendingHuman) -> bool {
 }
 
 /// A player about to be seated: the name `MatchList` will show, the id
-/// the rating book knows them by (the name itself for a human, a
-/// `bot:` id for a bot), the token `MatchJoined` will carry (already
+/// the rating book knows them by (the name itself for a human, `None`
+/// for a bot, which is what leaves a game against one unrated), the token `MatchJoined` will carry (already
 /// issued if they came through the lobby, so one token spans queue and
 /// match), and the slot the session plays them through. A bot seat
 /// carries a token too, unused — cheaper than a second type for the one
 /// case that never resumes.
 struct SeatedPlayer {
     name: String,
-    rating_id: String,
+    rating_id: Option<String>,
     token: Uuid,
     slot: PlayerSlot,
     /// A deck the player brought, which replaces whatever the daemon would
@@ -451,12 +433,12 @@ impl Shared {
     /// await, so that is fine. A failed write is logged, not fatal: the
     /// ratings are already applied in memory and the next match's write
     /// carries them.
-    fn rate(&self, track: Track, corp: &str, runner: &str, outcome: Outcome) {
+    fn rate(&self, corp: &str, runner: &str, outcome: Outcome) {
         let Some(path) = &self.options.ratings_file else { return };
         let mut registry = self.lock();
-        let (corp_after, runner_after) = registry.ratings.record(track, corp, runner, outcome);
+        let (corp_after, runner_after) = registry.ratings.record(Track::HumanVsHuman, corp, runner, outcome);
         tracing::info!(
-            ?track, corp, runner, ?outcome,
+            corp, runner, ?outcome,
             corp_rating = corp_after.corp.rating.rating, runner_rating = runner_after.runner.rating.rating,
             "match rated"
         );
@@ -730,7 +712,7 @@ fn seat_vs_bot(
     let (match_id, seed) = registry.allocate(shared.base_seed);
 
     let human_side = preferred_side.unwrap_or(Side::Corp);
-    let human = SeatedPlayer { rating_id: player_name.clone(), name: player_name, token: Uuid::new_v4(), slot, deck };
+    let human = SeatedPlayer { rating_id: Some(player_name.clone()), name: player_name, token: Uuid::new_v4(), slot, deck };
     // The same deal `start_match` will make — `decks_for` is a function of
     // the seed — so the bot's style can come off the deck it is about to
     // play. A pinned deck is an embedded id (`pin_deck`), so `by_id`
@@ -746,23 +728,16 @@ fn seat_vs_bot(
     let bot_side = human_side.other();
     let bot_seed = seed.wrapping_add(1);
     let bot = match shared.options.bot_level {
-        // A rung is rated by its name alone, style or no style — the rung
-        // is the strength claim, and a person's rating against it should
-        // span the styles it plays. `netrunner_cli::ratings` makes the
-        // same choice, so the two books agree.
         Some(level) => SeatedPlayer {
-            name: format!("{} bot", level.name()),
-            rating_id: level.rating_id(),
+            name: styled(format!("{} bot", level.name()), personality),
+            rating_id: None,
             token: Uuid::new_v4(),
             slot: PlayerSlot::Bot(level.spec(bot_side).with_personality(personality).agent(bot_seed)),
             deck: None,
         },
         None => SeatedPlayer {
-            name: kind.seat_name().to_string(),
-            rating_id: match personality {
-                Personality::Balanced => kind.rating_id().to_string(),
-                personality => format!("{}:{personality}", kind.rating_id()),
-            },
+            name: styled(kind.seat_name().to_string(), personality),
+            rating_id: None,
             token: Uuid::new_v4(),
             slot: PlayerSlot::Bot(make_serve_agent(kind, bot_side, bot_seed, personality)),
             deck: None,
@@ -901,6 +876,8 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
                 registry.seats.remove(&token);
             }
         }
+        // Two people, or nothing: a seat with no rating id is a bot's.
+        let (Some(corp), Some(runner)) = (corp_rating_id, runner_rating_id) else { return };
         // A forfeit — surrender, disconnect, clock — is a loss like any
         // other; a stall (`None`) is nobody's and goes unrated.
         let outcome = match outcome {
@@ -908,8 +885,18 @@ fn start_match(shared: &Shared, registry: &mut Registry, match_id: Uuid, seed: u
             Some((Side::Runner, _)) => Outcome::RunnerWin,
             None => return,
         };
-        shared.rate(shared.options.bot_runner.track(), &corp_rating_id, &runner_rating_id, outcome);
+        shared.rate(&corp, &runner, outcome);
     });
+}
+
+/// A bot seat's name with the style it plays, when it plays one: "heuristic
+/// bot, rush". `MatchList` is the one place a person sees which opponent a
+/// daemon seated, and a rush Corp and a glacier Corp are different games.
+fn styled(name: String, personality: Personality) -> String {
+    match personality {
+        Personality::Balanced => name,
+        personality => format!("{name}, {personality}"),
+    }
 }
 
 /// A brought deck's side first — `compatible` has already ruled out two

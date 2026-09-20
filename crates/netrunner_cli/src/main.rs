@@ -8,7 +8,7 @@ mod diag;
 mod headless;
 mod learn;
 use netrunner_client::prose;
-mod ratings;
+mod record;
 mod remote;
 mod replay;
 mod settings;
@@ -72,7 +72,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             diag::tempo::run(&args, &config)
         }
         Some(Command::Matches) => remote::print_matches(&config.server).await,
-        Some(Command::Ratings) => ratings::print(&config),
+        Some(Command::Record) => record::print(&config),
         Some(Command::Cards { action }) => cards::run(action).await,
         Some(Command::Deck { action }) => deck::run(action, &config),
         Some(Command::Learn { action }) => learn::run(action, &config),

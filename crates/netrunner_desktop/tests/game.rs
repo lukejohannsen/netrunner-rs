@@ -185,7 +185,7 @@ fn until_the_runners_turn(app: &mut App) {
 /// The seed every test game is dealt from.
 const TEST_SEED: u64 = 1;
 
-/// Play vs Computer → Start (Novice, unrated) → the board, as the Runner.
+/// Play vs Computer → Start (Novice) → the board, as the Runner.
 fn start_a_game(app: &mut App) {
     start_a_game_as(app, Side::Runner);
 }
@@ -200,9 +200,10 @@ fn start_a_game_with(app: &mut App, human: Side, corp_deck: &str) {
     app.update();
     assert_eq!(screen(app), AppScreen::NewGame);
     // The form's choice, made directly rather than through five drop-downs:
-    // the bottom rung so the bot answers at once, unrated so no file is
-    // written. `start` is the same function the Start button calls.
-    let choice = StartChoice { human, level: Level::Novice, style: None, corp_deck: corp_deck.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string(), rated: false };
+    // the bottom rung so the bot answers at once. The record it leaves is
+    // under the test's own directory (`ClientCore::in_dir`). `start` is
+    // the same function the Start button calls.
+    let choice = StartChoice { human, level: Level::Novice, style: None, corp_deck: corp_deck.to_string(), runner_deck: DEFAULT_RUNNER_DECK.to_string() };
     // One seed for every test: the games are real, and a test that leans
     // on a board state (an install by the Runner's first turn, a central
     // left open) must see the same deal each run rather than whatever the

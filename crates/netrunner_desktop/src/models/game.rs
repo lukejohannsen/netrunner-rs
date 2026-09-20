@@ -69,8 +69,8 @@ use std::sync::Arc;
 
 use netrunner_client::actions::{pop_log_entries, push_log_line};
 use netrunner_client::board::{encounter_subroutines, routes, transitions, ActionMap, Affordance, Asks, AutoBreak, Control, Encounter, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
-use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage, Rewind};
-use netrunner_client::ratings::RatingReport;
+use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
+use netrunner_client::record::RecordReport;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{GameEvent, InstallId, PlayerAction, ServerId, Side};
@@ -254,7 +254,7 @@ impl HandOrder {
 pub struct Over {
     pub winner: Side,
     pub reason: GameEndReason,
-    pub report: Option<RatingReport>,
+    pub report: Option<RecordReport>,
     pub notice: Option<String>,
 }
 
@@ -295,16 +295,11 @@ pub struct Game {
     /// `EndTurn` with clicks unspent — correctly, a player may end early —
     /// so one stray Enter would have thrown them away.
     pub end_turn_armed: bool,
-    /// What taking the last move back would cost, as the match thread
-    /// last said (`MatchMessage::Back`); `None` is nothing to take back.
-    pub back: Option<Rewind>,
-    /// The first press of an undo that will cost the game its rating: it
-    /// asks, as Enter does with clicks left, and the second press goes.
-    /// A free take-back never asks — it gives nothing up.
-    pub undo_armed: bool,
-    /// An undo has been used, so the game is no longer rated; the end of
-    /// the match says why (`play::UNRATED_BY_UNDO`).
-    pub undone: bool,
+    /// Whether there is a move to take back, as the match thread last
+    /// said (`MatchMessage::Back`). The kind it names is not kept: a game
+    /// against a bot is casual, so every take-back costs the same nothing
+    /// and none of them asks twice (`netrunner_client::play`).
+    pub back: bool,
     pub rejection: Option<String>,
     /// Every card's way through the encountered ICE, with its price
     /// (`netrunner_client::board::breaks`), while the person is awaiting
@@ -348,9 +343,7 @@ impl Game {
             options_open: false,
             help_open: false,
             end_turn_armed: false,
-            back: None,
-            undo_armed: false,
-            undone: false,
+            back: false,
             rejection: None,
             breaks: Vec::new(),
             breaking: None,
@@ -446,13 +439,12 @@ impl Game {
         // Whatever comes between two Enters stands the first one down;
         // the notice it put on the rail goes with a redraw.
         let armed = std::mem::take(&mut self.end_turn_armed);
-        let undo_armed = std::mem::take(&mut self.undo_armed);
         let outcome = match intent {
-            Intent::TakeBack => self.take_back(undo_armed),
+            Intent::TakeBack => self.take_back(),
             intent => self.apply_intent(intent, armed),
         };
         match outcome {
-            Outcome::Nothing if (armed && !self.end_turn_armed) || (undo_armed && !self.undo_armed) => Outcome::Redraw,
+            Outcome::Nothing if armed && !self.end_turn_armed => Outcome::Redraw,
             outcome => outcome,
         }
     }
@@ -460,35 +452,21 @@ impl Game {
     /// The words on the button that takes the last move back, `None` when
     /// there is none to take. One wording for the pop-up and the rail.
     pub fn back_label(&self) -> Option<&'static str> {
-        if !self.awaiting {
-            return None;
-        }
-        self.back.map(|rewind| match rewind {
-            Rewind::Free => "Take it back",
-            Rewind::Undo => "Undo last move",
-        })
+        (self.awaiting && self.back).then_some("Take it back")
     }
 
-    /// The Back button, the rail's Undo and U. Free goes at once; an undo
-    /// that will cost the rating asks first. Not a board click and not an
-    /// action: the state it returns to is one the engine produced, and
-    /// what may be done there is again whatever the engine lists.
-    fn take_back(&mut self, armed: bool) -> Outcome {
-        if !self.awaiting || self.covered() {
+    /// The Back button, the rail's and U. It goes at once: nothing rides
+    /// on a game against a bot, so there is nothing to ask about. Not a
+    /// board click and not an action: the state it returns to is one the
+    /// engine produced, and what may be done there is again whatever the
+    /// engine lists.
+    fn take_back(&mut self) -> Outcome {
+        if !self.awaiting || self.covered() || !self.back {
             return Outcome::Nothing;
         }
-        match self.back {
-            None => Outcome::Nothing,
-            Some(Rewind::Undo) if !armed && !self.undone => {
-                self.undo_armed = true;
-                Outcome::Redraw
-            }
-            Some(_) => {
-                self.awaiting = false;
-                self.menu = None;
-                Outcome::Rewind
-            }
-        }
+        self.awaiting = false;
+        self.menu = None;
+        Outcome::Rewind
     }
 
     fn apply_intent(&mut self, intent: Intent, armed: bool) -> Outcome {
@@ -704,20 +682,15 @@ impl Game {
                 Outcome::Redraw
             }
             MatchMessage::Back { rewind } => {
-                self.back = rewind;
+                self.back = rewind.is_some();
                 Outcome::Nothing
             }
             // The board snaps to where the move was made from: nothing
             // moved *to* here, so there is no transition to play, and the
             // log loses what no longer happened. The `Awaiting` that
             // follows hands the controls back.
-            MatchMessage::Rewound { view, removed, kind } => {
-                let note = match kind {
-                    Rewind::Free => "You took that back.",
-                    Rewind::Undo => "You undid your last move — this game is no longer rated.",
-                };
-                pop_log_entries(&mut self.log, removed, note);
-                self.undone |= kind == Rewind::Undo;
+            MatchMessage::Rewound { view, removed, .. } => {
+                pop_log_entries(&mut self.log, removed, "You took that back.");
                 self.applied = self.applied.saturating_sub(removed);
                 self.transitions.clear();
                 self.trail = None;
@@ -729,7 +702,7 @@ impl Game {
                 self.breaking = None;
                 self.prompt = None;
                 self.menu = None;
-                self.back = None;
+                self.back = false;
                 self.rejection = None;
                 Outcome::Redraw
             }
@@ -1001,7 +974,7 @@ mod tests {
         let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").unwrap();
         let runner = netrunner_core::decks::by_id("stolen_goods").unwrap();
-        let spec = LocalMatchSpec { registry: registry.clone(), corp, runner, human: side, level: Level::Novice, style: None, seed: 11, rating: None };
+        let spec = LocalMatchSpec { registry: registry.clone(), corp, runner, human: side, level: Level::Novice, style: None, seed: 11, record: None };
         let handle = MatchHandle::start_local(spec).unwrap();
         (Game::new(registry, side), handle)
     }
@@ -1720,11 +1693,13 @@ mod tests {
         assert!(labels[0].ends_with(" — then asks: Run on HQ / Run on R&D"), "{}", labels[0]);
     }
 
-    /// A take-back that teaches nothing goes at once; an undo that costs
-    /// the rating asks first, as Enter does with clicks left; and the log
-    /// loses what no longer happened.
+    /// Every take-back goes at once, whichever kind the session says it
+    /// is, and the log loses what no longer happened. An undo past
+    /// something newly seen once asked twice, because it cost the game
+    /// its rating; a game against a bot has none to lose.
     #[test]
-    fn a_free_take_back_goes_at_once_and_an_undo_asks_twice() {
+    fn every_take_back_goes_at_once() {
+        use netrunner_client::play::Rewind;
         use netrunner_core::rules::GameState;
         use netrunner_core::view::build_client_view;
 
@@ -1751,29 +1726,13 @@ mod tests {
         assert_eq!(game.log.len(), 2, "{:?}", game.log);
         assert_eq!(game.log[0], "[turn 2] Runner: one");
         assert!(game.log[1].contains("took that back"));
-        assert!(game.back.is_none() && !game.undone);
+        assert!(!game.back);
 
         say(&mut game, MatchMessage::Back { rewind: Some(Rewind::Undo) });
         say(&mut game, MatchMessage::Awaiting { view: view() });
-        assert_eq!(game.back_label(), Some("Undo last move"));
-        assert_eq!(game.apply(Intent::Shortcut(Shortcut::TakeBack)), Outcome::Redraw, "the first press asks");
-        assert!(game.undo_armed);
-        assert_eq!(game.apply(Intent::TakeBack), Outcome::Rewind);
+        assert_eq!(game.back_label(), Some("Take it back"), "one wording, whatever the move had shown");
+        assert_eq!(game.apply(Intent::Shortcut(Shortcut::TakeBack)), Outcome::Rewind, "the first press goes");
         say(&mut game, MatchMessage::Rewound { view: view(), removed: 0, kind: Rewind::Undo });
-        assert!(game.undone);
-
-        // Once the rating is gone there is nothing left to ask about.
-        say(&mut game, MatchMessage::Back { rewind: Some(Rewind::Undo) });
-        say(&mut game, MatchMessage::Awaiting { view: view() });
-        assert_eq!(game.apply(Intent::TakeBack), Outcome::Rewind);
-
-        // Anything else between the two presses stands the first down.
-        let mut game = Game::new(registry.clone(), Side::Runner);
-        say(&mut game, MatchMessage::Back { rewind: Some(Rewind::Undo) });
-        say(&mut game, MatchMessage::Awaiting { view: view() });
-        game.apply(Intent::TakeBack);
-        game.apply(Intent::CloseMenu);
-        assert!(!game.undo_armed);
-        assert_eq!(game.apply(Intent::TakeBack), Outcome::Redraw, "asked again");
+        assert!(game.log.last().is_some_and(|line| line.contains("took that back")));
     }
 }

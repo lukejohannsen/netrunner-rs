@@ -584,8 +584,9 @@ fn block_on_bounded<F: Future>(future: F) -> Option<F::Output> {
 /// Binds a human-vs-human server on `port` and starts it; returns it and
 /// the loopback URL the host joins by. Port 0 takes any free port (tests).
 ///
-/// Unrated: the server's rating book is a daemon operator's, and this
-/// process's local book is the human-vs-bot ladder.
+/// Unrated, by design: a rating is a claim by a server somebody else
+/// runs, and this process holds the seed and the unmasked state of the
+/// game its own host is playing in (`docs/identity-and-rating.md`).
 fn start_hosting(port: u16, lan: bool, format: NsgFormat) -> Result<(Hosting, String), String> {
     let host = if lan { "0.0.0.0" } else { "127.0.0.1" };
     let options = ServeOptions { bot_runner: ServeBotKind::None, format, ..ServeOptions::default() };

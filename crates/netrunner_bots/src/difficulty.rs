@@ -195,14 +195,13 @@ impl Level {
         }
     }
 
-    /// The participant id this rung is rated under, on every track and
-    /// in every consumer: `bot:veteran`. One id per rung rather than per
-    /// chair because `netrunner_rating` already keeps a Corp and a Runner
-    /// record per participant, and rather than per style because the
-    /// rung is the strength claim — a human's rating against it should
-    /// span the styles it plays. The daemon's `bot:heuristic` ids are the
-    /// same shape, so a local file and a daemon file are comparable.
-    pub fn rating_id(self) -> String {
+    /// The id a person's record against this rung is kept under
+    /// (`netrunner_client::record`): `bot:veteran`. One id per rung rather
+    /// than per style because the rung is the strength claim — a record
+    /// against it should span the styles it plays — and the chair is the
+    /// record's own key. It is not a rating id: nobody rates a game
+    /// against a bot, and `bench` names a rung `level:veteran`.
+    pub fn record_id(self) -> String {
         format!("bot:{}", self.name())
     }
 
@@ -486,7 +485,7 @@ mod tests {
     #[test]
     fn the_rungs_are_ordered_and_every_one_seats_on_both_chairs() {
         assert_eq!(Level::ALL.map(Level::rung), [1, 2, 3, 4, 5]);
-        assert_eq!(Level::Veteran.rating_id(), "bot:veteran");
+        assert_eq!(Level::Veteran.record_id(), "bot:veteran");
         assert!(Level::Novice < Level::Elite, "the enum's own order is the ladder's order");
         for level in Level::ALL {
             for side in [Side::Corp, Side::Runner] {

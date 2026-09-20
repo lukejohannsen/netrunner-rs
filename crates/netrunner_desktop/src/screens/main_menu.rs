@@ -54,12 +54,12 @@ impl Entry {
 
     pub fn blurb(self) -> &'static str {
         match self {
-            Entry::PlayComputer => "A rated game against a rung of the ladder, in the style your deck chooses",
+            Entry::PlayComputer => "A casual game against a rung of the ladder, in the style your deck chooses",
             Entry::Online => "Host a game, join one by address, or watch",
             Entry::Learn => "Both lesson tracks and the starter games",
             Entry::Decks => "Build, copy and edit decks; the same files the terminal client plays",
             Entry::Cards => "Every card, with the printed text and how the engine reads it",
-            Entry::Profile => "Your name, your rating on both chairs, and where your files live",
+            Entry::Profile => "Your name, your record against the ladder, and where your files live",
             Entry::Settings => "Name, format, animation, sound, card images",
             Entry::About => "Credits and licences: whose fonts, symbols, cards and art are in the client",
             Entry::Quit => "",

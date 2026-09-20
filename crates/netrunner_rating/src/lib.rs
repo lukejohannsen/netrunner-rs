@@ -4,12 +4,13 @@
 //! **Pure and engine-free.** This crate knows nothing about `GameState`,
 //! decks or transports — a match reaches it as "this participant sat as
 //! the Corp, that one as the Runner, and here is who won" — so the same
-//! `RatingBook` rates a human-vs-human ladder on the server, a human's
-//! progress against the bots, and the bot benchmark `netrunner_cli bench`
-//! runs offline. It performs no I/O: `RatingBook::to_json`/`from_json`
-//! are the whole persistence contract, and whoever owns a file (the CLI,
-//! the server) owns reading and writing it, the same split
-//! `netrunner_core::decks` keeps with `netrunner_cli::deck_store`.
+//! `RatingBook` rates a human-vs-human ladder on the server and the bot
+//! benchmark `netrunner_cli bench` runs offline. A person's games against
+//! a bot are rated by nobody (`Track`). It performs no I/O:
+//! `RatingBook::to_json`/`from_json` are the whole persistence contract,
+//! and whoever owns a file (the CLI's `bench`, the server) owns reading
+//! and writing it, the same split `netrunner_core::decks` keeps with
+//! `netrunner_cli::deck_store`.
 //!
 //! **Glicko-2 rather than Elo**, because every consumer here has few
 //! games per participant — a bot benchmark of a few dozen games a

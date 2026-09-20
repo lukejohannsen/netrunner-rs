@@ -8,19 +8,22 @@ use serde::{Deserialize, Serialize};
 
 use crate::glicko2::{Glicko2, Rating, Score};
 
-/// Which ladder a match counts toward. Three, and they never mix: a human
-/// who beats the heuristic bot every evening should not carry that rating
-/// into a game against a person, and a bot's benchmark standing must not
-/// move because a beginner lost to it. The bot tracks are keyed by the
-/// same participant ids the benchmark uses (`bot:heuristic`), so a bot has
-/// one identity everywhere and a rating per track.
+/// Which ladder a match counts toward. Two, and they never mix: a bot's
+/// benchmark standing must not move because a person played it, and a
+/// person's standing is against people.
+///
+/// **There is no people-against-bots track, and there was one.** A rating
+/// is a claim to someone else, so it means something only between people
+/// and only when somebody other than the rated player keeps it: a person's
+/// games against a bot are practice — take-backs allowed, the file theirs
+/// to delete — and what they need from them is which rung to try next,
+/// which is a win/loss record (`netrunner_client::record`) and never was
+/// the Glicko-2 number. `HumanVsBot` was retired for that reason; a book
+/// written while it existed still loads (see [`RatingBook`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Track {
-    /// People against people — the competitive ladder.
+    /// People against people — the competitive ladder, kept by a server.
     HumanVsHuman,
-    /// People against bots — a player's progress through the difficulty
-    /// tiers, and the bots' standing against people.
-    HumanVsBot,
     /// Bots against bots, offline: `netrunner_cli bench`.
     BotBenchmark,
 }
@@ -108,12 +111,28 @@ impl Standing {
 /// Every rating in the system. Serializable whole, so a consumer's
 /// persistence is one file; `BTreeMap`s so that file is stable under
 /// `diff`.
+///
+/// **A track this crate no longer knows is dropped on load, not an
+/// error.** The map is keyed by the enum, so retiring a variant would
+/// otherwise turn an operator's existing book into a parse failure and
+/// take the tracks that are still kept down with it.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct RatingBook {
     #[serde(default)]
     pub system: Glicko2,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "known_tracks")]
     tracks: BTreeMap<Track, BTreeMap<String, Standing>>,
+}
+
+fn known_tracks<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<BTreeMap<Track, BTreeMap<String, Standing>>, D::Error> {
+    let by_name = BTreeMap::<String, BTreeMap<String, Standing>>::deserialize(deserializer)?;
+    Ok(by_name
+        .into_iter()
+        .filter_map(|(name, standings)| {
+            let track = serde_json::from_value(serde_json::Value::String(name)).ok()?;
+            Some((track, standings))
+        })
+        .collect())
 }
 
 impl RatingBook {
@@ -198,10 +217,19 @@ mod tests {
     #[test]
     fn tracks_never_mix() {
         let mut book = RatingBook::default();
-        book.record(Track::HumanVsBot, "luke", "bot:heuristic", Outcome::CorpWin);
-        assert!(book.standing(Track::HumanVsHuman, "luke").is_none());
-        assert!(book.standing(Track::BotBenchmark, "bot:heuristic").is_none());
-        assert!(book.standing(Track::HumanVsBot, "bot:heuristic").unwrap().runner.rating.rating < 1500.0);
+        book.record(Track::HumanVsHuman, "ann", "bo", Outcome::CorpWin);
+        assert!(book.standing(Track::BotBenchmark, "ann").is_none());
+        assert!(book.standing(Track::HumanVsHuman, "bo").unwrap().runner.rating.rating < 1500.0);
+    }
+
+    #[test]
+    fn a_book_holding_a_retired_track_loads_with_the_kept_tracks_intact() {
+        let mut book = RatingBook::default();
+        book.record(Track::HumanVsHuman, "ann", "bo", Outcome::CorpWin);
+        let mut json: serde_json::Value = serde_json::from_str(&book.to_json()).unwrap();
+        let ann = json["tracks"]["HumanVsHuman"].clone();
+        json["tracks"]["HumanVsBot"] = ann;
+        assert_eq!(RatingBook::from_json(&json.to_string()).unwrap(), book);
     }
 
     #[test]

@@ -390,7 +390,9 @@ impl GameEvent {
     ///
     /// jinteki.net's `/undo-click` restores a whole state with no such
     /// test, so undoing a draw rewinds the draw. Here a take-back that
-    /// crossed one of these stops being free and costs the game its rating.
+    /// crossed one of these stops being free: nothing against a bot, where
+    /// every game is casual, and the line a rated game between two people
+    /// is held to.
     /// A card leaving a hidden zone for the actor's eyes (a draw, an
     /// access, a rez seen from the other chair), a trace (the other seat
     /// bids), and a turn or the game ending all count. Paying, gaining,
