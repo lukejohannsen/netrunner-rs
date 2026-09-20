@@ -29,7 +29,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
-    Amount, BoostDuration, CardDefinition, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, SubroutineBreakCount,
+    Amount, BoostDuration, CardDefinition, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, EventFilter, SubroutineBreakCount,
 };
 use netrunner_core::rules::{PendingDecision, ServerId, Side};
 use netrunner_core::view::ClientView;
@@ -303,7 +303,17 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
     let mut lines = Vec::new();
     for trigger in &card.triggers {
         let reading = trigger.effects.iter().map(|e| describe_effect(e, registry)).collect::<Vec<_>>().join("; ");
-        let when = humanize(format!("{:?}", trigger.trigger));
+        let mut when = humanize(format!("{:?}", trigger.trigger));
+        // "On HQ" and "a virus" used to be in the trigger's name; they are
+        // the card's own filter now, and the reading still has to say them.
+        match &trigger.when {
+            Some(EventFilter::Server(servers)) => {
+                let servers: Vec<String> = servers.iter().map(|server| describe_server(*server)).collect();
+                when = format!("{when}, on {}", servers.join(" or "));
+            }
+            Some(EventFilter::Card(filter)) => when = format!("{when}, of {}", humanize(format!("{filter:?}"))),
+            None => {}
+        }
         match &trigger.text {
             Some(text) => lines.push(format!("• [{when}] \"{}\" → {reading}", text.trim_end_matches('.'))),
             None => lines.push(format!("• [{when}] → {reading}")),
@@ -399,6 +409,16 @@ mod tests {
         assert_eq!(humanize("FirstInstallThisTurn".to_string()), "first install this turn");
         assert_eq!(humanize("RunnerCreditsAtMost(3)".to_string()), "runner credits at most 3");
         assert_eq!(humanize("OncePerTurn(\"x\")".to_string()), "once per turn x");
+    }
+
+    /// "On HQ" left the trigger's name for the card's own filter, and the
+    /// inspector is where a person checks the engine against the card.
+    #[test]
+    fn the_engine_reading_says_which_occurrences_a_trigger_means() {
+        let registry = crate::decks::sample_deck_registry();
+        let reading = |id: &str| engine_reading(registry.get(&CardId(id.to_string())).expect(id), &registry).join("\n");
+        assert!(reading("leech").contains("[on successful run, on HQ or R&D or Archives]"), "{}", reading("leech"));
+        assert!(reading("cookbook").contains("[on card installed, of has subtype virus]"), "{}", reading("cookbook"));
     }
 
     /// Every choice a sample-deck card can present has a sentence — no

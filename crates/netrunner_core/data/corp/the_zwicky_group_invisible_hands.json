@@ -9,20 +9,16 @@
     {
       "trigger": "OnAbilityGainedCredits",
       "subject": "Any",
+      "when": {
+        "Card": {
+          "CardTypeOneOf": [
+            "Agenda",
+            "Operation"
+          ]
+        }
+      },
       "requirement": {
-        "And": [
-          {
-            "OncePerTurn": "the_zwicky_group_invisible_hands"
-          },
-          {
-            "TriggeringCardMatches": {
-              "CardTypeOneOf": [
-                "Agenda",
-                "Operation"
-              ]
-            }
-          }
-        ]
+        "OncePerTurn": "the_zwicky_group_invisible_hands"
       },
       "effects": [
         {

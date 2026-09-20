@@ -47,16 +47,14 @@
       ]
     },
     {
-      "trigger": "OnSuccessfulRunOnHq",
+      "trigger": "OnSuccessfulRun",
       "subject": "Any",
-      "requirement": "IdentityFlipped",
-      "effects": [
-        "FlipIdentity"
-      ]
-    },
-    {
-      "trigger": "OnSuccessfulRunOnRnD",
-      "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD"
+        ]
+      },
       "requirement": "IdentityFlipped",
       "effects": [
         "FlipIdentity"

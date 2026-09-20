@@ -785,7 +785,7 @@ mod tests {
             card_type: CardType::Operation,
             cost: 5,
             triggers: vec![TriggeredEffect {
-                subject: None,
+                subject: None, when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -1277,7 +1277,7 @@ mod tests {
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
-            pending: vec![due(crate::dsl::Trigger::OnSuccessfulRun), due(crate::dsl::Trigger::OnSuccessfulRunOnHq)],
+            pending: vec![due(crate::dsl::Trigger::OnPlay), due(crate::dsl::Trigger::OnOperationPlayed)],
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         let mut registry = CardRegistry::new();

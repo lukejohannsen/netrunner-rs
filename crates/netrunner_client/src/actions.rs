@@ -1232,14 +1232,14 @@ mod tests {
         };
         state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,
-            pending: vec![due(Trigger::OnSuccessfulRun), due(Trigger::OnSuccessfulRunOnHq)],
+            pending: vec![due(Trigger::OnInstall), due(Trigger::OnCardInstalled)],
             resume: netrunner_core::rules::PendingChoiceResume::None,
         });
         let view = build_client_view(&state, &registry, Side::Runner);
 
         assert_eq!(
             describe_action(&PlayerAction::ChooseTriggerToResolve { index: 1 }, &registry, Some(&view)),
-            "Resolve Docklands Pass (OnSuccessfulRunOnHq) first"
+            "Resolve Docklands Pass (OnCardInstalled) first"
         );
         assert_eq!(
             describe_action(&PlayerAction::ChooseTriggerToResolve { index: 1 }, &registry, None),

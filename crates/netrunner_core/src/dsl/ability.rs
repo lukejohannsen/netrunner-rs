@@ -274,12 +274,6 @@ pub enum EffectRequirement {
     /// `ResourceInstalled` event's `credits_paid`, the same way
     /// `WasFirstAdvancementThisCard` reads `CardAdvanced`.
     InstalledWithoutSpendingCredits,
-    /// The card the triggering event names matches `CardFilter`
-    /// (definition-level) — Barry "Baz" Wong reacts to `IceRezzed` only
-    /// when the rezzed card is ice, since `engine::rez_ice` emits that
-    /// event for assets and upgrades too. Fails when the event names no
-    /// card or there is no triggering event.
-    TriggeringCardMatches(crate::dsl::CardFilter),
     /// `Amount`, resolved against the acting card, is at least `u32` —
     /// Syailendra's "if it has 3 or more hosted advancement counters"
     /// (`Amount::HostedAdvancementTokens`). The comparison primitive over

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 use crate::dsl::cost::Cost;
 use crate::dsl::effect::{Amount, Effect};
-use crate::dsl::trigger::{Subject, Trigger};
+use crate::dsl::trigger::{EventFilter, Subject, Trigger, TriggerAbout};
 use crate::rules::Side;
 
 /// `Ord` is derived so a set of ids has one canonical order regardless of
@@ -59,8 +59,9 @@ pub enum StrengthModifier {
     WhileOnlyIceProtectingServer(i32),
 }
 
-/// A card subtype the engine dispatches a reactive identity trigger off of
-/// (`Trigger::OnTransactionPlayed`/`OnVirusInstalled`) — distinct from
+/// A printed subtype some card's text reads — first the two a reactive
+/// identity filters its trigger by (`EventFilter::Card(HasSubtype(..))`:
+/// Building a Better World's transactions, Noise's viruses) — distinct from
 /// `CardType`, which is a card's primary type, not a tag on top of it. Kept
 /// minimal, extend as new subtype-gated triggers are needed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -143,6 +144,20 @@ pub struct TriggeredEffect {
     /// external directory at load.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subject: Option<Subject>,
+    /// Which occurrences this means, by what they are about — "on HQ", "a
+    /// virus program". Part of the trigger condition, evaluated in the
+    /// listener scan; see `EventFilter` for why that is not `requirement`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub when: Option<EventFilter>,
+    /// The effects act on the card the moment is about, not on this one:
+    /// Cookbook's "whenever you install a virus program, you may place 1
+    /// virus counter on **it**". The requirement is still checked, and any
+    /// once-per-turn spent, as this card. It was a rule in the dispatcher —
+    /// "an *installed* card hearing `OnVirusInstalled` acts on the virus,
+    /// the identity does not" — which is Cookbook's text and Noise's, kept
+    /// in Rust under a trigger's name.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub acts_on_subject: bool,
     /// The printed sentence this trigger implements, quoted from the
     /// card, when a card author has linked it; optional and ungated —
     /// see `AbilityDef::text` for the linked-clause idea.
@@ -153,7 +168,7 @@ pub struct TriggeredEffect {
     /// silently skips this entry (no error, no `RulesError` surfaced) and
     /// leaves any per-turn tracking flag untouched. Used exclusively by
     /// passive identity-reactive triggers (`Trigger::OnInstall`/
-    /// `OnSuccessfulRunOnHq` gated by `EffectRequirement::
+    /// `OnSuccessfulRun` gated by `EffectRequirement::
     /// FirstInstallThisTurn`/`FirstSuccessfulHqRunThisTurn`) so a
     /// bonus-already-used-this-turn case never blocks the install/run that
     /// triggered it. Distinct from `CardDefinition::play_requirement`, which is a hard
@@ -725,6 +740,10 @@ pub enum CardValidationError {
     TriggerMissingSubject(CardId, Trigger),
     #[error("card {0:?}: a {1:?} trigger is not about a card or a server, so it cannot name a `subject`")]
     TriggerSubjectWithNothingToName(CardId, Trigger),
+    #[error("card {0:?}: a {1:?} trigger's `when` filters on something its moment is not about (a card filter needs a trigger about a card, a server filter one about a server)")]
+    TriggerFilterOfTheWrongKind(CardId, Trigger),
+    #[error("card {0:?}: a {1:?} trigger is not about a card, so its effects cannot act on one (`acts_on_subject`)")]
+    TriggerActsOnNoCard(CardId, Trigger),
 }
 
 /// Every field at its neutral value, matching what serde fills in for an
@@ -837,6 +856,21 @@ impl CardDefinition {
                 (false, Some(_)) => return Err(CardValidationError::TriggerSubjectWithNothingToName(self.id.clone(), triggered.trigger)),
                 _ => {}
             }
+            // A filter of the wrong kind parses and then never passes, and
+            // "act on it" with no card to be "it" resolves as the card
+            // itself: both are a card silently doing something else.
+            let about = triggered.trigger.about();
+            let filter_fits = match &triggered.when {
+                None => true,
+                Some(EventFilter::Card(_)) => about == TriggerAbout::Card,
+                Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
+            };
+            if !filter_fits {
+                return Err(CardValidationError::TriggerFilterOfTheWrongKind(self.id.clone(), triggered.trigger));
+            }
+            if triggered.acts_on_subject && about != TriggerAbout::Card {
+                return Err(CardValidationError::TriggerActsOnNoCard(self.id.clone(), triggered.trigger));
+            }
         }
         Ok(())
     }
@@ -875,7 +909,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This),
+                subject: Some(Subject::This), when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -897,7 +931,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
-                subject: Some(Subject::This),
+                subject: Some(Subject::This), when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -1054,4 +1088,35 @@ mod tests {
 
         assert_eq!(card.validate(), Ok(()));
     }
+    /// A filter of the wrong kind parses and then never passes; "act on it"
+    /// with no card to be "it" resolves as the card itself. Both are a card
+    /// quietly doing something other than its text.
+    #[test]
+    fn a_triggers_filter_and_its_it_must_fit_what_the_trigger_is_about() {
+        let with = |trigger: Trigger, subject: Option<Subject>, when: Option<EventFilter>, acts_on_subject: bool| CardDefinition {
+            id: CardId("homebrew".to_string()),
+            side: Side::Runner,
+            card_type: CardType::Resource,
+            triggers: vec![TriggeredEffect { trigger, subject, when, acts_on_subject, text: None, effects: vec![], requirement: None }],
+            ..Default::default()
+        };
+        let on_hq = || Some(EventFilter::Server(vec![crate::rules::ServerId::Hq]));
+        let a_virus = || Some(EventFilter::Card(crate::dsl::CardFilter::HasSubtype(CardSubtype::Virus)));
+
+        assert_eq!(with(Trigger::OnSuccessfulRun, Some(Subject::Any), on_hq(), false).validate(), Ok(()));
+        assert_eq!(with(Trigger::OnCardInstalled, Some(Subject::Any), a_virus(), true).validate(), Ok(()));
+        assert!(matches!(
+            with(Trigger::OnCardInstalled, Some(Subject::Any), on_hq(), false).validate(),
+            Err(CardValidationError::TriggerFilterOfTheWrongKind(_, Trigger::OnCardInstalled))
+        ));
+        assert!(matches!(
+            with(Trigger::OnTurnStart, None, a_virus(), false).validate(),
+            Err(CardValidationError::TriggerFilterOfTheWrongKind(_, Trigger::OnTurnStart))
+        ));
+        assert!(matches!(
+            with(Trigger::OnSuccessfulRun, Some(Subject::Any), None, true).validate(),
+            Err(CardValidationError::TriggerActsOnNoCard(_, Trigger::OnSuccessfulRun))
+        ));
+    }
+
 }

@@ -17,9 +17,9 @@ The System Gateway audit (`docs/system-gateway-card-audit.md`), repeated over th
 | Jinteki: Personal Evolution | Faithful | Both scored and stolen; a mid-access steal's net damage can flatline mid-run (`finish_if_game_over`). |
 | NBN: Making News | Faithful | The identity recurring pool, spent ahead of the wallet in trace bids, refilled at turn start — the one recurring-credit card the engine models (ROADMAP §4). |
 | Weyland Consortium: Building a Better World | **Fixed** | The identity was faithful; its *targets* were not — Hedge Fund, Hansei Review and Predictive Planogram are printed Transactions but lacked the engine-facing `subtypes` field, so the identity never fired on them. Found here, fixed in those three JSONs. |
-| Gabriel Santiago | Faithful | `OnSuccessfulRunOnHq` + first-per-turn flag. |
+| Gabriel Santiago | Faithful | `OnSuccessfulRun`, `when` on HQ, + first-per-turn flag. |
 | Kate "Mac" McCaffrey | Faithful | Program-or-Hardware first-install discount (`InstallKind` split), never Resources. |
-| Noise | Faithful | `OnVirusInstalled` → Corp mills 1 (facedown to Archives); also reacts to effect installs (Cookbook parity). |
+| Noise | Faithful | `OnCardInstalled`, `when` a virus → Corp mills 1 (facedown to Archives); also reacts to effect installs (Cookbook parity). |
 
 ## Corp cards
 

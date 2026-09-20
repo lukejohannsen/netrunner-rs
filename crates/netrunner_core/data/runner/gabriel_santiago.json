@@ -7,8 +7,13 @@
   "min_deck_size": 45,
   "triggers": [
     {
-      "trigger": "OnSuccessfulRunOnHq",
+      "trigger": "OnSuccessfulRun",
       "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
       "requirement": "FirstSuccessfulHqRunThisTurn",
       "effects": [
         {

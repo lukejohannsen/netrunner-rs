@@ -59,7 +59,7 @@ Every card below is in a sample deck, so both agent-driven sweeps exercise all o
 | Card | Verdict | Notes |
 |---|---|---|
 | Carnivore | Faithful* | Access-window gating via `CurrentlyAccessingACard` + `ZoneHasAtLeast(grip, 2)`; the grip trash is the ability's selection rather than a `Cost` — equivalent in this pool. |
-| Docklands Pass | Faithful* | "breach HQ" modelled as `OnSuccessfulRunOnHq`; no breach-without-run effect exists in System Gateway. |
+| Docklands Pass | Faithful* | "breach HQ" modelled as `OnSuccessfulRun` with `when` on HQ; no breach-without-run effect exists in System Gateway. |
 | Pennyshaver | Faithful | Place 1 then `TakeAllCountersAsCredits`. |
 | DZMZ Optimizer | Faithful | Program-only first-install discount (`InstallKind` split). |
 | Pantograph | **Fixed** | "Then, you may install 1 card from your grip" was unmodelled. Now offered on both scored and stolen via `InstallRunnerCardFromGrip`, with `CardFilter::InstallableRunnerCard` keeping the offer to what's actually installable (type, affordability, MU, console limit). Faithful*: Trojans are excluded — their host is a choice no parked effect models. |

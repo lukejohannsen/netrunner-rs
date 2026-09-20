@@ -601,7 +601,7 @@ pub struct RunnerState {
     /// information, same treatment as `tags`.
     pub link_strength: u32,
     /// Whether the Runner's "first successful HQ run this turn" bonus
-    /// (`Trigger::OnSuccessfulRunOnHq` gated by `EffectRequirement::
+    /// (`Trigger::OnSuccessfulRun` on HQ, gated by `EffectRequirement::
     /// FirstSuccessfulHqRunThisTurn`, e.g. Gabriel Santiago) has already
     /// fired this turn. Reset to `false` at the start of every Runner turn;
     /// consumed the same way as `CorpState::first_install_used_this_turn`.

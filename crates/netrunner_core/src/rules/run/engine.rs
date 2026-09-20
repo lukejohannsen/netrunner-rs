@@ -445,7 +445,7 @@ pub fn advance_run(
     // every `Continue` step funnels through (this crate's own
     // `PlayerAction::ContinueRun` handler, and `paid_ability::close_window`'s
     // window-mediated auto-continue alike), so `Trigger::OnEncounter`/
-    // `OnSuccessfulRun`/`OnSuccessfulRunOnHq` fire identically regardless of
+    // `OnApproachServer`/`OnSuccessfulRun` fire identically regardless of
     // which path reached this transition. Filtered to exactly these three
     // variants (not a blanket dispatch of every event returned above) so a
     // subroutine effect that happens to emit some other dispatch-relevant

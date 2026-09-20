@@ -9,8 +9,8 @@
     {
       "trigger": "OnRez",
       "subject": "Any",
-      "requirement": {
-        "TriggeringCardMatches": {
+      "when": {
+        "Card": {
           "CardType": {
             "Ice": "Barrier"
           }

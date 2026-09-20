@@ -7,8 +7,13 @@
   "min_deck_size": 45,
   "triggers": [
     {
-      "trigger": "OnTransactionPlayed",
+      "trigger": "OnOperationPlayed",
       "subject": "Any",
+      "when": {
+        "Card": {
+          "HasSubtype": "Transaction"
+        }
+      },
       "effects": [
         {
           "GainCredits": [
