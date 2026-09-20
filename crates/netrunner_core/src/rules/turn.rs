@@ -163,8 +163,7 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     // "When your action phase ends" (Cacophony) — before the end-of-turn
     // window, which is the next step of the turn.
     let action_phase_ended = GameEvent::ActionPhaseEnded { side };
-    events.push(action_phase_ended.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &action_phase_ended)?);
+    dispatcher::emit(&mut next, registry, &mut events, action_phase_ended)?;
 
     // Before the window opens, so the window itself can't spend them —
     // it is part of the turn ending, not more action phase. See this

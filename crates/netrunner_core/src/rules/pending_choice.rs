@@ -809,8 +809,7 @@ pub(crate) fn resolve_confirm_card_selection(
     }
     if trashed_from_hq > 0 {
         let batch = GameEvent::CardsTrashedFromHq { count: trashed_from_hq };
-        events.push(batch.clone());
-        events.extend(dispatcher::dispatch_event(state, registry, &batch)?);
+        dispatcher::emit(state, registry, &mut events, batch)?;
     }
 
     if let Some(effect) = then {
@@ -1017,8 +1016,7 @@ pub(crate) fn resolve_choose_server(
 
     let run_initiated_event = GameEvent::RunInitiated { server };
     let mut events = start_events;
-    events.push(run_initiated_event.clone());
-    events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &run_initiated_event)?);
+    crate::rules::dispatcher::emit(state, registry, &mut events, run_initiated_event)?;
 
     if resume == PendingChoiceResume::ResumeSubroutines {
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);

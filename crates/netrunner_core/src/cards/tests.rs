@@ -134,6 +134,42 @@ fn haas_bioroid_engineering_the_future_gains_one_credit_on_first_install_but_not
     assert_eq!(state.corp.resources.credits, Credits(11));
 }
 
+/// An install by a card's text is an install. The effect used to return
+/// its `CardInstalled` without dispatching it, so the identity never heard
+/// it — and, its per-turn flag unspent, paid for the turn's *second* install
+/// as though it were the first. Found by `dispatcher::audit`, which fails
+/// an action whose record holds an event a card could hear that nobody
+/// dispatched.
+#[test]
+fn haas_bioroid_engineering_the_future_hears_an_install_made_by_a_cards_text() {
+    let registry = registry();
+    let mut state = base_state();
+    state.corp.identity = Some(CardId("haas_bioroid_engineering_the_future".to_string()));
+    state.corp.resources.credits = Credits(10);
+    state.corp.resources.clicks = Clicks(3);
+    state.corp.hq = vec![CardId("pad_campaign".to_string()), CardId("pad_campaign".to_string())];
+
+    let install = crate::dsl::Effect::InstallFromZoneIgnoringCost {
+        card_id: CardId("pad_campaign".to_string()),
+        origin_zone: crate::dsl::CardZoneRef::OwnHq,
+        into: ServerId::Remote(0),
+        slot: Some(InstallSlot::Root),
+        insert_after: None,
+    };
+    let events = crate::rules::evaluate_effect(&mut state, &install, &mut crate::rules::ResolutionContext::default(), &registry)
+        .expect("the effect installs from HQ");
+    assert_eq!(state.corp.resources.credits, Credits(11), "the first install this turn, whoever made it");
+    assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::TriggerFired { trigger: crate::dsl::Trigger::OnInstall, .. })));
+
+    let (state, _) = apply_action(
+        &state,
+        &registry,
+        PlayerAction::InstallCard { card_id: CardId("pad_campaign".to_string()), zone: ServerId::Remote(1), slot: InstallSlot::Root },
+    )
+    .expect("the second install, by the basic action");
+    assert_eq!(state.corp.resources.credits, Credits(11), "and so the basic action's is the second, and earns nothing");
+}
+
 #[test]
 fn the_makers_eye_accesses_three_total_cards_from_rd() {
     let registry = registry();

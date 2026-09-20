@@ -581,8 +581,7 @@ pub(crate) fn move_run_to_outermost(
     }
     if phase == RunPhase::Success {
         let approached = GameEvent::ServerApproached { server: target };
-        events.push(approached.clone());
-        events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &approached)?);
+        crate::rules::dispatcher::emit(state, registry, &mut events, approached)?;
     }
     Ok(events)
 }

@@ -96,6 +96,8 @@ Which cards hear an event is one rule, in `rules::listeners`, and it is read off
 
 **Never add an audience in Rust.** The dispatcher used to be a `match` naming the cards to ask for each event, widened by hand each time a card needed more, and running the scan beside it found a card rule that had been living there: a faceup Orbital Superiority doing its damage when a *different* agenda was scored, because "this" had nowhere to be said. A card the rule does not reach is a gap in the rule's vocabulary (`Subject`, `Hears`, what counts as active), fixed there for every card. `listeners::moments` is exhaustive over `GameEvent`: a new event does not compile until someone says what it is an occurrence of, even when the answer is nothing. `OnPlay` is fired as a step of its own ahead of its side's triggers, because it is how the DSL spells a card's *resolution* and that is nobody's to order.
 
+**An event a card can hear is dispatched, and a debug build checks.** Record it with `dispatcher::emit` (push and dispatch as one call). `dispatcher::audit` fails any action whose record holds an event `listeners::moments` gives a moment to that never went through `dispatch_event` — in every test and both sweeps, not in release. So adding a `Trigger` for an event that already exists is: add the `moments` arm, run the sweeps, and fix each site the audit names. A dispatch that is legitimately a later action's is written into `audit::is_owed` with the state that carries the debt, never waved past.
+
 ### DSL Growth Rule
 
 Adding an `Effect` or `EffectRequirement` variant is the expensive move: it grows the engine's permanent surface for one card's benefit.
