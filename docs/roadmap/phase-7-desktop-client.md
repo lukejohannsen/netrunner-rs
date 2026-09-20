@@ -3378,6 +3378,17 @@ A free take-back would be fair against a person — the opponent has seen
 which card was played, which costs only the one taking it back — and needs
 one `ClientMessage` and the retraction of a log entry from the other seat.
 
+**Corrected the same day (`fix/local-play-is-casual`, Phase 3 §2): an undo
+costs nothing, because nothing local is rated.** This entry made an undo
+past the line end the game's rating; the rating it protected was a number
+in a file the player owns, and the cost fell on practice, which is where
+an undo belongs. Both clients now take either kind back at one press under
+one label, `UNRATED_BY_UNDO` and the double-press are gone, and an undone
+game is recorded like any other. **The line itself is untouched** —
+`Rewind::{Free, Undo}`, the two engine classifiers and `tests/rewind.rs` —
+because the paragraph above is still right: it is the rule a rated game
+between two people will be held to (Phase 4 §5).
+
 **Measured.** Undo is off everywhere but the two local clients, so the
 claim is *no drift*: 192 random-vs-random games over `--all-matchups`,
 seed 1, on pinned release binaries of `main` and this branch — reports
@@ -3419,7 +3430,9 @@ exist, never a new action.
    has not acted — a restore in `netrunner_session`, not a `PlayerAction`,
    so `ActionSpace` stays 1646, the game stays rated, and §4d's declined
    install back-out comes with it; **(c)** undo a click against a bot, past
-   that line, which makes the game unrated the first time it is used.
+   that line, which makes the game unrated the first time it is used
+   (**corrected 20 September 2026**: it costs nothing — a game against a
+   bot is casual, §4af's correction and Phase 3 §2).
    Local games now; the rule sits in the session so the server can take
    (b) later.
 5. **A replay viewer over `MatchHistory`**, with notes.

@@ -72,6 +72,9 @@ Enter is "play again, at the rung the game-over modal just named".
   everywhere else; it now decides the chair too.
 - The new-game form gained `r` to toggle rated (`StartChoice::rated`
   folds into `--unrated`), and Esc goes back rather than quitting.
+  **Removed 20 September 2026** with the local rating itself: a game
+  against a bot is always casual, so there is nothing to toggle (Phase 3
+  §2). The Ratings entry is Record.
 
 Tested as state machines without a terminal (eleven menu tests, two form
 tests, four settings tests), and **driven by hand in tmux against a
@@ -184,7 +187,9 @@ The flag path gained the same: `--deck` brings a deck in `--mode remote`,
 the player's own name goes over the wire rather than `"CLI Player"`, and
 both paths play through one `tui::play_remote`, which warns on the header
 when an older daemon ignored the brought deck. Hosted games are unrated —
-the local book is the human-vs-bot ladder.
+the local book is the human-vs-bot ladder. (There is no local book since
+20 September 2026, Phase 3 §2; a hosted game is unrated because its host
+holds the seed.)
 
 **Verified over real sockets** — `a_host_and_a_joiner_are_seated_with_the_decks_they_brought`
 drives two `OnlineScreen`s through the keys a person presses: one hosts

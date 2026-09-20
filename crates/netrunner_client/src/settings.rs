@@ -1,5 +1,5 @@
 //! What a player sets once and expects to stay set: the name they are
-//! rated under, the format their decks are checked against, and the
+//! recorded under, the format their decks are checked against, and the
 //! desktop client's preferences.
 //!
 //! **One file, one struct, every client.** The file has no
@@ -63,7 +63,7 @@ pub fn parse_format(name: &str) -> Option<NsgFormat> {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Settings {
-    /// The name local games are rated under — `--player`'s default.
+    /// The name local games are recorded under — `--player`'s default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub player: Option<String>,
     /// The format decks are checked against — `--format`'s default.
@@ -246,7 +246,7 @@ impl DesktopPrefs {
 }
 
 /// `$NETRUNNER_SETTINGS_FILE`, else `<data dir>/netrunner/settings.json`,
-/// beside the saved decks and the rating book. Not created until the first
+/// beside the saved decks and the record. Not created until the first
 /// save.
 pub fn resolve_settings_file() -> Result<PathBuf, String> {
     resolve_settings_file_with(std::env::var_os(SETTINGS_FILE_ENV))
@@ -274,7 +274,7 @@ impl Settings {
         serde_json::from_str(&json).map_err(|e| format!("{} is not a settings file: {e}", path.display()))
     }
 
-    /// Temp file and rename, like the rating book and the deck store.
+    /// Temp file and rename, like the record and the deck store.
     pub fn save(&self, path: &Path) -> Result<(), String> {
         if let Some(dir) = path.parent() {
             std::fs::create_dir_all(dir).map_err(|e| format!("could not create {}: {e}", dir.display()))?;

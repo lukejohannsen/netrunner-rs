@@ -2313,9 +2313,6 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
         };
         parent.spawn((EndTurnNotice, widgets::notice(theme, format!("{clicks} left — press Enter again to end the turn."), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
-    if game.undo_armed {
-        parent.spawn((widgets::notice(theme, "That move showed you something new, so undoing it ends this game's rating. Press again to undo.", ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-    }
     if let Some(reason) = &game.stalled {
         parent.spawn((widgets::notice(theme, reason.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         return;
@@ -3208,8 +3205,8 @@ fn spawn_overlay(parent: &mut ChildSpawnerCommands, theme: &Theme, core: &Client
                 } else if game.confirm_quit {
                     panel.spawn(widgets::heading(theme, "Leave the game?"));
                     let turn = game.view.as_ref().map_or(0, |v| v.turn);
-                    let consequence = if turn >= netrunner_client::ratings::FORFEIT_FROM_TURN {
-                        "From turn 3 on, a quit counts as a loss on your ladder."
+                    let consequence = if turn >= netrunner_client::record::FORFEIT_FROM_TURN {
+                        "From turn 3 on, a quit counts as a loss toward your suggested rung."
                     } else {
                         "Nothing is recorded this early in the game."
                     };

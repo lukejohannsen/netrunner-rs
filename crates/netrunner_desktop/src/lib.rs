@@ -4,7 +4,7 @@
 //! word: it renders a `ClientView` and submits a `PlayerAction` chosen
 //! from `legal_actions`, never touching `GameState` and never deciding a
 //! rule. Everything it needs that is not rendering — the settings file,
-//! the deck store, the rating book, the card pool, the match it is
+//! the deck store, the record against the bots, the card pool, the match it is
 //! playing — comes from `netrunner_client`, which it shares with the
 //! terminal client so the two are one game with two faces.
 //!

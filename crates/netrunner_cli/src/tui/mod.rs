@@ -23,7 +23,7 @@ use netrunner_core::rules::{
 };
 use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
-use netrunner_session::{GameEndReason, LessonSession, LessonStep, Rewind, Seat, Session, SessionStep, SubmitError, UNDO_DEPTH};
+use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError, UNDO_DEPTH};
 
 use netrunner_client::board::{routes, ActionMap, Affordance, Asks, AutoBreak, Next, Route, Target};
 use netrunner_client::access::Access;
@@ -35,9 +35,9 @@ use crate::app::{card_modal, describe_action, explain_action, push_log_line, App
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
 use netrunner_client::actions::pop_log_entries;
-use netrunner_client::play::{lone_pass, stall_message, UNRATED_BY_UNDO};
+use netrunner_client::play::{lone_pass, stall_message};
 use netrunner_client::decks;
-use crate::ratings::{self, SeatRating};
+use crate::record::{self, SeatRecord};
 use crate::remote;
 use crate::replay::Replay;
 
@@ -80,7 +80,7 @@ async fn run_remote(config: &Config) -> Result<(), Box<dyn std::error::Error>> {
         Some(match_id) => remote::spectate_remote(&config.server, match_id).await?,
         None => {
             let hello =
-                remote::connect_message(&ratings::player_name(config), config.side.map(Into::into), config.room.clone(), brought);
+                remote::connect_message(&record::player_name(config), config.side.map(Into::into), config.room.clone(), brought);
             remote::connect_remote(&config.server, hello).await?
         }
     };
@@ -173,9 +173,9 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
     let personality = config.personality_for(bot_side, bot_deck)?;
     let (bot_seat, mut indexed_bot) =
         build_bot_seat(config.level_for(bot_side), bot_kind, bot_side, seed.wrapping_add(1), &config.model, personality)?;
-    // Opened before the game so a bad ratings file fails here, not after
+    // Opened before the game so a bad record file fails here, not after
     // an hour of play.
-    let rating = ratings::seat_rating(config, human_side, config.level_for(bot_side), bot_kind, personality, seed, &corp_deck.id, &runner_deck.id)?;
+    let seat = record::seat_record(config, human_side, config.level_for(bot_side), bot_kind, personality, seed, &corp_deck.id, &runner_deck.id)?;
 
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, bot_seat),
@@ -187,7 +187,7 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
     let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat).with_undo(UNDO_DEPTH);
 
     let mut ui = LocalUiState::new(registry, human_side);
-    drive_local(terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side, rating)
+    drive_local(terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side, seat)
 }
 
 /// How a lesson (or a run of lessons) ended, for the caller to decide
@@ -288,17 +288,17 @@ pub fn play_starter_game(
         bots::AgentSetup::new(DEFAULT_SIMULATIONS).with_personality(personality),
     )
         .expect("the heuristic always has a BotAgent form");
-    // Rated like any other local game: the starter game is a person's
-    // first real opponent, and its result is the first point on their
-    // ladder.
-    let rating = ratings::seat_rating(config, human_side, None, BotKind::Heuristic, personality, seed, &corp.id, &runner.id)?;
+    // Recorded like any other local game: the starter game is a person's
+    // first real opponent, and its result is the first line of their
+    // record.
+    let seat = record::seat_record(config, human_side, None, BotKind::Heuristic, personality, seed, &corp.id, &runner.id)?;
     let (corp_seat, runner_seat) = match human_side {
         Side::Corp => (Seat::External, Seat::Agent(bot)),
         Side::Runner => (Seat::Agent(bot), Seat::External),
     };
     let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat);
     let mut ui = LocalUiState::new(registry, human_side);
-    drive_local(terminal, &mut session, &mut ui, None, human_side, rating)
+    drive_local(terminal, &mut session, &mut ui, None, human_side, seat)
 }
 
 /// One lesson: intro modal, gated prompts with coaching, outro modal.
@@ -421,21 +421,20 @@ fn build_bot_seat(
 /// The pull loop: step the session, render whatever it reports, and block
 /// on keyboard input only when the *human* seat is the one being asked.
 ///
-/// `rating` is `None` for an unrated game. A finished game is recorded
-/// before the game-over modal is drawn, so the modal can show what it did;
-/// a quit records a forfeit from `ratings::FORFEIT_FROM_TURN` on and
-/// nothing before it; a stall records nothing.
+/// A finished game is recorded before the game-over modal is drawn, so
+/// the modal can show where it leaves the record; a quit records a loss
+/// from `record::FORFEIT_FROM_TURN` on and nothing before it; a stall
+/// records nothing. A take-back costs nothing, whichever kind the session
+/// says it is — a game against a bot is casual (`netrunner_client::record`).
 fn drive_local(
     terminal: &mut ratatui::DefaultTerminal,
     session: &mut Session,
     ui: &mut LocalUiState,
     mut indexed_bot: Option<&mut Box<dyn netrunner_bots::Agent>>,
     human_side: Side,
-    rating: Option<SeatRating>,
+    seat: SeatRecord,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let mut rating = rating;
-    // Whether an undo took this game's rating (`Prompted::TookBack`).
-    let mut undone = false;
+    let mut seat = Some(seat);
     loop {
         // Pumped one `step` at a time rather than through `run`, which
         // swallows the bot seat's `Applied` steps: each log line is the
@@ -479,32 +478,21 @@ fn drive_local(
                 };
                 ui.begin_decision(*view);
                 ui.last_rejection = stopped;
-                ui.back = session.can_rewind();
-                ui.unrated = undone;
+                ui.back = session.can_rewind().is_some();
                 match prompt_human(terminal, ui, |action| session.submit(action))? {
                     Prompted::Quit => {
-                        if let Some(rating) = rating.take()
-                            && let Some(outcome) = ratings::quit_outcome(session.state().turn, human_side)
+                        if let Some(seat) = seat.take()
+                            && let Some(outcome) = record::quit_outcome(session.state().turn, human_side)
                         {
-                            rating.finish(outcome)?;
+                            seat.finish(outcome)?;
                         }
                         return Ok(());
                     }
                     Prompted::Submitted => log_last(session, ui, human_side),
-                    // The state goes back exactly and the log with it. An
-                    // undo has shown the person something a rated game
-                    // would not have, so the rating is dropped unrecorded
-                    // — not forfeited — and the end of the game says so.
+                    // The state goes back exactly and the log with it.
                     Prompted::TookBack => {
                         if let Some(rewound) = session.rewind() {
-                            let note = match rewound.kind {
-                                Rewind::Free => "You took that back.",
-                                Rewind::Undo => "You undid your last move — this game is no longer rated.",
-                            };
-                            pop_log_entries(&mut ui.action_log, rewound.removed, note);
-                            if rewound.kind == Rewind::Undo {
-                                undone |= rating.take().is_some();
-                            }
+                            pop_log_entries(&mut ui.action_log, rewound.removed, "You took that back.");
                         }
                     }
                 }
@@ -524,9 +512,9 @@ fn drive_local(
             }
             SessionStep::Ended { winner, reason } => {
                 ui.finish(session.view_for(human_side));
-                let report = match rating.take() {
-                    Some(rating) => Some(rating.finish(ratings::outcome_of(winner))?.lines().join("\n")),
-                    None => undone.then(|| UNRATED_BY_UNDO.to_string()),
+                let report = match seat.take() {
+                    Some(seat) => Some(seat.finish(record::outcome_of(winner))?.lines().join("\n")),
+                    None => None,
                 };
                 return show_game_over(terminal, ui, winner, reason, report);
             }
@@ -599,17 +587,10 @@ fn prompt_human(
                 }
                 continue;
             }
-            // Any key but a second `u` stands the first one down.
-            let armed = std::mem::take(&mut ui.undo_armed);
             match key.code {
                 KeyCode::Char('q') | KeyCode::Esc => return Ok(Prompted::Quit),
-                // A free take-back goes at once; an undo that will cost a
-                // rated game its rating asks first.
-                KeyCode::Char('u') => match ui.back {
-                    Some(Rewind::Undo) if !armed && !ui.unrated => ui.undo_armed = true,
-                    Some(_) => return Ok(Prompted::TookBack),
-                    None => {}
-                },
+                // Goes at once: nothing rides on a game against a bot.
+                KeyCode::Char('u') if ui.back => return Ok(Prompted::TookBack),
                 KeyCode::Up | KeyCode::Char('k') => ui.move_selection(-1),
                 KeyCode::Down | KeyCode::Char('j') => ui.move_selection(1),
                 KeyCode::Char('a') => ui.toggle_show_all(),
@@ -632,8 +613,8 @@ fn prompt_human(
 
 /// Holds the end-of-match summary on screen until the player dismisses it.
 ///
-/// `note` is appended to the summary — the rating lines for a rated local
-/// game — and is `None` on the remote path, where the daemon keeps the
+/// `note` is appended to the summary — the record lines for a local game
+/// — and is `None` on the remote path, where the daemon keeps the rating
 /// book and tells the client nothing about it yet.
 fn show_game_over(
     terminal: &mut ratatui::DefaultTerminal,
@@ -687,12 +668,9 @@ struct LocalUiState {
     /// The card inspector, while it is open (`c`).
     card_picker: Option<CardPicker>,
     last_rejection: Option<String>,
-    /// What `u` would cost now (`Session::can_rewind`), set per decision.
-    back: Option<Rewind>,
-    /// The first `u` of an undo that will cost the rating.
-    undo_armed: bool,
-    /// An undo has already been used, so there is nothing left to ask.
-    unrated: bool,
+    /// Whether `u` has a move to take back (`Session::can_rewind`), set
+    /// per decision.
+    back: bool,
     /// Every card's way through the encountered ICE
     /// (`netrunner_client::board::breaks`), listed after the actions.
     /// None under a lesson: the lessons teach the pump and the break.
@@ -719,9 +697,7 @@ impl LocalUiState {
             modal: None,
             card_picker: None,
             last_rejection: None,
-            back: None,
-            undo_armed: false,
-            unrated: false,
+            back: false,
             breaks: Vec::new(),
             asks: Asks::default(),
             breaking: None,
@@ -937,13 +913,7 @@ impl RenderableView for LocalUiState {
         self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
     }
     fn notice(&self) -> Option<String> {
-        if self.undo_armed {
-            return Some("that move showed you something new: u again undoes it and ends this game's rating".to_string());
-        }
-        self.back.map(|rewind| match rewind {
-            Rewind::Free => "u to take it back".to_string(),
-            Rewind::Undo => "u to undo your last move".to_string(),
-        })
+        self.back.then(|| "u to take it back".to_string())
     }
 }
 

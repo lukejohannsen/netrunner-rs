@@ -16,7 +16,7 @@ use bevy::prelude::*;
 
 use netrunner_card_sync::CardImageStore;
 use netrunner_client::deck_store;
-use netrunner_client::ratings;
+use netrunner_client::record;
 use netrunner_client::settings::{self, Settings};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardDefinition;
@@ -46,7 +46,7 @@ pub struct ClientCore {
     /// session only, and the settings screen says so.
     pub settings_path: Option<PathBuf>,
     pub decks_dir: Option<PathBuf>,
-    pub ratings_path: Option<PathBuf>,
+    pub record_path: Option<PathBuf>,
     pub images: Arc<CardImageStore>,
 }
 
@@ -64,7 +64,7 @@ impl ClientCore {
         };
         let settings_path = note(settings::resolve_settings_file());
         let decks_dir = note(deck_store::resolve_decks_dir(None));
-        let ratings_path = note(ratings::resolve_ratings_file(None));
+        let record_path = note(record::resolve_record_file(None));
         let settings = match settings_path.as_deref().map(Settings::load) {
             Some(Ok(settings)) => settings,
             Some(Err(error)) => {
@@ -87,7 +87,7 @@ impl ClientCore {
             settings,
             settings_path,
             decks_dir,
-            ratings_path,
+            record_path,
             images: Arc::new(images),
         };
         (core, notices)
@@ -103,15 +103,15 @@ impl ClientCore {
             settings: Settings::default(),
             settings_path: Some(dir.join("settings.json")),
             decks_dir: Some(dir.join("decks")),
-            ratings_path: Some(dir.join("ratings.json")),
+            record_path: Some(dir.join("record.json")),
             images: Arc::new(CardImageStore::with_dir(dir.join("images"))),
         }
     }
 
-    /// The name games are rated under: the settings' name, else the
+    /// The name games are recorded under: the settings' name, else the
     /// login name — the terminal client's rule, through the same function.
     pub fn player_name(&self) -> String {
-        ratings::player_name(self.settings.player.as_deref())
+        record::player_name(self.settings.player.as_deref())
     }
 
     /// Writes the settings, or says why it could not. Called after every

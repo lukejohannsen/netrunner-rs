@@ -186,7 +186,11 @@ pub enum Rewind {
     Free,
     /// Anything past that line: a draw, an access, a bot's reply. The
     /// state still goes back, exactly; whoever pumps the session decides
-    /// what that costs (`netrunner_client::play` stops rating the game).
+    /// what that costs. Against a bot it costs nothing — that game is
+    /// casual, and `netrunner_client::play` takes either kind back alike
+    /// (it once stopped rating the game). Between two people it is the
+    /// kind a rated game cannot offer without the other seat's consent
+    /// (`docs/identity-and-rating.md`), which is who this line is kept for.
     Undo,
 }
 

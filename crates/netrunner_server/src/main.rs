@@ -106,11 +106,11 @@ struct Config {
     #[arg(long, value_enum, default_value_t = ServeFormat::Startup)]
     format: ServeFormat,
 
-    /// (serve mode) Rate every finished match — surrenders, disconnects
-    /// and timeouts count as losses; stalls are unrated — into the
-    /// Glicko-2 rating book at this path, on the human-vs-bot track under
-    /// a bot opponent and the human-vs-human track under `--bot-runner
-    /// none`, a rating per side. Nothing is rated without it.
+    /// (serve mode) Rate every finished match between two people
+    /// (`--bot-runner none`) — surrenders, disconnects and timeouts count
+    /// as losses; stalls are unrated — into the Glicko-2 rating book at
+    /// this path, a rating per side. Nothing is rated without it, and a
+    /// game against a seated bot is never rated.
     #[arg(long)]
     ratings_file: Option<std::path::PathBuf>,
 }

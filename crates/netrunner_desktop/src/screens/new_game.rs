@@ -5,7 +5,7 @@
 //!
 //! Start puts the match together (`MatchHandle::start_local`, which
 //! fails here rather than on the board: a deck that will not validate or
-//! a ratings file that will not load is a notice under the form) and
+//! a record file that will not load is a notice under the form) and
 //! leaves it in [`ActiveMatch`] for the game screen. When a game ends or
 //! is left, the form reopens on the game just played with the rung moved
 //! to the new suggestion — after a game, Start is "play again".
@@ -16,8 +16,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use bevy::prelude::*;
 
 use netrunner_client::decks::decks_for_match;
-use netrunner_client::play::{LocalMatchSpec, MatchHandle, RatingFile};
-use netrunner_client::start::{Intent, Level, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
+use netrunner_client::play::{LocalMatchSpec, MatchHandle, RecordFile};
+use netrunner_client::start::{Level, Pane, StartChoice, StartMenu, DEFAULT_CORP_DECK, DEFAULT_RUNNER_DECK};
 use netrunner_core::format::NsgFormat;
 use netrunner_core::rules::Side;
 
@@ -51,7 +51,6 @@ pub struct LastGame(pub StartChoice);
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
 enum Control {
-    Rated,
     Start,
     Back,
 }
@@ -65,8 +64,6 @@ pub struct PaneDropdown(pub Pane);
 #[derive(Component)]
 struct Form;
 #[derive(Component)]
-struct RatedSlot;
-#[derive(Component)]
 struct NoticeLine;
 
 #[derive(Resource)]
@@ -75,7 +72,6 @@ struct Model(StartMenu);
 #[derive(Resource, Default)]
 struct Dirty {
     form: bool,
-    rated: bool,
     notice: Option<String>,
 }
 
@@ -90,11 +86,8 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, last:
     }
     let form = commands.spawn((Form, Node { flex_direction: FlexDirection::Column, row_gap: px(10), ..default() })).id();
     commands.entity(form).with_children(|parent| spawn_form(parent, &theme, &menu));
-    let rated_slot = commands.spawn((RatedSlot, Node { ..default() })).id();
-    commands.entity(rated_slot).with_children(|parent| spawn_rated(parent, &theme, &menu));
     let buttons = commands
         .spawn(widgets::row(12.0))
-        .add_child(rated_slot)
         .with_children(|parent| {
             parent.spawn(widgets::button(&theme, "Start", px(160), Control::Start));
             parent.spawn(widgets::button(&theme, "Back", Val::Auto, Control::Back));
@@ -104,7 +97,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>, last:
     commands
         .spawn((screen_root(AppScreen::NewGame, theme.background), children![
             widgets::heading(&theme, AppScreen::NewGame.title()),
-            widgets::dim(&theme, "A rated game against a rung of the ladder, in the style your deck chooses"),
+            widgets::dim(&theme, "A casual game against a rung of the ladder, in the style your deck chooses. A move can always be taken back."),
         ]))
         .add_child(panel)
         .with_children(|parent| {
@@ -118,12 +111,12 @@ fn defaults() -> [String; 2] {
 }
 
 /// The form from the client's files: the saved decks beside the built-in
-/// ones, and the ratings book's suggestion for each chair.
+/// ones, and the record's suggestion for each chair.
 fn open_menu(core: &ClientCore) -> Result<StartMenu, String> {
     // No data directory means no saved decks; the built-in ones are still
     // listed, so any path that does not exist will do.
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
-    StartMenu::open(&decks_dir, core.ratings_path.as_deref(), &core.player_name(), &core.registry, defaults(), true)
+    StartMenu::open(&decks_dir, core.record_path.as_deref(), &core.player_name(), &core.registry, defaults())
 }
 
 fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu) {
@@ -133,11 +126,6 @@ fn spawn_form(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu
         let choices = rows.into_iter().map(|row| Choice::plain(row.replace("  ◆ suggested", " (suggested)"))).collect();
         spawn_dropdown(parent, theme, title, choices, cursor, PaneDropdown(pane));
     }
-}
-
-fn spawn_rated(parent: &mut ChildSpawnerCommands, theme: &Theme, menu: &StartMenu) {
-    let label = if menu.rated { "Rated: the result goes on your ladder" } else { "Unrated: the result is not recorded" };
-    parent.spawn(widgets::button(theme, label, Val::Auto, Control::Rated));
 }
 
 /// A seed off the clock: the terminal uses `rand::random`, and the
@@ -157,13 +145,18 @@ pub fn start(core: &ClientCore, choice: &StartChoice) -> Result<ActiveMatch, Str
 /// unprotected central, a Corp install by turn one) otherwise holds on
 /// some clock seeds and not others, and the test flakes.
 pub fn start_seeded(core: &ClientCore, choice: &StartChoice, seed: u64) -> Result<ActiveMatch, String> {
+    start_with(core, choice, seed, core.record_path.clone())
+}
+
+/// `record` is where the game is logged. Every game a person starts from
+/// the form is — there is no unrecorded kind to ask for, since nothing
+/// rides on a game against a bot — and `None` is the dev hook's, whose
+/// autoplayed games are nobody's record.
+fn start_with(core: &ClientCore, choice: &StartChoice, seed: u64, record: Option<std::path::PathBuf>) -> Result<ActiveMatch, String> {
     let decks_dir = core.decks_dir.clone().unwrap_or_else(|| std::env::temp_dir().join("netrunner-no-decks"));
     let format = core.settings.format.unwrap_or(NsgFormat::Startup);
     let (corp, runner) = decks_for_match(&decks_dir, &choice.corp_deck, &choice.runner_deck, &core.registry, format)?;
-    let rating = match (choice.rated, core.ratings_path.clone()) {
-        (true, Some(path)) => Some(RatingFile { path, player: core.player_name() }),
-        _ => None,
-    };
+    let record = record.map(|path| RecordFile { path, player: core.player_name() });
     let spec = LocalMatchSpec {
         registry: Arc::clone(&core.registry),
         corp,
@@ -172,13 +165,13 @@ pub fn start_seeded(core: &ClientCore, choice: &StartChoice, seed: u64) -> Resul
         level: choice.level,
         style: choice.style,
         seed,
-        rating,
+        record,
     };
     let handle = MatchHandle::start_local(spec)?;
     Ok(ActiveMatch { handle, choice: Some(choice.clone()) })
 }
 
-/// An unrated game on the default decks against the middle rung, the
+/// An unrecorded game on the default decks against the middle rung, the
 /// person in `side`'s chair — a test's game.
 pub fn start_default(core: &ClientCore, side: Side) -> Result<ActiveMatch, String> {
     start_dev(core, side, None, None)
@@ -194,9 +187,8 @@ pub fn start_dev(core: &ClientCore, side: Side, corp_deck: Option<&str>, runner_
         style: None,
         corp_deck: corp_deck.unwrap_or(DEFAULT_CORP_DECK).to_string(),
         runner_deck: runner_deck.unwrap_or(DEFAULT_RUNNER_DECK).to_string(),
-        rated: false,
     };
-    start(core, &choice).map(|active| ActiveMatch { choice: None, ..active })
+    start_with(core, &choice, seed_from_clock(), None).map(|active| ActiveMatch { choice: None, ..active })
 }
 
 fn controls(
@@ -222,10 +214,6 @@ fn controls(
             Ok(Control::Back) => {
                 navigate.write(Navigate(AppScreen::MainMenu));
             }
-            Ok(Control::Rated) => {
-                menu.0.apply(Intent::ToggleRated);
-                dirty.rated = true;
-            }
             Ok(Control::Start) => {
                 let Some(choice) = menu.0.choice() else {
                     dirty.notice = Some("No deck to play: the list is empty".to_string());
@@ -248,17 +236,13 @@ fn refresh(
     mut commands: Commands,
     mut dirty: ResMut<Dirty>,
     form: Query<Entity, With<Form>>,
-    rated: Query<Entity, With<RatedSlot>>,
     mut notice: Query<&mut Text, With<NoticeLine>>,
     theme: Res<Theme>,
     menu: Res<Model>,
 ) {
-    let Dirty { form: reform, rated: rerate, notice: note } = std::mem::take(&mut *dirty);
+    let Dirty { form: reform, notice: note } = std::mem::take(&mut *dirty);
     if reform && let Ok(form) = form.single() {
         commands.entity(form).despawn_children().with_children(|parent| spawn_form(parent, &theme, &menu.0));
-    }
-    if rerate && let Ok(slot) = rated.single() {
-        commands.entity(slot).despawn_children().with_children(|parent| spawn_rated(parent, &theme, &menu.0));
     }
     if let Some(note) = note {
         for mut text in &mut notice {

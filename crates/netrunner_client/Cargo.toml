@@ -7,7 +7,7 @@ repository.workspace = true
 
 # The toolkit-agnostic client core: what every client of the engine needs
 # and no client should own twice — the settings file, the saved-deck store,
-# the local rating book, the format's card pool. It renders nothing and
+# the local record against the bots, the format's card pool. It renders nothing and
 # holds no rule; see AGENTS.md's crate map and "Desktop client conventions".
 [dependencies]
 netrunner_core = { path = "../netrunner_core" }
@@ -15,10 +15,9 @@ netrunner_bots = { path = "../netrunner_bots" }
 # The one match loop (`Session`), which `play::MatchHandle` runs on its own
 # thread, and the masked log entry every client renders.
 netrunner_session = { path = "../netrunner_session" }
-netrunner_rating = { path = "../netrunner_rating" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-# The OS data directory saved decks, ratings and settings live under. The
+# The OS data directory saved decks, the record and settings live under. The
 # same version `netrunner_card_sync` uses for the cache directory, so there
 # is one `dirs` in the tree.
 dirs = "5"

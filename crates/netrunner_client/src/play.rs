@@ -23,10 +23,17 @@
 //! is the human's *masked* copy of that action, and `last_entry_for`
 //! reads concealment off the state the action left, so it has to be taken
 //! before the next one resolves); on `Awaiting` for the human, wait for
-//! their action; on `Ended`, record the rating; on a quit, record a
-//! forfeit from `ratings::FORFEIT_FROM_TURN` on and nothing before it.
-//! Rated the same way, quitting the same way, so a game played here and a
-//! game played in the terminal land on the same ladder by the same rule.
+//! their action; on `Ended`, record the game; on a quit, record a loss
+//! from `record::FORFEIT_FROM_TURN` on and nothing before it. Recorded the
+//! same way, quitting the same way, so a game played here and a game
+//! played in the terminal land in the same record by the same rule.
+//!
+//! **A local game is casual, so a take-back costs nothing.** The session
+//! still says which kind each one is (`Rewind::Free`, `Rewind::Undo`) and
+//! the messages still carry it, because that line is the one a rated game
+//! between two people will be held to and the same messages will come off
+//! a socket. Nothing here branches on it: nobody rates a game against a
+//! bot (`crate::record`), and an undone game is recorded like any other.
 
 use std::path::PathBuf;
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
@@ -46,11 +53,11 @@ pub use netrunner_session::Rewind;
 /// name the session crate for the one type its `Ended` carries.
 pub use netrunner_session::GameEndReason;
 
-use crate::ratings::{self, BotKind, RatingReport, SeatRating, SeatRatingSpec};
+use crate::record::{self, BotKind, RecordReport, SeatRecord, SeatRecordSpec};
 
 /// Everything a local game against a rung needs: the two decks, which
 /// chair is the person's, the rung and style of the other, the seed, and
-/// whether the result goes on the ladder.
+/// where the result is recorded.
 #[derive(Debug, Clone)]
 pub struct LocalMatchSpec {
     pub registry: Arc<CardRegistry>,
@@ -62,13 +69,15 @@ pub struct LocalMatchSpec {
     /// unset `--corp-personality`.
     pub style: Option<Personality>,
     pub seed: u64,
-    /// `None` is an unrated game.
-    pub rating: Option<RatingFile>,
+    /// `None` records nothing: a session with no data directory to keep
+    /// a record in. Never a choice on a form — a game against a bot is
+    /// always casual, so there is no unrecorded kind to ask for.
+    pub record: Option<RecordFile>,
 }
 
-/// Where a rated game is recorded and under what name.
+/// Where a game is recorded and under what name.
 #[derive(Debug, Clone)]
-pub struct RatingFile {
+pub struct RecordFile {
     pub path: PathBuf,
     pub player: String,
 }
@@ -96,16 +105,15 @@ pub enum MatchMessage {
     /// The person's last move was taken back: `view` is the board it was
     /// made from and `removed` is how many `Applied` entries no longer
     /// happened, newest first — the log drops them and the board snaps
-    /// back without a transition, since nothing moved *to* here. An
-    /// `Undo` has just made the game unrated.
+    /// back without a transition, since nothing moved *to* here.
     Rewound { view: Box<ClientView>, removed: usize, kind: Rewind },
     /// The engine refused the last `submit`; the human is still awaiting
     /// on the same view. `reason` is `RulesError`'s own message.
     Rejected { reason: String },
-    /// The match ended. `report` is what the game did to the player's
-    /// rating, `None` for an unrated game; `notice` is a rating file that
+    /// The match ended. `report` is where the game leaves the player's
+    /// record, `None` when none is kept; `notice` is a record file that
     /// would not save, which must not hide the result.
-    Ended { winner: Side, reason: GameEndReason, view: Box<ClientView>, report: Option<RatingReport>, notice: Option<String> },
+    Ended { winner: Side, reason: GameEndReason, view: Box<ClientView>, report: Option<RecordReport>, notice: Option<String> },
     /// The session stopped without a `GameOver`: a stall, or a bot seat
     /// the session could not resolve. Nothing more will arrive.
     Stalled { reason: String },
@@ -117,11 +125,8 @@ enum Command {
     Quit,
 }
 
-/// What `Ended::notice` says of a game an undo took the rating from.
-pub const UNRATED_BY_UNDO: &str = "This game was not rated: a move was undone after it had shown something new.";
-
 /// A running match, as the client holds it. Dropping it quits the game
-/// the way Escape does in the terminal — a forfeit from turn 3 on.
+/// the way Escape does in the terminal — a loss from turn 3 on.
 ///
 /// The receiver sits behind a mutex only because a `Receiver` is not
 /// `Sync` and a Bevy resource has to be; one uncontended lock per frame
@@ -138,12 +143,12 @@ pub struct MatchHandle {
 
 impl MatchHandle {
     /// Sets the game up and starts its thread. Everything that can fail
-    /// fails *here* — an illegal deck, a ratings file that will not load —
+    /// fails *here* — an illegal deck, a record file that will not load —
     /// so a screen can show the reason as a notice rather than a game
     /// dying on its first frame (Phase 6's rule: a game that fails to
     /// start is a notice, not a drop to the shell).
     pub fn start_local(spec: LocalMatchSpec) -> Result<Self, String> {
-        let LocalMatchSpec { registry, corp, runner, human, level, style, seed, rating } = spec;
+        let LocalMatchSpec { registry, corp, runner, human, level, style, seed, record } = spec;
         let bot_side = human.other();
         let bot_deck = if bot_side == Side::Corp { &corp } else { &runner };
         let personality = personality_for(style, bot_deck)?;
@@ -152,10 +157,10 @@ impl MatchHandle {
         // view-based searches and deliberately excludes the one kind that
         // needs the index path (see `netrunner_cli::tui::build_bot_seat`).
         let bot = Seat::Agent(level.spec(bot_side).with_personality(personality).agent(seed.wrapping_add(1)));
-        // Opened before the game so a bad ratings file fails now, not
+        // Opened before the game so a bad record file fails now, not
         // after an hour of play.
-        let rating = match rating {
-            Some(RatingFile { path, player }) => Some(SeatRating::open(SeatRatingSpec {
+        let record = match record {
+            Some(RecordFile { path, player }) => Some(SeatRecord::open(SeatRecordSpec {
                 path,
                 player,
                 human,
@@ -177,7 +182,7 @@ impl MatchHandle {
         let (message_tx, message_rx) = mpsc::channel();
         let thread = thread::Builder::new()
             .name("netrunner-match".to_string())
-            .spawn(move || drive(session, human, rating, command_rx, message_tx))
+            .spawn(move || drive(session, human, record, command_rx, message_tx))
             .map_err(|e| format!("could not start the match thread: {e}"))?;
         Ok(Self { commands: command_tx, messages: Mutex::new(message_rx), human, registry, finished: false, thread: Some(thread) })
     }
@@ -245,9 +250,8 @@ impl MatchHandle {
     /// **Not a `PlayerAction`, and not a way round one**: the state
     /// restored is one the engine produced, the history loses the entries
     /// since so the record still replays, and `submit` still never
-    /// filters. A free take-back leaves a rated game rated; an undo past
-    /// a draw or an access stops the game being rated, once, and says so
-    /// at the end (`UNRATED_BY_UNDO`).
+    /// filters. It costs nothing, whichever kind it is: a local game is
+    /// casual (the module doc).
     pub fn rewind(&self) -> Result<(), String> {
         self.commands.send(Command::Rewind).map_err(|_| "the match has ended".to_string())
     }
@@ -264,7 +268,7 @@ impl MatchHandle {
         let _ = self.commands.send(Command::Quit);
     }
 
-    /// `quit`, then wait for the thread — so a test can assert the rating
+    /// `quit`, then wait for the thread — so a test can assert the record
     /// file was written. A screen never needs this.
     pub fn join(mut self) {
         self.quit();
@@ -325,25 +329,24 @@ pub fn stall_message(reason: StallReason) -> String {
 }
 
 /// The match thread. Returns when the game ends, stalls, or the client
-/// quits or goes away; a rated game is recorded on every one of those
-/// paths that the terminal records it on.
-fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, commands: Receiver<Command>, messages: Sender<MatchMessage>) {
+/// quits or goes away; the game is recorded on every one of those paths
+/// that the terminal records it on.
+fn drive(mut session: Session, human: Side, mut seat: Option<SeatRecord>, commands: Receiver<Command>, messages: Sender<MatchMessage>) {
     // A send to a client that has dropped its handle is a quit.
-    let forfeit = |session: &Session, rating: &mut Option<SeatRating>| {
-        if let Some(rating) = rating.take()
-            && let Some(outcome) = ratings::quit_outcome(session.state().turn, human)
+    let forfeit = |session: &Session, seat: &mut Option<SeatRecord>| {
+        if let Some(seat) = seat.take()
+            && let Some(outcome) = record::quit_outcome(session.state().turn, human)
         {
-            let _ = rating.finish(outcome);
+            let _ = seat.finish(outcome);
         }
     };
-    let mut undone = false;
     let mut back = None;
     loop {
         let step = loop {
             match session.step() {
                 SessionStep::Applied { .. } => {
                     if send_applied(&session, human, &messages).is_err() {
-                        return forfeit(&session, &mut rating);
+                        return forfeit(&session, &mut seat);
                     }
                 }
                 other => break other,
@@ -355,18 +358,18 @@ fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, comm
                 if rewind != back {
                     back = rewind;
                     if messages.send(MatchMessage::Back { rewind }).is_err() {
-                        return forfeit(&session, &mut rating);
+                        return forfeit(&session, &mut seat);
                     }
                 }
                 if messages.send(MatchMessage::Awaiting { view }).is_err() {
-                    return forfeit(&session, &mut rating);
+                    return forfeit(&session, &mut seat);
                 }
                 loop {
                     match commands.recv() {
                         Ok(Command::Submit(action)) => match session.submit(action) {
                             Ok(()) => {
                                 if send_applied(&session, human, &messages).is_err() {
-                                    return forfeit(&session, &mut rating);
+                                    return forfeit(&session, &mut seat);
                                 }
                                 break;
                             }
@@ -374,7 +377,7 @@ fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, comm
                             // message, as `MatchSession` and the TUI show it.
                             Err(SubmitError::Rules(error)) => {
                                 if messages.send(MatchMessage::Rejected { reason: error.to_string() }).is_err() {
-                                    return forfeit(&session, &mut rating);
+                                    return forfeit(&session, &mut seat);
                                 }
                             }
                             Err(error) => {
@@ -384,25 +387,19 @@ fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, comm
                         },
                         Ok(Command::Rewind) => match session.rewind() {
                             Some(rewound) => {
-                                // An undo has taught the person something a
-                                // rated game would not have: the rating is
-                                // dropped unrecorded, not forfeited.
-                                if rewound.kind == Rewind::Undo {
-                                    undone |= rating.take().is_some();
-                                }
                                 let view = Box::new(session.view_for(human));
                                 if messages.send(MatchMessage::Rewound { view, removed: rewound.removed, kind: rewound.kind }).is_err() {
-                                    return forfeit(&session, &mut rating);
+                                    return forfeit(&session, &mut seat);
                                 }
                                 break;
                             }
                             None => {
                                 if messages.send(MatchMessage::Rejected { reason: "there is no move to take back".to_string() }).is_err() {
-                                    return forfeit(&session, &mut rating);
+                                    return forfeit(&session, &mut seat);
                                 }
                             }
                         },
-                        Ok(Command::Quit) | Err(_) => return forfeit(&session, &mut rating),
+                        Ok(Command::Quit) | Err(_) => return forfeit(&session, &mut seat),
                     }
                 }
             }
@@ -414,10 +411,10 @@ fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, comm
             }
             SessionStep::Ended { winner, reason } => {
                 let view = Box::new(session.view_for(human));
-                let (report, notice) = match rating.take().map(|rating| rating.finish(ratings::outcome_of(winner))) {
+                let (report, notice) = match seat.take().map(|seat| seat.finish(record::outcome_of(winner))) {
                     Some(Ok(report)) => (Some(report), None),
                     Some(Err(error)) => (None, Some(format!("the result could not be recorded: {error}"))),
-                    None => (None, undone.then(|| UNRATED_BY_UNDO.to_string())),
+                    None => (None, None),
                 };
                 let _ = messages.send(MatchMessage::Ended { winner, reason, view, report, notice });
                 return;
@@ -443,7 +440,7 @@ fn send_applied(session: &Session, human: Side, messages: &Sender<MatchMessage>)
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ratings::LocalRatings;
+    use crate::record::LocalRecord;
     use std::path::Path;
 
     fn temp_dir(name: &str) -> PathBuf {
@@ -454,11 +451,11 @@ mod tests {
         dir
     }
 
-    fn spec(human: Side, seed: u64, rating: Option<RatingFile>) -> LocalMatchSpec {
+    fn spec(human: Side, seed: u64, record: Option<RecordFile>) -> LocalMatchSpec {
         let registry = Arc::new(crate::decks::sample_deck_registry());
         let corp = netrunner_core::decks::by_id("discretion_advised").expect("built-in deck").clone();
         let runner = netrunner_core::decks::by_id("stolen_goods").expect("built-in deck").clone();
-        LocalMatchSpec { registry, corp, runner, human, level: Level::Novice, style: None, seed, rating }
+        LocalMatchSpec { registry, corp, runner, human, level: Level::Novice, style: None, seed, record }
     }
 
     /// The pump a client is: wait for `Awaiting`, submit the first legal
@@ -480,18 +477,18 @@ mod tests {
     }
 
     /// A whole game against the bottom rung, the human seat played by the
-    /// test off `legal_actions`, ends with `Ended` and a report when rated.
+    /// test off `legal_actions`, ends with `Ended` and a report.
     #[test]
     fn a_local_match_plays_to_the_end_and_is_recorded() {
-        let dir = temp_dir("rated");
-        let path = dir.join("ratings.json");
-        let rating = Some(RatingFile { path: path.clone(), player: "tester".to_string() });
-        let mut handle = MatchHandle::start_local(spec(Side::Runner, 3, rating)).unwrap();
+        let dir = temp_dir("recorded");
+        let path = dir.join("record.json");
+        let record = Some(RecordFile { path: path.clone(), player: "tester".to_string() });
+        let mut handle = MatchHandle::start_local(spec(Side::Runner, 3, record)).unwrap();
         assert_eq!(handle.side(), Side::Runner);
         let (last, applied) = play_out(&mut handle, |view| view.legal_actions[0].clone());
         match last {
             MatchMessage::Ended { report, notice, view, .. } => {
-                assert!(report.is_some(), "a rated game reports what it did");
+                assert!(report.is_some(), "a recorded game reports where it leaves the record");
                 assert_eq!(notice, None);
                 assert_eq!(view.viewer.side(), Some(Side::Runner), "the final board is the human's own view");
             }
@@ -499,20 +496,22 @@ mod tests {
         }
         assert!(applied > 10, "{applied} applied messages: one per action, both seats");
         assert!(handle.is_finished());
-        let book = LocalRatings::load(&path).unwrap();
-        let (won, drawn, lost) = book.record_against("tester", Side::Runner, &Level::Novice.rating_id());
-        assert_eq!(won + drawn + lost, 1, "one game on the ladder");
+        let log = LocalRecord::load(&path).unwrap();
+        let (won, drawn, lost) = log.record_against("tester", Side::Runner, &Level::Novice.record_id());
+        assert_eq!(won + drawn + lost, 1, "one game in the record");
         let _ = std::fs::remove_dir_all(dir);
     }
 
-    /// An undo past something newly seen goes back exactly and takes the
-    /// rating with it: nothing is recorded, and the end says why.
+    /// An undo past something newly seen goes back exactly and costs
+    /// nothing: a game against a bot is casual, so it is recorded like any
+    /// other and the end has nothing to say about it. This test once
+    /// asserted the opposite — that the undo took the game's rating.
     #[test]
-    fn an_undo_makes_a_rated_game_unrated_and_says_so() {
+    fn an_undone_game_is_recorded_like_any_other() {
         let dir = temp_dir("undone");
-        let path = dir.join("ratings.json");
-        let rating = Some(RatingFile { path: path.clone(), player: "tester".to_string() });
-        let mut handle = MatchHandle::start_local(spec(Side::Runner, 3, rating)).unwrap();
+        let path = dir.join("record.json");
+        let record = Some(RecordFile { path: path.clone(), player: "tester".to_string() });
+        let mut handle = MatchHandle::start_local(spec(Side::Runner, 3, record)).unwrap();
         let (mut offered, mut undone, mut before) = (None, false, None);
         let last = loop {
             match handle.wait().expect("the thread is alive until it says Ended") {
@@ -537,10 +536,10 @@ mod tests {
         };
         assert!(undone, "the first legal action is a click sooner or later");
         let MatchMessage::Ended { report, notice, .. } = last else { panic!("{last:?}") };
-        assert!(report.is_none());
-        assert_eq!(notice.as_deref(), Some(UNRATED_BY_UNDO));
-        let recorded = LocalRatings::load(&path).map(|book| book.record_against("tester", Side::Runner, &Level::Novice.rating_id())).unwrap_or((0, 0, 0));
-        assert_eq!(recorded, (0, 0, 0), "an undone game is not on the ladder");
+        assert!(report.is_some());
+        assert_eq!(notice, None);
+        let (won, drawn, lost) = LocalRecord::load(&path).unwrap().record_against("tester", Side::Runner, &Level::Novice.record_id());
+        assert_eq!(won + drawn + lost, 1, "an undone game is in the record");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -561,19 +560,19 @@ mod tests {
     }
 
     /// Quitting before turn 3 records nothing; quitting from turn 3 on is
-    /// a forfeit — the terminal's rule, through the same function.
+    /// a loss — the terminal's rule, through the same function.
     #[test]
-    fn quitting_records_a_forfeit_only_from_turn_three() {
+    fn quitting_records_a_loss_only_from_turn_three() {
         let dir = temp_dir("quit");
-        let path = dir.join("ratings.json");
-        let rating = || Some(RatingFile { path: path.clone(), player: "quitter".to_string() });
+        let path = dir.join("record.json");
+        let record = || Some(RecordFile { path: path.clone(), player: "quitter".to_string() });
 
-        let handle = MatchHandle::start_local(spec(Side::Corp, 7, rating())).unwrap();
+        let handle = MatchHandle::start_local(spec(Side::Corp, 7, record())).unwrap();
         handle.join();
-        let games = |path: &Path| LocalRatings::load(path).map(|b| b.record_against("quitter", Side::Corp, &Level::Novice.rating_id())).unwrap_or((0, 0, 0));
+        let games = |path: &Path| LocalRecord::load(path).map(|b| b.record_against("quitter", Side::Corp, &Level::Novice.record_id())).unwrap_or((0, 0, 0));
         assert_eq!(games(&path), (0, 0, 0), "nothing before turn 3");
 
-        let mut handle = MatchHandle::start_local(spec(Side::Corp, 7, rating())).unwrap();
+        let mut handle = MatchHandle::start_local(spec(Side::Corp, 7, record())).unwrap();
         loop {
             match handle.wait().unwrap() {
                 MatchMessage::Awaiting { view } if view.turn >= 3 => break,
@@ -583,7 +582,7 @@ mod tests {
             }
         }
         handle.join();
-        assert_eq!(games(&path), (0, 0, 1), "a quit from turn 3 is a loss on the ladder");
+        assert_eq!(games(&path), (0, 0, 1), "a quit from turn 3 is a loss in the record");
         let _ = std::fs::remove_dir_all(dir);
     }
 

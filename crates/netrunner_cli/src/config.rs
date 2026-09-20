@@ -142,23 +142,19 @@ pub struct Config {
     #[arg(long)]
     pub runner_level: Option<Level>,
 
-    /// The name your local games are rated under (`ratings.json` in the
-    /// OS data directory, beside the saved decks). Defaults to your login
-    /// name.
+    /// The name your local games are recorded under (`record.json` in the
+    /// OS data directory, beside the saved decks) and the one you connect
+    /// to a server as. Defaults to your login name.
     #[arg(long, global = true)]
     pub player: Option<String>,
 
-    /// Where the local rating book lives; defaults to
-    /// `<data dir>/netrunner/ratings.json`, or `NETRUNNER_RATINGS_FILE`.
+    /// Where your record against the bots lives; defaults to
+    /// `<data dir>/netrunner/record.json`, or `NETRUNNER_RECORD_FILE`. It
+    /// is a win/loss log that suggests the rung to try next, not a
+    /// rating: a game against a bot is casual, and a rating is a server's
+    /// to keep.
     #[arg(long, global = true)]
-    pub ratings_file: Option<PathBuf>,
-
-    /// Play without recording the result. Every local game against a bot
-    /// is otherwise rated on the human-vs-bot track — and a quit after the
-    /// first turn is a forfeit, so this is the flag for a game you do not
-    /// mean to count.
-    #[arg(long)]
-    pub unrated: bool,
+    pub record_file: Option<PathBuf>,
 
     /// `Local` runs the match in this process: interactive play on a
     /// `netrunner_session::Session` (`tui::run_local`), `--headless` on
@@ -301,19 +297,19 @@ pub enum BotKind {
     Onnx,
 }
 
-/// The rating id a seat is recorded under is decided by
-/// `netrunner_client::ratings::opponent_id`, over its own flag-free kind.
-impl From<BotKind> for netrunner_client::ratings::BotKind {
+/// The id a seat is recorded under is decided by
+/// `netrunner_client::record::opponent_id`, over its own flag-free kind.
+impl From<BotKind> for netrunner_client::record::BotKind {
     fn from(kind: BotKind) -> Self {
-        use netrunner_client::ratings::BotKind as Rated;
+        use netrunner_client::record::BotKind as Recorded;
         match kind {
-            BotKind::Human => Rated::Human,
-            BotKind::Random => Rated::Random,
-            BotKind::Heuristic => Rated::Heuristic,
-            BotKind::Mcts => Rated::Mcts,
-            BotKind::Puct => Rated::Puct,
-            BotKind::PuctOnnx => Rated::PuctOnnx,
-            BotKind::Onnx => Rated::Onnx,
+            BotKind::Human => Recorded::Human,
+            BotKind::Random => Recorded::Random,
+            BotKind::Heuristic => Recorded::Heuristic,
+            BotKind::Mcts => Recorded::Mcts,
+            BotKind::Puct => Recorded::Puct,
+            BotKind::PuctOnnx => Recorded::PuctOnnx,
+            BotKind::Onnx => Recorded::Onnx,
         }
     }
 }
@@ -492,9 +488,9 @@ pub enum Command {
     /// `--server` is hosting, with the ids `--spectate` takes.
     Matches,
 
-    /// Your standing on the local human-vs-bot ladder: a rating per
-    /// chair, your record against every rung, and the rung to try next.
-    Ratings,
+    /// Your record against the bots: wins and losses against every rung
+    /// on each chair, and the rung to try next.
+    Record,
 
     /// List or fetch NetrunnerDB card sets into the local cache.
     Cards {
