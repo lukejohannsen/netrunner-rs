@@ -22,36 +22,6 @@ pub enum IceType {
     Sentry,
 }
 
-/// A conditional strength bonus baked into `RunIce::current_strength` by
-/// `run::engine::build_run_ice` when a run's ice is built. **The ice half of
-/// what `dsl::continuous` replaced**: the two icebreaker variants (Echelon,
-/// Rising Tide) are `ContinuousKind::Strength` on their cards now, and these
-/// four follow when ice strength stops being a stored number (Rules Audit
-/// backlog item 2, the stage after lingering effects) — until then a
-/// derived bonus on a stored strength would be two sources for one number.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StrengthModifier {
-    /// Adds `0` (the payload) while this ICE protects a remote server
-    /// (`ServerId::Remote(_)`) — e.g. Palisade. Never applies to a central
-    /// server (`Hq`/`RnD`/`Archives`).
-    WhileProtectingRemote(i32),
-    /// Adds `bonus` while this card carries at least `threshold` hosted
-    /// advancement tokens — e.g. Pharos.
-    WhileHostedAdvancementsAtLeast { threshold: u32, bonus: i32 },
-    /// Adds the payload **per** hosted advancement token — Ice Wall's "+1
-    /// strength for each hosted advancement counter." Not expressible as
-    /// `WhileHostedAdvancementsAtLeast`, which is a threshold, not a rate.
-    /// Corp-ICE-only like the two threshold variants: baked by
-    /// `run::engine::build_run_ice` at encounter time (advancement cannot
-    /// change mid-run — `AdvanceCard` is a Corp action-phase click).
-    PerHostedAdvancement(i32),
-    /// Adds the payload while this ICE is the only piece of ice protecting
-    /// its server — Scatter Field's "+4 strength". Baked at encounter like
-    /// the other Corp-ICE variants: nothing in the pool trashes or installs
-    /// ice mid-run, so the count is fixed for the run's duration.
-    WhileOnlyIceProtectingServer(i32),
-}
-
 /// A printed subtype some card's text reads — first the two a reactive
 /// identity filters its trigger by (`EventFilter::Card(HasSubtype(..))`:
 /// Building a Better World's transactions, Noise's viruses) — distinct from
@@ -217,8 +187,8 @@ pub struct CardDefinition {
     pub min_deck_size: Option<u32>,
 
     /// Base strength printed on an ICE, or an Icebreaker's printed
-    /// strength before any pumps. `Some` for `CardType::Ice(_)` (the data
-    /// source for `RunIce::current_strength`) and for breaker-style
+    /// strength before any pumps. `Some` for `CardType::Ice(_)` (the number
+    /// `continuous::ice_strength` starts from) and for breaker-style
     /// `CardType::Program`s (the data source for
     /// `InstalledRunnerCard::base_strength`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -393,12 +363,6 @@ pub struct CardDefinition {
     /// only, same as any other keyword string.
     #[serde(default)]
     pub click_breakable: bool,
-
-    /// A conditional bonus to this ice's strength, baked when a run's ice is
-    /// built — see `StrengthModifier` for why ice still has a field of its
-    /// own. An icebreaker's is a `continuous` entry.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub strength_modifier: Option<StrengthModifier>,
 
     /// Which kind of generic counter (`state::InstalledCard::counters`/
     /// `InstalledRunnerCard::counters`) this card's own text places/spends —
@@ -684,7 +648,6 @@ impl Default for CardDefinition {
             influence_limit: None,
             additional_play_cost: None,
             click_breakable: false,
-            strength_modifier: None,
             counter_kind: None,
             numeric_id: None,
             faction: None,
@@ -765,6 +728,9 @@ impl CardDefinition {
         for effect in &self.continuous {
             let misfit = |kind, why| Err(CardValidationError::ContinuousEffectDoesNotFit(self.id.clone(), kind, why));
             let hosted = matches!(self.card_type, CardType::Program | CardType::Hardware | CardType::Resource);
+            if !matches!(self.card_type, CardType::Ice(_)) && effect.condition.as_ref().is_some_and(says_protecting_remote) {
+                return misfit("ProtectingRemote", "only a piece of ice protects a server");
+            }
             match (&effect.kind, &effect.applies_to) {
                 (_, Scope::Host) if !hosted => return misfit("Host", "only a Runner's installed card is hosted on another"),
                 (_, Scope::RootOfThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset => {
@@ -792,6 +758,16 @@ impl CardDefinition {
             }
         }
         Ok(())
+    }
+}
+
+/// Whether `requirement` asks `ProtectingRemote` anywhere in it.
+fn says_protecting_remote(requirement: &EffectRequirement) -> bool {
+    match requirement {
+        EffectRequirement::ProtectingRemote => true,
+        EffectRequirement::Not(inner) => says_protecting_remote(inner),
+        EffectRequirement::And(a, b) => says_protecting_remote(a) || says_protecting_remote(b),
+        _ => false,
     }
 }
 
@@ -1069,5 +1045,16 @@ mod tests {
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::HandSize(flat(1)), Scope::This)));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::InstallCost(flat(-1)), Scope::Controller)));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::BoostsLastTheRun, Scope::Controller)));
+
+        // Palisade's "while this ice is protecting a remote server": ice
+        // says it, and nothing else protects a server to say it about.
+        let while_protecting = |card_type: CardType| {
+            let strength = matches!(card_type, CardType::Ice(_)).then_some(2);
+            let mut card = with(Side::Corp, card_type, strength, ContinuousKind::RezCost(flat(-1)), Scope::This);
+            card.continuous[0].condition = Some(EffectRequirement::Not(Box::new(EffectRequirement::ProtectingRemote)));
+            card
+        };
+        assert_eq!(while_protecting(CardType::Ice(IceType::Barrier)).validate(), Ok(()));
+        assert!(refused(while_protecting(CardType::Upgrade)));
     }
 }

@@ -959,6 +959,17 @@ pub enum Amount {
     /// `CardFilter` is not — the day a second zone is counted is the day
     /// to pay for that.
     InHeapWithSubtype(crate::dsl::CardSubtype),
+    /// Pieces of ice protecting the server `acting_card` is installed on or
+    /// protecting, itself included — Scatter Field's "while this is the
+    /// only piece of ice protecting this server", as
+    /// `Not(AmountAtLeast(.., 2))`, which was
+    /// `StrengthModifier::WhileOnlyIceProtectingServer` until ice strength
+    /// became a continuous effect. No existing variant counts installs by
+    /// server, so composition had nothing to compose; a count rather than
+    /// an "only ice" requirement, because "for each piece of ice protecting
+    /// this server" is the sentence the next card prints. 0 for a card
+    /// that is not a Corp install.
+    IceProtectingThisServer,
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run whose

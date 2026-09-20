@@ -1154,11 +1154,10 @@ mod tests {
         assert_eq!(rezzed[SLOT_IS_AGENDA], 1.0, "rezzing turns the face up for the Runner too");
     }
 
-    fn run_ice(strength: i32, subroutines: usize, rezzed: bool) -> RunIce {
+    fn run_ice(subroutines: usize, rezzed: bool) -> RunIce {
         RunIce {
             install_id: InstallId(1),
             card_id: CardId("wall".to_string()),
-            current_strength: strength,
             ice_type: IceType::Barrier,
             subroutines: (0..subroutines)
                 .map(|id| EncounteredSubroutine {
@@ -1194,7 +1193,7 @@ mod tests {
         state.active_run = Some(RunState {
             server: ServerId::Remote(2),
             phase: RunPhase::EncounterIce,
-            ice: vec![run_ice(4, 2, true)],
+            ice: vec![run_ice(2, true)],
             position: 0,
             ..Default::default()
         });

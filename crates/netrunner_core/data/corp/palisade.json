@@ -7,9 +7,18 @@
   },
   "cost": 3,
   "strength": 2,
-  "strength_modifier": {
-    "WhileProtectingRemote": 2
-  },
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 2
+        }
+      },
+      "applies_to": "This",
+      "while": "ProtectingRemote",
+      "text": "While this ice is protecting a remote server, it gets +2 strength."
+    }
+  ],
   "triggers": [],
   "subroutines": [
     {

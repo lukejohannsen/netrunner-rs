@@ -9,7 +9,7 @@ mod zone;
 pub use ability::{AbilityDef, AccessInteraction, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 pub use card::{
     CardDefinition, CardId, CardSubtype, CardType, CardValidationError, CounterKind, HostedCreditUse, IceType,
-    StrengthModifier, TriggeredEffect, RezAlternative,
+    TriggeredEffect, RezAlternative,
 };
 pub use continuous::{ContinuousEffect, ContinuousKind, Number, Scope};
 pub use cost::Cost;

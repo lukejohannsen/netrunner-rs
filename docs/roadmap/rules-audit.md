@@ -724,6 +724,73 @@ one.
    not: `OBS_SIZE` 2262, `ActionSpace::SIZE` 1646); no promoted policy
    exists to retrain. Owed, in order: ICE strength derived, prohibitions.
 
+   **ICE strength is derived — DONE (20 September 2026,
+   `feat/ice-strength-is-derived`).** A piece of ice's strength was a
+   number on the run's copy of it, `RunIce::current_strength`, baked by
+   `build_run_ice` from the four `StrengthModifier` variants left after
+   stage 1 (Palisade, Pharos, Ice Wall, Scatter Field) and kept for the
+   run by `reconcile_ice`, whose "same install, same card" arm clones the
+   existing entry. The comment on the bake said its conditions are fixed
+   for the run — "advancement cannot change mid-run", "nothing in the
+   pool installs ice mid-run". Syailendra's subroutine places an
+   advancement counter mid-run, on an Ice Wall or a Pharos behind it; and
+   Scatter Field's own first subroutine installs a Barrier, which the Corp
+   may put on Scatter Field's server. And `IceEncountered { strength }`
+   read the stored number raw, without what was lingering: a third
+   reading beside the contest's and the view's.
+
+   `continuous::ice_strength(state, registry, ice)` is the one question
+   now, the twin of `breaker_strength`: what the card prints, what the
+   table adds (its own text first, rezzed or not, as wherever a card
+   speaks about itself), what is lingering. The break contest,
+   `IceEncountered`, `IceStrengthModified`, the view and `eval`'s pricing
+   all put it. `StrengthModifier`, `CardDefinition::strength_modifier`,
+   `RunIce::current_strength` and `lingering::ice_strength` are gone, and
+   `determinize` no longer takes a shown ice strength apart — it carries
+   none, and `debug_assert_strengths_agree` now proves a sample has the
+   counters and the neighbours the view's number was made from. The wire
+   field `PublicRunIceIdentity::current_strength` keeps its name and is
+   computed in masking, so no client and no observation code changed
+   (`OBS_SIZE` 2262, `ActionSpace::SIZE` 1646).
+
+   *The vocabulary it cost: two reads, no `Effect`.* Ice Wall is
+   `Strength { per: 1, of: HostedAdvancementTokens }` and Pharos is
+   `Strength { per: 5 }` `while AmountAtLeast(HostedAdvancementTokens, 3)`
+   — both already sayable, the second in the words Syailendra's own
+   trigger uses. Palisade needed `EffectRequirement::ProtectingRemote`
+   (no requirement read where the acting card is installed, and "a
+   remote" is every server that is not one of three, which a list of ids
+   cannot say). Scatter Field needed `Amount::IceProtectingThisServer`,
+   used as `Not(AmountAtLeast(.., 2))`: a count rather than an "only ice"
+   requirement, because "for each piece of ice protecting this server" is
+   the sentence the next card prints. `validate` refuses
+   `ProtectingRemote` on a card that is not ice. *Rejected:* re-baking the
+   number in `reconcile_ice`. It would have fixed Syailendra and been a
+   third copy of a number whose other two copies are asked, correct only
+   at the steps that happen to reconcile.
+
+   *Fixtures.* Thirty-odd `RunIce` literals across five crates lost a
+   field, and the helpers that took a `strength` lost the parameter: a
+   fixture whose contest turns on a number registers a card that prints
+   it (`rules::test_support::ice_printing`), which four engine tests and
+   the evaluator's run-term tests needed and the rest never had.
+
+   *Measured.* In shadow, stored-plus-lingering beside derived at every
+   read over both 256-seed sweeps in a debug build (1,536 games): **two
+   reads disagreed, both in one game** (view sweep, seed 243, turn 24) —
+   an unrezzed Scatter Field shown to the Corp at 4 after a second ice
+   had joined its server mid-run, where the derived answer is 0. **No
+   break contest and no `IceEncountered` ever disagreed**: the
+   Syailendra path is real (the new card test walks it for Ice Wall, 1 →
+   2, and Pharos, 5 → 10) and no sample deck's play reached it. With the
+   old path deleted, `scripts/coverage_identical.py main
+   --head-worktree`, 192 games a report, seed 1: **identical, four
+   reports of four.** So this stage is a correction the pool can reach
+   and the sample decks, at this depth, do not. *Replays:* a recorded
+   `MatchHistory` re-simulates, and one in which a stale strength decided
+   a break would diverge from here on; none in the sweeps would. Owed:
+   the prohibitions, which close the item.
+
    *Still open from this stage.* "The first time each turn you install a
    program" is still "once a turn, when it applies": a DZMZ installed after
    the turn's first program discounts the second, as it did under the

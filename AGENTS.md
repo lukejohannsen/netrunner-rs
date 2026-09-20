@@ -112,7 +112,7 @@ What a card does for as long as it is active — "+1[mu]", "costs 2[c] less to i
 
 **An effect with a duration is the other thing, and is stored:** "+1 strength for the remainder of this run" is created once by something that resolved and outlives it, so it is a `rules::lingering::LingeringEffect` in `GameState::lingering` — resolved to a flat number when it is made, and holding for as long as the *state* says its duration is running (`LingeringEffect::holds`, asked at every read), so no call site has to remember to end one. Never add a per-duration field to an installed card, and never write a temporary change into the thing it changes: three `*_strength_buff` fields with five reset sites were the first, and Leech's "for the remainder of this encounter" written into the run's copy of the ice, where it lasted the run, was the second.
 
-Four `StrengthModifier` variants (the Corp's ice) still stand beside the layer; Rules Audit backlog item 2 in `docs/roadmap/rules-audit.md` has the stages that take them.
+**A strength is asked, never kept.** `continuous::breaker_strength` and `continuous::ice_strength` are the two questions — printed, plus what the table adds, plus what is lingering — and the break contest, the events, the view and the bots' pricing all put them. A run's ice stores no strength: `RunIce::current_strength` was baked from a `StrengthModifier` when the run began, on the ground that nothing moves it mid-run, and Syailendra places a counter on an Ice Wall mid-run. A test fixture whose contest turns on a number registers a card that prints it (`rules::test_support::ice_printing`). The prohibitions are the last of Rules Audit backlog item 2 (`docs/roadmap/rules-audit.md`).
 
 ### DSL Growth Rule
 

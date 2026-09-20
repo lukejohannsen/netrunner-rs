@@ -1,7 +1,8 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, Effect, StrengthModifier};
+use crate::dsl::{CardId, CardType, Effect};
 use crate::rules::ability::evaluate_effect;
 use crate::rules::checkpoint;
+use crate::rules::continuous;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -26,39 +27,13 @@ use crate::rules::state::{GamePhase, GameState, InstallSlot, InstalledCard, Side
 /// a hand-built state cannot make the run encounter an agenda as a
 /// 0-strength barrier — which is what the `_ => IceType::Barrier` arm that
 /// stood here did.
-fn build_run_ice(state: &GameState, installed: &InstalledCard, registry: &CardRegistry) -> Result<Option<RunIce>, RulesError> {
+fn build_run_ice(installed: &InstalledCard, registry: &CardRegistry) -> Result<Option<RunIce>, RulesError> {
     let card_def = registry
         .get(&installed.card)
         .ok_or_else(|| RulesError::CardNotFoundInRegistry(installed.card.clone()))?;
     let CardType::Ice(ice_type) = card_def.card_type else {
         return Ok(None);
     };
-    // Bakes any `StrengthModifier` into the seeded value once, at the moment
-    // this ICE is first encountered during a run — its condition (server
-    // type, hosted advancement count) is fixed for the run's duration in
-    // every case this schema models, so a live per-query recompute isn't
-    // needed here (unlike an icebreaker's, which genuinely can change
-    // mid-game and is derived — see `continuous::breaker_strength`).
-    // `Effect::ModifyStrength`'s existing deltas (e.g. Leech) still apply
-    // correctly on top, since they mutate this same `current_strength` field.
-    let modifier_bonus = match card_def.strength_modifier {
-        Some(StrengthModifier::WhileProtectingRemote(bonus)) if matches!(installed.server, ServerId::Remote(_)) => bonus,
-        // Scatter Field: alone on its server.
-        Some(StrengthModifier::WhileOnlyIceProtectingServer(bonus))
-            if state.corp.installed.iter().filter(|c| c.server == installed.server && c.slot == InstallSlot::Ice).count() == 1 =>
-        {
-            bonus
-        }
-        Some(StrengthModifier::WhileHostedAdvancementsAtLeast { threshold, bonus })
-            if installed.advancement_tokens >= threshold =>
-        {
-            bonus
-        }
-        // Ice Wall: a rate, not a threshold.
-        Some(StrengthModifier::PerHostedAdvancement(per)) => per * installed.advancement_tokens as i32,
-        _ => 0,
-    };
-    let current_strength = card_def.strength.unwrap_or(0) + modifier_bonus;
     let subroutines = card_def
         .subroutines
         .iter()
@@ -69,7 +44,6 @@ fn build_run_ice(state: &GameState, installed: &InstalledCard, registry: &CardRe
     Ok(Some(RunIce {
         install_id: installed.install_id,
         card_id: installed.card.clone(),
-        current_strength,
         ice_type,
         subroutines,
         rezzed: installed.rezzed,
@@ -192,7 +166,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         .installed
         .iter()
         .filter(|installed| installed.server == server && installed.slot == InstallSlot::Ice)
-        .map(|installed| build_run_ice(state, installed, registry))
+        .map(|installed| build_run_ice(installed, registry))
         .collect::<Result<Vec<_>, _>>()?
         .into_iter()
         .flatten()
@@ -324,7 +298,10 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
     for installed in state.corp.installed.iter().filter(|c| c.server == run.server && c.slot == InstallSlot::Ice) {
         match run.ice.iter().find(|ice| ice.install_id == installed.install_id) {
             // Same install *and* same card: keep what the run knows (broken
-            // subroutines, boosted strength) and refresh only the rez flag.
+            // subroutines) and refresh only the rez flag. Strength is not
+            // among what it knows — `continuous::ice_strength` asks the
+            // table, because a number kept here outlived the counters and
+            // the neighbours it was computed from.
             // The card check is not redundant — Mitra Aman swaps a
             // different card into an install that keeps its handle, and
             // without this the run went on approaching the ice that had
@@ -332,7 +309,7 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
             Some(existing) if existing.card_id == installed.card => {
                 rebuilt.push(RunIce { rezzed: installed.rezzed, ..existing.clone() })
             }
-            _ => rebuilt.extend(build_run_ice(state, installed, registry)?),
+            _ => rebuilt.extend(build_run_ice(installed, registry)?),
         }
     }
     if rebuilt == run.ice {
@@ -434,7 +411,7 @@ pub fn advance_run(
 
     let mut events = match action {
         RunAction::JackOut => jack_out(state)?,
-        RunAction::Continue => continue_run(state)?,
+        RunAction::Continue => continue_run(state, registry)?,
         RunAction::ResolveSubroutine(index) => step_subroutine(state, index, true, registry)?,
         RunAction::BreakSubroutine(index) => step_subroutine(state, index, false, registry)?,
     };
@@ -507,7 +484,7 @@ fn apply_approach_redirect(
         .installed
         .iter()
         .filter(|installed| installed.server == target && installed.slot == InstallSlot::Ice)
-        .map(|installed| build_run_ice(state, installed, registry))
+        .map(|installed| build_run_ice(installed, registry))
         .collect::<Result<Vec<Option<RunIce>>, _>>()?
         .into_iter()
         .flatten()
@@ -559,7 +536,7 @@ pub(crate) fn move_run_to_outermost(
         .installed
         .iter()
         .filter(|installed| installed.server == target && installed.slot == InstallSlot::Ice)
-        .map(|installed| build_run_ice(state, installed, registry))
+        .map(|installed| build_run_ice(installed, registry))
         .collect::<Result<Vec<Option<RunIce>>, _>>()?
         .into_iter()
         .flatten()
@@ -659,7 +636,7 @@ pub(crate) fn swap_approached_ice_with_card(
     Ok(events)
 }
 
-fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
+fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
     let run = state.active_run.as_mut().expect("active_run checked by advance_run");
 
     match run.phase {
@@ -701,9 +678,13 @@ fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
             // mid-encounter).
             run.jack_out_permitted = false;
             run.phase = RunPhase::EncounterIce;
+            // The number the break contest will use, asked once the run is
+            // standing on the ice: this read what the ice was built with,
+            // a third reading beside the contest's and the view's.
+            let ice = &state.active_run.as_ref().expect("active_run checked by advance_run").ice[position];
             let event = GameEvent::IceEncountered {
                 card_id: ice.card_id.clone(),
-                strength: ice.current_strength,
+                strength: continuous::ice_strength(state, registry, ice),
                 subroutine_count: ice.subroutines.len(),
             };
             Ok(vec![event])
@@ -908,11 +889,10 @@ mod tests {
     /// Builds a `RunIce` with `subroutine_count` placeholder `Pending`
     /// subroutines — identity/effect content doesn't matter for tests using
     /// this, only status transitions and counts do.
-    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
+    fn test_ice(card_id: &str, subroutine_count: usize, rezzed: bool) -> RunIce {
         RunIce {
             install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId(card_id.to_string()),
-            current_strength: strength,
             ice_type: IceType::Barrier,
             subroutines: (0..subroutine_count)
                 .map(|id| EncounteredSubroutine {
@@ -940,7 +920,7 @@ mod tests {
             rezzed,
             ..Default::default()
         };
-        let run_ice = RunIce { install_id: crate::rules::InstallId(install), ..test_ice(card_id, 0, 2, rezzed) };
+        let run_ice = RunIce { install_id: crate::rules::InstallId(install), ..test_ice(card_id, 2, rezzed) };
         (installed, run_ice)
     }
 
@@ -1134,7 +1114,7 @@ mod tests {
     #[test]
     fn initiation_continue_with_ice_enters_approach_ice() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 2, true)], 0));
+        state.active_run = Some(run_state(RunPhase::Initiation, vec![test_ice("ice_wall", 2, true)], 0));
         crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
@@ -1160,9 +1140,10 @@ mod tests {
     #[test]
     fn approach_ice_continue_enters_encounter_ice() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 3, 2, true)], 0));
+        state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 2, true)], 0));
         crate::rules::test_support::install_the_runs_ice(&mut state);
-        let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
+        let registry = CardRegistry::from_cards(vec![crate::rules::test_support::ice_printing("ice_wall", 3)]);
+        let events = advance_run(&mut state, RunAction::Continue, &registry).expect("should succeed");
 
         assert_eq!(state.active_run.unwrap().phase, RunPhase::EncounterIce);
         assert_eq!(
@@ -1178,7 +1159,7 @@ mod tests {
     #[test]
     fn approach_ice_continue_with_unrezzed_ice_auto_passes_without_encounter() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 3, 2, false)], 0));
+        state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 2, false)], 0));
         crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
@@ -1200,7 +1181,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(run_state(
             RunPhase::ApproachIce,
-            vec![test_ice("ice_wall_0", 0, 1, false), test_ice("ice_wall_1", 0, 1, true)],
+            vec![test_ice("ice_wall_0", 1, false), test_ice("ice_wall_1", 1, true)],
             0,
         ));
         crate::rules::test_support::install_the_runs_ice(&mut state);
@@ -1221,7 +1202,7 @@ mod tests {
     #[test]
     fn initiation_continue_with_unrezzed_ice_still_enters_approach_ice() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 2, false)], 0));
+        state.active_run = Some(run_state(RunPhase::Initiation, vec![test_ice("ice_wall", 2, false)], 0));
         crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
@@ -1237,7 +1218,7 @@ mod tests {
     #[test]
     fn encounter_ice_resolve_subroutine_fires_and_marks_resolved() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 2, true)], 0));
+        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 2, true)], 0));
         let events =
             advance_run(&mut state, RunAction::ResolveSubroutine(0), &CardRegistry::new()).expect("should succeed");
 
@@ -1262,7 +1243,7 @@ mod tests {
     #[test]
     fn resolve_subroutine_applies_its_effect() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 1, true);
+        let mut ice = test_ice("ice_wall", 1, true);
         ice.subroutines[0].definition.effect = Effect::GiveTags(2);
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![ice], 0));
 
@@ -1289,7 +1270,7 @@ mod tests {
     #[test]
     fn encounter_ice_break_subroutine_marks_broken() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 2, true)], 0));
+        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 2, true)], 0));
         let events =
             advance_run(&mut state, RunAction::BreakSubroutine(0), &CardRegistry::new()).expect("should succeed");
 
@@ -1306,7 +1287,7 @@ mod tests {
     #[test]
     fn encounter_ice_continue_with_pending_subroutines_errors() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 1, true)], 0));
+        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 1, true)], 0));
         crate::rules::test_support::install_the_runs_ice(&mut state);
         let result = advance_run(&mut state, RunAction::Continue, &CardRegistry::new());
 
@@ -1318,7 +1299,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(run_state(
             RunPhase::EncounterIce,
-            vec![test_ice("ice_wall_0", 0, 0, true), test_ice("ice_wall_1", 0, 3, true)],
+            vec![test_ice("ice_wall_0", 0, true), test_ice("ice_wall_1", 3, true)],
             0,
         ));
         crate::rules::test_support::install_the_runs_ice(&mut state);
@@ -1346,7 +1327,7 @@ mod tests {
             vec![InstalledRunnerCard { install_id: breaker, card: CardId("corroder".to_string()), base_strength: 2, ..Default::default() }];
         state.active_run = Some(run_state(
             RunPhase::EncounterIce,
-            vec![test_ice("ice_wall_0", 0, 0, true), test_ice("ice_wall_1", 0, 3, true)],
+            vec![test_ice("ice_wall_0", 0, true), test_ice("ice_wall_1", 3, true)],
             0,
         ));
 
@@ -1362,7 +1343,7 @@ mod tests {
     #[test]
     fn encounter_ice_continue_after_last_ice_reaches_success() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 0, true)], 0));
+        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, true)], 0));
         crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
@@ -1379,7 +1360,7 @@ mod tests {
     #[test]
     fn resolve_subroutine_with_invalid_index_errors() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 0, true)], 0));
+        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, true)], 0));
         let result = advance_run(&mut state, RunAction::ResolveSubroutine(0), &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::InvalidSubroutineIndex(0)));
@@ -1388,7 +1369,7 @@ mod tests {
     #[test]
     fn break_subroutine_outside_encounter_ice_errors() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 0, 2, true)], 0));
+        state.active_run = Some(run_state(RunPhase::ApproachIce, vec![test_ice("ice_wall", 2, true)], 0));
         let result = advance_run(&mut state, RunAction::BreakSubroutine(0), &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::NotInEncounter));
@@ -1397,7 +1378,7 @@ mod tests {
     #[test]
     fn break_subroutine_already_handled_errors() {
         let mut state = game_state();
-        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 1, true)], 0));
+        state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 1, true)], 0));
         advance_run(&mut state, RunAction::BreakSubroutine(0), &CardRegistry::new()).expect("should succeed");
         let result = advance_run(&mut state, RunAction::ResolveSubroutine(0), &CardRegistry::new());
 
@@ -1408,7 +1389,7 @@ mod tests {
     fn jack_out_from_initiation_fails() {
         let mut state = game_state();
         state.active_run =
-            Some(run_state_with_jack_out(RunPhase::Initiation, vec![test_ice("ice_wall", 0, 1, true)], 0, false));
+            Some(run_state_with_jack_out(RunPhase::Initiation, vec![test_ice("ice_wall", 1, true)], 0, false));
         let result = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::Initiation }));
@@ -1420,7 +1401,7 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(run_state_with_jack_out(
             RunPhase::ApproachIce,
-            vec![test_ice("ice_wall", 0, 1, true)],
+            vec![test_ice("ice_wall", 1, true)],
             0,
             false,
         ));
@@ -1437,7 +1418,7 @@ mod tests {
         // jack-out window before the second (rezzed) ICE is approached.
         state.active_run = Some(run_state_with_jack_out(
             RunPhase::ApproachIce,
-            vec![test_ice("ice_wall_0", 0, 0, false), test_ice("ice_wall_1", 0, 1, true)],
+            vec![test_ice("ice_wall_0", 0, false), test_ice("ice_wall_1", 1, true)],
             0,
             false,
         ));
@@ -1456,7 +1437,7 @@ mod tests {
     fn jack_out_during_encounter_ice_fails() {
         let mut state = game_state();
         state.active_run =
-            Some(run_state_with_jack_out(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, 5, true)], 0, false));
+            Some(run_state_with_jack_out(RunPhase::EncounterIce, vec![test_ice("ice_wall", 5, true)], 0, false));
         let result = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new());
 
         assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::EncounterIce }));

@@ -59,8 +59,10 @@ pub struct EncounteredSubroutine {
 
 /// A single piece of ICE within a run's ice stack, as seen by the run state
 /// machine. Built by `run::start_run` from the Corp's `InstalledCard`s on
-/// the targeted server (`CardRegistry`-looked-up for
-/// `strength`/`subroutines`) and **kept in step with `corp.installed` by
+/// the targeted server (`CardRegistry`-looked-up for its subtype and
+/// `subroutines` — **not its strength**, which is a question put to the
+/// table at every read, `continuous::ice_strength`, because a number stored
+/// here outlived the counters it was computed from) and **kept in step with `corp.installed` by
 /// `run::reconcile_ice`** — ICE installed, trashed, rezzed, derezzed or
 /// swapped on the server mid-run shows up here at the run's next step; it
 /// is not a snapshot. Ordered outermost-to-innermost matching install
@@ -78,7 +80,6 @@ pub struct RunIce {
     /// before the field existed still deserializes, to the placeholder.
     #[serde(default)]
     pub install_id: InstallId,
-    pub current_strength: i32,
     /// This ICE's subtype, seeded from `CardDefinition::card_type`'s `CardType::Ice(_)`
     /// at `engine::build_run_ice` — the data `Effect::BreakSubroutines`'s
     /// `restrict_to` gate compares against. A card that is not ICE never

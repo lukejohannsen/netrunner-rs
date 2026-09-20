@@ -1220,8 +1220,7 @@ pub(crate) fn play_operation_card(
 }
 
 /// Seeds a newly-installed rig card's `base_strength` from the registry's
-/// printed `strength` — mirrors `build_run_ice`'s identical seed-once
-/// pattern for `RunIce::current_strength`. `0` for Hardware/non-strength
+/// printed `strength`. `0` for Hardware/non-strength
 /// Programs (`CardDefinition::strength` is `None`).
 /// Takes `&mut GameState` solely to mint the card's `install_id` — every
 /// rig install funnels through here, so allocating inside makes it
@@ -2347,13 +2346,12 @@ mod tests {
     /// Builds a `RunIce` with `subroutine_count` placeholder `Pending`
     /// subroutines — identity/effect content doesn't matter for tests using
     /// this, only status transitions and counts do.
-    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
-        test_ice_of_type(card_id, strength, subroutine_count, rezzed, IceType::Barrier)
+    fn test_ice(card_id: &str, subroutine_count: usize, rezzed: bool) -> RunIce {
+        test_ice_of_type(card_id, subroutine_count, rezzed, IceType::Barrier)
     }
 
     fn test_ice_of_type(
         card_id: &str,
-        strength: i32,
         subroutine_count: usize,
         rezzed: bool,
         ice_type: IceType,
@@ -2361,7 +2359,6 @@ mod tests {
         RunIce {
             install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId(card_id.to_string()),
-            current_strength: strength,
             ice_type,
             subroutines: (0..subroutine_count)
                 .map(|id| EncounteredSubroutine {
@@ -3058,7 +3055,7 @@ mod tests {
         state.phase = GamePhase::Action(Side::Runner);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![RunIce { install_id: InstallId(1049), ..test_ice("ice_wall", 0, 1, false) }],
+            ice: vec![RunIce { install_id: InstallId(1049), ..test_ice("ice_wall", 1, false) }],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -3109,8 +3106,8 @@ mod tests {
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
             ice: vec![
-                RunIce { install_id: InstallId(1), ..test_ice("outer_ice", 0, 1, false) },
-                RunIce { install_id: InstallId(2), ..test_ice("inner_ice", 0, 1, false) },
+                RunIce { install_id: InstallId(1), ..test_ice("outer_ice", 1, false) },
+                RunIce { install_id: InstallId(2), ..test_ice("inner_ice", 1, false) },
             ],
             jack_out_permitted: true,
             ..Default::default()
@@ -3264,11 +3261,9 @@ mod tests {
         let ice = next.active_run.unwrap().ice;
         assert_eq!(ice.len(), 2);
         assert_eq!(ice[0].card_id, CardId("outer_ice".to_string()));
-        assert_eq!(ice[0].current_strength, 0);
         assert!(ice[0].subroutines.is_empty());
         assert!(!ice[0].rezzed);
         assert_eq!(ice[1].card_id, CardId("inner_ice".to_string()));
-        assert_eq!(ice[1].current_strength, 2);
         assert_eq!(ice[1].subroutines.len(), 1);
         assert!(ice[1].rezzed);
     }
@@ -3339,7 +3334,6 @@ mod tests {
             vec![RunIce {
                 install_id: InstallId(1055),
                 card_id: CardId("vanilla_ice".to_string()),
-                current_strength: 0,
                 ice_type: IceType::Barrier,
                 subroutines: Vec::new(),
                 rezzed: false,
@@ -3366,7 +3360,7 @@ mod tests {
         let mut state = runner_state(3, 5, 3);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -3391,7 +3385,7 @@ mod tests {
         let mut state = runner_state(3, 5, 3);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -3487,7 +3481,7 @@ mod tests {
         let mut state = runner_state(3, 5, 3);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -3556,7 +3550,7 @@ mod tests {
         let mut state = runner_state(3, 5, 3);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -3739,7 +3733,7 @@ mod tests {
     fn runner_continue_run_steps_through_phases_with_no_click_cost() {
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
-            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            ice: vec![test_ice("ice_wall", 0, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -3812,7 +3806,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4410,7 +4404,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 2, true)],
+            ice: vec![test_ice("ice_wall", 2, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4473,7 +4467,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4492,7 +4486,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4510,7 +4504,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4637,7 +4631,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            ice: vec![test_ice("ice_wall", 0, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4660,7 +4654,7 @@ mod tests {
         .expect("action should succeed");
 
         assert_eq!(next.runner.resources.credits, Credits(4));
-        assert_eq!(crate::rules::lingering::ice_strength(&next, &next.active_run.as_ref().unwrap().ice[0]), 1);
+        assert_eq!(crate::rules::continuous::ice_strength(&next, &registry, &next.active_run.as_ref().unwrap().ice[0]), 1);
         assert_eq!(
             events,
             vec![
@@ -4683,7 +4677,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            ice: vec![test_ice("ice_wall", 0, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4767,7 +4761,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 2, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4812,12 +4806,13 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("corroder", 1)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 3, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
 
         let mut registry = CardRegistry::new();
+        registry.insert(crate::rules::test_support::ice_printing("ice_wall", 3));
         registry.insert(test_card_with_ability(
             "corroder",
             Side::Runner,
@@ -4859,7 +4854,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("corroder", 2)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
+            ice: vec![test_ice_of_type("ice_wall", 1, true, IceType::Barrier)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4896,7 +4891,7 @@ mod tests {
             state.runner.rig = vec![installed_runner_card("corroder", 2)];
             state.active_run = Some(RunState {
                 phase: RunPhase::EncounterIce,
-                ice: vec![test_ice_of_type("some_ice", 2, 1, true, wrong_type)],
+                ice: vec![test_ice_of_type("some_ice", 1, true, wrong_type)],
                 jack_out_permitted: true,
                 ..Default::default()
             });
@@ -4941,7 +4936,7 @@ mod tests {
             state.runner.rig = vec![installed_runner_card("mimic", 2)];
             state.active_run = Some(RunState {
                 phase: RunPhase::EncounterIce,
-                ice: vec![test_ice_of_type("some_ice", 2, 1, true, ice_type)],
+                ice: vec![test_ice_of_type("some_ice", 1, true, ice_type)],
                 jack_out_permitted: true,
                 ..Default::default()
             });
@@ -4975,7 +4970,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            ice: vec![test_ice("ice_wall", 0, true)],
             ..Default::default()
         });
         crate::rules::test_support::install_the_runs_ice(&mut state);
@@ -5017,7 +5012,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            ice: vec![test_ice("ice_wall", 0, true)],
             ..Default::default()
         });
         // Corp currently holds priority — the Runner tries to act anyway.
@@ -5079,7 +5074,7 @@ mod tests {
         state.corp.installed = installed;
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![RunIce { install_id: InstallId(1057), ..test_ice("ice_wall", 0, 0, false) }],
+            ice: vec![RunIce { install_id: InstallId(1057), ..test_ice("ice_wall", 0, false) }],
             ..Default::default()
         });
         // It's the Runner's priority, but Rez is priority-independent —
@@ -5109,7 +5104,7 @@ mod tests {
         let mut state = runner_state(3, 0, 0);
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 0, 0, true), test_ice("enigma", 0, 0, true)],
+            ice: vec![test_ice("ice_wall", 0, true), test_ice("enigma", 0, true)],
             position: 1,
             jack_out_permitted: true,
             ..Default::default()
@@ -5168,7 +5163,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("gordian_blade", 0)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice("ice_wall", 0, 0, true)],
+            ice: vec![test_ice("ice_wall", 0, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -5991,7 +5986,7 @@ mod tests {
         state.runner.stack = vec![CardId("stack_card_0".to_string())];
         state.active_run = Some(RunState {
             phase: RunPhase::ApproachIce,
-            ice: vec![test_ice("ice_wall", 1, 1, true)],
+            ice: vec![test_ice("ice_wall", 1, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -6605,7 +6600,7 @@ mod tests {
         state.runner.rig = vec![installed_runner_card("corroder", 1)];
         state.active_run = Some(RunState {
             phase: RunPhase::EncounterIce,
-            ice: vec![test_ice_of_type("ice_wall", 2, 1, true, IceType::Barrier)],
+            ice: vec![test_ice_of_type("ice_wall", 1, true, IceType::Barrier)],
             ..Default::default()
         });
         crate::rules::test_support::install_the_runs_ice(&mut state);
@@ -6680,7 +6675,6 @@ mod tests {
             ice: vec![RunIce {
                 install_id: crate::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("ice_wall".to_string()),
-                current_strength: 2,
                 ice_type: IceType::Barrier,
                 subroutines: vec![
                     EncounteredSubroutine {

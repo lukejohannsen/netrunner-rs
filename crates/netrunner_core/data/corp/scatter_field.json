@@ -7,9 +7,25 @@
   },
   "cost": 3,
   "strength": 0,
-  "strength_modifier": {
-    "WhileOnlyIceProtectingServer": 4
-  },
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 4
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "Not": {
+          "AmountAtLeast": [
+            "IceProtectingThisServer",
+            2
+          ]
+        }
+      },
+      "text": "While this ice is the only piece of ice protecting this server, it gets +4 strength."
+    }
+  ],
   "triggers": [],
   "subroutines": [
     {

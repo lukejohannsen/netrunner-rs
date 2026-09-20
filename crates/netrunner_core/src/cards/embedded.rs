@@ -128,17 +128,17 @@ mod tests {
     }
 
     /// A misspelled key used to deserialize silently, leaving the intended
-    /// field at its default — e.g. a typo'd `strength_modifier` would cost a
-    /// card its bonus with no test failure. `deny_unknown_fields` makes that
+    /// field at its default — e.g. a typo'd `strength` would leave an ice at
+    /// 0 with no test failure. `deny_unknown_fields` makes that
     /// a hard error; this proves the guard is actually wired up.
     #[test]
     fn a_misspelled_field_is_rejected_rather_than_silently_defaulted() {
         let typo = r#"{"id":"x","title":"X","side":"Corp","card_type":"Operation","cost":1,
-                       "triggers":[],"strenght_modifier":null}"#;
+                       "triggers":[],"strenght":null}"#;
 
         let err = serde_json::from_str::<CardDefinition>(typo).expect_err("a misspelled key must not parse");
 
-        assert!(err.to_string().contains("strenght_modifier"), "error should name the offending key: {err}");
+        assert!(err.to_string().contains("strenght"), "error should name the offending key: {err}");
     }
 }
 

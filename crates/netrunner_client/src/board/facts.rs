@@ -474,7 +474,6 @@ mod tests {
             ice: vec![RunIce {
                 card_id: definition.id.clone(),
                 install_id,
-                current_strength: definition.strength.unwrap_or(0),
                 ice_type,
                 subroutines: definition
                     .subroutines

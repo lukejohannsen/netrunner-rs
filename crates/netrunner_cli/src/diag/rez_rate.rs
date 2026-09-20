@@ -515,7 +515,6 @@ mod tests {
         let ice = |rezzed| RunIce {
             install_id: InstallId::PLACEHOLDER,
             card_id: CardId("palisade".to_string()),
-            current_strength: 4,
             ice_type: IceType::Barrier,
             subroutines: Vec::new(),
             rezzed,
