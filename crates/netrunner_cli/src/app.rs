@@ -345,6 +345,11 @@ pub trait RenderableView {
     fn actions_title(&self) -> Option<String> {
         None
     }
+    /// A line about a key the list does not show — the local game's way
+    /// to take the last move back. `None` wherever there is none.
+    fn notice(&self) -> Option<String> {
+        None
+    }
     /// The engine's reason for refusing the last submission, until the
     /// next state arrives. `None` on a path that has none to show.
     fn last_rejection(&self) -> Option<&str> {

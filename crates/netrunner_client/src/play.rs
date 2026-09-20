@@ -38,7 +38,9 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::rules::{GameState, PlayerAction, Side};
 use netrunner_core::view::ClientView;
-use netrunner_session::{PublicHistoryEntry, Seat, Session, SessionStep, StallReason, SubmitError};
+use netrunner_session::{PublicHistoryEntry, Seat, Session, SessionStep, StallReason, SubmitError, UNDO_DEPTH};
+
+pub use netrunner_session::Rewind;
 
 /// Re-exported so a client that only ever holds a `MatchHandle` need not
 /// name the session crate for the one type its `Ended` carries.
@@ -80,8 +82,23 @@ pub enum MatchMessage {
     /// copy of the log entry and the board it left. One per action, in
     /// order, so the match log and the view-diff both see every step.
     Applied { entry: PublicHistoryEntry, view: Box<ClientView> },
+    /// What taking the last move back would cost, as of the `Awaiting`
+    /// that follows: `None` when there is nothing to take back, which is
+    /// also how a match starts. Sent only when it changes, so a game in
+    /// which nobody ever goes back hears it a few times a turn and a
+    /// client that ignores it misses nothing. Its own message rather than a field on `Awaiting`
+    /// because it is the match thread's to know and not the view's: a
+    /// `ClientView` is what the engine shows a seat, and a take-back is
+    /// the driver's (`netrunner_session::Session::rewind`).
+    Back { rewind: Option<Rewind> },
     /// The human must choose from `view.legal_actions`.
     Awaiting { view: Box<ClientView> },
+    /// The person's last move was taken back: `view` is the board it was
+    /// made from and `removed` is how many `Applied` entries no longer
+    /// happened, newest first — the log drops them and the board snaps
+    /// back without a transition, since nothing moved *to* here. An
+    /// `Undo` has just made the game unrated.
+    Rewound { view: Box<ClientView>, removed: usize, kind: Rewind },
     /// The engine refused the last `submit`; the human is still awaiting
     /// on the same view. `reason` is `RulesError`'s own message.
     Rejected { reason: String },
@@ -96,8 +113,12 @@ pub enum MatchMessage {
 
 enum Command {
     Submit(PlayerAction),
+    Rewind,
     Quit,
 }
+
+/// What `Ended::notice` says of a game an undo took the rating from.
+pub const UNRATED_BY_UNDO: &str = "This game was not rated: a move was undone after it had shown something new.";
 
 /// A running match, as the client holds it. Dropping it quits the game
 /// the way Escape does in the terminal — a forfeit from turn 3 on.
@@ -151,7 +172,7 @@ impl MatchHandle {
             Side::Corp => (Seat::External, bot),
             Side::Runner => (bot, Seat::External),
         };
-        let session = Session::new(state, (*registry).clone(), corp_seat, runner_seat);
+        let session = Session::new(state, (*registry).clone(), corp_seat, runner_seat).with_undo(UNDO_DEPTH);
         let (command_tx, command_rx) = mpsc::channel();
         let (message_tx, message_rx) = mpsc::channel();
         let thread = thread::Builder::new()
@@ -215,6 +236,20 @@ impl MatchHandle {
     /// already over.
     pub fn submit(&self, action: PlayerAction) -> Result<(), String> {
         self.commands.send(Command::Submit(action)).map_err(|_| "the match has ended".to_string())
+    }
+
+    /// Asks for the last move back. Answered by `Rewound`, or by
+    /// `Rejected` when there is none to take — what it would cost was in
+    /// the `Back` before the last `Awaiting`.
+    ///
+    /// **Not a `PlayerAction`, and not a way round one**: the state
+    /// restored is one the engine produced, the history loses the entries
+    /// since so the record still replays, and `submit` still never
+    /// filters. A free take-back leaves a rated game rated; an undo past
+    /// a draw or an access stops the game being rated, once, and says so
+    /// at the end (`UNRATED_BY_UNDO`).
+    pub fn rewind(&self) -> Result<(), String> {
+        self.commands.send(Command::Rewind).map_err(|_| "the match has ended".to_string())
     }
 
     /// `Ended` or `Stalled` has been received; nothing more will come.
@@ -301,6 +336,8 @@ fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, comm
             let _ = rating.finish(outcome);
         }
     };
+    let mut undone = false;
+    let mut back = None;
     loop {
         let step = loop {
             match session.step() {
@@ -314,6 +351,13 @@ fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, comm
         };
         match step {
             SessionStep::Awaiting { side, view } if side == human => {
+                let rewind = session.can_rewind();
+                if rewind != back {
+                    back = rewind;
+                    if messages.send(MatchMessage::Back { rewind }).is_err() {
+                        return forfeit(&session, &mut rating);
+                    }
+                }
                 if messages.send(MatchMessage::Awaiting { view }).is_err() {
                     return forfeit(&session, &mut rating);
                 }
@@ -338,6 +382,26 @@ fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, comm
                                 return;
                             }
                         },
+                        Ok(Command::Rewind) => match session.rewind() {
+                            Some(rewound) => {
+                                // An undo has taught the person something a
+                                // rated game would not have: the rating is
+                                // dropped unrecorded, not forfeited.
+                                if rewound.kind == Rewind::Undo {
+                                    undone |= rating.take().is_some();
+                                }
+                                let view = Box::new(session.view_for(human));
+                                if messages.send(MatchMessage::Rewound { view, removed: rewound.removed, kind: rewound.kind }).is_err() {
+                                    return forfeit(&session, &mut rating);
+                                }
+                                break;
+                            }
+                            None => {
+                                if messages.send(MatchMessage::Rejected { reason: "there is no move to take back".to_string() }).is_err() {
+                                    return forfeit(&session, &mut rating);
+                                }
+                            }
+                        },
                         Ok(Command::Quit) | Err(_) => return forfeit(&session, &mut rating),
                     }
                 }
@@ -353,7 +417,7 @@ fn drive(mut session: Session, human: Side, mut rating: Option<SeatRating>, comm
                 let (report, notice) = match rating.take().map(|rating| rating.finish(ratings::outcome_of(winner))) {
                     Some(Ok(report)) => (Some(report), None),
                     Some(Err(error)) => (None, Some(format!("the result could not be recorded: {error}"))),
-                    None => (None, None),
+                    None => (None, undone.then(|| UNRATED_BY_UNDO.to_string())),
                 };
                 let _ = messages.send(MatchMessage::Ended { winner, reason, view, report, notice });
                 return;
@@ -407,6 +471,8 @@ mod tests {
             match handle.wait().expect("the thread is alive until it says Ended") {
                 MatchMessage::Awaiting { view } => handle.submit(choose(&view)).unwrap(),
                 MatchMessage::Applied { .. } => applied += 1,
+                MatchMessage::Back { .. } => {}
+                MatchMessage::Rewound { .. } => panic!("nothing asked for a move back"),
                 MatchMessage::Rejected { reason } => panic!("a legal action was rejected: {reason}"),
                 message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => return (message, applied),
             }
@@ -436,6 +502,45 @@ mod tests {
         let book = LocalRatings::load(&path).unwrap();
         let (won, drawn, lost) = book.record_against("tester", Side::Runner, &Level::Novice.rating_id());
         assert_eq!(won + drawn + lost, 1, "one game on the ladder");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// An undo past something newly seen goes back exactly and takes the
+    /// rating with it: nothing is recorded, and the end says why.
+    #[test]
+    fn an_undo_makes_a_rated_game_unrated_and_says_so() {
+        let dir = temp_dir("undone");
+        let path = dir.join("ratings.json");
+        let rating = Some(RatingFile { path: path.clone(), player: "tester".to_string() });
+        let mut handle = MatchHandle::start_local(spec(Side::Runner, 3, rating)).unwrap();
+        let (mut offered, mut undone, mut before) = (None, false, None);
+        let last = loop {
+            match handle.wait().expect("the thread is alive until it says Ended") {
+                MatchMessage::Back { rewind } => offered = rewind,
+                MatchMessage::Awaiting { view } if offered == Some(Rewind::Undo) && !undone => {
+                    undone = true;
+                    handle.rewind().unwrap();
+                    let MatchMessage::Rewound { view: restored, removed, kind } = handle.wait().unwrap() else { panic!("a move was there to undo") };
+                    assert_eq!(kind, Rewind::Undo);
+                    assert!(removed >= 1);
+                    assert_eq!(Some(&restored.runner.clicks), before.as_ref(), "the board the move was made from");
+                    assert_ne!(restored.runner.clicks, view.runner.clicks);
+                }
+                MatchMessage::Awaiting { view } => {
+                    before = Some(view.runner.clicks);
+                    handle.submit(view.legal_actions[0].clone()).unwrap();
+                }
+                MatchMessage::Applied { .. } | MatchMessage::Rewound { .. } => {}
+                MatchMessage::Rejected { reason } => panic!("{reason}"),
+                message @ (MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break message,
+            }
+        };
+        assert!(undone, "the first legal action is a click sooner or later");
+        let MatchMessage::Ended { report, notice, .. } = last else { panic!("{last:?}") };
+        assert!(report.is_none());
+        assert_eq!(notice.as_deref(), Some(UNRATED_BY_UNDO));
+        let recorded = LocalRatings::load(&path).map(|book| book.record_against("tester", Side::Runner, &Level::Novice.rating_id())).unwrap_or((0, 0, 0));
+        assert_eq!(recorded, (0, 0, 0), "an undone game is not on the ladder");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -473,7 +578,7 @@ mod tests {
             match handle.wait().unwrap() {
                 MatchMessage::Awaiting { view } if view.turn >= 3 => break,
                 MatchMessage::Awaiting { view } => handle.submit(view.legal_actions[0].clone()).unwrap(),
-                MatchMessage::Applied { .. } => {}
+                MatchMessage::Applied { .. } | MatchMessage::Back { .. } => {}
                 other => panic!("{other:?}"),
             }
         }
@@ -504,7 +609,7 @@ mod tests {
                         }
                     }
                 }
-                MatchMessage::Applied { .. } => {}
+                MatchMessage::Applied { .. } | MatchMessage::Back { .. } | MatchMessage::Rewound { .. } => {}
                 MatchMessage::Rejected { reason } => panic!("the lone pass was rejected: {reason}"),
                 MatchMessage::Ended { .. } => break,
                 MatchMessage::Stalled { reason } => panic!("{reason}"),

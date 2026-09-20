@@ -383,4 +383,70 @@ impl GameEvent {
         let rendered = format!("{self:?}");
         rendered.split(['(', '{', ' ']).next().unwrap_or(&rendered).to_string()
     }
+    /// Whether this event can have taught the player who caused it
+    /// something they did not know, or handed the game to the other seat —
+    /// what `netrunner_session::Session` reads to decide whether taking a
+    /// move back is *free* (ROADMAP Phase 7 §8 item 4b).
+    ///
+    /// jinteki.net's `/undo-click` restores a whole state with no such
+    /// test, so undoing a draw rewinds the draw. Here a take-back that
+    /// crossed one of these stops being free and costs the game its rating.
+    /// A card leaving a hidden zone for the actor's eyes (a draw, an
+    /// access, a rez seen from the other chair), a trace (the other seat
+    /// bids), and a turn or the game ending all count. Paying, gaining,
+    /// installing, and a decision being parked do not: the player knew
+    /// everything those show before they acted.
+    ///
+    /// **Exhaustive on purpose**, unlike `variant_name`: a new event does
+    /// not compile until someone decides, because the wrong default here
+    /// is silent in both directions — `false` leaks a card to a rated
+    /// game, `true` takes the Back button off a prompt that deserved it.
+    /// `GameState::rng_step` moving is tested separately by the session,
+    /// which is what covers a shuffle or a random discard.
+    pub fn may_teach_the_actor(&self) -> bool {
+        match self {
+            GameEvent::CardDrawn { .. } | GameEvent::CardAccessed { .. } | GameEvent::CardTrashedFromAccess { .. }
+            | GameEvent::AccessPassed { .. } | GameEvent::AgendaStolen { .. } | GameEvent::IceRezzed { .. }
+            | GameEvent::IceEncountered { .. } | GameEvent::DamageTaken { .. } | GameEvent::CardsTrashedFromHq { .. }
+            | GameEvent::MulliganTaken { .. } | GameEvent::HandKept { .. } | GameEvent::TraceInitiated { .. }
+            | GameEvent::TraceCorpBidSubmitted { .. } | GameEvent::TraceRunnerBidSubmitted { .. }
+            | GameEvent::TraceAvoided { .. } | GameEvent::TraceSuccessful { .. } | GameEvent::GameOver { .. }
+            | GameEvent::RunnerFlatlined | GameEvent::TurnStarted { .. } | GameEvent::TurnEnded { .. } => true,
+            GameEvent::ClickSpent { .. } | GameEvent::CreditsGained { .. } | GameEvent::IceApproached { .. }
+            | GameEvent::SubroutineBroken { .. } | GameEvent::SubroutineFired { .. }
+            | GameEvent::IceStrengthModified { .. } | GameEvent::IcePassed { .. } | GameEvent::IceBypassed { .. }
+            | GameEvent::ServerApproached { .. } | GameEvent::RunSucceeded { .. } | GameEvent::RunJackedOut { .. }
+            | GameEvent::RunCompleted { .. } | GameEvent::CardInstalled { .. } | GameEvent::CardDerezzed { .. }
+            | GameEvent::IceSwapped { .. } | GameEvent::CardMoved { .. } | GameEvent::RunInitiated { .. }
+            | GameEvent::EventPlayed { .. } | GameEvent::OperationPlayed { .. } | GameEvent::HardwareInstalled { .. }
+            | GameEvent::ProgramInstalled { .. } | GameEvent::ResourceInstalled { .. }
+            | GameEvent::DiscardPending { .. } | GameEvent::DiscardPhaseEnded { .. }
+            | GameEvent::CardDiscarded { .. } | GameEvent::CardAddedToBottomOfStack { .. }
+            | GameEvent::CardHosted { .. } | GameEvent::IdentityFlipped { .. } | GameEvent::ActionPhaseEnded { .. }
+            | GameEvent::RunEndPrevented { .. } | GameEvent::RunRedirected { .. } | GameEvent::CreditsSpent { .. }
+            | GameEvent::TagsGiven { .. } | GameEvent::TagsCleared { .. } | GameEvent::CardTrashed { .. }
+            | GameEvent::CardRemovedFromGame { .. } | GameEvent::AgendaForfeited { .. }
+            | GameEvent::AbilityGainedCredits { .. } | GameEvent::RunEndedByEffect { .. }
+            | GameEvent::AbilityActivated { .. } | GameEvent::CardAdvanced { .. }
+            | GameEvent::AdvancementCountersPlaced { .. } | GameEvent::PaidAbilityWindowOpened { .. }
+            | GameEvent::PriorityPassed { .. } | GameEvent::PaidAbilityWindowClosed
+            | GameEvent::StrengthBoosted { .. } | GameEvent::TagRemoved { .. } | GameEvent::TagsRemoved { .. }
+            | GameEvent::TriggerOrderPending { .. } | GameEvent::TriggerOrderChosen { .. }
+            | GameEvent::TriggerFired { .. } | GameEvent::VirusCountersPurged { .. }
+            | GameEvent::BadPublicityCreditsSpent { .. } | GameEvent::BonusRunCreditsSpent { .. }
+            | GameEvent::CardsSelected { .. } | GameEvent::PendingCardSelectionOffered { .. }
+            | GameEvent::MemoryLimitExceeded { .. } | GameEvent::PendingServerChoiceOffered { .. }
+            | GameEvent::BadPublicityGiven { .. } | GameEvent::BadPublicityRemoved { .. }
+            | GameEvent::AdditionalAccessGranted { .. } | GameEvent::AccessReplacementSet { .. }
+            | GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. }
+            | GameEvent::ClicksGained { .. } | GameEvent::RecurringCreditsSpent { .. }
+            | GameEvent::AgendaScored { .. } | GameEvent::DamageAboutToResolve { .. }
+            | GameEvent::TrashAboutToResolve { .. } | GameEvent::DamagePrevented { .. }
+            | GameEvent::TrashPrevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
+            | GameEvent::MaxHandSizeGained { .. } | GameEvent::BasicDrawActionTaken { .. }
+            | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
+            | GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. }
+            | GameEvent::PendingPaidChoiceDeclined { .. } => false,
+        }
+    }
 }

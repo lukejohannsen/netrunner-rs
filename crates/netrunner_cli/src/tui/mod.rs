@@ -23,7 +23,7 @@ use netrunner_core::rules::{
 };
 use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
-use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError};
+use netrunner_session::{GameEndReason, LessonSession, LessonStep, Rewind, Seat, Session, SessionStep, SubmitError, UNDO_DEPTH};
 
 use netrunner_client::board::{routes, ActionMap, Affordance, Asks, AutoBreak, Next, Route, Target};
 use netrunner_client::access::Access;
@@ -34,7 +34,8 @@ use netrunner_client::selection::Selection;
 use crate::app::{card_modal, describe_action, explain_action, push_log_line, App, CardPicker, Coaching, Modal, RenderableView};
 use crate::bots;
 use crate::config::{BotKind, Config, Mode};
-use netrunner_client::play::{lone_pass, stall_message};
+use netrunner_client::actions::pop_log_entries;
+use netrunner_client::play::{lone_pass, stall_message, UNRATED_BY_UNDO};
 use netrunner_client::decks;
 use crate::ratings::{self, SeatRating};
 use crate::remote;
@@ -180,7 +181,10 @@ pub fn play_local(terminal: &mut ratatui::DefaultTerminal, config: &Config) -> R
         Side::Corp => (Seat::External, bot_seat),
         Side::Runner => (bot_seat, Seat::External),
     };
-    let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat);
+    // A game against a bot keeps the person's last few moves so one can be
+    // taken back (`Session::rewind`); a lesson does not, because its steps
+    // are scripted against the actions actually taken.
+    let mut session = Session::new(state, registry.clone(), corp_seat, runner_seat).with_undo(UNDO_DEPTH);
 
     let mut ui = LocalUiState::new(registry, human_side);
     drive_local(terminal, &mut session, &mut ui, indexed_bot.as_mut(), human_side, rating)
@@ -340,7 +344,9 @@ fn run_lesson(
                         showing_all: false,
                     },
                 );
-                if prompt_human(terminal, &mut ui, |action| session.submit(action))? {
+                // A lesson's `ui.back` is never set, so `TookBack` cannot
+                // come back from here.
+                if prompt_human(terminal, &mut ui, |action| session.submit(action))? == Prompted::Quit {
                     return Ok(LessonOutcome::Stopped);
                 }
             }
@@ -428,6 +434,8 @@ fn drive_local(
     rating: Option<SeatRating>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut rating = rating;
+    // Whether an undo took this game's rating (`Prompted::TookBack`).
+    let mut undone = false;
     loop {
         // Pumped one `step` at a time rather than through `run`, which
         // swallows the bot seat's `Applied` steps: each log line is the
@@ -471,15 +479,35 @@ fn drive_local(
                 };
                 ui.begin_decision(*view);
                 ui.last_rejection = stopped;
-                if prompt_human(terminal, ui, |action| session.submit(action))? {
-                    if let Some(rating) = rating.take()
-                        && let Some(outcome) = ratings::quit_outcome(session.state().turn, human_side)
-                    {
-                        rating.finish(outcome)?;
+                ui.back = session.can_rewind();
+                ui.unrated = undone;
+                match prompt_human(terminal, ui, |action| session.submit(action))? {
+                    Prompted::Quit => {
+                        if let Some(rating) = rating.take()
+                            && let Some(outcome) = ratings::quit_outcome(session.state().turn, human_side)
+                        {
+                            rating.finish(outcome)?;
+                        }
+                        return Ok(());
                     }
-                    return Ok(());
+                    Prompted::Submitted => log_last(session, ui, human_side),
+                    // The state goes back exactly and the log with it. An
+                    // undo has shown the person something a rated game
+                    // would not have, so the rating is dropped unrecorded
+                    // — not forfeited — and the end of the game says so.
+                    Prompted::TookBack => {
+                        if let Some(rewound) = session.rewind() {
+                            let note = match rewound.kind {
+                                Rewind::Free => "You took that back.",
+                                Rewind::Undo => "You undid your last move — this game is no longer rated.",
+                            };
+                            pop_log_entries(&mut ui.action_log, rewound.removed, note);
+                            if rewound.kind == Rewind::Undo {
+                                undone |= rating.take().is_some();
+                            }
+                        }
+                    }
                 }
-                log_last(session, ui, human_side);
             }
             // The ONNX bot seat: index-based, so the session cannot
             // resolve it and hands it back here instead.
@@ -497,10 +525,10 @@ fn drive_local(
             SessionStep::Ended { winner, reason } => {
                 ui.finish(session.view_for(human_side));
                 let report = match rating.take() {
-                    Some(rating) => Some(rating.finish(ratings::outcome_of(winner))?),
-                    None => None,
+                    Some(rating) => Some(rating.finish(ratings::outcome_of(winner))?.lines().join("\n")),
+                    None => undone.then(|| UNRATED_BY_UNDO.to_string()),
                 };
-                return show_game_over(terminal, ui, winner, reason, report.as_ref().map(|r| r.lines().join("\n")));
+                return show_game_over(terminal, ui, winner, reason, report);
             }
             SessionStep::Stalled(reason) => return Err(stall_message(reason).into()),
             SessionStep::Applied { .. } => unreachable!("the inner loop only breaks once it can no longer apply"),
@@ -537,11 +565,20 @@ fn log_last(session: &Session, ui: &mut LocalUiState, human_side: Side) {
 ///
 /// Key routing, in priority order: an open modal swallows everything but
 /// its dismissal; `a` toggles the lesson escape hatch; then the list.
+/// How `prompt_human` was left.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Prompted {
+    Quit,
+    Submitted,
+    /// `u`: the caller owns the session, so it does the rewinding.
+    TookBack,
+}
+
 fn prompt_human(
     terminal: &mut ratatui::DefaultTerminal,
     ui: &mut LocalUiState,
     mut submit: impl FnMut(PlayerAction) -> Result<(), SubmitError>,
-) -> Result<bool, Box<dyn std::error::Error>> {
+) -> Result<Prompted, Box<dyn std::error::Error>> {
     loop {
         terminal.draw(|frame| draw_frame(frame, ui, None))?;
 
@@ -556,21 +593,30 @@ fn prompt_human(
             }
             if ui.modal.is_some() {
                 match key.code {
-                    KeyCode::Char('q') => return Ok(true),
+                    KeyCode::Char('q') => return Ok(Prompted::Quit),
                     KeyCode::Enter | KeyCode::Char(' ') | KeyCode::Esc => ui.modal = None,
                     _ => {}
                 }
                 continue;
             }
+            // Any key but a second `u` stands the first one down.
+            let armed = std::mem::take(&mut ui.undo_armed);
             match key.code {
-                KeyCode::Char('q') | KeyCode::Esc => return Ok(true),
+                KeyCode::Char('q') | KeyCode::Esc => return Ok(Prompted::Quit),
+                // A free take-back goes at once; an undo that will cost a
+                // rated game its rating asks first.
+                KeyCode::Char('u') => match ui.back {
+                    Some(Rewind::Undo) if !armed && !ui.unrated => ui.undo_armed = true,
+                    Some(_) => return Ok(Prompted::TookBack),
+                    None => {}
+                },
                 KeyCode::Up | KeyCode::Char('k') => ui.move_selection(-1),
                 KeyCode::Down | KeyCode::Char('j') => ui.move_selection(1),
                 KeyCode::Char('a') => ui.toggle_show_all(),
                 KeyCode::Enter | KeyCode::Char(' ') => {
                     if let Some(action) = ui.selected_action().or_else(|| ui.start_break()) {
                         match submit(action) {
-                            Ok(()) => return Ok(false),
+                            Ok(()) => return Ok(Prompted::Submitted),
                             // `Display`, not `Debug` — see the same
                             // change in `MatchSession`'s reject arm.
                             Err(SubmitError::Rules(error)) => ui.last_rejection = Some(error.to_string()),
@@ -641,6 +687,12 @@ struct LocalUiState {
     /// The card inspector, while it is open (`c`).
     card_picker: Option<CardPicker>,
     last_rejection: Option<String>,
+    /// What `u` would cost now (`Session::can_rewind`), set per decision.
+    back: Option<Rewind>,
+    /// The first `u` of an undo that will cost the rating.
+    undo_armed: bool,
+    /// An undo has already been used, so there is nothing left to ask.
+    unrated: bool,
     /// Every card's way through the encountered ICE
     /// (`netrunner_client::board::breaks`), listed after the actions.
     /// None under a lesson: the lessons teach the pump and the break.
@@ -667,6 +719,9 @@ impl LocalUiState {
             modal: None,
             card_picker: None,
             last_rejection: None,
+            back: None,
+            undo_armed: false,
+            unrated: false,
             breaks: Vec::new(),
             asks: Asks::default(),
             breaking: None,
@@ -880,6 +935,15 @@ impl RenderableView for LocalUiState {
     }
     fn actions_title(&self) -> Option<String> {
         self.view.as_ref().and_then(|view| crate::prose::decision_prompt(view, &self.registry))
+    }
+    fn notice(&self) -> Option<String> {
+        if self.undo_armed {
+            return Some("that move showed you something new: u again undoes it and ends this game's rating".to_string());
+        }
+        self.back.map(|rewind| match rewind {
+            Rewind::Free => "u to take it back".to_string(),
+            Rewind::Undo => "u to undo your last move".to_string(),
+        })
     }
 }
 
@@ -1392,6 +1456,9 @@ fn draw_actions(frame: &mut Frame, area: Rect, app: &impl RenderableView) {
     } else {
         "Legal actions (Up/Down, Enter to act, c to read a card, q to quit)".to_string()
     });
+    if let Some(notice) = app.notice() {
+        title.push_span(Span::styled(format!("  {notice}"), Style::default().fg(Color::Yellow)));
+    }
     if let Some(rejection) = app.last_rejection() {
         title.push_span(Span::styled(format!("  rejected: {rejection}"), Style::default().fg(Color::Red)));
     }

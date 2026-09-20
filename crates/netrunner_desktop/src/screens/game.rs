@@ -169,6 +169,8 @@ pub enum Click {
     Entry(usize),
     /// A route through the encountered ICE (`Game::breaks`).
     Break(usize),
+    /// Take the last move back (`Game::back_label`).
+    TakeBack,
     /// A control-bar button.
     Control(Control),
     /// A face in a zone sheet: read the card over the sheet.
@@ -1156,6 +1158,7 @@ fn controls(
             Ok(Click::Target(target)) => intents.push(click_on(*entity, target)),
             Ok(Click::Entry(index)) => intents.push(Intent::Choose(*index)),
             Ok(Click::Break(index)) => intents.push(Intent::Break(*index)),
+            Ok(Click::TakeBack) => intents.push(Intent::TakeBack),
             Ok(Click::Control(control)) => intents.push(Intent::Control(*control)),
             Ok(Click::Inspect(card)) => intents.push(Intent::InspectCard(Some(card.clone()))),
             Ok(Click::Expand(row)) => intents.push(Intent::Expand(*row)),
@@ -1183,6 +1186,13 @@ fn controls(
             }
             Outcome::Submit(action) => {
                 if let Err(error) = active.handle.submit(action) {
+                    notices.push(error);
+                }
+                dirty.rail = true;
+                dirty.overlay = true;
+            }
+            Outcome::Rewind => {
+                if let Err(error) = active.handle.rewind() {
                     notices.push(error);
                 }
                 dirty.rail = true;
@@ -2303,6 +2313,9 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
         };
         parent.spawn((EndTurnNotice, widgets::notice(theme, format!("{clicks} left — press Enter again to end the turn."), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
+    if game.undo_armed {
+        parent.spawn((widgets::notice(theme, "That move showed you something new, so undoing it ends this game's rating. Press again to undo.", ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+    }
     if let Some(reason) = &game.stalled {
         parent.spawn((widgets::notice(theme, reason.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
         return;
@@ -2367,6 +2380,12 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
             node.justify_content = JustifyContent::FlexStart;
             node.padding = UiRect::axes(px(10), px(6));
         });
+    }
+    // Beside the routes and not on the control bar: the bar is the basic
+    // actions, greyed when the engine does not list them, and this is
+    // not an action.
+    if let Some(label) = game.back_label() {
+        parent.spawn(widgets::button(theme, label, percent(100), Click::TakeBack));
     }
     if !helper {
         if game.prompt.is_none() {
@@ -2603,6 +2622,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
         + if detail.is_empty() { 0.0 } else { lines(&detail, size::SMALL) * 22.0 + 8.0 }
         + game.rejection.as_ref().map_or(0.0, |_| 30.0)
         + label_rows
+        + game.back_label().map_or(0.0, |_| 22.0 + 14.0 + layout::ROW_GAP)
         + if choices.is_empty() { layout::CHOICE_CAPTION } else { 0.0 };
     let available = (window.x - 2.0 * layout::PADDING - 2.0 * POPUP_PADDING, window.y - 2.0 * layout::PADDING - chrome);
     let count = if choices.is_empty() { usize::from(single.is_some()) } else { choices.len() };
@@ -2709,6 +2729,12 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                     if let Some(entity) = entry_button(panel, theme, game, *index, percent(100)) {
                         glow(&mut panel.commands(), entity, theme, game.actions.affordance_of_entry(*index));
                     }
+                }
+                // The pop-up's wash blocks the rail, so the way back out
+                // of a prompt has to be in the prompt. Last, unlit, and
+                // never one of the numbered decisions: it answers nothing.
+                if let Some(label) = game.back_label() {
+                    panel.spawn(widgets::button(theme, label, percent(100), Click::TakeBack));
                 }
             });
         });

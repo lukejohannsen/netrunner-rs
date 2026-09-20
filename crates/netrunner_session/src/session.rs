@@ -21,11 +21,13 @@
 //! action, and the gym environment's action arrives from Python long after
 //! the session would have had to ask for it.
 
+use std::collections::VecDeque;
+
 use netrunner_bots::BotAgent;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{
-    apply_action, current_actor, GamePhase, GameState, PendingDecision, PlayerAction, RulesError, Side, Viewer,
+    apply_action, current_actor, GameEvent, GamePhase, GameState, PendingDecision, PlayerAction, RulesError, Side, Viewer,
 };
 use netrunner_core::view::{build_client_view, ClientView};
 
@@ -169,6 +171,44 @@ pub enum SubmitError {
 
 /// One match: the authoritative `GameState`, its two seats, and the action
 /// log accumulated along the way.
+/// How many of a person's moves `Session::with_undo` keeps by default —
+/// jinteki.net's `/undo-click` keeps four, and nobody has asked it for more.
+pub const UNDO_DEPTH: usize = 4;
+
+/// What taking the last move back would cost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rewind {
+    /// The person is still on the prompt their own move opened, and the
+    /// move taught them nothing: no card left a hidden zone for their
+    /// eyes, `GameState::rng_step` has not moved, and the other seat has
+    /// not acted. Going back gives them nothing they did not have, so it
+    /// is fair in a rated game — and would be against a person.
+    Free,
+    /// Anything past that line: a draw, an access, a bot's reply. The
+    /// state still goes back, exactly; whoever pumps the session decides
+    /// what that costs (`netrunner_client::play` stops rating the game).
+    Undo,
+}
+
+/// What `Session::rewind` did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Rewound {
+    pub kind: Rewind,
+    /// History entries dropped — what a client's log must drop too.
+    pub removed: usize,
+}
+
+/// The state a person's move was made from, kept so the move can be taken
+/// back (`Session::with_undo`).
+struct RewindPoint {
+    state: GameState,
+    history_len: usize,
+    decision_actions: u32,
+    side: Side,
+    /// See `Rewind::Free`. Only ever goes from true to false.
+    free: bool,
+}
+
 pub struct Session {
     state: GameState,
     registry: CardRegistry,
@@ -194,6 +234,11 @@ pub struct Session {
     /// are gone by the time a later `step` observes the phase — and are
     /// never in `history` at all when recording is off.
     ended: Option<(Side, GameEndReason)>,
+    /// How many `RewindPoint`s to keep; 0 (the default) keeps none, so
+    /// self-play, the gym and the server never pay for a clone.
+    undo_depth: usize,
+    /// Oldest first. Only the newest can be `free`.
+    rewind_points: VecDeque<RewindPoint>,
 }
 
 impl Session {
@@ -211,7 +256,26 @@ impl Session {
             decision_actions: 0,
             awaiting: None,
             ended: None,
+            undo_depth: 0,
+            rewind_points: VecDeque::new(),
         }
+    }
+
+    /// Keep the state each of an `External` seat's last `depth` moves was
+    /// made from, so `rewind` can take one back. Off unless asked for.
+    ///
+    /// **A restore in the driver, not a `PlayerAction`.** Backing out of a
+    /// prompt was declined once (ROADMAP Phase 7 §4d) because the engine
+    /// could only offer it as a new action: `ActionSpace` 1646 → 1647 and
+    /// every exported policy with it, a variant the coverage gate would
+    /// demand a bot apply, an `affordance` mood for something that is not
+    /// a move. None of that is needed to put back a state the engine
+    /// itself produced. It owns no rule: what is *free* is read off
+    /// `GameEvent::may_teach_the_actor` and `CardZoneRef::
+    /// shows_the_chooser_hidden_cards`, which are the engine's.
+    pub fn with_undo(mut self, depth: usize) -> Self {
+        self.undo_depth = depth;
+        self
     }
 
     /// Override `DECISION_BUDGET` — the number of consecutive actions one
@@ -381,6 +445,7 @@ impl Session {
     /// ever advance the state except through a recorded action.
     fn apply(&mut self, side: Side, action: PlayerAction) -> Result<(), RulesError> {
         let (next, events) = apply_action(&self.state, &self.registry, action.clone())?;
+        self.note_for_rewind(side, &next, &events);
         if let GamePhase::GameOver(winner) = next.phase {
             self.ended = Some((winner, classify_end_reason(&events, winner, &next)));
         }
@@ -402,6 +467,83 @@ impl Session {
             self.decision_actions = 0;
         }
         Ok(())
+    }
+
+    /// Keeps `rewind_points` honest across one applied action; called with
+    /// `self.state` still the state the action was made from.
+    fn note_for_rewind(&mut self, side: Side, next: &GameState, events: &[GameEvent]) {
+        if self.undo_depth == 0 {
+            return;
+        }
+        // Undo stays inside a turn: the other player's turn is not the
+        // person's to take back, and neither is ending their own.
+        if next.turn != self.state.turn || next.is_over() {
+            self.rewind_points.clear();
+            return;
+        }
+        let external = matches!(if side == Side::Corp { &self.corp } else { &self.runner }, Seat::External);
+        // A *move* starts from a clear table in the person's own action
+        // phase: nothing parked, no run, no window. Answering a prompt,
+        // a step of a run and a rez in the other player's turn are all
+        // part of some move, not the start of one.
+        let starts_a_move = external
+            && self.state.phase == GamePhase::Action(side)
+            && !self.state.is_resolution_blocked()
+            && self.state.active_run.is_none()
+            && self.state.paid_ability_window.is_none();
+        if starts_a_move {
+            if self.rewind_points.len() == self.undo_depth {
+                self.rewind_points.pop_front();
+            }
+            self.rewind_points.push_back(RewindPoint {
+                state: self.state.clone(),
+                history_len: self.history.len(),
+                decision_actions: self.decision_actions,
+                side,
+                free: true,
+            });
+        }
+        let Some(point) = self.rewind_points.back_mut() else { return };
+        // Still free only while the person is answering what their own
+        // move asked, having been shown nothing new.
+        let still_asking = current_actor(next) == Some(point.side)
+            && next.active_run.is_none()
+            && next.paid_ability_window.is_none()
+            && match &next.pending_decision {
+                Some(PendingDecision::ChooseCards { source, .. }) => !source.shows_the_chooser_hidden_cards(),
+                Some(_) => true,
+                None => next.pending_paid_choice.is_some(),
+            };
+        point.free = point.free
+            && side == point.side
+            && next.rng_step == point.state.rng_step
+            && !events.iter().any(GameEvent::may_teach_the_actor)
+            && still_asking;
+    }
+
+    /// What `rewind` would do now, if anything.
+    pub fn can_rewind(&self) -> Option<Rewind> {
+        if self.state.is_over() {
+            return None;
+        }
+        self.rewind_points.back().map(|point| if point.free { Rewind::Free } else { Rewind::Undo })
+    }
+
+    /// Takes the person's last move back: the state it was made from is
+    /// restored exactly and the history loses the entries since, so the
+    /// record still replays to the state beside it. `None` when there is
+    /// nothing to go back to — undo is off, the turn has changed, or the
+    /// game is over. The step budget is not refunded: only an applied
+    /// action consumes it, and those actions were applied.
+    pub fn rewind(&mut self) -> Option<Rewound> {
+        let kind = self.can_rewind()?;
+        let point = self.rewind_points.pop_back()?;
+        let removed = self.history.len().saturating_sub(point.history_len);
+        self.history.truncate(point.history_len);
+        self.state = point.state;
+        self.decision_actions = point.decision_actions;
+        self.awaiting = None;
+        Some(Rewound { kind, removed })
     }
 
     /// Which side, if any, `step` last reported as `Awaiting`. Lets a pump

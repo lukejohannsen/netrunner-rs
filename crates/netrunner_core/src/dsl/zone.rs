@@ -66,6 +66,29 @@ pub enum CardZoneRef {
     OpponentScoreArea,
 }
 
+impl CardZoneRef {
+    /// Whether a selection prompt over this zone shows its chooser cards
+    /// they had not seen: their own deck, or the other side's hand. A
+    /// take-back from such a prompt is not free (`GameEvent::
+    /// may_teach_the_actor`). Installed cards and discard piles are
+    /// masked for the chooser like everything else, so choosing among
+    /// them shows nothing new. Exhaustive, for the same reason.
+    pub fn shows_the_chooser_hidden_cards(&self) -> bool {
+        match self {
+            CardZoneRef::OwnRAndD | CardZoneRef::OwnStack | CardZoneRef::TopOfOwnStack | CardZoneRef::OpponentHand | CardZoneRef::OpponentDeck => true,
+            CardZoneRef::OwnHq
+            | CardZoneRef::OwnArchives
+            | CardZoneRef::OwnGrip
+            | CardZoneRef::OwnHeap
+            | CardZoneRef::OpponentInstalled
+            | CardZoneRef::OpponentDiscard
+            | CardZoneRef::OwnInstalled
+            | CardZoneRef::HostedOnSource
+            | CardZoneRef::OpponentScoreArea => false,
+        }
+    }
+}
+
 /// Which cards within a `CardZoneRef` are eligible to be selected.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum CardFilter {
