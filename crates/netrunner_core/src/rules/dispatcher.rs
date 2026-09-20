@@ -37,6 +37,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::Trigger;
 use crate::rules::ability;
+use crate::rules::checkpoint;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::listeners;
@@ -54,7 +55,13 @@ pub fn dispatch_event(
 ) -> Result<Vec<GameEvent>, RulesError> {
     #[cfg(debug_assertions)]
     audit::dispatched(event);
-    let mut events = resolve_run_riders(state, registry, event)?;
+    // The checkpoint comes before the reactions (CR 10.3): a steal that
+    // reaches the threshold has won before anything reacts to the steal.
+    let mut events = checkpoint::state_based(state, registry, Some(event));
+    if state.is_over() {
+        return Ok(events);
+    }
+    events.extend(resolve_run_riders(state, registry, event)?);
     // Planned after the riders: an access bonus or a trash they resolve is
     // part of the state the triggers happen in.
     let plan = listeners::plan_for(state, registry, event);

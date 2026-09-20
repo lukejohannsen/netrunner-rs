@@ -98,6 +98,8 @@ Which cards hear an event is one rule, in `rules::listeners`, and it is read off
 
 **An event a card can hear is dispatched, and a debug build checks.** Record it with `dispatcher::emit` (push and dispatch as one call). `dispatcher::audit` fails any action whose record holds an event `listeners::moments` gives a moment to that never went through `dispatch_event` — in every test and both sweeps, not in release. So adding a `Trigger` for an event that already exists is: add the `moments` arm, run the sweeps, and fix each site the audit names. A dispatch that is legitimately a later action's is written into `audit::is_owed` with the state that carries the debt, never waved past.
 
+**A standing condition is checked in `rules::checkpoint`, never by a handler.** The agenda-point win and the ◆ rule run before an event's triggers are planned and again at the end of every action (CR 10.3), so a new way of scoring points or turning a card faceup needs no call of its own. A condition that is really a failed *attempt* (deck-out, flatline), one that parks a decision (the memory limit) and one that rejects an install (the console limit) are deliberately elsewhere; the module says why for each.
+
 ### DSL Growth Rule
 
 Adding an `Effect` or `EffectRequirement` variant is the expensive move: it grows the engine's permanent surface for one card's benefit.

@@ -238,9 +238,10 @@ pub struct CardDefinition {
     #[serde(default)]
     pub subtypes: Vec<CardSubtype>,
 
-    /// ◆ — unique. At most one copy may be in play per side: installing a
-    /// second trashes the first (`engine::trash_earlier_unique_copy`).
-    /// This is an install-time rule, not a deckbuilding one — three copies
+    /// ◆ — unique. At most one copy may be *active* per side: when a second
+    /// becomes active the older is trashed (`rules::checkpoint`). A facedown
+    /// Corp card is not active, so two may sit side by side until one is
+    /// rezzed. This is a rule of play, not a deckbuilding one — three copies
     /// in a deck are legal. Joined from the NetrunnerDB catalog's
     /// `uniqueness` on `numeric_id`, never authored in card JSON, so it
     /// cannot drift from the printed card (ROADMAP Rules Audit T7).

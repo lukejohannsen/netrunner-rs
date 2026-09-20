@@ -61,8 +61,9 @@ fn total_agenda_points<'a>(scored_agendas: impl IntoIterator<Item = &'a CardId>,
 /// Checks whether either side's score area has reached the winning
 /// agenda-point threshold and, if so, transitions `state.phase` to
 /// `GamePhase::GameOver(winner)`. Safe to call repeatedly/idempotently from
-/// anywhere `scored_agendas` might change (currently just
-/// `run::access_server` after a steal) — score areas only ever grow, so
+/// anywhere — its one caller is `rules::checkpoint`, which runs it before
+/// an event's triggers and at the end of every action — score areas being
+/// public state, so
 /// re-deriving this from `GameState`+`registry` alone is always correct,
 /// unlike deck-out below.
 ///

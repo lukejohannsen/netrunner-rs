@@ -1,6 +1,7 @@
 mod ability;
 mod action;
 mod action_mask;
+mod checkpoint;
 mod damage;
 pub(crate) mod deck;
 mod dispatcher;
