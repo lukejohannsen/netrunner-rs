@@ -12,6 +12,7 @@
   "triggers": [
     {
       "trigger": "OnEncounter",
+      "subject": "Any",
       "requirement": {
         "CorpCreditsAtLeast": 15
       },

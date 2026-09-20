@@ -14,6 +14,7 @@
   "triggers": [
     {
       "trigger": "OnRez",
+      "subject": "This",
       "effects": [
         {
           "RefillCountersTo": 2

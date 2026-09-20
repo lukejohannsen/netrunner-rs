@@ -11,6 +11,7 @@
   "triggers": [
     {
       "trigger": "OnSuccessfulRunOnCentralServer",
+      "subject": "Any",
       "effects": [
         {
           "AddCounters": 1

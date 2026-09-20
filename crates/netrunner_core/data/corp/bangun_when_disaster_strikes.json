@@ -9,6 +9,7 @@
   "triggers": [
     {
       "trigger": "OnAccessed",
+      "subject": "Any",
       "requirement": {
         "And": [
           {

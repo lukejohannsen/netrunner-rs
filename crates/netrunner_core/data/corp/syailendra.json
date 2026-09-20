@@ -11,6 +11,7 @@
   "triggers": [
     {
       "trigger": "OnEncounter",
+      "subject": "This",
       "requirement": {
         "AmountAtLeast": [
           "HostedAdvancementTokens",

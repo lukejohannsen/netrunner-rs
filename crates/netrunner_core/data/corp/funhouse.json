@@ -10,6 +10,7 @@
   "triggers": [
     {
       "trigger": "OnEncounter",
+      "subject": "This",
       "effects": [
         {
           "OfferPaidChoice": {

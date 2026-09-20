@@ -1094,7 +1094,7 @@ pub enum PendingDecision {
     /// Resolved by `PlayerAction::ChooseTriggerToResolve`, which fires the
     /// chosen one and re-parks the remainder, until one is left and fires
     /// automatically. Cross-side order is **not** included: that is fixed
-    /// by rule (active player first, `dispatcher::order_active_first`) and
+    /// by rule (active player first, `listeners::plan_for`) and
     /// is nobody's choice, so `pending` only ever holds one side's cards.
     ChooseTriggerOrder {
         chooser: Side,
@@ -1224,7 +1224,7 @@ pub struct DeferredTrigger {
     /// has already left play. Without it a deferred trigger resolved
     /// against the *first* installed copy of `card`: two Fermenters queued
     /// two `OnTurnStart` entries and both loaded copy #1 (ROADMAP Rules
-    /// Audit §4). Every plan builder in `dispatcher` fills it from the
+    /// Audit §4). `listeners::plan_for` fills it from the
     /// install it iterated.
     #[serde(default)]
     pub install: Option<InstallId>,
@@ -1251,6 +1251,43 @@ pub struct DeferredTrigger {
     /// parked around it. `trigger` is not read when this is set.
     #[serde(default)]
     pub continuation: Option<crate::dsl::Effect>,
+    /// Which of `card`'s `TriggeredEffect`s for `trigger` heard the event —
+    /// decided once, by `listeners::plan_for`, against the state the event
+    /// happened in. Carried rather than re-derived when the entry fires,
+    /// because by then the state has moved: the ICE a deferred "when
+    /// encountered" was about may no longer be the one at the run's
+    /// position.
+    #[serde(default)]
+    pub heard: Heard,
+}
+
+/// What a planned trigger's card was to the event it heard.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub enum Heard {
+    /// Not decided by the listener scan — an entry built by hand. Every
+    /// `TriggeredEffect` for the trigger fires, whatever `Subject` it
+    /// names, which is what firing meant before a subject existed.
+    #[default]
+    Unfiltered,
+    /// An active card the event was not about: its `Subject::Any` effects.
+    AsBystander,
+    /// The card the event was about, and not active — face down, played,
+    /// stolen: its `Subject::This` effects only.
+    AsSubject,
+    /// An active card the event was about: both.
+    AsBoth,
+}
+
+impl Heard {
+    /// Whether a `TriggeredEffect` naming `subject` fires for this entry.
+    pub fn admits(self, subject: Option<crate::dsl::Subject>) -> bool {
+        use crate::dsl::Subject;
+        match (self, subject) {
+            (Heard::Unfiltered | Heard::AsBoth, _) | (_, None) => true,
+            (Heard::AsBystander, Some(subject)) => subject == Subject::Any,
+            (Heard::AsSubject, Some(subject)) => subject == Subject::This,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

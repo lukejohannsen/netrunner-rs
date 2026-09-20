@@ -19,6 +19,7 @@
   "triggers": [
     {
       "trigger": "OnPlay",
+      "subject": "This",
       "effects": [
         {
           "OfferPaidChoice": {

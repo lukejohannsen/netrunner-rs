@@ -47,6 +47,7 @@
   "triggers": [
     {
       "trigger": "OnRunEnded",
+      "subject": "Any",
       "effects": [
         {
           "TrashCard": "ThisCard"

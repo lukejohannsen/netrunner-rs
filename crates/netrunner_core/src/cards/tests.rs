@@ -637,6 +637,19 @@ fn gordian_blades_pump_lasts_the_whole_run_and_no_longer() {
 mod system_gateway {
     use super::*;
 
+    /// Answers a parked `ChooseTriggerOrder` by naming the card whose
+    /// trigger resolves first. A side's simultaneous triggers are its own
+    /// to order — a scored agenda's "when you score this" against the
+    /// identity's "whenever you score" — so a test about one of them says
+    /// which it means rather than relying on a position.
+    fn resolve_first(state: &GameState, registry: &CardRegistry, card: &str) -> GameState {
+        let Some(crate::rules::PendingDecision::ChooseTriggerOrder { pending, .. }) = &state.pending_decision else {
+            panic!("expected a trigger order choice, got {:?}", state.pending_decision);
+        };
+        let index = pending.iter().position(|due| due.card.0 == card).unwrap_or_else(|| panic!("{card} is not among {pending:?}"));
+        apply_action(state, registry, PlayerAction::ChooseTriggerToResolve { index }).expect("order the triggers").0
+    }
+
     fn sg_registry() -> CardRegistry {
         registry()
     }
@@ -2126,6 +2139,8 @@ mod system_gateway {
             PlayerAction::ScoreAgenda { target: install_of(&state, "hostile_takeover") },
         )
         .expect("score hostile takeover from the vault's own server");
+        // Hostile Takeover's own reaction and the vault's are simultaneous.
+        let state = resolve_first(&state, &registry, "malapert_data_vault");
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("choose to search R&D");
@@ -3531,6 +3546,9 @@ mod system_gateway {
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") })
                 .expect("score offworld office");
+        // Offworld Office's own "when you score this" and the identity's
+        // "whenever you score" are simultaneous, and the Corp's to order.
+        let state = resolve_first(&state, &registry, "haas_bioroid_precision_design");
 
         let (state, _) = apply_action(
             &state,
@@ -7543,6 +7561,8 @@ mod system_gateway {
         state.corp.installed[0].advancement_tokens = 4;
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") }).expect("score");
+        // The agenda's own reaction and the identity's are the Corp's to order.
+        let state = resolve_first(&state, &registry, "poetri_luxury_brands_all_the_rage");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })));
         // Deeper than the top 3, and an operation among them: neither is offered.
         assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "pad_campaign") }).is_err(), "below the top 3");
@@ -8073,6 +8093,8 @@ mod system_gateway {
 
         // Scoring with no counters is 1 net damage and nothing to spend.
         let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") }).expect("score");
+        // Offworld Office's credits and the asset's damage are simultaneous.
+        let state = resolve_first(&state, &registry, "phat_gioan_baotixita");
         let state = advance_until_choice(state, &registry);
         assert!(state.pending_paid_choice.is_some(), "asked whether to spend a counter");
         let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("nothing to spend");

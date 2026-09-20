@@ -11,6 +11,7 @@
   "triggers": [
     {
       "trigger": "OnSuccessfulRunOnRnD",
+      "subject": "Any",
       "effects": [
         {
           "PresentChoice": {

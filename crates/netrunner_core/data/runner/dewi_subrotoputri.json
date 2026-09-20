@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnSuccessfulRun",
+      "subject": "Any",
       "requirement": {
         "And": [
           {
@@ -46,6 +47,7 @@
     },
     {
       "trigger": "OnSuccessfulRun",
+      "subject": "Any",
       "requirement": {
         "And": [
           "IdentityFlipped",

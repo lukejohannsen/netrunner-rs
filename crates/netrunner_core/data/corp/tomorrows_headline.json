@@ -9,6 +9,7 @@
   "triggers": [
     {
       "trigger": "OnAgendaScored",
+      "subject": "This",
       "effects": [
         {
           "GiveTags": 1
@@ -17,6 +18,7 @@
     },
     {
       "trigger": "OnAgendaStolen",
+      "subject": "This",
       "effects": [
         {
           "GiveTags": 1

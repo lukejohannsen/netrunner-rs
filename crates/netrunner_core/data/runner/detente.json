@@ -12,6 +12,7 @@
   "triggers": [
     {
       "trigger": "OnSuccessfulRunOnHq",
+      "subject": "Any",
       "requirement": {
         "OncePerTurn": "detente"
       },

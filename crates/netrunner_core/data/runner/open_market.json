@@ -20,6 +20,7 @@
   "triggers": [
     {
       "trigger": "OnInstall",
+      "subject": "This",
       "effects": [
         {
           "AddCounters": 6

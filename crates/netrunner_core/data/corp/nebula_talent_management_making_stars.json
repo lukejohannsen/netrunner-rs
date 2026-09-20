@@ -28,6 +28,7 @@
     },
     {
       "trigger": "OnOperationPlayed",
+      "subject": "Any",
       "requirement": {
         "And": [
           "IdentityFlipped",
@@ -47,6 +48,7 @@
     },
     {
       "trigger": "OnSuccessfulRunOnHq",
+      "subject": "Any",
       "requirement": "IdentityFlipped",
       "effects": [
         "FlipIdentity"
@@ -54,6 +56,7 @@
     },
     {
       "trigger": "OnSuccessfulRunOnRnD",
+      "subject": "Any",
       "requirement": "IdentityFlipped",
       "effects": [
         "FlipIdentity"

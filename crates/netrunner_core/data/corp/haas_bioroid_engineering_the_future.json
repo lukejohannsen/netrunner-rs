@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnInstall",
+      "subject": "Any",
       "requirement": "FirstInstallThisTurn",
       "effects": [
         {

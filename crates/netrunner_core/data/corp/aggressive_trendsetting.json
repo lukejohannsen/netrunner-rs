@@ -9,6 +9,7 @@
   "triggers": [
     {
       "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
       "requirement": {
         "And": [
           {

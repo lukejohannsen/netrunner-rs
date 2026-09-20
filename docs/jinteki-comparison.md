@@ -322,6 +322,8 @@ The risk is real and is why it goes first rather than never: every trigger
 in 178 cards re-fires through a new path, so it is a change to measure
 byte-for-byte on both seatings before and after.
 
+**The audience half is built** (20 September 2026, `rules::listeners`; ROADMAP Rules Audit, item 1): the listener scan, `TriggeredEffect::subject`, and the measurement — which was a shadow run rather than a byte-identical one, because a side ordering its whole plan is itself a change. The queue and the checkpoint are the stages after it.
+
 ### 6.2 The continuous-effect layer needs a target and a payload
 
 §2.1 proposed `{ kind, value: Amount, while: EffectRequirement }`. Counting

@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnAgendaScored",
+      "subject": "Any",
       "effects": [
         {
           "PromptChooseCards": {
@@ -44,6 +45,7 @@
     },
     {
       "trigger": "OnAgendaStolen",
+      "subject": "Any",
       "effects": [
         {
           "PromptChooseCards": {

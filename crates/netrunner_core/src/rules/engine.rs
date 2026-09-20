@@ -3290,7 +3290,7 @@ mod tests {
             title: "Anoetic Void".to_string(),
             side: Side::Corp,
             card_type: CardType::Upgrade,
-            triggers: vec![TriggeredEffect { text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
             is_playable: true,
             ..Default::default()
         };
@@ -3300,6 +3300,7 @@ mod tests {
             side: Side::Runner,
             card_type: CardType::Resource,
             triggers: vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnSuccessfulRun,
                 effects: vec![Effect::GainCredits(Side::Runner, 1)],
@@ -4024,6 +4025,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sure_gamble", Side::Runner, CardType::Event, 5, None);
         card.triggers = vec![TriggeredEffect {
+            subject: None,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -4120,6 +4122,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("hedge_fund", Side::Corp, CardType::Operation, 5, None);
         card.triggers = vec![TriggeredEffect {
+            subject: None,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -4264,6 +4267,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sea_source", Side::Corp, CardType::Operation, 0, None);
         card.triggers = vec![TriggeredEffect {
+            subject: None,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) }],
@@ -5682,6 +5686,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::PresentChoice {
@@ -5695,6 +5700,7 @@ mod tests {
         });
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, 1)],
@@ -5716,6 +5722,7 @@ mod tests {
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
             continuation: None,
+            heard: Default::default(),
         }];
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseEffect {
             option_texts: Vec::new(),
@@ -5751,6 +5758,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
@@ -5777,12 +5785,14 @@ mod tests {
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
                     continuation: None,
+                    heard: Default::default(),
                 },
                 crate::rules::state::DeferredTrigger { install: None, target_install: None,
                     card: CardId("nico_campaign".to_string()),
                     trigger: Trigger::OnTurnStart,
                     target: None, event: None,
                     continuation: None,
+                    heard: Default::default(),
                 },
             ],
             resume: crate::rules::state::PendingChoiceResume::None,
@@ -5831,6 +5841,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
@@ -5858,6 +5869,7 @@ mod tests {
             target: None,
             event: Some(GameEvent::TurnStarted { side: Side::Corp, clicks }),
             continuation: None,
+            heard: Default::default(),
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,
@@ -5906,12 +5918,14 @@ mod tests {
         registry.insert(CardDefinition {
             triggers: vec![
                 TriggeredEffect {
+                    subject: None,
                     text: None,
                     trigger: Trigger::OnSuccessfulRun,
                     effects: vec![Effect::GainCredits(Side::Runner, 1)],
                     requirement: None,
                 },
                 TriggeredEffect {
+                    subject: None,
                     text: None,
                     trigger: Trigger::OnSuccessfulRunOnHq,
                     effects: vec![Effect::GainCredits(Side::Runner, 3)],
@@ -5933,6 +5947,7 @@ mod tests {
             target: None,
             event: None,
             continuation: None,
+            heard: Default::default(),
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,

@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnAgendaScored",
+      "subject": "Any",
       "effects": [
         {
           "DealDamage": [
@@ -19,6 +20,7 @@
     },
     {
       "trigger": "OnAgendaStolen",
+      "subject": "Any",
       "effects": [
         {
           "DealDamage": [

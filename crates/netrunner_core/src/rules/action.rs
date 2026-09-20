@@ -258,7 +258,7 @@ pub enum PlayerAction {
     /// Only ever legal while such a decision is parked, which only happens
     /// when 2 or more of one player's own triggers react to the same event
     /// — the rules give that ordering to their controller. Cross-side order
-    /// is fixed by rule (`dispatcher::order_active_first`) and is never
+    /// is fixed by rule (`listeners::plan_for`) and is never
     /// offered here.
     ///
     /// `index` is a position into that decision's `pending` list — **not**

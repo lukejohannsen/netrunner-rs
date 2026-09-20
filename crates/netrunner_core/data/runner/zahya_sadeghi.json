@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnRunEnded",
+      "subject": "Any",
       "requirement": {
         "And": [
           "LastRunWasOnHqOrRnD",

@@ -466,6 +466,7 @@ mod tests {
             side: Side::Corp,
             card_type: crate::dsl::CardType::Identity,
             triggers: vec![crate::dsl::TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: crate::dsl::Trigger::OnDiscardPhaseEnd,
                 effects: vec![crate::dsl::Effect::DealDamage(crate::dsl::DamageType::Net, 1)],
