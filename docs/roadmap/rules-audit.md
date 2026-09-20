@@ -192,6 +192,33 @@ one.
    the one that gets more expensive with every card**, and measured
    byte-for-byte on both seatings, because every trigger in the pool
    re-fires through the new path.
+
+   **Taken up 20 September 2026, in five PRs, the first of which is the
+   measurement** (`chore/coverage-identical-script`). Every stage but the
+   last claims to move no game, and that claim had only ever been checked
+   by hand — build, `--report`, md5 — which has gone wrong here three
+   ways: a binary that was not pinned, a `--games` short of the pool, and
+   one seating taken for all of them. `scripts/coverage_identical.py
+   <base> [<head>]` pins each ref's binary by sha, plays one full pass of
+   the pool (192 matchups) as random and as heuristic, by view and by
+   `--index-path`, and reports `identical` or the sections and
+   `triggers_fired` keys that moved. Checked three ways before anything leans on it: `main` against
+   itself is identical four times (2m24s with a cold build, seconds once
+   the binaries are kept); the commit before #85 against `main` differs
+   in exactly the four numbers that entry recorded by hand (`CardAdvanced`
+   514 → 425, 89 `AdvancementCountersPlaced`, the effect's rename, and no
+   `triggers_fired` key); and an uncommitted docs-only checkout is
+   identical to `main`. Found on the way: the two random reports share one
+   md5 — a random bot plays the same game by view and by index — so the
+   index path's own evidence is the heuristic pair, which do differ; and
+   AGENTS.md said one pass of the pool was 132 games when it is 192. The stages after it: one
+   audience rule (a listener scan, run in shadow against the hand-written
+   audiences before it replaces them; `TriggeredEffect::subject`), one
+   queue (emission is dispatch), one checkpoint (the unique rule's eight
+   call sites and the win check's two), and last the `Trigger` variants
+   that are one event and a filter — the only stage that cannot be
+   byte-identical, since `triggers_fired` is keyed by variant, which is
+   what `--expect-renames` is for.
 2. **A continuous-effect layer, with a target and a payload** (§2.1 as
    corrected by §6.2; was item 1). Not `{ kind, value: Amount, while }`: a
    closed enum with a payload per kind — a number, a subtype, a subroutine,
