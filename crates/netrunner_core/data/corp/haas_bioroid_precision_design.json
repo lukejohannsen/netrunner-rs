@@ -5,7 +5,6 @@
   "card_type": "Identity",
   "cost": 0,
   "min_deck_size": 40,
-  "max_hand_size_bonus": 1,
   "triggers": [
     {
       "trigger": "OnAgendaScored",
@@ -38,6 +37,17 @@
           }
         }
       ]
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +1 maximum hand size"
     }
   ],
   "numeric_id": 30035,

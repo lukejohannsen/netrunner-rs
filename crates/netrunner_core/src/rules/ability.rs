@@ -433,15 +433,6 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::GainMaxHandSize(side, amount) => {
-            match side {
-                Side::Corp => state.corp.max_hand_size_bonus = state.corp.max_hand_size_bonus.saturating_add(*amount),
-                Side::Runner => {
-                    state.runner.max_hand_size_bonus = state.runner.max_hand_size_bonus.saturating_add(*amount)
-                }
-            }
-            Ok(vec![GameEvent::MaxHandSizeGained { side: *side, amount: *amount }])
-        }
 
         Effect::TrashCurrentlyAccessedCard => run::trash_currently_accessed_card_without_cost(state, registry),
 

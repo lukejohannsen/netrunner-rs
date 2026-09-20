@@ -240,7 +240,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::TrashPrevented { .. }
         | GameEvent::CountersAdded { .. }
         | GameEvent::CountersRemoved { .. }
-        | GameEvent::MaxHandSizeGained { .. }
         | GameEvent::PendingChoicePresented { .. }
         | GameEvent::PendingChoiceResolved { .. }
         | GameEvent::PendingPaidChoiceOffered { .. }

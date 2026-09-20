@@ -209,7 +209,6 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         printed_text: dto.text.as_deref().map(strip_markup),
         flavor: dto.flavor.as_deref().map(strip_markup),
         image_url: None,
-        max_hand_size_bonus: None,
         additional_play_cost: None,
         hosted_credits_usable_for: None,
         trash_when_empty: false,

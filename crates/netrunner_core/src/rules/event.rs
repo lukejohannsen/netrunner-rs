@@ -350,7 +350,6 @@ pub enum GameEvent {
     CountersAdded { card: CardId, amount: u32 },
     /// No install handle, for the reason on `CountersAdded`.
     CountersRemoved { card: CardId, amount: u32 },
-    MaxHandSizeGained { side: Side, amount: u32 },
     /// Fired only by `engine::draw_card_click` — the *basic* click-to-draw
     /// action specifically, not `Effect::DrawCards` (e.g. Sure Gamble
     /// still only emits `CardDrawn`). Feeds `Trigger::OnBasicDrawAction`.
@@ -444,7 +443,7 @@ impl GameEvent {
             | GameEvent::AgendaScored { .. } | GameEvent::DamageAboutToResolve { .. }
             | GameEvent::TrashAboutToResolve { .. } | GameEvent::DamagePrevented { .. }
             | GameEvent::TrashPrevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
-            | GameEvent::MaxHandSizeGained { .. } | GameEvent::BasicDrawActionTaken { .. }
+            | GameEvent::BasicDrawActionTaken { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
             | GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. }
             | GameEvent::PendingPaidChoiceDeclined { .. } => false,

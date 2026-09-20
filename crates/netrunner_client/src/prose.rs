@@ -225,7 +225,6 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::PromptChooseServer { .. } => "choose a server".to_string(),
         Effect::RezInstalled { .. } => "rez a card".to_string(),
         Effect::TakeAllCountersAsCredits(side) => format!("{} takes the counters as credits", who(*side)),
-        Effect::GainMaxHandSize(side, n) => format!("{} gets +{n} maximum hand size", who(*side)),
         Effect::TrashCurrentlyAccessedCard => "trash the accessed card".to_string(),
         Effect::GainCreditsPerCounter { side, credits_per_counter } => {
             format!("{} gains {} per counter", who(*side), plural(*credits_per_counter, "credit", "credits"))
@@ -365,6 +364,7 @@ pub fn describe_continuous(effect: &ContinuousEffect) -> String {
     let what = match &effect.kind {
         ContinuousKind::Strength(number) => format!("gets {} strength", signed(number)),
         ContinuousKind::Memory(number) => format!("gets {} memory", signed(number)),
+        ContinuousKind::HandSize(number) => format!("gets {} maximum hand size", signed(number)),
         ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
         ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),
         ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),

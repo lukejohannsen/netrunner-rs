@@ -83,6 +83,12 @@ pub enum ContinuousKind {
     Strength(Number),
     /// Memory units available to the player — a console's "+1[mu]".
     Memory(Number),
+    /// Maximum hand size of the player — "you get +1 maximum hand size".
+    /// It was the one standing number still *stored*: folded into the state
+    /// at install, at a score and at setup, and never taken back out, so a
+    /// trashed T400 Memory Diamond and a forfeited Superconducting Hub kept
+    /// paying.
+    HandSize(Number),
     /// Credits to install a card; negative is a discount.
     InstallCost(Number),
     /// Credits to rez a card.

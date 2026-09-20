@@ -29,7 +29,7 @@ use crate::rules::state::{GameState, InstallId, InstallSlot, InstalledRunnerCard
 /// What a question is about.
 #[derive(Clone, Copy)]
 pub(crate) enum Target<'a> {
-    /// A player — their memory.
+    /// A player — their memory, their maximum hand size.
     Player(Side),
     /// A card that is not installed: one being installed, priced from a hand.
     Card(&'a CardDefinition),
@@ -199,6 +199,16 @@ fn install_cost(kind: &ContinuousKind) -> Option<&Number> {
 pub(crate) fn memory(state: &GameState, registry: &CardRegistry) -> i32 {
     sum(state, registry, Target::Player(Side::Runner), |kind| match kind {
         ContinuousKind::Memory(number) => Some(number),
+        _ => None,
+    })
+}
+
+/// What `side`'s active cards add to its maximum hand size: an identity
+/// (Haas-Bioroid: Precision Design), a scored agenda (Superconducting Hub),
+/// a piece of hardware (T400 Memory Diamond) — for as long as each is one.
+pub(crate) fn hand_size(state: &GameState, registry: &CardRegistry, side: Side) -> i32 {
+    sum(state, registry, Target::Player(side), |kind| match kind {
+        ContinuousKind::HandSize(number) => Some(number),
         _ => None,
     })
 }
