@@ -3407,8 +3407,21 @@ exist, never a new action.
    §4ab.
 3. ~~**Broken and fired subroutines marked on the encountered ICE.**~~
    Done in §4ac.
-4. **Undo a click or a turn, in local unrated games only.** State is a
-   value and the history is kept, so this is cheap here.
+4. **Look first, take it back, undo a click** — rewritten by the second
+   pass (20 September 2026, doc §6.5), which found the first version wrong:
+   jinteki's undo is online and unilateral, and an undo that teaches
+   nothing need not be unrated. Three parts, from a report from play (Red
+   Team spends its click before showing which servers are left):
+   **(a)** a card's entry says what it will ask before it is played, off a
+   determinized sample as `board::breaks` does; **(b)** a *free* take-back
+   while the person is still on the prompt their own action opened and
+   nothing hidden was revealed, `rng_step` has not moved and the other seat
+   has not acted — a restore in `netrunner_session`, not a `PlayerAction`,
+   so `ActionSpace` stays 1646, the game stays rated, and §4d's declined
+   install back-out comes with it; **(c)** undo a click against a bot, past
+   that line, which makes the game unrated the first time it is used.
+   Local games now; the rule sits in the session so the server can take
+   (b) later.
 5. **A replay viewer over `MatchHistory`**, with notes.
 6. **The Corp's run auto-pass toggle.**
 7. **Space as the one "continue" key.**
@@ -3416,6 +3429,24 @@ exist, never a new action.
 9. **Identical rig cards stacked** with a count.
 10. **Run and turn timing diagrams.**
 11. **A spectator seat.**
+
+Added by the second pass (20 September 2026, doc §6.6), numbered on from
+eleven so the addresses above do not move:
+
+12. **One Continue button that names what is next** ("Continue to Approach
+    ice", "Breach server").
+13. **The encounter panel always on during an encounter** — name, subtypes,
+    live strength, every subroutine; §4ac's marks are the first half.
+14. **Per-card always / never / ask for an optional trigger.**
+15. **A report-a-bug bundle**: the seed and the action record, which replay
+    exactly. The answer to the need behind jinteki's state-editing
+    commands.
+16. **An end-of-game table and a start-of-game box.**
+17. **Card names in the log open the card.**
+18. **Check the affordance and transition colours against a
+    colour-blind-safe palette.**
+19. **Open decklists as a game option; an offered hand sort** beside the
+    person's own order.
 
 Not borrowed, with the reasons in the doc: slash commands that edit state,
 and diffs on the wire.
