@@ -303,6 +303,47 @@ one.
    name the audiences they were first written for (the enum now says they
    are history, not limits); a Runner-side score area is not a listener,
    because no stolen agenda acts from there yet.
+
+   **The event queue — DONE (20 September 2026, `feat/one-event-queue`), as
+   a check rather than a rewrite.** The defect was never that events are
+   returned as data; it was that whether a returned event is *also
+   dispatched* was up to whoever wrote the line, with nothing to notice an
+   omission. `dispatcher::audit` notices: in every debug build, when an
+   action ends, every event in its record that `listeners::moments` calls an
+   occurrence of something must have been through `dispatch_event`, or the
+   action panics naming the event. Both agent-driven sweeps run it over
+   every action of every game, so giving an existing event a moment makes
+   each site that produces it undispatched a named failure that day — which
+   is the guarantee item 1 asked of a queue. `dispatcher::emit` is the pair
+   as one call, and replaces the 22 sites that were exactly
+   `push(e.clone()); extend(dispatch_event(&e)?)`.
+
+   *Rejected:* a sink that dispatches on push — the structural version of
+   the same guarantee, at the cost of rewriting all 105 `evaluate_effect`
+   call sites and every `Ok(vec![..])` an effect returns, to change nothing
+   a card can observe. Also rejected: moving `DamageTaken`'s dispatch into
+   `damage::apply_damage` (public API with no registry, and it reorders the
+   record); `ability::dispatch_damage_taken` and the two approach filters in
+   `run/engine.rs` stay, and stop being side doors, because the audit is now
+   what holds them to their job.
+
+   *What it found on its first run:* **an install made by a card's text was
+   never heard.** `Effect::InstallFromZoneIgnoringCost` (Brân 1.0) returned
+   its `CardInstalled` bare, so Haas-Bioroid: Engineering the Future missed
+   it — and, its per-turn flag unspent, paid for the turn's *second* install
+   as the first. Emitted now, with a test. The one legitimate deferral is
+   written into the audit rather than allowed past it: an access is recorded
+   when the card is presented and its `OnAccessed` fires when its choice is
+   entered, which for Snare! is a later action, and the parked
+   `AccessPhase::PendingInteractiveTrigger` is that debt on `GameState`.
+   This also closes #85's handed-over hole in kind: `OnAdvance` is reachable
+   only from the basic action, and the day a card advances by ability the
+   audit says so.
+
+   *Measured:* `scripts/coverage_identical.py main --head-worktree` —
+   **identical four times** (the fix moves no game because no sample deck
+   plays that identity; the md5s are the previous stage's). The audit clean
+   over both 256-seed sweeps in a debug build (1,536 games).
 2. **A continuous-effect layer, with a target and a payload** (§2.1 as
    corrected by §6.2; was item 1). Not `{ kind, value: Amount, while }`: a
    closed enum with a payload per kind — a number, a subtype, a subroutine,

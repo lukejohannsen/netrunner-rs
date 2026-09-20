@@ -38,6 +38,8 @@ pub fn apply_action(
     registry: &CardRegistry,
     action: PlayerAction,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+    #[cfg(debug_assertions)]
+    let _dispatched = dispatcher::audit::open();
     // Nothing is legal once the game is over — checked before every other
     // guard, so it holds regardless of what `win::end_game` may have left
     // and makes `legal_actions` empty for free (`current_actor`'s answer no
@@ -214,6 +216,8 @@ pub fn apply_action(
     // decision rather than opening over it.
     events.extend(memory::enforce_limit(&mut next, registry)?);
     events.extend(open_post_action_window(&mut next, registry, &action_kind));
+    #[cfg(debug_assertions)]
+    dispatcher::audit::check(&next, registry, &events);
     Ok((next, events))
 }
 
@@ -414,8 +418,7 @@ fn draw_card_click(state: &GameState, registry: &CardRegistry, side: Side) -> Re
     }
 
     let basic_draw_event = GameEvent::BasicDrawActionTaken { side };
-    events.push(basic_draw_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &basic_draw_event)?);
+    dispatcher::emit(&mut next, registry, &mut events, basic_draw_event)?;
 
     Ok((next, events))
 }
@@ -573,12 +576,11 @@ pub(crate) fn place_corp_card(
         card: Some(card_id),
         server: zone,
     };
-    events.push(installed_event.clone());
 
     // Haas-Bioroid: Engineering the Future-style identity reaction — gated
     // by `EffectRequirement::FirstInstallThisTurn` on the identity's own
     // `TriggeredEffect`, so this dispatch is unconditional here.
-    events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
+    dispatcher::emit(next, registry, &mut events, installed_event)?;
 
     Ok(events)
 }
@@ -915,8 +917,7 @@ pub(crate) fn rez_install(
     // reads `run.ice` between this point and that reconcile.
 
     let rezzed_event = GameEvent::IceRezzed { card: ice_id, server, install: ice };
-    events.push(rezzed_event.clone());
-    events.extend(dispatcher::dispatch_event(next, registry, &rezzed_event)?);
+    dispatcher::emit(next, registry, &mut events, rezzed_event)?;
     Ok(events)
 }
 
@@ -1130,8 +1131,7 @@ fn play_event(
         events.extend(ability::pay_cost(&mut next, side, additional, Some(&card_id))?);
     }
     let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
-    events.push(played_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &played_event)?);
+    dispatcher::emit(&mut next, registry, &mut events, played_event)?;
     // A played Event is trashed once it resolves — it goes to the Heap,
     // faceup, exactly as `play_operation` archives an Operation. This used
     // to be missing, so every Event the Runner played left the game: the
@@ -1248,8 +1248,7 @@ pub(crate) fn play_operation_card(
     // `OnSuccessfulRunOnHq`/`OnInstall` above) from this one event.
     next.corp.played_operation_this_turn = true;
     let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives };
-    events.push(played_event.clone());
-    events.extend(dispatcher::dispatch_event(next, registry, &played_event)?);
+    dispatcher::emit(next, registry, &mut events, played_event)?;
 
     Ok(events)
 }
@@ -1556,8 +1555,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
             next.runner.rig.push(rig_card);
             let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
-            events.push(installed_event.clone());
-            events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
+            dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Hardware => {
             let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Hardware).saturating_sub(discount);
@@ -1569,8 +1567,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
                 next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
             }
             let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
-            events.push(installed_event.clone());
-            events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
+            dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Resource => {
             let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Resource).saturating_sub(discount);
@@ -1579,8 +1576,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             events.extend(trash_earlier_unique_copy(next, registry, side, &card_id));
             next.runner.rig.push(rig_card);
             let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
-            events.push(installed_event.clone());
-            events.extend(dispatcher::dispatch_event(next, registry, &installed_event)?);
+            dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         _ => return Err(RulesError::CardTypeMismatch { card: card_id, expected: "a program, hardware or resource" }),
     }
@@ -1642,8 +1638,7 @@ fn install_hardware(
     // can react to its own install (GAMEDRAGON™ Pro). Nothing did before,
     // so this used to be a bare push.
     let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
-    events.push(installed_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
+    dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     Ok((next, events))
 }
@@ -1714,8 +1709,7 @@ fn install_program(
     // to be whatever the caller named, which `legal_actions` always set to 0.
     let installed_event =
         GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
-    events.push(installed_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
+    dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     Ok((next, events))
 }
@@ -1774,8 +1768,7 @@ fn install_program_on_ice(
     events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
-    events.push(installed_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
+    dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     Ok((next, events))
 }
@@ -1821,8 +1814,7 @@ fn install_resource(
     events.extend(trash_earlier_unique_copy(&mut next, registry, side, &card_id));
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
-    events.push(installed_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &installed_event)?);
+    dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
     Ok((next, events))
 }
@@ -2067,8 +2059,7 @@ fn advance_card(
     // `EffectRequirement::WasFirstAdvancementThisCard` reads it from the
     // `ability::ResolutionContext` the dispatch builds.
     let advanced_event = GameEvent::CardAdvanced { install, card: Some(card_id), advancement_tokens };
-    events.push(advanced_event.clone());
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &advanced_event)?);
+    dispatcher::emit(&mut next, registry, &mut events, advanced_event)?;
 
     Ok((next, events))
 }
@@ -2168,10 +2159,9 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
 
     next.runner.tags -= 1;
     let removed = GameEvent::TagRemoved { side };
-    events.push(removed.clone());
     // The Corp's identity may react to a tag coming off however it went
     // (Synapse Global: Faster than Thought).
-    events.extend(dispatcher::dispatch_event(&mut next, registry, &removed)?);
+    dispatcher::emit(&mut next, registry, &mut events, removed)?;
 
     Ok((next, events))
 }

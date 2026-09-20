@@ -547,12 +547,20 @@ pub fn evaluate_effect(
                 }
                 None => state.corp.installed.push(new_card),
             }
-            Ok(vec![GameEvent::CardInstalled {
-                side: Side::Corp,
-                install: install_id,
-                card: Some(card_id.clone()),
-                server: *into,
-            }])
+            // Emitted, not returned bare: an install by a card's text is an
+            // install, and "the first time each turn you install a card"
+            // (Haas-Bioroid: Engineering the Future) hears it. It did not —
+            // Brân 1.0's install went unheard and the identity then paid for
+            // the turn's *second* install as its first — until
+            // `dispatcher::audit` refused the undispatched event.
+            let mut events = Vec::new();
+            dispatcher::emit(
+                state,
+                registry,
+                &mut events,
+                GameEvent::CardInstalled { side: Side::Corp, install: install_id, card: Some(card_id.clone()), server: *into },
+            )?;
+            Ok(events)
         }
 
         Effect::DrawCardsAmount(side, amount) => {
@@ -1785,6 +1793,13 @@ fn resolve_corp_installed_target(
 /// inside `damage::apply_damage` and returned, never dispatched: only
 /// `DamageAboutToResolve` (the prevention window) goes through the
 /// dispatcher. Nothing fires once the damage has ended the game.
+///
+/// Dispatching a recorded event after the fact, rather than emitting it
+/// where it is made, is fine for as long as nobody forgets to:
+/// `dispatcher::audit` fails any action whose record holds a `DamageTaken`
+/// that did not come through here. `damage::apply_damage` keeps returning
+/// plain data because it is public API with no registry to dispatch with,
+/// and moving the dispatch inside it would reorder the record.
 pub(crate) fn dispatch_damage_taken(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -1828,8 +1843,7 @@ fn gain_credits_from_ability(
     let mut events = vec![GameEvent::CreditsGained { side, amount }];
     if let Some(card) = ctx.acting_card {
         let gained = GameEvent::AbilityGainedCredits { side, card: card.clone() };
-        events.push(gained.clone());
-        events.extend(dispatcher::dispatch_event(state, registry, &gained)?);
+        dispatcher::emit(state, registry, &mut events, gained)?;
     }
     Ok(events)
 }

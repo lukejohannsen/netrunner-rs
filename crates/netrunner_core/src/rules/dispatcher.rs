@@ -52,6 +52,8 @@ pub fn dispatch_event(
     registry: &CardRegistry,
     event: &GameEvent,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    #[cfg(debug_assertions)]
+    audit::dispatched(event);
     let mut events = resolve_run_riders(state, registry, event)?;
     // Planned after the riders: an access bonus or a trash they resolve is
     // part of the state the triggers happen in.
@@ -75,6 +77,116 @@ pub fn dispatch_event(
         remaining = rest;
     }
     Ok(events)
+}
+
+/// Records `event` and fires what it triggers: the one way an event a card
+/// can hear should enter an action's record. `audit` is what holds the
+/// engine to that.
+pub(crate) fn emit(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    events: &mut Vec<GameEvent>,
+    event: GameEvent,
+) -> Result<(), RulesError> {
+    events.push(event);
+    let fired = dispatch_event(state, registry, events.last().expect("pushed above"))?;
+    events.extend(fired);
+    Ok(())
+}
+
+/// **Every event a card can hear is dispatched** — checked, in every debug
+/// build, on every action.
+///
+/// An `Effect` returns its events as data, and whether one of them is also
+/// *dispatched* has always been up to whoever wrote the line: `dispatch_event`
+/// is called by hand next to the events that had a trigger when they were
+/// written. So a `Trigger` added for an event that already existed —
+/// `CardTrashed`, say — would be heard from the sites someone remembered and
+/// silent from the rest, with every test green; ROADMAP Rules Audit's
+/// `AdvancementCountersPlaced` entry turned on exactly that, the other way
+/// round.
+///
+/// The check: when an action ends, every event in its record that
+/// `listeners::moments` says is an occurrence of something must have been
+/// through `dispatch_event`. Both agent-driven sweeps run it over every
+/// action of every game, so giving an event a moment makes each site that
+/// produces it without dispatching it a named test failure, that day.
+///
+/// Rejected: routing every event through a sink that dispatches on push. It
+/// is the structural version of the same guarantee and costs a rewrite of
+/// all 105 `evaluate_effect` call sites and every `Ok(vec![..])` an effect
+/// returns, to change nothing any card can observe today.
+#[cfg(debug_assertions)]
+pub(crate) mod audit {
+    use super::*;
+    use std::cell::RefCell;
+
+    thread_local! {
+        // One frame an action; a stack because a client may apply an action
+        // to a sample while reading the result of another.
+        static DISPATCHED: RefCell<Vec<Vec<GameEvent>>> = const { RefCell::new(Vec::new()) };
+    }
+
+    /// Open for the length of one `apply_action`; closes itself on every
+    /// way out of it, an error included.
+    pub(crate) struct Frame;
+
+    pub(crate) fn open() -> Frame {
+        DISPATCHED.with(|frames| frames.borrow_mut().push(Vec::new()));
+        Frame
+    }
+
+    impl Drop for Frame {
+        fn drop(&mut self) {
+            DISPATCHED.with(|frames| frames.borrow_mut().pop());
+        }
+    }
+
+    pub(super) fn dispatched(event: &GameEvent) {
+        DISPATCHED.with(|frames| {
+            if let Some(frame) = frames.borrow_mut().last_mut() {
+                frame.push(event.clone());
+            }
+        });
+    }
+
+    /// The one dispatch that is legitimately a later action's: an access is
+    /// recorded when the card is presented, and its `OnAccessed` fires when
+    /// the card's ordinary choice is entered — which for Snare! is after the
+    /// Corp has answered `AccessPhase::PendingInteractiveTrigger`. The
+    /// parked phase is the debt, on `GameState`, where it survives.
+    fn is_owed(state: &GameState, event: &GameEvent) -> bool {
+        let GameEvent::CardAccessed { card, .. } = event else { return false };
+        let phase = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).map(|access| &access.phase);
+        matches!(phase, Some(crate::rules::run::AccessPhase::PendingInteractiveTrigger { card_id, .. }) if card_id == card)
+    }
+
+    /// Panics, naming the event, if `events` holds one a card could hear
+    /// that was never dispatched.
+    ///
+    /// A finished game is exempt: a run that ends because the game did
+    /// dispatches nothing on purpose (`still_applies`, `fire_plan`).
+    pub(crate) fn check(state: &GameState, registry: &CardRegistry, events: &[GameEvent]) {
+        if state.is_over() {
+            return;
+        }
+        let mut dispatched = DISPATCHED.with(|frames| frames.borrow().last().cloned().unwrap_or_default());
+        for event in events {
+            if listeners::moments(state, registry, event).is_empty() || is_owed(state, event) {
+                continue;
+            }
+            match dispatched.iter().position(|seen| seen == event) {
+                Some(position) => {
+                    dispatched.swap_remove(position);
+                }
+                None => panic!(
+                    "{} is an occurrence of a trigger (`listeners::moments`) and reached the action's record without \
+                     `dispatch_event`: emit it with `dispatcher::emit`. {event:?}",
+                    event.variant_name()
+                ),
+            }
+        }
+    }
 }
 
 /// The two effects a run carries for itself rather than on a card:
@@ -484,6 +596,29 @@ mod tests {
 
         assert_eq!(state.runner.resources.credits, Credits(6));
         assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("desperado".to_string()), trigger: Trigger::OnSuccessfulRun }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }, GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("desperado".to_string()) }]);
+    }
+
+    /// The audit itself: an event a card could hear, in an action's record,
+    /// that nobody dispatched. Debug builds only, like the audit — the deep
+    /// sweeps' `--release` run compiles neither.
+    #[cfg(debug_assertions)]
+    #[test]
+    #[should_panic(expected = "TurnStarted is an occurrence of a trigger")]
+    fn an_event_a_card_could_hear_that_was_never_dispatched_fails_the_action() {
+        let state = empty_state();
+        let _frame = audit::open();
+        audit::check(&state, &CardRegistry::new(), &[GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }]);
+    }
+
+    #[cfg(debug_assertions)]
+    #[test]
+    fn a_dispatched_event_and_an_event_nothing_hears_both_pass_the_audit() {
+        let mut state = empty_state();
+        let registry = CardRegistry::new();
+        let _frame = audit::open();
+        let mut events = vec![GameEvent::ClickSpent { side: Side::Corp }];
+        emit(&mut state, &registry, &mut events, GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }).unwrap();
+        audit::check(&state, &registry, &events);
     }
 
     #[test]

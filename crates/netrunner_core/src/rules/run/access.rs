@@ -625,10 +625,9 @@ pub fn resolve_steal(
     let agenda_points = registry.get(card_id).and_then(|c| c.agenda_points).unwrap_or(0);
     state.runner.resources.agenda_points = state.runner.resources.agenda_points.gain(agenda_points);
     let stolen_event = GameEvent::AgendaStolen { card: card_id.clone(), agenda_points };
-    events.push(stolen_event.clone());
     // Jinteki: Personal Evolution-style identity reaction to a steal —
     // unconditional dispatch, no per-turn gate.
-    events.extend(dispatcher::dispatch_event(state, registry, &stolen_event)?);
+    dispatcher::emit(state, registry, &mut events, stolen_event)?;
 
     events.extend(check_win_conditions(state, registry));
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
@@ -842,8 +841,7 @@ pub fn resolve_trash(
     events.extend(ability::pay_cost(state, Side::Runner, &Cost::Credits(cost - from_pools), Some(card_id))?);
     move_to_archives(state, registry, card_id, pending.server, pending.install);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost };
-    events.push(trashed_event.clone());
-    events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
+    dispatcher::emit(state, registry, &mut events, trashed_event)?;
 
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
     Ok(events)

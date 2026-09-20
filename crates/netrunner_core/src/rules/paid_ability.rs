@@ -335,8 +335,7 @@ fn close_run_window(state: &mut GameState, registry: &CardRegistry) -> Result<Ve
                 // `RunCompleted` (a flatline mid-access).
                 if !events.iter().any(|e| matches!(e, GameEvent::RunCompleted { .. })) {
                     let completed = GameEvent::RunCompleted { server };
-                    events.push(completed.clone());
-                    events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &completed)?);
+                    crate::rules::dispatcher::emit(state, registry, &mut events, completed)?;
                 }
             } else {
                 // A card was just presented (or `SelectNextCard` was
