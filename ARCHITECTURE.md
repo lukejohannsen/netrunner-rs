@@ -92,7 +92,7 @@ See AGENTS.md's State Hygiene Rule.
 
 Two layers, with distinct roles — do not conflate them:
 
-* **`rules::masking::mask_state_for_player(state, side) -> PublicGameState`** is the low-level masking primitive: it strips unrevealed cards (HQ, R&D, Grip, Stack, unrezzed ICE, facedown Archives cards) from a snapshot. It reveals a side's own deck order to itself. It is **not** what reaches a client.
+* **`rules::masking::mask_state_for_player(state, registry, viewer) -> PublicGameState`** is the low-level masking primitive: it strips unrevealed cards (HQ, R&D, Grip, Stack, unrezzed ICE, facedown Archives cards) from a snapshot. It takes the registry because **a strength it shows is the strength the engine uses** (`continuous::breaker_strength`, `lingering::ice_strength`) — a question put to the cards in play, not a stored number — and it carries the lingering effects that hold, so whoever rebuilds a state from a view (`netrunner_bots::determinize`) can take a shown number apart again rather than mistake a pump for printed strength. It reveals a side's own deck order to itself. It is **not** what reaches a client.
 * **`view::build_client_view(state, registry, side) -> ClientView`** is the only projection that crosses a process boundary. It is a thin adapter over the masking primitives — reshaped into a friendlier wire format, carrying `legal_actions_for(side)` alongside the state, and applying one stricter policy: **draw-deck order is never revealed, not even to its owner.**
 
 A client receives a `ClientView` and nothing else. Fog of war is enforced at this boundary, never by asking a client to be polite about what it renders.

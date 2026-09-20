@@ -7,14 +7,17 @@
 //! planner reads each breaker's JSON — pump cost over pump amount, break
 //! cost over break count — the way `netrunner_bots::eval::break_cost`
 //! prices a break for the evaluator. It would be wrong here in ways a
-//! person sees on a button: the view's `current_strength` leaves out
-//! Echelon's and Rising Tide's `strength_modifier` and GAMEDRAGON's bonus,
-//! so it plans pumps nobody needs; it cannot know that Mayfly's break is a
-//! `Sequence`, that Chromatophores gives the ICE a subtype, or that a
-//! subroutine is fracter-only. So each route is searched on
+//! person sees on a button: it cannot know that Mayfly's break is a
+//! `Sequence`, what a cost that is not credits is worth, or that a
+//! //! subroutine is fracter-only. So each route is searched on
 //! `netrunner_bots::determinize`'s sample of the view with the engine's
 //! own `apply_action`: whatever the engine would refuse, the route never
-//! contains, and whatever it charges is the price shown. Nothing hidden
+//! contains, and whatever it charges is the price shown. (The view's
+//! `current_strength` was once a third reason — it left out Echelon's and
+//! Rising Tide's bonus and a GAMEDRAGON™ Pro's, so a planner reading it
+//! bought pumps nobody needed. It is `continuous::breaker_strength` now,
+//! the engine's own number, and the sample carries the view's `lingering`
+//! so a pump already paid for is neither lost nor counted twice.) Nothing hidden
 //! can move that price — the encounter, the rig, the credit pools and the
 //! counters are all public and copied exactly — and the sample is seeded
 //! from a constant, so the same view gives the same routes. The one
@@ -518,19 +521,25 @@ mod tests {
         assert_eq!(found[0].steps.len(), 2);
     }
 
-    /// Why a route is played rather than priced: the view says Echelon
-    /// is strength 0, but it is +1 for each installed icebreaker, which the
-    /// engine counts and the view's `current_strength` does not. Priced off
-    /// the view, Karuna (a strength-3 sentry, two subroutines) would need
-    /// two 3-credit pumps before the breaks.
+    /// Echelon is +1 for each installed icebreaker, and the view says so:
+    /// it shows the strength the engine uses. The sample is rebuilt from the
+    /// printed number and derives the bonus from its own rig — it used to
+    /// take the shown number as printed, which would now count Echelon's
+    /// bonus twice. Ballista is strength 4 with one subroutine, so three
+    /// icebreakers need one 3-credit pump and a 1-credit break; a doubled
+    /// Echelon (strength 6) would need the break alone.
     #[test]
-    fn a_strength_the_view_leaves_out_is_still_priced_right() {
+    fn a_strength_the_table_adds_is_shown_and_counted_once() {
         let registry = sample_deck_registry();
         let state = encounter(&registry, "karuna", &["echelon", "corroder", "gordian_blade"], 20);
         let view = view(&state, &registry);
-        assert_eq!(view.runner.rig[0].current_strength, 0, "the view leaves the modifier out");
+        assert_eq!(view.runner.rig[0].current_strength, 3, "the view shows what the break contest uses");
         let found = routes(&view, &registry);
         assert_eq!(priced(&found), [("echelon".to_string(), 2, 0)], "three icebreakers: strength 3, no pump");
+
+        let state = encounter(&registry, "ballista", &["echelon", "corroder", "gordian_blade"], 20);
+        let found = routes(&self::view(&state, &registry), &registry);
+        assert_eq!(priced(&found), [("echelon".to_string(), 4, 0)], "strength 3 against 4: one pump, one break");
     }
 
     /// The driver end to end against the engine: one step a view, the

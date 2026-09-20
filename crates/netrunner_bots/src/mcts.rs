@@ -510,6 +510,8 @@ mod tests {
         let mut breaker = blank_card("corroder", CardType::Program);
         registry.insert({
             breaker.side = Side::Runner;
+            // The printed number the rig card below was seeded from.
+            breaker.strength = Some(2);
             breaker
         });
 

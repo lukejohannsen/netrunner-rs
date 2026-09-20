@@ -3957,7 +3957,7 @@ mod system_gateway {
         // "For the remainder of this encounter": it was written into the
         // run's copy of the ice, where it lasted the run.
         assert_eq!(state.lingering[0].until, crate::rules::lingering::Until::EndOfEncounter(run.ice[0].install_id));
-        let view = crate::rules::mask_state_for_player(&state, Side::Corp);
+        let view = crate::rules::mask_state_for_player(&state, &registry, Side::Corp);
         assert_eq!(view.active_run.unwrap().ice[0].identity.as_ref().unwrap().current_strength, 2, "and both players see it");
     }
 
@@ -4664,6 +4664,12 @@ mod system_gateway {
             3,
             "Echelon: 0 base + 1 per installed icebreaker (3 installed, including itself)"
         );
+        // And it is the number both players are shown: the view used to
+        // carry the stored half alone, so this read 0.
+        for side in [Side::Corp, Side::Runner] {
+            let view = crate::view::build_client_view(&state, &registry, side);
+            assert_eq!(view.runner.rig[0].current_strength, 3, "{side:?}");
+        }
 
         // Unity's pump ability (+X, X = installed icebreaker count = 3)
         // should bring it from base 1 to 4.
