@@ -143,9 +143,15 @@ cargo run --release -p netrunner_cli -- --headless --all-matchups --games 96 \
   --corp random --runner random --seed 1 --report target/coverage/<branch>-random-random.json
 ```
 
-`--all-matchups` plays `matchups[index % len]`, so **`--games` below `decks::matchups().len()` leaves the tail of the pool unplayed** — at 16 Corp × 12 Runner, 96 games stop eight Corp decks in and a whole deck's cards read as zero. Size the run to at least one pass of the cross product (132 today) whenever the point of the measurement is per-card coverage.
+`--all-matchups` plays `matchups[index % len]`, so **`--games` below `decks::matchups().len()` leaves the tail of the pool unplayed** — at 16 Corp × 12 Runner, 96 games stop eight Corp decks in and a whole deck's cards read as zero. Size the run to at least one pass of the cross product (192 today) whenever the point of the measurement is per-card coverage.
 
-and `diff` the JSON against the previous report. Random-vs-random is the seating that reaches the most rules; a heuristic seating measures the bot as much as the engine. Quote the load-bearing deltas in the area roadmap entry.
+and `diff` the JSON against the previous report. **When the claim is that nothing moved, do not do that by hand:**
+
+```bash
+scripts/coverage_identical.py main            # main against HEAD; --head-worktree for uncommitted work
+```
+
+builds each ref once in a worktree of its own (`target/pinned/`, the binary kept by sha — a before/after taken with `cargo run` on a tree being edited has compared the new code with itself before), plays one full pass of the pool in all four shapes — random and heuristic, by view and by `--index-path` — and says `identical` per report or names the sections and the `triggers_fired` keys that moved. It exits non-zero on a difference, and `--expect-renames Old=New` is for a change that renames `Trigger` variants on purpose. Random-vs-random is the seating that reaches the most rules; a heuristic seating measures the bot as much as the engine. Quote the load-bearing deltas in the area roadmap entry.
 
 Heuristic seatings are byte-identical run to run since `determinize`'s pools were sorted (September 2026), so they are valid before/after measurements too — but reproducibility buys *attribution*, not *significance*: any code change re-rolls all 96 games, so a small heuristic delta can be pure trajectory drift. A change claiming a small heuristic effect must beat the **seed-spread band** recorded under Phase 2 §5 (`docs/roadmap/phase-2-bots-and-training.md`), or show the effect across several seeds.
 
