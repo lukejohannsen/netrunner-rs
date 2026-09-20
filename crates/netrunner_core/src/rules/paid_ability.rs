@@ -461,7 +461,6 @@ mod tests {
         RunIce {
             install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId("ice_wall".to_string()),
-            current_strength: 0,
             ice_type: IceType::Barrier,
             subroutines,
             rezzed,
@@ -904,7 +903,6 @@ mod tests {
             ice: vec![RunIce {
                 install_id: crate::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("ice_wall".to_string()),
-                current_strength: 0,
                 ice_type: IceType::Barrier,
                 subroutines: vec![
                     EncounteredSubroutine {

@@ -235,6 +235,9 @@ pub struct PublicRunIce {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicRunIceIdentity {
     pub card: CardId,
+    /// `continuous::ice_strength` when the view was made — the number the
+    /// break contest uses, with the card's own text, the table and what is
+    /// lingering all in it. Computed here; the run's ice stores none.
     pub current_strength: i32,
     pub ice_type: IceType,
     pub subroutines: Vec<EncounteredSubroutine>,
@@ -411,7 +414,7 @@ pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer:
         corp: mask_corp_state(&state.corp, viewer.is(Side::Corp)),
         runner: mask_runner_state(state, registry, viewer.is(Side::Runner)),
         phase: state.phase,
-        active_run: state.active_run.as_ref().map(|run| mask_run_state(state, run, viewer)),
+        active_run: state.active_run.as_ref().map(|run| mask_run_state(state, registry, run, viewer)),
         paid_ability_window: state.paid_ability_window.clone(),
         active_trace: state.active_trace.clone(),
         pending_prevention: state.pending_prevention.clone(),
@@ -826,14 +829,14 @@ fn corp_card_concealed_from_runner(state: &GameState, card: &CardId) -> bool {
         || state.corp.archives.iter().any(|archived| archived.card == *card && archived.facedown)
 }
 
-fn mask_run_ice(state: &GameState, ice: &RunIce, owner_view: bool) -> PublicRunIce {
+fn mask_run_ice(state: &GameState, registry: &CardRegistry, ice: &RunIce, owner_view: bool) -> PublicRunIce {
     let identity_visible = owner_view || ice.rezzed;
     PublicRunIce {
         install_id: ice.install_id,
         rezzed: ice.rezzed,
         identity: identity_visible.then(|| PublicRunIceIdentity {
             card: ice.card_id.clone(),
-            current_strength: lingering::ice_strength(state, ice),
+            current_strength: continuous::ice_strength(state, registry, ice),
             ice_type: ice.ice_type,
             subroutines: ice.subroutines.clone(),
         }),
@@ -886,7 +889,7 @@ fn mask_access_state(access: &AccessState, card_visible: bool, viewer: Viewer) -
     }
 }
 
-fn mask_run_state(state: &GameState, run: &RunState, viewer: Viewer) -> PublicRunState {
+fn mask_run_state(state: &GameState, registry: &CardRegistry, run: &RunState, viewer: Viewer) -> PublicRunState {
     // Only the Runner sees accessed-card identities before the accessed
     // server is Archives (an always-public zone) — the Corp, and a
     // spectator, learn what was hit when it lands in a public zone.
@@ -894,7 +897,7 @@ fn mask_run_state(state: &GameState, run: &RunState, viewer: Viewer) -> PublicRu
     PublicRunState {
         server: run.server,
         phase: run.phase,
-        ice: run.ice.iter().map(|ice| mask_run_ice(state, ice, viewer.is(Side::Corp))).collect(),
+        ice: run.ice.iter().map(|ice| mask_run_ice(state, registry, ice, viewer.is(Side::Corp))).collect(),
         position: run.position,
         access_state: run.access_state.as_ref().map(|access| mask_access_state(access, card_visible, viewer)),
         jack_out_permitted: run.jack_out_permitted,
@@ -1463,7 +1466,6 @@ mod tests {
         RunIce {
             install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId(id.to_string()),
-            current_strength: 3,
             ice_type: IceType::Barrier,
             subroutines: if rezzed {
                 vec![EncounteredSubroutine {

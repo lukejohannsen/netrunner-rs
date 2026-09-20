@@ -120,3 +120,25 @@ pub(crate) fn position_of(state: &GameState, card: &str) -> usize {
         .position(|c| *c == id)
         .unwrap_or_else(|| panic!("{card} is not in the pending decision's source zone"))
 }
+
+/// The strength of the `index`th piece of ice in the active run, as the
+/// break contest would read it — a run's ice stores no strength to assert
+/// on, so a test asks the question the engine asks.
+pub(crate) fn ice_strength_in_run(state: &GameState, registry: &crate::cards::CardRegistry, index: usize) -> i32 {
+    let run = state.active_run.as_ref().expect("a run is active");
+    crate::rules::continuous::ice_strength(state, registry, &run.ice[index])
+}
+
+/// A Barrier named `card_id` that prints `strength` and nothing else. A
+/// run's ice stores no strength, so a fixture whose break contest turns on
+/// one registers the card that says it.
+pub(crate) fn ice_printing(card_id: &str, strength: i32) -> crate::dsl::CardDefinition {
+    crate::dsl::CardDefinition {
+        id: CardId(card_id.to_string()),
+        title: card_id.to_string(),
+        side: crate::rules::state::Side::Corp,
+        card_type: crate::dsl::CardType::Ice(crate::dsl::IceType::Barrier),
+        strength: Some(strength),
+        ..crate::dsl::CardDefinition::default()
+    }
+}

@@ -78,8 +78,11 @@ fn is_one(amount: &Amount) -> bool {
 /// here when a card prints it — never a field on `CardDefinition`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContinuousKind {
-    /// Strength of an icebreaker (and, once ICE strength is derived, of a
-    /// piece of ice).
+    /// Strength of an icebreaker (`continuous::breaker_strength`) or of a
+    /// piece of ice (`continuous::ice_strength`) — Ice Wall's "+1 strength
+    /// for each hosted advancement counter", Palisade's "+2 while protecting
+    /// a remote server". The ice half was `StrengthModifier`, baked into
+    /// the run's copy of the ice when the run began.
     Strength(Number),
     /// Memory units available to the player — a console's "+1[mu]".
     Memory(Number),

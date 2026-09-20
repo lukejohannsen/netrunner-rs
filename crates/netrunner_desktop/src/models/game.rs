@@ -1620,7 +1620,6 @@ mod tests {
             ice: vec![RunIce {
                 card_id: wall.id.clone(),
                 install_id: InstallId(1),
-                current_strength: 3,
                 ice_type,
                 subroutines: wall.subroutines.iter().enumerate().map(|(id, sub)| EncounteredSubroutine { id, definition: sub.clone(), status: SubroutineStatus::Pending }).collect(),
                 rezzed: true,

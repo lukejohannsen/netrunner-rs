@@ -440,8 +440,7 @@ pub struct InstalledRunnerCard {
     #[serde(default)]
     pub install_id: InstallId,
     /// Printed strength, seeded once at install time from
-    /// `registry.get(card).strength.unwrap_or(0)` — mirrors
-    /// `RunIce::current_strength`'s seeding at `build_run_ice` exactly. `0`
+    /// `registry.get(card).strength.unwrap_or(0)`. `0`
     /// for Hardware and non-strength Programs. What has been paid for on top
     /// of it is in `GameState::lingering`, and what the table adds is
     /// `continuous::breaker_strength` — this is the printed number alone.

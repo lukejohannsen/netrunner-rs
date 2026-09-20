@@ -407,6 +407,7 @@ fn view_purse(view: &ClientView) -> (u32, u32) {
 mod tests {
     use super::*;
     use netrunner_core::dsl::CardType;
+    use netrunner_core::rules::lingering::{Lingering, LingeringEffect, Until};
     use netrunner_core::rules::{
         EncounteredSubroutine, InstallSlot, InstalledCard, InstalledRunnerCard, PaidAbilityWindow, RunIce, RunState, ServerId,
         WindowCheckpoint, GamePhase,
@@ -448,7 +449,6 @@ mod tests {
             ice: vec![RunIce {
                 card_id: definition.id.clone(),
                 install_id,
-                current_strength: definition.strength.unwrap_or(0),
                 ice_type,
                 subroutines: definition
                     .subroutines
@@ -585,7 +585,13 @@ mod tests {
         let first = view(&state, &registry);
         let driver = AutoBreak::new(&routes(&first, &registry)[0], &first);
         // The ICE grows between views: the route now needs a second pump.
-        state.active_run.as_mut().unwrap().ice[0].current_strength += 1;
+        let wall = state.active_run.as_ref().unwrap().ice[0].install_id;
+        state.lingering.push(LingeringEffect {
+            what: Lingering::Strength(1),
+            on: wall,
+            until: Until::EndOfEncounter(wall),
+            source: CardId("wall_of_static".to_string()),
+        });
         assert!(matches!(driver.next(&view(&state, &registry), &registry), Next::Stopped(_)));
     }
 }

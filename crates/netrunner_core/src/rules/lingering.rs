@@ -15,9 +15,10 @@
 //! on every rig card, each with a `reset_*` that five call sites had to
 //! remember (Rules Audit T8 was one that forgot: pumps carried into the
 //! next run). And one that was not a list at all: `Effect::ModifyStrength`
-//! wrote Leech's -1 into `RunIce::current_strength`, where nothing could
-//! take it back out, so "for the remainder of this encounter" lasted the
-//! run.
+//! wrote Leech's -1 into `RunIce::current_strength` (a field that is gone:
+//! an ice's strength is `continuous::ice_strength`, asked of the table),
+//! where nothing could take it back out, so "for the remainder of this
+//! encounter" lasted the run.
 //!
 //! **Whether an entry still holds is a question about the state, asked at
 //! every read** ([`LingeringEffect::holds`]): the run it was made in is
@@ -30,7 +31,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dsl::CardId;
-use crate::rules::run::{RunIce, RunPhase};
+use crate::rules::run::RunPhase;
 use crate::rules::state::{GameState, InstallId, InstalledRunnerCard};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -94,12 +95,6 @@ pub fn rig_strength(state: &GameState, card: &InstalledRunnerCard) -> i32 {
     card.base_strength + strength(state, card.install_id)
 }
 
-/// The strength of a piece of ice in the run: what `RunIce` was built with
-/// and what is lingering on it.
-pub fn ice_strength(state: &GameState, ice: &RunIce) -> i32 {
-    ice.current_strength + strength(state, ice.install_id)
-}
-
 /// Drops what no longer holds.
 pub(crate) fn sweep(state: &mut GameState) {
     if state.lingering.is_empty() {
@@ -113,7 +108,7 @@ pub(crate) fn sweep(state: &mut GameState) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::run::RunState;
+    use crate::rules::run::{RunIce, RunState};
 
     fn effect(on: u32, amount: i32, until: Until) -> LingeringEffect {
         LingeringEffect { what: Lingering::Strength(amount), on: InstallId(on), until, source: CardId("source".to_string()) }
@@ -123,7 +118,6 @@ mod tests {
         RunIce {
             card_id: CardId("ice".to_string()),
             install_id: InstallId(install),
-            current_strength: 0,
             ice_type: crate::dsl::IceType::Barrier,
             subroutines: Vec::new(),
             rezzed: true,

@@ -13,7 +13,7 @@ use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run::{self, AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{
-    ArchivedCard, Clicks, Credits, DeferredTrigger, GameState, InstallId, InstalledCard, InstalledRunnerCard, OncePerTurnKey, PendingChoiceResume, PendingDecision, PendingPaidChoice,
+    ArchivedCard, Clicks, Credits, DeferredTrigger, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, OncePerTurnKey, PendingChoiceResume, PendingDecision, PendingPaidChoice,
     PendingPaidChoiceResume, PendingPrevention, PendingPreventionKind, PreventionKind, PreventionResume, Side,
     TraceResume, TraceState, WindowCheckpoint,
 };
@@ -267,7 +267,7 @@ pub fn evaluate_effect(
                 source,
             });
             let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
-            let new_strength = lingering::ice_strength(state, &run.ice[position]);
+            let new_strength = continuous::ice_strength(state, registry, &run.ice[position]);
             Ok(vec![GameEvent::IceStrengthModified { card_id, new_strength, delta: *delta }])
         }
 
@@ -823,7 +823,7 @@ pub fn evaluate_effect(
             let run = state.active_run.as_ref().unwrap();
             let ice = &run.ice[run.position];
             let (ice_card_id, ice_strength, ice_type, ice_install) =
-                (ice.card_id.clone(), lingering::ice_strength(state, ice), ice.ice_type, ice.install_id);
+                (ice.card_id.clone(), continuous::ice_strength(state, registry, ice), ice.ice_type, ice.install_id);
             if let Some(expected) = restrict_to
                 && *expected != ice_type
                 && !continuous::ice_gains_subtype(state, registry, ice_install, *expected)
@@ -2604,6 +2604,11 @@ pub fn check_requirement(
         EffectRequirement::NoActionTakenThisTurn => {
             if state.actions_taken_this_turn == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
+        EffectRequirement::ProtectingRemote => {
+            let protecting = acting_corp_install(state, ctx)
+                .is_some_and(|installed| installed.slot == InstallSlot::Ice && matches!(installed.server, ServerId::Remote(_)));
+            if protecting { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+        }
         EffectRequirement::AgendaCameFromThisCardsServer => {
             // `AgendaScored` names the server; a steal names none, so it
             // comes off the run the steal necessarily happened during.
@@ -2811,6 +2816,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // rather than a running counter that a forfeit would have to
         // decrement.
         Amount::RunnerTags => state.runner.tags,
+        Amount::IceProtectingThisServer => acting_corp_install(state, ctx).map_or(0, |installed| {
+            state.corp.installed.iter().filter(|other| other.server == installed.server && other.slot == InstallSlot::Ice).count() as u32
+        }),
         Amount::InHeapWithSubtype(subtype) => {
             state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
         }
@@ -2856,6 +2864,7 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
         | EffectRequirement::ScoreAreaHasAtLeast(_)
         | EffectRequirement::AgendaCameFromThisCardsServer
+        | EffectRequirement::ProtectingRemote
         | EffectRequirement::SubroutineResolvedThisRun
         | EffectRequirement::MemoryFull
         | EffectRequirement::RunnerClicksAtLeast(_)
@@ -3377,13 +3386,12 @@ mod tests {
         );
     }
 
-    fn test_ice(card_id: &str, strength: i32, subroutine_count: usize, rezzed: bool) -> RunIce {
-        test_ice_of_type(card_id, strength, subroutine_count, rezzed, IceType::Barrier)
+    fn test_ice(card_id: &str, subroutine_count: usize, rezzed: bool) -> RunIce {
+        test_ice_of_type(card_id, subroutine_count, rezzed, IceType::Barrier)
     }
 
     fn test_ice_of_type(
         card_id: &str,
-        strength: i32,
         subroutine_count: usize,
         rezzed: bool,
         ice_type: IceType,
@@ -3391,7 +3399,6 @@ mod tests {
         RunIce {
             install_id: crate::rules::InstallId::PLACEHOLDER,
             card_id: CardId(card_id.to_string()),
-            current_strength: strength,
             ice_type,
             subroutines: (0..subroutine_count)
                 .map(|id| EncounteredSubroutine {
@@ -3411,7 +3418,7 @@ mod tests {
     #[test]
     fn resolve_unbroken_subroutines_resolves_each_pending_subroutine_in_order() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 2, true);
+        let mut ice = test_ice("ice_wall", 2, true);
         ice.subroutines[0].definition.effect = Effect::GiveTags(2);
         ice.subroutines[1].definition.effect = Effect::GainCredits(Side::Corp, 3);
         state.active_run = Some(RunState {
@@ -3453,7 +3460,7 @@ mod tests {
     #[test]
     fn resolve_unbroken_subroutines_stops_at_end_the_run() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 2, true);
+        let mut ice = test_ice("ice_wall", 2, true);
         ice.subroutines[0].definition.effect = Effect::EndTheRun;
         ice.subroutines[1].definition.effect = Effect::GiveTags(5);
         state.active_run = Some(RunState {
@@ -3483,7 +3490,7 @@ mod tests {
     #[test]
     fn resolve_unbroken_subroutines_skips_already_handled_subroutines() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 2, true);
+        let mut ice = test_ice("ice_wall", 2, true);
         ice.subroutines[0].status = SubroutineStatus::Broken;
         ice.subroutines[1].definition.effect = Effect::GiveTags(1);
         state.active_run = Some(RunState {
@@ -3506,18 +3513,20 @@ mod tests {
         let mut state = game_state();
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
-            ice: vec![test_ice("ice_wall", 3, 0, true)],
+            ice: vec![test_ice("ice_wall", 0, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
 
-        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+        let mut registry = CardRegistry::new();
+        registry.insert(crate::rules::test_support::ice_printing("ice_wall", 3));
+
+        let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &registry).unwrap();
 
         let ice = state.active_run.as_ref().unwrap().ice[0].clone();
-        assert_eq!(ice.current_strength, 3, "what the ice was built with is not written over");
-        assert_eq!(lingering::ice_strength(&state, &ice), 5);
+        assert_eq!(continuous::ice_strength(&state, &registry, &ice), 5);
         state.active_run.as_mut().unwrap().phase = RP::ApproachIce;
-        assert_eq!(lingering::ice_strength(&state, &ice), 3, "\"for the remainder of this encounter\"");
+        assert_eq!(continuous::ice_strength(&state, &registry, &ice), 3, "\"for the remainder of this encounter\"");
         assert_eq!(
             events,
             vec![GameEvent::IceStrengthModified {
@@ -4020,7 +4029,7 @@ mod tests {
     fn boost_strength_for_the_encounter_lingers_until_it_ends() {
         // Boosting requires an encounter (`require_encounter`) — an
         // icebreaker's abilities are only usable while encountering ICE.
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 1);
         let acting = CardId("corroder".to_string());
 
         let events = evaluate_effect(
@@ -4051,7 +4060,7 @@ mod tests {
     /// leaves one running; a `Turn` pump is the turn's business and stays.
     #[test]
     fn end_the_run_ends_encounter_pumps_but_not_turn_pumps() {
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 1);
         let breaker = state.runner.rig[0].install_id;
         let encountered = state.active_run.as_ref().unwrap().ice[0].install_id;
         let pump = |amount, until| LingeringEffect { what: Lingering::Strength(amount), on: breaker, until, source: CardId("corroder".to_string()) };
@@ -4070,7 +4079,7 @@ mod tests {
     fn boost_strength_for_the_turn_lasts_the_turn() {
         // Boosting requires an encounter (`require_encounter`) — an
         // icebreaker's abilities are only usable while encountering ICE.
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 1);
         let acting = CardId("corroder".to_string());
 
         evaluate_effect(
@@ -4103,7 +4112,7 @@ mod tests {
     fn boost_strength_acting_card_not_in_rig_errors_card_not_in_rig() {
         // In an encounter, so the rig lookup is the operative check rather
         // than `require_encounter` short-circuiting first.
-        let mut state = ice_encounter_state(Vec::new(), 2, 1);
+        let mut state = ice_encounter_state(Vec::new(), 1);
         let acting = CardId("corroder".to_string());
         assert_eq!(
             evaluate_effect(
@@ -4135,12 +4144,12 @@ mod tests {
         assert!(state.lingering.is_empty(), "and nothing was mutated");
     }
 
-    fn ice_encounter_state(rig: Vec<InstalledRunnerCard>, ice_strength: i32, subroutine_count: usize) -> GameState {
+    fn ice_encounter_state(rig: Vec<InstalledRunnerCard>, subroutine_count: usize) -> GameState {
         let mut state = game_state();
         state.runner.rig = rig;
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
-            ice: vec![test_ice("ice_wall", ice_strength, subroutine_count, true)],
+            ice: vec![test_ice("ice_wall", subroutine_count, true)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4149,7 +4158,7 @@ mod tests {
 
     #[test]
     fn break_subroutines_fixed_breaks_up_to_count_pending_lowest_id_first() {
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 3);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 3);
         let acting = CardId("corroder".to_string());
 
         let events = evaluate_effect(
@@ -4173,7 +4182,7 @@ mod tests {
 
     #[test]
     fn break_subroutines_fixed_breaks_fewer_when_fewer_are_pending() {
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 1);
         let acting = CardId("corroder".to_string());
 
         let events = evaluate_effect(
@@ -4189,7 +4198,7 @@ mod tests {
 
     #[test]
     fn break_subroutines_all_breaks_every_pending_subroutine() {
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 3);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 3);
         let acting = CardId("corroder".to_string());
 
         let events = evaluate_effect(
@@ -4223,14 +4232,15 @@ mod tests {
 
     #[test]
     fn break_subroutines_with_insufficient_breaker_strength_errors_breaker_strength_too_low() {
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 1)], 3, 1);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 1)], 1);
         let acting = CardId("corroder".to_string());
+        let registry = CardRegistry::from_cards(vec![crate::rules::test_support::ice_printing("ice_wall", 3)]);
 
         assert_eq!(
             evaluate_effect(
                 &mut state,
                 &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
-                &CardRegistry::new()),
+                &registry),
             Err(RulesError::BreakerStrengthTooLow {
                 breaker: acting,
                 breaker_strength: 1,
@@ -4244,15 +4254,16 @@ mod tests {
 
     #[test]
     fn break_subroutines_after_boost_succeeds_and_marks_subroutines_broken() {
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 1)], 2, 1);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 1)], 1);
         let acting = CardId("corroder".to_string());
+        let registry = CardRegistry::from_cards(vec![crate::rules::test_support::ice_printing("ice_wall", 2)]);
 
         // Too weak before boosting.
         assert_eq!(
             evaluate_effect(
                 &mut state,
                 &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
-                &CardRegistry::new()),
+                &registry),
             Err(RulesError::BreakerStrengthTooLow {
                 breaker: acting.clone(),
                 breaker_strength: 1,
@@ -4264,13 +4275,13 @@ mod tests {
         evaluate_effect(
             &mut state,
             &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
-            &CardRegistry::new())
+            &registry)
         .unwrap();
 
         let events = evaluate_effect(
             &mut state,
             &Effect::BreakSubroutines { count: SubroutineBreakCount::Fixed(1), restrict_to: None }, &mut ResolutionContext::for_card(Some(&acting)),
-            &CardRegistry::new())
+            &registry)
         .unwrap();
 
         assert_eq!(
@@ -4283,7 +4294,7 @@ mod tests {
 
     #[test]
     fn break_subroutines_skips_already_broken_subroutines() {
-        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 2);
+        let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2);
         state.active_run.as_mut().unwrap().ice[0].subroutines[0].status = SubroutineStatus::Broken;
         let acting = CardId("corroder".to_string());
 
@@ -4298,7 +4309,6 @@ mod tests {
 
     fn ice_encounter_state_of_type(
         rig: Vec<InstalledRunnerCard>,
-        ice_strength: i32,
         subroutine_count: usize,
         ice_type: IceType,
     ) -> GameState {
@@ -4306,7 +4316,7 @@ mod tests {
         state.runner.rig = rig;
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
-            ice: vec![test_ice_of_type("ice_wall", ice_strength, subroutine_count, true, ice_type)],
+            ice: vec![test_ice_of_type("ice_wall", subroutine_count, true, ice_type)],
             jack_out_permitted: true,
             ..Default::default()
         });
@@ -4316,7 +4326,7 @@ mod tests {
     #[test]
     fn break_subroutines_restrict_to_matching_ice_type_succeeds() {
         let mut state =
-            ice_encounter_state_of_type(vec![installed_runner_card("corroder", 2)], 2, 1, IceType::Barrier);
+            ice_encounter_state_of_type(vec![installed_runner_card("corroder", 2)], 1, IceType::Barrier);
         let acting = CardId("corroder".to_string());
 
         let events = evaluate_effect(
@@ -4337,7 +4347,7 @@ mod tests {
     #[test]
     fn break_subroutines_restrict_to_mismatched_ice_type_errors_invalid_breaker_subtype() {
         let mut state =
-            ice_encounter_state_of_type(vec![installed_runner_card("corroder", 2)], 2, 1, IceType::CodeGate);
+            ice_encounter_state_of_type(vec![installed_runner_card("corroder", 2)], 1, IceType::CodeGate);
         let acting = CardId("corroder".to_string());
 
         assert_eq!(
@@ -4362,7 +4372,7 @@ mod tests {
     fn break_subroutines_with_no_restrict_to_breaks_any_ice_type() {
         for ice_type in [IceType::Barrier, IceType::CodeGate, IceType::Sentry] {
             let mut state =
-                ice_encounter_state_of_type(vec![installed_runner_card("mimic", 2)], 2, 1, ice_type);
+                ice_encounter_state_of_type(vec![installed_runner_card("mimic", 2)], 1, ice_type);
             let acting = CardId("mimic".to_string());
 
             let events = evaluate_effect(
@@ -4410,7 +4420,7 @@ mod tests {
     #[test]
     fn resolve_unbroken_subroutines_stops_at_a_trace_subroutine_and_marks_resume() {
         let mut state = game_state();
-        let mut ice = test_ice("ice_wall", 0, 2, true);
+        let mut ice = test_ice("ice_wall", 2, true);
         ice.subroutines[0].definition.effect =
             Effect::Trace { base: 2, on_success: Box::new(Effect::EndTheRun) };
         ice.subroutines[1].definition.effect = Effect::GiveTags(5);

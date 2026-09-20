@@ -24,7 +24,7 @@ use crate::dsl::{card_matches_filter, CardDefinition, CardId, CardType, Continuo
 use crate::rules::ability::{self, ResolutionContext};
 use crate::rules::active::{self, ActiveCard};
 use crate::rules::lingering;
-use crate::rules::run::ServerId;
+use crate::rules::run::{RunIce, ServerId};
 use crate::rules::state::{GameState, InstallId, InstallSlot, InstalledRunnerCard, Side};
 
 /// What a question is about.
@@ -222,6 +222,19 @@ pub fn breaker_strength(state: &GameState, registry: &CardRegistry, card: &Insta
     let stored = lingering::rig_strength(state, card);
     let Some(definition) = registry.get(&card.card) else { return stored };
     stored + sum(state, registry, Target::Rig { card: definition, install: card.install_id }, strength)
+}
+
+/// The strength of a piece of ice in the run right now: what it prints,
+/// what the table adds — its own text first (Ice Wall's counters, Palisade's
+/// remote), rezzed or not, as wherever a card speaks about itself — and what
+/// is lingering on it. **The same one number** as [`breaker_strength`]: the
+/// break contest, `IceEncountered`, the view and the bots' pricing all ask
+/// here. It was a number stored on `RunIce` when the run's ice was built,
+/// which a counter placed mid-run (Syailendra on an Ice Wall) never reached.
+pub fn ice_strength(state: &GameState, registry: &CardRegistry, ice: &RunIce) -> i32 {
+    let printed = registry.get(&ice.card_id).and_then(|definition| definition.strength).unwrap_or(0);
+    let table = Target::corp_install(state, registry, ice.install_id).map_or(0, |target| sum(state, registry, target, strength));
+    printed + table + lingering::strength(state, ice.install_id)
 }
 
 /// Whether a boost to the icebreaker `install` lasts the run rather than the

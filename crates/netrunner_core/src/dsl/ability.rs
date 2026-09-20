@@ -324,6 +324,14 @@ pub enum EffectRequirement {
     /// ice". Every rezzed install hears the event (Phật Gioan Baotixita
     /// reacts from anywhere), so the narrowing is the card's to declare.
     AgendaCameFromThisCardsServer,
+    /// This card is installed protecting a remote server — Palisade's
+    /// "while this ice is protecting a remote server", which was
+    /// `StrengthModifier::WhileProtectingRemote` until ice strength became
+    /// a continuous effect. Nothing composes to it: no requirement reads
+    /// where the acting card is installed, and "a remote" is every server
+    /// that is not one of three, which a list of ids cannot say
+    /// (`EventFilter::Server`'s doc has the same sentence).
+    ProtectingRemote,
     CurrentlyAccessingInstalledCard {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         rezzed_only: bool,

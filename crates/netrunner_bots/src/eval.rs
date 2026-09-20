@@ -8,7 +8,7 @@ use netrunner_core::dsl::{
     card_matches_filter, Amount, CardDefinition, CardFilter, CardType, CardZoneRef, Cost, Effect, IceType,
     SubroutineBreakCount, Trigger,
 };
-use netrunner_core::rules::{continuous, lingering};
+use netrunner_core::rules::continuous;
 use netrunner_core::rules::{
     current_actor, GamePhase, GameState, InstalledCard, InstalledRunnerCard, PendingDecision, RunIce, RunPhase,
     RunState, Side, SubroutineStatus,
@@ -1236,7 +1236,7 @@ fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, regis
     let pending = pending_on(ice);
     // The number the break contest uses — a pump bought inside the search
     // and what the table adds (Echelon, Rising Tide) included.
-    let shortfall = (lingering::ice_strength(state, ice) - continuous::breaker_strength(state, registry, card)).max(0) as u32;
+    let shortfall = (continuous::ice_strength(state, registry, ice) - continuous::breaker_strength(state, registry, card)).max(0) as u32;
     let mut cheapest_break: Option<u32> = None;
     let mut cheapest_pump: Option<u32> = None;
     let keep_min = |slot: &mut Option<u32>, cost: u32| *slot = Some(slot.map_or(cost, |c| c.min(cost)));
@@ -1286,7 +1286,7 @@ fn strength_shortfall(state: &GameState, run: &RunState, registry: &CardRegistry
         .filter(|card| breaks_subtype(state, card, ice, registry))
         .map(|card| continuous::breaker_strength(state, registry, card))
         .max();
-    best.map_or(0, |strength| (lingering::ice_strength(state, ice) - strength).max(0))
+    best.map_or(0, |strength| (continuous::ice_strength(state, registry, ice) - strength).max(0))
 }
 
 /// Whether `ice` is a `subtype` right now: the one it prints, or one the
@@ -2120,7 +2120,6 @@ mod tests {
             ice: vec![RunIce {
                 install_id: netrunner_core::rules::InstallId::PLACEHOLDER,
                 card_id: CardId("ice_wall".to_string()),
-                current_strength: 1,
                 ice_type: IceType::Barrier,
                 subroutines: vec![sub(0), sub(1), sub(2)],
                 rezzed: true,
@@ -2349,7 +2348,15 @@ mod tests {
     #[test]
     fn a_strength_shortfall_against_a_matching_breaker_is_worth_pumping() {
         use netrunner_core::rules::{RunIce, ServerId};
-        let registry = CardRegistry::from_cards(vec![breaker("cleaver", Some(IceType::Barrier))]);
+        // The ice prints 4: a run's ice stores no strength of its own.
+        let wall = CardDefinition {
+            id: CardId("palisade".to_string()),
+            side: Side::Corp,
+            card_type: CardType::Ice(IceType::Barrier),
+            strength: Some(4),
+            ..CardDefinition::default()
+        };
+        let registry = CardRegistry::from_cards(vec![breaker("cleaver", Some(IceType::Barrier)), wall]);
         let encountering = |strength: i32, credits: u32| {
             let mut state = GameState::new(0);
             state.runner.resources.credits = Credits(credits);
@@ -2365,7 +2372,6 @@ mod tests {
                 ice: vec![RunIce {
                     install_id: netrunner_core::rules::InstallId::PLACEHOLDER,
                     card_id: CardId("palisade".to_string()),
-                    current_strength: 4,
                     ice_type: IceType::Barrier,
                     subroutines: Vec::new(),
                     rezzed: true,
@@ -2408,13 +2414,14 @@ mod tests {
         def
     }
 
-    /// One piece of ICE on a run, all subroutines pending.
+    /// One piece of ICE on a run, all subroutines pending. Its strength is
+    /// what its card prints — a run's ice stores none — so the card is
+    /// named for the number and `with_printed_ice` registers it.
     fn run_ice(strength: i32, ice_type: IceType, subroutines: usize, rezzed: bool) -> RunIce {
         use netrunner_core::rules::{EncounteredSubroutine, InstallId};
         RunIce {
             install_id: InstallId::PLACEHOLDER,
-            card_id: CardId("ice".to_string()),
-            current_strength: strength,
+            card_id: CardId(format!("ice{strength}")),
             ice_type,
             subroutines: (0..subroutines)
                 .map(|id| EncounteredSubroutine {
@@ -2427,11 +2434,31 @@ mod tests {
         }
     }
 
+    /// `registry` with a card for each of `run_ice`'s pieces that prints the
+    /// strength it was asked for.
+    fn with_printed_ice(registry: &CardRegistry, ice: &[RunIce]) -> CardRegistry {
+        let mut registry = registry.clone();
+        for ice in ice {
+            if let Some(strength) = ice.card_id.0.strip_prefix("ice").and_then(|n| n.parse().ok()) {
+                registry.insert(CardDefinition {
+                    id: ice.card_id.clone(),
+                    title: ice.card_id.0.clone(),
+                    side: Side::Corp,
+                    card_type: CardType::Ice(ice.ice_type),
+                    strength: Some(strength),
+                    ..CardDefinition::default()
+                });
+            }
+        }
+        registry
+    }
+
     /// `evaluate_state` for the Runner, `credits` in hand, approaching the
     /// outermost ICE of a run over `ice` — minus the same board with no run,
     /// so the result is exactly what the run term contributed.
     fn run_term(rig: Vec<InstalledRunnerCard>, credits: u32, ice: Vec<RunIce>, position: usize, registry: &CardRegistry) -> f64 {
         use netrunner_core::rules::ServerId;
+        let registry = &with_printed_ice(registry, &ice);
         let mut idle = GameState::new(0);
         idle.runner.resources.credits = Credits(credits);
         idle.runner.rig = rig;
@@ -2475,6 +2502,7 @@ mod tests {
         assert_eq!(run_term(cleaver(), 4, two(), 0, &registry), 0.0, "3 + 2 credits needed, 4 held");
         assert_eq!(run_term(cleaver(), 5, two(), 0, &registry), ACTIVE_RUN_WEIGHT);
 
+        let registry = with_printed_ice(&registry, &ice());
         let mut idle = GameState::new(0);
         idle.runner.resources.credits = Credits(2);
         idle.runner.rig = cleaver();
@@ -2509,7 +2537,7 @@ mod tests {
         ]);
         let run = |rezzed, position| RunState {
             server: ServerId::Hq,
-            ice: vec![run_ice(5, IceType::Sentry, 1, rezzed)],
+            ice: vec![RunIce { card_id: CardId("ice".to_string()), ..run_ice(5, IceType::Sentry, 1, rezzed) }],
             position,
             ..Default::default()
         };
@@ -3407,6 +3435,7 @@ mod tests {
         // other term cancels — credits especially, which the Corp scores
         // through `opponent_credit_weight`.
         let run_term = |ice: Vec<RunIce>, credits: u32, rig: Vec<InstalledRunnerCard>| {
+            let registry = with_printed_ice(&registry, &ice);
             let mut idle = GameState::new(0);
             idle.runner.resources.credits = Credits(credits);
             idle.runner.rig = rig;

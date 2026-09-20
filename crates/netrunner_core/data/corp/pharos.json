@@ -8,12 +8,23 @@
   "cost": 7,
   "strength": 5,
   "advancement_requirement": 0,
-  "strength_modifier": {
-    "WhileHostedAdvancementsAtLeast": {
-      "threshold": 3,
-      "bonus": 5
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 5
+        }
+      },
+      "applies_to": "This",
+      "while": {
+        "AmountAtLeast": [
+          "HostedAdvancementTokens",
+          3
+        ]
+      },
+      "text": "It gets +5 strength while there are 3 or more hosted advancement counters."
     }
-  },
+  ],
   "triggers": [],
   "subroutines": [
     {

@@ -588,8 +588,8 @@ fn building_a_better_world_gains_a_credit_when_hedge_fund_is_played() {
 /// "You can advance this ice. It gets +1 strength for each hosted
 /// advancement counter." Neither half was modelled: no
 /// `advancement_requirement` marker (so `AdvanceCard` refused it) and no
-/// per-counter strength (`StrengthModifier::PerHostedAdvancement` is a
-/// rate, which the threshold-shaped Pharos variant could not express).
+/// per-counter strength (a rate — `Strength { per: 1, of:
+/// HostedAdvancementTokens }` — where Pharos's is a threshold).
 #[test]
 fn ice_wall_is_advanceable_and_gains_one_strength_per_advancement() {
     let registry = registry();
@@ -618,7 +618,7 @@ fn ice_wall_is_advanceable_and_gains_one_strength_per_advancement() {
     state.runner.resources.clicks = Clicks(4);
     let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run HQ");
     let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ice wall");
-    assert_eq!(state.active_run.as_ref().unwrap().ice[0].current_strength, 4, "1 printed + 3 advancement counters");
+    assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 4, "1 printed + 3 advancement counters");
 }
 
 /// Gordian Blade's pump is "+1 strength **for the remainder of this
@@ -3953,7 +3953,7 @@ mod system_gateway {
         .expect("spend the hosted counter to weaken the ice");
         assert_eq!(state.runner.rig[0].counters, 0);
         let run = state.active_run.as_ref().unwrap();
-        assert_eq!(crate::rules::lingering::ice_strength(&state, &run.ice[0]), 2, "3 - 1 (Leech)");
+        assert_eq!(crate::rules::continuous::ice_strength(&state, &registry, &run.ice[0]), 2, "3 - 1 (Leech)");
         // "For the remainder of this encounter": it was written into the
         // run's copy of the ice, where it lasted the run.
         assert_eq!(state.lingering[0].until, crate::rules::lingering::Until::EndOfEncounter(run.ice[0].install_id));
@@ -5013,7 +5013,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).expect("run remote");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach palisade");
         assert_eq!(
-            state.active_run.as_ref().unwrap().ice[0].current_strength,
+            crate::rules::test_support::ice_strength_in_run(&state, &registry, 0),
             4,
             "2 printed + 2 while protecting a remote server"
         );
@@ -5025,7 +5025,7 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run hq");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach palisade on hq");
         assert_eq!(
-            state.active_run.as_ref().unwrap().ice[0].current_strength,
+            crate::rules::test_support::ice_strength_in_run(&state, &registry, 0),
             2,
             "no bonus while protecting a central server"
         );
@@ -5042,7 +5042,7 @@ mod system_gateway {
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run hq");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach pharos below threshold");
-        assert_eq!(state.active_run.as_ref().unwrap().ice[0].current_strength, 5, "below the 3-token threshold: no bonus");
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 5, "below the 3-token threshold: no bonus");
 
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
@@ -5051,7 +5051,7 @@ mod system_gateway {
         state.corp.installed[0].advancement_tokens = 3;
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run hq");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach pharos at threshold");
-        assert_eq!(state.active_run.as_ref().unwrap().ice[0].current_strength, 10, "5 printed + 5 at 3+ advancement tokens");
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 10, "5 printed + 5 at 3+ advancement tokens");
     }
 
     /// A rezzed Root-slot Corp install, the shape every AMAZE Amusements
@@ -7279,6 +7279,88 @@ mod system_gateway {
         assert_eq!(state.active_run.as_ref().unwrap().phase, crate::rules::RunPhase::EncounterIce);
     }
 
+    /// Passes and continues until the run stands on the `position`th piece
+    /// of ice, encountering it, and returns what happened on the way.
+    fn advance_to_encounter(mut state: GameState, registry: &CardRegistry, position: usize) -> (GameState, Vec<crate::rules::GameEvent>) {
+        let mut events = Vec::new();
+        for _ in 0..30 {
+            let run = state.active_run.as_ref().expect("the run is still on");
+            if run.position == position && run.phase == crate::rules::RunPhase::EncounterIce {
+                return (state, events);
+            }
+            let action = crate::rules::legal_actions(&state, registry)
+                .into_iter()
+                .find(|a| matches!(a, PlayerAction::PassPriority { .. } | PlayerAction::ContinueRun))
+                .expect("a pass or a continue");
+            let (next, ev) = apply_action(&state, registry, action.clone()).unwrap_or_else(|e| panic!("{action:?}: {e:?}"));
+            state = next;
+            events.extend(ev);
+        }
+        panic!("the run never reached ice {position}");
+    }
+
+    /// An ice's strength is asked, not stored. It was baked into the run's
+    /// copy of the ice when the run began, on the stated ground that
+    /// advancement cannot change mid-run — and Syailendra's subroutine
+    /// places a counter mid-run. The Ice Wall behind it stayed at 1, and a
+    /// Pharos taken from 2 counters to 3 stayed at 5.
+    #[test]
+    fn a_counter_syailendra_places_mid_run_reaches_the_ice_behind_it() {
+        let registry = sg_registry();
+        for (inner, counters, before, after) in [("ice_wall", 0, 1, 2), ("pharos", 2, 5, 10)] {
+            let mut state = runner_turn(5, 4);
+            // Something to lose to Syailendra's net damage.
+            state.runner.grip = vec![CardId("sure_gamble".to_string()), CardId("jailbreak".to_string())];
+            // Outermost first: Syailendra is met, then the ice behind it.
+            state.corp.installed = vec![ice_installed("syailendra", ServerId::Hq, true), ice_installed(inner, ServerId::Hq, true)];
+            state.corp.installed[1].advancement_tokens = counters;
+            let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+            let run = state.active_run.as_ref().unwrap();
+            let behind = run.ice.iter().position(|ice| ice.card_id.0 == inner).expect("the ice is in the run");
+            assert_eq!(run.ice.len() - 1, behind, "{inner} is innermost");
+            assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, behind), before, "{inner} as the run begins");
+
+            let state = advance_until_choice(state, &registry);
+            assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })), "Syailendra's first subroutine");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, inner) }).expect("pick the ice behind");
+            let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("place the counter");
+            assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, behind), after, "{inner}, the moment the counter lands");
+
+            let (state, events) = advance_to_encounter(state, &registry, behind);
+            assert!(
+                events.iter().any(|e| matches!(e, crate::rules::GameEvent::IceEncountered { card_id, strength, .. } if card_id.0 == inner && *strength == after)),
+                "the encounter announces the number the break contest uses: {events:?}"
+            );
+            let view = crate::view::build_client_view(&state, &registry, Side::Runner);
+            assert_eq!(view.active_run.as_ref().unwrap().ice[behind].identity.as_ref().unwrap().current_strength, after, "and so does the view");
+        }
+    }
+
+    /// "While this ice is the only piece of ice protecting this server":
+    /// its own subroutine can end that, mid-run, and the +4 goes with it.
+    #[test]
+    fn scatter_field_loses_its_bonus_when_its_subroutine_installs_ice_beside_it() {
+        let registry = sg_registry();
+        let mut state = runner_turn(5, 4);
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("ice_wall".to_string())];
+        state.corp.installed = vec![ice_installed("scatter_field", ServerId::Hq, true)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = advance_to_encounter(state, &registry, 0);
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 4, "alone on HQ");
+        let scatter_field = state.active_run.as_ref().unwrap().ice[0].clone();
+
+        let state = advance_until_choice(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).expect("pick the barrier");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("protecting HQ too");
+        assert!(state.corp.installed.iter().any(|c| c.card.0 == "ice_wall" && c.server == ServerId::Hq));
+        // The second subroutine has ended the run by now, so the question
+        // is put about the ice as the run had it — the answer is the
+        // state's, which is the point.
+        assert_eq!(crate::rules::continuous::ice_strength(&state, &registry, &scatter_field), 0, "no longer the only ice");
+    }
+
     #[test]
     fn key_performance_indicators_resolves_two_of_four_options_in_the_order_chosen() {
         let registry = sg_registry();
@@ -7511,7 +7593,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("scatter_field", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
-        assert_eq!(state.active_run.as_ref().unwrap().ice[0].current_strength, 4, "alone on HQ");
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 4, "alone on HQ");
         let state = advance_until_choice(state, &registry);
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })), "the first subroutine's offer");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "pad_campaign") }).expect("pick");
@@ -7525,7 +7607,7 @@ mod system_gateway {
         state.corp.installed = vec![ice_installed("scatter_field", ServerId::Hq, true), ice_installed("ice_wall", ServerId::Hq, true)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
-        assert_eq!(state.active_run.as_ref().unwrap().ice[0].current_strength, 0, "not the only ice");
+        assert_eq!(crate::rules::test_support::ice_strength_in_run(&state, &registry, 0), 0, "not the only ice");
     }
 
     #[test]
