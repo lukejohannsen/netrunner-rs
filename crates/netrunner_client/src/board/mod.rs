@@ -7,7 +7,8 @@
 //! encounter as marks on its subroutines (`facts`), and the
 //! numbers a HUD keeps in fixed places (`hud`), and the rig's three rows
 //! in the order the chair sees them (`rig`), and every card's way through
-//! the encountered ICE with its price (`breaks`). All of
+//! the encountered ICE with its price (`breaks`), and what a card will ask
+//! before it is played (`preview`). All of
 //! it reads only the masked `ClientView` and the masked
 //! `PublicHistoryEntry` a seat receives, so nothing here can show a card
 //! the mask withheld.
@@ -19,6 +20,7 @@ pub mod diff;
 pub mod facts;
 pub mod hud;
 pub mod phase;
+pub mod preview;
 pub mod rig;
 pub mod trail;
 
@@ -27,5 +29,6 @@ pub use affordance::Affordance;
 pub use breaks::{routes, AutoBreak, Next, Route};
 pub use diff::{transitions, Transition, Zone};
 pub use facts::{encounter_subroutines, install_facts, subroutine_word, tile_label, tile_title, tile_tokens, Encounter, Subroutine, Token, TokenKind};
+pub use preview::Asks;
 pub use rig::RigRow;
 pub use trail::{IceState, IceStep, Outcome, RunTrail, Stage};

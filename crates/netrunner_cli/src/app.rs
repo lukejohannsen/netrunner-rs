@@ -14,7 +14,7 @@ use std::time::{Duration, Instant};
 use ratatui::crossterm::event::{KeyCode, KeyEvent};
 use tokio::sync::mpsc;
 
-use netrunner_client::board::{routes, ActionMap, AutoBreak, Next, Route};
+use netrunner_client::board::{routes, ActionMap, Asks, AutoBreak, Next, Route};
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{PlayerAction, Side, Viewer};
@@ -61,6 +61,9 @@ pub struct App {
     /// Every card's way through the encountered ICE
     /// (`netrunner_client::board::breaks`), listed after the actions.
     pub breaks: Vec<Route>,
+    /// What each legal action of the current view goes on to ask
+    /// (`netrunner_client::board::preview`), built when the view arrives.
+    asks: Asks,
     /// The route under way: each `StateUpdate` asks it for the next step,
     /// which goes back without a keypress.
     breaking: Option<AutoBreak>,
@@ -90,6 +93,7 @@ impl App {
             modal: None,
             card_picker: None,
             breaks: Vec::new(),
+            asks: Asks::default(),
             breaking: None,
         };
         app.drain_messages();
@@ -162,6 +166,7 @@ impl App {
                     if self.selected >= self.offered_actions_in(&view).len() + self.breaks.len() {
                         self.selected = 0;
                     }
+                    self.asks = Asks::of(&view, &self.registry);
                     self.view = Some(*view);
                 }
                 ServerMessage::ActionLog(entry) => {
@@ -541,7 +546,8 @@ impl RenderableView for App {
     }
 
     fn legal_action_labels(&self) -> Vec<String> {
-        let mut labels: Vec<String> = self.offered_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect();
+        let mut labels: Vec<String> =
+            self.offered_actions().iter().map(|action| self.asks.label(action, describe_action(action, &self.registry, self.view.as_ref()))).collect();
         if let Some(view) = &self.view {
             labels.extend(self.breaks.iter().map(|route| route.label(view, &self.registry)));
         }

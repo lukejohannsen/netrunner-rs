@@ -204,6 +204,17 @@ impl ActionMap {
         Self { entries, selection, collapsed, passing: affordance::in_a_passing_moment(view) }
     }
 
+    /// Adds to each entry's label what its action goes on to ask
+    /// (`preview::Asks`). Apart from `build` because `build` is cheap
+    /// enough to call every frame, which the terminal client does, and a
+    /// preview is an `apply_action` per playable card: a client annotates
+    /// the one map it keeps for a view.
+    pub fn annotate(&mut self, asks: &super::preview::Asks) {
+        for entry in &mut self.entries {
+            entry.label = asks.label(&entry.action, std::mem::take(&mut entry.label));
+        }
+    }
+
     /// The card selection this map was built over, when the viewer is
     /// choosing — what a pop-up reads to draw each candidate's card.
     pub fn selection(&self) -> Option<&Selection> {

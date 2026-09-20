@@ -68,7 +68,7 @@
 use std::sync::Arc;
 
 use netrunner_client::actions::push_log_line;
-use netrunner_client::board::{encounter_subroutines, routes, transitions, ActionMap, Affordance, AutoBreak, Control, Encounter, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
+use netrunner_client::board::{encounter_subroutines, routes, transitions, ActionMap, Affordance, Asks, AutoBreak, Control, Encounter, Next, Pile, Prompt, Route, RunTrail, Target, Transition};
 use netrunner_client::play::{lone_pass, GameEndReason, MatchMessage};
 use netrunner_client::ratings::RatingReport;
 use netrunner_core::cards::CardRegistry;
@@ -627,6 +627,9 @@ impl Game {
             }
             MatchMessage::Awaiting { view } => {
                 self.actions = ActionMap::build(&view, &self.registry);
+                // What each card will ask, on its button before it is
+                // played: once per view, like the routes below.
+                self.actions.annotate(&Asks::of(&view, &self.registry));
                 self.prompt = Prompt::of(&view, &self.registry);
                 // A route under way takes its next step before the person
                 // is asked anything; the board still shows the view.
@@ -1601,5 +1604,30 @@ mod tests {
         // off the rail, without the log.
         let met = game.encounter().expect("still encountering — breaking a subroutine does not pass the ice");
         assert_eq!(met.subroutines.iter().map(|sub| (sub.text.as_str(), sub.word())).collect::<Vec<_>>(), [("End the run.", "broken")]);
+    }
+
+    /// Red Team's entry on its menu says which servers it has left, before
+    /// the click is spent (Phase 7 §8 item 4a) — the report was a person
+    /// finding out by paying.
+    #[test]
+    fn a_card_that_opens_on_a_choice_says_what_it_will_ask() {
+        use netrunner_core::dsl::CardId;
+        use netrunner_core::rules::{GameState, InstalledRunnerCard, ServerId};
+        use netrunner_core::view::build_client_view;
+
+        let registry = Arc::new(netrunner_client::decks::sample_deck_registry());
+        let mut state = GameState::new(1);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks.0 = 3;
+        state.runner.rig.push(InstalledRunnerCard { card: CardId("red_team".to_string()), install_id: InstallId(100), counters: 12, ..Default::default() });
+        state.runner.servers_run_this_turn.push(ServerId::Archives);
+
+        let mut game = Game::new(registry.clone(), Side::Runner);
+        let view = build_client_view(&state, &registry, Side::Runner);
+        game.apply(Intent::Message(MatchMessageRef(MatchMessage::Awaiting { view: Box::new(view) })));
+        let entries = game.entries_for(&Target::Install(InstallId(100)));
+        let labels: Vec<&str> = entries.iter().map(|index| game.actions.entries[*index].label.as_str()).collect();
+        assert_eq!(labels.len(), 1, "{labels:?}");
+        assert!(labels[0].ends_with(" — then asks: Run on HQ / Run on R&D"), "{}", labels[0]);
     }
 }
