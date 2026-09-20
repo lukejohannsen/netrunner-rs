@@ -80,10 +80,22 @@
       ]
     }
   ],
-  "hosted_breaker_bonus": {
-    "strength": 1,
-    "boosts_last_the_run": true
-  },
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1
+        }
+      },
+      "applies_to": "Host",
+      "text": "Host icebreaker gets +1 strength."
+    },
+    {
+      "kind": "BoostsLastTheRun",
+      "applies_to": "Host",
+      "text": "Abilities that increase its strength last for the remainder of the run"
+    }
+  ],
   "numeric_id": 35027,
   "is_playable": true
 }

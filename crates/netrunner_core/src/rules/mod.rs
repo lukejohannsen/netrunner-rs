@@ -1,7 +1,9 @@
 mod ability;
 mod action;
+mod active;
 mod action_mask;
 mod checkpoint;
+pub mod continuous;
 mod damage;
 pub(crate) mod deck;
 mod dispatcher;
@@ -24,11 +26,6 @@ mod turn;
 mod win;
 
 pub use ability::{evaluate_effect, pay_cost, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
-// Only reached from `cards::tests` today (`ability.rs`'s own internal use
-// doesn't need this re-export) — gated to avoid an unused-import warning on
-// a non-test build.
-#[cfg(test)]
-pub(crate) use ability::computed_runner_strength;
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use action_mask::{get_action_mask, ActionSpace};
 pub use damage::apply_damage;

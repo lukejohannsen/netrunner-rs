@@ -5,7 +5,17 @@
   "card_type": "Hardware",
   "cost": 2,
   "triggers": [],
-  "memory_bonus": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
   "max_hand_size_bonus": 1,
   "numeric_id": 30031,
   "is_playable": true

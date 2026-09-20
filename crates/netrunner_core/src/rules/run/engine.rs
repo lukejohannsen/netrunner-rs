@@ -36,8 +36,8 @@ fn build_run_ice(state: &GameState, installed: &InstalledCard, registry: &CardRe
     // this ICE is first encountered during a run — its condition (server
     // type, hosted advancement count) is fixed for the run's duration in
     // every case this schema models, so a live per-query recompute isn't
-    // needed here (unlike Runner breakers' `PerInstalledIcebreaker`, which
-    // genuinely can change mid-game — see `ability::computed_runner_strength`).
+    // needed here (unlike an icebreaker's, which genuinely can change
+    // mid-game and is derived — see `continuous::breaker_strength`).
     // `Effect::ModifyStrength`'s existing deltas (e.g. Leech) still apply
     // correctly on top, since they mutate this same `current_strength` field.
     let modifier_bonus = match card_def.strength_modifier {

@@ -396,6 +396,19 @@ mod catalog_join_tests {
                     failures.extend(quote("trigger", text));
                 }
             }
+            // Nobody is asked to choose a continuous effect, so no prompt
+            // needs its clause — but it is the only part of a card an
+            // erratum can change without a trigger or an ability failing
+            // here, so the gate asks for it anyway.
+            for (index, effect) in card.continuous.iter().enumerate() {
+                match &effect.text {
+                    Some(text) => {
+                        checked += 1;
+                        failures.extend(quote(&format!("continuous effect {index}"), text));
+                    }
+                    None => failures.push(format!("{} — continuous effect {index} has no printed clause", card.title)),
+                }
+            }
             let mut effects = Vec::new();
             card.triggers.iter().flat_map(|t| t.effects.iter()).for_each(|e| walk(e, &mut effects));
             card.abilities.iter().for_each(|a| walk(&a.effect, &mut effects));

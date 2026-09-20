@@ -102,6 +102,16 @@ Which cards hear an event is one rule, in `rules::listeners`, and it is read off
 
 **A standing condition is checked in `rules::checkpoint`, never by a handler.** The agenda-point win and the ◆ rule run before an event's triggers are planned and again at the end of every action (CR 10.3), so a new way of scoring points or turning a card faceup needs no call of its own. A condition that is really a failed *attempt* (deck-out, flatline), one that parks a decision (the memory limit) and one that rejects an install (the console limit) are deliberately elsewhere; the module says why for each.
 
+### Continuous Effect Rule
+
+What a card does for as long as it is active — "+1[mu]", "costs 2[c] less to install if…", "host ice gains barrier", "the rez cost of each piece of ice is increased by 1[c]" — is an entry in `CardDefinition::continuous`: a `ContinuousKind` with the payload that kind needs, a `Scope` saying which cards it is about *read from the card that prints it* (`This`, `Host`, `Controller`, `Installing(filter)`, `Ice`, `RootOfThisServer(filter)`), and a `while`. `rules::continuous` is the one scan that reads the list, and every question a standing effect can change — a strength, a cost, the memory limit — is put to it.
+
+**Never add a standing-effect field to `CardDefinition`, and never scan the board for one in a handler.** Seven fields and a `StrengthModifier` enum were exactly that, one per card that needed one, each with its own scan in whichever handler priced the thing; two of them were wrong in ways only a second reader would have caught (a grid that taxed cards in no root, a discount that silenced its own second copy). A card the layer cannot say is a gap in its vocabulary — a kind, a `Scope`, an `Amount` — fixed there for every card, and a new `ContinuousKind` is held to the DSL Growth Rule: only what a card in the pool prints, the deferred ones named in the enum's doc.
+
+**Who is asked is the Listener Rule's sentence:** what a card says about itself applies wherever it is (a program prices itself from the grip); everything else needs an active source. Which cards are active is `rules::active`, read by `listeners`, `checkpoint` and this scan — do not write the sentence out a fourth time. **Declared effects are scanned, never stored:** there is no registry of effects in play to keep in sync with the table, the way `memory::memory_balance` never kept one. `CardDefinition::validate` refuses an effect that cannot reach anything, and a continuous effect on a sample-deck card carries its printed clause like an ability does.
+
+Four `StrengthModifier` variants (the Corp's ice) and the `*_strength_buff` fields still stand beside the layer; Rules Audit backlog item 2 in `docs/roadmap/rules-audit.md` has the stages that take them.
+
 ### DSL Growth Rule
 
 Adding an `Effect` or `EffectRequirement` variant is the expensive move: it grows the engine's permanent surface for one card's benefit.

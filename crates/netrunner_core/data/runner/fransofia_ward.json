@@ -8,7 +8,17 @@
   "subtypes": [
     "Connection"
   ],
-  "ice_rez_cost_modifier": 1,
+  "continuous": [
+    {
+      "kind": {
+        "RezCost": {
+          "per": 1
+        }
+      },
+      "applies_to": "Ice",
+      "text": "The rez cost of each piece of ice is increased by 1[credit]."
+    }
+  ],
   "triggers": [
     {
       "trigger": "OnEncounter",

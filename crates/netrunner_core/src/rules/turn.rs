@@ -360,7 +360,6 @@ pub(crate) fn enter_start_of_turn(
         }
     } else {
         next.runner.first_hq_run_used_this_turn = false;
-        next.runner.first_install_discount_used_this_turn = false;
         // Both sides — see the Corp branch above.
         next.runner.once_per_turn_used.clear();
         next.corp.once_per_turn_used.clear();

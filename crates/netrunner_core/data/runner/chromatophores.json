@@ -9,10 +9,28 @@
     "Trojan"
   ],
   "installs_on_ice": true,
-  "host_ice_gains_subtypes": [
-    "Barrier",
-    "CodeGate",
-    "Sentry"
+  "continuous": [
+    {
+      "kind": {
+        "GainSubtype": "Barrier"
+      },
+      "applies_to": "Host",
+      "text": "Host ice gains barrier, code gate, and sentry."
+    },
+    {
+      "kind": {
+        "GainSubtype": "CodeGate"
+      },
+      "applies_to": "Host",
+      "text": "Host ice gains barrier, code gate, and sentry."
+    },
+    {
+      "kind": {
+        "GainSubtype": "Sentry"
+      },
+      "applies_to": "Host",
+      "text": "Host ice gains barrier, code gate, and sentry."
+    }
   ],
   "triggers": [],
   "numeric_id": 35030,

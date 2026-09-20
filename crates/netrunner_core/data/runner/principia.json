@@ -39,7 +39,18 @@
     }
   ],
   "memory_cost": 1,
-  "install_cost_discount_amount": "InstalledIcebreakerCount",
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -1,
+          "of": "InstalledIcebreakerCount"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program costs 1[credit] less to install for each other installed icebreaker."
+    }
+  ],
   "numeric_id": 35032,
   "is_playable": true,
   "subtypes": [

@@ -9,9 +9,20 @@
   "subtypes": [
     "Fracter"
   ],
-  "strength_modifier": {
-    "PerFracterInHeap": 1
-  },
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": {
+            "InHeapWithSubtype": "Fracter"
+          }
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each fracter in your heap."
+    }
+  ],
   "triggers": [],
   "abilities": [
     {

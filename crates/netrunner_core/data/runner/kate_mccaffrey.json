@@ -5,7 +5,27 @@
   "card_type": "Identity",
   "cost": 0,
   "min_deck_size": 45,
-  "first_install_discount": 1,
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Installing": {
+          "CardTypeOneOf": [
+            "Program",
+            "Hardware"
+          ]
+        }
+      },
+      "while": {
+        "OncePerTurn": "first_install_discount"
+      },
+      "text": "Lower the install cost of the first program or piece of hardware you install each turn by 1."
+    }
+  ],
   "triggers": [],
   "numeric_id": 1033,
   "is_playable": true

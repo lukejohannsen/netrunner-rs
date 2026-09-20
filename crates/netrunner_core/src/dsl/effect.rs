@@ -958,6 +958,15 @@ pub enum Amount {
     /// `EffectRequirement::AmountAtLeast`. `EffectRequirement::IsTagged`
     /// answers only "at least one".
     RunnerTags,
+    /// Cards in the Runner's heap that print the subtype — Rising Tide's
+    /// "+1 strength for each fracter in your heap", which was
+    /// `StrengthModifier::PerFracterInHeap` until a continuous effect's
+    /// number became an `Amount`. No existing variant counts a zone, so
+    /// composition had nothing to compose; and not a general
+    /// `CountInZone { zone, filter }`, because `Amount` is `Copy` and a
+    /// `CardFilter` is not — the day a second zone is counted is the day
+    /// to pay for that.
+    InHeapWithSubtype(crate::dsl::CardSubtype),
 }
 
 /// What `Effect::EndTheRun` does the first time it would end a run whose

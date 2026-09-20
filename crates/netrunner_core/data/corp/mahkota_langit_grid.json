@@ -9,7 +9,21 @@
   ],
   "counter_kind": "Credit",
   "hosted_credits_usable_for": "RezInThisServer",
-  "root_asset_trash_cost_bonus": 2,
+  "continuous": [
+    {
+      "kind": {
+        "TrashCost": {
+          "per": 2
+        }
+      },
+      "applies_to": {
+        "RootOfThisServer": {
+          "CardType": "Asset"
+        }
+      },
+      "text": "The trash cost of each asset in the root of this server is increased by 2[credit]."
+    }
+  ],
   "persistent_after_trash": true,
   "triggers": [
     {

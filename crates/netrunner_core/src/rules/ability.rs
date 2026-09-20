@@ -1,8 +1,9 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{
     card_matches_filter, Amount, BoostDuration, CardFilter, CardId, CardSubtype, CardTarget, CardType, Cost, Effect,
-    EffectRequirement, HostedCardOrigin, IceType, StackZone, StrengthModifier, SubroutineBreakCount, Trigger, TriggeredEffect,
+    EffectRequirement, HostedCardOrigin, StackZone, SubroutineBreakCount, Trigger, TriggeredEffect,
 };
+use crate::rules::continuous;
 use crate::rules::damage;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
@@ -784,10 +785,10 @@ pub fn evaluate_effect(
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
             // A hosted card can lengthen the boost (GAMEDRAGON™ Pro:
             // "abilities that increase its strength last for the remainder
-            // of the run"). Only ever a lengthening — see
-            // `HostedBreakerBonus::boosts_last_the_run`.
+            // of the run"). Only ever a lengthening: a `Turn` boost is
+            // already longer and stays `Turn`.
             let host_install = state.runner.rig[position].install_id;
-            let lasts_the_run = hosted_breaker_bonuses(state, registry, host_install).any(|bonus| bonus.boosts_last_the_run);
+            let lasts_the_run = continuous::boosts_last_the_run(state, registry, host_install);
             let duration = match duration {
                 BoostDuration::Encounter if lasts_the_run => BoostDuration::Run,
                 other => *other,
@@ -816,7 +817,7 @@ pub fn evaluate_effect(
 
             let breaker = acting_rig_card(state, ctx)
                 .ok_or_else(|| RulesError::CardNotInRig { side: Side::Runner, card: acting.clone() })?;
-            let breaker_strength = computed_runner_strength(breaker, state, registry);
+            let breaker_strength = continuous::breaker_strength(state, registry, breaker);
 
             let run = state.active_run.as_ref().unwrap();
             let ice = &run.ice[run.position];
@@ -824,7 +825,7 @@ pub fn evaluate_effect(
                 (ice.card_id.clone(), ice.current_strength, ice.ice_type, ice.install_id);
             if let Some(expected) = restrict_to
                 && *expected != ice_type
-                && !ice_gains_subtype_from_hosted(state, registry, ice_install, *expected)
+                && !continuous::ice_gains_subtype(state, registry, ice_install, *expected)
             {
                 return Err(RulesError::InvalidBreakerSubtype {
                     breaker: acting.clone(),
@@ -2683,75 +2684,6 @@ fn installed_icebreaker_count(state: &GameState, registry: &CardRegistry) -> u32
 /// installed/rigged) resolves to `0` rather than erroring — the same
 /// "nothing to do" leniency `Effect::DrawCards`/`TakeAllCountersAsCredits`
 /// already establish for an empty/absent source.
-/// Live-computed strength for a Runner rig card, layering its
-/// `CardDefinition::strength_modifier` (if any) on top of its stored
-/// `effective_strength()` (base + encounter/turn buffs) — unlike Corp ICE's
-/// `StrengthModifier`, which is baked into `RunIce::current_strength` once
-/// per run (`run::engine::build_run_ice`), a Runner breaker's
-/// `PerInstalledIcebreaker` bonus can change at any moment (installing or
-/// trashing another icebreaker), so it must be recomputed live at every
-/// read site that needs an up-to-date value — currently `Effect::
-/// BreakSubroutines`'s strength contest and `masking::PublicInstalledRunnerCard`'s
-/// displayed strength. Every other Runner-side strength read (encounter/turn
-/// buff bookkeeping itself) stays on the plain `effective_strength()` it
-/// already used, since those don't need a live conditional bonus applied.
-pub(crate) fn computed_runner_strength(card: &InstalledRunnerCard, state: &GameState, registry: &CardRegistry) -> i32 {
-    let bonus = registry
-        .get(&card.card)
-        .and_then(|def| def.strength_modifier)
-        .map(|modifier| match modifier {
-            StrengthModifier::PerInstalledIcebreaker(per) => per * installed_icebreaker_count(state, registry) as i32,
-            // Rising Tide: one per fracter in the heap, live.
-            StrengthModifier::PerFracterInHeap(per) => {
-                per * state
-                    .runner
-                    .heap
-                    .iter()
-                    .filter(|id| registry.get(id).is_some_and(|def| def.subtypes.contains(&crate::dsl::CardSubtype::Fracter)))
-                    .count() as i32
-            }
-            // The three Corp-ICE modifiers never apply to a rig card.
-            StrengthModifier::WhileProtectingRemote(_)
-            | StrengthModifier::WhileOnlyIceProtectingServer(_)
-            | StrengthModifier::WhileHostedAdvancementsAtLeast { .. }
-            | StrengthModifier::PerHostedAdvancement(_) => 0,
-        })
-        .unwrap_or(0);
-    let hosted: i32 = hosted_breaker_bonuses(state, registry, card.install_id).map(|bonus| bonus.strength).sum();
-    card.effective_strength() + bonus + hosted
-}
-
-/// The `HostedBreakerBonus` of every rig card hosted on `host`
-/// (`InstalledRunnerCard::hosted_on_program == Some(host)`) — GAMEDRAGON™
-/// Pro on an icebreaker. Live, like `StrengthModifier`: read at every
-/// strength query and at every boost, never baked into the host.
-fn hosted_breaker_bonuses<'s>(
-    state: &'s GameState,
-    registry: &'s CardRegistry,
-    host: InstallId,
-) -> impl Iterator<Item = crate::dsl::HostedBreakerBonus> + 's {
-    state
-        .runner
-        .rig
-        .iter()
-        .filter(move |card| card.hosted_on_program == Some(host))
-        .filter_map(move |card| registry.get(&card.card).and_then(|def| def.hosted_breaker_bonus))
-}
-
-/// Whether a Trojan hosted on the ICE install `ice` grants it `subtype`
-/// (`CardDefinition::host_ice_gains_subtypes` — Chromatophores). The ICE's
-/// effective subtypes are its printed `IceType` plus these grants; only
-/// `Effect::BreakSubroutines`' `restrict_to` check consults them today.
-fn ice_gains_subtype_from_hosted(state: &GameState, registry: &CardRegistry, ice: InstallId, subtype: IceType) -> bool {
-    state
-        .runner
-        .rig
-        .iter()
-        .filter(|card| card.hosted_on_ice == Some(ice))
-        .filter_map(|card| registry.get(&card.card))
-        .any(|def| def.host_ice_gains_subtypes.contains(&subtype))
-}
-
 /// Drains up to `amount` credits from the hosted-credit pools whose card
 /// `usable` accepts, rig order, trashing a pool that empties when its card
 /// says so (`CardDefinition::trash_when_empty` — Open Market). Returns the
@@ -2878,6 +2810,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         // rather than a running counter that a forfeit would have to
         // decrement.
         Amount::RunnerTags => state.runner.tags,
+        Amount::InHeapWithSubtype(subtype) => {
+            state.runner.heap.iter().filter(|card| registry.get(card).is_some_and(|def| def.subtypes.contains(subtype))).count() as u32
+        }
         Amount::ThreatLevel => {
             let corp: u32 = state.corp.scored_agendas.iter().filter_map(|s| crate::rules::win::agenda_value(&s.card, registry)).sum();
             let runner: u32 = state.runner.scored_agendas.iter().filter_map(|c| crate::rules::win::agenda_value(c, registry)).sum();

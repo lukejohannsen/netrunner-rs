@@ -960,17 +960,15 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
     }
 }
 
-/// Deliberately still `effective_strength()`, not `ability::
-/// computed_runner_strength` — `mask_state_for_player`'s whole call chain has
-/// no `CardRegistry` parameter today (a much wider signature change than
-/// this milestone's actual cards justify: it would ripple into every
-/// consumer crate's `mask_state_for_player` call site). A card with a
-/// `StrengthModifier` (e.g. Echelon) therefore displays its strength here
-/// without that live bonus — the *mechanical* result (`Effect::
-/// BreakSubroutines`'s strength contest, which does call
-/// `computed_runner_strength`) is unaffected and always correct; only this
-/// masked-view number can lag behind it. Revisit if a real UI consumer ever
-/// needs the displayed number to match.
+/// **Still `effective_strength()`, which is the stored half alone** — what
+/// the table adds (`continuous::breaker_strength`: Echelon, Rising Tide, a
+/// GAMEDRAGON™ Pro's host) is missing from every view, so the number shown
+/// can lag the one the break contest uses. The reason once given here, that
+/// threading a `CardRegistry` would ripple into every consumer crate, was
+/// wrong: `view::build_client_view` is the one production caller and holds
+/// one. It is a stage of its own (Rules Audit backlog item 2) because
+/// `netrunner_bots::determinize` folds the displayed number back into
+/// `base_strength`, so correcting this alone would count the bonus twice.
 fn mask_installed_runner_card(card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
     PublicInstalledRunnerCard {
         card: card.card.clone(),

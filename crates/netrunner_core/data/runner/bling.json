@@ -8,7 +8,17 @@
   "subtypes": [
     "Console"
   ],
-  "memory_bonus": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
   "hosted_cards_playable_from_grip": true,
   "triggers": [
     {

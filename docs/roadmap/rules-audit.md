@@ -456,6 +456,115 @@ one.
    fields. Prohibitions (§2.5) are its boolean kinds. It is also where **ICE
    gaining or losing subroutines** and **"cannot be broken"** would live,
    neither of which the engine models today.
+
+   **Taken up 20 September 2026, in six PRs, item 1's way**: the old path
+   run in shadow beside the new over both 256-seed sweeps before it is
+   deleted, `scripts/coverage_identical.py` at every stage, and a stage
+   that is a rules correction says so and is measured apart from the
+   refactor it rides on. The stages: the declared layer and every field
+   that was already derived live (this entry); hand size, which is folded
+   in once at install and never taken back; a `GameState` list of
+   lingering effects for the three `*_strength_buff` fields; the view's
+   strength, which has never included what the table adds; ICE strength,
+   which is baked when a run's ice is built and goes stale when Syailendra
+   places a counter on an Ice Wall mid-run; and the prohibitions.
+
+   **The layer is declared — DONE (20 September 2026,
+   `feat/continuous-effects-are-declared`).** `CardDefinition::continuous`
+   is a list of `ContinuousEffect { kind, applies_to, while, text }`
+   (`dsl::continuous`), and `rules::continuous` is the one scan that reads
+   it: for a question about a target, walk the active cards and ask each
+   effect whether it is the kind asked about, whether the target is one it
+   applies to, and whether it is on. Seven fields and two `StrengthModifier`
+   variants went into it — `memory_bonus` (seven consoles),
+   `install_cost_discount_if` (Carmen), `install_cost_discount_amount`
+   (Principia), `first_install_discount` (Kate, DZMZ Optimizer),
+   `ice_rez_cost_modifier` (Fransofia Ward), `root_asset_trash_cost_bonus`
+   (Mahkota Langit Grid), `host_ice_gains_subtypes` (Chromatophores),
+   `hosted_breaker_bonus` with its `HostedBreakerBonus` struct (GAMEDRAGON™
+   Pro), `PerInstalledIcebreaker` (Echelon) and `PerFracterInHeap` (Rising
+   Tide) — with the six board scans that read them, `InstallKind`, and
+   `RunnerState::first_install_discount_used_this_turn`. Sixteen card
+   files; `ActionSpace` unchanged at 1646.
+
+   *`applies_to` is a `Scope`, not the `CardFilter` this item first wrote.*
+   A filter variant is legal in every `PromptChooseCards` and every
+   `EventFilter::Card`, where "the card I am hosted on" and "the root of my
+   server" mean nothing. `Scope` carries the relation to the source —
+   `This`, `Host`, `Controller`, `Installing(filter)`, `Ice`,
+   `RootOfThisServer(filter)` — and wraps a filter where the sentence goes
+   on to say what kind of card. A number is `{ per: i32, of: Amount }`:
+   signed because a discount and a penalty are one kind, over an unsigned
+   `Amount` because every other reader of one deals damage or draws cards.
+   Only the kinds a pool card prints exist (`Strength`, `Memory`,
+   `InstallCost`, `RezCost`, `TrashCost`, `GainSubtype`,
+   `BoostsLastTheRun` — the last a fact with no payload, the kind the
+   numbers-only proposal had no room for); additional subroutines, "cannot
+   be broken" and the rest are named in the enum's doc and added when a
+   card prints them. One new read word, `Amount::InHeapWithSubtype`, where
+   a `StrengthModifier` variant used to be — not a general
+   `CountInZone { zone, filter }`, because `Amount` is `Copy` and a
+   `CardFilter` is not.
+
+   *Who is asked is the Listener Rule's sentence again.* What a card says
+   about itself (`Scope::This`) applies wherever it is — Carmen and
+   Principia price themselves from the grip, where they are not active —
+   and everything else needs an active source, plus the one `listeners`
+   also reads off the run: a persistent upgrade trashed earlier in it.
+   "Active" was written out in `listeners` and again in `checkpoint`, each
+   with a comment pointing at the other; it is `rules::active` now, and all
+   three read it. Nothing is cached: the scan runs at each question, the
+   way `memory::memory_balance` always did, and `validate` refuses an
+   effect that cannot reach anything (a `Strength` on a card that prints
+   none, a `Host` on a card that is never hosted), because a misfit parses
+   and then applies to nothing, which looks like a card that works. A
+   continuous effect's `text` is in `printed_clauses_are_quoted_from_the_card`
+   — nobody chooses one, but it is the only part of a card an erratum can
+   change without a trigger or an ability failing there — and the
+   inspector's "Engine reads it as" says them, which it never did for any
+   of the fields: a console's "+1[mu]" was invisible to it.
+
+   *In shadow first.* With both compiled into a debug build, each of the
+   six old scans asserted the layer's answer equal to its own at every
+   call, over both 256-seed sweeps (1,536 games) and the 964 unit tests:
+   **no disagreement**. Then the old code was deleted and measured
+   (`scripts/coverage_identical.py main --head-worktree`, 192 games a
+   report, seed 1): **identical, four reports of four.**
+
+   *Then two rules corrections the fields had been hiding, each measured
+   on its own.* (1) **Mahkota Langit Grid taxed an asset accessed out of
+   HQ.** "Each asset in the root of this server" was asked of the server
+   being run, so with the grid rezzed in a central's root a PAD Campaign
+   in hand cost 6 to trash. The layer asks about the install being
+   accessed (`AccessState::pending_install`), and a card from a hidden zone
+   has none. Heuristic reports identical (a heuristic Corp does not put the
+   grid on a central); random: steps 68,364 → 68,212, end reasons unmoved
+   at 93 / 85 / 14. (2) **Two DZMZ Optimizers are two abilities.** The field
+   returned the first source it found and spent one flag for every source,
+   so the second copy did nothing — in the nine sample decks that play two —
+   and Kate's would have silenced a DZMZ's. Each is `while:
+   OncePerTurn(..)` now, keyed by install like every other once-per-turn,
+   and the install that uses a discount is what spends it
+   (`continuous::pay_install_cost_of`). Random: steps 68,212 → 68,586, end
+   reasons 93 / 85 / 14 → 94 / 84 / 14, inside the band; heuristic: 41 paths
+   move by one game's worth (steps 79,437 → 79,440, end reasons unmoved),
+   because a heuristic Runner rarely has the second copy out.
+
+   *What the scan costs.* On the two pinned binaries, one pass of the pool:
+   random 5.3 s → 5.5 s, heuristic 15.5 s → 16.0 s, about 3%. Most of it
+   was `memory::refresh`, which asks after every action and walked both
+   sides' tables; a question about a player reaches only that player's
+   cards (`Scope::Controller`), so it walks one (the four reports' hashes
+   unmoved by that change). Not memoised: the next thing to try, if a
+   search profile ever names it, is one `apply_action`'s worth, never a
+   field on the state a search clones.
+
+   *Still open from this stage.* "The first time each turn you install a
+   program" is still "once a turn, when it applies": a DZMZ installed after
+   the turn's first program discounts the second, as it did under the
+   field. That is backlog item 3's query, and the `OncePerTurn` on these
+   two cards is what it replaces. `netrunner_bots::determinize` still
+   clears `once_per_turn_used` in every sample, as it cleared the flag.
 3. **"The first time each turn" as a query** (§6.3; new). Roughly ten
    per-turn fields on `GameState`, an `EffectRequirement` apiece, where
    jinteki filters a turn log (`first-event?` alone is called 136 times).

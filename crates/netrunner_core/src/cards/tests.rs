@@ -3430,7 +3430,7 @@ mod system_gateway {
         )
         .expect("install corroder");
         assert_eq!(state.runner.resources.credits, Credits(9), "10 - 2 (cost) + 1 (DZMZ discount)");
-        assert!(state.runner.first_install_discount_used_this_turn);
+        assert_eq!(state.runner.once_per_turn_used.len(), 1, "this copy's first time is spent");
 
         let (state, _) = apply_action(
             &state,
@@ -3439,6 +3439,56 @@ mod system_gateway {
         )
         .expect("install gordian blade");
         assert_eq!(state.runner.resources.credits, Credits(5), "9 - 4 (cost), discount already used this turn");
+
+        // Two copies are two abilities, each with its own first time: the
+        // first program costs 2 less and the second pays in full. The
+        // `first_install_discount` field returned the first source it found
+        // and spent one flag for everyone, so the second copy did nothing —
+        // in the nine sample decks that play two.
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.rig = vec![rig_card_with_counters("dzmz_optimizer", 0), rig_card_with_counters("dzmz_optimizer", 0)];
+        state.runner.rig[1].install_id = crate::rules::InstallId(state.runner.rig[0].install_id.0 + 1);
+        state.runner.grip = vec![CardId("corroder".to_string()), CardId("gordian_blade".to_string())];
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) }).expect("install corroder");
+        assert_eq!(state.runner.resources.credits, Credits(10), "2 (cost) - 1 - 1");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()) })
+            .expect("install gordian blade");
+        assert_eq!(state.runner.resources.credits, Credits(6), "both first times are spent");
+    }
+
+    /// Kate had no test: her discount was a field only an identity could
+    /// carry. It reaches hardware as well as programs, never a resource, and
+    /// stacks with a DZMZ Optimizer's — the field returned hers alone.
+    #[test]
+    fn kate_lowers_the_first_program_or_hardware_each_turn_and_stacks_with_dzmz_optimizer() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.identity = Some(CardId("kate_mccaffrey".to_string()));
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip =
+            vec![CardId("telework_contract".to_string()), CardId("dzmz_optimizer".to_string()), CardId("corroder".to_string())];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("telework_contract".to_string()) })
+            .expect("install telework contract");
+        assert_eq!(state.runner.resources.credits, Credits(9), "a resource pays its printed 1, and spends nobody's first time");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("dzmz_optimizer".to_string()) })
+            .expect("install dzmz optimizer");
+        assert_eq!(state.runner.resources.credits, Credits(8), "9 - 2 (cost) + 1 (Kate)");
+        let (after, _) =
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) }).expect("install corroder");
+        assert_eq!(after.runner.resources.credits, Credits(7), "8 - 2 (cost) + 1 (DZMZ); Kate's is spent");
+
+        // A new turn: both apply to the one install.
+        state.runner.once_per_turn_used.clear();
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) }).expect("install corroder");
+        assert_eq!(state.runner.resources.credits, Credits(8), "8 - 2 (cost) + 1 (Kate) + 1 (DZMZ)");
     }
 
     #[test]
@@ -4536,7 +4586,7 @@ mod system_gateway {
         state.runner.resources.clicks = Clicks(4);
         state.runner.resources.credits = Credits(10);
         // 3 installed icebreakers (Echelon itself plus 2 others), so
-        // Echelon's `PerInstalledIcebreaker(1)` should add +3 on top of its
+        // Echelon's +1 for each installed icebreaker should add +3 on top of its
         // 0 printed strength, and Unity's pump should add +3 as well.
         // `rig_card_with_counters` forces `base_strength: 0` regardless of
         // the card's real printed strength — fine for Echelon (whose real
@@ -4563,7 +4613,7 @@ mod system_gateway {
         // Echelon's live strength (base 0 + 3 icebreakers) should already be
         // 3 without spending anything.
         assert_eq!(
-            crate::rules::computed_runner_strength(&state.runner.rig[0], &state, &registry),
+            crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]),
             3,
             "Echelon: 0 base + 1 per installed icebreaker (3 installed, including itself)"
         );
@@ -5991,7 +6041,7 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardHosted { .. })));
         assert_eq!(state.runner.rig[1].hosted_on_program, Some(InstallId(1)));
         assert_eq!(
-            crate::rules::computed_runner_strength(&state.runner.rig[0], &state, &registry),
+            crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]),
             4,
             "host icebreaker gets +1 strength"
         );
@@ -6274,7 +6324,7 @@ mod system_gateway {
         let mut state = runner_turn(5, 4);
         state.runner.rig = vec![crate::rules::InstalledRunnerCard { card: CardId("rising_tide".to_string()), base_strength: 1, ..Default::default() }];
         state.runner.heap = vec![CardId("cleaver".to_string()), CardId("corroder".to_string()), CardId("sure_gamble".to_string()), CardId("unity".to_string())];
-        assert_eq!(crate::rules::computed_runner_strength(&state.runner.rig[0], &state, &registry), 3, "1 + two fracters (Unity is a decoder)");
+        assert_eq!(crate::rules::continuous::breaker_strength(&state, &registry, &state.runner.rig[0]), 3, "1 + two fracters (Unity is a decoder)");
     }
 
     #[test]
@@ -7574,6 +7624,26 @@ mod system_gateway {
         assert!(matches!(phase, crate::rules::AccessPhase::PendingChoice { trash_cost: Some(6), .. }), "PAD Campaign's 4 + 2, persistent: {phase:?}");
         let err = apply_action(&state, &registry, PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) }).expect_err("2 credits cannot pay 6");
         assert!(matches!(err, RulesError::CannotAffordTrashCost { requested: 6, .. }), "{err:?}");
+
+        // "In the root of this server": a PAD Campaign accessed out of HQ is
+        // in no root, even with the grid rezzed in HQ's. The field the
+        // continuous effect replaced asked only which server was run.
+        let mut state = runner_turn(4, 4);
+        state.corp.hq = vec![CardId("pad_campaign".to_string())];
+        state.corp.installed = vec![installed_with_counters("mahkota_langit_grid", ServerId::Hq, 2)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run on HQ");
+        let mut state = advance_until_choice(state, &registry);
+        let pad = PlayerAction::SelectCardToAccess { card_id: CardId("pad_campaign".to_string()) };
+        if crate::rules::legal_actions(&state, &registry).contains(&pad) {
+            state = apply_action(&state, &registry, pad).expect("the card from HQ").0;
+        } else {
+            let grid = PlayerAction::SelectCardToAccess { card_id: CardId("mahkota_langit_grid".to_string()) };
+            state = apply_action(&state, &registry, grid).expect("the grid").0;
+            state = apply_action(&state, &registry, PlayerAction::PassAccessedCard { card_id: CardId("mahkota_langit_grid".to_string()) }).expect("leave it").0;
+            state = advance_until_choice(state, &registry);
+        }
+        let phase = &state.active_run.as_ref().expect("mid-access").access_state.as_ref().expect("access").phase;
+        assert!(matches!(phase, crate::rules::AccessPhase::PendingChoice { card_id, trash_cost: Some(4), .. } if card_id.0 == "pad_campaign"), "printed, untaxed: {phase:?}");
     }
 
 

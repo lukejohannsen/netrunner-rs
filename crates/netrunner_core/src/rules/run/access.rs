@@ -1,6 +1,7 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, Cost, HostedCreditUse};
+use crate::dsl::{CardId, Cost, HostedCreditUse};
 use crate::rules::ability;
+use crate::rules::continuous;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -111,46 +112,21 @@ fn resolve_install(state: &GameState, server: ServerId, card_id: &CardId) -> Opt
         .map(|c| c.install_id)
 }
 
-fn compute_pending_choice(state: &GameState, card_id: &CardId, server: ServerId, registry: &CardRegistry) -> AccessPhase {
+fn compute_pending_choice(state: &GameState, card_id: &CardId, registry: &CardRegistry) -> AccessPhase {
     let card_def = registry.get(card_id);
     let is_agenda = card_def.is_some_and(|c| c.agenda_points.is_some());
     let steal_cost = card_def.and_then(|c| c.steal_cost.clone());
     let mandatory_steal = is_agenda && steal_cost.is_none();
-    let trash_cost = card_def.and_then(|c| c.trash_cost).map(|printed| {
-        if card_def.is_some_and(|c| c.card_type == CardType::Asset) {
-            printed + root_asset_trash_cost_bonus(state, server, registry)
-        } else {
-            printed
-        }
-    });
+    // What the table adds (`ContinuousKind::TrashCost` — Mahkota Langit
+    // Grid, rezzed or trashed earlier in this run), never below 0. Asked
+    // about the *install* being accessed: a card accessed out of HQ or R&D
+    // is in no server's root, and the field this replaced taxed it anyway
+    // whenever the grid was in that central's root.
+    let install = state.active_run.as_ref().and_then(|run| run.access_state.as_ref()).and_then(|access| access.pending_install);
+    let table = install.map_or(0, |install| continuous::trash_cost_delta(state, registry, install));
+    let trash_cost = card_def.and_then(|c| c.trash_cost).map(|printed| (printed as i32 + table).max(0) as u32);
 
     AccessPhase::PendingChoice { card_id: card_id.clone(), trash_cost, mandatory_steal, steal_cost }
-}
-
-/// What the rezzed root upgrades of `server` add to the trash cost of an
-/// asset accessed there (`CardDefinition::root_asset_trash_cost_bonus`,
-/// Mahkota Langit Grid), plus the same from any such upgrade the Runner
-/// trashed earlier in this run — the "Persistent" half, read off
-/// `RunState::persistent_trashed_upgrades`, which only ever records
-/// upgrades trashed during a run against their own server. An asset in
-/// R&D or HQ is never accessed, so a central's root is never consulted in
-/// practice.
-fn root_asset_trash_cost_bonus(state: &GameState, server: ServerId, registry: &CardRegistry) -> u32 {
-    let installed: u32 = state
-        .corp
-        .installed
-        .iter()
-        .filter(|c| c.rezzed && c.server == server && c.slot == InstallSlot::Root)
-        .filter_map(|c| registry.get(&c.card))
-        .map(|def| def.root_asset_trash_cost_bonus)
-        .sum();
-    let persistent: u32 = state
-        .active_run
-        .as_ref()
-        .filter(|run| run.server == server)
-        .map(|run| run.persistent_trashed_upgrades.iter().filter_map(|card| registry.get(card)).map(|def| def.root_asset_trash_cost_bonus).sum())
-        .unwrap_or(0);
-    installed + persistent
 }
 
 /// Sets `access.phase` to the `PendingChoice` computed from `card_id`'s
@@ -201,7 +177,7 @@ fn enter_pending_choice(
         return Ok(events);
     }
 
-    let phase = compute_pending_choice(state, card_id, server, registry);
+    let phase = compute_pending_choice(state, card_id, registry);
     let run = state.active_run.as_mut().expect("enter_pending_choice called mid-access");
     let access = run.access_state.as_mut().expect("enter_pending_choice called mid-access");
     access.phase = phase;

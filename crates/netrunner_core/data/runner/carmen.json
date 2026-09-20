@@ -6,9 +6,17 @@
   "cost": 5,
   "strength": 2,
   "memory_cost": 1,
-  "install_cost_discount_if": [
-    "MadeSuccessfulRunThisTurn",
-    2
+  "continuous": [
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -2
+        }
+      },
+      "applies_to": "This",
+      "while": "MadeSuccessfulRunThisTurn",
+      "text": "If you made a successful run this turn, this program costs 2[credit] less to install."
+    }
   ],
   "triggers": [],
   "abilities": [
