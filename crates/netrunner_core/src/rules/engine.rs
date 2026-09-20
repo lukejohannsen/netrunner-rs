@@ -14,6 +14,7 @@ use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, Install
 use crate::rules::trace;
 use crate::rules::turn;
 use crate::rules::checkpoint;
+use crate::rules::continuous;
 
 impl GameState {
     /// Ergonomic `state.step(registry, action)` alias for `apply_action`,
@@ -792,14 +793,10 @@ fn rez_price(
     // cost before paying, never allowed to go negative.
     let rez_cost_modifier =
         state.active_run.as_ref().filter(|run| run.server == server).map_or(0, |run| run.ice_rez_cost_modifier);
-    // The install-scoped sibling (Fransofia Ward's "+1[c] to rez each piece
-    // of ice"), summed over the rig; ice only, where the run modifier
-    // above applies to whatever is rezzed during the run.
-    let rig_modifier: i32 = if matches!(card_def.card_type, CardType::Ice(_)) {
-        state.runner.rig.iter().filter_map(|c| registry.get(&c.card)).map(|c| c.ice_rez_cost_modifier).sum()
-    } else {
-        0
-    };
+    // What the table adds while it stands (`ContinuousKind::RezCost` —
+    // Fransofia Ward's "+1[c] to rez each piece of ice"), where the run
+    // modifier above lasts a run.
+    let rig_modifier = continuous::rez_cost_delta(state, registry, ice);
     let rez_cost = if pay_cost {
         (card_def.cost as i32 + rez_cost_modifier + rig_modifier).max(0).saturating_sub(discount as i32).max(0) as u32
     } else {
@@ -1254,116 +1251,22 @@ fn seed_rig_card(
     })
 }
 
-/// Which kind of Runner install `discounted_install_cost`/
-/// `applicable_first_install_discount` is pricing — Kate "Mac" McCaffrey's
-/// identity discount applies to Program *or* Hardware installs, but DZMZ
-/// Optimizer's rig-card discount ("the first program you install") is
-/// Program-only, and neither ever applies to Resources (no baseline or
-/// System Gateway card discounts those). This distinction didn't exist
-/// before M5 — `install_resource` was, prior to this, incorrectly eligible
-/// for the identity discount too; this fixes that alongside generalizing
-/// the mechanism to also look at rig cards.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum InstallKind {
-    Hardware,
-    Program,
-    Resource,
-}
-
-/// The first-install-of-the-turn discount applicable to an install of
-/// `kind`, from either source: the Runner's identity (`CardDefinition::
-/// first_install_discount`, applies to Hardware or Program — e.g. Kate "Mac"
-/// McCaffrey), or any installed rig card declaring the same field (applies
-/// to Program installs only — e.g. DZMZ Optimizer's "the first program you
-/// install each turn costs 1 credit less"). Identity takes priority if
-/// somehow both are present (no real deck can field both Kate and DZMZ
-/// simultaneously as separate discount *sources* meaningfully stacking, so
-/// this ordering is arbitrary-but-harmless). `0` if neither applies or
-/// `kind` is `Resource`.
-fn applicable_first_install_discount(state: &GameState, registry: &CardRegistry, kind: InstallKind) -> u32 {
-    if kind != InstallKind::Resource
-        && let Some(identity) = state.runner.identity.as_ref()
-        && let Some(discount) = registry.get(identity).and_then(|c| c.first_install_discount)
-    {
-        return discount;
-    }
-    if kind == InstallKind::Program {
-        for rig_card in &state.runner.rig {
-            if let Some(discount) = registry.get(&rig_card.card).and_then(|c| c.first_install_discount) {
-                return discount;
-            }
-        }
-    }
-    0
-}
-
-/// The credit cost to charge for installing a Runner card of `kind` this
-/// turn: `base_cost` reduced by `applicable_first_install_discount`, if any
-/// and it hasn't already been applied this turn
-/// (`RunnerState::first_install_discount_used_this_turn` — shared across
-/// every discount source, since e.g. Kate and DZMZ are mutually exclusive
-/// in a real deck). Consumes the flag on `next` if the discount applies.
-/// Not a `Trigger`/`Effect` — see `CardDefinition::first_install_discount`'s
-/// doc comment for why this is a direct cost modifier instead.
-fn discounted_install_cost(next: &mut GameState, registry: &CardRegistry, base_cost: u32, kind: InstallKind) -> u32 {
-    if next.runner.first_install_discount_used_this_turn {
-        return base_cost;
-    }
-    let discount = applicable_first_install_discount(next, registry, kind);
-    if discount == 0 {
-        return base_cost;
-    }
-    next.runner.first_install_discount_used_this_turn = true;
-    base_cost.saturating_sub(discount)
-}
-
 /// The credit cost installing `card_def` from the grip would charge right
-/// now, **without** consuming the once-per-turn discount flag — the
-/// read-only preview `can_install_runner_card_from_grip` needs. Mirrors
-/// `discounted_install_cost` plus `install_program`'s conditional per-card
-/// discount; the real install still goes through those, which do consume.
+/// now, **without** spending any "first time each turn" — the read-only
+/// preview `can_install_runner_card_from_grip` needs. The real install goes
+/// through `continuous::pay_install_cost_of`, which does spend them.
+///
+/// Every install path prices through the layer now. There used to be an
+/// `InstallKind` here saying which paths Kate's and DZMZ Optimizer's
+/// discounts reached, and a per-card discount only the two program paths
+/// remembered to subtract; which installs an effect is about is the card's
+/// own `Scope::Installing` filter.
 pub(crate) fn preview_runner_install_cost(
     state: &GameState,
     registry: &CardRegistry,
     card_def: &crate::dsl::CardDefinition,
 ) -> u32 {
-    let kind = match card_def.card_type {
-        CardType::Hardware => InstallKind::Hardware,
-        CardType::Program => InstallKind::Program,
-        _ => InstallKind::Resource,
-    };
-    let mut cost = card_def.cost;
-    if !state.runner.first_install_discount_used_this_turn {
-        cost = cost.saturating_sub(applicable_first_install_discount(state, registry, kind));
-    }
-    cost.saturating_sub(per_card_install_discount(state, registry, card_def))
-}
-
-/// The card's own printed install discount, re-evaluated fresh every time
-/// it is priced: the conditional fixed amount (`install_cost_discount_if`
-/// — Carmen's "-2 if you made a successful run this turn") plus the
-/// scaling amount (`install_cost_discount_amount` — Principia's "-1 for
-/// each other installed icebreaker"). Stacks independently on top of the
-/// once-per-turn identity/rig-card discount, with no shared consumption
-/// flag. One function because three pricing paths (the click install, the
-/// effect install, the read-only preview) used to restate the conditional
-/// half and would have restated the scaling half too.
-fn per_card_install_discount(
-    state: &GameState,
-    registry: &CardRegistry,
-    card_def: &crate::dsl::CardDefinition,
-) -> u32 {
-    let ctx = ability::ResolutionContext::for_card(Some(&card_def.id));
-    let mut discount = 0;
-    if let Some((requirement, amount)) = &card_def.install_cost_discount_if
-        && ability::check_requirement(state, requirement, Side::Runner, &ctx, registry).is_ok()
-    {
-        discount += *amount;
-    }
-    if let Some(amount) = &card_def.install_cost_discount_amount {
-        discount += ability::resolve_amount(amount, &ctx, state, registry);
-    }
-    discount
+    continuous::install_cost_of(state, registry, card_def)
 }
 
 /// Whether `card_id` could be installed out of the grip by an effect right
@@ -1516,8 +1419,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
         CardType::Program => {
             let memory_cost = card_def.memory_cost.unwrap_or(0);
             require_memory_for(next, registry, memory_cost)?;
-            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Program)
-                .saturating_sub(per_card_install_discount(next, registry, &card_def))
+            let cost = continuous::pay_install_cost_of(next, registry, &card_def)
                 .saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
@@ -1526,7 +1428,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Hardware => {
-            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Hardware).saturating_sub(discount);
+            let cost = continuous::pay_install_cost_of(next, registry, &card_def).saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             next.runner.rig.push(rig_card);
@@ -1537,7 +1439,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Resource => {
-            let cost = discounted_install_cost(next, registry, card_def.cost, InstallKind::Resource).saturating_sub(discount);
+            let cost = continuous::pay_install_cost_of(next, registry, &card_def).saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             next.runner.rig.push(rig_card);
@@ -1580,13 +1482,13 @@ fn install_hardware(
         return Err(RulesError::ConsoleLimitExceeded);
     }
 
-    let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Hardware);
+    let cost = continuous::pay_install_cost_of(&mut next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
-    // `memory_bonus` is deliberately *not* applied here: memory is derived
+    // A console's memory is deliberately *not* applied here: memory is derived
     // from what is installed (`memory::available_memory`), so a console's
     // "+1[mu]" takes effect by virtue of the console being in the rig and
     // goes away when it leaves. This used to add the bonus one-way, which
@@ -1659,8 +1561,7 @@ fn install_program(
 
     // The card's own discount (see `per_card_install_discount`) stacks
     // independently on top of the once-per-turn discount above.
-    let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Program)
-        .saturating_sub(per_card_install_discount(&next, registry, card_def));
+    let cost = continuous::pay_install_cost_of(&mut next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
@@ -1723,7 +1624,7 @@ fn install_program_on_ice(
     // to precede it because a bad host is the more specific complaint.
     require_memory_for(&next, registry, memory_cost)?;
 
-    let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Program);
+    let cost = continuous::pay_install_cost_of(&mut next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
@@ -1761,7 +1662,7 @@ fn install_resource(
     if card_def.card_type != CardType::Resource {
         return Err(RulesError::CardNotResource { card: card_id });
     }
-    let cost = discounted_install_cost(&mut next, registry, card_def.cost, InstallKind::Resource);
+    let cost = continuous::pay_install_cost_of(&mut next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     // Hosted credits a card lets the Runner spend on this kind of resource

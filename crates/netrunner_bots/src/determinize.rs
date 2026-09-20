@@ -729,7 +729,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         heap: view.runner.heap.clone(),
         link_strength: view.runner.link_strength,
         first_hq_run_used_this_turn: false,
-        first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(),
+        once_per_turn_used: std::collections::HashSet::new(),
         // Public and carried, like `servers_run_this_turn` beside it: the
         // evaluator's run term reads it, so a sample that forgot this
         // turn's success priced the next one as the first.
@@ -935,7 +935,7 @@ mod tests {
                 heap: Vec::new(),
                 link_strength: 0,
                 first_hq_run_used_this_turn: false,
-                first_install_discount_used_this_turn: false, once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
+                once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, max_hand_size_bonus: 0, servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,

@@ -6,9 +6,18 @@
   "cost": 3,
   "strength": 0,
   "memory_cost": 1,
-  "strength_modifier": {
-    "PerInstalledIcebreaker": 1
-  },
+  "continuous": [
+    {
+      "kind": {
+        "Strength": {
+          "per": 1,
+          "of": "InstalledIcebreakerCount"
+        }
+      },
+      "applies_to": "This",
+      "text": "This program gets +1 strength for each installed icebreaker"
+    }
+  ],
   "triggers": [],
   "abilities": [
     {

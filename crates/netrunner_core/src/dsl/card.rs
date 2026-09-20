@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
 
 use crate::dsl::ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
+use crate::dsl::continuous::{ContinuousEffect, ContinuousKind, Scope};
 use crate::dsl::cost::Cost;
-use crate::dsl::effect::{Amount, Effect};
+use crate::dsl::effect::Effect;
 use crate::dsl::trigger::{EventFilter, Subject, Trigger, TriggerAbout};
 use crate::rules::Side;
 
@@ -21,19 +22,15 @@ pub enum IceType {
     Sentry,
 }
 
-/// A conditional strength bonus layered on top of a card's stored
-/// base/buff strength at query time — computed live by `rules::ability::
-/// computed_strength`, never baked into `InstalledCard`/`InstalledRunnerCard`
-/// itself, since the condition (icebreaker count, server type, hosted
-/// advancement tokens) can change without any explicit strength-modifying
-/// effect resolving. `CardDefinition`-level (shared across every instance
-/// of the card), not per-installed-copy state.
+/// A conditional strength bonus baked into `RunIce::current_strength` by
+/// `run::engine::build_run_ice` when a run's ice is built. **The ice half of
+/// what `dsl::continuous` replaced**: the two icebreaker variants (Echelon,
+/// Rising Tide) are `ContinuousKind::Strength` on their cards now, and these
+/// four follow when ice strength stops being a stored number (Rules Audit
+/// backlog item 2, the stage after lingering effects) — until then a
+/// derived bonus on a stored strength would be two sources for one number.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum StrengthModifier {
-    /// Adds `0` (the payload) for each Runner-installed icebreaker
-    /// (`dsl::zone::CardFilter::Icebreaker`'s heuristic — `CardType::Program`
-    /// with `strength.is_some()`), including the card itself — e.g. Echelon.
-    PerInstalledIcebreaker(i32),
     /// Adds `0` (the payload) while this ICE protects a remote server
     /// (`ServerId::Remote(_)`) — e.g. Palisade. Never applies to a central
     /// server (`Hq`/`RnD`/`Archives`).
@@ -48,10 +45,6 @@ pub enum StrengthModifier {
     /// `run::engine::build_run_ice` at encounter time (advancement cannot
     /// change mid-run — `AdvanceCard` is a Corp action-phase click).
     PerHostedAdvancement(i32),
-    /// Adds the payload per `CardSubtype::Fracter` card in the Runner's
-    /// heap — Rising Tide. Runner-side and live, like
-    /// `PerInstalledIcebreaker`: the heap changes at any moment.
-    PerFracterInHeap(i32),
     /// Adds the payload while this ICE is the only piece of ice protecting
     /// its server — Scatter Field's "+4 strength". Baked at encounter like
     /// the other Corp-ICE variants: nothing in the pool trashes or installs
@@ -304,12 +297,6 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recurring_credits: Option<u32>,
 
-    /// Credit discount applied to the first Program/Hardware the Runner
-    /// installs each turn — e.g. Kate "Mac" McCaffrey: Digital Tinker's -1.
-    /// `None` for the common case (no discount). `Some` only meaningful on
-    /// an identity.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub first_install_discount: Option<u32>,
 
     /// Memory units this Program reserves while installed — mirrors
     /// `strength`'s shape exactly. `Some` only meaningful on
@@ -326,17 +313,6 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub memory_cost: Option<u32>,
 
-    /// Additional memory units this card grants the Runner (e.g. a
-    /// console's "+1[mu]"). `None` for the common case (no MU bonus). The
-    /// opposite direction of `memory_cost` — what Hardware *grants* rather
-    /// than what a Program *spends*, and `rules::memory` sums both over the
-    /// rig to derive the Runner's free memory.
-    ///
-    /// It therefore applies for exactly as long as the granting card is
-    /// installed. It used to be added once at `install_hardware` time and
-    /// never removed, so a trashed console kept granting memory forever.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub memory_bonus: Option<u32>,
 
     /// Additional max hand size this card grants once, permanently, when it
     /// takes effect — Hardware (`install_hardware` time), an Agenda
@@ -346,30 +322,7 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_hand_size_bonus: Option<u32>,
 
-    /// A conditional discount off this Program's install cost — `(condition,
-    /// amount)` — applied every time `condition` holds (no once-per-turn
-    /// consumption, unlike `first_install_discount`), e.g. Carmen's
-    /// "if you made a successful run this turn, this program costs 2
-    /// credits less to install." `None` for the common case (no such
-    /// discount). Distinct from and stacks independently with
-    /// `first_install_discount` — see `engine::install_program`'s cost
-    /// computation. `Some` only meaningful on `CardType::Program`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub install_cost_discount_if: Option<(EffectRequirement, u32)>,
 
-    /// A *scaling* discount off this Program's install cost, resolved by
-    /// `rules::ability::resolve_amount` at pricing time — Principia's "costs
-    /// 1[c] less to install for each other installed icebreaker". A sibling
-    /// of `install_cost_discount_if` rather than a generalisation of it:
-    /// that field is a fixed amount behind a condition, this one is an
-    /// amount with no condition, and the two stack (neither card has both).
-    /// Priced before the card enters the rig, so an `Amount` that counts
-    /// the rig — `InstalledIcebreakerCount` — already excludes the card
-    /// itself, which is what "each *other* installed icebreaker" means.
-    /// `None` for the common case. `Some` only meaningful on
-    /// `CardType::Program`.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub install_cost_discount_amount: Option<Amount>,
 
     /// Marks a Trojan Program that must be installed onto a piece of ICE
     /// (`PlayerAction::InstallProgramOnIce`) rather than into the normal
@@ -389,14 +342,6 @@ pub struct CardDefinition {
     /// ability only.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub hosted_cards_playable_from_grip: bool,
-    /// Added to the Corp's cost to rez every piece of ice while this card
-    /// is in the Runner's rig — Fransofia Ward's "the rez cost of each
-    /// piece of ice is increased by 1[c]". Summed over the rig by
-    /// `engine::rez_ice` next to the run-scoped
-    /// `run::RunState::ice_rez_cost_modifier` (Tread Lightly), which is the
-    /// same modifier with a run's lifetime instead of an install's.
-    #[serde(default, skip_serializing_if = "is_zero_i32")]
-    pub ice_rez_cost_modifier: i32,
     /// Dividends N — "when you score this agenda, place N agenda counters
     /// on it for each excess advancement counter" (Off the Books). Read
     /// once, by `engine::score_agenda`, which puts the counters on the
@@ -417,25 +362,7 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub playable_from_archives: bool,
 
-    /// ICE subtypes this Trojan grants its host while hosted — Chromatophores'
-    /// "Host ice gains barrier, code gate, and sentry." Read where a
-    /// breaker's `restrict_to` is matched against the encountered ICE
-    /// (`Effect::BreakSubroutines`): the ICE's effective subtypes are its
-    /// printed `IceType` plus every subtype granted by a rig card hosted on
-    /// it. A per-card list rather than a flag because the rules concept is
-    /// "gains these subtypes", and a later card may grant one. Empty for
-    /// every non-Trojan card, and for every Trojan that grants nothing.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub host_ice_gains_subtypes: Vec<IceType>,
 
-    /// What this Hardware does for the icebreaker it is hosted on
-    /// (`state::InstalledRunnerCard::hosted_on_program`) — GAMEDRAGON™ Pro.
-    /// `None` for every card that is not hosted on a program. Hosting
-    /// itself is a relation the card's own triggers establish with
-    /// `Effect::HostRigCardOnInstall`; this field is only what the relation
-    /// *means* while it holds.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub hosted_breaker_bonus: Option<HostedBreakerBonus>,
 
     /// What this card's hosted credits (`counters`, with `counter_kind:
     /// Credit`) may be spent on, beyond the card's own abilities — Azimat's
@@ -474,11 +401,9 @@ pub struct CardDefinition {
     #[serde(default)]
     pub click_breakable: bool,
 
-    /// A conditional strength bonus layered on top of this card's live
-    /// base/buff strength at query time — see `StrengthModifier`'s doc
-    /// comment and `rules::ability::computed_strength`. `None` for the
-    /// common case (no such conditional bonus). Meaningful on `CardType::
-    /// Ice(_)` and breaker-style `CardType::Program`s.
+    /// A conditional bonus to this ice's strength, baked when a run's ice is
+    /// built — see `StrengthModifier` for why ice still has a field of its
+    /// own. An icebreaker's is a `continuous` entry.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub strength_modifier: Option<StrengthModifier>,
 
@@ -589,18 +514,6 @@ pub struct CardDefinition {
     #[serde(default)]
     pub persistent_after_trash: bool,
 
-    /// Added to the trash cost of every asset in the root of the server
-    /// this upgrade is installed in, while it is rezzed — Mahkota Langit
-    /// Grid's "Persistent → The trash cost of each asset in the root of
-    /// this server is increased by 2[c]". Read by `run::access::
-    /// compute_pending_choice` when an accessed asset's trash cost is
-    /// fixed, and — that being the persistent half — also from
-    /// `RunState::persistent_trashed_upgrades`, so trashing the grid on the
-    /// first access of a run still taxes the asset accessed next. `0` for
-    /// the common case. Assets only, as printed; an agenda has no trash
-    /// cost and an upgrade's is not named.
-    #[serde(default, skip_serializing_if = "is_zero")]
-    pub root_asset_trash_cost_bonus: u32,
 
     /// This identity lets its Corp install agendas faceup — BANGUN: When
     /// Disaster Strikes. Modelled as permission to *rez* an installed
@@ -633,6 +546,14 @@ pub struct CardDefinition {
     /// does not.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub rez_alternatives: Vec<RezAlternative>,
+    /// What this card does for as long as it is active — "+1[mu]", "costs
+    /// 2[c] less to install if…", "host ice gains barrier". **A standing
+    /// effect goes here, never in a field of its own**: see
+    /// `dsl::continuous` for the nine fields and six `StrengthModifier`
+    /// variants this list replaced, and `rules::continuous` for the one
+    /// scan that reads it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub continuous: Vec<ContinuousEffect>,
 }
 
 /// One way of paying to rez a card — see
@@ -669,28 +590,6 @@ pub enum CounterKind {
     Virus,
     Power,
     Credit,
-}
-
-/// See `CardDefinition::hosted_breaker_bonus`. What a Hardware hosted on an
-/// icebreaker does for its host — GAMEDRAGON™ Pro's "Host icebreaker gets +1
-/// strength. Abilities that increase its strength last for the remainder of
-/// the run (instead of any shorter duration)."
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HostedBreakerBonus {
-    /// Added to the host's live strength by `rules::ability::
-    /// computed_runner_strength` for as long as the hosting holds — a live
-    /// term like `StrengthModifier`, never baked into the host's
-    /// `base_strength`, so unhosting (or the hardware leaving play) drops
-    /// it with nothing to unwind.
-    #[serde(default)]
-    pub strength: i32,
-    /// When true, an `Effect::BoostStrength` the host resolves with
-    /// `BoostDuration::Encounter` is recorded as `Run` instead — the boost
-    /// outlives the encounter it was bought in. Only a lengthening: a
-    /// `Turn` boost is already longer and stays `Turn`.
-    #[serde(default)]
-    pub boosts_last_the_run: bool,
 }
 
 /// See `CardDefinition::hosted_credits_usable_for` — the purpose a card's
@@ -744,6 +643,8 @@ pub enum CardValidationError {
     TriggerFilterOfTheWrongKind(CardId, Trigger),
     #[error("card {0:?}: a {1:?} trigger is not about a card, so its effects cannot act on one (`acts_on_subject`)")]
     TriggerActsOnNoCard(CardId, Trigger),
+    #[error("card {0:?}: a continuous {1} effect does not fit — {2}")]
+    ContinuousEffectDoesNotFit(CardId, &'static str, &'static str),
 }
 
 /// Every field at its neutral value, matching what serde fills in for an
@@ -778,25 +679,18 @@ impl Default for CardDefinition {
             base_link: None,
             play_requirement: None,
             recurring_credits: None,
-            first_install_discount: None,
             memory_cost: None,
-            memory_bonus: None,
             max_hand_size_bonus: None,
-            install_cost_discount_if: None,
             installs_on_ice: false,
             hosted_cards_playable_from_grip: false,
-            ice_rez_cost_modifier: 0,
             dividends: None,
             playable_from_archives: false,
-            host_ice_gains_subtypes: Vec::new(),
-            hosted_breaker_bonus: None,
             hosted_credits_usable_for: None,
             trash_when_empty: false,
             may_install_agendas_faceup: false,
             rez_alternatives: Vec::new(),
             influence_limit: None,
             additional_play_cost: None,
-            install_cost_discount_amount: None,
             click_breakable: false,
             strength_modifier: None,
             counter_kind: None,
@@ -813,7 +707,8 @@ impl Default for CardDefinition {
             flavor: None,
             image_url: None,
             is_playable: false,
-            persistent_after_trash: false, root_asset_trash_cost_bonus: 0,
+            persistent_after_trash: false,
+            continuous: Vec::new(),
         }
     }
 }
@@ -872,14 +767,38 @@ impl CardDefinition {
                 return Err(CardValidationError::TriggerActsOnNoCard(self.id.clone(), triggered.trigger));
             }
         }
+        // A continuous effect that does not fit parses and then applies to
+        // nothing, which reads as a card that works: the scan finds no
+        // target and the number is never added.
+        for effect in &self.continuous {
+            let misfit = |kind, why| Err(CardValidationError::ContinuousEffectDoesNotFit(self.id.clone(), kind, why));
+            let hosted = matches!(self.card_type, CardType::Program | CardType::Hardware | CardType::Resource);
+            match (&effect.kind, &effect.applies_to) {
+                (_, Scope::Host) if !hosted => return misfit("Host", "only a Runner's installed card is hosted on another"),
+                (_, Scope::RootOfThisServer(_)) if self.card_type != CardType::Upgrade && self.card_type != CardType::Asset => {
+                    return misfit("RootOfThisServer", "only an asset or an upgrade is in a server's root");
+                }
+                (ContinuousKind::Strength(_), Scope::This) if self.strength.is_none() => {
+                    return misfit("Strength", "this card prints no strength to change");
+                }
+                (ContinuousKind::Strength(_), Scope::This | Scope::Host | Scope::Ice) => {}
+                (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, or ice"),
+                (ContinuousKind::Memory(_), Scope::Controller) if self.side == Side::Runner => {}
+                (ContinuousKind::Memory(_), _) => return misfit("Memory", "memory is the Runner's, so it applies to a Runner card's `Controller`"),
+                (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_)) => {}
+                (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
+                (ContinuousKind::RezCost(_), Scope::This | Scope::Ice | Scope::RootOfThisServer(_)) => {}
+                (ContinuousKind::RezCost(_), _) => return misfit("RezCost", "only an installed Corp card is rezzed"),
+                (ContinuousKind::TrashCost(_), Scope::This | Scope::RootOfThisServer(_)) => {}
+                (ContinuousKind::TrashCost(_), _) => return misfit("TrashCost", "a trash cost is this card's own or that of a card in its server's root"),
+                (ContinuousKind::GainSubtype(_), Scope::This | Scope::Host | Scope::Ice) => {}
+                (ContinuousKind::GainSubtype(_), _) => return misfit("GainSubtype", "an ice subtype is gained by ice: this card, its host, or each piece"),
+                (ContinuousKind::BoostsLastTheRun, Scope::This | Scope::Host) => {}
+                (ContinuousKind::BoostsLastTheRun, _) => return misfit("BoostsLastTheRun", "a boost is an icebreaker's: this card or its host"),
+            }
+        }
         Ok(())
     }
-}
-
-/// `skip_serializing_if` for the `i32` modifier fields, which serde cannot
-/// express inline.
-fn is_zero_i32(value: &i32) -> bool {
-    *value == 0
 }
 
 #[cfg(test)]
@@ -1119,4 +1038,40 @@ mod tests {
         ));
     }
 
+    /// A continuous effect that does not fit parses and then reaches
+    /// nothing, which looks like a card that works — so a card file is
+    /// refused rather than quietly printing a number nobody adds.
+    #[test]
+    fn a_continuous_effect_must_fit_the_card_that_prints_it() {
+        use crate::dsl::continuous::Number;
+        let flat = |per: i32| Number { per, of: crate::dsl::Amount::Fixed(1) };
+        let with = |side: Side, card_type: CardType, strength: Option<i32>, kind: ContinuousKind, applies_to: Scope| CardDefinition {
+            id: CardId("homebrew".to_string()),
+            side,
+            card_type,
+            strength,
+            continuous: vec![ContinuousEffect { kind, applies_to, condition: None, text: None }],
+            ..Default::default()
+        };
+        let refused = |card: CardDefinition| matches!(card.validate(), Err(CardValidationError::ContinuousEffectDoesNotFit(..)));
+        let asset = || crate::dsl::CardFilter::CardType(CardType::Asset);
+
+        // The pool's own shapes.
+        assert_eq!(with(Side::Runner, CardType::Program, Some(0), ContinuousKind::Strength(flat(1)), Scope::This).validate(), Ok(()));
+        assert_eq!(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Strength(flat(1)), Scope::Host).validate(), Ok(()));
+        assert_eq!(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Memory(flat(1)), Scope::Controller).validate(), Ok(()));
+        assert_eq!(with(Side::Runner, CardType::Resource, None, ContinuousKind::RezCost(flat(1)), Scope::Ice).validate(), Ok(()));
+        assert_eq!(with(Side::Corp, CardType::Upgrade, None, ContinuousKind::TrashCost(flat(2)), Scope::RootOfThisServer(asset())).validate(), Ok(()));
+
+        // A strength with nothing to change; memory for a player who has none.
+        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Strength(flat(1)), Scope::This)));
+        assert!(refused(with(Side::Corp, CardType::Asset, None, ContinuousKind::Memory(flat(1)), Scope::Controller)));
+        // A relation the card can never be in.
+        assert!(refused(with(Side::Corp, CardType::Ice(IceType::Barrier), Some(1), ContinuousKind::GainSubtype(IceType::Sentry), Scope::Host)));
+        assert!(refused(with(Side::Corp, CardType::Ice(IceType::Barrier), Some(1), ContinuousKind::TrashCost(flat(1)), Scope::RootOfThisServer(asset()))));
+        // A kind aimed at something it cannot change.
+        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Memory(flat(1)), Scope::Ice)));
+        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::InstallCost(flat(-1)), Scope::Controller)));
+        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::BoostsLastTheRun, Scope::Controller)));
+    }
 }

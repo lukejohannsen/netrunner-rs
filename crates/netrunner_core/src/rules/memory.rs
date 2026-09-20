@@ -36,6 +36,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{CardFilter, CardType, CardZoneRef, Effect};
 use crate::rules::ability;
+use crate::rules::continuous;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::state::{GameState, MemoryUnits, Side};
@@ -44,24 +45,21 @@ use crate::rules::state::{GameState, MemoryUnits, Side};
 /// varies this per-identity; no identity-level override mechanism exists yet.
 pub const RUNNER_BASE_MEMORY_UNITS: u32 = 4;
 
-/// The Runner's memory ledger, signed: the base capacity plus every
-/// installed card's `memory_bonus`, minus every installed card's
-/// `memory_cost`. Negative exactly when more memory is in use than exists —
-/// the condition `enforce_limit` acts on, and the number [`available_memory`]
-/// clamps away.
+/// The Runner's memory ledger, signed: the base capacity plus what the
+/// Runner's active cards grant (`ContinuousKind::Memory` — a console's
+/// "+1[mu]"), minus every installed card's `memory_cost`. Negative exactly
+/// when more memory is in use than exists — the condition `enforce_limit`
+/// acts on, and the number [`available_memory`] clamps away.
 ///
-/// Summed over the whole rig rather than filtered by `CardType`: today only
-/// Hardware grants a bonus and only a Program charges a cost, but summing
-/// both over everything installed is total by construction and needs no
-/// update when that stops being true.
+/// The cost is summed over the whole rig rather than filtered by
+/// `CardType`: today only a Program charges one, but summing over
+/// everything installed is total by construction and needs no update when
+/// that stops being true. The grant was a `memory_bonus` field summed the
+/// same way, and is the scan the continuous-effect layer was modelled on.
 pub fn memory_balance(state: &GameState, registry: &CardRegistry) -> i32 {
-    let (granted, spent) = state.runner.rig.iter().filter_map(|installed| registry.get(&installed.card)).fold(
-        (0i32, 0i32),
-        |(granted, spent), card| {
-            (granted + card.memory_bonus.unwrap_or(0) as i32, spent + card.memory_cost.unwrap_or(0) as i32)
-        },
-    );
-    RUNNER_BASE_MEMORY_UNITS as i32 + granted - spent
+    let spent: i32 =
+        state.runner.rig.iter().filter_map(|installed| registry.get(&installed.card)).map(|card| card.memory_cost.unwrap_or(0) as i32).sum();
+    RUNNER_BASE_MEMORY_UNITS as i32 + continuous::memory(state, registry) - spent
 }
 
 /// Memory units the Runner has free — [`memory_balance`] clamped at zero,

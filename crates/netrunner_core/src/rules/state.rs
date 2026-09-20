@@ -606,13 +606,6 @@ pub struct RunnerState {
     /// fired this turn. Reset to `false` at the start of every Runner turn;
     /// consumed the same way as `CorpState::first_install_used_this_turn`.
     pub first_hq_run_used_this_turn: bool,
-    /// Whether the Runner's identity install-cost discount (`CardDefinition::
-    /// first_install_discount`, e.g. Kate "Mac" McCaffrey) has already been
-    /// applied to a Program/Hardware install this turn. Reset to `false` at
-    /// the start of every Runner turn; consumed directly by
-    /// `engine::install_hardware`/`install_program` (not a `Trigger`/
-    /// `Effect` — see `CardDefinition::first_install_discount`'s doc comment for why).
-    pub first_install_discount_used_this_turn: bool,
     /// Tags consumed by `EffectRequirement::OncePerTurn(tag)` gates the
     /// Runner has already fired this turn — see `CorpState::
     /// once_per_turn_used`'s doc comment for the full rationale. Cleared at

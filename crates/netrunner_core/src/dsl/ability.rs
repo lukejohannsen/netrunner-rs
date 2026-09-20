@@ -35,10 +35,10 @@ pub struct AbilityDef {
     /// A conditional discount off this specific ability's `cost` —
     /// `(condition, amount)` — applied every time `condition` holds, e.g.
     /// Marjanah's "if you made a successful run this turn, this ability
-    /// costs 1 credit less to use." `None` for the common case. See
-    /// `CardDefinition::install_cost_discount_if`'s doc comment for the
-    /// matching per-install-cost sibling; `engine::activate_ability`'s cost
-    /// computation reads this one.
+    /// costs 1 credit less to use." `None` for the common case. The
+    /// per-install-cost sibling is a `ContinuousKind::InstallCost` on the
+    /// card (Carmen); `engine::activate_ability`'s cost computation reads
+    /// this one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cost_discount_if: Option<(EffectRequirement, u32)>,
     /// Who may activate this ability, when that is not the card's own

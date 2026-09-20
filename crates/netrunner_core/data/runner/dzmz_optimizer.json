@@ -5,8 +5,33 @@
   "card_type": "Hardware",
   "cost": 2,
   "triggers": [],
-  "memory_bonus": 1,
-  "first_install_discount": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "InstallCost": {
+          "per": -1
+        }
+      },
+      "applies_to": {
+        "Installing": {
+          "CardType": "Program"
+        }
+      },
+      "while": {
+        "OncePerTurn": "first_install_discount"
+      },
+      "text": "The first program you install each turn costs 1[credit] less to install."
+    }
+  ],
   "numeric_id": 30022,
   "is_playable": true
 }

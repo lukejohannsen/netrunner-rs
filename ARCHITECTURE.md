@@ -65,7 +65,7 @@ Two of the three deadlocks the bot-driven sweep found were this bug class. When 
 2. **Effects** mutate the working state and return `Vec<GameEvent>`.
 3. **Triggers** — `dispatcher::dispatch_event` maps a `GameEvent` to the cards that react to it, then `ability::process_card_triggers` fires them. Card *behavior* stays entirely data-driven (`dsl::TriggeredEffect` / `AbilityDef` / `Effect`); the dispatcher contributes only the event-to-audience mapping and firing order.
 
-The candidate set for every event is **re-derived fresh from `GameState`** on each call — `CorpState::installed` and `RunnerState::rig` are already the single source of truth for what is in play, so there is deliberately no separate "active behaviors" registry to keep in sync. `win::check_win_conditions` follows the same pure-re-derivation convention.
+The candidate set for every event is **re-derived fresh from `GameState`** on each call — `CorpState::installed` and `RunnerState::rig` are already the single source of truth for what is in play, so there is deliberately no separate "active behaviors" registry to keep in sync. `win::check_win_conditions` follows the same pure-re-derivation convention. So does `rules::continuous`: a card's standing effects (`CardDefinition::continuous`) are scanned off the active cards (`rules::active`) at each question, never registered when a card becomes active and unregistered when it leaves.
 
 **Known divergence:** simultaneous triggers fire in install order. The rules give the active player the choice of ordering among their own simultaneous triggers. Tracked in `ROADMAP.md`.
 

@@ -29,7 +29,8 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
-    Amount, BoostDuration, CardDefinition, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, EventFilter, SubroutineBreakCount,
+    Amount, BoostDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number,
+    Scope, SubroutineBreakCount,
 };
 use netrunner_core::rules::{PendingDecision, ServerId, Side};
 use netrunner_core::view::ClientView;
@@ -73,6 +74,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
+        Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", humanize(format!("{subtype:?}")).to_lowercase()),
     }
 }
 
@@ -319,6 +321,13 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             None => lines.push(format!("• [{when}] → {reading}")),
         }
     }
+    for effect in &card.continuous {
+        let reading = describe_continuous(effect);
+        match &effect.text {
+            Some(text) => lines.push(format!("• [while active] \"{}\" → {reading}", text.trim_end_matches('.'))),
+            None => lines.push(format!("• [while active] → {reading}")),
+        }
+    }
     for ability in &card.abilities {
         let reading = describe_effect(&ability.effect, registry);
         let cost = ability.cost.as_ref().map(|c| format!("{}: ", describe_cost(c))).unwrap_or_default();
@@ -331,6 +340,41 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
         lines.push(format!("• [subroutine] \"{}\" → {}", sub.text.trim_end_matches('.'), describe_effect(&sub.effect, registry)));
     }
     lines
+}
+
+/// A standing effect as a sentence: whom it is about, what changes, and
+/// when it is on. None of the fields this replaced was ever read out — a
+/// console's "+1[mu]" was invisible to the inspector.
+pub fn describe_continuous(effect: &ContinuousEffect) -> String {
+    let lower = |debug: String| humanize(debug).to_lowercase();
+    let whom = match &effect.applies_to {
+        Scope::This => "this card".to_string(),
+        Scope::Host => "the card this is hosted on".to_string(),
+        Scope::Controller => "its controller".to_string(),
+        Scope::Installing(filter) => format!("a card its controller installs ({})", lower(format!("{filter:?}"))),
+        Scope::Ice => "each piece of ice".to_string(),
+        Scope::RootOfThisServer(filter) => format!("each card in the root of this server ({})", lower(format!("{filter:?}"))),
+    };
+    let signed = |number: &Number| {
+        let each = if number.per < 0 { format!("−{}", number.per.unsigned_abs()) } else { format!("+{}", number.per) };
+        match number.of {
+            Amount::Fixed(1) => each,
+            ref of => format!("{each} for each of {}", describe_amount(of)),
+        }
+    };
+    let what = match &effect.kind {
+        ContinuousKind::Strength(number) => format!("gets {} strength", signed(number)),
+        ContinuousKind::Memory(number) => format!("gets {} memory", signed(number)),
+        ContinuousKind::InstallCost(number) => format!("costs {} to install", signed(number)),
+        ContinuousKind::RezCost(number) => format!("costs {} to rez", signed(number)),
+        ContinuousKind::TrashCost(number) => format!("costs {} to trash", signed(number)),
+        ContinuousKind::GainSubtype(subtype) => format!("gains {}", lower(format!("{subtype:?}"))),
+        ContinuousKind::BoostsLastTheRun => "keeps its strength boosts for the rest of the run".to_string(),
+    };
+    match &effect.condition {
+        Some(condition) => format!("{whom} {what}, while {}", lower(format!("{condition:?}"))),
+        None => format!("{whom} {what}"),
+    }
 }
 
 /// The card that parked a decision, if the view names one: the card whose

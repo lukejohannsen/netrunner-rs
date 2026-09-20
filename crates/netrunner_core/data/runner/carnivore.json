@@ -42,7 +42,17 @@
       "text": "Access, once per turn → Trash 2 cards from your grip: Trash the card you are accessing."
     }
   ],
-  "memory_bonus": 1,
+  "continuous": [
+    {
+      "kind": {
+        "Memory": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "+1[mu]"
+    }
+  ],
   "subtypes": [
     "Console"
   ],

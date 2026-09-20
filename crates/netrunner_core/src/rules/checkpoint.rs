@@ -33,8 +33,9 @@
 //!   continuous-effect layer (Rules Audit backlog item 2) replaces.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType};
+use crate::dsl::CardId;
 use crate::rules::ability;
+use crate::rules::active;
 use crate::rules::event::GameEvent;
 use crate::rules::state::{ArchivedCard, GameState, InstallId, Side};
 use crate::rules::win;
@@ -63,22 +64,22 @@ pub(crate) fn state_based(state: &mut GameState, registry: &CardRegistry, event:
 /// are monotonic.
 fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<&GameEvent>) -> Vec<GameEvent> {
     let is_unique = |card: &CardId| registry.get(card).is_some_and(|definition| definition.unique);
-    let is_agenda = |card: &CardId| registry.get(card).is_some_and(|definition| definition.card_type == CardType::Agenda);
     let just_rezzed = match event {
         Some(GameEvent::IceRezzed { install, .. }) => Some(*install),
         _ => None,
     };
     let mut events = Vec::new();
 
-    // Faceup is not active for an agenda (`listeners`), so BANGUN's faceup
-    // agendas are no more unique on the table than facedown ones.
-    let active: Vec<(CardId, InstallId)> = state
-        .corp
-        .installed
-        .iter()
-        .filter(|installed| installed.rezzed && is_unique(&installed.card) && !is_agenda(&installed.card))
-        .map(|installed| (installed.card.clone(), installed.install_id))
-        .collect();
+    // Which copies count is `rules::active`'s to say — a faceup agenda is
+    // not active, so BANGUN's are no more unique on the table than
+    // facedown ones.
+    let active_copies = |cards: &mut dyn Iterator<Item = active::ActiveCard<'_>>| -> Vec<(CardId, InstallId)> {
+        cards
+            .filter(|card| card.place == active::Place::Installed && is_unique(card.card))
+            .filter_map(|card| card.install.map(|install| (card.card.clone(), install)))
+            .collect()
+    };
+    let active = active_copies(&mut active::corp(state, registry));
     for install in older_copies(&active, just_rezzed) {
         let Some(position) = state.corp.installed.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.corp.installed.remove(position);
@@ -86,8 +87,7 @@ fn enforce_unique(state: &mut GameState, registry: &CardRegistry, event: Option<
         events.push(GameEvent::CardTrashed { side: Side::Corp, card: trashed.card });
     }
 
-    let active: Vec<(CardId, InstallId)> =
-        state.runner.rig.iter().filter(|installed| is_unique(&installed.card)).map(|installed| (installed.card.clone(), installed.install_id)).collect();
+    let active = active_copies(&mut active::runner(state));
     for install in older_copies(&active, None) {
         let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
         let trashed = state.runner.rig.remove(position);
@@ -115,7 +115,7 @@ fn older_copies(active: &[(CardId, InstallId)], keep: Option<InstallId>) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{CardDefinition, DamageType, Effect, Subject, Trigger, TriggeredEffect};
+    use crate::dsl::{CardDefinition, CardType, DamageType, Effect, Subject, Trigger, TriggeredEffect};
     use crate::rules::dispatcher::dispatch_event;
     use crate::rules::run::ServerId;
     use crate::rules::state::{GamePhase, InstalledCard};

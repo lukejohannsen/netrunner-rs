@@ -31,7 +31,8 @@
 //! saying it outlives being active.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, EventFilter, Hears, Subject, Trigger, TriggeredEffect};
+use crate::dsl::{CardId, EventFilter, Hears, Subject, Trigger, TriggeredEffect};
+use crate::rules::active;
 use crate::rules::event::GameEvent;
 use crate::rules::run::ServerId;
 use crate::rules::state::{DeferredTrigger, GamePhase, GameState, Heard, InstallId, InstallSlot, Side};
@@ -364,36 +365,13 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     let mut corp: Vec<Listener> = Vec::new();
     let mut runner: Vec<Listener> = Vec::new();
 
-    corp.extend(state.corp.identity.iter().map(|id| Listener { side: Side::Corp, card: id.clone(), install: None, server: None, active: true }));
-    // The score area before the table: the order `DiscardPhaseEnded` always
-    // asked in, and the only one the old audiences agreed on.
-    corp.extend(state.corp.scored_agendas.iter().map(|scored| Listener {
-        side: Side::Corp,
-        card: scored.card.clone(),
-        install: Some(scored.install_id),
-        server: None,
-        active: true,
-    }));
-    // Faceup is not active for an agenda: BANGUN installs agendas faceup,
-    // and an agenda's abilities are live in a score area, not on the table.
-    // The old audiences asked every `rezzed` install, so a faceup Off the
-    // Books spent its counters from a remote.
-    let is_agenda = |card: &CardId| registry.get(card).is_some_and(|definition| definition.card_type == CardType::Agenda);
-    corp.extend(state.corp.installed.iter().filter(|installed| installed.rezzed && !is_agenda(&installed.card)).map(|installed| Listener {
-        side: Side::Corp,
-        card: installed.card.clone(),
-        install: Some(installed.install_id),
-        server: Some(installed.server),
-        active: true,
-    }));
-    runner.extend(state.runner.identity.iter().map(|id| Listener { side: Side::Runner, card: id.clone(), install: None, server: None, active: true }));
-    runner.extend(state.runner.rig.iter().map(|installed| Listener {
-        side: Side::Runner,
-        card: installed.card.clone(),
-        install: Some(installed.install_id),
-        server: None,
-        active: true,
-    }));
+    // `rules::active` says which cards are active, in the order this scan
+    // always asked them: the score area before the table — the order
+    // `DiscardPhaseEnded` always asked in, and the only one the old
+    // audiences agreed on.
+    let listening = |card: active::ActiveCard<'_>| Listener { side: card.side, card: card.card.clone(), install: card.install, server: card.server, active: true };
+    corp.extend(active::corp(state, registry).map(listening));
+    runner.extend(active::runner(state).map(listening));
 
     // The subject leads its side: "when you score this agenda" before the
     // identity's "whenever you score an agenda". It is already listening
@@ -476,7 +454,7 @@ fn encountered_install(state: &GameState) -> Option<InstallId> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{CardDefinition, Effect};
+    use crate::dsl::{CardDefinition, CardType, Effect};
     use crate::rules::state::{InstalledCard, InstalledRunnerCard, ScoredAgenda};
 
     fn listens(id: &str, side: Side, card_type: CardType, trigger: Trigger, subject: Option<Subject>) -> CardDefinition {
