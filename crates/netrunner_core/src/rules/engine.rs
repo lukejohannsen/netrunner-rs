@@ -1432,9 +1432,6 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             next.runner.rig.push(rig_card);
-            if let Some(bonus) = card_def.max_hand_size_bonus {
-                next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
-            }
             let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
@@ -1494,13 +1491,9 @@ fn install_hardware(
     // goes away when it leaves. This used to add the bonus one-way, which
     // meant a trashed console kept granting memory forever.
     //
-    // `max_hand_size_bonus` stays one-way and is applied here, because it
-    // is genuinely not board-derived: Agendas (`Effect::GainMaxHandSize`)
-    // and identities contribute to it too, so summing the rig would not
-    // reproduce it. See `RunnerState::max_hand_size_bonus`.
-    if let Some(bonus) = card_def.max_hand_size_bonus {
-        next.runner.max_hand_size_bonus = next.runner.max_hand_size_bonus.saturating_add(bonus);
-    }
+    // Its "+1 maximum hand size" is the same: `turn::max_hand_size` asks
+    // `continuous::hand_size`, which finds the card in the rig or does not.
+    //
     // Dispatched like a Program or Resource install — a piece of hardware
     // can react to its own install (GAMEDRAGON™ Pro). Nothing did before,
     // so this used to be a bare push.

@@ -365,7 +365,7 @@ pub fn narrate_event(
         GameEvent::RecurringCreditsSpent { .. } | GameEvent::DamageAboutToResolve { .. } |
         GameEvent::TrashAboutToResolve { .. } | GameEvent::DamagePrevented { .. } |
         GameEvent::TrashPrevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { ..
-        } | GameEvent::MaxHandSizeGained { .. } | GameEvent::BasicDrawActionTaken { .. } |
+        } | GameEvent::BasicDrawActionTaken { .. } |
         GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. } |
         GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. } |
         GameEvent::PendingPaidChoiceDeclined { .. } => return None,

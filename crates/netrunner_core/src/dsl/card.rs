@@ -314,13 +314,6 @@ pub struct CardDefinition {
     pub memory_cost: Option<u32>,
 
 
-    /// Additional max hand size this card grants once, permanently, when it
-    /// takes effect — Hardware (`install_hardware` time), an Agenda
-    /// (`Effect::GainMaxHandSize` fired from its own `Trigger::
-    /// OnAgendaScored`), or an identity (`GameState::setup`, read once like
-    /// `recurring_credits_max`). `None` for the common case (no bonus).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub max_hand_size_bonus: Option<u32>,
 
 
 
@@ -680,7 +673,6 @@ impl Default for CardDefinition {
             play_requirement: None,
             recurring_credits: None,
             memory_cost: None,
-            max_hand_size_bonus: None,
             installs_on_ice: false,
             hosted_cards_playable_from_grip: false,
             dividends: None,
@@ -785,6 +777,8 @@ impl CardDefinition {
                 (ContinuousKind::Strength(_), _) => return misfit("Strength", "strength belongs to this card, its host, or ice"),
                 (ContinuousKind::Memory(_), Scope::Controller) if self.side == Side::Runner => {}
                 (ContinuousKind::Memory(_), _) => return misfit("Memory", "memory is the Runner's, so it applies to a Runner card's `Controller`"),
+                (ContinuousKind::HandSize(_), Scope::Controller) => {}
+                (ContinuousKind::HandSize(_), _) => return misfit("HandSize", "a maximum hand size is a player's, so it applies to the card's `Controller`"),
                 (ContinuousKind::InstallCost(_), Scope::This | Scope::Installing(_)) => {}
                 (ContinuousKind::InstallCost(_), _) => return misfit("InstallCost", "an install cost is this card's own or that of a card being `Installing`"),
                 (ContinuousKind::RezCost(_), Scope::This | Scope::Ice | Scope::RootOfThisServer(_)) => {}
@@ -1060,6 +1054,7 @@ mod tests {
         assert_eq!(with(Side::Runner, CardType::Program, Some(0), ContinuousKind::Strength(flat(1)), Scope::This).validate(), Ok(()));
         assert_eq!(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Strength(flat(1)), Scope::Host).validate(), Ok(()));
         assert_eq!(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Memory(flat(1)), Scope::Controller).validate(), Ok(()));
+        assert_eq!(with(Side::Corp, CardType::Identity, None, ContinuousKind::HandSize(flat(2)), Scope::Controller).validate(), Ok(()));
         assert_eq!(with(Side::Runner, CardType::Resource, None, ContinuousKind::RezCost(flat(1)), Scope::Ice).validate(), Ok(()));
         assert_eq!(with(Side::Corp, CardType::Upgrade, None, ContinuousKind::TrashCost(flat(2)), Scope::RootOfThisServer(asset())).validate(), Ok(()));
 
@@ -1071,6 +1066,7 @@ mod tests {
         assert!(refused(with(Side::Corp, CardType::Ice(IceType::Barrier), Some(1), ContinuousKind::TrashCost(flat(1)), Scope::RootOfThisServer(asset()))));
         // A kind aimed at something it cannot change.
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::Memory(flat(1)), Scope::Ice)));
+        assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::HandSize(flat(1)), Scope::This)));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::InstallCost(flat(-1)), Scope::Controller)));
         assert!(refused(with(Side::Runner, CardType::Hardware, None, ContinuousKind::BoostsLastTheRun, Scope::Controller)));
     }

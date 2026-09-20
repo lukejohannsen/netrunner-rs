@@ -1,5 +1,6 @@
 use crate::cards::CardRegistry;
 use crate::dsl::CardId;
+use crate::rules::continuous;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -24,13 +25,21 @@ fn clicks_for(side: Side) -> u32 {
     }
 }
 
-/// `state` is needed for the Runner arm — `RUNNER_MAX_HAND_SIZE` is reduced
-/// by `state.runner.brain_damage`, which never heals.
-fn max_hand_size(state: &GameState, side: Side) -> usize {
+/// Derived from what is active every time it is asked, like the memory
+/// limit: the base, what the side's active cards add
+/// (`continuous::hand_size`), and for the Runner the brain damage that never
+/// heals. It was a stored bonus folded in at install, at a score and at
+/// setup and never taken out, so a trashed T400 Memory Diamond kept its +1
+/// for the rest of the game.
+fn max_hand_size(state: &GameState, side: Side, registry: &CardRegistry) -> usize {
+    let base = match side {
+        Side::Corp => CORP_MAX_HAND_SIZE,
+        Side::Runner => RUNNER_MAX_HAND_SIZE,
+    };
+    let granted = (base as i32 + continuous::hand_size(state, registry, side)).max(0) as usize;
     match side {
-        Side::Corp => CORP_MAX_HAND_SIZE + state.corp.max_hand_size_bonus as usize,
-        Side::Runner => (RUNNER_MAX_HAND_SIZE + state.runner.max_hand_size_bonus as usize)
-            .saturating_sub(state.runner.brain_damage),
+        Side::Corp => granted,
+        Side::Runner => granted.saturating_sub(state.runner.brain_damage),
     }
 }
 
@@ -56,8 +65,8 @@ fn hand_size(state: &GameState, side: Side) -> usize {
 /// phase (`GameEvent::CardDiscarded` has no `dispatcher::dispatch_event`
 /// arm, so nothing fires between discards at all), so this is insurance
 /// for the first card that can, not a fix for a reachable bug.
-fn cards_over_hand_limit(state: &GameState, side: Side) -> usize {
-    hand_size(state, side).saturating_sub(max_hand_size(state, side))
+fn cards_over_hand_limit(state: &GameState, side: Side, registry: &CardRegistry) -> usize {
+    hand_size(state, side).saturating_sub(max_hand_size(state, side, registry))
 }
 
 /// Extracts `side` from `state.phase` if it's currently `Action(side)`, for
@@ -225,7 +234,7 @@ pub(crate) fn finish_end_turn(
     if side == Side::Runner {
         state.runner.discarded_this_discard_phase.clear();
     }
-    let over_by = cards_over_hand_limit(state, side);
+    let over_by = cards_over_hand_limit(state, side, registry);
     if over_by > 0 {
         state.phase = GamePhase::Discard { side, required: over_by };
         events.push(GameEvent::DiscardPending { side, required: over_by });
@@ -261,7 +270,7 @@ pub fn discard_card(
 
     // Re-derived from the post-discard state, not decremented from the
     // phase's stored count — see `cards_over_hand_limit`'s doc comment.
-    let remaining = cards_over_hand_limit(&next, side);
+    let remaining = cards_over_hand_limit(&next, side, registry);
     if remaining == 0 {
         events.extend(dispatch_discard_phase_end(&mut next, side, registry)?);
         enter_start_of_turn(&mut next, &mut events, side.other(), registry)?;

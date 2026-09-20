@@ -329,16 +329,6 @@ pub struct CorpState {
     /// Cleared at the start of every Corp turn (`turn::enter_start_of_turn`).
     #[serde(default)]
     pub once_per_turn_used: HashSet<OncePerTurnKey>,
-    /// Permanent additive bonus to the Corp's max hand size (`turn::
-    /// max_hand_size`), set once at `GameState::setup` from the Corp
-    /// identity's registry `CardDefinition::max_hand_size_bonus` — e.g.
-    /// Haas-Bioroid: Precision Design's "+1 maximum hand size". `0` for the
-    /// common case (no such identity trait). Unlike `recurring_credits_max`,
-    /// this never refills/resets — it's a one-time, permanent addition, the
-    /// same treatment `RunnerState::brain_damage` gives the Runner's side
-    /// (just additive instead of subtractive).
-    #[serde(default)]
-    pub max_hand_size_bonus: u32,
     /// Whether the Corp is barred from scoring any further agenda for the
     /// remainder of this turn — set by Luminal Transubstantiation's own
     /// score trigger ("You cannot score agendas for the remainder of the
@@ -655,18 +645,6 @@ pub struct RunnerState {
     /// their last turn").
     #[serde(default)]
     pub made_successful_run_last_turn: bool,
-    /// Permanent additive bonus to the Runner's max hand size (`turn::
-    /// max_hand_size`) — the sum of every installed Hardware's registry
-    /// `CardDefinition::max_hand_size_bonus` (e.g. T400 Memory Diamond's
-    /// "+1 maximum hand size") plus any Agenda-scored `Effect::
-    /// GainMaxHandSize` (e.g. Superconducting Hub) and identity-level bonus
-    /// read once at `GameState::setup`. Deliberately one-way/permanent: it
-    /// is **not** board-derived the way `memory_units` now is, because
-    /// Agendas and identities contribute to it as well as Hardware, so
-    /// summing the rig would not reproduce it. That is the whole difference
-    /// between the two — see `rules::memory`.
-    #[serde(default)]
-    pub max_hand_size_bonus: u32,
 }
 
 impl RunnerState {

@@ -14,9 +14,17 @@
       },
       "applies_to": "Controller",
       "text": "+1[mu]"
+    },
+    {
+      "kind": {
+        "HandSize": {
+          "per": 1
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +1 maximum hand size"
     }
   ],
-  "max_hand_size_bonus": 1,
   "numeric_id": 30031,
   "is_playable": true
 }

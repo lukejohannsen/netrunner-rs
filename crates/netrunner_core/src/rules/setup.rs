@@ -105,15 +105,6 @@ impl GameState {
         state.corp.recurring_credits_max = recurring_credits_max;
         state.corp.recurring_credits = recurring_credits_max;
 
-        // Identity-level max-hand-size bonus (e.g. Haas-Bioroid: Precision
-        // Design's "+1 maximum hand size"), read once here — same pattern
-        // as `recurring_credits_max` above — for whichever side's identity
-        // declares one. `0` (the common case) for an identity with no such
-        // trait.
-        state.corp.max_hand_size_bonus =
-            registry.get(&corp_deck.identity).and_then(|c| c.max_hand_size_bonus).unwrap_or(0);
-        state.runner.max_hand_size_bonus =
-            registry.get(&runner_deck.identity).and_then(|c| c.max_hand_size_bonus).unwrap_or(0);
         // Printed link, same pattern. Nothing wrote `link_strength` before
         // this, so every Runner traced at link 0 — *Kate "Mac" McCaffrey*
         // included (ROADMAP Rules Audit, Tier 2).

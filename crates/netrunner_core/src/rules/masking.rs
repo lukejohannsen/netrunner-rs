@@ -764,7 +764,6 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::AgendaScored { .. }
         | GameEvent::DamageAboutToResolve { .. }
         | GameEvent::DamagePrevented { .. }
-        | GameEvent::MaxHandSizeGained { .. }
         | GameEvent::BasicDrawActionTaken { .. }
         | GameEvent::PendingChoicePresented { .. }
         | GameEvent::PendingChoiceResolved { .. }

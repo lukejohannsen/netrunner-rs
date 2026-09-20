@@ -473,12 +473,6 @@ pub enum Effect {
     /// `CardNotEligibleForCounters` error conditions as `AddCounters`/
     /// `RemoveCounters` (delegates to the same `modify_counters` helper).
     TakeAllCountersAsCredits(Side),
-    /// Permanently grants `side` `amount` additional max hand size —
-    /// e.g. Superconducting Hub's "you get +2 maximum hand size" (fired
-    /// from its own `Trigger::OnAgendaScored`). Adds to `CorpState`/
-    /// `RunnerState::max_hand_size_bonus`; never decremented (see that
-    /// field's doc comment).
-    GainMaxHandSize(Side, u32),
     /// Trashes the card currently pending in `run::AccessPhase::
     /// PendingChoice` — the card the Runner is actively accessing — for
     /// free, skipping its `trash_cost` entirely (unlike `PlayerAction::
@@ -1074,7 +1068,6 @@ impl Effect {
             | Effect::GainCreditsPerCardAccessedThisRun(..)
             | Effect::RezInstalled { .. }
             | Effect::TakeAllCountersAsCredits(..)
-            | Effect::GainMaxHandSize(..)
             | Effect::TrashCurrentlyAccessedCard
             | Effect::DerezCard(..)
             | Effect::GainCreditsPerCounter { .. }

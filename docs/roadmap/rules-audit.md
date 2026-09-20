@@ -462,7 +462,7 @@ one.
    deleted, `scripts/coverage_identical.py` at every stage, and a stage
    that is a rules correction says so and is measured apart from the
    refactor it rides on. The stages: the declared layer and every field
-   that was already derived live (this entry); hand size, which is folded
+   that was already derived live (the first entry below); hand size, which is folded
    in once at install and never taken back; a `GameState` list of
    lingering effects for the three `*_strength_buff` fields; the view's
    strength, which has never included what the table adds; ICE strength,
@@ -558,6 +558,57 @@ one.
    unmoved by that change). Not memoised: the next thing to try, if a
    search profile ever names it, is one `apply_action`'s worth, never a
    field on the state a search clones.
+
+   **Hand size is derived — DONE (20 September 2026,
+   `feat/hand-size-is-derived`).** "You get +1 maximum hand size" was the
+   one standing number still *stored*: `max_hand_size_bonus` on both
+   players' states, folded in at three moments — `GameState::setup` for an
+   identity (Haas-Bioroid: Precision Design), a hardware install (T400
+   Memory Diamond, at both install sites), `Effect::GainMaxHandSize` from
+   a score trigger (Superconducting Hub) — and never taken out. The field's
+   own doc said why: agendas and identities contribute as well as the rig,
+   "so summing the rig would not reproduce it". `rules::active` is exactly
+   that sum, so the three cards print `ContinuousKind::HandSize` on
+   `Scope::Controller` and `turn::max_hand_size` asks
+   `continuous::hand_size` each time, the way the memory limit is asked.
+   Out: both state fields, `CardDefinition::max_hand_size_bonus`, the setup
+   and install folds, `Effect::GainMaxHandSize` (`Effect` 74 → 73) and
+   `GameEvent::MaxHandSizeGained`, which nothing else emitted and no
+   client put into words.
+
+   *In shadow first, and this time the two were expected to disagree.*
+   With both compiled into a debug build, every ask of the limit logged
+   stored against derived over both 256-seed sweeps (1,536 games). On the
+   real game state: **five games, all in the index sweep (seeds 41, 106,
+   151, 218, 252), 60 end-of-turn checks between them, every one the
+   Runner at stored 6 and derived 5** — a T400 the Corp had trashed
+   (Retribution) still paying. No Corp disagreement on a real state: no
+   sweep game forfeits a Hub. Every other disagreement, 379 asks, was the
+   other way round and on a bot's sample: `determinize` builds its states
+   with the stored bonus at zero, so every sample of a game with one of
+   the three cards in play had the wrong limit (stored 5, derived 6 or 7).
+   A derived limit needs nothing carried into a sample.
+
+   *Measured* (`scripts/coverage_identical.py main --head-worktree`, 192
+   games a report, seed 1): random identical in both shapes; the two
+   heuristic reports differ **only** in the keys that no longer exist
+   (`effects_seen/GainMaxHandSize` 3 → 0, `events/MaxHandSizeGained`
+   3 → 0) — no step count, end reason or trigger count moved. So the
+   correction is real and rare: one pass of the pool never trashes a T400
+   with a sixth card in the grip at end of turn, and the heuristic does
+   not search, so its samples' hand limit never reached a decision. It
+   will reach PUCT's. An old `MatchHistory` replays differently only
+   across one of those five-in-768 games; the header carries no engine
+   version, which is Phase 7 §8 item 5's to decide.
+
+   *A test that could not fail.* T400's "end-to-end proof" applied
+   `EndTurn` and asserted the phase was not `Discard` — but `EndTurn`
+   opens the end-of-turn window and leaves the phase where it was, so the
+   assertion held at any hand limit. The three cards' tests close the
+   window and read `DiscardPending` now, each from both sides of the
+   line: installed and trashed, scored and forfeited, the identity and
+   none. Precision Design's bonus had no test at all — it was applied in
+   `setup`, which no `base_state()` test goes through.
 
    *Still open from this stage.* "The first time each turn you install a
    program" is still "once a turn, when it applies": a DZMZ installed after

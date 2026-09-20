@@ -269,7 +269,6 @@ pub fn event_side(event: &GameEvent) -> Option<Side> {
         | GameEvent::CreditsLost { side, .. }
         | GameEvent::ClicksLost { side, .. }
         | GameEvent::ClicksGained { side, .. }
-        | GameEvent::MaxHandSizeGained { side, .. }
         | GameEvent::BasicDrawActionTaken { side }
         | GameEvent::PendingPaidChoiceOffered { side }
         | GameEvent::PendingPaidChoiceAccepted { side }

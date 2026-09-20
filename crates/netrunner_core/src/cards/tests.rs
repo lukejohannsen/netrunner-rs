@@ -32,6 +32,23 @@ fn close_all_windows(mut state: GameState, registry: &CardRegistry) -> (GameStat
     (state, events)
 }
 
+/// How many cards `EndTurn` makes the ending side discard, once the
+/// end-of-turn window has closed. `EndTurn` alone leaves the phase where it
+/// was with a window open, so a test that read the phase straight off it
+/// (T400 Memory Diamond's did) passed whatever the hand limit was.
+fn discards_owed_at_end_of_turn(state: &GameState, registry: &CardRegistry) -> usize {
+    let (state, mut events) = apply_action(state, registry, PlayerAction::EndTurn).expect("end turn");
+    let (_, closing) = close_all_windows(state, registry);
+    events.extend(closing);
+    events
+        .iter()
+        .find_map(|event| match event {
+            crate::rules::GameEvent::DiscardPending { required, .. } => Some(*required),
+            _ => None,
+        })
+        .unwrap_or(0)
+}
+
 /// A bare `GameState`: no identity, empty zones, `Action(Corp)` — the same
 /// starting point `GameState::new` provides. Every test below overrides
 /// exactly the fields its scenario needs.
@@ -3492,7 +3509,7 @@ mod system_gateway {
     }
 
     #[test]
-    fn t400_memory_diamond_grants_memory_and_max_hand_size() {
+    fn t400_memory_diamond_grants_memory_and_max_hand_size_for_as_long_as_it_is_installed() {
         let registry = sg_registry();
         let mut state = base_state();
         state.phase = GamePhase::Action(Side::Runner);
@@ -3510,15 +3527,19 @@ mod system_gateway {
         .expect("install t400 memory diamond");
 
         assert_eq!(state.runner.memory_units, crate::rules::MemoryUnits(5));
-        assert_eq!(state.runner.max_hand_size_bonus, 1);
         assert_eq!(state.runner.grip.len(), 6, "t400 itself left the grip on install, 6 filler cards remain");
 
-        // End-to-end proof the bonus actually raises the enforced max hand
-        // size (not just the bookkeeping field): 6 cards exceeds the base
-        // limit of 5 but exactly fits the bonus-adjusted limit (5 + 1), so
-        // ending the Runner's turn here must NOT enter `GamePhase::Discard`.
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn within the raised limit");
-        assert!(!matches!(state.phase, GamePhase::Discard { .. }), "6 cards should fit under the +1 max hand size bonus");
+        // 6 cards exceeds the base limit of 5 but exactly fits 5 + 1.
+        assert_eq!(discards_owed_at_end_of_turn(&state, &registry), 0, "6 cards fit under 5 + 1");
+
+        // The +1 is the card's for as long as it is installed. It used to be
+        // folded into the state at install and never taken out, so a T400
+        // the Corp trashed (Retribution) went on paying: five games of the
+        // 768 in a 256-seed sweep.
+        let mut trashed = state.clone();
+        let t400 = trashed.runner.rig.remove(0);
+        trashed.runner.heap.push(t400.card);
+        assert_eq!(discards_owed_at_end_of_turn(&trashed, &registry), 1, "the limit went with the card");
     }
 
     #[test]
@@ -3599,7 +3620,7 @@ mod system_gateway {
     }
 
     #[test]
-    fn superconducting_hub_grants_max_hand_size_and_offers_an_optional_draw() {
+    fn superconducting_hub_grants_max_hand_size_while_it_is_scored_and_offers_an_optional_draw() {
         let registry = sg_registry();
         let mut state = base_state();
         state.corp.resources.credits = Credits(0);
@@ -3610,12 +3631,21 @@ mod system_gateway {
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "superconducting_hub") })
                 .expect("score superconducting hub");
-        assert_eq!(state.corp.max_hand_size_bonus, 2);
 
         let (state, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 })
             .expect("corp chooses to draw 2");
         assert_eq!(state.corp.hq.len(), 2);
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDrawn { side: Side::Corp })));
+
+        // "You get +2 maximum hand size" is the scored agenda's, read off
+        // the score area: seven cards fit, and stop fitting the moment the
+        // agenda is forfeited.
+        let mut state = state;
+        state.corp.hq = (0..7).map(|i| CardId(format!("hq_card_{i}"))).collect();
+        assert_eq!(discards_owed_at_end_of_turn(&state, &registry), 0, "7 cards fit under 5 + 2");
+
+        state.corp.scored_agendas.clear();
+        assert_eq!(discards_owed_at_end_of_turn(&state, &registry), 2, "the limit went with the agenda");
     }
 
     #[test]
@@ -3654,11 +3684,21 @@ mod system_gateway {
         assert!(state.corp.archives.is_empty());
         assert!(state.corp.hq.contains(&CardId("hedge_fund".to_string())));
 
-        assert_eq!(
-            registry.get(&CardId("haas_bioroid_precision_design".to_string())).unwrap().max_hand_size_bonus,
-            Some(1),
-            "the identity's max-hand-size bonus is applied at GameState::setup, not exercised by this base_state()-driven test"
-        );
+    }
+
+    /// "You get +1 maximum hand size", read off the identity each time the
+    /// limit is asked — it was copied into the state at `GameState::setup`,
+    /// which no `base_state()` test went through, so nothing tested it.
+    #[test]
+    fn haas_bioroid_precision_design_holds_six_cards() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.hq = (0..6).map(|i| CardId(format!("hq_card_{i}"))).collect();
+
+        assert_eq!(discards_owed_at_end_of_turn(&state, &registry), 1, "no identity, the printed 5");
+
+        state.corp.identity = Some(CardId("haas_bioroid_precision_design".to_string()));
+        assert_eq!(discards_owed_at_end_of_turn(&state, &registry), 0, "6 cards fit under 5 + 1");
     }
 
     fn corp_ice(id: &str, server: ServerId) -> crate::rules::InstalledCard {

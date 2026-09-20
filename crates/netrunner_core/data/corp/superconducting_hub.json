@@ -12,12 +12,6 @@
       "subject": "This",
       "effects": [
         {
-          "GainMaxHandSize": [
-            "Corp",
-            2
-          ]
-        },
-        {
           "PresentChoice": {
             "chooser": "Corp",
             "options": [
@@ -38,6 +32,17 @@
           }
         }
       ]
+    }
+  ],
+  "continuous": [
+    {
+      "kind": {
+        "HandSize": {
+          "per": 2
+        }
+      },
+      "applies_to": "Controller",
+      "text": "You get +2 maximum hand size"
     }
   ],
   "numeric_id": 30070,
