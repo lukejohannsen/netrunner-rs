@@ -10,6 +10,15 @@ use bevy::window::{MonitorSelection, WindowMode, WindowResolution};
 use netrunner_desktop::{NetrunnerDesktopPlugins, WINDOW_TITLE};
 
 fn main() -> AppExit {
+    // A dev window, when one was asked for: the board is fullscreen by
+    // design, so a screenshot of one cramped for room — a menu or a
+    // pop-up with more in it than the window holds — cannot be taken any
+    // other way. Nothing but `NETRUNNER_WINDOW` reaches this.
+    let dev_window = netrunner_desktop::dev::window_size();
+    let (mode, resolution) = match dev_window {
+        Some((width, height)) => (WindowMode::Windowed, WindowResolution::new(width, height)),
+        None => (WindowMode::BorderlessFullscreen(MonitorSelection::Current), WindowResolution::new(1280, 800)),
+    };
     App::new()
         .add_plugins(
             DefaultPlugins
@@ -23,8 +32,8 @@ fn main() -> AppExit {
                         // Borderless rather than exclusive, so alt-tab and
                         // the compositor behave; the resolution is what a
                         // window would be if a platform refuses.
-                        mode: WindowMode::BorderlessFullscreen(MonitorSelection::Current),
-                        resolution: WindowResolution::new(1280, 800),
+                        mode,
+                        resolution,
                         ..default()
                     }),
                     ..default()

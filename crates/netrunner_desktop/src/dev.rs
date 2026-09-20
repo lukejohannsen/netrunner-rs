@@ -27,10 +27,21 @@
 //! - `NETRUNNER_KEYS=1` — on the board, the list of keys is opened once
 //!   the person's decision has arrived (after any autoplay), so it can be
 //!   looked at over a real board.
-//! - `NETRUNNER_MENU=1` — on the board, once the person's decision has
-//!   arrived (after any autoplay), the actions menu a click on a card
-//!   would open is opened above the first hand card with an action (or
-//!   the first card), so the menu can be looked at.
+//! - `NETRUNNER_MENU=1|most|top` — on the board, once the person's
+//!   decision has arrived (after any autoplay), the actions menu a click
+//!   on a card would open is opened, so the menu can be looked at. `1`
+//!   takes the first hand card with an action (or the first card);
+//!   `most` the target with the most entries, which is the tallest menu
+//!   the board can show; `top` the target nearest the window's top edge
+//!   that has an entry, which is the menu that must flip below its card.
+//!   The last two exist because the first could not show a menu running
+//!   off the window: a hand card sits on the bottom edge with a
+//!   handful of entries.
+//! - `NETRUNNER_WINDOW=<width>x<height>` — the client opens a window of
+//!   that size instead of taking the whole screen. The board is
+//!   fullscreen by design, so this is the only way to screenshot one
+//!   cramped for room — which is what a menu or a pop-up with more in it
+//!   than the window holds needs to be looked at.
 //! - `NETRUNNER_LIFT=1` — on the board, once the autoplay is done, the
 //!   first card in the person's hand is lifted out whole as a hover lifts
 //!   it, so the lifted card over the board can be looked at.
@@ -105,6 +116,48 @@ impl Plugin for DevPlugin {
     }
 }
 
+/// The window `NETRUNNER_WINDOW` asked for, if any.
+///
+/// Read here rather than in `main`, because this module owns every
+/// environment variable the client reads — and read before the `App` is
+/// built, which is why it is a function and not a field of [`Dev`]: the
+/// window is decided when `WindowPlugin` is configured, before any
+/// resource exists.
+pub fn window_size() -> Option<(u32, u32)> {
+    let spec = std::env::var("NETRUNNER_WINDOW").ok()?;
+    let spec = spec.trim().to_ascii_lowercase();
+    let (width, height) = spec.split_once('x')?;
+    Some((width.trim().parse().ok()?, height.trim().parse().ok()?))
+}
+
+/// Which card the menu hook opens its menu over.
+///
+/// `1` is the hand card it has always taken, and the other two exist
+/// because that one could not show the bug it was asked to: a hand card
+/// sits on the window's bottom edge with a handful of entries, which is
+/// the one case a menu never ran off the screen in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuPick {
+    /// The first hand card with an action, else the first card.
+    Hand,
+    /// The target with the most entries: the tallest menu on the board.
+    Most,
+    /// The target nearest the window's top edge that has an entry: the
+    /// menu that has to flip below its card.
+    Top,
+}
+
+impl MenuPick {
+    fn from_name(name: &str) -> Option<Self> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "" => None,
+            "most" => Some(MenuPick::Most),
+            "top" => Some(MenuPick::Top),
+            _ => Some(MenuPick::Hand),
+        }
+    }
+}
+
 /// What the environment asked for.
 #[derive(Resource, Debug, Default)]
 pub struct Dev {
@@ -123,8 +176,8 @@ pub struct Dev {
     pub keys: bool,
     /// Pick up the first hand card that has somewhere to go, once.
     pub drag: bool,
-    /// Open the actions menu above a hand card, once.
-    pub menu: bool,
+    /// Open the actions menu over a card, once.
+    pub menu: Option<MenuPick>,
     /// Lift the first hand card out of the hand as a hover would.
     pub lift: bool,
     /// Hold a run at its first encounter for the screenshot.
@@ -178,7 +231,7 @@ impl Dev {
             options: std::env::var_os("NETRUNNER_OPTIONS").is_some_and(|v| !v.is_empty()),
             keys: std::env::var_os("NETRUNNER_KEYS").is_some_and(|v| !v.is_empty()),
             drag: std::env::var_os("NETRUNNER_DRAG").is_some_and(|v| !v.is_empty()),
-            menu: std::env::var_os("NETRUNNER_MENU").is_some_and(|v| !v.is_empty()),
+            menu: std::env::var("NETRUNNER_MENU").ok().and_then(|pick| MenuPick::from_name(&pick)),
             lift: std::env::var_os("NETRUNNER_LIFT").is_some_and(|v| !v.is_empty()),
             hold_run: std::env::var_os("NETRUNNER_HOLD_RUN").is_some_and(|v| !v.is_empty()),
             hold_ice: std::env::var_os("NETRUNNER_HOLD_ICE").is_some_and(|v| !v.is_empty()),
