@@ -7,8 +7,13 @@
   "unique": true,
   "triggers": [
     {
-      "trigger": "OnSuccessfulRunOnHq",
+      "trigger": "OnSuccessfulRun",
       "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
       "effects": [
         {
           "EffectIf": {

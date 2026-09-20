@@ -547,7 +547,7 @@ fn scorched_earth_requires_a_tagged_runner_and_deals_four_meat_damage() {
 /// pool as every other playable card, so — unlike when these cards were
 /// only reachable through the `fs-loader` filesystem path — they run in the
 /// default build.
-/// The engine dispatches `Trigger::OnTransactionPlayed` off `subtypes`,
+/// A card that means transactions filters `OnOperationPlayed` by `subtypes`,
 /// not catalog keywords — and three printed Transactions (Hedge Fund,
 /// Hansei Review, Predictive Planogram) lacked the field, so Weyland
 /// Consortium: Building a Better World never paid on them.
@@ -3406,7 +3406,7 @@ mod system_gateway {
         assert_eq!(state.runner.resources.credits, Credits(1));
 
         // Zero-regression check for the same widening: Gabriel Santiago's
-        // unrelated `OnSuccessfulRunOnHq` identity trigger (a completely
+        // unrelated successful-run-on-HQ identity trigger (a completely
         // different event/trigger pair) is unaffected — already covered by
         // that card's own passing baseline test elsewhere in this suite;
         // the widening here only touches `AgendaScored`/`AgendaStolen`'s own

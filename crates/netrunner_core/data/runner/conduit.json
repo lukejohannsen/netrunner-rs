@@ -10,8 +10,13 @@
   ],
   "triggers": [
     {
-      "trigger": "OnSuccessfulRunOnRnD",
+      "trigger": "OnSuccessfulRun",
       "subject": "Any",
+      "when": {
+        "Server": [
+          "RnD"
+        ]
+      },
       "effects": [
         {
           "PresentChoice": {

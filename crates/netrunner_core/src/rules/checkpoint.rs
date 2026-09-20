@@ -148,7 +148,7 @@ mod tests {
             card_type: CardType::Identity,
             triggers: vec![TriggeredEffect {
                 trigger: Trigger::OnAgendaStolen,
-                subject: Some(Subject::Any),
+                subject: Some(Subject::Any), when: None, acts_on_subject: false,
                 text: None,
                 effects: vec![Effect::DealDamage(DamageType::Net, 1)],
                 requirement: None,

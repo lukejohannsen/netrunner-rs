@@ -222,7 +222,7 @@ pub fn apply_action(
     events.extend(memory::enforce_limit(&mut next, registry)?);
     events.extend(open_post_action_window(&mut next, registry, &action_kind));
     #[cfg(debug_assertions)]
-    dispatcher::audit::check(&next, registry, &events);
+    dispatcher::audit::check(&next, &events);
     Ok((next, events))
 }
 
@@ -1214,7 +1214,7 @@ pub(crate) fn play_operation_card(
     // `dispatch_event` resolves both `OnPlay` and, for Transaction-subtype
     // Operations, the Weyland Consortium: Building a Better World-style
     // identity reaction (unconditional — no per-turn gate, unlike
-    // `OnSuccessfulRunOnHq`/`OnInstall` above) from this one event.
+    // `OnSuccessfulRun`/`OnInstall` above) from this one event.
     next.corp.played_operation_this_turn = true;
     let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives };
     dispatcher::emit(next, registry, &mut events, played_event)?;
@@ -1680,7 +1680,7 @@ fn install_program(
 
 /// Resolves `PlayerAction::InstallProgramOnIce`, per its doc comment.
 /// Mirrors `install_program` almost exactly (same memory/cost handling,
-/// same `ProgramInstalled` event so `OnVirusInstalled`/Cookbook-style
+/// same `ProgramInstalled` event so `OnCardInstalled`/Cookbook-style
 /// dispatch keeps working uniformly for a hosted Trojan) — the only two
 /// differences are the `installs_on_ice`/host-is-ICE validation up front,
 /// and stamping `hosted_on_ice` on the seeded rig card afterward.
@@ -3252,7 +3252,7 @@ mod tests {
             title: "Anoetic Void".to_string(),
             side: Side::Corp,
             card_type: CardType::Upgrade,
-            triggers: vec![TriggeredEffect { subject: None, text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, text: None, trigger: Trigger::OnApproachServer, effects: vec![Effect::EndTheRun], requirement: None }],
             is_playable: true,
             ..Default::default()
         };
@@ -3262,7 +3262,7 @@ mod tests {
             side: Side::Runner,
             card_type: CardType::Resource,
             triggers: vec![TriggeredEffect {
-                subject: None,
+                subject: None, when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnSuccessfulRun,
                 effects: vec![Effect::GainCredits(Side::Runner, 1)],
@@ -3987,7 +3987,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sure_gamble", Side::Runner, CardType::Event, 5, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None,
+            subject: None, when: None, acts_on_subject: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Runner, 9)],
@@ -4084,7 +4084,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("hedge_fund", Side::Corp, CardType::Operation, 5, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None,
+            subject: None, when: None, acts_on_subject: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -4229,7 +4229,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut card = test_card("sea_source", Side::Corp, CardType::Operation, 0, None);
         card.triggers = vec![TriggeredEffect {
-            subject: None,
+            subject: None, when: None, acts_on_subject: false,
             text: None,
             trigger: Trigger::OnPlay,
             effects: vec![Effect::Trace { base: 2, on_success: Box::new(Effect::GiveTags(1)) }],
@@ -5648,7 +5648,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None,
+                subject: None, when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::PresentChoice {
@@ -5662,7 +5662,7 @@ mod tests {
         });
         registry.insert(CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None,
+                subject: None, when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, 1)],
@@ -5720,7 +5720,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None,
+                subject: None, when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
@@ -5803,7 +5803,7 @@ mod tests {
         let mut registry = CardRegistry::new();
         let reactor = |id: &str, amount: u32| CardDefinition {
             triggers: vec![TriggeredEffect {
-                subject: None,
+                subject: None, when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnTurnStart,
                 effects: vec![Effect::GainCredits(Side::Corp, amount)],
@@ -5870,26 +5870,29 @@ mod tests {
         );
     }
 
-    /// One card can owe several triggers to one event: a successful run on
-    /// HQ queues both `OnSuccessfulRun` and `OnSuccessfulRunOnHq`. By
-    /// `CardId` both named the first entry, so the second trigger could
-    /// never go first; by position the player orders them individually.
+    /// One card can owe several triggers to one event: an install is both
+    /// an `OnInstall` and an `OnCardInstalled`. By `CardId` both named the
+    /// first entry, so the second trigger could never go first; by position
+    /// the player orders them individually. (It was written about
+    /// `OnSuccessfulRun` and `OnSuccessfulRunOnHq`, which are one trigger
+    /// now: two `TriggeredEffect`s of one trigger are one entry, resolved
+    /// in the order the card lists them.)
     #[test]
-    fn one_card_with_two_success_triggers_is_orderable_per_trigger() {
+    fn one_card_with_two_triggers_for_one_event_is_orderable_per_trigger() {
         let mut registry = CardRegistry::new();
         registry.insert(CardDefinition {
             triggers: vec![
                 TriggeredEffect {
-                    subject: None,
+                    subject: None, when: None, acts_on_subject: false,
                     text: None,
-                    trigger: Trigger::OnSuccessfulRun,
+                    trigger: Trigger::OnInstall,
                     effects: vec![Effect::GainCredits(Side::Runner, 1)],
                     requirement: None,
                 },
                 TriggeredEffect {
-                    subject: None,
+                    subject: None, when: None, acts_on_subject: false,
                     text: None,
-                    trigger: Trigger::OnSuccessfulRunOnHq,
+                    trigger: Trigger::OnCardInstalled,
                     effects: vec![Effect::GainCredits(Side::Runner, 3)],
                     requirement: None,
                 },
@@ -5913,7 +5916,7 @@ mod tests {
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,
-            pending: vec![due(Trigger::OnSuccessfulRun), due(Trigger::OnSuccessfulRunOnHq)],
+            pending: vec![due(Trigger::OnInstall), due(Trigger::OnCardInstalled)],
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         assert_eq!(crate::rules::current_actor(&state), Some(Side::Runner));
@@ -5928,13 +5931,13 @@ mod tests {
                 &GameEvent::CreditsGained { side: Side::Runner, amount: 3 },
                 &GameEvent::CreditsGained { side: Side::Runner, amount: 1 },
             ],
-            "the HQ trigger resolved first, then the remaining one drained"
+            "the second trigger resolved first, then the remaining one drained"
         );
         assert!(
             events.contains(&GameEvent::TriggerOrderChosen {
                 chooser: Side::Runner,
                 card: CardId("docklands_style_pass".to_string()),
-                trigger: Trigger::OnSuccessfulRunOnHq,
+                trigger: Trigger::OnCardInstalled,
             }),
             "the event says which of the card's triggers was picked"
         );

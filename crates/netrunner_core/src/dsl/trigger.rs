@@ -41,7 +41,14 @@ pub enum Trigger {
     /// Shock!-style "when trashed by the Runner accessing it" abilities.
     OnTrashedFromAccess,
     /// Fires when a run completes successfully — distinct from
-    /// `OnRunStart`, which fires at initiation, not resolution.
+    /// `OnRunStart`, which fires at initiation, not resolution. *Which*
+    /// server is the card's to say, in `TriggeredEffect::when`: Gabriel
+    /// Santiago's "on HQ", Conduit's "on R&D", Leech's "on a central
+    /// server". Each of those was a variant of its own here
+    /// (`OnSuccessfulRunOnHq`, `…OnRnD`, `…OnCentralServer`) while a trigger
+    /// matched by equality alone, so one `RunSucceeded` was an occurrence of
+    /// up to three triggers and a fourth server condition would have been a
+    /// fourth variant.
     OnSuccessfulRun,
     /// Not a moment in time — marks an ability that only resolves when a
     /// player explicitly activates it and pays `AbilityDef::cost`. Should
@@ -65,25 +72,6 @@ pub enum Trigger {
     /// this hardware ... you may host it"). Hardware was the last type
     /// widened — no System Gateway hardware reacted to its own install.
     OnInstall,
-    /// Fires against the Runner's identity card specifically when a run on
-    /// HQ succeeds (`GameEvent::RunSucceeded { server: ServerId::Hq }`) —
-    /// e.g. Gabriel Santiago. Combine with
-    /// `EffectRequirement::FirstSuccessfulHqRunThisTurn` to limit it to once
-    /// per turn.
-    OnSuccessfulRunOnHq,
-    /// Fires against every candidate (identity + rig) when a run succeeds
-    /// against any central server (`ServerId::Hq`/`RnD`/`Archives`) —
-    /// mirrors `OnSuccessfulRunOnHq`'s dispatch shape but for all three
-    /// centrals rather than just HQ — e.g. Leech's "whenever you make a
-    /// successful run on a central server, place 1 virus counter on this
-    /// program."
-    OnSuccessfulRunOnCentralServer,
-    /// Fires against every candidate (identity + rig) when a run succeeds
-    /// specifically against R&D (`GameEvent::RunSucceeded { server:
-    /// ServerId::RnD }`) — mirrors `OnSuccessfulRunOnHq`'s exact dispatch
-    /// shape but for R&D — e.g. Conduit's "whenever a successful run on R&D
-    /// ends, you may place 1 virus counter on this program."
-    OnSuccessfulRunOnRnD,
     /// Fires when the Corp scores an agenda (`PlayerAction::ScoreAgenda`) —
     /// dispatched twice: once against the scored agenda's own `CardId` (its
     /// own "on score" text, e.g. Hostile Takeover), then against the Corp's
@@ -94,19 +82,6 @@ pub enum Trigger {
     /// agenda (`run::resolve_steal`) — e.g. Jinteki: Personal Evolution
     /// reacting to either scoring or a steal.
     OnAgendaStolen,
-    /// Fires against the Corp's identity card whenever a
-    /// `CardSubtype::Transaction` Operation is played — e.g. Weyland
-    /// Consortium: Building a Better World.
-    OnTransactionPlayed,
-    /// Fires against the Runner's identity card whenever a
-    /// `CardSubtype::Virus` Program is installed — e.g. Noise: Hacker
-    /// Extraordinaire. Also fires against every OTHER Runner rig card
-    /// declaring this trigger, but — for rig cards only, not the identity
-    /// — the resulting effect acts on the just-installed virus program
-    /// itself rather than the reacting card (see `ability::
-    /// process_card_triggers_targeting`), e.g. Cookbook's "you may place 1
-    /// virus counter on it."
-    OnVirusInstalled,
     /// Fires the instant an `Effect::DealDamage` is parked in
     /// `GameState::pending_prevention` (`GameEvent::DamageAboutToResolve`),
     /// before its `WindowCheckpoint::Prevention` window opens — for a
@@ -124,8 +99,7 @@ pub enum Trigger {
     /// `EffectRequirement::RezzedDuringRunAgainstThisServer` to scope it to
     /// a rez that happens mid-run against the card's own server. On a
     /// Runner card or identity, "whenever the Corp rezzes a card" — Barry
-    /// "Baz" Wong narrows it to ice with
-    /// `EffectRequirement::TriggeringCardMatches`.
+    /// "Baz" Wong narrows it to ice with `when: Card(CardType(Ice))`.
     OnRez,
     /// Fires against every rezzed Corp Root-slot install in a server the
     /// Runner has just approached (`GameEvent::ServerApproached`) — the
@@ -179,7 +153,9 @@ pub enum Trigger {
     /// the acting card and the install in the triggering event. Distinct
     /// from `OnInstall`, which reaches the just-installed card itself (and
     /// the identity) and could not be widened without every "when you
-    /// install this" card firing on every install. Bling.
+    /// install this" card firing on every install. Bling. Noise and
+    /// Cookbook narrow it to a virus program with `when:
+    /// Card(HasSubtype(Virus))`, which was the variant `OnVirusInstalled`.
     OnCardInstalled,
     /// "Whenever you do damage" — fired against the *dealing* side's
     /// identity when `GameEvent::DamageTaken` resolves. Only the Corp deals
@@ -198,7 +174,7 @@ pub enum Trigger {
     /// `GameEvent::AbilityGainedCredits`, which the credit-gaining effects
     /// emit alongside `CreditsGained` when a card is resolving. The Zwicky
     /// Group: Invisible Hands narrows it to "an agenda or operation" with
-    /// `EffectRequirement::TriggeringCardMatches`. A separate event rather
+    /// `TriggeredEffect::when`. A separate event rather
     /// than a field on `CreditsGained`: the field would have had to be
     /// threaded through twenty-six construction sites, most of which have
     /// no card to name (a click for credits, a trace payout).
@@ -216,9 +192,11 @@ pub enum Trigger {
     OnIceApproached,
     /// "Whenever you play an operation" — fired against the Corp's identity
     /// for every `GameEvent::OperationPlayed`, whatever the operation's
-    /// subtype. `OnTransactionPlayed` is the narrower sibling, and Nebula
-    /// Talent Management: Making Stars reads every operation, not just the
-    /// transactions.
+    /// subtype: Nebula Talent Management: Making Stars reads every
+    /// operation. Weyland Consortium: Building a Better World reads the
+    /// transactions, with `when: Card(HasSubtype(Transaction))` — it had a
+    /// variant of its own, `OnTransactionPlayed`, until a trigger could take
+    /// a filter.
     OnOperationPlayed,
     /// "Whenever a tag is removed" — fired against the Corp's identity
     /// when the Runner loses a tag by any route (`TagRemoved`,
@@ -245,8 +223,8 @@ pub enum Trigger {
 ///
 /// Not a `CardFilter`, and deliberately two-valued: "is it me" needs the
 /// listener's own install handle, which no filter over the *other* card can
-/// answer. Narrowing `Any` by what the other card is stays where it already
-/// lives, `EffectRequirement::TriggeringCardMatches`.
+/// answer. Narrowing `Any` by what the other card is belongs to
+/// `TriggeredEffect::when` (`EventFilter::Card`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Subject {
     This,
@@ -265,23 +243,72 @@ pub enum Hears {
     Everyone,
 }
 
+/// What a `Trigger`'s moment is about — see `Trigger::about`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TriggerAbout {
+    Nothing,
+    Card,
+    Server,
+}
+
+/// Which occurrences of its trigger a `TriggeredEffect` means, read off
+/// what the occurrence is about: "a successful run **on HQ**", "whenever you
+/// play **a transaction**", "whenever you install **a virus program**".
+///
+/// **A pure function of the event, and part of the trigger condition — not
+/// an `EffectRequirement`.** The two look alike and are different things on
+/// the printed card. "Whenever you make a successful run on HQ" is *when*:
+/// a run on R&D is not an occurrence of it, nothing is pending, there is
+/// nothing to order and nothing that could become true later. "…if you have
+/// not already this turn" is an intervening *if*: the trigger met its
+/// condition and is asked, and the answer depends on the state at the
+/// moment it resolves — which is why an idle one is still queued behind the
+/// ones a player orders. `rules::listeners` evaluates `when` in the scan, so
+/// a card whose filter fails was never a listener.
+///
+/// Until this existed the only way to narrow a trigger by its event was a
+/// variant: `OnSuccessfulRunOnHq`, `OnSuccessfulRunOnRnD`,
+/// `OnSuccessfulRunOnCentralServer`, `OnTransactionPlayed` and
+/// `OnVirusInstalled` were five names for three triggers, and the next
+/// "whenever you install a piece of hardware" would have been a sixth.
+///
+/// Two variants, one per thing a moment can be about (`TriggerAbout`), and
+/// `CardDefinition::validate` refuses the wrong one for the trigger.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum EventFilter {
+    /// The card the moment is about matches — the installed card, the
+    /// operation played, the card rezzed, the card whose ability paid out.
+    /// Decided off the card's definition alone: a `CardFilter` about the
+    /// installed *instance* (`Rezzed`, `NotInstalledThisTurn`) passes
+    /// everything here, as it does wherever only a definition is in hand.
+    /// This took over `EffectRequirement::TriggeringCardMatches`, which
+    /// said the same thing as an "if": Barry "Baz" Wong was a listener on
+    /// every rez, queued and asked, for a rez of an asset that his text is
+    /// not about.
+    Card(crate::dsl::CardFilter),
+    /// The server the moment is about is one of these. "A central server"
+    /// is the three of them by name; nothing in the pool is printed about
+    /// "a remote server", which a list of ids could not say and a variant
+    /// here would.
+    Server(Vec<crate::rules::ServerId>),
+}
+
 impl Trigger {
-    /// Whether this trigger's moment is *about* a card or a server, so that
-    /// a `TriggeredEffect` using it must say which occurrences it hears
-    /// (`TriggeredEffect::subject`) — and one using any other trigger must
-    /// not, because there is no "this one" for a turn beginning.
+    /// What this trigger's moment is *about* — a card, a server, or nothing
+    /// a card could point at. It decides two things a card file is held to
+    /// by `CardDefinition::validate`: whether a `TriggeredEffect` must say
+    /// which occurrences it hears (`names_a_subject`), and which kind of
+    /// `EventFilter` its `when` may carry, since a server filter on an
+    /// install would parse and then never pass.
     ///
     /// Exhaustive on purpose: a new `Trigger` does not compile until someone
-    /// decides, and `CardDefinition::validate` then holds every card file to
-    /// the answer.
-    pub fn names_a_subject(self) -> bool {
+    /// decides.
+    pub fn about(self) -> TriggerAbout {
         match self {
             Trigger::OnPlay
             | Trigger::OnInstall
             | Trigger::OnCardInstalled
-            | Trigger::OnVirusInstalled
             | Trigger::OnOperationPlayed
-            | Trigger::OnTransactionPlayed
             | Trigger::OnAccessed
             | Trigger::OnTrashedFromAccess
             | Trigger::OnAgendaScored
@@ -290,15 +317,10 @@ impl Trigger {
             | Trigger::OnRez
             | Trigger::OnAdvance
             | Trigger::OnEncounter
-            | Trigger::OnAbilityGainedCredits
-            | Trigger::OnRunStart
-            | Trigger::OnIceApproached
-            | Trigger::OnApproachServer
-            | Trigger::OnSuccessfulRun
-            | Trigger::OnSuccessfulRunOnHq
-            | Trigger::OnSuccessfulRunOnRnD
-            | Trigger::OnSuccessfulRunOnCentralServer
-            | Trigger::OnRunEnded => true,
+            | Trigger::OnAbilityGainedCredits => TriggerAbout::Card,
+            Trigger::OnRunStart | Trigger::OnIceApproached | Trigger::OnApproachServer | Trigger::OnSuccessfulRun | Trigger::OnRunEnded => {
+                TriggerAbout::Server
+            }
             // A phase, a count or a player, never a card. The two prevention
             // moments are here too: what is about to be trashed is a
             // `CardTarget` still to be resolved, not a card, and no card
@@ -315,12 +337,20 @@ impl Trigger {
             | Trigger::OnCardsTrashedFromHq
             | Trigger::OnDamageAboutToResolve
             | Trigger::OnTrashAboutToResolve
-            | Trigger::Paid => false,
+            | Trigger::Paid => TriggerAbout::Nothing,
         }
     }
 
+    /// Whether a `TriggeredEffect` using this trigger must say which
+    /// occurrences it hears (`TriggeredEffect::subject`) — and one using any
+    /// other trigger must not, because there is no "this one" for a turn
+    /// beginning.
+    pub fn names_a_subject(self) -> bool {
+        self.about() != TriggerAbout::Nothing
+    }
+
     /// Whose moment this trigger hears. Read off how the pool's cards print
-    /// it, and exhaustive for the same reason as `names_a_subject`.
+    /// it, and exhaustive for the same reason as `about`.
     pub fn hears(self) -> Hears {
         match self {
             Trigger::OnTurnStart
@@ -329,9 +359,7 @@ impl Trigger {
             | Trigger::OnBasicDrawAction
             | Trigger::OnInstall
             | Trigger::OnCardInstalled
-            | Trigger::OnVirusInstalled
             | Trigger::OnOperationPlayed
-            | Trigger::OnTransactionPlayed
             | Trigger::OnAdvance
             | Trigger::OnAbilityGainedCredits
             | Trigger::OnDamageDealt
@@ -350,9 +378,6 @@ impl Trigger {
             | Trigger::OnIceApproached
             | Trigger::OnApproachServer
             | Trigger::OnSuccessfulRun
-            | Trigger::OnSuccessfulRunOnHq
-            | Trigger::OnSuccessfulRunOnRnD
-            | Trigger::OnSuccessfulRunOnCentralServer
             | Trigger::OnRunEnded
             | Trigger::OnTagsGiven
             | Trigger::OnTagRemoved

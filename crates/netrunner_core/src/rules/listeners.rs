@@ -31,7 +31,7 @@
 //! saying it outlives being active.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardSubtype, CardType, Hears, Subject, Trigger, TriggeredEffect};
+use crate::dsl::{CardId, CardType, EventFilter, Hears, Subject, Trigger, TriggeredEffect};
 use crate::rules::event::GameEvent;
 use crate::rules::run::ServerId;
 use crate::rules::state::{DeferredTrigger, GamePhase, GameState, Heard, InstallId, InstallSlot, Side};
@@ -76,33 +76,24 @@ struct Listener {
 /// nothing: they record a state change no card in the pool prints a trigger
 /// for. They are listed by name, not caught by `_`, so that adding a
 /// `GameEvent` is a decision made here rather than a silence.
-pub(crate) fn moments(state: &GameState, registry: &CardRegistry, event: &GameEvent) -> Vec<Moment> {
-    let has_subtype = |card: &CardId, subtype: CardSubtype| registry.get(card).is_some_and(|c| c.subtypes.contains(&subtype));
+pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
     let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install };
     let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of };
     match event {
         GameEvent::EventPlayed { side, card: played } => vec![moment(Trigger::OnPlay, &card(played, None), Some(*side))],
 
+        // What kind of operation, program or server is the listening card's
+        // to ask (`TriggeredEffect::when`), not a second moment: "whenever
+        // you play a transaction" is `OnOperationPlayed` heard by a card
+        // that means transactions.
         GameEvent::OperationPlayed { side, card: played, .. } => {
             let about = card(played, None);
-            let mut heard = vec![moment(Trigger::OnPlay, &about, Some(*side))];
-            if has_subtype(played, CardSubtype::Transaction) {
-                heard.push(moment(Trigger::OnTransactionPlayed, &about, Some(*side)));
-            }
-            heard.push(moment(Trigger::OnOperationPlayed, &about, Some(*side)));
-            heard
+            vec![moment(Trigger::OnPlay, &about, Some(*side)), moment(Trigger::OnOperationPlayed, &about, Some(*side))]
         }
 
-        GameEvent::ProgramInstalled { side, card: installed, .. } => {
-            let about = card(installed, newest_rig_install(state, installed));
-            let mut heard = vec![moment(Trigger::OnInstall, &about, Some(*side))];
-            if has_subtype(installed, CardSubtype::Virus) {
-                heard.push(moment(Trigger::OnVirusInstalled, &about, Some(*side)));
-            }
-            heard.push(moment(Trigger::OnCardInstalled, &about, Some(*side)));
-            heard
-        }
-        GameEvent::HardwareInstalled { side, card: installed, .. } | GameEvent::ResourceInstalled { side, card: installed, .. } => {
+        GameEvent::ProgramInstalled { side, card: installed, .. }
+        | GameEvent::HardwareInstalled { side, card: installed, .. }
+        | GameEvent::ResourceInstalled { side, card: installed, .. } => {
             let about = card(installed, newest_rig_install(state, installed));
             vec![moment(Trigger::OnInstall, &about, Some(*side)), moment(Trigger::OnCardInstalled, &about, Some(*side))]
         }
@@ -161,23 +152,7 @@ pub(crate) fn moments(state: &GameState, registry: &CardRegistry, event: &GameEv
         GameEvent::IceEncountered { card_id, .. } => {
             vec![moment(Trigger::OnEncounter, &card(card_id, encountered_install(state)), Some(Side::Runner))]
         }
-        // One event and three filters on it — the `Trigger` vocabulary grew
-        // by audience here, which is what `TriggeredEffect` taking a filter
-        // of its own is owed for.
-        GameEvent::RunSucceeded { server } => {
-            let about = About::Server(*server);
-            let mut heard = vec![moment(Trigger::OnSuccessfulRun, &about, Some(Side::Runner))];
-            if *server == ServerId::Hq {
-                heard.push(moment(Trigger::OnSuccessfulRunOnHq, &about, Some(Side::Runner)));
-            }
-            if *server == ServerId::RnD {
-                heard.push(moment(Trigger::OnSuccessfulRunOnRnD, &about, Some(Side::Runner)));
-            }
-            if matches!(server, ServerId::Hq | ServerId::RnD | ServerId::Archives) {
-                heard.push(moment(Trigger::OnSuccessfulRunOnCentralServer, &about, Some(Side::Runner)));
-            }
-            heard
-        }
+        GameEvent::RunSucceeded { server } => vec![moment(Trigger::OnSuccessfulRun, &About::Server(*server), Some(Side::Runner))],
         // Only the ordinary conclusions: a flatline or an agenda win
         // mid-access ends the game, and nothing resolves after that.
         GameEvent::RunCompleted { server } | GameEvent::RunJackedOut { server } | GameEvent::RunEndedByEffect { server } => {
@@ -281,7 +256,7 @@ pub(crate) fn moments(state: &GameState, registry: &CardRegistry, event: &GameEv
 /// moment, so the plan is what reacts, not who was asked — which is also
 /// what `ChooseTriggerOrder` should be counting.
 pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameEvent) -> Vec<(Side, DeferredTrigger)> {
-    let moments = moments(state, registry, event);
+    let moments = moments(state, event);
     if moments.is_empty() {
         return Vec::new();
     }
@@ -289,19 +264,17 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
     for listener in listeners(state, registry, &moments) {
         let Some(definition) = registry.get(&listener.card) else { continue };
         for moment in &moments {
-            if !definition.triggers.iter().any(|triggered| hears(triggered, &listener, moment)) {
+            let mut hearing = definition.triggers.iter().filter(|triggered| hears(registry, triggered, &listener, moment)).peekable();
+            if hearing.peek().is_none() {
                 continue;
             }
-            // "Whenever you install a virus program, you may place 1 virus
-            // counter on **it**" (Cookbook): an installed card's reaction
-            // acts on the virus, not on itself. The identity's does not
-            // (Noise mills the Corp). The one place who reacts and what the
-            // effect acts on differ, carried over as it was; a
-            // `CardTarget` for "the card that triggered this" is what would
-            // retire it.
-            let acts_on_the_subject = moment.trigger == Trigger::OnVirusInstalled && listener.install.is_some();
-            let (target, target_install) = match (&moment.about, acts_on_the_subject) {
-                (About::Card { card, install }, true) => (Some(card.clone()), *install),
+            // Who the moment is about travels with the trigger for a card
+            // whose effects act on "it" (`TriggeredEffect::acts_on_subject`,
+            // Cookbook) — on the queued trigger because the choice it parks
+            // outlives this resolution. Which of the card's effects use it
+            // is decided per effect when they fire.
+            let (target, target_install) = match &moment.about {
+                About::Card { card, install } if hearing.any(|triggered| triggered.acts_on_subject) => (Some(card.clone()), *install),
                 _ => (None, None),
             };
             let heard = match (listener.active, is_this(&listener, moment)) {
@@ -340,9 +313,37 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
     }
 }
 
+/// Whether what a moment is about passes a card's `when`.
+fn passes(registry: &CardRegistry, filter: &EventFilter, about: &About) -> bool {
+    match (filter, about) {
+        (EventFilter::Card(filter), About::Card { card, .. }) => {
+            registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
+        }
+        (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
+        // `CardDefinition::validate` refuses the mismatch in a card file.
+        _ => false,
+    }
+}
+
+/// Whether `triggered`'s `when` admits the event a queued trigger carries —
+/// the scan's own check, asked again where the trigger fires, because one
+/// queued trigger stands for every `TriggeredEffect` of its card that names
+/// the trigger and two of them can mean different occurrences (a card
+/// printed "on HQ, … / on R&D, …"). What a moment is about is in the event,
+/// so the answer cannot have changed since the scan. A filter with no event
+/// to read admits nothing.
+pub(crate) fn when_admits(state: &GameState, registry: &CardRegistry, triggered: &TriggeredEffect, event: Option<&GameEvent>) -> bool {
+    let Some(filter) = &triggered.when else { return true };
+    let Some(event) = event else { return false };
+    moments(state, event).iter().any(|moment| moment.trigger == triggered.trigger && passes(registry, filter, &moment.about))
+}
+
 /// Whether one `TriggeredEffect` on `listener` hears `moment`.
-fn hears(triggered: &TriggeredEffect, listener: &Listener, moment: &Moment) -> bool {
+fn hears(registry: &CardRegistry, triggered: &TriggeredEffect, listener: &Listener, moment: &Moment) -> bool {
     if triggered.trigger != moment.trigger {
+        return false;
+    }
+    if triggered.when.as_ref().is_some_and(|filter| !passes(registry, filter, &moment.about)) {
         return false;
     }
     if triggered.trigger.hears() == Hears::OwnSide && moment.of.is_some_and(|side| side != listener.side) {
@@ -484,7 +485,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type,
-            triggers: vec![TriggeredEffect { subject, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
+            triggers: vec![TriggeredEffect { subject, when: None, acts_on_subject: false, text: None, trigger, effects: vec![Effect::GainCredits(side, 1)], requirement: None }],
             ..Default::default()
         }
     }
@@ -576,6 +577,34 @@ mod tests {
         // Out of HQ there is no install at all, and it still hears it.
         let from_hq = GameEvent::CardAccessed { card: CardId("snare".to_string()), server: ServerId::Hq, install: None };
         assert_eq!(plan_for(&state, &registry, &from_hq).iter().map(|(_, due)| (due.install, due.heard)).collect::<Vec<_>>(), vec![(None, Heard::AsSubject)]);
+    }
+
+    /// "Whenever you make a successful run **on HQ**" is not pending after a
+    /// run on R&D: the filter is part of the trigger condition, so a card it
+    /// refuses was never a listener — nothing queued, nothing to order.
+    #[test]
+    fn a_trigger_that_means_some_occurrences_is_not_a_listener_for_the_others() {
+        let mut on_hq = listens("docklands_pass", Side::Runner, CardType::Hardware, Trigger::OnSuccessfulRun, Some(Subject::Any));
+        on_hq.triggers[0].when = Some(EventFilter::Server(vec![ServerId::Hq]));
+        let mut on_a_virus = listens("cookbook", Side::Runner, CardType::Resource, Trigger::OnCardInstalled, Some(Subject::Any));
+        on_a_virus.triggers[0].when = Some(EventFilter::Card(crate::dsl::CardFilter::HasSubtype(crate::dsl::CardSubtype::Virus)));
+        on_a_virus.triggers[0].acts_on_subject = true;
+        let virus = CardDefinition { subtypes: vec![crate::dsl::CardSubtype::Virus], ..listens("leech", Side::Runner, CardType::Program, Trigger::OnTurnStart, None) };
+        let plain = listens("mayfly", Side::Runner, CardType::Program, Trigger::OnTurnStart, None);
+        let registry = registry(vec![on_hq, on_a_virus, virus, plain]);
+        let mut state = GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() };
+        state.runner.rig = vec![in_the_rig("docklands_pass", 1), in_the_rig("cookbook", 2), in_the_rig("leech", 3), in_the_rig("mayfly", 4)];
+
+        assert_eq!(who(&plan_for(&state, &registry, &GameEvent::RunSucceeded { server: ServerId::Hq })), vec![("docklands_pass", Heard::AsBystander)]);
+        assert!(plan_for(&state, &registry, &GameEvent::RunSucceeded { server: ServerId::RnD }).is_empty());
+
+        let installed = |card: &str| GameEvent::ProgramInstalled { side: Side::Runner, card: CardId(card.to_string()), memory_cost: 1, credits_paid: 0 };
+        assert!(plan_for(&state, &registry, &installed("mayfly")).is_empty());
+        // "…place 1 virus counter on **it**": the virus travels with the
+        // trigger, because the card said its effects act on it.
+        let plan = plan_for(&state, &registry, &installed("leech"));
+        assert_eq!(who(&plan), vec![("cookbook", Heard::AsBystander)]);
+        assert_eq!((plan[0].1.target.clone(), plan[0].1.target_install), (Some(CardId("leech".to_string())), Some(InstallId(3))));
     }
 
     #[test]

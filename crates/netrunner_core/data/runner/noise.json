@@ -7,8 +7,13 @@
   "min_deck_size": 45,
   "triggers": [
     {
-      "trigger": "OnVirusInstalled",
+      "trigger": "OnCardInstalled",
       "subject": "Any",
+      "when": {
+        "Card": {
+          "HasSubtype": "Virus"
+        }
+      },
       "effects": [
         {
           "TrashCard": {

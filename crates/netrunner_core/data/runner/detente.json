@@ -11,8 +11,13 @@
   "memory_bonus": 1,
   "triggers": [
     {
-      "trigger": "OnSuccessfulRunOnHq",
+      "trigger": "OnSuccessfulRun",
       "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
       "requirement": {
         "OncePerTurn": "detente"
       },

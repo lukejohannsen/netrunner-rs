@@ -173,13 +173,13 @@ pub(crate) mod audit {
     ///
     /// A finished game is exempt: a run that ends because the game did
     /// dispatches nothing on purpose (`still_applies`, `fire_plan`).
-    pub(crate) fn check(state: &GameState, registry: &CardRegistry, events: &[GameEvent]) {
+    pub(crate) fn check(state: &GameState, events: &[GameEvent]) {
         if state.is_over() {
             return;
         }
         let mut dispatched = DISPATCHED.with(|frames| frames.borrow().last().cloned().unwrap_or_default());
         for event in events {
-            if listeners::moments(state, registry, event).is_empty() || is_owed(state, event) {
+            if listeners::moments(state, event).is_empty() || is_owed(state, event) {
                 continue;
             }
             match dispatched.iter().position(|seen| seen == event) {
@@ -483,7 +483,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            triggers: vec![TriggeredEffect { subject: None, text: None, trigger, effects: vec![effect], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, when: None, acts_on_subject: false, text: None, trigger, effects: vec![effect], requirement: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -614,7 +614,7 @@ mod tests {
     fn an_event_a_card_could_hear_that_was_never_dispatched_fails_the_action() {
         let state = empty_state();
         let _frame = audit::open();
-        audit::check(&state, &CardRegistry::new(), &[GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }]);
+        audit::check(&state, &[GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }]);
     }
 
     #[cfg(debug_assertions)]
@@ -625,7 +625,7 @@ mod tests {
         let _frame = audit::open();
         let mut events = vec![GameEvent::ClickSpent { side: Side::Corp }];
         emit(&mut state, &registry, &mut events, GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }).unwrap();
-        audit::check(&state, &registry, &events);
+        audit::check(&state, &events);
     }
 
     #[test]

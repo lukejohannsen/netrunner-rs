@@ -178,7 +178,8 @@ were missed. Nothing had cited the old numbers but this file and the doc, so
 they are renumbered here once, with the old number on each item that had
 one.
 
-1. **One event queue, one audience rule, one checkpoint** (§6.1, absorbing
+1. **One event queue, one audience rule, one checkpoint — DONE (20 September
+   2026, five PRs; the last stage's entry closes it)** (§6.1, absorbing
    §2.3; was item 3, and was only an ordering audit). Which cards hear an
    event is decided per event in `rules/dispatcher.rs` — `fire_direct`,
    `fire_runner_side`, `both_sides_candidates` — and an event an effect
@@ -394,6 +395,57 @@ one.
    Outcomes inside the 0.026–0.047 band; games about 4% shorter on the
    heuristic seating because the Corp draws more. Both 256-seed sweeps clean
    in release, and again in a debug build with `dispatcher::audit` on.
+   **Triggers take a filter — DONE (20 September 2026,
+   `feat/triggers-take-a-filter`), which closes item 1.** A trigger matched
+   by equality alone, so every condition on the *event* had become a
+   variant: `OnSuccessfulRunOnHq`, `OnSuccessfulRunOnRnD`,
+   `OnSuccessfulRunOnCentralServer`, `OnTransactionPlayed`,
+   `OnVirusInstalled` — five names for three triggers, one `RunSucceeded`
+   an occurrence of up to three of them. `TriggeredEffect::when` is an
+   `EventFilter` over what the moment is about — `Card(CardFilter)` or
+   `Server([..])` — evaluated in `listeners`' scan, and the five variants
+   are gone (`Trigger` 34 → 29; twelve entries in eleven card files, Nebula
+   Talent Management's two flips merged into one "on HQ or R&D").
+
+   *`when` is not `requirement`, and the printed sentence says which.*
+   "Whenever you make a successful run on HQ" is the trigger condition: a
+   run on R&D is not an occurrence of it, and nothing can make it one
+   later. "…if you have not already this turn" is an intervening if, asked
+   when the trigger resolves. The plan argued the split from
+   `ChooseTriggerOrder` — a condition in `requirement` would add prompts —
+   and **that argument was already stale**: since the audience stage an
+   order is offered only over triggers `would_fire` admits. The reason that
+   holds is the one above, and its visible half is that a refused card is
+   no longer queued at all.
+
+   *Two things the plan did not list, both the same idea.*
+   `EffectRequirement::TriggeringCardMatches` **is deleted**: it was the
+   filter said as an "if" (Barry "Baz" Wong's ice, The Zwicky Group's agenda
+   or operation), so Baz was a queued listener on every rez of an asset.
+   Both cards carry `when` now. And **the last audience rule in the
+   dispatcher left it**: "an *installed* card hearing `OnVirusInstalled`
+   acts on the virus; the identity does not" was Cookbook's text and
+   Noise's, kept in Rust under a trigger's name. It is
+   `TriggeredEffect::acts_on_subject` on Cookbook's file, applied per
+   effect. `validate` refuses a filter or an "it" that does not fit what
+   the trigger is about (`Trigger::about`, exhaustive; `names_a_subject` is
+   now read off it).
+
+   *One granularity given up, knowingly:* a queued trigger is per card and
+   trigger, so a card with an unfiltered `OnSuccessfulRun` **and** an
+   HQ-filtered one resolves them as one entry, in the order it lists them,
+   where two variants were orderable apart. No card in the pool has both;
+   one that does wants an index on `DeferredTrigger`. The inspector's
+   "Engine reads it as" says the filter, since "on HQ" left the name.
+
+   *Measured* (`scripts/coverage_identical.py main --head-worktree
+   --expect-renames …`, twice — the collapse alone, then with the two
+   requirement cards moved): **identical but for the expected renames, four
+   reports of four, both times.** Random: nine `triggers_fired` keys become
+   eight with equal counts (Leech 87, Cookbook 16, Docklands Pass 14, Nebula
+   8 + 6 → 14, Devadatta Drone 7, Maglectric Rapid 5, Conduit 4, Détente 3;
+   5,785 firings either side); Baz 34 and Zwicky 27 unmoved, 43 and 41 on
+   the heuristic seating. `ActionSpace` unchanged at 1646.
 2. **A continuous-effect layer, with a target and a payload** (§2.1 as
    corrected by §6.2; was item 1). Not `{ kind, value: Amount, while }`: a
    closed enum with a payload per kind — a number, a subtype, a subroutine,

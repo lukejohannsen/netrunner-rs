@@ -1,11 +1,12 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{
     card_matches_filter, Amount, BoostDuration, CardFilter, CardId, CardSubtype, CardTarget, CardType, Cost, Effect,
-    EffectRequirement, HostedCardOrigin, IceType, StackZone, StrengthModifier, SubroutineBreakCount, Trigger,
+    EffectRequirement, HostedCardOrigin, IceType, StackZone, StrengthModifier, SubroutineBreakCount, Trigger, TriggeredEffect,
 };
 use crate::rules::damage;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
+use crate::rules::listeners;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
 use crate::rules::run::{self, AccessPhase, RunPhase, ServerId, SubroutineStatus};
@@ -1564,12 +1565,13 @@ pub fn process_card_triggers(
 }
 
 /// The one loop behind `process_card_triggers` and every firing in
-/// `dispatcher`. `target` is `Some` when the reacting card's effects act
-/// on another card — the one case where "who reacts" and "what the effect
-/// acts on" differ: Cookbook's "whenever you install a virus program, you
-/// may place 1 virus counter on it" reacts as Cookbook but acts on the
-/// just-installed program. The requirement is checked and consumed as
-/// `card_id`; only the effects' context changes. With `announce`, a
+/// `dispatcher`. `target` is the card the moment was about, carried for a
+/// `TriggeredEffect` that says its effects act on it
+/// (`acts_on_subject`) — the one case where "who reacts" and "what the
+/// effect acts on" differ: Cookbook's "whenever you install a virus
+/// program, you may place 1 virus counter on it" reacts as Cookbook but
+/// acts on the just-installed program. The requirement is checked and
+/// consumed as `card_id`; only the effects' context changes. With `announce`, a
 /// `GameEvent::TriggerFired { card, trigger }` precedes each
 /// `TriggeredEffect` that actually fires — after its requirement passed,
 /// before its effects — which is the exact record the coverage harness
@@ -1593,7 +1595,11 @@ pub(crate) fn fire_card_triggers(
     };
     let mut events = Vec::new();
     let card_side = card.side;
-    for triggered in card.triggers.iter().filter(|t| t.trigger == trigger && due.heard.admits(t.subject)) {
+    // Read before the loop: what the event was about does not change, and
+    // the loop needs `state` mutably.
+    let meant: Vec<bool> =
+        card.triggers.iter().map(|t| t.trigger == trigger && due.heard.admits(t.subject) && listeners::when_admits(state, registry, t, triggering_event)).collect();
+    for (triggered, _) in card.triggers.iter().zip(meant).filter(|(_, meant)| *meant) {
         // The requirement is checked as the *reacting* card, the effects
         // resolve as the target (the card itself, unless `target` says
         // otherwise) — separate contexts, and one pair per
@@ -1613,8 +1619,8 @@ pub(crate) fn fire_card_triggers(
             events.push(GameEvent::TriggerFired { card: card_id.clone(), trigger });
         }
         let mut effect_ctx = match &due.target {
-            Some(target) => ResolutionContext::for_install_trigger(due.target_install, Some(target), triggering_event),
-            None => ResolutionContext::for_install_trigger(due.install, Some(card_id), triggering_event),
+            Some(target) if triggered.acts_on_subject => ResolutionContext::for_install_trigger(due.target_install, Some(target), triggering_event),
+            _ => ResolutionContext::for_install_trigger(due.install, Some(card_id), triggering_event),
         };
         for effect in &triggered.effects {
             events.extend(evaluate_effect(state, effect, &mut effect_ctx, registry)?);
@@ -1646,7 +1652,8 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
     }
     let Some(card) = registry.get(&due.card) else { return false };
     let ctx = ResolutionContext::for_install_trigger(due.install, Some(&due.card), due.event.as_ref());
-    card.triggers.iter().filter(|t| t.trigger == due.trigger && due.heard.admits(t.subject)).any(|triggered| {
+    let meant = |t: &&TriggeredEffect| t.trigger == due.trigger && due.heard.admits(t.subject) && listeners::when_admits(state, registry, t, due.event.as_ref());
+    card.triggers.iter().filter(meant).any(|triggered| {
         triggered.requirement.as_ref().is_none_or(|requirement| check_requirement(state, requirement, card.side, &ctx, registry).is_ok())
     })
 }
@@ -2589,14 +2596,6 @@ pub fn check_requirement(
             );
             if free { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
-        EffectRequirement::TriggeringCardMatches(filter) => {
-            let matches = ctx
-                .triggering_event
-                .and_then(triggering_card)
-                .and_then(|card| registry.get(card))
-                .is_some_and(|def| crate::dsl::card_matches_filter(def, filter));
-            if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
-        }
         EffectRequirement::AmountAtLeast(amount, min) => {
             if resolve_amount(amount, ctx, state, registry) >= *min { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
@@ -2642,33 +2641,6 @@ pub fn check_requirement(
                 Err(RulesError::RequirementNotMet)
             }
         }
-    }
-}
-
-/// The card a triggering event is *about*, for
-/// `EffectRequirement::TriggeringCardMatches`. Only the events a Runner-side
-/// reaction can currently be keyed off are listed; an event with no single
-/// subject card answers `None`, which fails the requirement.
-fn triggering_card(event: &GameEvent) -> Option<&CardId> {
-    match event {
-        // `CardInstalled` carries an `Option`, struck by
-        // `masking::mask_event_for_player`. Dispatch only ever sees the
-        // engine's own unmasked events, so this is `Some` in practice; a
-        // masked one answering `None` is the same answer every event with
-        // no subject card gives.
-        GameEvent::CardInstalled { card, .. } => card.as_ref(),
-        GameEvent::IceRezzed { card, .. }
-        | GameEvent::ProgramInstalled { card, .. }
-        | GameEvent::HardwareInstalled { card, .. }
-        | GameEvent::ResourceInstalled { card, .. }
-        | GameEvent::EventPlayed { card, .. }
-        | GameEvent::OperationPlayed { card, .. }
-        | GameEvent::CardTrashed { card, .. }
-        | GameEvent::CardDerezzed { card: Some(card), .. }
-        // The card whose ability paid out — The Zwicky Group asks whether
-        // it was an agenda or an operation.
-        | GameEvent::AbilityGainedCredits { card, .. } => Some(card),
-        _ => None,
     }
 }
 
@@ -2974,7 +2946,6 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive
         | EffectRequirement::InstalledWithoutSpendingCredits
-        | EffectRequirement::TriggeringCardMatches(_)
         | EffectRequirement::AmountAtLeast(..)
         | EffectRequirement::NoActionTakenThisTurn
         | EffectRequirement::PlayedFromArchives => {}
@@ -3942,7 +3913,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
-                subject: None,
+                subject: None, when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(1), Effect::GainCredits(Side::Corp, 2)],
@@ -3971,13 +3942,42 @@ mod tests {
         );
     }
 
+    /// One queued trigger stands for every `TriggeredEffect` of its card
+    /// that names the trigger, so the filter the scan applied is asked
+    /// again per effect — a card printed "on HQ, … / on R&D, …" resolves
+    /// only the half the run was about.
+    #[test]
+    fn a_cards_filtered_triggers_fire_only_for_the_occurrence_each_means() {
+        let on = |server: ServerId, credits: u32| TriggeredEffect {
+            subject: Some(crate::dsl::Subject::Any),
+            when: Some(crate::dsl::EventFilter::Server(vec![server])),
+            acts_on_subject: false,
+            text: None,
+            trigger: Trigger::OnSuccessfulRun,
+            effects: vec![Effect::GainCredits(Side::Runner, credits)],
+            requirement: None,
+        };
+        let registry = CardRegistry::from_cards(vec![card_with_triggers("two_doors", vec![on(ServerId::Hq, 1), on(ServerId::RnD, 3)])]);
+        let card = CardId("two_doors".to_string());
+
+        let mut state = game_state();
+        let succeeded = GameEvent::RunSucceeded { server: ServerId::RnD };
+        let events = process_card_triggers(&mut state, &registry, &card, Trigger::OnSuccessfulRun, Some(&succeeded)).unwrap();
+        assert!(events.contains(&GameEvent::CreditsGained { side: Side::Runner, amount: 3 }), "{events:?}");
+        assert!(!events.contains(&GameEvent::CreditsGained { side: Side::Runner, amount: 1 }), "{events:?}");
+
+        // A filter with no event to read admits nothing, rather than
+        // everything.
+        assert!(process_card_triggers(&mut state, &registry, &card, Trigger::OnSuccessfulRun, None).unwrap().is_empty());
+    }
+
     #[test]
     fn process_card_triggers_ignores_non_matching_triggers() {
         let mut state = game_state();
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
-                subject: None,
+                subject: None, when: None, acts_on_subject: false,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

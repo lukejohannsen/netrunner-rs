@@ -10,8 +10,15 @@
   ],
   "triggers": [
     {
-      "trigger": "OnSuccessfulRunOnCentralServer",
+      "trigger": "OnSuccessfulRun",
       "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq",
+          "RnD",
+          "Archives"
+        ]
+      },
       "effects": [
         {
           "AddCounters": 1

@@ -324,6 +324,8 @@ byte-for-byte on both seatings before and after.
 
 **The audience half is built** (20 September 2026, `rules::listeners`; ROADMAP Rules Audit, item 1): the listener scan, `TriggeredEffect::subject`, and the measurement — which was a shadow run rather than a byte-identical one, because a side ordering its whole plan is itself a change. The queue and the checkpoint are the stages after it.
 
+**All of it is built** (20 September 2026): the queue as a debug-build audit that every event a card can hear was dispatched, the checkpoint as `rules::checkpoint`, and the second consequence above as `TriggeredEffect::when` — the four success variants are `OnSuccessfulRun` and a server filter, `OnTransactionPlayed` and `OnVirusInstalled` are `OnOperationPlayed` and `OnCardInstalled` with a card filter, and the requirement that filtered by the triggering card is gone into the same field.
+
 ### 6.2 The continuous-effect layer needs a target and a payload
 
 §2.1 proposed `{ kind, value: Amount, while: EffectRequirement }`. Counting

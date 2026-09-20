@@ -267,10 +267,9 @@ pub enum GameEvent {
     TriggerOrderPending { chooser: Side },
     /// `chooser` picked `card`'s `trigger` as the next of their
     /// simultaneous triggers to resolve. `trigger` is named because one
-    /// card can have several pending at once (a successful run on HQ
-    /// offers `OnSuccessfulRun` and `OnSuccessfulRunOnHq` separately), and
-    /// a log line reading "Docklands Pass, then Docklands Pass" says
-    /// nothing.
+    /// card can have several pending at once (an install offers `OnInstall`
+    /// and `OnCardInstalled` separately), and a log line reading "Bling,
+    /// then Bling" says nothing.
     TriggerOrderChosen { chooser: Side, card: CardId, trigger: crate::dsl::Trigger },
     /// One of `card`'s `TriggeredEffect`s for `trigger` is firing: its
     /// requirement passed, and its effects' events follow this one.

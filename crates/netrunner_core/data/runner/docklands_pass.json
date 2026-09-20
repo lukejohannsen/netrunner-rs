@@ -6,8 +6,13 @@
   "cost": 2,
   "triggers": [
     {
-      "trigger": "OnSuccessfulRunOnHq",
+      "trigger": "OnSuccessfulRun",
       "subject": "Any",
+      "when": {
+        "Server": [
+          "Hq"
+        ]
+      },
       "requirement": {
         "OncePerTurn": "docklands_pass"
       },
