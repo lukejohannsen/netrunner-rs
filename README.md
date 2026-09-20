@@ -55,15 +55,15 @@ a reinforcement-learning environment — is a consumer of that one engine.
 Requires a Rust toolchain supporting edition 2024 (1.85+).
 
 ```bash
-# Open the main menu: play the computer, learn to play, ratings, settings
+# Open the main menu: play the computer, learn to play, your record, settings
 cargo run -p netrunner_cli
 
 # The graphical client (Bevy; on Linux it needs the ALSA and udev headers,
-# `libasound2-dev libudev-dev` on Debian). Shares its decks, ratings and
+# `libasound2-dev libudev-dev` on Debian). Shares its decks, record and
 # settings with the terminal client. Menu, profile and settings so far.
 cargo run -p netrunner_desktop
 
-# Or skip the menu with flags, e.g. a rated game as the Runner against rung 3
+# Or skip the menu with flags, e.g. a game as the Runner against rung 3
 cargo run -p netrunner_cli -- --runner human --corp-level 3
 
 # Build a deck of your own, then play it

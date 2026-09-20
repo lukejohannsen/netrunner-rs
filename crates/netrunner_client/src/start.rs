@@ -9,7 +9,7 @@
 //! **A plain struct driven by an `Intent`**, tested without a terminal or
 //! a window; the choice it produces is in the vocabulary of the flags, so
 //! `run_local` runs exactly as it does for `--runner-level 3 --corp-deck
-//! brick_stack` (there is one seating rule, one rating rule and one deck
+//! brick_stack` (there is one seating rule, one record rule and one deck
 //! resolver, and this screen fills in their inputs).
 
 use std::path::Path;
@@ -21,7 +21,7 @@ use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::Side;
 
 use crate::deck_store::{self, Origin};
-use crate::ratings::LocalRatings;
+use crate::record::LocalRecord;
 
 /// The decks a flag-less game plays: the terminal's `--corp-deck` and
 /// `--runner-deck` defaults, and where the desktop's cursors start. One
@@ -83,8 +83,6 @@ pub struct StartChoice {
     pub style: Option<Personality>,
     pub corp_deck: String,
     pub runner_deck: String,
-    /// `false` is `--unrated`.
-    pub rated: bool,
 }
 
 /// What a client can do to the form. The terminal maps keys onto these;
@@ -95,7 +93,6 @@ pub enum Intent {
     PrevPane,
     /// Up or down within the current pane, wrapping.
     Move(i32),
-    ToggleRated,
 }
 
 /// The screen's state: a cursor per pane and the lists they move over.
@@ -109,15 +106,13 @@ pub struct StartMenu {
     own_deck: usize,
     /// Corp decks, then Runner decks.
     decks: [Vec<DeckRow>; 2],
-    /// The rung `ratings::LocalRatings::suggest` points the player at, as
+    /// The rung `record::LocalRecord::suggest` points the player at, as
     /// Corp and as Runner. The level cursor starts here and returns here
     /// when the chair changes.
     suggested: [Level; 2],
     /// The default deck ids from the flags, so the deck cursors start on
     /// what a flag-less run would have played.
     defaults: [String; 2],
-    /// Whether the game counts — `r` toggles it. Starts from `--unrated`.
-    pub rated: bool,
 }
 
 const SIDES: [Side; 2] = [Side::Corp, Side::Runner];
@@ -130,18 +125,17 @@ fn side_index(side: Side) -> usize {
 }
 
 impl StartMenu {
-    /// Reads the saved-deck directory and the ratings book. A ratings file
+    /// Reads the saved-deck directory and the record. A record file
     /// that cannot be read suggests the middle rung rather than blocking
     /// the screen; the game itself will refuse it later. `defaults` are
     /// the deck ids a flag-less run would play (Corp, then Runner), so the
     /// deck cursors start there.
     pub fn open(
         decks_dir: &Path,
-        ratings_path: Option<&Path>,
+        record_path: Option<&Path>,
         player: &str,
         registry: &CardRegistry,
         defaults: [String; 2],
-        rated: bool,
     ) -> Result<Self, String> {
         let mut decks: [Vec<DeckRow>; 2] = [Vec::new(), Vec::new()];
         for stored in deck_store::list(decks_dir)? {
@@ -155,17 +149,15 @@ impl StartMenu {
                 saved: !matches!(stored.origin, Origin::Embedded),
             });
         }
-        let suggested = match ratings_path.map(LocalRatings::load) {
-            Some(Ok(book)) => SIDES.map(|side| book.suggest(player, side)),
+        let suggested = match record_path.map(LocalRecord::load) {
+            Some(Ok(log)) => SIDES.map(|side| log.suggest(player, side)),
             _ => [Level::Operator, Level::Operator],
         };
-        let mut menu = Self::with_decks(decks, suggested, defaults);
-        menu.rated = rated;
-        Ok(menu)
+        Ok(Self::with_decks(decks, suggested, defaults))
     }
 
-    /// Puts the cursors back on a game just played — same chair, decks,
-    /// style and rated setting — except the rung, which goes to the
+    /// Puts the cursors back on a game just played — same chair, decks
+    /// and style — except the rung, which goes to the
     /// suggestion re-read after that game. So after a game Enter is "play
     /// again", and it is at the rung the game-over modal just named.
     pub fn resume_from(&mut self, last: &StartChoice) {
@@ -173,13 +165,12 @@ impl StartMenu {
         self.defaults = [last.corp_deck.clone(), last.runner_deck.clone()];
         self.reset_for_chair();
         self.style = self.styles().iter().position(|style| *style == last.style).unwrap_or(0);
-        self.rated = last.rated;
     }
 
     /// The state without the filesystem, for tests and for `open`.
     pub fn with_decks(decks: [Vec<DeckRow>; 2], suggested: [Level; 2], defaults: [String; 2]) -> Self {
         let mut menu =
-            Self { pane: Pane::Chair, chair: 0, level: 0, style: 0, opponent_deck: 0, own_deck: 0, decks, suggested, defaults, rated: true };
+            Self { pane: Pane::Chair, chair: 0, level: 0, style: 0, opponent_deck: 0, own_deck: 0, decks, suggested, defaults };
         menu.reset_for_chair();
         menu
     }
@@ -262,7 +253,7 @@ impl StartMenu {
             Side::Corp => (own.id.clone(), opponent.id.clone()),
             Side::Runner => (opponent.id.clone(), own.id.clone()),
         };
-        Some(StartChoice { human: self.human(), level: self.level(), style: self.style(), corp_deck, runner_deck, rated: self.rated })
+        Some(StartChoice { human: self.human(), level: self.level(), style: self.style(), corp_deck, runner_deck })
     }
 
     /// One change to the form. The keys that mean these are each
@@ -273,7 +264,6 @@ impl StartMenu {
             Intent::NextPane => self.pane = self.pane.next(),
             Intent::PrevPane => self.pane = self.pane.previous(),
             Intent::Move(delta) => self.move_cursor(delta),
-            Intent::ToggleRated => self.rated = !self.rated,
         }
     }
 
@@ -406,14 +396,6 @@ mod tests {
     }
 
     #[test]
-    fn r_toggles_rated_and_the_choice_carries_it() {
-        let mut menu = menu();
-        assert!(menu.choice().unwrap().rated, "rated unless asked otherwise");
-        menu.apply(Intent::ToggleRated);
-        assert!(!menu.choice().unwrap().rated);
-    }
-
-    #[test]
     fn resuming_keeps_the_game_just_played_but_takes_the_new_suggestion() {
         let mut menu = menu();
         let last = StartChoice {
@@ -422,7 +404,6 @@ mod tests {
             style: Some(Personality::Glacier),
             corp_deck: "brick_stack".to_string(),
             runner_deck: "dashing_mad".to_string(),
-            rated: false,
         };
         menu.resume_from(&last);
         let choice = menu.choice().unwrap();

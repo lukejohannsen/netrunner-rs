@@ -1,10 +1,12 @@
-//! Who the player is, as the files say: the name games are rated under,
-//! their standing on both chairs, how many card images are cached, and
-//! where everything lives.
+//! Who the player is, as the files say: the name games are recorded
+//! under, their record against the ladder on both chairs, how many card
+//! images are cached, and where everything lives.
 //!
-//! The rating lines are `netrunner_client::ratings::standing_lines` —
-//! the same lines `netrunner_cli ratings` prints — so the two clients
-//! cannot disagree about a number.
+//! The record lines are `netrunner_client::record::standing_lines` — the
+//! same lines `netrunner_cli record` prints — so the two clients cannot
+//! disagree about a number. It is a record and not a rating: a rating is
+//! a server's to keep, and this screen is where one a server reports will
+//! be shown when there is one (Phase 4 §5).
 
 use bevy::prelude::*;
 
@@ -30,9 +32,9 @@ enum ProfileButton {
 
 fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
     let player = core.player_name();
-    let standing = match &core.ratings_path {
-        Some(path) => netrunner_client::ratings::standing_lines(path, &player).unwrap_or_else(|error| vec![format!("Could not read the ratings: {error}")]),
-        None => vec!["No ratings file: the OS has no data directory".to_string()],
+    let standing = match &core.record_path {
+        Some(path) => netrunner_client::record::standing_lines(path, &player).unwrap_or_else(|error| vec![format!("Could not read the record: {error}")]),
+        None => vec!["No record file: the OS has no data directory".to_string()],
     };
     let codes: Vec<_> = core.registry.iter().filter_map(|card| card.numeric_id).collect();
     let cached = core.images.cached_count(&codes);
@@ -40,7 +42,7 @@ fn spawn(mut commands: Commands, theme: Res<Theme>, core: Res<ClientCore>) {
     let paths = [
         format!("Settings   {}", path(&core.settings_path)),
         format!("Decks      {}", path(&core.decks_dir)),
-        format!("Ratings    {}", path(&core.ratings_path)),
+        format!("Record     {}", path(&core.record_path)),
         format!("Images     {}", core.images.dir().display()),
     ];
     commands.spawn((screen_root(AppScreen::Profile, theme.background), children![

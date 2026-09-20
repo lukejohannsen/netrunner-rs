@@ -7,7 +7,7 @@
 //!   the menu (`cards`, `settings`, … — the variant name, any case).
 //! - `NETRUNNER_SCREENSHOT=<path.png>` — once the screen has had time to
 //!   lay out and draw, the window is saved there and the client exits.
-//! - `NETRUNNER_GAME=corp|runner` — boot starts an unrated game on the
+//! - `NETRUNNER_GAME=corp|runner` — boot starts an unrecorded game on the
 //!   default decks against the middle rung, the person in that chair,
 //!   and goes to the board (unless `NETRUNNER_SCREEN` says elsewhere) —
 //!   how the board is looked at without a hand on the form.

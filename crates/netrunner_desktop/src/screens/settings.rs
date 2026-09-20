@@ -9,7 +9,7 @@
 
 use bevy::prelude::*;
 
-use netrunner_client::ratings::player_name;
+use netrunner_client::record::player_name;
 
 use crate::core::{ClientCore, Notices};
 use crate::models::settings::{self as model, Intent, Row, MAX_NAME_LEN};

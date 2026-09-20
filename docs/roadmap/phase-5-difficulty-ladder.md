@@ -244,7 +244,10 @@ value; `--bot-level` with `--bot-runner none` is refused at `bind`.
 **A start screen** (`feat/start-screen`, 13 September 2026): with no
 `--corp`/`--runner` flag the TUI opens a picker instead of the old
 "both sides are human" error — chair, rung (each row is
-`LevelSpec::describe`, and the one `ratings::LocalRatings::suggest`
+`LevelSpec::describe`, and the one `ratings::LocalRatings::suggest` —
+`record::LocalRecord::suggest` since 20 September 2026, when the rating
+book beside the log was removed and the suggestion, which only ever read
+the log, was not touched (Phase 3 §2) —
 points at is marked and pre-selected), style (the deck's own, or any
 profile written for the bot's chair, or balanced), the opponent's deck
 and your own (name · style · identity, saved decks included). **It is the

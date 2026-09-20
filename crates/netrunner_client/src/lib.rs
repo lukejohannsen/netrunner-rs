@@ -3,7 +3,7 @@
 //! Two clients play this engine — the ratatui terminal (`netrunner_cli`)
 //! and the Bevy desktop (`netrunner_desktop`) — and a player expects them
 //! to be one game: the name they set in either, the decks they build in
-//! either and the rating they earn in either are the same files. That is
+//! either and the record they keep against the bots are the same files. That is
 //! only true if one crate owns those files. This crate is that owner.
 //!
 //! **Why lifted rather than copied.** The settings file has no
@@ -40,7 +40,7 @@ pub mod placement;
 pub mod play;
 pub mod decks;
 pub mod prose;
-pub mod ratings;
+pub mod record;
 pub mod selection;
 pub mod settings;
 pub mod skin;
@@ -48,7 +48,7 @@ pub mod table;
 pub mod start;
 
 /// The OS data directory every client file lives under — the base
-/// `settings`, `deck_store` and `ratings` resolve from, and the one a
+/// `settings`, `deck_store` and `record` resolve from, and the one a
 /// client's asset overrides (`<data dir>/netrunner/assets`) sit beside.
 /// `None` on an OS with no such directory, which every caller treats as
 /// "this session only".

@@ -392,16 +392,18 @@ async fn wait_for_book(path: &std::path::Path, ready: impl Fn(&RatingBook) -> bo
     .expect("the rating book is written within 10s")
 }
 
+/// A game against a seated bot is practice wherever it is played: a bot
+/// daemon given a rating file never writes to it. The match leaving
+/// `MatchList` is the session task's exit, which is where a human match
+/// is rated, so the file's absence after it is the claim.
 #[tokio::test]
-async fn a_surrender_against_the_bot_is_rated_on_the_human_vs_bot_track() {
+async fn a_game_against_a_seated_bot_is_rated_by_nobody() {
     let dir = std::env::temp_dir().join(format!("netrunner_ratings_bot_{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("ratings.json");
     let url = start_server(ServeOptions {
         bot_runner: ServeBotKind::Heuristic,
-        // Pinned, because unset means the dealt deck's own style and the
-        // id would then carry it (`bot:heuristic:aggressive`) — the next
-        // test is about that; this one is about the track.
+        bot_level: Some(netrunner_bots::Level::Operator),
         bot_personality: Some(Personality::Balanced),
         seed: Some(1),
         ratings_file: Some(path.clone()),
@@ -412,83 +414,38 @@ async fn a_surrender_against_the_bot_is_rated_on_the_human_vs_bot_track() {
     let mut quitter = open(&url, connect("quitter", Some(Side::Corp))).await;
     joined(next(&mut quitter).await);
     state_update(next(&mut quitter).await);
+    assert_eq!(list_matches(&url).await.0[0].runner, "operator bot", "a rung is seated under its own name");
     send(&mut quitter, ClientMessage::Surrender).await;
     assert!(matches!(next(&mut quitter).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
 
-    let book = wait_for_book(&path, |book| book.standing(Track::HumanVsBot, "quitter").is_some()).await;
-    let human = book.standing(Track::HumanVsBot, "quitter").unwrap();
-    let bot = book.standing(Track::HumanVsBot, "bot:heuristic").unwrap();
-    assert_eq!((human.corp.losses, human.corp.wins), (1, 0), "a surrender is a loss");
-    assert!(human.corp.rating.rating < 1500.0);
-    assert_eq!(bot.runner.wins, 1);
-    assert!(bot.runner.rating.rating > 1500.0);
-    assert!(book.standing(Track::HumanVsHuman, "quitter").is_none(), "the tracks never mix");
+    tokio::time::timeout(Duration::from_secs(10), async {
+        while !list_matches(&url).await.0.is_empty() {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("the match ends within 10s");
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(!path.exists(), "a bot game wrote a rating book");
     let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// With no personality pinned, the bot plays the style its dealt deck
-/// names, and its rating id says so — a rush Corp and a glacier Corp are
-/// different opponents on the ladder, so the deck's style has to reach
-/// the id the same way `--bot-personality` does.
+/// names, and its seat says so — a rush Corp and a glacier Corp are
+/// different opponents, so the deck's style has to reach the seat the same
+/// way `--bot-personality` does.
 #[tokio::test]
-async fn an_unpinned_bot_plays_its_dealt_decks_style_and_is_rated_under_it() {
-    let dir = std::env::temp_dir().join(format!("netrunner_ratings_style_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("ratings.json");
+async fn an_unpinned_bot_plays_its_dealt_decks_style_and_its_seat_says_so() {
     // The first match of a daemon seeded at 1 is match seed 1, so the deal
     // is `sample_decks_for_seed(1)` and the Runner deck's style is known.
     let dealt = netrunner_server::fixtures::sample_decks_for_seed(1);
     let runner_deck = decks::by_id(&dealt.runner_id).expect("the dealt deck is embedded");
     let style = runner_deck.style.clone().expect("every sample deck names a style");
-    let url = start_server(ServeOptions {
-        bot_runner: ServeBotKind::Heuristic,
-        seed: Some(1),
-        ratings_file: Some(path.clone()),
-        ..ServeOptions::default()
-    })
-    .await;
+    let url = start_server(ServeOptions { bot_runner: ServeBotKind::Heuristic, seed: Some(1), ..ServeOptions::default() }).await;
 
-    let mut quitter = open(&url, connect("quitter", Some(Side::Corp))).await;
-    joined(next(&mut quitter).await);
-    state_update(next(&mut quitter).await);
-    send(&mut quitter, ClientMessage::Surrender).await;
-    assert!(matches!(next(&mut quitter).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
-
-    let book = wait_for_book(&path, |book| book.standing(Track::HumanVsBot, "quitter").is_some()).await;
-    let expected = format!("bot:heuristic:{style}");
-    let bot = book.standing(Track::HumanVsBot, &expected).unwrap_or_else(|| panic!("{expected} should be rated"));
-    assert_eq!(bot.runner.wins, 1);
-    assert!(book.standing(Track::HumanVsBot, "bot:heuristic").is_none(), "the styled bot is not also the balanced one");
-    let _ = std::fs::remove_dir_all(&dir);
-}
-
-/// `--bot-level` seats a rung under the rung's own id, so a daemon's
-/// `operator` and a local `operator` are one participant on the ladder.
-#[tokio::test]
-async fn a_daemon_seating_a_rung_rates_it_by_the_rungs_name() {
-    let dir = std::env::temp_dir().join(format!("netrunner_ratings_level_{}", std::process::id()));
-    std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("ratings.json");
-    let url = start_server(ServeOptions {
-        bot_runner: ServeBotKind::Heuristic,
-        bot_level: Some(netrunner_bots::Level::Operator),
-        seed: Some(1),
-        ratings_file: Some(path.clone()),
-        ..ServeOptions::default()
-    })
-    .await;
-
-    let mut quitter = open(&url, connect("quitter", Some(Side::Corp))).await;
-    joined(next(&mut quitter).await);
-    state_update(next(&mut quitter).await);
-    send(&mut quitter, ClientMessage::Surrender).await;
-    assert!(matches!(next(&mut quitter).await, ServerMessage::GameEnded { winner: Side::Runner, .. }));
-
-    let book = wait_for_book(&path, |book| book.standing(Track::HumanVsBot, "quitter").is_some()).await;
-    let bot = book.standing(Track::HumanVsBot, "bot:operator").expect("the rung is rated by its name");
-    assert_eq!(bot.runner.wins, 1);
-    assert!(book.standing(Track::HumanVsBot, "bot:heuristic").is_none(), "not also by its kind");
-    let _ = std::fs::remove_dir_all(&dir);
+    let mut human = open(&url, connect("human", Some(Side::Corp))).await;
+    joined(next(&mut human).await);
+    assert_eq!(list_matches(&url).await.0[0].runner, format!("heuristic bot, {style}"));
 }
 
 /// Two humans, one surrenders; then the daemon is restarted on the same
@@ -520,7 +477,6 @@ async fn human_matches_are_rated_on_their_own_track_and_the_book_survives_a_rest
         let bo_standing = book.standing(Track::HumanVsHuman, "bo").unwrap();
         assert_eq!(bo_standing.runner.losses, round);
         assert!(bo_standing.runner.rating.rating < 1500.0);
-        assert!(book.standing(Track::HumanVsBot, "ann").is_none());
     }
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -49,7 +49,7 @@ pub fn applies_to(config: &Config) -> bool {
 
 /// Whether `id` was given on the command line, at the top level or after
 /// any subcommand — `--player` and `--format` are global, so
-/// `netrunner_cli ratings --player x` records it on the subcommand's
+/// `netrunner_cli record --player x` records it on the subcommand's
 /// matches rather than the top level's.
 pub fn was_flagged(matches: &ArgMatches, id: &str) -> bool {
     let mut current = Some(matches);
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn a_global_flag_after_a_subcommand_counts_as_typed() {
-        let args = ["netrunner_cli", "ratings", "--player", "molly"];
+        let args = ["netrunner_cli", "record", "--player", "molly"];
         assert!(was_flagged(&matches(&args), "player"));
         assert!(!was_flagged(&matches(&args), "format"));
         let args = ["netrunner_cli", "deck", "list", "--format", "eternal"];
@@ -104,7 +104,7 @@ mod tests {
     fn measurements_ignore_the_file() {
         let parse = |args: &[&str]| Config::try_parse_from(args).unwrap();
         assert!(applies_to(&parse(&["netrunner_cli"])));
-        assert!(applies_to(&parse(&["netrunner_cli", "ratings"])));
+        assert!(applies_to(&parse(&["netrunner_cli", "record"])));
         assert!(!applies_to(&parse(&["netrunner_cli", "--headless"])));
         assert!(!applies_to(&parse(&["netrunner_cli", "bench"])));
     }
