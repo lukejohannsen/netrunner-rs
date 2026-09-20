@@ -41,7 +41,7 @@ No rendering engine is mandated. Any client — terminal, desktop, web — obeys
 |---|---|
 | `netrunner_core` | Pure deterministic rules engine, card DSL, embedded card/deck data, masking. Everything else depends on this; it depends on nothing. |
 | `netrunner_bots` | Automated players over a masked `ClientView`: `BotAgent`, random/heuristic/MCTS/PUCT agents, `determinize`, RL observation encoding, optional ONNX policy. |
-| `netrunner_session` | **The one match decision loop.** `Session` (pull-shaped: `step` → `SessionStep`), `Seat`, the single `MAX_STEPS`, `MatchHistory`, and `GameEndReason`/`classify_end_reason`. Every driver in the workspace pumps this. |
+| `netrunner_session` | **The one match decision loop.** `Session` (pull-shaped: `step` → `SessionStep`), `Seat`, the single `MAX_STEPS`, `MatchHistory`, and `GameEndReason`/`classify_end_reason`. Every driver in the workspace pumps this. Also the one place a move is taken back: `with_undo` (off by default) keeps the state each of an `External` seat's last moves was made from, and `rewind` restores one and truncates the history to match. |
 | `netrunner_single_player` | Thin index-based adapter over `netrunner_session` (`SinglePlayerSession`) for the RL/`ActionSpace` path. |
 | `netrunner_server` | Authoritative async host: `MatchSession`, `ClientMessage`/`ServerMessage` protocol, WebSocket transport. |
 | `netrunner_cli` | Reference client: ratatui TUI, headless runner, local and remote modes, card/deck subcommands. |
@@ -78,6 +78,7 @@ A seat is either `Seat::Agent` (resolved in-process from a masked `ClientView`) 
 
 - **`Session::submit` does not re-derive legality.** `get_action_mask` is side-agnostic on purpose (`RezIce` is legal for the Corp during a Runner-priority window), and the RL env submits straight off that mask without consulting `current_actor`. Filtering `submit` by the awaiting side's `legal_actions` would reject actions the engine accepts and silently shift the training distribution. `apply_action`'s own guards are the only authority.
 - **Only an applied action consumes budget.** A TUI polls `step` on its render tick and a server re-enters after a stray message; neither may exhaust `MAX_STEPS` by waiting.
+- **Taking a move back is a restore, never a `PlayerAction`.** `Session::rewind` puts back a state the engine produced and drops the history entries since, so the record still replays; it adds nothing to `ActionSpace`, the coverage gate or `affordance`. What makes one *free* — nothing taught, `rng_step` unmoved, the other seat silent — is read off two exhaustive classifiers in the engine (`GameEvent::may_teach_the_actor`, `CardZoneRef::shows_the_chooser_hidden_cards`); a free take-back leaves a rated game rated and an undo past that line does not. Off unless a driver asks (`with_undo`): self-play, the gym and the server never do.
 
 ---
 

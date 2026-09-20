@@ -51,6 +51,23 @@ pub fn push_log_line(log: &mut Vec<String>, entry: &PublicHistoryEntry, registry
     }
 }
 
+/// Drops the last `entries` actions `push_log_line` wrote, each with the
+/// indented lines under it, and says so — a move taken back
+/// (`netrunner_session::Session::rewind`) did not happen, so the log must
+/// not go on saying it did. jinteki.net leaves the undone lines in and
+/// adds a warning; here the record itself loses the entries, and the log
+/// follows the record.
+pub fn pop_log_entries(log: &mut Vec<String>, entries: usize, note: &str) {
+    for _ in 0..entries {
+        while let Some(line) = log.pop() {
+            if line.starts_with('[') {
+                break;
+            }
+        }
+    }
+    log.push(format!("           ↩ {note}"));
+}
+
 /// One place on the table and the cards the viewer may see in it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CardZone {

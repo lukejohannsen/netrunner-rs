@@ -89,7 +89,14 @@ impl Pacer {
         let (run_after, events, own) = match &message {
             MatchMessage::Applied { entry, view } => (view.active_run.is_some(), entry.events.clone(), entry.side == self.human),
             MatchMessage::Awaiting { view } => (view.active_run.is_some(), Vec::new(), false),
-            MatchMessage::Rejected { .. } => {
+            MatchMessage::Rejected { .. } | MatchMessage::Back { .. } => {
+                self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
+                return;
+            }
+            // A move is only ever begun outside a run, so the board a
+            // take-back restores has none.
+            MatchMessage::Rewound { .. } => {
+                self.in_run = false;
                 self.queue.push_back(Queued { beat: Beat::Apply(message), wait: Duration::ZERO });
                 return;
             }
@@ -218,6 +225,7 @@ mod tests {
                         }
                     }
                     Beat::Apply(MatchMessage::Rejected { reason }) => panic!("{reason}"),
+                    Beat::Apply(MatchMessage::Back { .. } | MatchMessage::Rewound { .. }) => {}
                     Beat::Apply(MatchMessage::Ended { .. } | MatchMessage::Stalled { .. }) => break 'game,
                 }
             }

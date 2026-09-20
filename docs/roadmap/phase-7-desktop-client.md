@@ -3314,6 +3314,77 @@ read. A preview that might be wrong is worse than none.
 and both terminal clients hold an `Asks` beside their routes and word
 their lists through `Asks::label`. No engine file changed, so no sweep.
 
+### 4af. A move can be taken back: free while it has taught nothing, an undo that ends the rating after — DONE (20 September 2026)
+
+`feat/take-back-and-undo-click`, §8 item 4, parts (b) and (c), stacked on
+§4ae. The same report: Red Team has spent its click by the time it asks
+which server, and the person "can't put the card back down and select a
+different option". §4ae lets them look first; this lets them go back.
+
+**It is a restore in the session, not a `PlayerAction`.** §4d declined a
+back-out from an install's destination because the engine could only offer
+one as a new action — `ActionSpace` 1646 → 1647 and every exported policy
+with it, a variant the coverage gate would demand a bot apply, an
+`affordance` mood for something that is not a move. None of that is needed
+to put back a state the engine itself produced. `Session::with_undo(depth)`
+is opt-in (self-play, the gym and the server keep nothing and clone
+nothing); with it on, the state each of an `External` seat's moves was made
+from is kept, `UNDO_DEPTH` = 4 deep as jinteki's `/undo-click` is, and
+`Session::rewind` restores the newest and truncates `MatchHistory` to match
+— so the record still replays to the state beside it, which
+`the_record_still_replays_after_a_take_back` checks. The step budget is not
+refunded. **§4d's back-out comes with it**, since an install a card's text
+offers parks the same `ChooseServer`.
+
+**The line is what the move taught**, which is where this parts from
+jinteki: its undo is online, unilateral, and rewinds a draw or an access
+with no test at all. Here a take-back is `Rewind::Free` while the person is
+still answering what their own move asked — a decision or a paid choice
+still parked on them, no run begun, no window open — and the move showed
+them nothing new: `GameState::rng_step` has not moved, no event in it says
+otherwise (`GameEvent::may_teach_the_actor`, exhaustive so a new event does
+not compile until someone decides), the other seat has not acted, and the
+prompt is not over a zone that shows hidden cards
+(`CardZoneRef::shows_the_chooser_hidden_cards` — a stack search is a look
+at the stack). Free leaves a rated game rated. Anything past that is
+`Rewind::Undo`: it goes back just as exactly, and the rating is dropped
+unrecorded — not forfeited — with `Ended::notice` saying why. Both
+classifiers live in `netrunner_core` because they are facts about the
+engine's events and zones; the session only reads them, and owns no rule.
+
+**Undo stays inside a turn.** A move starts from a clear table in the
+person's own action phase — nothing parked, no run, no window — so a step
+of a run, a prompt's answer and a rez in the other player's turn are part
+of a move, never the start of one; and every kept state is dropped when
+the turn number moves or the game ends.
+
+**In the clients.** `MatchHandle::rewind` and two messages:
+`MatchMessage::Back { rewind }`, sent only when it changes so a client that
+ignores it misses nothing, and `Rewound { view, removed, kind }`, on which
+the board snaps back with no `Transition` (nothing moved *to* here) and the
+log drops what no longer happened (`actions::pop_log_entries`). On the
+desktop the button is "Take it back" or "Undo last move"
+(`Game::back_label`), **inside the decision pop-up** as its last, unlit,
+unnumbered button — the pop-up's wash blocks the rail, so the way out of a
+prompt has to be in the prompt — and on the rail beside the routes, never
+on the control bar, which is the engine's actions. `U` is the key. A free
+take-back goes at once because it gives nothing up; an undo asks twice, as
+Enter does with clicks left, until the rating is already gone. The terminal
+client has the same `u`, its notice in the list's title. Lessons keep no
+undo: their steps are scripted against the actions actually taken.
+
+**Local games only, by choice; the rule is where the server can take it.**
+A free take-back would be fair against a person — the opponent has seen
+which card was played, which costs only the one taking it back — and needs
+one `ClientMessage` and the retraction of a log entry from the other seat.
+
+**Measured.** Undo is off everywhere but the two local clients, so the
+claim is *no drift*: 192 random-vs-random games over `--all-matchups`,
+seed 1, on pinned release binaries of `main` and this branch — reports
+**byte-identical**. `cargo test --workspace` green, clippy silent, both
+256-seed sweeps green. Not screenshotted: no dev hook reaches a parked
+prompt with a move to take back; the model test drives both buttons.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

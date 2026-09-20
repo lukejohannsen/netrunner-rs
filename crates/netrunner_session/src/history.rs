@@ -173,6 +173,15 @@ impl MatchHistory {
         self.entries.push(HistoryEntry { turn_number, side, action, events });
     }
 
+    /// Drops every entry from `len` on — `Session::rewind` taking a move
+    /// back. The one way a live history ever gets shorter, and it keeps
+    /// the replay invariant rather than bending it: the state is restored
+    /// to exactly what the first `len` actions produce, so the record
+    /// still replays to the state it sits beside.
+    pub(crate) fn truncate(&mut self, len: usize) {
+        self.entries.truncate(len);
+    }
+
     pub fn entries(&self) -> &[HistoryEntry] {
         &self.entries
     }
