@@ -164,33 +164,78 @@ one, so the test is sturdier than it was.
 **Verified.** `cargo test --workspace` green, clippy silent, and both
 256-seed sweeps green.
 
-## jinteki comparison: the engine gaps it shows — OPEN (19 September 2026)
+## jinteki comparison: the engine gaps it shows — OPEN (19 September 2026; re-ordered by the second pass, 20 September 2026)
 
-`docs/jinteki-comparison`. The finding is
-[`docs/jinteki-comparison.md`](../jinteki-comparison.md) §2. These are open items for the next card set, not bugs:
+`docs/jinteki-comparison`, then `docs/jinteki-second-pass`. The finding is
+[`docs/jinteki-comparison.md`](../jinteki-comparison.md) §2 and §6. These are open items for the next card set, not bugs:
 every *System Gateway* and *Elevation* card resolves correctly without them.
 Each would be one design decision, taken before a set builds on its absence.
 
-1. **A continuous-effect layer** (§2.1). One `{ kind, value: Amount, while:
-   EffectRequirement }` shape, with a `GameState` list for lingering
-   effects, replacing `StrengthModifier`, the nine one-off fields on
-   `CardDefinition` (cost, MU, hand size, hosted bonuses), and the three `*_strength_buff` fields.
-   This is the largest remaining pressure on the DSL Growth Rule's ratio.
-   Prohibitions (§2.5) fall out of it as boolean kinds.
-2. **Generic prevention** (§2.2). Give the existing
+**The list was six items on 19 September 2026 and is ten now.** A second
+pass audited the first against both codebases: the six held, one was
+understated and moved to the top, one was proposed too narrowly, and four
+were missed. Nothing had cited the old numbers but this file and the doc, so
+they are renumbered here once, with the old number on each item that had
+one.
+
+1. **One event queue, one audience rule, one checkpoint** (§6.1, absorbing
+   §2.3; was item 3, and was only an ordering audit). Which cards hear an
+   event is decided per event in `rules/dispatcher.rs` — `fire_direct`,
+   `fire_runner_side`, `both_sides_candidates` — and an event an effect
+   produces is returned, never dispatched (`ability::dispatch_damage_taken`
+   is the side door for one of them). So a new card can need a Rust edit
+   with no new mechanic in it, and `Trigger` has four variants for one
+   successful run. The shape: a listener scan over every active card,
+   `Trigger`s parameterised by a filter, effect-produced events through the
+   same queue, and the CR 10.3 state-based checks (MU, unique, wins, empty
+   remotes, expired durations) at one point after it. **First because it is
+   the one that gets more expensive with every card**, and measured
+   byte-for-byte on both seatings, because every trigger in the pool
+   re-fires through the new path.
+2. **A continuous-effect layer, with a target and a payload** (§2.1 as
+   corrected by §6.2; was item 1). Not `{ kind, value: Amount, while }`: a
+   closed enum with a payload per kind — a number, a subtype, a subroutine,
+   a cost, a prohibition — plus `applies_to: CardFilter` and `while:
+   EffectRequirement`, with a `GameState` list for lingering ones. Replaces
+   `StrengthModifier`, the nine one-off `CardDefinition` fields (now
+   including `host_ice_gains_subtypes`) and the three `*_strength_buff`
+   fields. Prohibitions (§2.5) are its boolean kinds. It is also where **ICE
+   gaining or losing subroutines** and **"cannot be broken"** would live,
+   neither of which the engine models today.
+3. **"The first time each turn" as a query** (§6.3; new). Roughly ten
+   per-turn fields on `GameState`, an `EffectRequirement` apiece, where
+   jinteki filters a turn log (`first-event?` alone is called 136 times).
+   Candidate: constant-size per-turn and per-run counters keyed by an
+   event-kind enum with a filter — not an event `Vec`, which every search
+   clone would pay for.
+4. **Generic prevention** (§2.2; was item 2). Give the existing
    `WindowCheckpoint::Prevention` window a kind parameter, so tags,
    end-the-run, jack-out and expose use the same window that damage and
    trash use, rather than a third special case.
-3. **A checkpoint audit against CR 10.3** (§2.3): where the state-based
-   checks (MU, unique, wins, empty remotes, expired durations) run, and in
-   what order, relative to trigger dispatch.
-4. **A movement phase in the run** (§2.6), before a card needs "when the
-   Runner passes ICE".
-5. **Cost types** (§2.4). jinteki's 50 are the backlog, taken as cards
-   need them.
-6. **A scenario builder for card tests** (§4). A deck-and-hand spec that
-   reaches a real state through `setup` and actions, plus helpers that
-   address cards by name. It is test code only.
+5. **Where a payment comes from** (§6.4; new). Pools that compete and a
+   player who chooses between them — stealth is the family that forces it.
+   Today every pool is spent automatically in a fixed order.
+6. **A numeric decision** (§6.4; new). `PendingDecision` has no "choose a
+   number", so X costs and "pay up to N" have nowhere to park. One variant,
+   and an `ActionSpace` segment appended at the end (the append-never-shift
+   rule), so it is a retraining event to plan for rather than stumble into.
+7. **A movement phase in the run** (§2.6; was item 4), before a card needs
+   "when the Runner passes ICE".
+8. **Cost types** (§2.4; was item 5). jinteki's 50 are the backlog, taken
+   as cards need them.
+9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
+   spec that reaches a real state through `setup` and actions, plus helpers
+   that address cards by name. It is test code only.
+10. **Concepts with no home yet, taken as cards need them** (§6.4; new):
+    several run-replacement effects and the Runner's choice among them
+    (`RunState::access_replacement` is one `Option`), reveal as an event,
+    a set-aside zone (masking: needs an explicit who-may-see rule), expose,
+    facedown Runner installs, the mark, charge, per-host card and MU
+    limits, agenda points and advancement requirements that change while
+    installed. **And one question to put to the Comprehensive Rules:**
+    whether the Runner is entitled to the arrival order of facedown cards
+    in Archives, which `PublicArchivedCard` positions plus an in-place flip
+    at breach give them, and which jinteki shuffles away.
 
 ## Advancing a card and placing a counter on it were one event — DONE (20 September 2026)
 
