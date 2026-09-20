@@ -666,6 +666,64 @@ one.
    through `rules::lingering`, because a pump bought *inside* a search is
    a lingering effect of the sample.
 
+   **The view shows the strength the engine uses — DONE (20 September
+   2026, `feat/the-view-shows-the-strength-the-engine-uses`).** A rig
+   card's `current_strength` in every `ClientView` was the stored half
+   alone — printed plus the boosts paid for — and left out what the table
+   adds: Echelon's +1 for each icebreaker, Rising Tide's fracters in the
+   heap, a GAMEDRAGON™ Pro's +1 to its host. So the number a person read,
+   the number the observation encoded and the number `eval::break_cost`
+   priced a pump against could all be short of the one the break contest
+   used. The reason on the masking function — that a `CardRegistry` would
+   ripple into every consumer crate — was wrong: `view::build_client_view`
+   is the one production caller and always held one.
+   `mask_state_for_player` takes the registry and shows
+   `continuous::breaker_strength`.
+
+   *Why it was a stage of its own.* `determinize` took the shown number
+   as the sample's `base_strength`. With the view corrected, that alone
+   would count Echelon twice; and since stage 3 it had also been turning
+   every pump in flight into printed strength that never expired inside a
+   rollout. So the view now carries the lingering effects that hold
+   (`PublicGameState::lingering`, `ClientView::lingering` — public: a
+   flat number on an install both players see, made by a card both
+   watched resolve), and a sample takes a shown number apart again: the
+   printed part from the registry the way `engine::seed_rig_card` seeds
+   it, the boosts from the view's list, the table's part derived from its
+   own rig. A visible ice's stored strength is the shown number with the
+   lingering part taken back out (stage 5 deletes that field). **A debug
+   build asserts that every sample agrees with its view about every rig
+   card's and every visible ice's strength** (`determinize`'s
+   `debug_assert_strengths_agree`) — that is every test and both sweeps,
+   and on its first run it found a search fixture whose rig card
+   disagreed with its own registered card (its twin in `mcts` was
+   corrected with it). `eval` prices a break with
+   `continuous::breaker_strength` and tests a subtype the way
+   `BreakSubroutines` does (`continuous::ice_gains_subtype`), so
+   Chromatophores' host is something the evaluator can break.
+   `netrunner_client::board::breaks` loses one of its three reasons for
+   playing a route rather than pricing it, and keeps the other two.
+
+   *Measured.* In shadow, old number beside new at every masked rig card
+   over both 256-seed sweeps in a debug build (1,536 games): **80,082
+   maskings of a rig card showed a strength short of the engine's** — by 1
+   (17,116 of the view sweep's 28,202), 2, 3 or 4 — Echelon in 75,943 of
+   them, Rising Tide in 2,150, and five other breakers when a GAMEDRAGON™
+   Pro was hosted on them; the sample-agrees-with-view assertion never
+   fired. `scripts/coverage_identical.py main --head-worktree`, 192 games
+   a report, seed 1: **random identical, both shapes** (the engine did not
+   move — only what is shown); **heuristic moves, as it should, because
+   the bot reads the view.** By view: pumps bought 441 → 414 while
+   subroutines broken went 952 → 965 over the same encounters (1,261 →
+   1,260) and ice passed 1,408 → 1,427 — the Runner stopped paying for
+   strength it already had. By index the same shape: 441 → 415, 959 →
+   978, 1,414 → 1,440. Outcomes do not move: end reasons 32 / 10 / 150 →
+   30 / 11 / 151, a Runner win rate of 0.781 → 0.786, which is a fifth of
+   the seed-spread band's lower edge (0.026) and is claimed as nothing.
+   The observation's *values* drift for the same cards (its shape does
+   not: `OBS_SIZE` 2262, `ActionSpace::SIZE` 1646); no promoted policy
+   exists to retrain. Owed, in order: ICE strength derived, prohibitions.
+
    *Still open from this stage.* "The first time each turn you install a
    program" is still "once a turn, when it applies": a DZMZ installed after
    the turn's first program discounts the second, as it did under the

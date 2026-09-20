@@ -8,7 +8,7 @@ use netrunner_core::dsl::{
     card_matches_filter, Amount, CardDefinition, CardFilter, CardType, CardZoneRef, Cost, Effect, IceType,
     SubroutineBreakCount, Trigger,
 };
-use netrunner_core::rules::lingering;
+use netrunner_core::rules::{continuous, lingering};
 use netrunner_core::rules::{
     current_actor, GamePhase, GameState, InstalledCard, InstalledRunnerCard, PendingDecision, RunIce, RunPhase,
     RunState, Side, SubroutineStatus,
@@ -1234,8 +1234,9 @@ fn cheapest_break_cost(state: &GameState, ice: &RunIce, registry: &CardRegistry)
 fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> Option<u32> {
     let def = registry.get(&card.card)?;
     let pending = pending_on(ice);
-    // A pump bought inside the search is a lingering effect of the sample.
-    let shortfall = (lingering::ice_strength(state, ice) - lingering::rig_strength(state, card)).max(0) as u32;
+    // The number the break contest uses — a pump bought inside the search
+    // and what the table adds (Echelon, Rising Tide) included.
+    let shortfall = (lingering::ice_strength(state, ice) - continuous::breaker_strength(state, registry, card)).max(0) as u32;
     let mut cheapest_break: Option<u32> = None;
     let mut cheapest_pump: Option<u32> = None;
     let keep_min = |slot: &mut Option<u32>, cost: u32| *slot = Some(slot.map_or(cost, |c| c.min(cost)));
@@ -1246,7 +1247,7 @@ fn break_cost(state: &GameState, card: &InstalledRunnerCard, ice: &RunIce, regis
             Some(_) => continue,
         };
         ability.effect.for_each_effect(&mut |effect| match effect {
-            Effect::BreakSubroutines { count, restrict_to } if restrict_to.is_none_or(|r| r == ice.ice_type) => {
+            Effect::BreakSubroutines { count, restrict_to } if restrict_to.is_none_or(|r| ice_is(state, ice, r, registry)) => {
                 let activations = match count {
                     SubroutineBreakCount::Fixed(n) => pending.div_ceil((*n).max(1)),
                     SubroutineBreakCount::All => 1,
@@ -1282,21 +1283,29 @@ fn strength_shortfall(state: &GameState, run: &RunState, registry: &CardRegistry
         .runner
         .rig
         .iter()
-        .filter(|card| breaks_subtype(card, ice.ice_type, registry))
-        .map(|card| lingering::rig_strength(state, card))
+        .filter(|card| breaks_subtype(state, card, ice, registry))
+        .map(|card| continuous::breaker_strength(state, registry, card))
         .max();
     best.map_or(0, |strength| (lingering::ice_strength(state, ice) - strength).max(0))
 }
 
+/// Whether `ice` is a `subtype` right now: the one it prints, or one the
+/// table gives it (a hosted GAMEDRAGON™ Pro's "host ice gains barrier") —
+/// `BreakSubroutines`' own test, so a break the engine would accept is one
+/// this prices.
+fn ice_is(state: &GameState, ice: &RunIce, subtype: IceType, registry: &CardRegistry) -> bool {
+    ice.ice_type == subtype || continuous::ice_gains_subtype(state, registry, ice.install_id, subtype)
+}
+
 /// Whether `card`'s abilities include a `BreakSubroutines` that applies to
-/// `subtype` — restricted to it, or unrestricted.
-fn breaks_subtype(card: &netrunner_core::rules::InstalledRunnerCard, subtype: IceType, registry: &CardRegistry) -> bool {
+/// `ice` — restricted to a subtype it has, or unrestricted.
+fn breaks_subtype(state: &GameState, card: &netrunner_core::rules::InstalledRunnerCard, ice: &RunIce, registry: &CardRegistry) -> bool {
     let Some(def) = registry.get(&card.card) else { return false };
     let mut found = false;
     for ability in &def.abilities {
         ability.effect.for_each_effect(&mut |effect| {
             if let Effect::BreakSubroutines { restrict_to, .. } = effect
-                && restrict_to.is_none_or(|r| r == subtype)
+                && restrict_to.is_none_or(|r| ice_is(state, ice, r, registry))
             {
                 found = true;
             }

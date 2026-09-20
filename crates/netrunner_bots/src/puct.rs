@@ -1537,6 +1537,9 @@ mod tests {
         let mut registry = CardRegistry::new();
         let mut breaker = blank_card("corroder", CardType::Program);
         breaker.side = Side::Runner;
+        // The printed number the rig card below was seeded from — a sample is
+        // rebuilt from the registry, so the two have to agree.
+        breaker.strength = Some(2);
         registry.insert(breaker);
 
         let mut state = GameState::new(0);

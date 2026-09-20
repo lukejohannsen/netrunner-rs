@@ -46,6 +46,8 @@ use rand::Rng;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::decks::DeckFile;
 use netrunner_core::dsl::{CardDefinition, CardId, CardType};
+use netrunner_core::rules::lingering::{self, Lingering, LingeringEffect};
+use netrunner_core::rules::continuous;
 use netrunner_core::rules::{
     ArchivedCard,
     AccessPhase, AccessState, AgendaPoints, Clicks, CorpState, Credits, EncounteredSubroutine, GameState, InstallSlot,
@@ -414,6 +416,18 @@ fn determinize_installed(
     ice.into_iter().chain(root).collect()
 }
 
+/// What the lingering effects in a view add to the strength of `install`.
+/// The view's list is already the ones that hold.
+fn lingering_strength_on(effects: &[LingeringEffect], install: netrunner_core::rules::InstallId) -> i32 {
+    effects
+        .iter()
+        .filter(|effect| effect.on == install)
+        .map(|effect| match effect.what {
+            Lingering::Strength(delta) => delta,
+        })
+        .sum()
+}
+
 fn determinize_zone(cards: &Option<Vec<CardId>>, count: usize, pools: &mut Pools<'_>, slot: Slot) -> Vec<CardId> {
     match cards {
         Some(cards) => cards.clone(),
@@ -457,11 +471,18 @@ fn determinize_access_phase(phase: &PublicAccessPhase, pools: &mut Pools<'_>) ->
 /// drawing again. The engine now keeps `run.ice` in step with
 /// `corp.installed` (`run::reconcile_ice`), so a sample in which the two
 /// disagree about one install is a state the real game cannot be in.
+///
+/// `lingering` is the view's list: a visible ice's `current_strength` is the
+/// number shown, which already has Leech's -1 in it, and the sample carries
+/// that -1 as the lingering effect it is — so what is stored on the sample's
+/// `RunIce` is the shown number with it taken back out. Carrying both
+/// counted it twice; carrying only the shown number made it last the run.
 fn determinize_run(
     run: &netrunner_core::rules::PublicRunState,
     registry: &CardRegistry,
     pools: &mut Pools<'_>,
     installed: &[InstalledCard],
+    lingering: &[LingeringEffect],
 ) -> RunState {
     let ice = run
         .ice
@@ -470,7 +491,7 @@ fn determinize_run(
             Some(identity) => RunIce {
                 install_id: ice.install_id,
                 card_id: identity.card.clone(),
-                current_strength: identity.current_strength,
+                current_strength: identity.current_strength - lingering_strength_on(lingering, ice.install_id),
                 ice_type: identity.ice_type,
                 subroutines: identity.subroutines.clone(),
                 rezzed: ice.rezzed,
@@ -692,7 +713,15 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             card: card.card.clone(),
             // Carried, never reallocated — see `determinize_installed`.
             install_id: card.install_id,
-            base_strength: card.current_strength,
+            // The printed number, the way `engine::seed_rig_card` seeds
+            // it — **not** `card.current_strength`. That is the strength
+            // the engine uses, with the boosts still running and what the
+            // table adds (Echelon, Rising Tide) already in it; the sample
+            // carries the first as `lingering` and derives the second from
+            // its own board, so folding the shown number in here counted
+            // both twice, and made a pump for this encounter permanent in
+            // every rollout.
+            base_strength: registry.get(&card.card).and_then(|definition| definition.strength).unwrap_or(0),
             // Both public and both carried by the view. `counters` was
             // simply being dropped, which made every counter-costed
             // ability (Botulus, Leech, Pennyshaver) illegal in the sample;
@@ -736,7 +765,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         identity_flipped: view.runner.identity_flipped,
     };
 
-    let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed));
+    let active_run = view.active_run.as_ref().map(|run| determinize_run(run, registry, &mut pools, &corp.installed, &view.lingering));
 
     // A rollout installs cards of its own, and those ids must not collide
     // with one the view already carries. The real counter isn't in the
@@ -750,7 +779,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         .max()
         .map_or(1, |highest| highest + 1);
 
-    GameState {
+    let state = GameState {
         corp,
         runner,
         phase: view.phase,
@@ -774,13 +803,53 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // live on `ability::ResolutionContext`, which a determinized state
         // has no business carrying at all.
         last_completed_run: None,
-        lingering: Vec::new(),
+        // Public and carried: every entry is a flat number on an install
+        // both players see. `LingeringEffect::holds` reads the sample's own
+        // run and turn, which are the view's.
+        lingering: view.lingering.clone(),
         deferred_triggers: Vec::new(),
         seed: rng.random(),
         rng_step: 0,
         next_install_id,
         // Public, and the win threshold the search plays toward.
         rules: view.rules,
+    };
+    debug_assert_strengths_agree(&state, view, registry);
+    state
+}
+
+/// A sample's strengths are the view's. Both are public and both are the
+/// engine's own question (`continuous::breaker_strength`,
+/// `lingering::ice_strength`) put to a different state, so a disagreement
+/// is a part of the answer this module failed to carry — the way a shown
+/// strength taken as the printed one would now count Echelon's bonus
+/// twice. Checked in a debug build, which is every test and both sweeps;
+/// only for cards the registry knows, because a view built against another
+/// registry is somebody else's mistake.
+fn debug_assert_strengths_agree(state: &GameState, view: &ClientView, registry: &CardRegistry) {
+    if !cfg!(debug_assertions) {
+        return;
+    }
+    for (card, shown) in state.runner.rig.iter().zip(&view.runner.rig) {
+        if registry.get(&card.card).is_some() {
+            debug_assert_eq!(
+                continuous::breaker_strength(state, registry, card),
+                shown.current_strength,
+                "the sample's {} disagrees with the view about its strength",
+                card.card.0
+            );
+        }
+    }
+    let (Some(run), Some(shown)) = (&state.active_run, &view.active_run) else { return };
+    for (ice, shown) in run.ice.iter().zip(&shown.ice) {
+        if let Some(identity) = &shown.identity {
+            debug_assert_eq!(
+                lingering::ice_strength(state, ice),
+                identity.current_strength,
+                "the sample's {} disagrees with the view about its strength",
+                ice.card_id.0
+            );
+        }
     }
 }
 
@@ -1391,6 +1460,77 @@ mod tests {
             assert_eq!(sampled.corp.recurring_credits_max, 3, "{side:?}");
             // Rezzed, so its counters are visible to both sides.
             assert_eq!(sampled.corp.installed[0].counters, 4, "{side:?}");
+        }
+    }
+
+    /// A view shows the strength the engine uses, and a sample has to take
+    /// that number apart again: the printed part from the registry, the
+    /// boosts still running from the view's `lingering`, and what the table
+    /// adds from its own rig. Taking the shown number as the printed one —
+    /// what this did while the view showed the stored half alone — would
+    /// count Echelon's bonus twice and make a pump for this encounter last
+    /// every rollout; dropping `lingering` would lose a pump already paid
+    /// for.
+    #[test]
+    fn a_shown_strength_is_taken_apart_into_printed_lingering_and_table() {
+        use netrunner_core::rules::lingering::Until;
+        use netrunner_core::rules::{InstallId, RunIce, RunPhase, RunState, ServerId};
+
+        let registry = playable_registry();
+        let (echelon, corroder, wall) = (InstallId(10), InstallId(11), InstallId(1));
+        let mut state = CoreGameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.rig = vec![
+            InstalledRunnerCard { card: CardId("echelon".to_string()), install_id: echelon, base_strength: 0, ..Default::default() },
+            InstalledRunnerCard { card: CardId("corroder".to_string()), install_id: corroder, base_strength: 2, ..Default::default() },
+        ];
+        state.corp.installed = vec![InstalledCard {
+            install_id: wall,
+            card: CardId("wall_of_static".to_string()),
+            server: ServerId::Hq,
+            slot: CoreInstallSlot::Ice,
+            rezzed: true,
+            ..Default::default()
+        }];
+        state.active_run = Some(RunState {
+            server: ServerId::Hq,
+            phase: RunPhase::EncounterIce,
+            ice: vec![RunIce {
+                install_id: wall,
+                card_id: CardId("wall_of_static".to_string()),
+                current_strength: 3,
+                ice_type: IceType::Barrier,
+                subroutines: Vec::new(),
+                rezzed: true,
+            }],
+            ..Default::default()
+        });
+        let pump = |on, delta| LingeringEffect {
+            what: Lingering::Strength(delta),
+            on,
+            until: Until::EndOfEncounter(wall),
+            source: CardId("corroder".to_string()),
+        };
+        state.lingering = vec![pump(corroder, 2), pump(wall, -1)];
+
+        for side in [Side::Corp, Side::Runner] {
+            let view = build_client_view(&state, &registry, side);
+            assert_eq!(view.runner.rig[0].current_strength, 2, "{side:?}: Echelon, +1 for each of two icebreakers");
+            assert_eq!(view.runner.rig[1].current_strength, 4, "{side:?}: Corroder, 2 printed and +2 paid for");
+
+            let mut sampled = determinize(&view, &registry, &mut StdRng::seed_from_u64(7));
+            assert_eq!(sampled.lingering, state.lingering, "{side:?}");
+            assert_eq!(sampled.runner.rig[0].base_strength, 0, "{side:?}: the printed number, not the shown one");
+            assert_eq!(sampled.runner.rig[1].base_strength, 2, "{side:?}");
+            assert_eq!(sampled.active_run.as_ref().unwrap().ice[0].current_strength, 3, "{side:?}: the -1 is a lingering effect, not the ice");
+            for (card, shown) in sampled.runner.rig.iter().zip(&view.runner.rig) {
+                assert_eq!(continuous::breaker_strength(&sampled, &registry, card), shown.current_strength, "{side:?}: {}", card.card.0);
+            }
+            assert_eq!(lingering::ice_strength(&sampled, &sampled.active_run.as_ref().unwrap().ice[0]), 2, "{side:?}");
+
+            // And the pump ends with the encounter inside the sample too.
+            sampled.active_run = None;
+            assert_eq!(continuous::breaker_strength(&sampled, &registry, &sampled.runner.rig[1]), 2, "{side:?}");
         }
     }
 

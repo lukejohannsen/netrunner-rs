@@ -145,6 +145,13 @@ pub struct ClientView {
     pub pending_prevention: Option<PendingPrevention>,
     pub pending_paid_choice: Option<crate::rules::PendingPaidChoice>,
     pub pending_decision: Option<crate::rules::PendingDecision>,
+    /// `PublicGameState::lingering` verbatim — the boosts and Leech's -1
+    /// that hold right now, which the strengths in this view already
+    /// include. A client may say where a number came from; a search
+    /// rebuilding a state has to, or a pump it carried as printed strength
+    /// would outlast its run.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lingering: Vec<crate::rules::lingering::LingeringEffect>,
     /// The cards a parked `PendingDecision::ChooseCards` is choosing
     /// between, one per position the chooser can still name — so a client
     /// can say "Select Hedge Fund" where it said "Toggle selection of card
@@ -261,7 +268,7 @@ fn active_player(phase: GamePhase) -> Side {
 
 pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: impl Into<Viewer>) -> ClientView {
     let viewer = viewer.into();
-    let public = mask_state_for_player(state, viewer);
+    let public = mask_state_for_player(state, registry, viewer);
     let selection = selection_for(state, registry, viewer, &public);
 
     let corp = CorpClientView {
@@ -319,6 +326,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         pending_prevention: public.pending_prevention,
         pending_paid_choice: public.pending_paid_choice,
         pending_decision: public.pending_decision,
+        lingering: public.lingering,
         selection,
         legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),
     }

@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 
+use crate::cards::CardRegistry;
 use crate::dsl::{CardId, CardTarget, Cost, IceType};
 use crate::rules::action::{PlayerAction, TargetZone};
 use crate::rules::event::GameEvent;
-use crate::rules::lingering;
+use crate::rules::{continuous, lingering};
 use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
 use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
     PendingPrevention, PlayerResources, Side, TraceState,
@@ -343,6 +344,16 @@ pub struct PublicGameState {
     /// `active_trace`/`pending_prevention`.
     pub pending_paid_choice: Option<crate::rules::state::PendingPaidChoice>,
     pub pending_decision: Option<crate::rules::state::PendingDecision>,
+    /// The effects with a duration that hold right now
+    /// (`GameState::lingering`, filtered by `LingeringEffect::holds`).
+    /// Public to both viewers and a spectator: each is a flat number on an
+    /// install both players can see, made by a card both watched resolve —
+    /// a pump, Leech's -1. Carried because the strengths above already
+    /// *include* them, and whoever rebuilds a state from a view
+    /// (`netrunner_bots::determinize`) has to know which part of a number
+    /// will end with the encounter.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lingering: Vec<lingering::LingeringEffect>,
 }
 
 /// Who a masked projection is for.
@@ -390,11 +401,15 @@ impl Viewer {
     }
 }
 
-pub fn mask_state_for_player(state: &GameState, viewer: impl Into<Viewer>) -> PublicGameState {
+/// Takes the registry because a strength is a question put to the cards in
+/// play (`continuous::breaker_strength`), and a view that answered it
+/// without them showed a different number from the one the break contest
+/// used.
+pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer: impl Into<Viewer>) -> PublicGameState {
     let viewer = viewer.into();
     PublicGameState {
         corp: mask_corp_state(&state.corp, viewer.is(Side::Corp)),
-        runner: mask_runner_state(state, viewer.is(Side::Runner)),
+        runner: mask_runner_state(state, registry, viewer.is(Side::Runner)),
         phase: state.phase,
         active_run: state.active_run.as_ref().map(|run| mask_run_state(state, run, viewer)),
         paid_ability_window: state.paid_ability_window.clone(),
@@ -402,6 +417,7 @@ pub fn mask_state_for_player(state: &GameState, viewer: impl Into<Viewer>) -> Pu
         pending_prevention: state.pending_prevention.clone(),
         pending_paid_choice: state.pending_paid_choice.clone(),
         pending_decision: state.pending_decision.as_ref().map(|decision| mask_pending_decision(decision, state, viewer)),
+        lingering: state.lingering.iter().filter(|effect| effect.holds(state)).cloned().collect(),
     }
 }
 
@@ -960,20 +976,18 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
     }
 }
 
-/// **Still `lingering::rig_strength`, which is the stored half alone** — what
-/// the table adds (`continuous::breaker_strength`: Echelon, Rising Tide, a
-/// GAMEDRAGON™ Pro's host) is missing from every view, so the number shown
-/// can lag the one the break contest uses. The reason once given here, that
-/// threading a `CardRegistry` would ripple into every consumer crate, was
-/// wrong: `view::build_client_view` is the one production caller and holds
-/// one. It is a stage of its own (Rules Audit backlog item 2) because
-/// `netrunner_bots::determinize` folds the displayed number back into
-/// `base_strength`, so correcting this alone would count the bonus twice.
-fn mask_installed_runner_card(state: &GameState, card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
+/// `current_strength` is `continuous::breaker_strength` — the number the
+/// break contest uses, with what the table adds (Echelon, Rising Tide, a
+/// GAMEDRAGON™ Pro's host) and every boost still running. It was the stored
+/// half alone, for a reason that was wrong (threading a `CardRegistry` was
+/// said to ripple into every consumer crate; `view::build_client_view` is
+/// the one production caller and holds one), so a view could show a
+/// breaker one short of the ice it was about to break.
+fn mask_installed_runner_card(state: &GameState, registry: &CardRegistry, card: &InstalledRunnerCard) -> PublicInstalledRunnerCard {
     PublicInstalledRunnerCard {
         card: card.card.clone(),
         install_id: card.install_id,
-        current_strength: lingering::rig_strength(state, card),
+        current_strength: continuous::breaker_strength(state, registry, card),
         hosted_on_ice: card.hosted_on_ice,
         hosted_on_program: card.hosted_on_program,
         hosted_cards: card.hosted_cards.clone(),
@@ -982,7 +996,7 @@ fn mask_installed_runner_card(state: &GameState, card: &InstalledRunnerCard) -> 
     }
 }
 
-fn mask_runner_state(state: &GameState, owner_view: bool) -> PublicRunnerState {
+fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: bool) -> PublicRunnerState {
     let runner = &state.runner;
     PublicRunnerState {
         identity: runner.identity.clone(),
@@ -992,7 +1006,7 @@ fn mask_runner_state(state: &GameState, owner_view: bool) -> PublicRunnerState {
         tags: runner.tags,
         grip: mask_zone(&runner.grip, owner_view),
         stack: mask_zone(&runner.stack, owner_view),
-        rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, card)).collect(),
+        rig: runner.rig.iter().map(|card| mask_installed_runner_card(state, registry, card)).collect(),
         heap: runner.heap.clone(),
         scored_agendas: runner.scored_agendas.clone(),
         link_strength: runner.link_strength,
@@ -1006,6 +1020,13 @@ fn mask_runner_state(state: &GameState, owner_view: bool) -> PublicRunnerState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every test here but the table-strength one is about who sees which
+    /// card, and no card is asked anything: an empty registry answers a
+    /// strength with the stored half, which is what these fixtures set.
+    fn mask_state_for_player(state: &GameState, viewer: impl Into<Viewer>) -> PublicGameState {
+        super::mask_state_for_player(state, &CardRegistry::new(), viewer)
+    }
     use crate::rules::state::RunnerState;
     use crate::rules::state::{AgendaPoints, Clicks, Credits, InstallSlot};
 
