@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::dsl::ability::{AbilityDef, EffectRequirement, InteractiveOnAccess, SubroutineDef};
 use crate::dsl::cost::Cost;
 use crate::dsl::effect::{Amount, Effect};
-use crate::dsl::trigger::Trigger;
+use crate::dsl::trigger::{Subject, Trigger};
 use crate::rules::Side;
 
 /// `Ord` is derived so a set of ids has one canonical order regardless of
@@ -134,6 +134,15 @@ pub enum CardType {
 #[serde(deny_unknown_fields)]
 pub struct TriggeredEffect {
     pub trigger: Trigger,
+    /// Which occurrences of `trigger` this hears — see `Subject`. Required
+    /// exactly when `Trigger::names_a_subject`, absent otherwise; there is
+    /// no default, because both wrong defaults are quiet (an agenda that
+    /// reacts to every score; an identity that reacts to none), and
+    /// `CardDefinition::validate` is what holds every card file to it —
+    /// the embedded pool in `every_embedded_card_parses_and_validates`, an
+    /// external directory at load.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<Subject>,
     /// The printed sentence this trigger implements, quoted from the
     /// card, when a card author has linked it; optional and ungated —
     /// see `AbilityDef::text` for the linked-clause idea.
@@ -711,6 +720,10 @@ pub enum CardValidationError {
     AgendaMissingScoringFields(CardId),
     #[error("card {0:?} of type {1:?} must not have agenda_points — only Agenda does")]
     UnexpectedAgendaPoints(CardId, CardType),
+    #[error("card {0:?}: a {1:?} trigger must say whether it hears `This` occurrence or `Any` (`subject`)")]
+    TriggerMissingSubject(CardId, Trigger),
+    #[error("card {0:?}: a {1:?} trigger is not about a card or a server, so it cannot name a `subject`")]
+    TriggerSubjectWithNothingToName(CardId, Trigger),
 }
 
 /// Every field at its neutral value, matching what serde fills in for an
@@ -814,6 +827,16 @@ impl CardDefinition {
         if !is_agenda && self.agenda_points.is_some() {
             return Err(CardValidationError::UnexpectedAgendaPoints(self.id.clone(), self.card_type.clone()));
         }
+        // See `TriggeredEffect::subject`: no default, because either one is
+        // wrong quietly. A Rust fixture that skips `validate` gets the
+        // lenient reading `rules::listeners` documents; a card file never does.
+        for triggered in &self.triggers {
+            match (triggered.trigger.names_a_subject(), triggered.subject) {
+                (true, None) => return Err(CardValidationError::TriggerMissingSubject(self.id.clone(), triggered.trigger)),
+                (false, Some(_)) => return Err(CardValidationError::TriggerSubjectWithNothingToName(self.id.clone(), triggered.trigger)),
+                _ => {}
+            }
+        }
         Ok(())
     }
 }
@@ -851,6 +874,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
+                subject: Some(Subject::This),
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -872,6 +896,7 @@ mod tests {
         assert_eq!(
             card.triggers,
             vec![TriggeredEffect {
+                subject: Some(Subject::This),
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Runner, 9)],

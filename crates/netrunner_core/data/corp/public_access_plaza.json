@@ -19,6 +19,7 @@
     },
     {
       "trigger": "OnTrashedFromAccess",
+      "subject": "This",
       "requirement": {
         "And": [
           {

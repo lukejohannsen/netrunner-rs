@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnInstall",
+      "subject": "This",
       "effects": [
         {
           "AddCounters": 2
@@ -16,6 +17,7 @@
     },
     {
       "trigger": "OnSuccessfulRunOnRnD",
+      "subject": "Any",
       "effects": [
         {
           "OfferPaidChoice": {

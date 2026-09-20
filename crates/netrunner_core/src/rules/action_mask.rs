@@ -785,6 +785,7 @@ mod tests {
             card_type: CardType::Operation,
             cost: 5,
             triggers: vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],
@@ -1272,6 +1273,7 @@ mod tests {
             target: None,
             event: None,
             continuation: None,
+            heard: Default::default(),
         };
         state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseTriggerOrder {
             chooser: Side::Corp,

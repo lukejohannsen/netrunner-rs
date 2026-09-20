@@ -776,6 +776,7 @@ mod tests {
             side: Side::Runner,
             card_type: crate::dsl::CardType::Program,
             triggers: vec![crate::dsl::TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: crate::dsl::Trigger::OnRunEnded,
                 effects: vec![crate::dsl::Effect::GainCredits(Side::Runner, 1)],

@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnSuccessfulRunOnHq",
+      "subject": "Any",
       "requirement": "FirstSuccessfulHqRunThisTurn",
       "effects": [
         {

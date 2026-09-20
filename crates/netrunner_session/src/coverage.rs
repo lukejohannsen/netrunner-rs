@@ -805,6 +805,7 @@ mod tests {
             side: Side::Corp,
             card_type: CardType::Operation,
             triggers: vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 1)],

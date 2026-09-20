@@ -3,6 +3,13 @@ use serde::{Deserialize, Serialize};
 /// When (or how) an ability fires. Automatic variants name a rules-flow
 /// moment; `Paid` marks an ability that never fires on its own and must be
 /// explicitly activated by a player paying its `AbilityDef::cost`.
+///
+/// **Who hears a trigger is not a property of the variant.** Every active
+/// card that declares it is asked, and the card says which occurrences it
+/// means (`Subject`, `hears`) — see `rules::listeners`. Where a variant's
+/// note below names an audience ("the Corp identity", "the Runner's rig"),
+/// it records the card that first needed the trigger, from when each
+/// audience was written by hand in `rules::dispatcher`; it is not a limit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Trigger {
     OnPlay,
@@ -218,4 +225,140 @@ pub enum Trigger {
     /// `TagsRemoved`, `TagsCleared`). Synapse Global: Faster than Thought
     /// installs off it, including off its own remove-a-tag ability.
     OnTagRemoved,
+}
+
+/// Which occurrences of its trigger a `TriggeredEffect` hears: the one that
+/// happens to the card itself, or every one.
+///
+/// One printed word decides it — "when you score **this agenda**" against
+/// "whenever **an agenda** is scored" — and until this existed the word was
+/// not in the card data at all. `Trigger::OnAgendaScored` meant *this one*
+/// on Hostile Takeover and *any* on Jinteki: Personal Evolution, and what
+/// told them apart was `rules::dispatcher` handing the event to the scored
+/// agenda and to the identity in two separate, hand-written steps. That is
+/// a card rule kept in Rust: a rezzed asset printed "whenever you score
+/// another agenda" could be written in JSON and would never be asked.
+///
+/// For an event about a server (an approach, a run ending) `This` reads
+/// "this server": the card is installed in or protecting it — Anoetic
+/// Void's "whenever the Runner approaches **this server**".
+///
+/// Not a `CardFilter`, and deliberately two-valued: "is it me" needs the
+/// listener's own install handle, which no filter over the *other* card can
+/// answer. Narrowing `Any` by what the other card is stays where it already
+/// lives, `EffectRequirement::TriggeringCardMatches`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Subject {
+    This,
+    Any,
+}
+
+/// Whose occurrences of a moment a trigger hears — the "you" in its text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Hears {
+    /// The trigger is phrased about its controller ("when **your** turn
+    /// begins", "whenever **you** install"): a card hears it only when the
+    /// moment is its own side's.
+    OwnSide,
+    /// Phrased about the game ("whenever an agenda is scored or stolen",
+    /// "whenever the Runner approaches"): either side's cards hear it.
+    Everyone,
+}
+
+impl Trigger {
+    /// Whether this trigger's moment is *about* a card or a server, so that
+    /// a `TriggeredEffect` using it must say which occurrences it hears
+    /// (`TriggeredEffect::subject`) — and one using any other trigger must
+    /// not, because there is no "this one" for a turn beginning.
+    ///
+    /// Exhaustive on purpose: a new `Trigger` does not compile until someone
+    /// decides, and `CardDefinition::validate` then holds every card file to
+    /// the answer.
+    pub fn names_a_subject(self) -> bool {
+        match self {
+            Trigger::OnPlay
+            | Trigger::OnInstall
+            | Trigger::OnCardInstalled
+            | Trigger::OnVirusInstalled
+            | Trigger::OnOperationPlayed
+            | Trigger::OnTransactionPlayed
+            | Trigger::OnAccessed
+            | Trigger::OnTrashedFromAccess
+            | Trigger::OnAgendaScored
+            | Trigger::OnAgendaStolen
+            | Trigger::OnForfeit
+            | Trigger::OnRez
+            | Trigger::OnAdvance
+            | Trigger::OnEncounter
+            | Trigger::OnAbilityGainedCredits
+            | Trigger::OnRunStart
+            | Trigger::OnIceApproached
+            | Trigger::OnApproachServer
+            | Trigger::OnSuccessfulRun
+            | Trigger::OnSuccessfulRunOnHq
+            | Trigger::OnSuccessfulRunOnRnD
+            | Trigger::OnSuccessfulRunOnCentralServer
+            | Trigger::OnRunEnded => true,
+            // A phase, a count or a player, never a card. The two prevention
+            // moments are here too: what is about to be trashed is a
+            // `CardTarget` still to be resolved, not a card, and no card
+            // declares either trigger — "prevent **this card** being
+            // trashed" is the text that would move `OnTrashAboutToResolve`
+            // up.
+            Trigger::OnTurnStart
+            | Trigger::OnActionPhaseEnd
+            | Trigger::OnDiscardPhaseEnd
+            | Trigger::OnBasicDrawAction
+            | Trigger::OnTagsGiven
+            | Trigger::OnTagRemoved
+            | Trigger::OnDamageDealt
+            | Trigger::OnCardsTrashedFromHq
+            | Trigger::OnDamageAboutToResolve
+            | Trigger::OnTrashAboutToResolve
+            | Trigger::Paid => false,
+        }
+    }
+
+    /// Whose moment this trigger hears. Read off how the pool's cards print
+    /// it, and exhaustive for the same reason as `names_a_subject`.
+    pub fn hears(self) -> Hears {
+        match self {
+            Trigger::OnTurnStart
+            | Trigger::OnActionPhaseEnd
+            | Trigger::OnDiscardPhaseEnd
+            | Trigger::OnBasicDrawAction
+            | Trigger::OnInstall
+            | Trigger::OnCardInstalled
+            | Trigger::OnVirusInstalled
+            | Trigger::OnOperationPlayed
+            | Trigger::OnTransactionPlayed
+            | Trigger::OnAdvance
+            | Trigger::OnAbilityGainedCredits
+            | Trigger::OnDamageDealt
+            | Trigger::OnCardsTrashedFromHq => Hears::OwnSide,
+            // `OnPlay` and `OnForfeit` are only ever printed about the card
+            // itself, so `Subject::This` already says whose they are.
+            Trigger::OnPlay
+            | Trigger::OnForfeit
+            | Trigger::OnAccessed
+            | Trigger::OnTrashedFromAccess
+            | Trigger::OnAgendaScored
+            | Trigger::OnAgendaStolen
+            | Trigger::OnRez
+            | Trigger::OnEncounter
+            | Trigger::OnRunStart
+            | Trigger::OnIceApproached
+            | Trigger::OnApproachServer
+            | Trigger::OnSuccessfulRun
+            | Trigger::OnSuccessfulRunOnHq
+            | Trigger::OnSuccessfulRunOnRnD
+            | Trigger::OnSuccessfulRunOnCentralServer
+            | Trigger::OnRunEnded
+            | Trigger::OnTagsGiven
+            | Trigger::OnTagRemoved
+            | Trigger::OnDamageAboutToResolve
+            | Trigger::OnTrashAboutToResolve
+            | Trigger::Paid => Hears::Everyone,
+        }
+    }
 }

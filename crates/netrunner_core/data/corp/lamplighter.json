@@ -10,6 +10,7 @@
   "triggers": [
     {
       "trigger": "OnAgendaScored",
+      "subject": "Any",
       "effects": [
         {
           "TrashCard": "ThisCard"
@@ -19,6 +20,7 @@
     },
     {
       "trigger": "OnAgendaStolen",
+      "subject": "Any",
       "effects": [
         {
           "TrashCard": "ThisCard"

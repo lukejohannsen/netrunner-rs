@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnPlay",
+      "subject": "This",
       "effects": [
         {
           "PresentChoice": {

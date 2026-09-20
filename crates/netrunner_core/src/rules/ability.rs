@@ -953,6 +953,7 @@ pub fn evaluate_effect(
                             target_install: None,
                             event: ctx.triggering_event.cloned(),
                             continuation: Some(Effect::Sequence(rest.to_vec())),
+                            heard: Default::default(),
                         });
                     }
                     break;
@@ -1549,6 +1550,7 @@ pub fn process_card_triggers(
         target_install: None,
         event: triggering_event.cloned(),
         continuation: None,
+        heard: Default::default(),
     };
     fire_card_triggers(state, registry, &due, false)
 }
@@ -1583,7 +1585,7 @@ pub(crate) fn fire_card_triggers(
     };
     let mut events = Vec::new();
     let card_side = card.side;
-    for triggered in card.triggers.iter().filter(|t| t.trigger == trigger) {
+    for triggered in card.triggers.iter().filter(|t| t.trigger == trigger && due.heard.admits(t.subject)) {
         // The requirement is checked as the *reacting* card, the effects
         // resolve as the target (the card itself, unless `target` says
         // otherwise) — separate contexts, and one pair per
@@ -1621,6 +1623,24 @@ pub(crate) fn fire_card_triggers(
         }
     }
     Ok(events)
+}
+
+/// Whether firing `due` right now would resolve anything: some
+/// `TriggeredEffect` it names has no requirement, or one that passes.
+///
+/// A read, never a dry run — it consumes no per-turn flag and resolves no
+/// effect. `dispatcher::offer_trigger_order` uses it so that a trigger whose
+/// condition is already false ("from the root of **this server**", scored
+/// elsewhere) is not something a player is asked to order.
+pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &DeferredTrigger) -> bool {
+    if due.continuation.is_some() {
+        return true;
+    }
+    let Some(card) = registry.get(&due.card) else { return false };
+    let ctx = ResolutionContext::for_install_trigger(due.install, Some(&due.card), due.event.as_ref());
+    card.triggers.iter().filter(|t| t.trigger == due.trigger && due.heard.admits(t.subject)).any(|triggered| {
+        triggered.requirement.as_ref().is_none_or(|requirement| check_requirement(state, requirement, card.side, &ctx, registry).is_ok())
+    })
 }
 
 /// Whether any rezzed Corp install or Runner rig card has a `Trigger::Paid`
@@ -3908,6 +3928,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "snare",
             vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnAccessed,
                 effects: vec![Effect::GiveTags(1), Effect::GainCredits(Side::Corp, 2)],
@@ -3942,6 +3963,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_triggers(
             "hedge_fund",
             vec![TriggeredEffect {
+                subject: None,
                 text: None,
                 trigger: Trigger::OnPlay,
                 effects: vec![Effect::GainCredits(Side::Corp, 9)],

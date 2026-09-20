@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnTransactionPlayed",
+      "subject": "Any",
       "effects": [
         {
           "GainCredits": [

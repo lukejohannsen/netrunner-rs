@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnAgendaScored",
+      "subject": "Any",
       "effects": [
         {
           "PresentChoice": {
@@ -48,6 +49,7 @@
     },
     {
       "trigger": "OnAgendaStolen",
+      "subject": "Any",
       "effects": [
         {
           "PresentChoice": {

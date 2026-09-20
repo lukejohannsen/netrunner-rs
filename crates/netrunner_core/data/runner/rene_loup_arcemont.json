@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnTrashedFromAccess",
+      "subject": "Any",
       "requirement": {
         "OncePerTurn": "rene_loup_arcemont"
       },

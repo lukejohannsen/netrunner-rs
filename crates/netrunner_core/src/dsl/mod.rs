@@ -12,5 +12,5 @@ pub use card::{
 };
 pub use cost::Cost;
 pub use effect::{Amount, BoostDuration, CardTarget, DamageType, Effect, EndRunPrevention, HostedCardOrigin, StackZone, SubroutineBreakCount};
-pub use trigger::Trigger;
+pub use trigger::{Hears, Subject, Trigger};
 pub use zone::{card_matches_filter, CardFilter, CardZoneRef};

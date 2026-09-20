@@ -10,6 +10,7 @@
   "triggers": [
     {
       "trigger": "OnRez",
+      "subject": "This",
       "requirement": "RezzedDuringRunAgainstThisServer",
       "effects": [
         {

@@ -7,6 +7,7 @@
   "triggers": [
     {
       "trigger": "OnAgendaScored",
+      "subject": "Any",
       "effects": [
         {
           "GainCredits": [
@@ -44,6 +45,7 @@
     },
     {
       "trigger": "OnAgendaStolen",
+      "subject": "Any",
       "effects": [
         {
           "GainCredits": [

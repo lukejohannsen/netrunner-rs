@@ -1228,6 +1228,7 @@ mod tests {
             target: None,
             event: None,
             continuation: None,
+            heard: Default::default(),
         };
         state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
             chooser: Side::Runner,

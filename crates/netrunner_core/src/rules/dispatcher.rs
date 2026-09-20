@@ -1,751 +1,142 @@
 //! Central event-driven trigger dispatch.
 //!
-//! `dispatch_event` is the single place that answers "given this
-//! `GameEvent`, which installed cards react, and in what order" — it maps
-//! each dispatch-relevant `GameEvent` variant to a `dsl::Trigger` and the
-//! card(s) that trigger applies to, then delegates the actual firing to
-//! `ability::process_card_triggers`.
+//! `dispatch_event` fires what an event triggers. *Which* cards that is, and
+//! in what order, is not decided here: `listeners::plan_for` reads it off
+//! the cards — see that module for the rule. This module is the firing: one
+//! side's triggers at a time, the order of a side's own simultaneous
+//! triggers offered to that side, and whatever a parked decision interrupts
+//! queued on `GameState::deferred_triggers` until it clears.
 //!
-//! This deliberately isn't a stateful registry that tracks "active
-//! behaviors" separately from `GameState` — `CorpState::installed` and
-//! `RunnerState::rig` are already the single source of truth for what's in
-//! play, so every candidate set here is re-derived fresh from `GameState` on
-//! each call, the same "pure re-derivation" convention `win::
-//! check_win_conditions` already follows. CardDefinition *behavior* itself stays
-//! entirely data-driven (`dsl::TriggeredEffect`/`AbilityDef`/`Effect`) —
-//! this module adds only the event-to-audience mapping and firing order.
+//! **This used to be the audience too** — a `match` that named, for each
+//! `GameEvent`, the cards to ask, in up to four separately fired steps (the
+//! scored agenda, then the identity, then the rezzed table, then the
+//! Runner's side). Three things were wrong with that beyond its size, and
+//! running the listener scan beside it over both 256-seed sweeps is what
+//! found them (ROADMAP Rules Audit, jinteki comparison item 1):
+//!
+//! - **An agenda installed faceup heard another agenda being scored.** The
+//!   rezzed table was asked `OnAgendaScored`, BANGUN installs agendas
+//!   faceup, and "when you score **this** agenda" had no way to say *this*:
+//!   Orbital Superiority did its 4 meat damage from a remote when a
+//!   different agenda was scored.
+//! - **A side's simultaneous triggers were the player's to order only
+//!   within one step.** The scored agenda and the identity were two steps,
+//!   so their order was fixed, and a step fired by `fire_direct` skipped
+//!   the blocked-resolution guard altogether and resolved under whatever
+//!   the step before it had parked.
+//! - **The active player's triggers did not always come first.** A stolen
+//!   agenda's own reaction, and a rezzed card's, resolved before the
+//!   Runner's during the Runner's turn.
+//!
+//! There is deliberately no registry of "active behaviours" kept beside
+//! `GameState`: `CorpState::installed`, `RunnerState::rig` and the score
+//! area are already the truth about what is in play, so the plan is
+//! re-derived from them on every call, the way `win::check_win_conditions`
+//! re-derives a win.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardSubtype, Trigger};
+use crate::dsl::Trigger;
 use crate::rules::ability;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
-use crate::rules::run::ServerId;
-use crate::rules::state::{DeferredTrigger, GamePhase, GameState, InstallId, InstallSlot, PendingDecision, Side};
+use crate::rules::listeners;
+use crate::rules::state::{DeferredTrigger, GameState, PendingDecision, Side};
 
-/// Given `event`, fires every installed card's matching `Trigger`s and
-/// returns the resulting `GameEvent`s, in firing order.
+/// Fires every trigger `event` is an occurrence of and returns the
+/// resulting `GameEvent`s, in firing order.
 ///
-/// Most events have a single, unambiguous audience (the card the event is
-/// about, or one side's identity) computed directly from the event's own
-/// fields — no separate registration/lookup step needed. A `GameEvent`
-/// variant with no card reactions defined for it (most of them — most
-/// `GameEvent`s describe a state change with nothing left to react to) is
-/// not an error: yields `Ok(Vec::new())`, mirroring `process_card_triggers`'s
-/// own "no matching trigger" convention.
+/// Most events are an occurrence of nothing (`listeners::moments` lists
+/// them by name), which is not an error: `Ok(Vec::new())`.
 pub fn dispatch_event(
     state: &mut GameState,
     registry: &CardRegistry,
     event: &GameEvent,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    let mut events = resolve_run_riders(state, registry, event)?;
+    // Planned after the riders: an access bonus or a trash they resolve is
+    // part of the state the triggers happen in.
+    let plan = listeners::plan_for(state, registry, event);
+    // One side at a time, the active player's first (the plan's order). A
+    // side orders its own simultaneous triggers; the order *between* the
+    // sides is the rules', never a choice.
+    //
+    // `OnPlay` is a step of its own, ahead of its side's triggers: it is how
+    // the DSL spells an event's or operation's *resolution*, which is not a
+    // triggered ability and so is nobody's to order against one. Hedge Fund
+    // under Building a Better World is not a question.
+    let step = |(side, due): &(Side, DeferredTrigger)| (*side, due.trigger == Trigger::OnPlay);
+    let mut remaining = plan.as_slice();
+    while let Some(first) = remaining.first() {
+        let (side, _) = step(first);
+        let length = remaining.iter().take_while(|entry| step(entry) == step(first)).count();
+        let (group, rest) = remaining.split_at(length);
+        let group: Vec<DeferredTrigger> = group.iter().map(|(_, due)| due.clone()).collect();
+        events.extend(fire_plan(state, registry, side, &group)?);
+        remaining = rest;
+    }
+    Ok(events)
+}
+
+/// The two effects a run carries for itself rather than on a card:
+/// `RunState::on_success_effect` ("if successful, …" on an Event such as
+/// Jailbreak, which is never installed and so can declare no trigger) and
+/// `CompletedRun::on_end_effect` (`Effect::SetRunEndedEffect`, Charm
+/// Offensive). Each is taken, so it resolves once, and resolves before the
+/// cards' own triggers — an access bonus has to be in place for the breach
+/// the same success begins.
+///
+/// They are here, not in `listeners`, because they are not an audience:
+/// nothing is listening, the run is doing what it was told to.
+fn resolve_run_riders(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    event: &GameEvent,
+) -> Result<Vec<GameEvent>, RulesError> {
     match event {
-        GameEvent::EventPlayed { card, .. } => {
-            fire_direct(state, registry, card, None, Trigger::OnPlay, event)
-        }
-
-        GameEvent::OperationPlayed { card, .. } => {
-            let mut events = fire_direct(state, registry, card, None, Trigger::OnPlay, event)?;
-            let is_transaction =
-                registry.get(card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Transaction));
-            if is_transaction && let Some(identity) = state.corp.identity.clone() {
-                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnTransactionPlayed, event)?);
-            }
-            // …and the identity's "whenever you play an operation", which
-            // does not care what subtype it was (Nebula Talent Management).
-            if let Some(identity) = state.corp.identity.clone() {
-                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnOperationPlayed, event)?);
-            }
-            Ok(events)
-        }
-
-        GameEvent::ProgramInstalled { card, .. } => {
-            // Fires `OnInstall` against the just-installed Program itself
-            // — mirrors `ResourceInstalled`'s "the card needs to react to
-            // its own install" widening below (previously only identities
-            // reacted to a Program install, via `OnVirusInstalled`) — e.g.
-            // Botulus/Tranquilizer/Fermenter's "when you install this
-            // program... place 1 virus counter on this program."
-            let mut events = fire_direct(state, registry, card, newest_rig_install(state, card), Trigger::OnInstall, event)?;
-            let is_virus = registry.get(card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Virus));
-            if is_virus {
-                if let Some(identity) = state.runner.identity.clone() {
-                    events.extend(fire_direct(state, registry, &identity, None, Trigger::OnVirusInstalled, event)?);
-                }
-                // Every OTHER rig card also gets a chance to react to a
-                // virus install, but — unlike the identity reaction above
-                // — its effect targets the just-installed virus program
-                // itself, not the reacting card. e.g. Cookbook's "you may
-                // place 1 virus counter on it." Excludes `card` itself to
-                // avoid a virus program reacting to its own installation.
-                let installed = newest_rig_install(state, card);
-                let plan: Vec<DeferredTrigger> = state
-                    .runner
-                    .rig
-                    .iter()
-                    .filter(|c| Some(c.install_id) != installed)
-                    .map(|owner| DeferredTrigger {
-                        card: owner.card.clone(),
-                        install: Some(owner.install_id),
-                        trigger: Trigger::OnVirusInstalled,
-                        target: Some(card.clone()),
-                        target_install: installed,
-                        event: Some(event.clone()),
-                        continuation: None,
-                    })
-                    .collect();
-                events.extend(fire_plan(state, registry, &plan)?);
-            }
-            events.extend(fire_runner_side(state, registry, Trigger::OnCardInstalled, event)?);
-            Ok(events)
-        }
-
-        // The just-installed Hardware reacts to its own install, the same
-        // widening `ProgramInstalled`/`ResourceInstalled` got — GAMEDRAGON™
-        // Pro's "when you install this hardware ... you may host it".
-        GameEvent::HardwareInstalled { card, .. } => {
-            let mut events = fire_direct(state, registry, card, newest_rig_install(state, card), Trigger::OnInstall, event)?;
-            events.extend(fire_runner_side(state, registry, Trigger::OnCardInstalled, event)?);
-            Ok(events)
-        }
-
-        GameEvent::CardInstalled { side, .. } => {
-            let identity = match side {
-                Side::Corp => state.corp.identity.clone(),
-                Side::Runner => state.runner.identity.clone(),
-            };
-            match identity {
-                Some(identity) => fire_direct(state, registry, &identity, None, Trigger::OnInstall, event),
-                None => Ok(Vec::new()),
-            }
-        }
-
-        // Unlike `CardInstalled` above (Corp-only today, identity-only
-        // audience), a Resource needs `OnInstall` to fire against *itself*
-        // — e.g. Red Team/Telework Contract's own "when you install this
-        // resource, load N credits onto it" — so this widens the same
-        // `Trigger::OnInstall` to also reach the just-installed card,
-        // mirroring the "fire on card + identity" convention already used
-        // by `AgendaScored`/`CardTrashedFromAccess`.
-        GameEvent::ResourceInstalled { card, .. } => {
-            let mut events = fire_direct(state, registry, card, newest_rig_install(state, card), Trigger::OnInstall, event)?;
-            if let Some(identity) = state.runner.identity.clone() {
-                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnInstall, event)?);
-            }
-            events.extend(fire_runner_side(state, registry, Trigger::OnCardInstalled, event)?);
-            Ok(events)
-        }
-
-        GameEvent::CardAccessed { card, server, install } => {
-            // The access pinned the instance; the by-`CardId` lookup is the
-            // fallback for an event that carries none.
-            let install = install.or_else(|| root_install_of(state, card, *server));
-            let mut events = fire_direct(state, registry, card, install, Trigger::OnAccessed, event)?;
-            // …and the Corp's identity, which reacts to what the Runner is
-            // looking at: BANGUN's "whenever the Runner accesses a faceup
-            // installed agenda, do 2 meat damage and give the Runner 1
-            // tag". The same "also fire the owning identity" widening
-            // `AgendaScored` and `CardTrashedFromAccess` already make; the
-            // audience is the identity only until a card needs more.
-            if let Some(identity) = state.corp.identity.clone() {
-                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnAccessed, event)?);
-            }
-            Ok(events)
-        }
-
-        GameEvent::CardTrashedFromAccess { card, .. } => {
-            // Only the Runner ever accesses and trashes a card this way, so
-            // the identity to react is unambiguously theirs — mirrors
-            // `AgendaScored`'s "also fire the owning identity" widening
-            // below, e.g. René "Loup" Arcemont's "the first time each turn
-            // you trash a card you are accessing, gain 1 credit and draw 1
-            // card."
-            // The identity and, since Cacophony, the rig too.
-            let mut events = fire_direct(state, registry, card, None, Trigger::OnTrashedFromAccess, event)?;
-            events.extend(fire_runner_side(state, registry, Trigger::OnTrashedFromAccess, event)?);
-            // …and the Corp's score area, where Aggressive Trendsetting
-            // watches for "the first time the Runner trashes an installed
-            // Corp card during each of their turns". Pinned to the install
-            // handle each scored copy kept, exactly as `DiscardPhaseEnded`
-            // does for Off the Books.
-            let scored: Vec<(Option<InstallId>, CardId)> =
-                state.corp.scored_agendas.iter().map(|scored| (Some(scored.install_id), scored.card.clone())).collect();
-            events.extend(fire_each(state, registry, &scored, Trigger::OnTrashedFromAccess, event)?);
-            Ok(events)
-        }
-
-        GameEvent::AgendaScored { card, .. } => {
-            // The agenda reacts *from the score area*, so it is named by the
-            // install handle it kept there — without it a "place a counter
-            // on this agenda" reaction (Proprionegation) has nothing to
-            // place onto, since the card has left the table. The last
-            // matching entry is the one just scored: scoring pushes.
-            let scored = state.corp.scored_agendas.iter().rposition(|scored| &scored.card == card).map(|position| state.corp.scored_agendas[position].install_id);
-            let mut events = fire_direct(state, registry, card, scored, Trigger::OnAgendaScored, event)?;
-            if let Some(identity) = state.corp.identity.clone() {
-                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnAgendaScored, event)?);
-            }
-            // The whole rezzed table hears it: Phật Gioan Baotixita reacts
-            // to any agenda changing hands, wherever it sits, and
-            // Lamplighter narrows itself back to its own server with
-            // `EffectRequirement::AgendaCameFromThisCardsServer`. This
-            // used to be the scored server's root only, which was
-            // Malapert Data Vault's rule read as everyone's.
-            let rezzed: Vec<(Option<InstallId>, CardId)> = state
-                .corp
-                .installed
-                .iter()
-                .filter(|installed| installed.rezzed)
-                .map(|installed| (Some(installed.install_id), installed.card.clone()))
-                .collect();
-            events.extend(fire_each(state, registry, &rezzed, Trigger::OnAgendaScored, event)?);
-            // Runner-side widening (M5): the Runner's own identity and rig
-            // also get a chance to react to a Corp agenda score — e.g.
-            // Pantograph's "whenever an agenda is scored or stolen, gain 1
-            // credit." Previously deferred (see `AgendaStolen`'s own
-            // matching widening below) until a real card needed it.
-            events.extend(fire_runner_side(state, registry, Trigger::OnAgendaScored, event)?);
-            Ok(events)
-        }
-
-        GameEvent::AgendaStolen { card, .. } => {
-            // Fires against the stolen agenda's own trigger (e.g. Send a
-            // Message's "when this agenda is scored or stolen...") in
-            // addition to the Corp identity's — mirrors `AgendaScored`'s
-            // own "also fire the card itself" shape, which `AgendaStolen`
-            // was previously missing.
-            let mut events = fire_direct(state, registry, card, None, Trigger::OnAgendaStolen, event)?;
-            if let Some(identity) = state.corp.identity.clone() {
-                events.extend(fire_direct(state, registry, &identity, None, Trigger::OnAgendaStolen, event)?);
-            }
-            // Runner-side widening (M5): the Runner's own identity and rig
-            // react to their own steal — e.g. Tāo Salonga: Telepresence
-            // Magician, Pantograph's "whenever an agenda is scored or
-            // stolen, gain 1 credit."
-            events.extend(fire_runner_side(state, registry, Trigger::OnAgendaStolen, event)?);
-            // And the rezzed table, the same audience `AgendaScored` uses
-            // — Phật Gioan Baotixita reacts to a steal from anywhere, and
-            // Lamplighter checks the server itself.
-            let rezzed: Vec<(Option<InstallId>, CardId)> = state
-                .corp
-                .installed
-                .iter()
-                .filter(|installed| installed.rezzed)
-                .map(|installed| (Some(installed.install_id), installed.card.clone()))
-                .collect();
-            events.extend(fire_each(state, registry, &rezzed, Trigger::OnAgendaStolen, event)?);
-            Ok(events)
-        }
-
-        GameEvent::TurnStarted { side, .. } => {
-            let candidates: Vec<(Option<InstallId>, CardId)> = match side {
-                Side::Corp => state
-                    .corp
-                    .installed
-                    .iter()
-                    .filter(|installed| installed.rezzed)
-                    .map(|installed| (Some(installed.install_id), installed.card.clone()))
-                    .collect(),
-                Side::Runner => state.runner.rig.iter().map(|card| (Some(card.install_id), card.card.clone())).collect(),
-            };
-            // The side's identity too — MuslihaT looks at the top of the
-            // stack when the Runner's turn begins. Placed first: it is
-            // the one card whose order against the rig never varies.
-            let identity = match side {
-                Side::Corp => state.corp.identity.clone(),
-                Side::Runner => state.runner.identity.clone(),
-            };
-            let candidates: Vec<(Option<InstallId>, CardId)> =
-                identity.into_iter().map(|id| (None, id)).chain(candidates).collect();
-            fire_each(state, registry, &candidates, Trigger::OnTurnStart, event)
-        }
-
-        // "Whenever a run begins": the Runner's identity and every rig card
-        // — Side Hustle loads a credit on each run. Used to reach the
-        // identity alone; no System Gateway rig card reacted to a run
-        // starting.
-        GameEvent::RunInitiated { .. } => {
-            let mut candidates: Vec<(Option<InstallId>, CardId)> = Vec::new();
-            if let Some(identity) = state.runner.identity.clone() {
-                candidates.push((None, identity));
-            }
-            candidates.extend(state.runner.rig.iter().map(|card| (Some(card.install_id), card.card.clone())));
-            fire_each(state, registry, &candidates, Trigger::OnRunStart, event)
-        }
-
-        // The Runner's "whenever you encounter a piece of ice" reactions
-        // first — the active player's — then the ice's own, withheld when
-        // one of the Runner's bypassed it (Fransofia Ward: "no further
-        // 'when encountered' abilities resolve"). A Runner reaction that
-        // parks a choice defers the ice's, and `still_applies` stands the
-        // deferred one down if the bypass then happens.
-        GameEvent::IceEncountered { card_id, .. } => {
-            let mut events = fire_runner_side(state, registry, Trigger::OnEncounter, event)?;
-            if !state.active_run.as_ref().is_some_and(|run| run.ice_bypassed) {
-                events.extend(fire_direct(state, registry, card_id, encountered_install(state), Trigger::OnEncounter, event)?);
-            }
-            Ok(events)
-        }
-
-        GameEvent::RunSucceeded { server } => {
-            // Any broadcast "on a successful run" reaction (any server, e.g.
-            // Desperado) and any HQ-specific reaction (Gabriel Santiago's
-            // identity ability, or a non-identity card like Docklands Pass)
-            // both key off this one event — every candidate is tried against
-            // both triggers; `process_card_triggers`'s own "no matching
-            // TriggeredEffect on this card" no-op means a card only ever
-            // reacts to the trigger it actually declares, whether or not
-            // it's the identity (collected as a single ordered candidate
-            // list; both Runner-side today, so `order_active_first` is a
-            // no-op in practice until a Corp-side "runner made a successful
-            // run" reactor exists).
+        GameEvent::RunSucceeded { .. } => {
             state.runner.made_successful_run_this_turn = true;
-
-            // An "if successful, ..." rider attached to the run itself
-            // rather than to an installed card — e.g. Jailbreak, an Event,
-            // which is never installed and so can't carry a
-            // `Trigger::OnSuccessfulRun` of its own. Taken (not cloned) so
-            // it fires exactly once even if a run somehow re-enters
-            // `Success`. Resolved before the card-trigger sweep below so an
-            // access bonus it grants is in place for the same breach.
-            let on_success = state.active_run.as_mut().and_then(|run| {
+            let rider = state.active_run.as_mut().and_then(|run| {
                 run.on_success_effect.take().map(|effect| (effect, run.on_success_card.take(), run.on_success_install.take()))
             });
-            let mut events = Vec::new();
-            if let Some((effect, card, install)) = on_success {
-                let mut ctx = ability::ResolutionContext::for_install_trigger(install, card.as_ref(), Some(event));
-                events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
-            }
-
-            let mut candidates: Vec<(Side, (Option<InstallId>, CardId))> = Vec::new();
-            if let Some(identity) = state.runner.identity.clone() {
-                candidates.push((Side::Runner, (None, identity)));
-            }
-            candidates.extend(state.runner.rig.iter().map(|card| (Side::Runner, (Some(card.install_id), card.card.clone()))));
-            // …and the Corp's identity, the Corp-side reactor the comment
-            // above was waiting for: Nebula Talent Management: Making
-            // Stars flips back when the Runner runs HQ or R&D
-            // successfully, which the per-server triggers below already
-            // distinguish.
-            if let Some(identity) = state.corp.identity.clone() {
-                candidates.push((Side::Corp, (None, identity)));
-            }
-
-            // Built as one flat plan rather than fired inline, so a
-            // blockage landing *between* two of the four triggers on the
-            // same card queues exactly what's left — see `fire_plan`.
-            let mut plan: Vec<DeferredTrigger> = Vec::new();
-            for (install, card_id) in order_active_first(Side::Runner, candidates) {
-                let due = |trigger| DeferredTrigger {
-                    card: card_id.clone(),
-                    install,
-                    trigger,
-                    target: None,
-                    target_install: None,
-                    event: Some(event.clone()),
-                    continuation: None,
-                };
-                plan.push(due(Trigger::OnSuccessfulRun));
-                if *server == ServerId::Hq {
-                    plan.push(due(Trigger::OnSuccessfulRunOnHq));
-                }
-                if *server == ServerId::RnD {
-                    plan.push(due(Trigger::OnSuccessfulRunOnRnD));
-                }
-                if matches!(server, ServerId::Hq | ServerId::RnD | ServerId::Archives) {
-                    plan.push(due(Trigger::OnSuccessfulRunOnCentralServer));
-                }
-            }
-            events.extend(fire_plan(state, registry, &plan)?);
-            Ok(events)
+            let Some((effect, card, install)) = rider else { return Ok(Vec::new()) };
+            let mut ctx = ability::ResolutionContext::for_install_trigger(install, card.as_ref(), Some(event));
+            ability::evaluate_effect(state, &effect, &mut ctx, registry)
         }
-
-        // The approach-server step, before the run is successful. Audience
-        // for `Trigger::OnApproachServer` is every rezzed Corp Root-slot
-        // install in `server` (an Upgrade/Asset sitting in its root), not
-        // the ICE and not the identity — Manegarm Skunkworks, Anoetic Void.
-        // Used to be fired from `RunSucceeded`; see that event's doc for why
-        // the order matters.
-        // "Whenever the Runner approaches a piece of ice protecting this
-        // server" — the same audience as the server approach one step
-        // later, and Mitra Aman is the one card that wants the earlier
-        // moment.
-        GameEvent::IceApproached { server, .. } => {
-            let root_installs: Vec<(Option<InstallId>, CardId)> = state
-                .corp
-                .installed
-                .iter()
-                .filter(|installed| {
-                    installed.rezzed && installed.server == *server && installed.slot == InstallSlot::Root
-                })
-                .map(|installed| (Some(installed.install_id), installed.card.clone()))
-                .collect();
-            fire_each(state, registry, &root_installs, Trigger::OnIceApproached, event)
-        }
-
-        GameEvent::ServerApproached { server } => {
-            let root_installs: Vec<(Option<InstallId>, CardId)> = state
-                .corp
-                .installed
-                .iter()
-                .filter(|installed| {
-                    installed.rezzed && installed.server == *server && installed.slot == InstallSlot::Root
-                })
-                .map(|installed| (Some(installed.install_id), installed.card.clone()))
-                .collect();
-            fire_each(state, registry, &root_installs, Trigger::OnApproachServer, event)
-        }
-
-        // The rezzed card's own "when rezzed" first, then the Runner's
-        // "whenever the Corp rezzes" reactions (Barry "Baz" Wong).
-        GameEvent::IceRezzed { card, install, .. } => {
-            let mut events = fire_direct(state, registry, card, Some(*install), Trigger::OnRez, event)?;
-            events.extend(fire_runner_side(state, registry, Trigger::OnRez, event)?);
-            Ok(events)
-        }
-
-        GameEvent::CardAdvanced { .. } => match state.corp.identity.clone() {
-            Some(identity) => fire_direct(state, registry, &identity, None, Trigger::OnAdvance, event),
-            None => Ok(Vec::new()),
-        },
-
-        // **Deliberately fires nothing.** CR 1.18.2: placing an advancement
-        // counter is not advancing, so `Trigger::OnAdvance` does not see it
-        // — Weyland Consortium: Built to Last is not paid when Key
-        // Performance Indicators or Syailendra places one. This arm is
-        // written out rather than left to the catch-all below so that the
-        // next person to add an "on advance" card finds the rule here
-        // instead of re-deriving it. A card that triggers on a *placement*
-        // would need a `Trigger` of its own; none prints one today.
-        GameEvent::AdvancementCountersPlaced { .. } => Ok(Vec::new()),
-
-        // Only the "normal" run conclusions dispatch `Trigger::OnRunEnded`
-        // (`RunCompleted`/`RunJackedOut`/`RunEndedByEffect`, each fired from
-        // its own call site with `GameState::last_completed_run` snapshotted
-        // immediately beforehand) — a flatline/agenda-point win mid-access
-        // (`run::access::finish_if_game_over`) does not, since resolving
-        // more card triggers after `GamePhase::GameOver` is already set
-        // would mutate a concluded game for no observable benefit (Mayfly
-        // self-trashing or Zahya gaining credits post-game-over changes
-        // nothing about the outcome).
+        // Read off the snapshot: `active_run` is already cleared by the time
+        // a run's end is dispatched.
         GameEvent::RunCompleted { .. } | GameEvent::RunJackedOut { .. } | GameEvent::RunEndedByEffect { .. } => {
-            // The run's own end rider (`Effect::SetRunEndedEffect`, Charm
-            // Offensive) resolves first, as the card that set it, and is
-            // taken so it fires once — before the card triggers below, for
-            // the same reason `on_success_effect` resolves before them.
-            let mut events = Vec::new();
             let rider = state.last_completed_run.as_mut().and_then(|completed| {
                 completed.on_end_effect.take().map(|effect| (effect, completed.on_end_card.clone(), completed.on_end_install))
             });
-            if let Some((effect, card, install)) = rider {
-                let mut ctx = ability::ResolutionContext::for_parked(install, card.as_ref());
-                events.extend(ability::evaluate_effect(state, &effect, &mut ctx, registry)?);
-            }
-            let mut candidates: Vec<(Option<InstallId>, CardId)> = Vec::new();
-            if let Some(identity) = state.runner.identity.clone() {
-                candidates.push((None, identity));
-            }
-            candidates.extend(state.runner.rig.iter().map(|card| (Some(card.install_id), card.card.clone())));
-            // Corp-side reactors on the server that was just run: rezzed
-            // Root-slot installs still in play (same audience shape as
-            // `OnApproachServer`), plus any `persistent_after_trash` card
-            // the Runner trashed *during* this run — the latter is no
-            // longer in `CorpState::installed` at all, which is exactly
-            // what AMAZE Amusements' "this ability still applies for the
-            // remainder of this run" requires. Both are read from the
-            // `CompletedRun` snapshot, since `active_run` is already
-            // cleared by the time this dispatches.
-            if let Some(completed) = state.last_completed_run.clone() {
-                candidates.extend(
-                    state
-                        .corp
-                        .installed
-                        .iter()
-                        .filter(|installed| {
-                            installed.rezzed
-                                && installed.slot == InstallSlot::Root
-                                && installed.server == completed.server
-                        })
-                        .map(|installed| (Some(installed.install_id), installed.card.clone())),
-                );
-                candidates.extend(completed.persistent_trashed_upgrades.iter().cloned().map(|card| (None, card)));
-            }
-            events.extend(fire_each(state, registry, &candidates, Trigger::OnRunEnded, event)?);
-            Ok(events)
+            let Some((effect, card, install)) = rider else { return Ok(Vec::new()) };
+            let mut ctx = ability::ResolutionContext::for_parked(install, card.as_ref());
+            ability::evaluate_effect(state, &effect, &mut ctx, registry)
         }
-
-        // "When your action phase ends": the ending side's identity plus
-        // its rig (Runner) or rezzed installs (Corp), like `TurnStarted`.
-        GameEvent::ActionPhaseEnded { side } => {
-            let mut candidates: Vec<(Option<InstallId>, CardId)> = Vec::new();
-            match side {
-                Side::Runner => {
-                    if let Some(identity) = state.runner.identity.clone() {
-                        candidates.push((None, identity));
-                    }
-                    candidates.extend(state.runner.rig.iter().map(|card| (Some(card.install_id), card.card.clone())));
-                }
-                Side::Corp => {
-                    if let Some(identity) = state.corp.identity.clone() {
-                        candidates.push((None, identity));
-                    }
-                    candidates.extend(
-                        state
-                            .corp
-                            .installed
-                            .iter()
-                            .filter(|installed| installed.rezzed)
-                            .map(|installed| (Some(installed.install_id), installed.card.clone())),
-                    );
-                }
-            }
-            fire_each(state, registry, &candidates, Trigger::OnActionPhaseEnd, event)
-        }
-
-        // "When your discard phase ends" — fires against that side's own
-        // identity only (the Corp's, for Jinteki: Restoring Humanity).
-        // The Runner's whole rig reacts, not just the identity: Bling's
-        // "when your discard phase ends, trash all hosted cards" sits on a
-        // console. The Corp side stays identity-only until a card needs
-        // more.
-        GameEvent::DiscardPhaseEnded { side: Side::Runner } => fire_runner_side(state, registry, Trigger::OnDiscardPhaseEnd, event),
-        // The Corp's identity, then its score area: Off the Books acts from
-        // there when the discard phase ends, pinned to the install handle it
-        // kept so two scored copies each spend their own counters.
-        GameEvent::DiscardPhaseEnded { side: Side::Corp } => {
-            let mut candidates: Vec<(Option<InstallId>, CardId)> =
-                state.corp.identity.iter().cloned().map(|id| (None, id)).collect();
-            candidates.extend(state.corp.scored_agendas.iter().map(|scored| (Some(scored.install_id), scored.card.clone())));
-            // …and the rezzed table, which this used to leave out under a
-            // comment saying the Corp side stayed identity-only until a
-            // card needed more: Phật Gioan Baotixita loads a counter when
-            // the discard phase ends, and Sericulture Expansion spends one
-            // from the score area in the same window.
-            candidates.extend(
-                state
-                    .corp
-                    .installed
-                    .iter()
-                    .filter(|installed| installed.rezzed)
-                    .map(|installed| (Some(installed.install_id), installed.card.clone())),
-            );
-            fire_each(state, registry, &candidates, Trigger::OnDiscardPhaseEnd, event)
-        }
-
-        // Through `fire_each` (not `fire_direct`) although the audience is
-        // one card: a tag can be *paid* as a cost (`Cost::TakeTags`,
-        // Funhouse), and `pending_choice::resolve_accept` dispatches this
-        // event after the choice's own effect — which may itself have
-        // parked something. `fire_plan`'s blocked-resolution guard then
-        // queues the reaction instead of firing it under the parked state.
-        // "Whenever you do damage": the dealing side is the damaged side's
-        // opponent, and only the Corp deals damage in this pool. The
-        // identity only — AU Co. is the one reader.
-        GameEvent::DamageTaken { .. } => match state.corp.identity.clone() {
-            Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnDamageDealt, event),
-            None => Ok(Vec::new()),
-        },
-
-        // One firing per batch, not per card — "trash 1 **or more** cards
-        // from HQ".
-        GameEvent::CardsTrashedFromHq { .. } => match state.corp.identity.clone() {
-            Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnCardsTrashedFromHq, event),
-            None => Ok(Vec::new()),
-        },
-
-        // The gaining side's own identity — The Zwicky Group narrows it to
-        // an agenda or operation with `TriggeringCardMatches`, reading the
-        // card off this event.
-        GameEvent::AbilityGainedCredits { side, .. } => {
-            let identity = match side {
-                Side::Corp => state.corp.identity.clone(),
-                Side::Runner => state.runner.identity.clone(),
-            };
-            match identity {
-                Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnAbilityGainedCredits, event),
-                None => Ok(Vec::new()),
-            }
-        }
-
-        // The forfeited agenda itself, as it leaves the score area
-        // (Greenmail). No install: it is already gone from there.
-        GameEvent::AgendaForfeited { card } => fire_direct(state, registry, card, None, Trigger::OnForfeit, event),
-
-        // Any route a tag comes off by — the basic action, a cost, a card
-        // effect. Synapse Global: Faster than Thought installs off it.
-        GameEvent::TagsRemoved { side: Side::Runner, amount: 0 } => Ok(Vec::new()),
-        GameEvent::TagRemoved { side: Side::Runner }
-        | GameEvent::TagsRemoved { side: Side::Runner, .. }
-        | GameEvent::TagsCleared { side: Side::Runner } => match state.corp.identity.clone() {
-            Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnTagRemoved, event),
-            None => Ok(Vec::new()),
-        },
-
-        GameEvent::TagsGiven { side: Side::Runner, .. } => match state.corp.identity.clone() {
-            Some(identity) => fire_each(state, registry, &[(None, identity)], Trigger::OnTagsGiven, event),
-            None => Ok(Vec::new()),
-        },
-
-        GameEvent::BasicDrawActionTaken { side } => {
-            let identity = match side {
-                Side::Corp => state.corp.identity.clone(),
-                Side::Runner => state.runner.identity.clone(),
-            };
-            let mut candidates: Vec<(Option<InstallId>, CardId)> = identity.into_iter().map(|id| (None, id)).collect();
-            if *side == Side::Runner {
-                candidates.extend(state.runner.rig.iter().map(|card| (Some(card.install_id), card.card.clone())));
-            }
-            fire_each(state, registry, &candidates, Trigger::OnBasicDrawAction, event)
-        }
-
-        // Both of these reach cards on *either* side, so unlike the
-        // single-side audiences above they need the active-player-first
-        // rule applied explicitly — see `order_active_first`.
-        GameEvent::DamageAboutToResolve { .. } => {
-            let candidates = order_active_first(turn_active_side(state), both_sides_candidates(state));
-            fire_each(state, registry, &candidates, Trigger::OnDamageAboutToResolve, event)
-        }
-
-        GameEvent::TrashAboutToResolve { .. } => {
-            let candidates = order_active_first(turn_active_side(state), both_sides_candidates(state));
-            fire_each(state, registry, &candidates, Trigger::OnTrashAboutToResolve, event)
-        }
-
         _ => Ok(Vec::new()),
     }
 }
 
-/// Rezzed Corp installs ∪ full Runner rig — the same audience `TurnStarted`'s
-/// arm collects per-side, unioned here since a prevention trigger could in
-/// principle belong to either side.
-fn both_sides_candidates(state: &GameState) -> Vec<(Side, (Option<InstallId>, CardId))> {
-    state
-        .corp
-        .installed
-        .iter()
-        .filter(|installed| installed.rezzed)
-        .map(|installed| (Side::Corp, (Some(installed.install_id), installed.card.clone())))
-        .chain(state.runner.rig.iter().map(|card| (Side::Runner, (Some(card.install_id), card.card.clone()))))
-        .collect()
-}
-
-/// `fire_card_triggers` for a single, immediately-fired reaction — the
-/// `DeferredTrigger` is built here so every dispatch, deferred or not, goes
-/// through the same record and the same announce path. `install` is the
-/// copy of `card` that reacts; `None` for an identity or a card that has
-/// left play.
-fn fire_direct(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    card: &CardId,
-    install: Option<InstallId>,
-    trigger: Trigger,
-    event: &GameEvent,
-) -> Result<Vec<GameEvent>, RulesError> {
-    let due = DeferredTrigger {
-        card: card.clone(),
-        install,
-        trigger,
-        target: None,
-        target_install: None,
-        event: Some(event.clone()),
-        continuation: None,
-    };
-    ability::fire_card_triggers(state, registry, &due, true)
-}
-
-/// The most recently installed rig copy of `card` — the one a
-/// `*Installed { card }` event is about, since `allocate_install_id` is
-/// monotonic and the install handlers push last.
-fn newest_rig_install(state: &GameState, card: &CardId) -> Option<InstallId> {
-    state.runner.rig.iter().rev().find(|c| &c.card == card).map(|c| c.install_id)
-}
-
-/// The root install of `card` on `server`, for a `CardAccessed` reaction —
-/// `None` when the accessed card sits in a hidden zone rather than a root.
-fn root_install_of(state: &GameState, card: &CardId, server: ServerId) -> Option<InstallId> {
-    state
-        .corp
-        .installed
-        .iter()
-        .find(|c| &c.card == card && c.server == server && c.slot == InstallSlot::Root)
-        .map(|c| c.install_id)
-}
-
-/// The install of the ICE being encountered, for an `IceEncountered`
-/// reaction.
-fn encountered_install(state: &GameState) -> Option<InstallId> {
-    state.active_run.as_ref().and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id)
-}
-
-/// Whose turn it currently is, for `order_active_first`'s benefit.
+/// Fires one side's ordered plan of triggers, stopping and queueing the
+/// untouched remainder the moment one of them parks something blocking (a
+/// decision, a paid choice, a prevention window, a trace) rather than
+/// firing the rest underneath it. `drain_deferred_triggers` picks them back
+/// up once the blockage clears.
 ///
-/// Every `GamePhase` variant carries a `Side`, so unlike `legal_actions::
-/// current_actor` (which returns `None` during `StartOfTurn`) this is
-/// total — which is exactly why the ordering sites read `phase` rather
-/// than asking who may act right now. Those differ mid-window: the Corp
-/// can hold priority during the Runner's turn, but the Runner is still the
-/// active player whose reactions resolve first.
+/// Before the queue existed there was no such guard, so *Clearinghouse*'s
+/// `OnTurnStart` (a `PresentChoice`, which parks a `PendingDecision`) let
+/// every later Corp `OnTurnStart` card resolve during its pending choice.
 ///
-/// `GameOver(side)` names the *winner* rather than an active player.
-/// Harmless: nothing dispatches triggers after the game has ended.
-fn turn_active_side(state: &GameState) -> Side {
-    match state.phase {
-        GamePhase::Mulligan(side)
-        | GamePhase::StartOfTurn(side)
-        | GamePhase::Action(side)
-        | GamePhase::Discard { side, .. }
-        | GamePhase::GameOver(side) => side,
-    }
-}
-
-/// Fires `trigger` against each of `candidates` in order, collecting events.
-///
-/// Stops the moment one of them parks something blocking (a decision, a
-/// paid choice, a prevention window, a trace) and **queues the untouched
-/// remainder** on `GameState::deferred_triggers` rather than firing them
-/// underneath it. `drain_deferred_triggers` picks them back up once the
-/// blockage clears.
-///
-/// Before the queue existed this loop had no such guard, so e.g.
-/// *Clearinghouse*'s `OnTurnStart` (a `PresentChoice`, which parks a
-/// `PendingDecision`) let every later Corp `OnTurnStart` card resolve
-/// during its pending choice.
-fn fire_each(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    candidates: &[(Option<InstallId>, CardId)],
-    trigger: Trigger,
-    event: &GameEvent,
-) -> Result<Vec<GameEvent>, RulesError> {
-    let plan: Vec<DeferredTrigger> = candidates
-        .iter()
-        .map(|(install, card)| DeferredTrigger {
-            card: card.clone(),
-            install: *install,
-            trigger,
-            target: None,
-            target_install: None,
-            event: Some(event.clone()),
-            continuation: None,
-        })
-        .collect();
-    fire_plan(state, registry, &plan)
-}
-
-/// Fires an ordered plan of triggers, stopping and queueing the untouched
-/// remainder the moment one of them parks something blocking.
-///
-/// The single guarded primitive every dispatch site funnels through — a
-/// flat `(card, trigger, target)` plan rather than a bare card list,
-/// because `RunSucceeded` fires up to four different triggers per card and
-/// a blockage can land *between* two of them on the same card. Building the
-/// whole plan up front makes "what's left" a simple slice in every case.
+/// A flat `(card, trigger)` plan rather than a list of cards, because one
+/// event can be several triggers to one card — a successful run on HQ is up
+/// to four — and a blockage can land *between* two of them. With the whole
+/// plan built up front, "what's left" is a slice in every case.
 fn fire_plan(
     state: &mut GameState,
     registry: &CardRegistry,
+    side: Side,
     plan: &[DeferredTrigger],
 ) -> Result<Vec<GameEvent>, RulesError> {
-    if let Some(events) = offer_trigger_order(state, registry, plan)? {
+    if let Some(events) = offer_trigger_order(state, registry, side, plan) {
         return Ok(events);
     }
     let mut events = Vec::new();
@@ -765,89 +156,53 @@ fn fire_plan(
     Ok(events)
 }
 
-/// Whether `due`'s card actually declares the trigger it's planned for.
-///
-/// A plan is built from every card that *could* react (every rezzed
-/// install, every rig card); most of them declare no matching trigger and
-/// `process_card_triggers` no-ops on them. Filtering by this before
-/// counting is what keeps `ChooseTriggerOrder` from parking a pointless
-/// decision every time a player has two cards installed.
-///
-/// A cheap registry lookup, deliberately *not* a dry run: it does not
-/// evaluate `TriggeredEffect::requirement`, so a card whose requirement
-/// fails still counts. That over-counts rather than under-counts —
-/// offering a choice between two triggers where one turns out to no-op is
-/// harmless; silently picking an order the player was entitled to choose
-/// would not be.
-fn declares_trigger(registry: &CardRegistry, due: &DeferredTrigger) -> bool {
-    due.continuation.is_some() || registry.get(&due.card).is_some_and(|card| card.triggers.iter().any(|t| t.trigger == due.trigger))
-}
-
-/// Parks a `PendingDecision::ChooseTriggerOrder` if `plan` holds two or
-/// more genuinely-reacting triggers belonging to **one** side, returning
-/// `Some` to say the dispatch has been handed to the player.
+/// Parks a `PendingDecision::ChooseTriggerOrder` if `side` has two or more
+/// triggers in `plan` that would fire, returning `Some` to say the dispatch
+/// has been handed to the player.
 ///
 /// Real Netrunner gives a player the order of their own simultaneous
-/// triggers. Cross-side order is not theirs to choose — it is fixed by
-/// rule (`order_active_first`) — so a plan spanning both sides parks
-/// nothing and fires in the already-correct order.
+/// triggers, and only theirs — which is why a plan is one side's.
 ///
-/// `None` (fire immediately, no decision) whenever the order can't matter:
-/// fewer than two reacting cards, or a mixed-side plan.
-fn offer_trigger_order(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    plan: &[DeferredTrigger],
-) -> Result<Option<Vec<GameEvent>>, RulesError> {
+/// **What counts is a trigger whose requirement passes now**
+/// (`ability::would_fire`). This used to count every card that declared the
+/// trigger, on the argument that offering a no-op was harmless and picking
+/// an order the player was owed was not. That held while an order was only
+/// ever offered inside one hand-written step; with a side's whole plan in
+/// one place it asked the Corp to order Hostile Takeover against a Malapert
+/// Data Vault in another server, on every score. A condition that is false
+/// when the event happens has not triggered, so there is no order owed.
+/// The plan itself is not thinned: an entry that does not count still fires
+/// in its turn, where its requirement is checked again.
+fn offer_trigger_order(state: &mut GameState, registry: &CardRegistry, side: Side, plan: &[DeferredTrigger]) -> Option<Vec<GameEvent>> {
     if state.resolution_halted() {
-        return Ok(None);
+        return None;
     }
-    let reacting: Vec<DeferredTrigger> =
-        plan.iter().filter(|due| declares_trigger(registry, due)).cloned().collect();
-    if reacting.len() < 2 {
-        return Ok(None);
+    let (live, idle): (Vec<DeferredTrigger>, Vec<DeferredTrigger>) =
+        plan.iter().cloned().partition(|due| ability::would_fire(state, registry, due));
+    if live.len() < 2 {
+        return None;
     }
-    let Some(chooser) = single_side_of(state, &reacting) else { return Ok(None) };
-    // `ChooseTriggerToResolve` is indexed by position in `reacting`, and
+    // `ChooseTriggerToResolve` is indexed by position in `live`, and
     // `ActionSpace` reserves `CHOOSE_TRIGGER_LEN` slots for it. Each card
     // can contribute several entries (one per success-trigger variant it
     // declares), so the bound is not "installed cards" — this is where an
     // overrun would first become visible, ahead of the index sweep's
     // "no index for a legal action" panic.
     debug_assert!(
-        reacting.len() <= crate::rules::action_mask::CHOOSE_TRIGGER_LEN,
+        live.len() <= crate::rules::action_mask::CHOOSE_TRIGGER_LEN,
         "{} simultaneous triggers exceed the ActionSpace segment ({})",
-        reacting.len(),
+        live.len(),
         crate::rules::action_mask::CHOOSE_TRIGGER_LEN
     );
-
-    // Anything in `plan` that doesn't actually react still needs to not be
-    // lost — it no-ops, but queueing it keeps the plan's shape honest and
-    // costs nothing.
-    state.deferred_triggers.extend(plan.iter().filter(|due| !declares_trigger(registry, due)).cloned());
+    // What does not count is still owed its turn: queued, so it drains
+    // after the ordered ones and re-checks its requirement then.
+    state.deferred_triggers.extend(idle);
     state.pending_decision = Some(PendingDecision::ChooseTriggerOrder {
-        chooser,
-        pending: reacting,
+        chooser: side,
+        pending: live,
         resume: crate::rules::state::PendingChoiceResume::None,
     });
-    Ok(Some(vec![GameEvent::TriggerOrderPending { chooser }]))
-}
-
-/// The one side every card in `plan` belongs to, or `None` if they span
-/// both. A card is Corp's if it's among their installs, Runner's if it's
-/// in the rig or is their identity.
-fn single_side_of(state: &GameState, plan: &[DeferredTrigger]) -> Option<Side> {
-    let side_of = |card: &CardId| {
-        if state.corp.installed.iter().any(|c| &c.card == card) || state.corp.identity.as_ref() == Some(card) {
-            Some(Side::Corp)
-        } else if state.runner.rig.iter().any(|c| &c.card == card) || state.runner.identity.as_ref() == Some(card) {
-            Some(Side::Runner)
-        } else {
-            None
-        }
-    };
-    let first = side_of(&plan.first()?.card)?;
-    plan.iter().all(|due| side_of(&due.card) == Some(first)).then_some(first)
+    Some(vec![GameEvent::TriggerOrderPending { chooser: side }])
 }
 
 /// `fire_one` for callers outside this module — `pending_choice` firing
@@ -948,7 +303,7 @@ fn still_applies(state: &GameState, due: &DeferredTrigger) -> bool {
     !state.is_over() && present && !bypassed && (!run_scoped || state.active_run.is_some())
 }
 
-/// Fires whatever `fire_each` had to queue, once whatever blocked it has
+/// Fires whatever `fire_plan` had to queue, once whatever blocked it has
 /// been resolved.
 ///
 /// Called from exactly one place — `engine::apply_action`, after the action
@@ -974,43 +329,14 @@ pub(crate) fn drain_deferred_triggers(
     Ok(events)
 }
 
-/// The Runner's identity plus every rig card — the audience `AgendaScored`/
-/// `AgendaStolen` widen to reach (M5), so a Runner-side card can react to
-/// either side's agenda-scoring event exactly like `AgendaScored`'s
-/// Corp-side identity/root-install audience already does.
-fn fire_runner_side(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    trigger: Trigger,
-    event: &GameEvent,
-) -> Result<Vec<GameEvent>, RulesError> {
-    let mut candidates: Vec<(Option<InstallId>, CardId)> = state.runner.identity.iter().cloned().map(|id| (None, id)).collect();
-    candidates.extend(state.runner.rig.iter().map(|c| (Some(c.install_id), c.card.clone())));
-    fire_each(state, registry, &candidates, trigger, event)
-}
-
-/// Orders trigger candidates so `active`'s cards resolve before the other
-/// side's — Netrunner/Null Signal Games priority rule 4 ("active player's
-/// reactions resolve first"). A stable sort, so each side's own relative
-/// (declaration/install) order is preserved.
-///
-/// `active` is passed explicitly by each call site rather than derived from
-/// `GameState` internally: `legal_actions::current_actor` returns `None`
-/// during `GamePhase::StartOfTurn`, which is exactly when the broadcast
-/// `OnTurnStart` dispatch needs an answer, so no single internal derivation
-/// serves every dispatch site correctly.
-fn order_active_first<T>(active: Side, mut candidates: Vec<(Side, T)>) -> Vec<T> {
-    candidates.sort_by_key(|(side, _)| *side != active);
-    candidates.into_iter().map(|(_, id)| id).collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::rules::state::InstallId;
     use crate::rules::test_support::fixture_install_id;
     use crate::cards::CardRegistry;
-    use crate::dsl::{CardDefinition, CardType, Effect, TriggeredEffect};
+    use crate::dsl::{CardDefinition, CardId, CardType, Effect, TriggeredEffect};
+    use crate::rules::run::ServerId;
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, Credits, GamePhase, InstalledRunnerCard, MemoryUnits, PlayerResources,
         RunnerState,
@@ -1038,7 +364,7 @@ mod tests {
             title: id.to_string(),
             side,
             card_type: CardType::Program,
-            triggers: vec![TriggeredEffect { text: None, trigger, effects: vec![effect], requirement: None }],
+            triggers: vec![TriggeredEffect { subject: None, text: None, trigger, effects: vec![effect], requirement: None }],
             is_playable: true,
             ..Default::default()
         }
@@ -1131,6 +457,9 @@ mod tests {
         registry.insert(card_with_trigger("ice_wall", Side::Corp, Trigger::OnEncounter, Effect::GainCredits(Side::Corp, 3)));
 
         let mut state = empty_state();
+        // An encounter happens in a run: a "when encountered" with no run
+        // to apply to stands down (`still_applies`).
+        state.active_run = Some(crate::rules::RunState { server: ServerId::Hq, ..Default::default() });
         let events = dispatch_event(
             &mut state,
             &registry,
@@ -1155,35 +484,6 @@ mod tests {
 
         assert_eq!(state.runner.resources.credits, Credits(6));
         assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("desperado".to_string()), trigger: Trigger::OnSuccessfulRun }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }, GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("desperado".to_string()) }]);
-    }
-
-    #[test]
-    fn order_active_first_puts_the_active_sides_candidates_before_the_others() {
-        let candidates = vec![
-            (Side::Corp, CardId("corp_card".to_string())),
-            (Side::Runner, CardId("runner_card".to_string())),
-        ];
-
-        let ordered = order_active_first(Side::Runner, candidates.clone());
-        assert_eq!(ordered, vec![CardId("runner_card".to_string()), CardId("corp_card".to_string())]);
-
-        let ordered = order_active_first(Side::Corp, candidates);
-        assert_eq!(ordered, vec![CardId("corp_card".to_string()), CardId("runner_card".to_string())]);
-    }
-
-    #[test]
-    fn order_active_first_is_stable_within_a_side() {
-        let candidates = vec![
-            (Side::Runner, CardId("first".to_string())),
-            (Side::Corp, CardId("corp".to_string())),
-            (Side::Runner, CardId("second".to_string())),
-        ];
-
-        let ordered = order_active_first(Side::Runner, candidates);
-        assert_eq!(
-            ordered,
-            vec![CardId("first".to_string()), CardId("second".to_string()), CardId("corp".to_string())]
-        );
     }
 
     #[test]
@@ -1359,6 +659,8 @@ mod tests {
                 // whether it was deferred.
                 event: Some(damage.clone()),
                 continuation: None,
+                // …and what it heard the event as, decided when it happened.
+                heard: crate::rules::state::Heard::AsBystander,
             }],
             "the untouched remainder is queued, not dropped"
         );
@@ -1461,6 +763,7 @@ mod tests {
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
             continuation: None,
+            heard: Default::default(),
         }];
         let credits_before = state.corp.resources.credits;
 
@@ -1489,6 +792,7 @@ mod tests {
             target: None,
             event: Some(GameEvent::ServerApproached { server: ServerId::Remote(0) }),
             continuation: None,
+            heard: Default::default(),
         };
 
         let mut ended = empty_state();
@@ -1522,6 +826,7 @@ mod tests {
             target: None,
             event: Some(GameEvent::RunEndedByEffect { server: ServerId::Hq }),
             continuation: None,
+            heard: Default::default(),
         }];
         let before = state.runner.resources.credits;
         drain_deferred_triggers(&mut state, &registry).unwrap();
@@ -1560,6 +865,7 @@ mod tests {
                 advancement_tokens,
             }),
             continuation: None,
+            heard: Default::default(),
         };
 
         // First advancement: the requirement is met even though the trigger
@@ -1586,6 +892,7 @@ mod tests {
             target: None,
             event: None,
             continuation: None,
+            heard: Default::default(),
         }];
         let before = state.corp.resources.credits;
         drain_deferred_triggers(&mut state, &registry).unwrap();
@@ -1628,6 +935,7 @@ mod tests {
             trigger: Trigger::OnTurnStart,
             target: None, event: None,
             continuation: None,
+            heard: Default::default(),
         };
         state.deferred_triggers = vec![queued("parks_a_choice"), queued("pad_campaign")];
 
@@ -1643,8 +951,17 @@ mod tests {
         registry.insert(card_with_trigger("ping", Side::Corp, Trigger::OnRez, Effect::GiveTags(1)));
 
         let mut state = empty_state();
+        // Pinned to a copy that is on the table: a reaction whose install
+        // has left play stands down.
+        let install = fixture_install_id("ping");
+        state.corp.installed.push(crate::rules::state::InstalledCard {
+            install_id: install,
+            card: CardId("ping".to_string()),
+            rezzed: true,
+            ..Default::default()
+        });
         let events =
-            dispatch_event(&mut state, &registry, &GameEvent::IceRezzed { card: CardId("ping".to_string()), server: ServerId::Hq, install: InstallId::PLACEHOLDER })
+            dispatch_event(&mut state, &registry, &GameEvent::IceRezzed { card: CardId("ping".to_string()), server: ServerId::Hq, install })
                 .unwrap();
 
         assert_eq!(state.runner.tags, 1);

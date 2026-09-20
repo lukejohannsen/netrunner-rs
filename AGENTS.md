@@ -90,6 +90,12 @@ A seat is either `Seat::Agent` (resolved in-process from a masked `ClientView`) 
 - **Terminology**: Refer to the game as "Netrunner" and its current rules maintainer as "Null Signal Games" in code and comments — never "NISEI" (Null Signal Games' predecessor).
 - **Doc comments record decisions.** This codebase's comments explain *why* a design was chosen and what alternative was rejected. That is the house style — match it. A comment that only restates the signature is not worth writing.
 
+### Listener Rule
+
+Which cards hear an event is one rule, in `rules::listeners`, and it is read off the cards: **the subject of an event always hears it, wherever it is; every other card must be active** (a rezzed non-agenda install, a rig card, an identity, a scored agenda), the active player's cards first and each side's simultaneous triggers that side's to order. A card says which occurrences it means — `TriggeredEffect::subject`, `This` ("when you score **this agenda**", "whenever the Runner approaches **this server**") or `Any` — and `CardDefinition::validate` refuses a card file that leaves it off a trigger that is about a card or a server, or puts it on one that is not. `Trigger::hears` says whether a trigger is phrased about its controller ("when **your** turn begins").
+
+**Never add an audience in Rust.** The dispatcher used to be a `match` naming the cards to ask for each event, widened by hand each time a card needed more, and running the scan beside it found a card rule that had been living there: a faceup Orbital Superiority doing its damage when a *different* agenda was scored, because "this" had nowhere to be said. A card the rule does not reach is a gap in the rule's vocabulary (`Subject`, `Hears`, what counts as active), fixed there for every card. `listeners::moments` is exhaustive over `GameEvent`: a new event does not compile until someone says what it is an occurrence of, even when the answer is nothing. `OnPlay` is fired as a step of its own ahead of its side's triggers, because it is how the DSL spells a card's *resolution* and that is nobody's to order.
+
 ### DSL Growth Rule
 
 Adding an `Effect` or `EffectRequirement` variant is the expensive move: it grows the engine's permanent surface for one card's benefit.

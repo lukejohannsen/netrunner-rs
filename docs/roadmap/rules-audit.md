@@ -219,6 +219,90 @@ one.
    that are one event and a filter — the only stage that cannot be
    byte-identical, since `triggers_fired` is keyed by variant, which is
    what `--expect-renames` is for.
+
+   **The audience rule — DONE (20 September 2026, `feat/one-audience-rule`),
+   and it corrects the plan above: this stage was never going to be
+   byte-identical.** `rules::listeners` is the rule — *the subject of an
+   event always hears it, wherever it is; every other card must be active;
+   the active player's cards first* — and `dispatch_event` is now that plan
+   fired a side at a time. `listeners::moments` is exhaustive over
+   `GameEvent` (no `_` arm; the CR 1.18.2 arm moved there), the 574-line
+   `match` and its six audience helpers are gone, and the special cases it
+   carried fall out of the first clause: an unrezzed trap hears its own
+   access, an operation its own play, a stolen agenda its own leaving.
+   What the DSL could not say is now on the card: `TriggeredEffect::subject`,
+   `This` or `Any`, on all 128 entries whose trigger is about a card or a
+   server (`CardDefinition::validate` refuses a file without it, or with it
+   where there is nothing to name), and `Trigger::hears` for "your".
+
+   *Why not identical.* The old table fired one event's audience in up to
+   four separate steps — the scored agenda, the identity, the rezzed table,
+   the Runner's side — and a side was offered the order of its triggers
+   only *within* a step. No rule reproduces that segmentation (`TurnStarted`
+   put the identity and the installs in one step, `AgendaScored` in two), so
+   keeping it meant keeping a per-event table, which is the thing being
+   deleted. One plan per side is also what the rules say.
+
+   *So the audience was proven separately, in shadow.* With both dispatchers
+   compiled into a debug build, every `dispatch_event` computed the plan and
+   compared it with what the hand-written arm asked, over both 256-seed
+   sweeps (768 games each). **The two agreed on who hears every event, for
+   every card in the pool, except where the old table was wrong:**
+
+   | | view path | index path |
+   |---|---|---|
+   | Orbital Superiority, installed faceup under BANGUN, hearing a *different* agenda scored | **6** | 0 |
+   | an installed faceup agenda asked `OnDiscardPhaseEnd` (Off the Books) | **133** | — |
+   | cross-side order: `AgendaStolen` (the stolen agenda before the Runner's cards) | 367 | 198 |
+   | cross-side order: `IceRezzed` (the rezzed card before Baz) | 301 | 40 |
+
+   The first is a live bug that was on `main`: the rezzed table was asked
+   `OnAgendaScored`, BANGUN installs agendas faceup, and "when you score
+   **this** agenda" had no way to say *this* — 4 meat damage or a tag for
+   scoring something else. The second never resolved anything (the agenda's
+   requirement wants counters it only gets when scored) but is the same
+   mistake, and the rule now says an agenda is active in a score area and
+   not on the table. The last two are the active player's triggers not
+   coming first during the Runner's turn. The shadow also found a *fixture*
+   doing what the field exists to prevent: two rezzed copies of a test trap,
+   no subject named, both hearing one access.
+
+   *Two decisions the switch forced.* **`OnPlay` is a step of its own**,
+   ahead of its side's triggers: it is how the DSL spells a card's
+   resolution, not a triggered ability, and without that every Hedge Fund
+   under Building a Better World was a question. **An order is offered only
+   among triggers whose requirement passes now** (`ability::would_fire`, a
+   read). `declares_trigger` counted every declaring card on the argument
+   that a no-op choice was harmless; with a side's whole plan in one place
+   it asked the Corp to order Hostile Takeover against a Malapert Data Vault
+   in another server on every score. The plan is not thinned — an entry
+   that does not count still fires in its turn and re-checks.
+   `DeferredTrigger::heard` carries what a card heard the event *as*
+   (subject, bystander, both), because a deferred entry fires against a
+   state that has moved.
+
+   *Measured* (`scripts/coverage_identical.py main --head-worktree`, 192
+   games a report, seed 1; every game in all four reports reaches
+   `GameOver`, the same 133 `triggers_fired` keys on the random seating):
+
+   | | `TriggerOrderPending` | steps | Corp wins | triggers fired |
+   |---|---|---|---|---|
+   | random, by view and by index (one md5) | 466 → 473 | 69,254 → 68,714 | 92 → 94 | 5,779 → 5,738 |
+   | heuristic by view | 263 → 277 | 83,562 → 82,813 | 37 → 39 | 4,518 → 4,462 |
+   | heuristic by index | 263 → 277 | 83,283 → 82,534 | 36 → 38 | 4,503 → 4,447 |
+
+   Seven to fourteen more order choices in 192 games is the net of two
+   opposite moves — more offered across what used to be steps, fewer
+   offered over a trigger that would not fire — and the outcomes sit
+   inside the 0.026–0.047 seed-spread band, which is all a re-rolled
+   trajectory can claim. Both 256-seed sweeps clean under the coverage
+   gate; five card tests now say which simultaneous trigger they mean
+   (`resolve_first`) instead of relying on the agenda's going first.
+
+   *Still open from this stage:* `Trigger`'s per-variant doc comments still
+   name the audiences they were first written for (the enum now says they
+   are history, not limits); a Runner-side score area is not a listener,
+   because no stolen agenda acts from there yet.
 2. **A continuous-effect layer, with a target and a payload** (§2.1 as
    corrected by §6.2; was item 1). Not `{ kind, value: Amount, while }`: a
    closed enum with a payload per kind — a number, a subtype, a subroutine,

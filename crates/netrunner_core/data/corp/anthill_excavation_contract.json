@@ -9,6 +9,7 @@
   "triggers": [
     {
       "trigger": "OnRez",
+      "subject": "This",
       "effects": [
         {
           "AddCounters": 8

@@ -9,6 +9,7 @@
   "triggers": [
     {
       "trigger": "OnAgendaScored",
+      "subject": "This",
       "effects": [
         {
           "PromptChooseCards": {

@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnAdvance",
+      "subject": "Any",
       "requirement": "WasFirstAdvancementThisCard",
       "effects": [
         {

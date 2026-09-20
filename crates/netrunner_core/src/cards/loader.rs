@@ -89,7 +89,7 @@ mod tests {
 
     const HEDGE_FUND_JSON: &str =
         r#"{"id":"hedge_fund","title":"Hedge Fund","side":"Corp","card_type":"Operation","cost":5,
-            "triggers":[{"trigger":"OnPlay","effects":[{"GainCredits":["Corp",9]}]}]}"#;
+            "triggers":[{"trigger":"OnPlay","subject":"This","effects":[{"GainCredits":["Corp",9]}]}]}"#;
     const ICE_WALL_JSON: &str = r#"{"id":"ice_wall","title":"Ice Wall","side":"Corp","card_type":{"Ice":"Barrier"},
             "cost":1,"strength":1,"subroutines":[{"text":"End the run.","effect":"EndTheRun"}],"triggers":[]}"#;
 
@@ -149,6 +149,27 @@ mod tests {
                 assert_eq!(path.file_name().unwrap(), "bad_ice.json")
             }
             other => panic!("expected a Validation(IceMissingStrength) error, got {other:?}"),
+        }
+    }
+
+    /// A homebrew card is held to the same word the embedded pool is: a
+    /// trigger about a card has to say *which* card, because neither
+    /// default is safe — see `TriggeredEffect::subject`.
+    #[test]
+    fn load_registry_from_dirs_rejects_a_trigger_that_does_not_say_which_occurrences_it_hears() {
+        let dir = TempDir::new("missing_subject");
+        dir.write(
+            "vague_agenda.json",
+            r#"{"id":"vague_agenda","title":"Vague Agenda","side":"Corp","card_type":"Agenda","cost":0,
+            "agenda_points":1,"advancement_requirement":2,
+            "triggers":[{"trigger":"OnAgendaScored","effects":[{"GainCredits":["Corp",1]}]}]}"#,
+        );
+
+        match load_registry_from_dirs(&[dir.path()]) {
+            Err(LoaderError::Validation { path, source: CardValidationError::TriggerMissingSubject(_, _) }) => {
+                assert_eq!(path.file_name().unwrap(), "vague_agenda.json")
+            }
+            other => panic!("expected a Validation(TriggerMissingSubject) error, got {other:?}"),
         }
     }
 }

@@ -13,6 +13,7 @@
   "triggers": [
     {
       "trigger": "OnCardInstalled",
+      "subject": "Any",
       "requirement": "InstalledWithoutSpendingCredits",
       "effects": [
         {

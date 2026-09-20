@@ -8,6 +8,7 @@
   "triggers": [
     {
       "trigger": "OnInstall",
+      "subject": "This",
       "effects": [
         {
           "PresentChoice": {
