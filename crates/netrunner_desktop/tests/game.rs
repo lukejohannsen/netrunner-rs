@@ -345,6 +345,158 @@ fn pressing_a_hand_card_opens_its_menu_and_the_menu_submits() {
     wait_for(&mut app, "the action to be applied", |app| app.world().resource::<Model>().0.applied > before);
 }
 
+/// The menu's panel, as the layout was told to place it: its four insets
+/// and the box it may grow into.
+fn menu_node(app: &mut App) -> Node {
+    let mut q = app.world_mut().query_filtered::<&Node, With<ActionsMenu>>();
+    q.iter(app.world()).next().cloned().expect("the menu is open")
+}
+
+fn pixels(value: Val) -> Option<f32> {
+    match value {
+        Val::Px(px) => Some(px),
+        _ => None,
+    }
+}
+
+/// An open menu stays on the window: pinned by the edge that faces its
+/// card and never past the window's own edge, whatever box it was opened
+/// against and whatever size the window is.
+///
+/// Both of those can move under a menu that is already open — a resize
+/// changes the window, a redraw the card's box — while the menu itself is
+/// spawned only by a rail redraw, so this drives each in turn. The old
+/// placement computed a `top` from an estimate of the panel's height and
+/// clamped it on one side only, which put a tall menu's first options
+/// above the top of the window, where the screen root's clip ate them.
+#[test]
+fn an_open_menu_is_placed_on_the_window_and_follows_it() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    // The Runner's own turn, so the menu has rows in it: the mulligan
+    // offers a hand card nothing at all.
+    to_the_runners_turn(&mut app);
+    let card = {
+        let model = &app.world().resource::<Model>().0;
+        let hand = model.view.as_ref().unwrap().runner.grip_cards.clone().unwrap();
+        hand.iter().find(|c| !model.actions.for_hand_card(c).is_empty()).expect("an opening Runner hand has something playable").clone()
+    };
+    let face = entity_with(&mut app, &Click::Target(Target::HandCard(card))).expect("the card is on the board");
+    press_card(&mut app, face);
+    let window = app.world().resource::<BoardFit>().window;
+
+    // One horizontal edge and one vertical, the other of each `Auto`, so
+    // the panel grows away from the card rather than from a guessed
+    // height.
+    let on_the_window = |node: &Node, window: Vec2, at: &str| {
+        let (left, right) = (pixels(node.left), pixels(node.right));
+        let (top, bottom) = (pixels(node.top), pixels(node.bottom));
+        assert!(left.is_some() != right.is_some(), "one horizontal edge {at}: {:?}/{:?}", node.left, node.right);
+        assert!(top.is_some() != bottom.is_some(), "one vertical edge {at}: {:?}/{:?}", node.top, node.bottom);
+        for inset in [left, right, top, bottom].into_iter().flatten() {
+            assert!(inset >= 12.0, "an inset of {inset} {at} is inside the window's padding");
+        }
+        let width = pixels(node.max_width).expect("a width it may grow to");
+        let height = pixels(node.max_height).expect("a height it may grow to");
+        assert!(width + left.or(right).unwrap_or(0.0) <= window.x + 1e-3, "{width} wide {at}");
+        assert!(height + top.or(bottom).unwrap_or(0.0) <= window.y + 1e-3, "{height} tall {at}");
+    };
+    on_the_window(&menu_node(&mut app), window, "as the menu was spawned");
+
+    // Where a hand card actually sits — on the window's bottom edge.
+    // Headless there is no layout pass, so every box is zero-sized at the
+    // origin; the boxes below are the ones the board would have laid out.
+    let over = |x: f32, y: f32| netrunner_desktop::models::game::Anchor { x, y, width: 120.0, height: 168.0 };
+    let place = |app: &mut App, anchor| {
+        app.world_mut().resource_mut::<Model>().0.menu.as_mut().expect("the menu is open").over = anchor;
+        app.update();
+    };
+    place(&mut app, over(window.x / 2.0, window.y - 90.0));
+    let node = menu_node(&mut app);
+    on_the_window(&node, window, "over a hand card");
+    assert!(pixels(node.bottom).is_some(), "a hand card's menu opens upward from the card");
+
+    // The card's box moves under it — here to the top-right corner, where
+    // there is no room above and the panel must flip below and anchor to
+    // the right edge. `place_menu` skips a target whose `ComputedNode` is
+    // empty, which every node is here, and that is what lets the test
+    // write a box of its own.
+    place(&mut app, over(window.x - 30.0, 30.0));
+    let node = menu_node(&mut app);
+    on_the_window(&node, window, "over the top-right corner");
+    assert!(pixels(node.top).is_some(), "with no room above, it hangs below the card");
+    assert!(pixels(node.right).is_some(), "and is pinned to the edge it is nearest");
+
+    // And the window itself changes under it.
+    let small = Vec2::new(900.0, 520.0);
+    app.world_mut().resource_mut::<BoardFit>().window = small;
+    app.update();
+    on_the_window(&menu_node(&mut app), small, "in a smaller window");
+
+    // Every row is a width in pixels: inside the wrapping panel a
+    // percentage has nothing to resolve against, and a row measured a
+    // word to a line is how the options left the window in the first
+    // place.
+    let rows: Vec<Val> = {
+        let mut q = app.world_mut().query::<(&Click, &Node)>();
+        q.iter(app.world()).filter(|(click, _)| matches!(click, Click::Entry(_))).map(|(_, node)| node.width).collect()
+    };
+    assert!(!rows.is_empty(), "the menu has rows to check");
+    assert!(rows.iter().all(|width| pixels(*width).is_some()), "every row is a px width: {rows:?}");
+}
+
+/// The decision pop-up is capped at the window, and the cards are what
+/// give when it is short of room: every button stays rigid, so a decision
+/// the person is asked is never a button drawn off the bottom.
+#[test]
+fn the_decision_pop_up_is_capped_at_the_window_and_its_cards_give_first() {
+    let (mut app, _dir) = headless_client();
+    start_a_game(&mut app);
+    wait_for(&mut app, "the first decision", |app| click_entry_count(app) > 0);
+    // A window short enough that the pop-up's own words and buttons are
+    // most of it.
+    let small = Vec2::new(900.0, 520.0);
+    app.world_mut().resource_mut::<BoardFit>().window = small;
+    app.update();
+    app.update();
+
+    let world = app.world_mut();
+    let panel = world
+        .query_filtered::<&Children, With<DecisionPopup>>()
+        .iter(world)
+        .next()
+        .and_then(|children| children.iter().next())
+        .expect("the pop-up is up with its panel");
+    let node = world.get::<Node>(panel).expect("the panel is a node").clone();
+    match node.max_height {
+        Val::Px(height) => assert!(height <= small.y - 2.0 * 12.0 + 1e-3, "the panel may be {height} tall in a {} window", small.y),
+        other => panic!("the panel is capped at the window, not {other:?}"),
+    }
+
+    // Inside it: the buttons are rigid and the card row is the one thing
+    // that may lose height. A card drawn short is still a card, and a
+    // secondary click reads it full size; a button off the window is an
+    // action the person cannot take.
+    let children: Vec<Entity> = world.get::<Children>(panel).expect("the panel has rows").iter().collect();
+    let mut gave = 0;
+    for child in children {
+        let row = world.get::<Node>(child).expect("a row is a node");
+        if row.overflow.y == OverflowAxis::Clip {
+            assert_eq!(row.flex_shrink, 1.0, "the card row gives");
+            assert_eq!(row.min_height, Val::Px(0.0), "and is allowed to, against its own content");
+            gave += 1;
+        } else {
+            assert_eq!(row.flex_shrink, 0.0, "every other row is rigid");
+        }
+    }
+    assert!(gave <= 1, "one row gives, not {gave}");
+    let buttons: Vec<f32> = {
+        let mut q = app.world_mut().query::<(&Click, &Node)>();
+        q.iter(app.world()).filter(|(click, _)| matches!(click, Click::Entry(_))).map(|(_, node)| node.flex_shrink).collect()
+    };
+    assert!(!buttons.is_empty() && buttons.iter().all(|shrink| *shrink == 0.0), "no decision button gives: {buttons:?}");
+}
+
 /// A secondary click — the right button, or Ctrl with the primary — on a
 /// card opens its sheet to read: the card, and no action on it. It closes
 /// a menu that was open, Escape closes it, nothing opens through it, and a

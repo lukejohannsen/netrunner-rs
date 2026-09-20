@@ -153,7 +153,11 @@ impl Plugin for GamePlugin {
             // a system to an existing `.chain()` reorders everything after
             // it (§4n moved `button_feedback` that way and broke twelve
             // board tests).
-            .add_systems(Update, shadows.run_if(in_state(AppScreen::Game)));
+            .add_systems(Update, shadows.run_if(in_state(AppScreen::Game)))
+            // Likewise its own line: it reads what the chain wrote and
+            // orders against none of it, and a menu placed a frame late
+            // is a menu that was on the window the whole time.
+            .add_systems(Update, place_menu.run_if(in_state(AppScreen::Game)));
     }
 }
 
@@ -452,6 +456,13 @@ fn fit(windows: Query<&Window, With<PrimaryWindow>>, model: Option<Res<Model>>, 
         fit.chair = model.0.side;
         fit.field = layout::field_height(window.y, face, counts);
         dirty.board = true;
+        // The pop-up is sized from the window too — capped at it, with
+        // the cards drawn in what its words leave — so a resize has to
+        // rebuild the rail's floating panels and not only the board.
+        // (`place_menu` still earns its place: it re-anchors the menu
+        // every frame the card's own box moves under it, which no resize
+        // is involved in.)
+        dirty.rail = true;
     }
 }
 
@@ -773,19 +784,40 @@ fn autoplay(
         dev.keys = false;
         pending.0.push(Intent::Shortcut(Shortcut::Help));
     }
-    if dev.menu && model.0.awaiting && dev.autoplayed >= dev.autoplay {
-        dev.menu = false;
-        let hand = model.0.view.as_ref().and_then(|view| match model.0.side {
-            Side::Corp => view.corp.hq_cards.clone(),
-            Side::Runner => view.runner.grip_cards.clone(),
-        });
-        // The first card with an action, else the first card: a menu
-        // with nothing in it is a look worth taking too.
-        let hand = hand.unwrap_or_default();
-        if let Some(card) = hand.iter().find(|card| !model.0.actions.for_hand_card(card).is_empty()).or(hand.first()) {
-            let target = Target::HandCard(card.clone());
-            // The card's own box, as the click would have read it.
-            let over = nodes.iter().find(|(click, _, _)| **click == Click::Target(target.clone())).map_or_else(Anchor::default, |(_, node, transform)| anchor_of(node, transform));
+    if let Some(pick) = dev.menu.filter(|_| model.0.awaiting && dev.autoplayed >= dev.autoplay) {
+        dev.menu = None;
+        // Every box the board laid out, with what a click on it would
+        // mean and how many entries that is — which is all three picks
+        // need, so the hook learns nothing new about the view.
+        let boxes = || {
+            nodes.iter().filter_map(|(click, node, transform)| match click {
+                Click::Target(target) => Some((target.clone(), model.0.entries_for(target).len(), anchor_of(node, transform))),
+                _ => None,
+            })
+        };
+        let picked = match pick {
+            crate::dev::MenuPick::Hand => {
+                let hand = model.0.view.as_ref().and_then(|view| match model.0.side {
+                    Side::Corp => view.corp.hq_cards.clone(),
+                    Side::Runner => view.runner.grip_cards.clone(),
+                });
+                // The first card with an action, else the first card: a
+                // menu with nothing in it is a look worth taking too.
+                let hand = hand.unwrap_or_default();
+                hand.iter().find(|card| !model.0.actions.for_hand_card(card).is_empty()).or(hand.first()).map(|card| {
+                    let target = Target::HandCard(card.clone());
+                    // The card's own box, as the click would have read it.
+                    let over = boxes().find(|(candidate, _, _)| *candidate == target).map_or_else(Anchor::default, |(_, _, over)| over);
+                    (target, over)
+                })
+            }
+            crate::dev::MenuPick::Most => boxes().max_by_key(|(_, entries, _)| *entries).filter(|(_, entries, _)| *entries > 0).map(|(target, _, over)| (target, over)),
+            crate::dev::MenuPick::Top => boxes()
+                .filter(|(_, entries, _)| *entries > 0)
+                .min_by(|(_, _, a), (_, _, b)| a.y.total_cmp(&b.y))
+                .map(|(target, _, over)| (target, over)),
+        };
+        if let Some((target, over)) = picked {
             pending.0.push(Intent::Click { target, over });
         }
     }
@@ -2351,7 +2383,7 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
         ))
         .with_children(|list| {
             for index in 0..game.actions.entries.len() {
-                entry_button(list, theme, game, index);
+                entry_button(list, theme, game, index, percent(100));
             }
         })
         .id();
@@ -2360,10 +2392,17 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     });
 }
 
-/// A full-width button for entry `index`, its label left-aligned.
-fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, index: usize) -> Option<Entity> {
+/// A button for entry `index`, its label left-aligned, at `width`.
+///
+/// **The width is the caller's** because two of the three callers are
+/// inside a wrapping container, where a percentage has nothing to
+/// resolve against while the container is measured: the label came out
+/// measured a word to a line and every row kept that height, which ran
+/// two rows of cards off the window. The rail's list is the one caller
+/// still in ordinary flow, and it passes `percent(100)`.
+fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, index: usize, width: Val) -> Option<Entity> {
     let entry = game.actions.entries.get(index)?;
-    let mut button = parent.spawn(widgets::button(theme, entry.label.clone(), percent(100), Click::Entry(index)));
+    let mut button = parent.spawn(widgets::button(theme, entry.label.clone(), width, Click::Entry(index)));
     button.entry::<Node>().and_modify(|mut node| {
         node.justify_content = JustifyContent::FlexStart;
         node.padding = UiRect::axes(px(10), px(6));
@@ -2371,36 +2410,46 @@ fn entry_button(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, i
     Some(button.id())
 }
 
-/// The width of a click's menu, and the gap between its
-/// bottom edge and the top of the card it sits above.
-const MENU_WIDTH: f32 = 280.0;
-const MENU_GAP: f32 = 6.0;
-
 /// The menu a click opened: the target's name and one button per
 /// entry, or a line saying so when there is nothing,
 /// in a small panel just above the box the target was laid out in and
 /// centred on it — so it is in one place for a card however the card
 /// was clicked, and the card stays in view beneath it. When the box is
 /// too near the top for the menu to fit above, it sits just below
-/// instead (a header along the top edge, from the Runner's chair).
-/// Kept on the window sideways: pulled in when it would run off the
-/// left or right edge. The height is an estimate (the layout has not
-/// run when it is spawned, and a menu is a heading and a row per
-/// entry). The panel
-/// takes `Interaction` and blocks, so a click on its ground is a click
-/// on the menu, not on the card beneath. Between the decision pop-up
-/// and the overlays in depth: a sheet covers it, it covers the pop-up.
+/// instead (a header along the top edge, from the Runner's chair). The
+/// panel takes `Interaction` and blocks, so a click on its ground is a
+/// click on the menu, not on the card beneath. Between the decision
+/// pop-up and the overlays in depth: a sheet covers it, it covers the
+/// pop-up.
+///
+/// **It is pinned by the edge that faces the card and grows away from
+/// it** ([`layout::menu_box`]), so its height is never guessed and it
+/// cannot leave the window. What this replaced computed a `top` from an
+/// estimate — a 40px row per entry — and a menu whose labels wrapped was
+/// half as tall again, so its last options went off the bottom of the
+/// window, where the screen root's `Overflow::clip` ate them. Measuring
+/// the panel once the layout had run was the other way and was rejected:
+/// `ComputedNode` is written in `PostUpdate`, so a measured placement is
+/// a frame late by construction — a flicker on the most-used click on
+/// the board — and the headless tests have no layout pass to measure it
+/// with.
+///
+/// **The panel is itself the wrapping container**, so when the room on
+/// its side runs out the entries flow into a second column rather than
+/// being clipped: every option stays on the window, which is what
+/// opening a menu promised. A scrolling list was asked about and turned
+/// down — a scroll bar makes an option reachable, not visible. An inner
+/// entries container would not do, because *its* auto width is measured
+/// under a max-content constraint, where taffy never wraps; the panel is
+/// `position: Absolute` and so is measured under a definite space, where
+/// it does. Hence also the `px` width on every child: a percentage has
+/// nothing to resolve against there. With two columns the heading sits
+/// atop the first rather than spanning both, which reads as a title and
+/// costs nothing.
 fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, menu: &crate::models::game::Menu, window: Vec2) {
-    // Padding, the heading, the panel's row gap, then a 40 px button (or
-    // the one-line notice) per row with the gap between rows.
-    let rows = menu.entries.len().max(1) as f32;
-    let height = 2.0 * 12.0 + 22.0 + 8.0 + rows * 40.0 + (rows - 1.0) * 8.0;
-    let left = (menu.over.x - MENU_WIDTH / 2.0).min(window.x - MENU_WIDTH - layout::PADDING).max(layout::PADDING);
-    let above = menu.over.y - menu.over.height / 2.0 - MENU_GAP - height;
-    let below = menu.over.y + menu.over.height / 2.0 + MENU_GAP;
-    let top = if above >= layout::PADDING { above } else { below.min(window.y - height - layout::PADDING) };
+    let place = layout::menu_box((window.x, window.y), menu.over, menu.entries.len());
     let accent = theme.accent;
-    let mut panel = parent.spawn((ActionsMenu, MenuPart, Interaction::None, FocusPolicy::Block, GlobalZIndex(15), widgets::panel(theme, px(MENU_WIDTH))));
+    let mut panel = parent.spawn((ActionsMenu, MenuPart, Interaction::None, FocusPolicy::Block, GlobalZIndex(15), widgets::panel(theme, Val::Auto)));
     // Its own slot, replacing the one `widgets::panel` supplied, so a
     // skin can paint the menu apart from the sheet. The `and_modify`
     // below stays: `dress` only runs on `Added<Dressed>`, a frame after
@@ -2409,24 +2458,78 @@ fn spawn_actions_menu(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &G
     panel.insert(widgets::Dressed::still(Slot::PanelMenu, Drawn::new(theme.panel, accent)));
     panel.entry::<Node>().and_modify(move |mut node| {
         node.position_type = PositionType::Absolute;
-        node.left = px(left);
-        node.top = px(top);
-        node.padding = UiRect::all(px(12));
+        // Wrapping is always on and only ever bites when the room runs
+        // out, so the one-column menu every screenshot shows is the same
+        // code path as the two-column one.
+        node.flex_wrap = FlexWrap::Wrap;
+        node.column_gap = px(layout::ROW_GAP);
+        node.align_content = AlignContent::FlexStart;
+        node.padding = UiRect::all(px(layout::MENU_PADDING));
+        place_node(&mut node, place);
     });
     panel.entry::<BorderColor>().and_modify(move |mut border| *border = BorderColor::all(accent));
     panel.with_children(|panel| {
-        panel.spawn((widgets::label(theme, target_title(game, &menu.target)), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+        let row = px(layout::MENU_ENTRY);
+        panel.spawn((widgets::label(theme, target_title(game, &menu.target)), TextLayout::new(Justify::Left, LineBreak::WordBoundary), Node { width: row, ..default() }));
         if menu.entries.is_empty() {
             let line = if game.awaiting { "Nothing to do here right now." } else { "Not your decision right now." };
-            panel.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+            panel.spawn((widgets::dim(theme, line), TextLayout::new(Justify::Left, LineBreak::WordBoundary), Node { width: row, ..default() }));
         }
         for index in &menu.entries {
-            if let Some(button) = entry_button(panel, theme, game, *index) {
+            if let Some(button) = entry_button(panel, theme, game, *index, row) {
                 panel.commands().entity(button).insert(MenuPart);
             }
         }
     });
 }
+
+/// Writes a [`layout::MenuBox`] onto a node: one horizontal inset and one
+/// vertical, the other of each left `Val::Auto` so the panel grows away
+/// from the edge it was pinned to, and the room that side has as its
+/// maximum.
+fn place_node(node: &mut Node, place: layout::MenuBox) {
+    node.left = place.left.map_or(Val::Auto, px);
+    node.right = place.right.map_or(Val::Auto, px);
+    node.top = place.top.map_or(Val::Auto, px);
+    node.bottom = place.bottom.map_or(Val::Auto, px);
+    node.max_width = px(place.max_width);
+    node.max_height = px(place.max_height);
+}
+
+/// Keeps an open menu on the window and on its card.
+///
+/// It is placed from two things that can both move under it — the
+/// window, which a resize changes, and the box the target was laid out
+/// in, which any board redraw changes — while the menu itself is spawned
+/// only by a *rail* redraw. Without this, a resize left the menu where
+/// the old window had put it. Re-anchoring rather than respawning,
+/// because a respawn would take the hover and the pressed state of the
+/// button under the pointer with it.
+///
+/// A target whose `ComputedNode` is empty is skipped: it has not been
+/// laid out yet — the frame after a redraw, and every frame in the
+/// headless tests, which run without a `UiPlugin` — and its zero-size
+/// box would drag the menu into the window's corner.
+fn place_menu(fit: Option<Res<BoardFit>>, model: Option<Res<Model>>, targets: Query<(&Click, &ComputedNode, &UiGlobalTransform)>, mut panel: Query<&mut Node, With<ActionsMenu>>) {
+    let (Some(fit), Some(model)) = (fit, model) else { return };
+    let Ok(mut node) = panel.single_mut() else { return };
+    let Some(menu) = &model.0.menu else { return };
+    let over = targets
+        .iter()
+        .find(|(click, computed, _)| matches!(click, Click::Target(target) if *target == menu.target) && !computed.is_empty())
+        .map_or(menu.over, |(_, computed, transform)| anchor_of(computed, transform));
+    let place = layout::menu_box((fit.window.x, fit.window.y), over, menu.entries.len());
+    let mut fresh = node.clone();
+    place_node(&mut fresh, place);
+    if fresh != *node {
+        *node = fresh;
+    }
+}
+
+/// The narrowest the decision pop-up's panel is drawn, and what its own
+/// padding and border take off that on each side.
+const POPUP_MIN_WIDTH: f32 = 520.0;
+const POPUP_PADDING: f32 = 17.0;
 
 /// The decision pop-up: the prompt's words as its heading and one
 /// button per decision, centred over the board. The container is the
@@ -2476,25 +2579,38 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
         None if choices.is_empty() => view.and_then(|view| Prompt::card(view, &core.registry)),
         None => None,
     };
-    // What the words and the list of buttons take, estimated as the
-    // actions menu's height is (the layout has not run yet): the panel's
-    // padding, the heading and the lines under it, a button per row, and
-    // the gap between each; the cards get the rest of the window.
-    let lines = |text: &str| if text.is_empty() { 0.0 } else { text.lines().count() as f32 * 22.0 + 8.0 };
+    // What the words and the list of buttons take, guessed before the
+    // layout has run: the panel's padding, the heading and the lines
+    // under it, a button per row with the gap between each, and the
+    // caption under a lone card. The cards get the rest.
+    //
+    // **A guess, and no longer load-bearing.** It decides only how big
+    // the cards are *drawn*; what keeps every button on the window is
+    // the cap on the panel below and the card row being the only thing
+    // that gives. It used to count one line per line of text, so a
+    // heading or a button label that wrapped was a row of the panel
+    // nobody had budgeted, and the buttons under it went off the bottom
+    // — the same fault the actions menu had, in the one place a pop-up
+    // can have it. The width assumed is the narrowest the panel can be,
+    // so a panel that comes out wider has fewer lines than this, never
+    // more.
+    let inner = POPUP_MIN_WIDTH - 2.0 * POPUP_PADDING;
+    let lines = |text: &str, size: f32| layout::wrapped_lines(text, inner, size) as f32;
+    let label_rows: f32 = buttons.iter().filter_map(|index| game.actions.entries.get(*index)).map(|entry| lines(&entry.label, size::BODY) * 22.0 + 14.0 + layout::ROW_GAP).sum();
     let chrome = 2.0 * 16.0
-        + 30.0
+        + lines(&title, size::HEADING) * 30.0
         + 8.0
-        + lines(&detail)
+        + if detail.is_empty() { 0.0 } else { lines(&detail, size::SMALL) * 22.0 + 8.0 }
         + game.rejection.as_ref().map_or(0.0, |_| 30.0)
-        + buttons.len() as f32 * (44.0 + 8.0)
+        + label_rows
         + if choices.is_empty() { layout::CHOICE_CAPTION } else { 0.0 };
-    let available = (window.x - 2.0 * layout::PADDING - 2.0 * 17.0, window.y - 2.0 * layout::PADDING - chrome);
+    let available = (window.x - 2.0 * layout::PADDING - 2.0 * POPUP_PADDING, window.y - 2.0 * layout::PADDING - chrome);
     let count = if choices.is_empty() { usize::from(single.is_some()) } else { choices.len() };
     let (face, per_row) = layout::choice_faces(available, count);
     let size = if face >= FaceSize::Large.width() { FaceSize::Large } else { FaceSize::Board(face as u16) };
-    let width = if choices.is_empty() { 520.0_f32.max(size.width() + 2.0 * 17.0) } else {
+    let width = if choices.is_empty() { POPUP_MIN_WIDTH.max(size.width() + 2.0 * POPUP_PADDING) } else {
         let row = per_row as f32 * size.width() + (per_row as f32 - 1.0) * layout::CHOICE_GAP;
-        520.0_f32.max(row + 2.0 * 17.0)
+        POPUP_MIN_WIDTH.max(row + 2.0 * POPUP_PADDING)
     };
     parent
         .spawn((
@@ -2520,29 +2636,45 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
             // `dress` lands a frame later.
             panel.insert(widgets::Dressed::still(Slot::PanelDecision, Drawn::new(theme.panel, accent)));
             panel.entry::<BorderColor>().and_modify(move |mut border| *border = BorderColor::all(accent));
+            // **Capped at the window, and the cards are what give.** The
+            // panel is centred, so a cap is all it takes for it to be on
+            // the window; the shrinking is then shared out by the rule
+            // `choice_faces` already states in words — every text node
+            // and every button is rigid (`widgets::button` already sets
+            // `flex_shrink: 0.0`), and the card row alone may lose
+            // height. A card that is drawn short is still a card, and a
+            // secondary click reads it full size; a button off the
+            // bottom is an action the person cannot take.
+            panel.entry::<Node>().and_modify(move |mut node| node.max_height = px(window.y - 2.0 * layout::PADDING));
             panel.with_children(|panel| {
+                // `min_height: px(0)` with the clip is what lets it: a
+                // flex item's automatic minimum is its content, so
+                // without both the row would refuse to give and push the
+                // buttons out again. A clip is not a scroll container —
+                // nothing on the board is one.
+                let gives = Node { width: percent(100), flex_shrink: 1.0, min_height: px(0), overflow: Overflow::clip(), ..default() };
+                let rigid = Node { flex_shrink: 0.0, ..default() };
                 if let Some(card) = &single {
-                    panel.spawn(Node { width: percent(100), justify_content: JustifyContent::Center, ..default() }).with_children(|row| {
+                    panel.spawn(Node { justify_content: JustifyContent::Center, ..gives.clone() }).with_children(|row| {
                         spawn_choice_card(row, theme, core, images, Some(card), game.side.other(), size, ());
                     });
                 }
-                panel.spawn((widgets::heading(theme, title), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                panel.spawn((widgets::heading(theme, title), TextLayout::new(Justify::Left, LineBreak::WordBoundary), rigid.clone()));
                 if !detail.is_empty() {
-                    panel.spawn((widgets::dim(theme, detail), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    panel.spawn((widgets::dim(theme, detail), TextLayout::new(Justify::Left, LineBreak::WordBoundary), rigid.clone()));
                 }
                 if let Some(rejection) = &game.rejection {
-                    panel.spawn((widgets::notice(theme, format!("Rejected: {rejection}"), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
+                    panel.spawn((widgets::notice(theme, format!("Rejected: {rejection}"), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary), rigid.clone()));
                 }
                 if let Some(selection) = selection.filter(|_| !choices.is_empty()) {
                     panel
                         .spawn(Node {
-                            width: percent(100),
                             flex_direction: FlexDirection::Row,
                             flex_wrap: FlexWrap::Wrap,
                             justify_content: JustifyContent::Center,
                             column_gap: px(layout::CHOICE_GAP),
                             row_gap: px(layout::CHOICE_GAP),
-                            ..default()
+                            ..gives.clone()
                         })
                         .with_children(|row| {
                             for (position, index) in &choices {
@@ -2562,16 +2694,10 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                                         cell.spawn(widgets::dim(theme, format!("{copies} copies")));
                                     }
                                     // A button the card's width in pixels,
-                                    // not the cell's 100%: inside a wrapping
-                                    // row a percentage has nothing to resolve
-                                    // against while the row is measured, so
-                                    // the label was measured a word to a line
-                                    // and every row kept that height — two
-                                    // rows of cards ran off the window.
-                                    if let Some(button) = entry_button(cell, theme, game, *index) {
-                                        let width = size.width();
-                                        cell.commands().entity(button).entry::<Node>().and_modify(move |mut node| node.width = px(width));
-                                    }
+                                    // not the cell's 100% — the reason is on
+                                    // `entry_button`'s `width`, which this
+                                    // case is why it takes.
+                                    entry_button(cell, theme, game, *index, px(size.width()));
                                 });
                             }
                         });
@@ -2580,7 +2706,7 @@ fn spawn_decision_popup(parent: &mut ChildSpawnerCommands, theme: &Theme, core: 
                     // The pop-up's own buttons glow like the cards do, and
                     // for the same reason: a decision parked on the person
                     // is the clearest case of a moment that will pass.
-                    if let Some(entity) = entry_button(panel, theme, game, *index) {
+                    if let Some(entity) = entry_button(panel, theme, game, *index, percent(100)) {
                         glow(&mut panel.commands(), entity, theme, game.actions.affordance_of_entry(*index));
                     }
                 }
@@ -3321,7 +3447,7 @@ fn score_area_sheet(panel: &mut ChildSpawnerCommands, theme: &Theme, core: &Clie
                         if !entries.is_empty() {
                             column.spawn(widgets::label(theme, "Actions"));
                             for index in entries {
-                                entry_button(column, theme, game, index);
+                                entry_button(column, theme, game, index, percent(100));
                             }
                         }
                     });

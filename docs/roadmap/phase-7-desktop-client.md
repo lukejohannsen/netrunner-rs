@@ -3165,6 +3165,121 @@ render test and the desktop model test both cover it, so what is
 unverified is the dim colour, not the mark. No engine file changed, so
 no sweep.
 
+### 4ad. A menu and a pop-up never put an option off the window — DONE (20 September 2026)
+
+`fix/menu-stays-on-the-window`. The person opened a card's menu and its
+options ran off the screen: *"The left click action menu can go off
+screen. The options should all always be visible."*
+
+**Two faults, both of the same kind: a size guessed before the layout
+ran.**
+
+- `spawn_actions_menu` computed its `top` from an estimate of its own
+  height — the panel's padding, a 22px heading, and **a 40px row per
+  entry**. A row is about 36px on one line and 57 when its label wraps,
+  and the labels do wrap: the text column inside the 280px panel is
+  ~232px, so "Install Palisade into Archives (Ice)" is two lines. Four
+  such rows are 308px against the 238 budgeted, and the panel's own
+  border was never counted at all. Placed above a card the difference
+  went out through the bottom of the panel; placed *below* one it went
+  off the window, because the screen root is `Overflow::clip()` and ate
+  it.
+- The fallback branch — `below.min(window.y - height - PADDING)` — had
+  no `.max(PADDING)`, so a menu taller than the window was given a
+  negative `top` and lost its *first* options instead of its last.
+- The decision pop-up is centred and so cannot be mispositioned, but it
+  guessed its "chrome" the same way to decide how big the candidate
+  cards may be, counting one line per line of text. A wrapped button
+  label was a row nobody had budgeted, and the buttons under it went off
+  the bottom.
+
+**Decisions taken, with the alternative rejected.**
+
+- **The panel is pinned by the edge that faces the card and grows away
+  from it** (`models::layout::menu_box`). Above a card its *bottom* is
+  fixed a gap above the card's top edge and it grows upward; below one
+  its top is fixed and it grows down. **So its height is never needed**,
+  and `max_height` — the room that side has — is what it may grow into.
+  The estimate survives, demoted: it picks which side is *tried first*,
+  which is what keeps §4a's "just above the card". An estimate that is
+  wrong now costs a column, never an option.
+- **Measuring the panel after the layout ran was the obvious fix and was
+  rejected.** `ComputedNode` is written in `PostUpdate`, so a measured
+  placement is a frame late by construction: it needs `Visibility::Hidden`
+  and a reveal, which is a flicker on the most-used click on the board.
+  It is also untestable here — `tests/game.rs` runs `MinimalPlugins` with
+  no `UiPlugin`, so nothing is ever measured — and it would not even
+  remove the guess, because the wrap below needs a `max_height` *before*
+  the layout regardless.
+- **The entries wrap into a second column when that room runs out**, so
+  every option stays on the window. **A scrolling list was asked about
+  and turned down**, in both shapes: an anchored menu that scrolls when
+  tall, and a centred pop-up holding a scrolling list. A scroll bar makes
+  an option *reachable*, not visible, and hides options in exactly the
+  case being complained about; the centred variant also gives up §4a's
+  anchor, which was settled after a pointer-anchored first cut was
+  rejected for jumping around. No wheel fallback either, so no scroll
+  container appears on the board and the dev log's `scroll area` check
+  keeps its meaning.
+- **The panel is itself the wrapping container.** An inner entries
+  container cannot be: *its* auto width is measured under a max-content
+  constraint, where taffy never wraps — which is the failure the pop-up's
+  cards already recorded. The panel is `position: Absolute` and so is
+  measured under a *definite* available space
+  (`taffy/src/compute/flexbox.rs:2225`), where it does wrap, and its auto
+  width comes out as the wrapped width. Hence `px` widths on every child,
+  and `entry_button` taking its width from the caller. With two columns
+  the heading sits atop the first rather than spanning both.
+- **The pop-up is capped at the window and its cards give first.** The
+  panel takes `max_height: window - 2·PADDING`; every text node and every
+  button is rigid (`widgets::button` already sets `flex_shrink: 0.0`) and
+  the card row alone may lose height, with `min_height: px(0)` and a clip
+  to defeat flexbox's content-based minimum. This makes structural what
+  `choice_faces` already said in words. Its chrome estimate also stopped
+  under-counting — `layout::wrapped_lines`, deliberately over-counting at
+  a wide glyph's advance, now measures the title, the detail *and* each
+  button's label — but the cap is the guarantee and the estimate is only
+  a first guess. Re-choosing the face size from a measurement was
+  rejected: it needs a respawn keyed to the prompt, a visible resize a
+  frame after every pop-up opens, and a fixed-point argument, all to buy
+  card pixels.
+- **A resize now rebuilds the rail's floating panels**, because the
+  pop-up is sized from the window; the menu keeps its own entity and is
+  re-anchored in place by `place_menu`, since a respawn would take the
+  hover and the pressed state of the button under the pointer with it.
+  `place_menu` skips a target whose `ComputedNode` is empty — not yet
+  laid out, which headless is every frame — so a zero-size box never
+  drags the menu into a corner.
+
+**Verified.** `cargo test --workspace` green (1,633 tests), clippy silent
+across the workspace. Nine new tests: seven in `models::layout` — a hand
+card's menu opens upward from the card, one at the top edge flips below,
+a tall one is capped rather than pushed off, one near an edge anchors by
+that edge, a target taller than the window gets the menu over it, and a
+property test over a 16×16 grid of anchors at three window sizes
+asserting the box is always inside the window (the old math fails it on
+day one) — plus `wrapped_lines` never under-counting; and two in
+`tests/game.rs`, one driving a menu through a moved card box and a
+window resize, one checking the pop-up's cap, its one shrinkable row and
+its rigid buttons.
+
+Screenshotted, with the two new dev hooks that made it visible at all
+(`NETRUNNER_MENU=most|top` and `NETRUNNER_WINDOW=WxH`; the old hook took
+the first hand card with an action, which on the sample decks is a menu
+of *one* entry on the window's bottom edge — the one case that never
+overflowed): Palisade's four two-line install options above a hand card
+at 1100×520, all four on the window; the same menu at 1100×300 **wrapped
+into two columns**, still all four; the Runner's own menu unchanged; a
+zone's menu; and a six-card selection pop-up at 2560×1600 with every
+button present. Both chairs at forty decisions, and the only `scroll
+area` logged in any run is the hidden log's at zero size. No engine file
+changed, so no sweep.
+
+**This closes the fragility recorded under §4n** (a skin may not touch
+`Node` because `spawn_actions_menu` places itself from the hard-coded
+height of a button): no drawn size feeds the placement any more. The
+rule still stands, for its own reasons.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the

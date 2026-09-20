@@ -177,17 +177,11 @@ pub struct Sheet {
     pub target: Target,
 }
 
-/// The box on the window a menu sits above — the clicked node's,
-/// in logical pixels: `x, y` its centre, `width, height` its size. A
-/// menu at the pointer landed somewhere different on every click; the
-/// card's own box is one place.
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
-pub struct Anchor {
-    pub x: f32,
-    pub y: f32,
-    pub width: f32,
-    pub height: f32,
-}
+/// The box on the window a menu sits against. It lives with the fitting
+/// math now (`models::layout`), beside the [`crate::models::layout::menu_box`]
+/// that is its only reader, and is re-exported here because a menu is
+/// what one is *for*.
+pub use crate::models::layout::Anchor;
 
 /// A click's menu: the target, the entries a press could mean
 /// (`entries_for`), and the box it sits above.

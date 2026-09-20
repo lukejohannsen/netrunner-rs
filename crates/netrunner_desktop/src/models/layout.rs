@@ -493,6 +493,172 @@ impl Depth {
     }
 }
 
+/// The box on the window a menu sits against — the clicked node's, in
+/// logical pixels: `x, y` its centre, `width, height` its size. A menu at
+/// the pointer landed somewhere different on every click; the card's own
+/// box is one place.
+///
+/// It lives here, with the fitting math, rather than beside the view
+/// model: [`menu_box`] is the only thing that reads it, and this module
+/// depends on nothing of the game so its geometry can be tested with no
+/// view at all.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Anchor {
+    pub x: f32,
+    pub y: f32,
+    pub width: f32,
+    pub height: f32,
+}
+
+impl Anchor {
+    /// The box's own edges, which is what a menu is placed against.
+    fn top(self) -> f32 {
+        self.y - self.height / 2.0
+    }
+
+    fn bottom(self) -> f32 {
+        self.y + self.height / 2.0
+    }
+}
+
+/// One column of a click's menu, and the gap between the panel and the
+/// box it opens against.
+pub const MENU_WIDTH: f32 = 280.0;
+pub const MENU_GAP: f32 = 6.0;
+/// The menu panel's own padding — smaller than [`crate::widgets::panel`]'s,
+/// because a menu is a list of buttons and not a page.
+pub const MENU_PADDING: f32 = 12.0;
+/// The width every row in the menu takes, in pixels: the column less the
+/// panel's padding and its one-pixel border. **Pixels and not a
+/// percentage**, because inside a wrapping container a percentage has
+/// nothing to resolve against while the container is being measured —
+/// the decision pop-up's card rows learned that the expensive way.
+pub const MENU_ENTRY: f32 = MENU_WIDTH - 2.0 * MENU_PADDING - 2.0;
+/// The least room a side needs before a menu is opened into it: the
+/// heading and about two rows. Below this the other side is tried, and
+/// then the target itself is covered.
+pub const MENU_MIN_ROOM: f32 = 120.0;
+
+/// Where a menu opened against `over` sits: an inset from one horizontal
+/// edge of the window and one vertical edge, and the box it may grow
+/// into.
+///
+/// Exactly one of `left`/`right` and one of `top`/`bottom` is `Some`, and
+/// the other is left `Val::Auto` — **that is the whole design**. The
+/// panel is pinned by the edge that faces the card and grows *away* from
+/// it, so its height is never needed. What this replaced computed a
+/// `top` from an estimate of that height (a heading, and a 40px row per
+/// entry); a menu whose labels wrapped was half as tall again, and the
+/// difference went off the bottom of the window, where the screen root's
+/// `Overflow::clip` ate it. The fallback branch also clamped on one side
+/// only, so a menu taller than the window was given a negative `top`.
+///
+/// [`MenuBox::max_height`] is the room on the side chosen, which is what
+/// makes the entries wrap into a second column instead of overflowing,
+/// and `max_width` is the room from the anchored edge to the far one, so
+/// those columns grow into the window and never past it.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MenuBox {
+    pub left: Option<f32>,
+    pub right: Option<f32>,
+    pub top: Option<f32>,
+    pub bottom: Option<f32>,
+    pub max_width: f32,
+    pub max_height: f32,
+}
+
+impl MenuBox {
+    /// The rectangle the panel may occupy — `(left, top, right, bottom)`
+    /// in window pixels — which is what a test asserts against and what
+    /// a reader of the numbers wants. The panel may of course be smaller
+    /// than this; it can never be larger.
+    pub fn bounds(&self, window: (f32, f32)) -> (f32, f32, f32, f32) {
+        let left = self.left.unwrap_or_else(|| window.0 - self.right.unwrap_or(0.0) - self.max_width);
+        let top = self.top.unwrap_or_else(|| window.1 - self.bottom.unwrap_or(0.0) - self.max_height);
+        (left, top, left + self.max_width, top + self.max_height)
+    }
+}
+
+/// Where a menu of `rows` rows opened against `over` goes.
+///
+/// **`rows` picks the side, and nothing else.** Above is preferred, as it
+/// always has been — the common target is a card in the person's own
+/// hand, along the bottom edge, and its menu belongs over it with the
+/// card still in view beneath — so an estimate of the height decides
+/// only *which* side is tried first. An estimate that is wrong now costs
+/// a column, never an option: the anchored edge and [`MenuBox::max_height`]
+/// are what keep the panel on the window, and neither is a guess.
+///
+/// The order is: above if the estimate fits there, else below if it fits
+/// there, else whichever side has more room — and if neither side has
+/// [`MENU_MIN_ROOM`] (a target as tall as the window: a server column,
+/// the run lane) the menu covers the target rather than leaving the
+/// window, because a menu over the card is readable and a menu off the
+/// screen is not.
+pub fn menu_box(window: (f32, f32), over: Anchor, rows: usize) -> MenuBox {
+    let (width, height) = (window.0.max(1.0), window.1.max(1.0));
+    let inset = PADDING.min(width / 4.0).min(height / 4.0);
+    // The same terms the placement used to be computed from, kept only to
+    // choose a side: the panel's padding, the heading, the row gap, and a
+    // single-line row per entry with the gaps between them.
+    let rows = rows.max(1) as f32;
+    let wanted = 2.0 * MENU_PADDING + LABEL + ROW_GAP + rows * 40.0 + (rows - 1.0) * ROW_GAP;
+    let above = (over.top() - MENU_GAP - inset).max(0.0);
+    let below = (height - over.bottom() - MENU_GAP - inset).max(0.0);
+
+    let (top, bottom, max_height) = if wanted <= above || (above >= below && above >= MENU_MIN_ROOM) {
+        // Pinned a gap above the card's top edge, growing upward.
+        (None, Some((height - over.top() + MENU_GAP).max(inset)), above)
+    } else if wanted <= below || below >= MENU_MIN_ROOM {
+        // Pinned a gap below the card's bottom edge, growing downward.
+        (Some((over.bottom() + MENU_GAP).max(inset)), None, below)
+    } else {
+        // Neither side has room: over the target, on the window.
+        (Some(inset), None, height - 2.0 * inset)
+    };
+
+    // Sideways the menu is centred on the target as it always was, but
+    // anchored by the edge that target is nearer, so extra columns grow
+    // into the free half of the window instead of off the near edge.
+    let (left, right, max_width) = if over.x <= width / 2.0 {
+        let left = (over.x - MENU_WIDTH / 2.0).clamp(inset, (width - MENU_WIDTH - inset).max(inset));
+        (Some(left), None, (width - left - inset).max(MENU_WIDTH))
+    } else {
+        let right = (width - over.x - MENU_WIDTH / 2.0).clamp(inset, (width - MENU_WIDTH - inset).max(inset));
+        (None, Some(right), (width - right - inset).max(MENU_WIDTH))
+    };
+
+    // `min` before `max`, never `clamp`: on a window too small to hold
+    // even one row the bounds cross, and `clamp` panics when they do.
+    MenuBox { left, right, top, bottom, max_width, max_height: max_height.min(height - 2.0 * inset).max(1.0) }
+}
+
+/// The advance one character is counted at, as a fraction of the font
+/// size, when guessing how many lines a string will take.
+///
+/// **Deliberately wide** — Noto Sans runs about 0.5 em for lowercase and
+/// 0.68 for capitals, and this sits at the top of that range — because
+/// the two errors are not equal: a line counted short is a button pushed
+/// off the window, and a line counted long is a card drawn a few pixels
+/// narrower.
+pub const WIDE_ADVANCE: f32 = 0.62;
+
+/// How many lines `text` takes when it wraps in `width` at `size`.
+///
+/// An estimate and not a measurement: the layout has not run when the
+/// decision pop-up is built, and word-boundary wrapping can leave most
+/// of a line empty before a long word. So this is the pop-up's first
+/// guess at its own chrome, never its guarantee — the panel is capped at
+/// the window and its cards give first, which is what actually keeps
+/// every button on screen.
+pub fn wrapped_lines(text: &str, width: f32, size: f32) -> usize {
+    if text.is_empty() {
+        return 0;
+    }
+    let per_line = (width / (size * WIDE_ADVANCE)).floor().max(1.0);
+    text.lines().map(|line| (line.chars().count() as f32 / per_line).ceil().max(1.0) as usize).sum()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -646,5 +812,137 @@ mod tests {
         let s = step(10, 100.0, 6.0, 500.0);
         assert!(s < 106.0 && 9.0 * s + 100.0 <= 500.0 + 1e-3, "{s}");
         assert_eq!(step(50, 100.0, 6.0, 300.0), 20.0, "every card keeps an edge");
+    }
+
+    /// The window the headless tests run in, and the one a menu is
+    /// placed in below unless the test says otherwise.
+    const WINDOW: (f32, f32) = (1280.0, 800.0);
+
+    /// A card in the person's own hand: the menu is pinned a gap above
+    /// the card's top edge and grows upward from there, which is where
+    /// §4a put it and where it stays.
+    #[test]
+    fn a_menu_over_a_hand_card_opens_upward_from_the_card() {
+        let card = Anchor { x: 600.0, y: 700.0, width: 120.0, height: 168.0 };
+        let menu = menu_box(WINDOW, card, 3);
+        assert!(menu.top.is_none(), "it is not placed by its top edge");
+        let bottom = menu.bottom.expect("it is pinned by its bottom edge");
+        assert_eq!(WINDOW.1 - bottom, card.top() - MENU_GAP, "its bottom edge is a gap above the card");
+        assert_eq!(menu.max_height, card.top() - MENU_GAP - PADDING, "it may grow to the top of the window");
+        let (left, top, right, down) = menu.bounds(WINDOW);
+        assert!(left >= PADDING && top >= PADDING && right <= WINDOW.0 - PADDING && down <= WINDOW.1 - PADDING);
+    }
+
+    /// The opponent's hand hangs from the window's top edge, so its
+    /// cards have no room above them: the menu flips below and is still
+    /// on the window.
+    #[test]
+    fn a_menu_over_the_top_edge_flips_below_and_stays_on_the_window() {
+        let card = Anchor { x: 600.0, y: 40.0, width: 120.0, height: 80.0 };
+        let menu = menu_box(WINDOW, card, 4);
+        assert!(menu.bottom.is_none(), "it is not placed by its bottom edge");
+        assert_eq!(menu.top, Some(card.bottom() + MENU_GAP), "it hangs a gap under the card");
+        let (_, top, _, down) = menu.bounds(WINDOW);
+        assert!(top >= PADDING && down <= WINDOW.1 - PADDING, "top {top}, bottom {down}");
+    }
+
+    /// The bug this answers, in the shape it took: a menu of twelve
+    /// entries under a card near the top of the window. The placement it
+    /// replaced computed a `top` from the rows and subtracted it from
+    /// the window with no floor, so `top` went negative and the screen
+    /// root's clip ate the first options; the room a side has is now a
+    /// cap, and the entries wrap into it.
+    #[test]
+    fn a_tall_menu_below_a_card_is_capped_rather_than_pushed_off() {
+        let card = Anchor { x: 400.0, y: 120.0, width: 120.0, height: 168.0 };
+        let menu = menu_box(WINDOW, card, 12);
+        let (_, top, _, down) = menu.bounds(WINDOW);
+        assert!(top >= PADDING, "the old math put this at {top}");
+        assert!(down <= WINDOW.1 - PADDING);
+        assert!(menu.max_height <= WINDOW.1 - 2.0 * PADDING);
+    }
+
+    /// A card at the right-hand edge: the panel is anchored by the edge
+    /// it is near and grows inward, so a second column opens into the
+    /// window rather than off it.
+    #[test]
+    fn a_menu_near_an_edge_is_anchored_by_that_edge_and_grows_inward() {
+        let card = Anchor { x: WINDOW.0 - 40.0, y: 400.0, width: 120.0, height: 168.0 };
+        let menu = menu_box(WINDOW, card, 6);
+        assert!(menu.left.is_none(), "it is placed by the edge it is nearest");
+        let right = menu.right.expect("pinned to the right");
+        assert!(right >= PADDING, "{right}");
+        assert!(menu.max_width >= MENU_WIDTH, "there is room for at least the one column");
+        let (left, _, r, _) = menu.bounds(WINDOW);
+        assert!(left >= PADDING && r <= WINDOW.0 - PADDING);
+
+        let near = Anchor { x: 20.0, y: 400.0, width: 120.0, height: 168.0 };
+        let menu = menu_box(WINDOW, near, 6);
+        assert_eq!(menu.right, None, "and by the left edge on the other side");
+        assert!(menu.left.is_some_and(|left| left >= PADDING));
+    }
+
+    /// A target as tall as the window — a server column, the run lane —
+    /// has room on neither side. The menu covers it rather than leaving
+    /// the window: a menu over the card is readable, one off the screen
+    /// is not.
+    #[test]
+    fn a_target_taller_than_the_window_gets_the_menu_over_it() {
+        let column = Anchor { x: 300.0, y: 400.0, width: 160.0, height: 780.0 };
+        let menu = menu_box(WINDOW, column, 5);
+        assert_eq!(menu.top, Some(PADDING));
+        assert_eq!(menu.max_height, WINDOW.1 - 2.0 * PADDING);
+    }
+
+    /// The property the old placement failed on its first day: whatever
+    /// the window and whatever box the menu was opened against, the box
+    /// it may occupy is inside that window, and no number it returns is
+    /// negative or NaN.
+    #[test]
+    fn no_anchor_and_no_window_puts_a_menu_off_the_screen() {
+        for window in [(1280.0, 800.0), (1920.0, 1080.0), (900.0, 520.0)] {
+            for column in 0..16 {
+                for row in 0..16 {
+                    let over = Anchor {
+                        x: window.0 * column as f32 / 15.0,
+                        y: window.1 * row as f32 / 15.0,
+                        // Every size from a zero-height header to a box
+                        // that spans the window.
+                        width: 160.0 * column as f32 / 15.0,
+                        height: window.1 * row as f32 / 15.0,
+                    };
+                    for rows in [1usize, 3, 12, 40] {
+                        let menu = menu_box(window, over, rows);
+                        let (left, top, right, bottom) = menu.bounds(window);
+                        let at = format!("{window:?} over {over:?} with {rows} rows");
+                        assert!(menu.left.is_some() != menu.right.is_some(), "one horizontal edge, at {at}");
+                        assert!(menu.top.is_some() != menu.bottom.is_some(), "one vertical edge, at {at}");
+                        for number in [left, top, right, bottom, menu.max_width, menu.max_height] {
+                            assert!(number.is_finite(), "{number} at {at}");
+                        }
+                        assert!(left >= 0.0 && top >= 0.0, "({left}, {top}) at {at}");
+                        assert!(right <= window.0 + 1e-3, "right {right} at {at}");
+                        assert!(bottom <= window.1 + 1e-3, "bottom {bottom} at {at}");
+                    }
+                }
+            }
+        }
+    }
+
+    /// The pop-up's guess at its own words. It may over-count — that
+    /// costs a card a few pixels — but never under-count, which would
+    /// cost a button its place on the window.
+    #[test]
+    fn wrapped_lines_never_under_counts_a_line() {
+        assert_eq!(wrapped_lines("", 400.0, 18.0), 0, "nothing takes no room");
+        assert_eq!(wrapped_lines("Steal", 400.0, 18.0), 1);
+        assert_eq!(wrapped_lines("one\ntwo\nthree", 400.0, 18.0), 3, "a line each");
+        let long = "Install protecting Server 1 and pay the advancement cost";
+        let narrow = wrapped_lines(long, 120.0, 18.0);
+        assert!(narrow > 1, "it wraps at 120px");
+        assert!(narrow >= wrapped_lines(long, 400.0, 18.0), "wider is never more lines");
+        // The count is at least what a generous 0.5 em advance would give.
+        let widest = (long.chars().count() as f32 * 18.0 * 0.5 / 120.0).floor() as usize;
+        assert!(narrow >= widest, "{narrow} lines for {widest} lines of glyphs");
     }
 }
