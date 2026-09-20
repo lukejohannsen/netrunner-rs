@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::dsl::{CardFilter, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, Trigger};
 use crate::rules::event::GameEvent;
+use crate::rules::lingering::LingeringEffect;
 use crate::rules::run::{RunState, ServerId};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -441,26 +442,10 @@ pub struct InstalledRunnerCard {
     /// Printed strength, seeded once at install time from
     /// `registry.get(card).strength.unwrap_or(0)` — mirrors
     /// `RunIce::current_strength`'s seeding at `build_run_ice` exactly. `0`
-    /// for Hardware and non-strength Programs.
+    /// for Hardware and non-strength Programs. What has been paid for on top
+    /// of it is in `GameState::lingering`, and what the table adds is
+    /// `continuous::breaker_strength` — this is the printed number alone.
     pub base_strength: i32,
-    /// Sum of active `Effect::BoostStrength { duration: Encounter, .. }`
-    /// amounts. Reset to `0` whenever the current ICE encounter ends (see
-    /// `reset_encounter_strength_buffs`).
-    pub encounter_strength_buff: i32,
-    /// Sum of active `Effect::BoostStrength { duration: Run, .. }` amounts —
-    /// Gordian Blade's "+1 strength for the remainder of this run". Reset
-    /// to `0` when the run ends (`run::engine::end_run`), and only there:
-    /// unlike an encounter buff it survives from one encounter to the next
-    /// within a single run.
-    #[serde(default)]
-    pub run_strength_buff: i32,
-    /// Sum of active `Effect::BoostStrength { duration: Turn, .. }` amounts.
-    /// Reset to `0` at the end of the Runner's turn (see
-    /// `reset_turn_strength_buffs`). Tracked separately from
-    /// `encounter_strength_buff` rather than as one combined mutable total
-    /// (unlike `RunIce::current_strength`) because an `Encounter` buff and a
-    /// `Turn` buff can be live simultaneously and must expire independently.
-    pub turn_strength_buff: i32,
     /// Generic counters (virus/power/credit — see `dsl::card::CounterKind`)
     /// placed by `Effect::AddCounters`/removed by `Effect::RemoveCounters`.
     /// Exposed through `masking::PublicInstalledRunnerCard::counters`
@@ -510,13 +495,6 @@ pub struct InstalledRunnerCard {
     pub hosted_cards_playable: bool,
 }
 
-impl InstalledRunnerCard {
-    /// Base strength plus every currently-active buff.
-    pub fn effective_strength(&self) -> i32 {
-        self.base_strength + self.encounter_strength_buff + self.run_strength_buff + self.turn_strength_buff
-    }
-}
-
 /// Every field at its neutral value, for test fixtures — see
 /// `InstalledCard`'s `Default` for the full rationale. `card` is the only
 /// field with no meaningful neutral value; every caller that cares must
@@ -527,9 +505,6 @@ impl Default for InstalledRunnerCard {
             card: CardId(String::new()),
             install_id: InstallId::PLACEHOLDER,
             base_strength: 0,
-            encounter_strength_buff: 0,
-            run_strength_buff: 0,
-            turn_strength_buff: 0,
             counters: 0,
             hosted_on_ice: None,
             hosted_on_program: None,
@@ -662,33 +637,6 @@ impl RunnerState {
             hand.extend(card.hosted_cards.iter().cloned());
         }
         hand
-    }
-
-    /// Clears every rig card's `Encounter`-duration strength buff. Called
-    /// when the current ICE encounter ends (see
-    /// `run::engine::continue_run`).
-    pub fn reset_encounter_strength_buffs(&mut self) {
-        for card in &mut self.rig {
-            card.encounter_strength_buff = 0;
-        }
-    }
-
-    /// Clears every rig card's `Run`-duration strength buff. Called only
-    /// from `run::engine::end_run` — the one choke point every run
-    /// conclusion goes through — so a Gordian Blade pump holds across every
-    /// encounter of one run and no further.
-    pub fn reset_run_strength_buffs(&mut self) {
-        for card in &mut self.rig {
-            card.run_strength_buff = 0;
-        }
-    }
-
-    /// Clears every rig card's `Turn`-duration strength buff. Called at the
-    /// end of the Runner's turn (see `turn::end_turn`).
-    pub fn reset_turn_strength_buffs(&mut self) {
-        for card in &mut self.rig {
-            card.turn_strength_buff = 0;
-        }
     }
 
     /// Whether the Runner currently has at least one tag.
@@ -1317,6 +1265,12 @@ pub struct GameState {
     ///   already cleared when `OnRunEnded` dispatches.
     #[serde(default)]
     pub last_completed_run: Option<CompletedRun>,
+    /// Effects with a duration that are still running — a paid-for pump,
+    /// Leech's -1 — each resolved to a flat number when it was created. See
+    /// `rules::lingering` for why these are stored when a card's standing
+    /// effects are not, and why nothing depends on when the list is swept.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lingering: Vec<LingeringEffect>,
     /// Actions the active side has *finished* this turn — every basic
     /// click action and run, not scoring (which is not an action) and not
     /// a click spent as a paid-ability cost. Reset when a turn begins.
@@ -1418,6 +1372,7 @@ impl Default for GameState {
             pending_paid_choice: None,
             pending_decision: None,
             last_completed_run: None,
+            lingering: Vec::new(),
             actions_taken_this_turn: 0,
             deferred_triggers: Vec::new(),
             seed: 0,
@@ -1543,61 +1498,6 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::test_support::fixture_install_id;
-
-    fn card(id: &str, base: i32, encounter_buff: i32, turn_buff: i32) -> InstalledRunnerCard {
-        InstalledRunnerCard {
-            install_id: fixture_install_id(id),
-            card: CardId(id.to_string()),
-            base_strength: base,
-            encounter_strength_buff: encounter_buff,
-            turn_strength_buff: turn_buff,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn effective_strength_sums_base_and_both_buffs() {
-        assert_eq!(card("corroder", 2, 1, 3).effective_strength(), 6);
-    }
-
-    #[test]
-    fn reset_encounter_strength_buffs_zeroes_only_encounter_buff() {
-        let mut runner = RunnerState {
-            resources: PlayerResources {
-                credits: Credits(0),
-                clicks: Clicks(0),
-                agenda_points: AgendaPoints(0),
-            },
-            memory_units: MemoryUnits(0),
-            rig: vec![card("corroder", 2, 1, 3)],
-            ..Default::default()
-        };
-
-        runner.reset_encounter_strength_buffs();
-
-        assert_eq!(runner.rig[0].encounter_strength_buff, 0);
-        assert_eq!(runner.rig[0].turn_strength_buff, 3);
-    }
-
-    #[test]
-    fn reset_turn_strength_buffs_zeroes_only_turn_buff() {
-        let mut runner = RunnerState {
-            resources: PlayerResources {
-                credits: Credits(0),
-                clicks: Clicks(0),
-                agenda_points: AgendaPoints(0),
-            },
-            memory_units: MemoryUnits(0),
-            rig: vec![card("corroder", 2, 1, 3)],
-            ..Default::default()
-        };
-
-        runner.reset_turn_strength_buffs();
-
-        assert_eq!(runner.rig[0].turn_strength_buff, 0);
-        assert_eq!(runner.rig[0].encounter_strength_buff, 1);
-    }
 
     /// A history recorded before `MatchRules` existed still deserializes,
     /// to Standard's 7 — the replay guarantee the field must not break.

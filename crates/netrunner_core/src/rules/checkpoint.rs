@@ -29,14 +29,18 @@
 //! - *The console limit* is a restriction on installing, and rejects.
 //! - *Empty remotes* need no clearing: a server is derived from what is
 //!   installed in it (`legal_actions::existing_remote_ids`).
-//! - *Expired durations* are the three `*_strength_buff` fields, which the
-//!   continuous-effect layer (Rules Audit backlog item 2) replaces.
+//!
+//! **Expired durations are here too** ([`expire_durations`]), and they are
+//! the one check that is not a rule: whether a lingering effect still holds
+//! is asked of the state at every read (`rules::lingering`), so sweeping
+//! the list is garbage collection and nothing depends on it running.
 
 use crate::cards::CardRegistry;
 use crate::dsl::CardId;
 use crate::rules::ability;
 use crate::rules::active;
 use crate::rules::event::GameEvent;
+use crate::rules::lingering;
 use crate::rules::state::{ArchivedCard, GameState, InstallId, Side};
 use crate::rules::win;
 
@@ -46,11 +50,19 @@ use crate::rules::win;
 ///
 /// The win first: once a side has won, nothing else is the game's to do.
 pub(crate) fn state_based(state: &mut GameState, registry: &CardRegistry, event: Option<&GameEvent>) -> Vec<GameEvent> {
+    expire_durations(state);
     let mut events = win::check_win_conditions(state, registry);
     if !state.is_over() {
         events.extend(enforce_unique(state, registry, event));
     }
     events
+}
+
+/// Drops the lingering effects whose duration has run out. Five call sites
+/// used to zero three fields by hand, and the one that forgot let a pump
+/// carry into the next run (Rules Audit T8).
+pub(crate) fn expire_durations(state: &mut GameState) {
+    lingering::sweep(state);
 }
 
 /// The ◆ rule: of a side's *active* copies of a unique card, the one that

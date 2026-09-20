@@ -693,9 +693,6 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
             // Carried, never reallocated — see `determinize_installed`.
             install_id: card.install_id,
             base_strength: card.current_strength,
-            encounter_strength_buff: 0,
-            run_strength_buff: 0,
-            turn_strength_buff: 0,
             // Both public and both carried by the view. `counters` was
             // simply being dropped, which made every counter-costed
             // ability (Botulus, Leech, Pennyshaver) illegal in the sample;
@@ -777,6 +774,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // live on `ability::ResolutionContext`, which a determinized state
         // has no business carrying at all.
         last_completed_run: None,
+        lingering: Vec::new(),
         deferred_triggers: Vec::new(),
         seed: rng.random(),
         rng_step: 0,

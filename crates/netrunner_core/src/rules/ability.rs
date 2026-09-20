@@ -4,6 +4,7 @@ use crate::dsl::{
     EffectRequirement, HostedCardOrigin, StackZone, SubroutineBreakCount, Trigger, TriggeredEffect,
 };
 use crate::rules::continuous;
+use crate::rules::lingering::{self, Lingering, LingeringEffect, Until};
 use crate::rules::damage;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
@@ -244,7 +245,7 @@ pub fn evaluate_effect(
         }
 
         Effect::ModifyStrength(delta) => {
-            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
+            let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
             if run.phase != RunPhase::EncounterIce {
                 return Err(RulesError::NotInEncounter);
             }
@@ -253,14 +254,21 @@ pub fn evaluate_effect(
             // `position` were ever out of bounds — an invariant violation
             // that shouldn't happen while `phase == EncounterIce`, but
             // `.get_mut` avoids a raw-index panic regardless.
-            let ice = run.ice.get_mut(position).ok_or(RulesError::NotInEncounter)?;
-            ice.current_strength += delta;
-            let event = GameEvent::IceStrengthModified {
-                card_id: ice.card_id.clone(),
-                new_strength: ice.current_strength,
-                delta: *delta,
-            };
-            Ok(vec![event])
+            let ice = run.ice.get(position).ok_or(RulesError::NotInEncounter)?;
+            let (card_id, install) = (ice.card_id.clone(), ice.install_id);
+            // "For the remainder of this encounter" (Leech). This wrote the
+            // delta into `RunIce::current_strength`, where nothing took it
+            // back out, so it lasted the run.
+            let source = acting_card.cloned().unwrap_or_else(|| card_id.clone());
+            state.lingering.push(LingeringEffect {
+                what: Lingering::Strength(*delta),
+                on: install,
+                until: Until::EndOfEncounter(install),
+                source,
+            });
+            let run = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+            let new_strength = lingering::ice_strength(state, &run.ice[position]);
+            Ok(vec![GameEvent::IceStrengthModified { card_id, new_strength, delta: *delta }])
         }
 
         Effect::DrawCards(side, amount) => {
@@ -784,13 +792,15 @@ pub fn evaluate_effect(
                 BoostDuration::Encounter if lasts_the_run => BoostDuration::Run,
                 other => *other,
             };
-            let card = &mut state.runner.rig[position];
-            match duration {
-                BoostDuration::Encounter => card.encounter_strength_buff += *amount as i32,
-                BoostDuration::Run => card.run_strength_buff += *amount as i32,
-                BoostDuration::Turn => card.turn_strength_buff += *amount as i32,
-            }
-            let new_strength = card.effective_strength();
+            let encountered = state.active_run.as_ref().and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id);
+            let until = match (duration, encountered) {
+                (BoostDuration::Encounter, Some(ice)) => Until::EndOfEncounter(ice),
+                (BoostDuration::Encounter, None) => return Err(RulesError::NotInEncounter),
+                (BoostDuration::Run, _) => Until::EndOfRun,
+                (BoostDuration::Turn, _) => Until::EndOfTurn(state.turn),
+            };
+            state.lingering.push(LingeringEffect { what: Lingering::Strength(*amount as i32), on: host_install, until, source: acting.clone() });
+            let new_strength = lingering::rig_strength(state, &state.runner.rig[position]);
             Ok(vec![GameEvent::StrengthBoosted {
                 card_id: acting.clone(),
                 new_strength,
@@ -813,7 +823,7 @@ pub fn evaluate_effect(
             let run = state.active_run.as_ref().unwrap();
             let ice = &run.ice[run.position];
             let (ice_card_id, ice_strength, ice_type, ice_install) =
-                (ice.card_id.clone(), ice.current_strength, ice.ice_type, ice.install_id);
+                (ice.card_id.clone(), lingering::ice_strength(state, ice), ice.ice_type, ice.install_id);
             if let Some(expected) = restrict_to
                 && *expected != ice_type
                 && !continuous::ice_gains_subtype(state, registry, ice_install, *expected)
@@ -3492,7 +3502,7 @@ mod tests {
     }
 
     #[test]
-    fn modify_strength_updates_current_strength_and_emits_event() {
+    fn modify_strength_lasts_the_encounter_and_emits_event() {
         let mut state = game_state();
         state.active_run = Some(RunState {
             phase: RP::EncounterIce,
@@ -3503,7 +3513,11 @@ mod tests {
 
         let events = evaluate_effect(&mut state, &Effect::ModifyStrength(2), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
-        assert_eq!(state.active_run.unwrap().ice[0].current_strength, 5);
+        let ice = state.active_run.as_ref().unwrap().ice[0].clone();
+        assert_eq!(ice.current_strength, 3, "what the ice was built with is not written over");
+        assert_eq!(lingering::ice_strength(&state, &ice), 5);
+        state.active_run.as_mut().unwrap().phase = RP::ApproachIce;
+        assert_eq!(lingering::ice_strength(&state, &ice), 3, "\"for the remainder of this encounter\"");
         assert_eq!(
             events,
             vec![GameEvent::IceStrengthModified {
@@ -4003,7 +4017,7 @@ mod tests {
     }
 
     #[test]
-    fn boost_strength_encounter_increments_buff_and_effective_strength() {
+    fn boost_strength_for_the_encounter_lingers_until_it_ends() {
         // Boosting requires an encounter (`require_encounter`) — an
         // icebreaker's abilities are only usable while encountering ICE.
         let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
@@ -4015,8 +4029,10 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(state.runner.rig[0].encounter_strength_buff, 1);
-        assert_eq!(state.runner.rig[0].effective_strength(), 3);
+        let encountered = state.active_run.as_ref().unwrap().ice[0].install_id;
+        assert_eq!(state.lingering.len(), 1);
+        assert_eq!(state.lingering[0].until, Until::EndOfEncounter(encountered));
+        assert_eq!(lingering::rig_strength(&state, &state.runner.rig[0]), 3);
         assert_eq!(
             events,
             vec![GameEvent::StrengthBoosted {
@@ -4030,26 +4046,28 @@ mod tests {
 
     /// ROADMAP Rules Audit T8: "until the end of this encounter" buffs used
     /// to survive an unbroken "end the run" subroutine, because only the
-    /// normal ICE pass reset them. Every way a run ends now goes through
-    /// `run::end_run`, which resets them; `Turn`-duration buffs are the
-    /// turn's business and stay.
+    /// normal ICE pass reset them. Whether one holds is read off the state
+    /// now (`rules::lingering`), so there is no way for a run to end that
+    /// leaves one running; a `Turn` pump is the turn's business and stays.
     #[test]
-    fn end_the_run_clears_encounter_strength_buffs_but_not_turn_buffs() {
+    fn end_the_run_ends_encounter_pumps_but_not_turn_pumps() {
         let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
-        state.runner.rig[0].encounter_strength_buff = 3;
-        state.runner.rig[0].turn_strength_buff = 1;
+        let breaker = state.runner.rig[0].install_id;
+        let encountered = state.active_run.as_ref().unwrap().ice[0].install_id;
+        let pump = |amount, until| LingeringEffect { what: Lingering::Strength(amount), on: breaker, until, source: CardId("corroder".to_string()) };
+        state.lingering = vec![pump(3, Until::EndOfEncounter(encountered)), pump(1, Until::EndOfTurn(state.turn))];
 
         evaluate_effect(&mut state, &Effect::EndTheRun, &mut ResolutionContext::for_card(None), &CardRegistry::new())
             .expect("a run is active");
 
         assert!(state.active_run.is_none());
         assert!(state.last_completed_run.is_some(), "the ended run is still snapshotted for OnRunEnded");
-        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
-        assert_eq!(state.runner.rig[0].turn_strength_buff, 1);
+        assert_eq!(lingering::strength(&state, breaker), 1);
+        assert_eq!(state.lingering.len(), 1, "`end_run` swept what ended with it");
     }
 
     #[test]
-    fn boost_strength_turn_increments_turn_buff() {
+    fn boost_strength_for_the_turn_lasts_the_turn() {
         // Boosting requires an encounter (`require_encounter`) — an
         // icebreaker's abilities are only usable while encountering ICE.
         let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 2, 1);
@@ -4061,9 +4079,12 @@ mod tests {
             &CardRegistry::new())
         .unwrap();
 
-        assert_eq!(state.runner.rig[0].turn_strength_buff, 2);
-        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
-        assert_eq!(state.runner.rig[0].effective_strength(), 4);
+        assert_eq!(state.lingering[0].until, Until::EndOfTurn(state.turn));
+        assert_eq!(lingering::rig_strength(&state, &state.runner.rig[0]), 4);
+        state.active_run = None;
+        assert_eq!(lingering::rig_strength(&state, &state.runner.rig[0]), 4, "past the run");
+        state.turn += 1;
+        assert_eq!(lingering::rig_strength(&state, &state.runner.rig[0]), 2, "and not past the turn");
     }
 
     #[test]
@@ -4111,7 +4132,7 @@ mod tests {
                 &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
-        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0, "and nothing was mutated");
+        assert!(state.lingering.is_empty(), "and nothing was mutated");
     }
 
     fn ice_encounter_state(rig: Vec<InstalledRunnerCard>, ice_strength: i32, subroutine_count: usize) -> GameState {

@@ -112,15 +112,13 @@ pub enum Effect {
     /// Boosts a Runner rig card's own strength — unlike `ModifyStrength`,
     /// which always targets whatever ICE is currently being encountered,
     /// this always targets whichever rig card activated the ability (see
-    /// `evaluate_effect`'s `acting_card` parameter). `Encounter`-duration
-    /// boosts are cleared when the encounter ends
-    /// (`RunnerState::reset_encounter_strength_buffs`); `Turn`-duration
-    /// boosts are cleared at the end of the Runner's turn
-    /// (`RunnerState::reset_turn_strength_buffs`).
+    /// `evaluate_effect`'s `acting_card` parameter). The boost is a
+    /// `rules::lingering::LingeringEffect` on the card, which holds for as
+    /// long as the state says its duration is still running.
     BoostStrength { amount: u32, duration: BoostDuration },
     /// Breaks pending subroutines on the ICE currently being encountered,
-    /// gated on the acting rig card's `effective_strength()` meeting the
-    /// ICE's `current_strength` (`RulesError::BreakerStrengthTooLow`
+    /// gated on the acting rig card's `continuous::breaker_strength` meeting the
+    /// ICE's strength (`RulesError::BreakerStrengthTooLow`
     /// otherwise). `restrict_to`, if set, further gates this on the ICE's
     /// subtype matching (`RulesError::InvalidBreakerSubtype` otherwise) —
     /// e.g. Corroder's `Some(IceType::Barrier)`. `None` is a universal

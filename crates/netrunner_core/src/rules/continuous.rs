@@ -23,6 +23,7 @@ use crate::cards::CardRegistry;
 use crate::dsl::{card_matches_filter, CardDefinition, CardId, CardType, ContinuousEffect, ContinuousKind, IceType, Number, Scope};
 use crate::rules::ability::{self, ResolutionContext};
 use crate::rules::active::{self, ActiveCard};
+use crate::rules::lingering;
 use crate::rules::run::ServerId;
 use crate::rules::state::{GameState, InstallId, InstallSlot, InstalledRunnerCard, Side};
 
@@ -218,8 +219,9 @@ pub(crate) fn hand_size(state: &GameState, registry: &CardRegistry, side: Side) 
 /// the break contest, the view and the bots' pricing all read this, where
 /// the view used to show the stored half alone.
 pub fn breaker_strength(state: &GameState, registry: &CardRegistry, card: &InstalledRunnerCard) -> i32 {
-    let Some(definition) = registry.get(&card.card) else { return card.effective_strength() };
-    card.effective_strength() + sum(state, registry, Target::Rig { card: definition, install: card.install_id }, strength)
+    let stored = lingering::rig_strength(state, card);
+    let Some(definition) = registry.get(&card.card) else { return stored };
+    stored + sum(state, registry, Target::Rig { card: definition, install: card.install_id }, strength)
 }
 
 /// Whether a boost to the icebreaker `install` lasts the run rather than the

@@ -1,6 +1,7 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{CardId, CardType, Effect, StrengthModifier};
 use crate::rules::ability::evaluate_effect;
+use crate::rules::checkpoint;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
@@ -354,7 +355,6 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
                 Some(index) => {
                     run.position = index;
                     if old_phase == RunPhase::EncounterIce && !run.ice[index].rezzed {
-                        state.runner.reset_encounter_strength_buffs();
                         events.extend(pass_current_ice(&mut run, index));
                     }
                 }
@@ -364,7 +364,6 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
                     run.position = position;
                     run.phase = phase_for_position(&run.ice, position);
                     if old_phase == RunPhase::EncounterIce {
-                        state.runner.reset_encounter_strength_buffs();
                         run.jack_out_permitted = true;
                     }
                     match run.phase {
@@ -723,11 +722,9 @@ fn continue_run(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
             }
 
             // The encounter is genuinely ending (no pending subroutines
-            // left) — clear any `BoostDuration::Encounter` strength buffs
-            // before advancing. Covers both a direct `ContinueRun` action
-            // and `paid_ability::close_window`'s `EncounterIce` arm, which
-            // itself calls into this function.
-            state.runner.reset_encounter_strength_buffs();
+            // left). What was bought for it ends with it by itself: an
+            // `Until::EndOfEncounter` holds only while this ice is the one
+            // being encountered (`rules::lingering`).
             let run = state.active_run.as_mut().expect("active_run checked above");
             Ok(pass_current_ice(run, position))
         }
@@ -824,7 +821,9 @@ fn step_subroutine(
 /// Three things must happen together whenever a run ends, however it
 /// ends: `last_completed_run` is snapshotted so a deferred
 /// `Trigger::OnRunEnded` can still see the run; `active_run` is cleared;
-/// and every `BoostDuration::Encounter` strength buff is reset. Six sites
+/// and what was bought for the run or the encounter ends (it would by
+/// itself — see `rules::lingering` — and is swept here so the next run
+/// cannot find it). Six sites
 /// used to clear the run by hand and only the normal ICE pass reset the
 /// buffs, so a Runner bounced by an unbroken "end the run" subroutine kept
 /// every pumped point of breaker strength for the rest of the turn, and
@@ -839,8 +838,9 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
     if let Some(run) = &run {
         state.last_completed_run = Some(CompletedRun::snapshot(run));
     }
-    state.runner.reset_encounter_strength_buffs();
-    state.runner.reset_run_strength_buffs();
+    // Whether a lingering effect holds is derived, and the one thing a
+    // derived answer cannot tell apart is this run from the next.
+    checkpoint::expire_durations(state);
     run
 }
 
@@ -848,6 +848,12 @@ pub(crate) fn end_run(state: &mut GameState) -> Option<RunState> {
 mod tests {
     use super::*;
     use crate::dsl::{CardId, Effect, IceType, SubroutineDef};
+    use crate::rules::lingering::{self, Lingering, LingeringEffect, Until};
+    use crate::rules::state::InstallId;
+
+    fn pump(on: InstallId, amount: i32, until: Until) -> LingeringEffect {
+        LingeringEffect { what: Lingering::Strength(amount), on, until, source: CardId("corroder".to_string()) }
+    }
     use crate::rules::run::state::{EncounteredSubroutine, RunState, ServerId};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, Credits, GamePhase, MemoryUnits, PlayerResources,
@@ -981,7 +987,10 @@ mod tests {
         let (ib, rb) = ice_pair("b", 2, true);
         let mut state =
             reconciling_state(vec![ib], run_state_with_jack_out(RunPhase::EncounterIce, vec![ra, rb], 0, false));
-        state.runner.rig.push(crate::rules::InstalledRunnerCard { encounter_strength_buff: 2, ..Default::default() });
+        let encountered = hq(&state).ice[0].install_id;
+        let breaker = InstallId(90);
+        state.runner.rig.push(crate::rules::InstalledRunnerCard { install_id: breaker, ..Default::default() });
+        state.lingering.push(pump(breaker, 2, Until::EndOfEncounter(encountered)));
 
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
         assert_eq!(events, vec![GameEvent::IceApproached { server: ServerId::Hq, position: 0 }], "not `IcePassed`");
@@ -991,7 +1000,7 @@ mod tests {
         assert_eq!(run.position, 0);
         assert_eq!(run.phase, RunPhase::ApproachIce);
         assert!(run.jack_out_permitted, "an ended encounter opens the jack-out window like a passed ICE");
-        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0, "encounter-duration buffs end with the encounter");
+        assert_eq!(lingering::strength(&state, breaker), 0, "what was bought for the encounter ends with it");
     }
 
     #[test]
@@ -1328,27 +1337,26 @@ mod tests {
     }
 
     #[test]
-    fn continue_run_leaving_encounter_ice_resets_encounter_buff_but_not_turn_buff() {
+    fn continue_run_leaving_encounter_ice_ends_an_encounter_pump_but_not_a_turn_pump() {
         use crate::rules::state::InstalledRunnerCard;
 
         let mut state = game_state();
-        state.runner.rig = vec![InstalledRunnerCard {
-            card: CardId("corroder".to_string()),
-            base_strength: 2,
-            encounter_strength_buff: 1,
-            turn_strength_buff: 3,
-            ..Default::default()
-        }];
+        let breaker = InstallId(90);
+        state.runner.rig =
+            vec![InstalledRunnerCard { install_id: breaker, card: CardId("corroder".to_string()), base_strength: 2, ..Default::default() }];
         state.active_run = Some(run_state(
             RunPhase::EncounterIce,
             vec![test_ice("ice_wall_0", 0, 0, true), test_ice("ice_wall_1", 0, 3, true)],
             0,
         ));
 
+        let encountered = state.active_run.as_ref().unwrap().ice[0].install_id;
+        state.lingering = vec![pump(breaker, 1, Until::EndOfEncounter(encountered)), pump(breaker, 3, Until::EndOfTurn(state.turn))];
+        assert_eq!(lingering::strength(&state, breaker), 4);
+
         advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
-        assert_eq!(state.runner.rig[0].encounter_strength_buff, 0);
-        assert_eq!(state.runner.rig[0].turn_strength_buff, 3);
+        assert_eq!(lingering::strength(&state, breaker), 3);
     }
 
     #[test]

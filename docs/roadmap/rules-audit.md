@@ -610,6 +610,62 @@ one.
    none. Precision Design's bonus had no test at all — it was applied in
    `setup`, which no `base_state()` test goes through.
 
+   **Lingering effects — DONE (20 September 2026,
+   `feat/lingering-effects`).** An effect with a duration is the other
+   kind of standing effect: made once by something that resolved,
+   outliving it, and so — by the State Hygiene Rule's test — stored.
+   `GameState::lingering` is a list of `LingeringEffect { what, on, until,
+   source }` (`rules::lingering`), each **resolved when it is made**: a
+   flat `Strength(i32)` on an install handle, no `Amount` and no `Box`, so
+   a search clone copies a few words and an empty list allocates (and
+   serializes) nothing. `Effect::BoostStrength` and `ModifyStrength` push
+   one. Out: `encounter_strength_buff`, `run_strength_buff` and
+   `turn_strength_buff` on every rig card, `effective_strength()`, the
+   three `reset_*` functions and their five call sites. GAMEDRAGON™ Pro
+   needs nothing new: it already lengthened the duration when the boost
+   was made.
+
+   *Whether an effect still holds is asked of the state at every read*
+   (`LingeringEffect::holds`): an `EndOfEncounter(ice)` while that ice is
+   the one being encountered, an `EndOfRun` while there is a run, an
+   `EndOfTurn(n)` while `GameState::turn` is `n`. The plan was a derived
+   retain in `checkpoint::expire_durations` replacing the reset calls;
+   that is there, but as garbage collection — a list whose correctness
+   depends on the sweep running has the bug T8 was (the one way of ending
+   a run that forgot to reset), so the read filters and the sweep only
+   tidies. The one thing a derived answer cannot tell apart is this run
+   from the next, which is why `run::engine::end_run` sweeps as well.
+   Only what the pool uses exists: one `Lingering` kind, `on` an install
+   handle and nothing wider. The prohibitions and Tread Lightly's rez
+   cost (the last stage) are about a player and a server and widen it
+   then.
+
+   *Leech's -1 lasted the run.* "The ice you are encountering gets -1
+   strength for the remainder of this encounter" was written into
+   `RunIce::current_strength`, where nothing could take it back out.
+   It is an `EndOfEncounter` entry on the ice now, and
+   `lingering::ice_strength` — the break contest, the view, the bots'
+   pricing — is what the ice was built with plus what is lingering on
+   it. No card in the pool brings the Runner back to a piece of ice it
+   has passed (the one move that rebuilds the run's ice rebuilt the -1
+   away too), so no break contest changes; what changes is the strength
+   a view shows for ice already passed.
+
+   *In shadow first.* With the three fields and their resets still
+   compiled in, every read of a rig card's strength — each break contest
+   and each masked view — compared stored with derived over both
+   256-seed sweeps in a debug build (1,536 games): **no disagreement.**
+   With the old code deleted (`scripts/coverage_identical.py main
+   --head-worktree`, 192 games a report, seed 1): **identical, four
+   reports of four**, across 288 pumps and 30 Leech activations in the
+   random reports and 441 pumps in the heuristic ones. `determinize` is
+   unchanged in effect: a sample still folds the displayed strength into
+   `base_strength` and starts with an empty list, so a pump in flight
+   never expires inside a sample, exactly as before — carrying the list
+   in the view is the next stage's. `eval` reads a sample's strengths
+   through `rules::lingering`, because a pump bought *inside* a search is
+   a lingering effect of the sample.
+
    *Still open from this stage.* "The first time each turn you install a
    program" is still "once a turn, when it applies": a DZMZ installed after
    the turn's first program discounts the second, as it did under the
