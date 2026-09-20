@@ -229,6 +229,25 @@ pub enum GameEvent {
         card: Option<CardId>,
         advancement_tokens: u32,
     },
+    /// A card put advancement counters on an installed card, which is
+    /// **not** advancing it. Null Signal Games' Comprehensive Rules
+    /// 1.18.2: "Resolving an instruction that directly places an
+    /// advancement counter onto a card is not the same as advancing a
+    /// card." Their own example is Mushin-no-Shin placing three counters
+    /// on an Oaktown Renovation, which does *not* pay Oaktown's advance
+    /// ability — so this event exists precisely so that it cannot fire
+    /// `Trigger::OnAdvance`. `CardAdvanced` is the other one, emitted only
+    /// by the basic action and by an ability that says "advance".
+    ///
+    /// Masked and counted exactly as `CardAdvanced` is: same handle, same
+    /// identity strike, and the tokens themselves were never secret.
+    AdvancementCountersPlaced {
+        #[serde(default)]
+        install: crate::rules::state::InstallId,
+        #[serde(default)]
+        card: Option<CardId>,
+        advancement_tokens: u32,
+    },
     CardTrashedFromAccess { card: CardId, cost_paid: u32 },
     AccessPassed { card: CardId },
     PaidAbilityWindowOpened { side: Side },

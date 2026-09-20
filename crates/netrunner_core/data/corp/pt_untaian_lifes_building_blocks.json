@@ -38,7 +38,7 @@
                 "reveal": false,
                 "shuffle_after": false,
                 "then": {
-                  "AddAdvancementTokens": 1
+                  "PlaceAdvancementCounters": 1
                 }
               }
             },

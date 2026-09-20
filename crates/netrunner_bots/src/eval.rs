@@ -1515,7 +1515,7 @@ fn continuation_upside(
             i64::from(*amount),
             rd_spent + *amount as usize,
         )),
-        Effect::AddAdvancementTokens(amount) => {
+        Effect::PlaceAdvancementCounters(amount) => {
             Some(advancement_upside(state, side, registry, w, source, filter, *amount))
         }
         // Exact rather than a bound, unusually for this function: ending
@@ -2205,7 +2205,7 @@ mod tests {
             reveal: false,
             shuffle_after: false,
             destination: None,
-            then: Some(Box::new(Effect::AddAdvancementTokens(1))),
+            then: Some(Box::new(Effect::PlaceAdvancementCounters(1))),
             selected: Vec::new(),
             source_card: None,
             prompting_card: None,
@@ -2282,7 +2282,7 @@ mod tests {
         let priced = evaluate_state(&parked, Side::Corp, &registry);
         let Some(PendingDecision::ChooseCards { then, .. }) = &mut parked.pending_decision else { unreachable!() };
         *then = Some(Box::new(Effect::Sequence(vec![
-            Effect::AddAdvancementTokens(1),
+            Effect::PlaceAdvancementCounters(1),
             Effect::PresentChoice {
                 chooser: Side::Corp,
                 options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())],

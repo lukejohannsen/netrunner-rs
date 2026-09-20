@@ -5357,7 +5357,163 @@ mod system_gateway {
         .expect("confirm the advancement target");
 
         assert_eq!(state.corp.installed[0].advancement_tokens, 2);
-        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAdvanced { advancement_tokens: 2, .. })));
+        // `AdvancementCountersPlaced`, never `CardAdvanced`: Seamless Launch
+        // places, and CR 1.18.2 says placing is not advancing.
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::AdvancementCountersPlaced { advancement_tokens: 2, .. })));
+        assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAdvanced { .. })));
+    }
+
+    /// **Placing an advancement counter is not advancing it** — Null Signal
+    /// Games' Comprehensive Rules 1.18.2, whose own example is Mushin-no-Shin
+    /// placing three counters on an Oaktown Renovation without paying
+    /// Oaktown's advance ability.
+    ///
+    /// **This passed before the two events were split, for a reason that
+    /// was not the rule.** `Effect::AddAdvancementTokens` emitted
+    /// `GameEvent::CardAdvanced` — the same event the basic action emits —
+    /// but an effect's events are *returned*, never put through
+    /// `dispatcher::dispatch_event`, which `engine::advance_card` calls by
+    /// hand (`engine.rs:2071`). So `Trigger::OnAdvance` was unreachable
+    /// from a placement by accident of plumbing rather than by the rule,
+    /// and a single `dispatch_event` added for some other card's sake would
+    /// have turned it into a live scoring bug with nothing to catch it.
+    /// Measured before the split: 96 heuristic games on `brick_stack`, which
+    /// runs this identity with Key Performance Indicators and Syailendra,
+    /// placed 66 counters and Built to Last's trigger count did not move.
+    ///
+    /// The test is therefore a characterisation of the rule, and it now
+    /// holds because of the rule: the event a placement emits is one
+    /// `Trigger::OnAdvance` does not match.
+    #[test]
+    fn placing_advancement_counters_does_not_pay_weyland_built_to_last() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("weyland_consortium_built_to_last".to_string()));
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("seamless_launch".to_string())];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1042),
+            card: CardId("offworld_office".to_string()),
+            server: ServerId::Remote(0),
+            installed_this_turn: false,
+            ..Default::default()
+        }];
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("seamless_launch".to_string()) })
+                .expect("play seamless launch");
+        assert_eq!(state.corp.resources.credits, Credits(4), "5 - 1, Seamless Launch's play cost");
+
+        let (state, events) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "offworld_office") },
+        )
+        .and_then(|(state, _)| apply_action(&state, &registry, PlayerAction::ConfirmCardSelection))
+        .expect("confirm the placement target");
+
+        assert_eq!(state.corp.installed[0].advancement_tokens, 2, "the counters are placed either way");
+        assert_eq!(
+            state.corp.resources.credits,
+            Credits(4),
+            "Built to Last pays on an *advancement*, and this card places — CR 1.18.2"
+        );
+        assert!(
+            !events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Corp, .. })),
+            "no trigger fired at all"
+        );
+    }
+
+    /// The other half of 1.18.2, and the report that found the bug above:
+    /// **Seamless Launch legally targets a piece of ice that cannot be
+    /// advanced.** Its printed text is "1 installed card that you did not
+    /// install this turn" with no "you can advance" clause, so 1.18.3's
+    /// restriction — which is about *advancing* — never applies. The rules'
+    /// own worked example is Priority Construction placing counters on ice
+    /// (CR 1.12.3a).
+    ///
+    /// Nothing pinned this in either direction before, which is why the
+    /// prompt offering ice read as a bug.
+    #[test]
+    fn seamless_launch_may_place_counters_on_ice_that_cannot_be_advanced() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.hq = vec![CardId("seamless_launch".to_string())];
+        state.corp.installed = vec![crate::rules::InstalledCard {
+            install_id: InstallId(1042),
+            card: CardId("wall_of_static".to_string()),
+            server: ServerId::Remote(0),
+            slot: InstallSlot::Ice,
+            installed_this_turn: false,
+            ..Default::default()
+        }];
+        assert!(
+            registry.get(&CardId("wall_of_static".to_string())).unwrap().advancement_requirement.is_none(),
+            "Wall of Static cannot be advanced, which is the point of this test"
+        );
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("seamless_launch".to_string()) })
+                .expect("play seamless launch");
+        let (state, _) = apply_action(
+            &state,
+            &registry,
+            PlayerAction::ToggleCardSelection { position: position_of(&state, "wall_of_static") },
+        )
+        .and_then(|(state, _)| apply_action(&state, &registry, PlayerAction::ConfirmCardSelection))
+        .expect("an unadvanceable piece of ice is a legal target");
+
+        assert_eq!(state.corp.installed[0].advancement_tokens, 2);
+        // And the basic action still refuses it, which is the rule that
+        // *does* read "can be advanced".
+        assert_eq!(
+            apply_action(&state, &registry, PlayerAction::AdvanceCard { target: InstallId(1042) }),
+            Err(crate::rules::RulesError::CardNotAdvanceable { card: CardId("wall_of_static".to_string()) })
+        );
+    }
+
+    /// The complement: a card that *does* print "you can advance" filters on
+    /// it, so its prompt refuses the same piece of ice. Touch-ups prints
+    /// "Place 2 advancement counters on 1 installed card you can advance",
+    /// and `CardFilter::Advanceable` is that clause.
+    #[test]
+    fn touch_ups_refuses_a_piece_of_ice_that_cannot_be_advanced() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.resources.credits = Credits(5);
+        state.corp.resources.clicks = Clicks(3);
+        state.corp.hq = vec![CardId("touch_ups".to_string())];
+        state.corp.installed = vec![
+            crate::rules::InstalledCard {
+                install_id: InstallId(1042),
+                card: CardId("wall_of_static".to_string()),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Ice,
+                installed_this_turn: false,
+                ..Default::default()
+            },
+            crate::rules::InstalledCard {
+                install_id: InstallId(1043),
+                card: CardId("ice_wall".to_string()),
+                server: ServerId::Remote(1),
+                slot: InstallSlot::Ice,
+                installed_this_turn: false,
+                ..Default::default()
+            },
+        ];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("touch_ups".to_string()) })
+            .expect("play touch-ups");
+        assert!(
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "wall_of_static") })
+                .is_err(),
+            "Wall of Static says nothing about being advanced"
+        );
+        assert!(
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).is_ok(),
+            "Ice Wall says \"You can advance this ice\""
+        );
     }
 
     /// The `then` of a card selection acts on the *selected install*. It
@@ -7862,6 +8018,44 @@ mod system_gateway {
         let advanced = state.corp.installed.iter().find(|c| c.card.0 == "offworld_office").expect("still there");
         assert_eq!(advanced.advancement_tokens, 2);
         assert_eq!(state.corp.scored_agendas[0].agenda_counters, 0);
+    }
+
+    /// **Sericulture Expansion prints "1 installed card", not "1 installed
+    /// card you can advance"**, so unlike Touch-ups and Syailendra it is not
+    /// restricted to advanceable targets — placing a counter is not
+    /// advancing (CR 1.18.2), and 1.18.3's restriction is about advancing.
+    ///
+    /// It was authored with `CardFilter::Advanceable` anyway, which made it
+    /// refuse a PAD Campaign or a plain piece of ice. The opposite error to
+    /// the one that was reported against Seamless Launch, from the same
+    /// confusion, and found looking for that one.
+    #[test]
+    fn sericulture_expansion_may_place_its_counters_on_a_card_that_cannot_be_advanced() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.installed =
+            vec![corp_root("sericulture_expansion", ServerId::Remote(0)), corp_root("pad_campaign", ServerId::Remote(1))];
+        state.corp.installed[0].rezzed = false;
+        state.corp.installed[0].advancement_tokens = 4;
+        assert!(
+            registry.get(&CardId("pad_campaign".to_string())).unwrap().advancement_requirement.is_none(),
+            "PAD Campaign cannot be advanced, which is the point of this test"
+        );
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "sericulture_expansion") })
+            .expect("score");
+        let (state, _) = close_all_windows(state, &registry);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("end turn");
+        let state = advance_until_choice(state, &registry);
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("spend the counter");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "pad_campaign") })
+            .expect("an unadvanceable asset is a legal target");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("place the counters");
+
+        let placed = state.corp.installed.iter().find(|c| c.card.0 == "pad_campaign").expect("still there");
+        assert_eq!(placed.advancement_tokens, 2);
     }
 
     #[test]

@@ -225,7 +225,7 @@ mod tests {
                 reveal: false,
                 shuffle_after: false,
                 destination: None,
-                then: Some(Box::new(Effect::AddAdvancementTokens(1))),
+                then: Some(Box::new(Effect::PlaceAdvancementCounters(1))),
             },
             if_declined: Effect::Sequence(Vec::new()),
             source_card: None,

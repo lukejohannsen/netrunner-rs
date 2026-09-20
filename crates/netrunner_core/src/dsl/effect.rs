@@ -757,8 +757,23 @@ pub enum Effect {
     /// advancement_tokens`, what `ScoreAgenda` reads). Authored as the
     /// `then` of a `PromptChooseCards`, so `acting_card` is the card the
     /// Corp just selected. `RulesError::CardNotInstalled` if that card isn't
-    /// a Corp install (only Corp cards can be advanced).
-    AddAdvancementTokens(u32),
+    /// a Corp install (only Corp cards can hold advancement counters).
+    ///
+    /// **Placing is not advancing** (CR 1.18.2), which is why this is named
+    /// for what it does and emits `GameEvent::AdvancementCountersPlaced`
+    /// rather than `CardAdvanced`: `Trigger::OnAdvance` must not fire, so
+    /// Weyland Consortium: Built to Last is not paid when Key Performance
+    /// Indicators merely places a counter. It was `AddAdvancementTokens`
+    /// emitting `CardAdvanced` until September 2026, and the two rules had
+    /// been one event since the effect was written.
+    ///
+    /// **Whether the target must be advanceable is the card's business, not
+    /// this effect's.** Only 1.18.3's *advance* is restricted to agendas and
+    /// cards that say "can be advanced", so a card printing that clause
+    /// filters its own prompt with `CardFilter::Advanceable` and one that
+    /// does not — Seamless Launch — legally targets ice. A blanket check
+    /// here would break the latter.
+    PlaceAdvancementCounters(u32),
     /// `Effect::DealDamage` with `amount` resolved dynamically via
     /// `Amount` instead of authored as a flat `usize` — e.g. Neurospike's
     /// "X net damage, X = agenda points scored this turn." Delegates to the
@@ -1077,7 +1092,7 @@ impl Effect {
             | Effect::DrawCardsAmount(..)
             | Effect::PreventStealAndTrashForRemainderOfRun
             | Effect::PreventScoringForRemainderOfTurn
-            | Effect::AddAdvancementTokens(..)
+            | Effect::PlaceAdvancementCounters(..)
             | Effect::DealDamageAmount(..)
             | Effect::AddAdditionalAccessAmount { .. }
             | Effect::BoostStrengthAmount { .. }

@@ -408,6 +408,16 @@ pub fn dispatch_event(
             None => Ok(Vec::new()),
         },
 
+        // **Deliberately fires nothing.** CR 1.18.2: placing an advancement
+        // counter is not advancing, so `Trigger::OnAdvance` does not see it
+        // — Weyland Consortium: Built to Last is not paid when Key
+        // Performance Indicators or Syailendra places one. This arm is
+        // written out rather than left to the catch-all below so that the
+        // next person to add an "on advance" card finds the rule here
+        // instead of re-deriving it. A card that triggers on a *placement*
+        // would need a `Trigger` of its own; none prints one today.
+        GameEvent::AdvancementCountersPlaced { .. } => Ok(Vec::new()),
+
         // Only the "normal" run conclusions dispatch `Trigger::OnRunEnded`
         // (`RunCompleted`/`RunJackedOut`/`RunEndedByEffect`, each fired from
         // its own call site with `GameState::last_completed_run` snapshotted

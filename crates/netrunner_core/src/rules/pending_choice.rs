@@ -1183,7 +1183,7 @@ mod tests {
             shuffle_after: false,
             destination: None,
             then: Some(Box::new(Effect::Sequence(vec![
-                Effect::AddAdvancementTokens(2),
+                Effect::PlaceAdvancementCounters(2),
                 Effect::PresentChoice { chooser: Side::Corp, options: vec![Effect::Sequence(Vec::new()), Effect::Sequence(Vec::new())], texts: Vec::new() },
             ]))),
             selected: Vec::new(),

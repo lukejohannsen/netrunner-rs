@@ -756,14 +756,16 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::AddAdvancementTokens(amount) => {
+        Effect::PlaceAdvancementCounters(amount) => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?;
             let installed =
                 acting_corp_install_mut(state, ctx).ok_or_else(|| RulesError::CardNotInstalled { card: card_id.clone() })?;
             installed.advancement_tokens = installed.advancement_tokens.saturating_add(*amount);
             let advancement_tokens = installed.advancement_tokens;
             let install = installed.install_id;
-            Ok(vec![GameEvent::CardAdvanced { install, card: Some(card_id.clone()), advancement_tokens }])
+            // Not `CardAdvanced`: placing a counter is not advancing (CR
+            // 1.18.2), so this must not reach `Trigger::OnAdvance`.
+            Ok(vec![GameEvent::AdvancementCountersPlaced { install, card: Some(card_id.clone()), advancement_tokens }])
         }
 
         Effect::BoostStrength { amount, duration } => {

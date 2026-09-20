@@ -248,7 +248,7 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
         Effect::PreventStealAndTrashForRemainderOfRun => "cards cannot be stolen or trashed for the rest of the run".to_string(),
         Effect::PreventScoringForRemainderOfTurn => "the Corp cannot score for the rest of the turn".to_string(),
-        Effect::AddAdvancementTokens(n) => format!("place {}", plural(*n, "advancement token", "advancement tokens")),
+        Effect::PlaceAdvancementCounters(n) => format!("place {}", plural(*n, "advancement token", "advancement tokens")),
         Effect::MoveThisCardToRoot(server) => format!("move this card to {}", describe_server(*server)),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
