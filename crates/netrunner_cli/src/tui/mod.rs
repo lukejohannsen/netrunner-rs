@@ -25,7 +25,7 @@ use netrunner_core::tutorial::Lesson;
 use netrunner_core::view::{ClientView, ServerView};
 use netrunner_session::{GameEndReason, LessonSession, LessonStep, Seat, Session, SessionStep, SubmitError};
 
-use netrunner_client::board::{routes, ActionMap, Affordance, AutoBreak, Next, Route, Target};
+use netrunner_client::board::{routes, ActionMap, Affordance, Asks, AutoBreak, Next, Route, Target};
 use netrunner_client::access::Access;
 use netrunner_client::card_face::Face;
 use netrunner_client::placement::Placement;
@@ -645,6 +645,9 @@ struct LocalUiState {
     /// (`netrunner_client::board::breaks`), listed after the actions.
     /// None under a lesson: the lessons teach the pump and the break.
     breaks: Vec<Route>,
+    /// What each legal action of this decision's view goes on to ask
+    /// (`netrunner_client::board::preview`).
+    asks: Asks,
     /// The route under way; `drive_local` asks it for the next step
     /// before the person is asked anything.
     breaking: Option<AutoBreak>,
@@ -665,6 +668,7 @@ impl LocalUiState {
             card_picker: None,
             last_rejection: None,
             breaks: Vec::new(),
+            asks: Asks::default(),
             breaking: None,
         }
     }
@@ -728,6 +732,7 @@ impl LocalUiState {
             (Some(view), None) => routes(view, &self.registry),
             _ => Vec::new(),
         };
+        self.asks = self.view.as_ref().map(|view| Asks::of(view, &self.registry)).unwrap_or_default();
     }
 
     /// `begin_decision` under a lesson: the step's filtered list and its
@@ -843,7 +848,8 @@ impl RenderableView for LocalUiState {
     }
 
     fn legal_action_labels(&self) -> Vec<String> {
-        let mut labels: Vec<String> = self.offered_actions().iter().map(|action| describe_action(action, &self.registry, self.view.as_ref())).collect();
+        let mut labels: Vec<String> =
+            self.offered_actions().iter().map(|action| self.asks.label(action, describe_action(action, &self.registry, self.view.as_ref()))).collect();
         if let Some(view) = &self.view {
             labels.extend(self.breaks.iter().map(|route| route.label(view, &self.registry)));
         }

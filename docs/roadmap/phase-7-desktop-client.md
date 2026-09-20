@@ -3280,6 +3280,40 @@ changed, so no sweep.
 height of a button): no drawn size feeds the placement any more. The
 rule still stands, for its own reasons.
 
+### 4ae. A card says what it will ask before it is played — DONE (20 September 2026)
+
+`feat/play-preview`, §8 item 4, part (a). A report from play: Red Team —
+"[click]: Run a central server you have not run this turn" — spends its
+click and only then shows which servers are left, so a person who does not
+remember which they ran finds out by paying, and cannot put it down. Every
+card whose text opens on a choice has the same shape: `engine::play_event`
+spends the click, pays the cost, moves the card to the heap and *then*
+parks the decision. jinteki is no better at the card (costs are paid
+before its prompt too, and its run events are not cancellable); what it
+has is an undo, which is parts (b) and (c) of the item.
+
+**The button now carries the question**: "Use Red Team — then asks: Run on
+HQ / Run on R&D". `netrunner_client::board::preview::Asks` applies each
+playable card's action to `netrunner_bots::determinize`'s sample of the
+view with the engine's own `apply_action`, as `board::breaks` prices a
+route, and reads the answers off the viewer's masked view of what came
+back, labelled by the same `describe_action` the real prompt will use.
+**Rejected: reading `allowed_servers` off the card's JSON and subtracting
+`servers_run_this_turn`** — that is a second legality check in a client,
+and it would miss whatever else forbids a run.
+
+**Only a choice made from public information is previewed** — a server, a
+card's own printed options. A selection of cards is not (a stack search
+would list the sample's invented stack), and an action that moves
+`rng_step` on the sample is dropped, because the sample's hidden half was
+read. A preview that might be wrong is worse than none.
+
+**Once per view, never per frame.** The terminal client builds an
+`ActionMap` every frame, so the preview is not in `ActionMap::build`:
+`ActionMap::annotate` adds it to the one map the desktop keeps for a view,
+and both terminal clients hold an `Asks` beside their routes and word
+their lists through `Asks::label`. No engine file changed, so no sweep.
+
 ## 8. Borrowed from jinteki — OPEN (19 September 2026)
 
 From [`docs/jinteki-comparison.md`](../jinteki-comparison.md) §5, in the
