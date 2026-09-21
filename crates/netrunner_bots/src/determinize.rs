@@ -568,15 +568,15 @@ fn determinize_run(
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
         redirect_on_approach: run.redirect_on_approach,
-        // Not in the view: a run's end rider, Shred's armed prevention and
-        // whether a subroutine resolved are known to the seat that set
-        // them, not carried. The determinized run neither fires a Charm
-        // Offensive rider nor prevents its own end — a search-quality
-        // limit, recorded in ROADMAP Phase 1 §8 Stage 3.
+        // Not in the view: a run's end rider and whether a subroutine
+        // resolved are known to the seat that set them, not carried. The
+        // determinized run does not fire a Charm Offensive rider — a
+        // search-quality limit, recorded in ROADMAP Phase 1 §8 Stage 3.
+        // (Shred's armed prevention was a third; it is on `lingering`,
+        // carried below, since it stopped being a field of the run.)
         on_end_effect: None,
         on_end_card: None,
         on_end_install: None,
-        end_run_prevention: None,
         subroutine_resolved: false,
         // Not in the view either: which card started the run (Sang
         // Kancil's cheaper boost) and whether the encountered ice was
@@ -1419,7 +1419,9 @@ mod tests {
         // What is lingering is public too, and a sample that dropped it
         // would steal through Ansel's bar, score through Luminal's lock
         // and rez 3[c] short of a Tread Lightly run — the last two were
-        // fields no view carried, so every sample did.
+        // fields no view carried, so every sample did. Shred's armed
+        // prevention was a third, a field of the run: every sample of a
+        // Shred run ended it at the first "End the run".
         {
             use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
             let entry = |what, on, until| LingeringEffect { what, on, until, source: CardId("source".to_string()) };
@@ -1427,6 +1429,11 @@ mod tests {
                 entry(Lingering::Cannot(Prohibition::StealOrTrash), On::Player(Side::Runner), Until::EndOfRun),
                 entry(Lingering::Cannot(Prohibition::ScoreAgendas), On::Player(Side::Corp), Until::EndOfTurn(state.turn)),
                 entry(Lingering::RezCost(3), On::EachIce, Until::EndOfRun),
+                entry(
+                    Lingering::PreventRunEnding(netrunner_core::dsl::EndRunPrevention::UnlessCorpTrashesRootCountFromHq),
+                    On::Player(Side::Corp),
+                    Until::EndOfRun,
+                ),
             ];
         }
 
@@ -1441,6 +1448,10 @@ mod tests {
             assert!(continuous::cannot(&sampled, &registry, Prohibition::StealOrTrash), "{side:?}");
             assert!(continuous::cannot(&sampled, &registry, Prohibition::ScoreAgendas), "{side:?}");
             assert_eq!(netrunner_core::rules::lingering::ice_rez_cost(&sampled), 3, "{side:?}");
+            assert!(
+                sampled.lingering.iter().any(|e| matches!(e.what, netrunner_core::rules::lingering::Lingering::PreventRunEnding(_))),
+                "{side:?}: Shred is still armed in the sample"
+            );
 
             assert_eq!(sampled.runner.rig[0].counters, 3, "{side:?}");
             assert_eq!(

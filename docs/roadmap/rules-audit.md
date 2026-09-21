@@ -1119,7 +1119,7 @@ one.
    reset sites, one second scan and twenty-three free-form tag strings
    are gone; `GameState` gained two, both fixed-size.
 
-4. **Generic prevention — IN PROGRESS (20 September 2026; stage 1 of 3)**
+4. **Generic prevention — IN PROGRESS (20 September 2026; stages 1–2 of 3)**
    (§2.2; was item 2). As the second pass wrote it: give the existing
    `WindowCheckpoint::Prevention` window a kind parameter, so tags,
    end-the-run, jack-out and expose use the same window that damage and
@@ -1195,6 +1195,39 @@ one.
    stage 3 is what ends it. `OBS_SIZE` 2262 and `ActionSpace` 1646
    unmoved (the two prevention slots now read amount and prevented for
    every kind). New: the **Prevention Rule** in `AGENTS.md`.
+
+   **Stage 2 — a prevention that stands is a lingering effect
+   (`feat/shred-is-a-lingering-prevention`).** Shred's "The first time the
+   Corp would end that run, prevent the run from ending unless…" was
+   `Effect::ArmRunEndPrevention` writing `RunState::end_run_prevention`: a
+   per-duration field on the run, the third of its kind after the score
+   lock and Tread Lightly's +3 (item 2 stage 6), and like them in no view —
+   `determinize` wrote `end_run_prevention: None` under a comment that
+   called it "a search-quality limit". It is an entry on
+   `GameState::lingering` now (`Lingering::PreventRunEnding`, about the
+   Corp, until the end of the run), which a view already carries whole and
+   `determinize` already copies, and `prevention::run_ending` is what
+   `Effect::EndTheRun` asks, first — the way jinteki puts its static
+   preventions ahead of the ones a player chooses. Nobody *uses* it, so it
+   has no window and is not an interrupt; "the first time" is the function
+   taking the entry off the list when it is asked, paid or not, as
+   `take()` on the field did. The effect keeps its name (it still arms a
+   prevention for the run) and the enum its one clause; the field, its
+   default and `determinize`'s `None` are gone. *Rejected:* routing it
+   through `would` as a fourth `WouldHappen` — nothing is parked for a
+   player to answer with an interrupt, and the "unless" is the Corp's paid
+   choice, which `OfferPaidChoice` already is. *Shadow, both 256-seed
+   sweeps in a debug build:* of **198,562** samples, **64** were taken with
+   Shred armed — every one a heuristic Corp deciding mid-run (12 distinct
+   situations, none on the index path), each of which had believed the next
+   "End the run" would end it. Small, because the heuristic Runner rarely
+   plays Shred; the same shape as Tread Lightly's 11. *Measured:*
+   `coverage_identical.py main --head-worktree`, 192 games a report:
+   **identical ×4** — the 64 samples are in the sweeps' 1,536 games, and
+   one pass of the pool holds none, so this stage moves no measurement and
+   claims none. Tests: the armed entry is in both players' views, survives
+   determinization, is asked once (a second "End the run" ends the run),
+   and an empty root prevents nothing and leaves nothing armed.
 5. **Where a payment comes from** (§6.4; new). Pools that compete and a
    player who chooses between them — stealth is the family that forces it.
    Today every pool is spent automatically in a fixed order.

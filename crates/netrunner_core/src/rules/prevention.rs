@@ -44,14 +44,15 @@
 //! tell the difference.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{Preventable, Trigger};
+use crate::dsl::{Cost, Effect, EndRunPrevention, Preventable, Trigger};
 use crate::rules::ability::{self, ResolutionContext};
 use crate::rules::damage;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
+use crate::rules::lingering::Lingering;
 use crate::rules::paid_ability;
-use crate::rules::state::{GameState, PendingPrevention, PreventionResume, Side, WindowCheckpoint, WouldHappen};
+use crate::rules::state::{GameState, InstallSlot, PendingPrevention, PreventionResume, Side, WindowCheckpoint, WouldHappen};
 
 /// Whether `word` — what a card says it prevents — is about `what`.
 pub(crate) fn matches(word: &Preventable, what: &WouldHappen, state: &GameState, registry: &CardRegistry) -> bool {
@@ -128,6 +129,63 @@ pub(crate) fn would(
     dispatcher::emit(state, registry, &mut events, about_to)?;
     events.extend(settle(state, registry)?.unwrap_or_default());
     Ok(events)
+}
+
+/// A run is about to be ended by a card's text: asks the standing
+/// prevention, if one holds. `Some` when it stepped in — the run has not
+/// ended, and what decides whether it does is parked — and `None` when the
+/// run ends as it would have.
+///
+/// **A prevention that stands for a duration is a lingering effect
+/// (`Lingering::PreventRunEnding`), not an interrupt**: nobody uses it, so
+/// there is no window, and it is asked here, first, the way jinteki puts
+/// its static preventions ahead of the ones a player chooses. Shred is the
+/// one card: "The first time the Corp would end that run, prevent the run
+/// from ending unless the Corp reveals and trashes X cards from HQ at
+/// random" — *the first time* is this function taking the entry off the
+/// list, used or not; *the Corp* is every `Effect::EndTheRun` there is,
+/// since no Runner card in the pool prints one. It was
+/// `RunState::end_run_prevention`, consumed at the same place, which no
+/// view carried.
+pub(crate) fn run_ending(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    ctx: &mut ResolutionContext<'_>,
+) -> Result<Option<Vec<GameEvent>>, RulesError> {
+    let Some(position) =
+        state.lingering.iter().position(|effect| matches!(effect.what, Lingering::PreventRunEnding(_)) && effect.holds(state))
+    else {
+        return Ok(None);
+    };
+    let Lingering::PreventRunEnding(unless) = state.lingering.remove(position).what else { return Ok(None) };
+    let Some(server) = state.active_run.as_ref().map(|run| run.server) else { return Ok(None) };
+    match unless {
+        // X is the root of the server being attacked *now*: a run
+        // redirected since the prevention was armed counts the new one.
+        // With an empty root there is nothing to pay and the run simply
+        // ends; with fewer than X cards in HQ the Corp cannot pay and the
+        // run goes on.
+        EndRunPrevention::UnlessCorpTrashesRootCountFromHq => {
+            let root = state.corp.installed.iter().filter(|c| c.server == server && c.slot == InstallSlot::Root).count() as u32;
+            if root == 0 {
+                return Ok(None);
+            }
+            let mut events = vec![GameEvent::RunEndPrevented { server }];
+            events.extend(ability::evaluate_effect(
+                state,
+                &Effect::OfferPaidChoice {
+                    side: Side::Corp,
+                    cost: Cost::TrashRandomFromHq(root),
+                    if_paid: Box::new(Effect::EndTheRun),
+                    if_declined: Box::new(Effect::Sequence(Vec::new())),
+                    text: None,
+                },
+                ctx,
+                registry,
+            )?);
+            Ok(Some(events))
+        }
+    }
 }
 
 /// Moves a parked prevention along when nothing stands in front of it:

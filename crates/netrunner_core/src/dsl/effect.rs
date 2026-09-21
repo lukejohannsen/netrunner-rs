@@ -649,8 +649,10 @@ pub enum Effect {
     /// the heap by then and cannot carry a `Trigger::OnRunEnded` of its
     /// own. `RulesError::NoActiveRun` if no run is active.
     SetRunEndedEffect(Box<Effect>),
-    /// Arms the active run's `RunState::end_run_prevention` — Shred. See
-    /// `EndRunPrevention` for what `Effect::EndTheRun` does with it.
+    /// Arms a prevention that stands for the rest of the active run — Shred.
+    /// An entry on `GameState::lingering` (`Lingering::PreventRunEnding`),
+    /// as `Prohibit` makes one for a "cannot"; `rules::prevention::
+    /// run_ending` is what `Effect::EndTheRun` asks. See `EndRunPrevention`.
     ArmRunEndPrevention(EndRunPrevention),
     /// Sabotage `u32`: the Corp trashes that many cards of their choice
     /// from HQ and/or the top of R&D (Cacophony). Parks a Corp
@@ -995,8 +997,8 @@ pub enum Amount {
     IceProtectingThisServer,
 }
 
-/// What `Effect::EndTheRun` does the first time it would end a run whose
-/// `RunState::end_run_prevention` is armed — Shred's "The first time the
+/// What `Effect::EndTheRun` does the first time it would end a run with
+/// an `Effect::ArmRunEndPrevention` standing — Shred's "The first time the
 /// Corp would end that run, prevent the run from ending unless ...". A
 /// closed enum with one clause, extended when a card prints another.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

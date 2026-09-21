@@ -289,40 +289,12 @@ pub fn evaluate_effect(
             // when that action is the confirmation of a parked selection,
             // leaves a decision nothing can resolve. The view-path sweep
             // found exactly that at seed 19 as 10,000 fruitless toggles.
-            let Some(run) = state.active_run.as_mut() else {
+            if state.active_run.is_none() {
                 return Ok(Vec::new());
-            };
-            // Shred: the first Corp attempt to end the run is intercepted
-            // and turned into the Corp's paid choice — see
-            // `EndRunPrevention`. `take()` makes it the first attempt only.
-            if let Some(prevention) = run.end_run_prevention.take() {
-                let server = run.server;
-                match prevention {
-                    crate::dsl::EndRunPrevention::UnlessCorpTrashesRootCountFromHq => {
-                        let root_count = state
-                            .corp
-                            .installed
-                            .iter()
-                            .filter(|c| c.server == server && c.slot == crate::rules::InstallSlot::Root)
-                            .count() as u32;
-                        if root_count > 0 {
-                            let mut events = vec![GameEvent::RunEndPrevented { server }];
-                            events.extend(evaluate_effect(
-                                state,
-                                &Effect::OfferPaidChoice {
-                                    side: Side::Corp,
-                                    cost: Cost::TrashRandomFromHq(root_count),
-                                    if_paid: Box::new(Effect::EndTheRun),
-                                    if_declined: Box::new(Effect::Sequence(Vec::new())),
-                                    text: None,
-                                },
-                                ctx,
-                                registry,
-                            )?);
-                            return Ok(events);
-                        }
-                    }
-                }
+            }
+            // A standing prevention is asked first (Shred).
+            if let Some(events) = prevention::run_ending(state, registry, ctx)? {
+                return Ok(events);
             }
             let run = run::end_run(state).expect("checked Some above");
             let server = run.server;
@@ -572,8 +544,14 @@ pub fn evaluate_effect(
         }
 
         Effect::ArmRunEndPrevention(prevention) => {
-            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
-            run.end_run_prevention = Some(*prevention);
+            state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?;
+            let source = acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
+            state.lingering.push(LingeringEffect {
+                what: Lingering::PreventRunEnding(*prevention),
+                on: On::Player(Side::Corp),
+                until: Until::EndOfRun,
+                source,
+            });
             Ok(Vec::new())
         }
 

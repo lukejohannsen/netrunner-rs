@@ -35,7 +35,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardId, EffectDuration, Prohibition};
+use crate::dsl::{CardId, EffectDuration, EndRunPrevention, Prohibition};
 use crate::rules::run::RunPhase;
 use crate::rules::state::{GameState, InstallId, InstalledRunnerCard};
 use crate::rules::{RulesError, Side};
@@ -81,6 +81,14 @@ pub enum Lingering {
     /// `CorpState::cannot_score_agendas_this_turn` (cleared by the turn
     /// code, carried by no view) and `RunState::runner_cannot_steal_or_trash`.
     Cannot(Prohibition),
+    /// Shred's "The first time the Corp would end that run, prevent the run
+    /// from ending unless…" — a prevention that stands for a duration
+    /// rather than one a player uses, so it is here and not an interrupt
+    /// (`rules::prevention::run_ending` asks it and takes it: "the first
+    /// time" is the one use it has). Was `RunState::end_run_prevention`, a
+    /// third field no view carried: every bot sample taken during a Shred
+    /// run believed the next "End the run" would end it.
+    PreventRunEnding(EndRunPrevention),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -128,7 +136,7 @@ pub fn strength(state: &GameState, on: InstallId) -> i32 {
         .filter(|effect| effect.on == On::Install(on) && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::Strength(delta) => delta,
-            Lingering::RezCost(_) | Lingering::Cannot(_) => 0,
+            Lingering::RezCost(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) => 0,
         })
         .sum()
 }
@@ -142,7 +150,7 @@ pub fn ice_rez_cost(state: &GameState) -> i32 {
         .filter(|effect| effect.on == On::EachIce && effect.holds(state))
         .map(|effect| match effect.what {
             Lingering::RezCost(delta) => delta,
-            Lingering::Strength(_) | Lingering::Cannot(_) => 0,
+            Lingering::Strength(_) | Lingering::Cannot(_) | Lingering::PreventRunEnding(_) => 0,
         })
         .sum()
 }
