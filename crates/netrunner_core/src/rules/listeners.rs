@@ -248,7 +248,6 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::CreditsLost { .. }
         | GameEvent::ClicksLost { .. }
         | GameEvent::ClicksGained { .. }
-        | GameEvent::RecurringCreditsSpent { .. }
         | GameEvent::Prevented { .. }
         | GameEvent::CountersAdded { .. }
         | GameEvent::CountersRemoved { .. }

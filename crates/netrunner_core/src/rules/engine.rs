@@ -864,6 +864,13 @@ pub(crate) fn rez_install(
     }
     next.corp.installed.iter_mut().find(|c| c.install_id == ice).expect("resolved above").rezzed = true;
     let mut events = ability::pay_cost(next, registry, side, &Cost::Credits(rez_cost), Purpose::Rez(ice), Some(&ice_id))?;
+    // Comprehensive Rules 1.10.5b: recurring credits are first placed "as
+    // soon as the card is turned faceup" — after its own cost is paid, so a
+    // region's credits never pay for the region, and ahead of the dispatch
+    // below, so a "when you rez" ability finds them there. Every Corp
+    // install is constructed facedown and this is the one place one is
+    // turned faceup, which is what makes this the one call.
+    events.extend(payment::place_recurring(next, registry, side, Some(ice), &ice_id)?);
 
     // The run's own view of this ICE (`RunIce::rezzed`) is not touched
     // here: `run::reconcile_ice` re-reads it from the install at the
@@ -1234,6 +1241,29 @@ fn seed_rig_card(
     })
 }
 
+/// Puts `card_id` into the rig — the one way a Runner card gets there —
+/// and places the recurring credits it prints (`payment::place_recurring`,
+/// Comprehensive Rules 1.10.5b: "first placed on a card as soon as it
+/// becomes active", a step of installing it). `host` is the ice a Trojan
+/// is installed on.
+///
+/// Seven install handlers each seeded a card and pushed it themselves,
+/// and the credits were an `OnInstall` trigger that heard the install
+/// afterwards. Returned events go *ahead* of the caller's `*Installed`
+/// event: the credits are there when a "when you install" ability looks.
+fn install_into_rig(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    card_id: &CardId,
+    host: Option<InstallId>,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut rig_card = seed_rig_card(state, registry, card_id.clone())?;
+    rig_card.hosted_on_ice = host;
+    let install = rig_card.install_id;
+    state.runner.rig.push(rig_card);
+    payment::place_recurring(state, registry, Side::Runner, Some(install), card_id)
+}
+
 /// The credit cost installing `card_def` from the grip would charge right
 /// now — the preview `can_install_runner_card_from_grip` needs, and the
 /// same question the real install puts (`continuous::install_cost_of`):
@@ -1406,24 +1436,21 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             let cost = continuous::install_cost_of(next, registry, &card_def)
                 .saturating_sub(discount);
             events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
-            let rig_card = seed_rig_card(next, registry, card_id.clone())?;
-            next.runner.rig.push(rig_card);
+            events.extend(install_into_rig(next, registry, &card_id, None)?);
             let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Hardware => {
             let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
             events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
-            let rig_card = seed_rig_card(next, registry, card_id.clone())?;
-            next.runner.rig.push(rig_card);
+            events.extend(install_into_rig(next, registry, &card_id, None)?);
             let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Resource => {
             let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
             events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
-            let rig_card = seed_rig_card(next, registry, card_id.clone())?;
-            next.runner.rig.push(rig_card);
+            events.extend(install_into_rig(next, registry, &card_id, None)?);
             let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
@@ -1467,8 +1494,7 @@ fn install_hardware(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
-    let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
-    next.runner.rig.push(rig_card);
+    events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
     // A console's memory is deliberately *not* applied here: memory is derived
     // from what is installed (`memory::available_memory`), so a console's
     // "+1[mu]" takes effect by virtue of the console being in the rig and
@@ -1542,8 +1568,7 @@ fn install_program(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
-    let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
-    next.runner.rig.push(rig_card);
+    events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
     // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
     // Programs only, unconditional otherwise — no per-turn gate) resolved by
     // `dispatch_event` from this one event. `memory_cost` is a record of
@@ -1605,9 +1630,7 @@ fn install_program_on_ice(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
-    let mut rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
-    rig_card.hosted_on_ice = Some(host);
-    next.runner.rig.push(rig_card);
+    events.extend(install_into_rig(&mut next, registry, &card_id, Some(host))?);
     let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 
@@ -1643,8 +1666,7 @@ fn install_resource(
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
-    let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
-    next.runner.rig.push(rig_card);
+    events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
     let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
     dispatcher::emit(&mut next, registry, &mut events, installed_event)?;
 

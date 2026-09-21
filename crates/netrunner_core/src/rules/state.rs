@@ -272,18 +272,6 @@ pub struct CorpState {
     /// temporary per-run credit pool (`run::RunState::bad_publicity_credits`)
     /// at `engine::initiate_run`.
     pub bad_publicity: u32,
-    /// Corp's current recurring-credit pool, spendable on trace bids before
-    /// the Corp's own wallet (`ability::pay_cost`'s `Cost::Credits` arm,
-    /// mirroring the Runner's `RunState::bad_publicity_credits`-before-wallet
-    /// precedent but keyed on `GameState::active_trace` instead of an active
-    /// run). Refilled to `recurring_credits_max` unconditionally at the
-    /// start of every Corp turn.
-    pub recurring_credits: u32,
-    /// The size `recurring_credits` refills to each Corp turn, set once at
-    /// `GameState::setup` from the Corp identity's registry `CardDefinition::
-    /// recurring_credits` (`0` for an identity with no such pool, e.g.
-    /// every identity but NBN: Making News in the baseline set).
-    pub recurring_credits_max: u32,
     /// Clicks banked onto the Corp's *next* turn allotment by
     /// `Effect::GainClicksNextTurn` (Aggressive Trendsetting), added to
     /// the printed three by `turn::enter_start_of_turn` and zeroed as it

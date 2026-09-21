@@ -1396,6 +1396,92 @@ one.
    agenda threshold 83 → 84). The other shadow game-turn (seed 14) was
    offered the trash and the random seat's line is unchanged. Both
    256-seed sweeps pass, `cargo test --workspace` green, clippy silent.
+   **Stage 2 — recurring credits are declared**
+   (`feat/recurring-credits-are-declared`). "N[recurring-credit]" is
+   `CardDefinition::recurring_credits` on any card — it was identity-only —
+   hosted as the card's own counters, and what happens to it is two steps
+   of the game rather than two triggers on the card. Comprehensive Rules
+   v26.03, read from rules.nullsignal.games: 1.10.5a, "When this card
+   becomes active, place N credits on it. Before abilities meet their
+   trigger conditions for your turn beginning, if there are fewer than N
+   credits on this card, place credits on it until there are N credits on
+   it"; 1.10.5c, refilled "before other abilities that apply at the start
+   of the turn resolve"; 1.10.5d, they do not accumulate. (The lettered
+   substeps 5.6.1c / 5.7.1c that 1.10.5c names were not read — the page
+   truncated — and are not relied on.)
+   **Azimat and Mahkota Langit Grid did it as an `OnInstall`/`OnRez` and an
+   `OnTurnStart` trigger resolving `Effect::RefillCountersTo`**, which is
+   wrong twice by that text: the refill resolved *among* the turn-begins
+   abilities it is meant to precede, and — because `dispatcher::
+   offer_trigger_order` counts any trigger whose requirement passes, and a
+   refill has none — **a player with one other turn-start ability was asked
+   which to resolve first.** Confirmed on `main`, not read off the code: a
+   Runner with Azimat and Open Market is parked at `StartOfTurn(Runner)` on
+   a `ChooseTriggerOrder` of exactly those two, and the same test on this
+   branch finds no decision and Azimat at 2. NBN: Making News did it a
+   third way — `CorpState::recurring_credits` and `_max`, refilled by a
+   line in the Corp's turn start, spendable because `pay_cost` asked
+   whether a trace was active.
+   `payment::refill` is the step of the turn (`turn`, ahead of the
+   `TurnStarted` dispatch) and `payment::place_recurring` the step of
+   becoming active: `engine::install_into_rig`, the one way a Runner card
+   now reaches the rig — seven install handlers each seeded and pushed a
+   card themselves — `engine::rez_install`, the one place a Corp card is
+   turned faceup (every Corp install is constructed facedown; BANGUN's
+   faceup install goes through it), and `setup` for the identity. The
+   credits are placed *ahead* of the `*Installed` / `IceRezzed` dispatch,
+   where a "when you install" ability finds them, and after a card's own
+   rez cost, so a region's credits never pay for the region. Making News
+   hosts its credits on the identity (`identity_counters`) with a word of
+   its own, `PaysFor::TraceAttempts`. Gone: `Effect::RefillCountersTo`
+   (**`Effect` 71 → 70; re-measured over 181 card files, 26 of 70
+   single-use, 3 unused**), both `CorpState` fields, and
+   `GameEvent::RecurringCreditsSpent` — an identity's credits leave as
+   counters, like every other hosted pool's. `validate` refuses recurring
+   credits with nowhere to go and on a Runner identity, which hosts
+   nothing in this engine.
+   *The view keeps `recurring_credits` and `recurring_credits_max`,
+   derived* (`masking::mask_corp_state` takes the registry): the
+   observation encoding has a slot for each and slots never shift, so
+   `OBS_SIZE` and every slot's meaning are unmoved. One value does change:
+   for a Making News Corp the adjacent `identity_counters` slot reads the
+   hosted credits where it read 0. No deck is on that identity, so no sweep
+   or corpus observation moves. `determinize` lost two lines — a sample
+   carries the credits as the identity counter it already copied.
+   **What the suite did not cover.** Deleting Making News's fields broke no
+   test but two fixtures: the identity was named in no Rust file, so a
+   green run said nothing about it. It has a play-level test now (refilled
+   before the Corp's turn, not a source for a rez, first source for a
+   trace, bids offered up to 5 + 2). The inspector reads the declaration
+   out ("refill to 2 hosted credits", "may be spent to pay trash costs") —
+   what hosted credits pay for had no words there before; Open Market's
+   line is a raw dump of its `CardFilter`, accurate and ugly, left as it is.
+   *`coverage_identical.py main`, 192 games a report, pinned binaries — all
+   four differ, as they must: a removed decision shifts every decision
+   after it.* What was expected was written down before the run and each
+   red flag checked against the report JSON. **Order prompts: random
+   `ChooseTriggerToResolve` 581 → 437 (−144, a quarter of them) and
+   `TriggerOrderPending` 468 → 375; heuristic 261 → 188 and 220 → 168**,
+   the same by view and by index. `triggers_fired` loses
+   `azimat/{OnInstall, OnTurnStart}` (13, 125 — random only: **the
+   heuristic Runner never installed Azimat in 192 games**, before or
+   after, so its half of this stage is measured by the random seats alone;
+   a bot blindness of the kind item 4 recorded, owed to Phase 5) and
+   `mahkota_langit_grid/{OnRez, OnTurnStart}` (49, 274; heuristic 45,
+   240) and `effects_seen/RefillCountersTo` its 461 (285), and **the
+   refill still reaches the cards in play: `CountersAdded` 2,609 → 2,617
+   random, 1,065 → 1,069 heuristic.** Every game ends, no new end reason.
+   Outcomes drift as re-rolled games do — random flatline 94 → 99 and
+   Runner on points 84 → 79, five games of 192, under one binomial
+   standard deviation (√(192 · ¼) ≈ 6.9); heuristic Runner wins 157 → 156
+   by view, 157 → 157 by index. *One flag tripped and was run down:*
+   `poetri_luxury_brands_all_the_rage/OnAgendaScored` fired once in the
+   random base and not at all in the head. It needs a random Corp to score
+   on the one deck that plays the identity; the heuristic reports fire it
+   11 times before and 11 after, in both shapes, and its sibling
+   `OnAgendaStolen` went 27 → 33 in random. Drift in a count of one, not a
+   trigger lost. Both 256-seed sweeps pass, `cargo test --workspace`
+   green, clippy silent.
 6. **A numeric decision** (§6.4; new). `PendingDecision` has no "choose a
    number", so X costs and "pay up to N" have nowhere to park. One variant,
    and an `ActionSpace` segment appended at the end (the append-never-shift

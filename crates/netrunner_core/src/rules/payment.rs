@@ -80,8 +80,13 @@ pub(crate) enum Pool {
     /// `RunState::bonus_run_credits` — what the card that began this run
     /// brought with it (Overclock), on anything during it.
     Run,
-    /// `CorpState::recurring_credits` — the Corp identity's, on trace
-    /// attempts (NBN: Making News).
+    /// Credits hosted on the Corp identity (`CorpState::identity_counters`)
+    /// when its `pays_for` covers the purpose — NBN: Making News's, on
+    /// trace attempts. A pool of its own only because an identity has no
+    /// install handle for `Hosted` to name. The Runner's identity hosts
+    /// nothing in this engine, and `CardDefinition::validate` refuses a
+    /// Runner identity that prints recurring credits rather than let one
+    /// silently do nothing.
     Identity,
     /// The credit pool itself. Always a source and always last.
     Wallet,
@@ -95,20 +100,22 @@ pub(crate) struct Source {
 
 /// Whether credits a card says may be spent on `word` may be spent on
 /// `purpose`. `host` is the install the credits are on — a Corp pool's word
-/// can be about where that card sits ("this server").
-fn covers(word: &PaysFor, purpose: Purpose<'_>, host: InstallId, state: &GameState, registry: &CardRegistry) -> bool {
+/// can be about where that card sits ("this server") — and `None` for an
+/// identity, which sits nowhere.
+fn covers(word: &PaysFor, purpose: Purpose<'_>, host: Option<InstallId>, state: &GameState, registry: &CardRegistry) -> bool {
     match (word, purpose) {
         (PaysFor::TrashCosts, Purpose::TrashCost) => true,
+        (PaysFor::TraceAttempts, Purpose::Trace) => true,
         (PaysFor::Installing(filter), Purpose::Install(card)) => card_matches_filter(card, filter),
         (PaysFor::RezzingInThisServer, Purpose::Rez(rezzing)) => {
             let installed = |id: InstallId| state.corp.installed.iter().find(|c| c.install_id == id);
-            let (Some(host), Some(rezzing)) = (installed(host), installed(rezzing)) else { return false };
+            let (Some(host), Some(rezzing)) = (host.and_then(installed), installed(rezzing)) else { return false };
             // Assets in the root and ice protecting the server, as printed:
             // an upgrade being rezzed pays from the credit pool alone.
             let named = registry.get(&rezzing.card).is_some_and(|def| matches!(def.card_type, CardType::Ice(_) | CardType::Asset));
             named && host.slot == InstallSlot::Root && host.server == rezzing.server
         }
-        (PaysFor::TrashCosts | PaysFor::Installing(_) | PaysFor::RezzingInThisServer, _) => false,
+        (PaysFor::TrashCosts | PaysFor::Installing(_) | PaysFor::RezzingInThisServer | PaysFor::TraceAttempts, _) => false,
     }
 }
 
@@ -139,7 +146,7 @@ pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, pu
     .filter_map(|card| {
         let install = card.install?;
         let definition = registry.get(card.card)?;
-        definition.pays_for.iter().any(|word| covers(word, purpose, install, state, registry)).then_some(install)
+        definition.pays_for.iter().any(|word| covers(word, purpose, Some(install), state, registry)).then_some(install)
     })
     .collect();
     for install in hosts {
@@ -149,8 +156,12 @@ pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, pu
         push(Pool::BadPublicity, run.bad_publicity_credits);
         push(Pool::Run, run.bonus_run_credits);
     }
-    if let (Side::Corp, Purpose::Trace) = (side, purpose) {
-        push(Pool::Identity, state.corp.recurring_credits);
+    let identity_pays = side == Side::Corp
+        && state.corp.identity.as_ref().and_then(|identity| registry.get(identity)).is_some_and(|definition| {
+            definition.pays_for.iter().any(|word| covers(word, purpose, None, state, registry))
+        });
+    if identity_pays {
+        push(Pool::Identity, state.corp.identity_counters);
     }
     sources.push(Source { pool: Pool::Wallet, credits: state.resources(side).credits.0 });
     sources
@@ -206,12 +217,84 @@ pub(crate) fn pay(
                 events.push(GameEvent::BonusRunCreditsSpent { amount: spend });
             }
             Pool::Identity => {
-                state.corp.recurring_credits -= spend;
-                events.push(GameEvent::RecurringCreditsSpent { amount: spend });
+                from_hosted += spend;
+                let identity = state.corp.identity.clone().ok_or(RulesError::MissingActingCardContext)?;
+                events.extend(ability::modify_counters(state, &ResolutionContext::for_card(Some(&identity)), -i64::from(spend))?);
             }
         }
     }
     Ok(events)
+}
+
+/// Comprehensive Rules 1.10.5a, second half: "Before abilities meet their
+/// trigger conditions for your turn beginning, if there are fewer than N
+/// credits on this card, place credits on it until there are N credits on
+/// it" — for every active card of `side` that prints recurring credits.
+/// Called by `turn` ahead of the `TurnStarted` dispatch, which is what
+/// "before" means here: a "when your turn begins" ability resolves against
+/// pools already refilled, and the refill is nobody's to order.
+///
+/// Refills *up to* N and never down (1.10.5d, "do not accumulate" — and a
+/// card holding more than N by some other text keeps them).
+pub(crate) fn refill(state: &mut GameState, registry: &CardRegistry, side: Side) -> Result<Vec<GameEvent>, RulesError> {
+    let recurring = |card: &crate::dsl::CardId| registry.get(card).and_then(|definition| definition.recurring_credits);
+    let due: Vec<(Option<InstallId>, crate::dsl::CardId, u32)> = match side {
+        Side::Corp => active::corp(state, registry).collect::<Vec<_>>(),
+        Side::Runner => active::runner(state).collect::<Vec<_>>(),
+    }
+    .into_iter()
+    // A scored agenda's counters are agenda counters, and the Runner's
+    // identity hosts nothing: neither prints recurring credits in this
+    // pool, and `validate` refuses the second.
+    .filter(|card| card.place == Place::Installed || (card.place == Place::Identity && side == Side::Corp))
+    .filter_map(|card| recurring(card.card).map(|credits| (card.install, card.card.clone(), credits)))
+    .collect();
+    let mut events = Vec::new();
+    for (install, card, credits) in due {
+        events.extend(raise_to(state, side, install, &card, credits)?);
+    }
+    Ok(events)
+}
+
+/// Comprehensive Rules 1.10.5a, first half, and 1.10.5b: "When this card
+/// becomes active, place N credits on it" — called where a card does:
+/// `engine::seed_rig_card`'s callers for the Runner, `engine::rez_install`
+/// for the Corp (every Corp install is constructed facedown, and that is
+/// the one place one is turned faceup), and `setup` for the identity.
+/// `install` is `None` for an identity. Nothing for a card that prints no
+/// recurring credits.
+pub(crate) fn place_recurring(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    side: Side,
+    install: Option<InstallId>,
+    card: &crate::dsl::CardId,
+) -> Result<Vec<GameEvent>, RulesError> {
+    match registry.get(card).and_then(|definition| definition.recurring_credits) {
+        Some(credits) => raise_to(state, side, install, card, credits),
+        None => Ok(Vec::new()),
+    }
+}
+
+fn raise_to(
+    state: &mut GameState,
+    side: Side,
+    install: Option<InstallId>,
+    card: &crate::dsl::CardId,
+    credits: u32,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let held = match install {
+        Some(install) => hosted_credits(state, side, install),
+        None => state.corp.identity_counters,
+    };
+    if held >= credits {
+        return Ok(Vec::new());
+    }
+    let ctx = match install {
+        Some(install) => ResolutionContext::for_parked(Some(install), Some(card)),
+        None => ResolutionContext::for_card(Some(card)),
+    };
+    ability::modify_counters(state, &ctx, i64::from(credits - held))
 }
 
 /// Takes `spend` hosted credits off `install` — through the path

@@ -100,10 +100,11 @@ impl GameState {
             registry,
         )?);
 
-        let recurring_credits_max =
-            registry.get(&corp_deck.identity).and_then(|c| c.recurring_credits).unwrap_or(0);
-        state.corp.recurring_credits_max = recurring_credits_max;
-        state.corp.recurring_credits = recurring_credits_max;
+        // An identity is active from the start of the game, so the
+        // recurring credits it prints are placed now (Comprehensive Rules
+        // 1.10.5b; NBN: Making News). Hosted on the identity like any
+        // other card's — they were a pair of fields on `CorpState`.
+        events.extend(crate::rules::payment::place_recurring(&mut state, registry, Side::Corp, None, &corp_deck.identity)?);
 
         // Printed link, same pattern. Nothing wrote `link_strength` before
         // this, so every Runner traced at link 0 — *Kate "Mac" McCaffrey*

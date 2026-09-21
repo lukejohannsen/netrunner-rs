@@ -6720,6 +6720,98 @@ mod system_gateway {
         assert_eq!(state.runner.resources.credits, Credits(2), "nothing from the wallet");
     }
 
+    // Recurring credits are a declaration (`CardDefinition::
+    // recurring_credits`, Comprehensive Rules 1.10.5): placed when the card
+    // becomes active, refilled as a step of the turn.
+
+    #[test]
+    fn a_recurring_refill_is_a_step_of_the_turn_and_nobodys_to_order() {
+        let registry = sg_registry();
+        let mut state = runner_turn(5, 0);
+        // Open Market's "when your turn begins, take 1 credit" is a real
+        // turn-start ability. Azimat's refill used to be a second one, so
+        // the Runner was asked which to resolve first.
+        state.runner.rig = vec![rig_card_with_counters("azimat", 0), rig_card_with_counters("open_market", 6)];
+        corp_rd_filler(&mut state);
+
+        let (state, _) = end_turn_and_settle(state, &registry); // Runner ends -> Corp's turn.
+        assert_eq!(state.runner.rig[0].counters, 0, "the Corp's turn beginning refills nothing of the Runner's");
+        let (state, events) = end_turn_and_settle(state, &registry); // Corp ends -> Runner's turn.
+
+        assert!(
+            !events.iter().any(|e| matches!(e, crate::rules::GameEvent::TriggerOrderPending { .. })),
+            "one ability triggered when the turn began, so there is no order to choose"
+        );
+        assert!(state.pending_decision.is_none());
+        assert_eq!(state.runner.rig[0].counters, 2, "refilled to 2 before the turn began");
+        assert_eq!(state.runner.rig[1].counters, 5, "and Open Market's ability resolved without being asked about");
+    }
+
+    #[test]
+    fn making_news_hosts_two_credits_that_pay_for_traces_and_nothing_else() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.corp.identity = Some(CardId("nbn_making_news".to_string()));
+        state.corp.resources.credits = Credits(5);
+        corp_rd_filler(&mut state);
+
+        let (state, _) = end_turn_and_settle(state, &registry); // Runner ends -> Corp's turn begins.
+        assert_eq!(state.corp.identity_counters, 2, "refilled to 2 before the Corp's turn began");
+
+        // Not a trace: the identity's credits are not a source.
+        let mut installing = state.clone();
+        installing.corp.hq = vec![CardId("pad_campaign".to_string())];
+        let mut campaign = corp_root("pad_campaign", ServerId::Remote(0));
+        campaign.rezzed = false;
+        installing.corp.installed = vec![campaign];
+        let install = installing.corp.installed[0].install_id;
+        let rezzed = act(installing, &registry, PlayerAction::RezIce { ice: install });
+        assert_eq!(rezzed.corp.identity_counters, 2, "\"Use these credits during trace attempts\"");
+        assert_eq!(rezzed.corp.resources.credits, Credits(3), "PAD Campaign's 2[c] came from the credit pool");
+
+        // A trace: every bid the payment would take is offered, and the
+        // identity's credits go first.
+        let mut tracing = state;
+        tracing.active_trace = Some(crate::rules::TraceState {
+            initiating_card: None,
+            initiating_install: None,
+            base_strength: 1,
+            corp_bid: None,
+            effect_on_success: crate::dsl::Effect::GiveTags(1),
+            resume: crate::rules::TraceResume::None,
+        });
+        let highest = crate::rules::legal_actions(&tracing, &registry)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::SubmitCorpTraceBid { amount } => Some(amount),
+                _ => None,
+            })
+            .max();
+        assert_eq!(highest, Some(7), "5 in the credit pool and 2 on the identity");
+        let bid = act(tracing, &registry, PlayerAction::SubmitCorpTraceBid { amount: 3 });
+        assert_eq!(bid.corp.identity_counters, 0);
+        assert_eq!(bid.corp.resources.credits, Credits(4));
+    }
+
+    #[test]
+    fn mahkota_langit_grids_credits_are_placed_when_it_is_rezzed_and_do_not_pay_for_it() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = Clicks(3);
+        let cost = registry.get(&CardId("mahkota_langit_grid".to_string())).expect("in the pool").cost;
+        state.corp.resources.credits = Credits(cost);
+        let mut grid = corp_root("mahkota_langit_grid", ServerId::Remote(0));
+        grid.rezzed = false;
+        state.corp.installed = vec![grid];
+        let install = state.corp.installed[0].install_id;
+
+        let state = act(state, &registry, PlayerAction::RezIce { ice: install });
+        assert_eq!(state.corp.installed[0].counters, 2, "placed as soon as the card is turned faceup");
+        assert_eq!(state.corp.resources.credits, Credits(0), "its own rez cost came from the credit pool, all of it");
+    }
+
     // `rules::payment`: whether a cost can be paid and paying it are one
     // scan. Each test below (and two more beside the module) is a sum
     // that used to be written out beside the payment and forgot a pool the

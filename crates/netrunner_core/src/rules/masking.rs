@@ -128,9 +128,15 @@ pub struct PublicCorpState {
     /// with every once-per-turn ability unspent.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub once_per_turn_used: Vec<OncePerTurnKey>,
-    /// Recurring credits still unspent this turn, and the pool they refill
-    /// to. Never masked: recurring credits sit as visible tokens on the
-    /// card that grants them, so both players can always count them.
+    /// The Corp identity's recurring credits still unspent this turn, and
+    /// what they refill to (NBN: Making News). Never masked: recurring
+    /// credits sit as visible tokens on the card that grants them, so both
+    /// players can always count them. **Derived, not stored:** the credits
+    /// are the identity's hosted counters and the number is what the
+    /// identity prints (`CardDefinition::recurring_credits`). They were a
+    /// pair of fields on `CorpState`; the view keeps the pair because the
+    /// observation encoding has a slot for each and slots never shift. For
+    /// such an identity `identity_counters` reads the same credits.
     pub recurring_credits: u32,
     pub recurring_credits_max: u32,
 }
@@ -424,7 +430,7 @@ impl Viewer {
 pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer: impl Into<Viewer>) -> PublicGameState {
     let viewer = viewer.into();
     PublicGameState {
-        corp: mask_corp_state(&state.corp, viewer.is(Side::Corp)),
+        corp: mask_corp_state(&state.corp, registry, viewer.is(Side::Corp)),
         runner: mask_runner_state(state, registry, viewer.is(Side::Runner)),
         phase: state.phase,
         active_run: state.active_run.as_ref().map(|run| mask_run_state(state, registry, run, viewer)),
@@ -787,7 +793,6 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::CreditsLost { .. }
         | GameEvent::ClicksLost { .. }
         | GameEvent::ClicksGained { .. }
-        | GameEvent::RecurringCreditsSpent { .. }
         | GameEvent::AgendaScored { .. }
         // A parked trash names its card by install handle alone
         // (`WouldHappen::Trash`), so there is nothing here to strike out.
@@ -964,7 +969,8 @@ fn mask_archived_card(archived: &ArchivedCard, owner_view: bool) -> PublicArchiv
     }
 }
 
-fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
+fn mask_corp_state(corp: &CorpState, registry: &CardRegistry, owner_view: bool) -> PublicCorpState {
+    let identity_recurring = corp.identity.as_ref().and_then(|identity| registry.get(identity)).and_then(|definition| definition.recurring_credits);
     PublicCorpState {
         identity: corp.identity.clone(),
         resources: corp.resources.clone(),
@@ -994,8 +1000,8 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
             })
             .cloned()
             .collect(),
-        recurring_credits: corp.recurring_credits,
-        recurring_credits_max: corp.recurring_credits_max,
+        recurring_credits: if identity_recurring.is_some() { corp.identity_counters } else { 0 },
+        recurring_credits_max: identity_recurring.unwrap_or(0),
     }
 }
 
@@ -1337,15 +1343,25 @@ mod tests {
 
     #[test]
     fn corp_recurring_credits_are_visible_to_both_sides() {
+        let mut registry = CardRegistry::new();
+        crate::cards::register_playable_cards(&mut registry);
         let mut state = game_state_with_runner(runner_state_with_cards());
-        state.corp.recurring_credits = 1;
-        state.corp.recurring_credits_max = 2;
+        state.corp.identity = Some(CardId("nbn_making_news".to_string()));
+        state.corp.identity_counters = 1;
 
         for side in [Side::Corp, Side::Runner] {
-            let masked = mask_state_for_player(&state, side);
-            assert_eq!(masked.corp.recurring_credits, 1, "{side:?}");
-            assert_eq!(masked.corp.recurring_credits_max, 2, "{side:?}");
+            let masked = super::mask_state_for_player(&state, &registry, side);
+            assert_eq!(masked.corp.recurring_credits, 1, "{side:?}: what is hosted on the identity");
+            assert_eq!(masked.corp.recurring_credits_max, 2, "{side:?}: what the identity prints");
         }
+
+        // Counters on an identity that prints no recurring credits are not
+        // recurring credits (AU Co. hosts power counters).
+        state.corp.identity = Some(CardId("au_co_the_gold_standard_in_clones".to_string()));
+        state.corp.identity_counters = 3;
+        let masked = super::mask_state_for_player(&state, &registry, Side::Runner);
+        assert_eq!((masked.corp.recurring_credits, masked.corp.recurring_credits_max), (0, 0));
+        assert_eq!(masked.corp.identity_counters, 3);
     }
 
     #[test]

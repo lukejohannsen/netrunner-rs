@@ -5,26 +5,9 @@
   "card_type": "Program",
   "cost": 1,
   "memory_cost": 2,
-  "triggers": [
-    {
-      "trigger": "OnInstall",
-      "subject": "This",
-      "effects": [
-        {
-          "RefillCountersTo": 2
-        }
-      ]
-    },
-    {
-      "trigger": "OnTurnStart",
-      "effects": [
-        {
-          "RefillCountersTo": 2
-        }
-      ]
-    }
-  ],
+  "triggers": [],
   "counter_kind": "Credit",
+  "recurring_credits": 2,
   "pays_for": [
     "TrashCosts"
   ],

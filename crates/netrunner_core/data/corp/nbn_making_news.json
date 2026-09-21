@@ -6,6 +6,10 @@
   "cost": 0,
   "min_deck_size": 45,
   "recurring_credits": 2,
+  "counter_kind": "Credit",
+  "pays_for": [
+    "TraceAttempts"
+  ],
   "triggers": [],
   "numeric_id": 1080,
   "is_playable": true

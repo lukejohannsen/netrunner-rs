@@ -491,15 +491,6 @@ pub fn evaluate_effect(
             evaluate_effect(state, &Effect::DrawCards(*side, resolved), ctx, registry)
         }
 
-        Effect::RefillCountersTo(target) => {
-            let current = counters_of(state, ctx)
-                .ok_or_else(|| RulesError::CardNotEligibleForCounters(acting_card.cloned().unwrap_or(CardId(String::new()))))?;
-            if current >= *target {
-                return Ok(Vec::new());
-            }
-            modify_counters(state, ctx, i64::from(*target - current))
-        }
-
         Effect::InstallRunnerCardFromHeap => {
             use crate::rules::engine::{can_install_runner_card_from_zone, install_runner_card_from_zone_paying_cost, RunnerCardSource};
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();

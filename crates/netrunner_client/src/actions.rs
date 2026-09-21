@@ -369,7 +369,7 @@ pub fn narrate_event(
         GameEvent::HandKept { .. } | GameEvent::MulliganTaken { .. } | GameEvent::AdditionalAccessGranted {
         .. } | GameEvent::AccessReplacementSet { .. } | GameEvent::AccessReplaced { .. } |
         GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. } | GameEvent::ClicksGained { .. } |
-        GameEvent::RecurringCreditsSpent { .. } | GameEvent::AboutToResolve { .. } |
+        GameEvent::AboutToResolve { .. } |
         GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::BasicDrawActionTaken { .. } |
         GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. } |
         GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. } |

@@ -255,14 +255,6 @@ pub enum Effect {
     /// Saturating-removes `amount` generic counters from `acting_card`. Same
     /// target/error rules as `AddCounters`.
     RemoveCounters(u32),
-    /// Raises `acting_card`'s generic counters *to* `u32` if they are below
-    /// it, and leaves them alone otherwise — a **recurring credit** pool's
-    /// "refill to N" (Azimat: "when you install this program and before
-    /// your turn begins, refill to 2 hosted credits"). Not composable from
-    /// `AddCounters`, which adds: reaching "refill to 2" that way needs one
-    /// `EffectIf` per possible starting count. Same target/error rules as
-    /// `AddCounters`.
-    RefillCountersTo(u32),
     /// Evaluates `effect` only if `condition` holds; otherwise silently
     /// no-ops (`Ok(Vec::new())`) — the same soft-gate convention
     /// `dsl::card::TriggeredEffect::requirement` already uses, but usable
@@ -1167,7 +1159,6 @@ impl Effect {
             | Effect::FlipIdentity
             | Effect::AddToBottomOfStack
             | Effect::HostRigCardOnInstall { .. }
-            | Effect::RefillCountersTo(..)
             | Effect::DrawCardsAmount(..)
             | Effect::Prohibit { .. }
             | Effect::PlaceAdvancementCounters(..)
