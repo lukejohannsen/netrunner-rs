@@ -8640,6 +8640,36 @@ mod system_gateway {
         assert_eq!(state.corp.hq.len(), 1);
     }
 
+    /// "Unless the Runner suffers 3 net damage" names a cost, and the paying
+    /// of a cost cannot be modified or cancelled by an optional interrupt
+    /// (Comprehensive Rules 1.16.1a). As a `PresentChoice` option the damage
+    /// was an effect, announced as about to resolve, so a Net Shield beside
+    /// it was asked and could prevent 1 of the 3 the Runner had chosen to
+    /// pay with.
+    #[test]
+    fn semak_samun_damage_is_a_cost_and_net_shield_is_not_asked() {
+        let registry = super::registry();
+        let mut state = runner_turn(5, 4);
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 4];
+        state.runner.rig = vec![crate::rules::InstalledRunnerCard {
+            card: CardId("net_shield".to_string()),
+            install_id: InstallId(2001),
+            ..Default::default()
+        }];
+        state.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let state = advance_until_choice(state, &registry);
+        let (state, events) =
+            apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("pay 3 net");
+
+        assert!(state.pending_paid_choice.is_none(), "Net Shield is not offered: {:?}", state.pending_paid_choice);
+        assert!(state.pending_prevention.is_none());
+        assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::AboutToResolve { .. })), "nothing announced");
+        assert_eq!(state.runner.grip.len(), 1, "all three paid");
+        assert!(state.active_run.is_some(), "the run goes on");
+    }
+
     #[test]
     fn semak_samun_is_broken_only_by_a_fracter_and_ends_the_run_unless_the_runner_takes_three_net() {
         let registry = sg_registry();
@@ -8657,8 +8687,8 @@ mod system_gateway {
         assert!(matches!(err, RulesError::NoBreakableSubroutine { .. }), "{err:?}");
         // The subroutine fires and the Runner chooses: end the run.
         let state = advance_until_choice(state, &registry);
-        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Runner, .. })));
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("end the run");
+        assert_eq!(state.pending_paid_choice.as_ref().map(|choice| choice.side), Some(Side::Runner));
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("end the run");
         assert!(state.active_run.is_none());
         assert_eq!(state.runner.grip.len(), 4);
 
@@ -8669,9 +8699,23 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
         let state = advance_until_choice(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take the damage");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("take the damage");
         assert_eq!(state.runner.grip.len(), 1, "three net damage");
         assert!(state.active_run.is_some(), "the run goes on");
+
+        // With two cards in the grip the damage cannot be paid in full, so
+        // the only answer is to let the run end.
+        let mut state = runner_turn(5, 4);
+        state.runner.grip = vec![CardId("sure_gamble".to_string()); 2];
+        state.corp.installed = vec![ice_installed("semak_samun", ServerId::Hq, true)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
+        let state = advance_until_choice(state, &registry);
+        assert!(state.pending_paid_choice.is_some());
+        let legal = crate::rules::legal_actions_for(&state, &registry, Side::Runner);
+        assert!(!legal.iter().any(|a| matches!(a, PlayerAction::AcceptPendingPaidChoice { .. })), "{legal:?}");
+        assert!(legal.contains(&PlayerAction::DeclinePendingPaidChoice));
+        assert!(apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).is_err(), "not payable");
 
         // A fracter breaks it.
         let mut state = runner_turn(5, 4);
@@ -9212,7 +9256,7 @@ mod system_gateway {
         let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::ContinueRun).expect("approach");
         let damaged = advance_until_choice(damaged, &registry);
-        let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take 3 net");
+        let (damaged, _) = apply_action(&damaged, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("take 3 net");
         assert_eq!(damaged.corp.identity_counters, 1, "one for the damage");
 
         // Two counters buy a look at the top 3 of R&D at the turn's start.
