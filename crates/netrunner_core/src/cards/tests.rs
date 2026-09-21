@@ -9166,7 +9166,7 @@ mod system_gateway {
     }
 
     #[test]
-    fn biawak_may_forfeit_the_cheapest_agenda_to_rez_ten_credits_cheaper() {
+    fn biawak_may_forfeit_an_agenda_of_the_corps_choosing_to_rez_ten_credits_cheaper() {
         let registry = sg_registry();
         let approach_biawak = |corp_credits: u32, agendas: Vec<&str>| {
             let mut state = runner_turn(5, 4);
@@ -9182,15 +9182,24 @@ mod system_gateway {
         // Rich enough to pay outright, so both ways are on the table.
         let state = approach_biawak(14, vec!["offworld_office", "aggressive_trendsetting"]);
         let (state, _) = apply_action(&state, &registry, rez(&state)).expect("rez, one way or the other");
-        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })), "forfeit or not");
+        assert!(
+            matches!(&state.pending_payment, Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Alternative { offered, .. }, .. }) if offered == &vec![0, 1]),
+            "forfeit or not: {:?}",
+            state.pending_payment
+        );
+        assert!(!state.corp.installed[0].rezzed, "nothing happens until the Corp has said how it pays");
 
-        // Forfeiting takes the 1-pointer, not the 2-pointer, and pays the rest.
-        let (forfeited, events) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("forfeit");
+        // Forfeiting asks which agenda — the Corp's to weigh, where the old
+        // effect took the lowest-scoring one unasked — and pays the rest.
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("forfeit");
+        assert!(matches!(&asked.pending_payment, Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Card(_), .. })), "which agenda");
+        let (forfeited, events) = apply_action(&asked, &registry, PlayerAction::ToggleCardSelection { position: position_of(&asked, "offworld_office") })
+            .expect("the 2-pointer, by choice");
         assert_eq!(forfeited.corp.resources.credits, Credits(10), "14 less the 4 left after the agenda paid 10");
         assert!(forfeited.corp.installed[0].rezzed);
         assert_eq!(forfeited.corp.scored_agendas.len(), 1);
-        assert_eq!(forfeited.corp.scored_agendas[0].card.0, "offworld_office", "the cheaper agenda went");
-        assert!(forfeited.corp.removed_from_game.contains(&CardId("aggressive_trendsetting".to_string())));
+        assert_eq!(forfeited.corp.scored_agendas[0].card.0, "aggressive_trendsetting", "the agenda the Corp kept");
+        assert!(forfeited.corp.removed_from_game.contains(&CardId("offworld_office".to_string())));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::AgendaForfeited { .. })));
 
         // Or pay the whole 14 and keep both agendas.
@@ -9203,7 +9212,7 @@ mod system_gateway {
         // is not asked a question with a single answer.
         let state = approach_biawak(4, vec!["offworld_office"]);
         let (state, _) = apply_action(&state, &registry, rez(&state)).expect("the only way");
-        assert!(state.pending_decision.is_none());
+        assert!(state.pending_decision.is_none() && state.pending_payment.is_none(), "one way, one agenda: nothing to ask");
         assert!(state.corp.installed[0].rezzed);
         assert!(state.corp.scored_agendas.is_empty());
 
@@ -9509,12 +9518,11 @@ mod system_gateway {
         let mut hq = base.clone();
         hq.corp.hq = vec![CardId("hedge_fund".to_string()), CardId("ice_wall".to_string()), CardId("enigma".to_string())];
         let (hq, _) = apply_action(&hq, &registry, plutus(&hq)).expect("trash three");
-        assert!(matches!(hq.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { min: 3, max: 3, .. })));
-        let (hq, _) = apply_action(&hq, &registry, PlayerAction::ToggleCardSelection { position: 0 }).expect("one");
-        let (hq, _) = apply_action(&hq, &registry, PlayerAction::ToggleCardSelection { position: 1 }).expect("two");
-        let (hq, _) = apply_action(&hq, &registry, PlayerAction::ToggleCardSelection { position: 2 }).expect("three");
-        let (hq, _) = apply_action(&hq, &registry, PlayerAction::ConfirmCardSelection).expect("pay");
+        // Exactly three cards for a cost of three: nothing to ask, and the
+        // cards are revealed, so they land faceup.
+        assert!(hq.pending_payment.is_none() && hq.pending_decision.is_none());
         assert!(hq.corp.hq.is_empty());
+        assert!(hq.corp.archives.iter().all(|a| !a.facedown), "revealed as they were trashed");
         assert!(hq.corp.installed[0].rezzed, "the rez follows the payment");
 
         // With an agenda too, the Corp picks which cost to pay.
@@ -9522,7 +9530,7 @@ mod system_gateway {
         both.corp.hq = vec![CardId("hedge_fund".to_string()); 3];
         both.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("offworld_office".to_string()))];
         let (both, _) = apply_action(&both, &registry, plutus(&both)).expect("two ways to pay");
-        assert!(matches!(both.pending_decision, Some(crate::rules::PendingDecision::ChooseEffect { chooser: Side::Corp, .. })));
+        assert!(matches!(&both.pending_payment, Some(crate::rules::PendingPayment { question: crate::rules::PaymentAsk::Alternative { .. }, .. })));
         let (forfeited, _) = apply_action(&both, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("forfeit instead");
         assert!(forfeited.corp.scored_agendas.is_empty());
         assert_eq!(forfeited.corp.hq.len(), 3, "HQ untouched");
@@ -9653,15 +9661,43 @@ mod system_gateway {
             subsets.len()
         };
 
+        // Plutus's three cards and Anoetic Void's two are costs now, asked
+        // one card at a time with no confirm (`payment::Ask::Card`): every
+        // sequence of picks has to pay, which is the same demand on the
+        // payment that the subsets below make of a prompt.
+        fn pay_every_way(label: &str, state: &GameState, registry: &CardRegistry, paid: &dyn Fn(&GameState) -> bool) -> usize {
+            let picks: Vec<usize> = legal_actions(state, registry)
+                .into_iter()
+                .filter_map(|a| match a {
+                    PlayerAction::ToggleCardSelection { position } => Some(position),
+                    _ => None,
+                })
+                .collect();
+            assert!(!picks.is_empty(), "{label}: a parked payment with nothing to answer it");
+            picks
+                .into_iter()
+                .map(|position| {
+                    let (next, _) = apply_action(state, registry, PlayerAction::ToggleCardSelection { position })
+                        .unwrap_or_else(|e| panic!("{label}: picking {position} failed: {e:?}"));
+                    if next.pending_payment.is_some() {
+                        pay_every_way(label, &next, registry, paid)
+                    } else {
+                        assert!(paid(&next), "{label}: the picks ending at {position} did not pay");
+                        1
+                    }
+                })
+                .sum()
+        }
+
         // Plutus: 3 of 5 as an alternative rez cost (its only available way
-        // to pay here — no agenda to forfeit — so no PresentChoice first).
+        // to pay here — no agenda to forfeit — so no alternative is asked).
         let mut plutus = base_state();
         plutus.corp.installed = vec![corp_root("plutus", ServerId::Remote(0))];
         plutus.corp.installed[0].rezzed = false;
         plutus.corp.hq = mixed_hq();
         let (plutus, _) = apply_action(&plutus, &registry, PlayerAction::RezIce { ice: install_of(&plutus, "plutus") })
             .expect("rez via the trash-three alternative");
-        assert_eq!(confirm_every_subset("plutus", plutus), 10);
+        assert_eq!(pay_every_way("plutus", &plutus, &registry, &|s| s.corp.installed[0].rezzed && s.corp.hq.len() == 2), 60, "5 × 4 × 3");
 
         // Anoetic Void: 2 of 5 behind the paid choice on approach.
         let mut void = base_state();
@@ -9680,22 +9716,7 @@ mod system_gateway {
         let (void, _) = crate::rules::test_support::through_movement(&void, &registry).expect("approach");
         let (void, _) = apply_action(&void, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
             .expect("pay 2");
-        // Its two cards are a cost now, asked one at a time with no confirm
-        // (`payment::Ask::Card`): every pair of picks, in either order, pays.
-        let first = eligible_positions(&void);
-        assert_eq!(first.len(), 5, "every card in HQ can pay");
-        let mut paid = 0;
-        for &a in &first {
-            let (one, _) = apply_action(&void, &registry, toggle(a)).unwrap_or_else(|e| panic!("anoetic_void: first pick {a} failed: {e:?}"));
-            let second = eligible_positions(&one);
-            assert!(!second.contains(&a), "a card is picked once");
-            for &b in &second {
-                let (both, _) = apply_action(&one, &registry, toggle(b)).unwrap_or_else(|e| panic!("anoetic_void: picks {a}, {b} failed: {e:?}"));
-                assert!(both.pending_payment.is_none() && both.active_run.is_none(), "anoetic_void: {a}, {b} paid and ended the run");
-                paid += 1;
-            }
-        }
-        assert_eq!(paid, 20);
+        assert_eq!(pay_every_way("anoetic_void", &void, &registry, &|s| s.active_run.is_none() && s.corp.hq.len() == 3), 20, "5 × 4");
 
         // Sprint: draw 3 into a 4-card hand, then shuffle exactly 2 of the 7 back.
         let mut sprint = base_state();

@@ -67,6 +67,18 @@ pub enum Cost {
     /// (`payment::Ask::Card`). A card trashed from HQ lands facedown unless
     /// `reveal`; a trashed install that was faceup stays faceup. Never
     /// prevented: the payer is choosing among their own cards (CR 1.16.1a).
+    /// The Corp forfeits `u32` agendas from its score area — Biawak's "you
+    /// can forfeit 1 agenda as you rez this ice", Plutus's "as an
+    /// additional cost to rez this asset, forfeit 1 agenda". Affordable
+    /// with that many scored; the Corp is asked which (`payment::Ask::Card`
+    /// over `CardZoneRef::OwnScoreArea`) whenever more than one could go.
+    /// It was `Effect::ForfeitAgendas`, which took the lowest-scoring
+    /// agenda unasked on the argument that it always dominates — true of
+    /// points, and not of an agenda whose counters are worth spending
+    /// first, which is the Corp's to weigh. A forfeited agenda leaves the
+    /// game, and "when you forfeit this" hears it (Greenmail), dispatched
+    /// by the payer.
+    Forfeit(u32),
     Trash {
         from: CardZoneRef,
         filter: CardFilter,
@@ -123,7 +135,7 @@ impl Cost {
     /// question is possible.
     pub fn may_ask(&self) -> bool {
         match self {
-            Cost::Trash { .. } => true,
+            Cost::Trash { .. } | Cost::Forfeit(_) => true,
             Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
             _ => false,
         }

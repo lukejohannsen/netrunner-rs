@@ -272,6 +272,7 @@ fn zone_place(view: &ClientView, chooser: Side, zone: &CardZoneRef, position: us
         CardZoneRef::OpponentDeck => deck(opponent),
         CardZoneRef::OpponentDiscard => discard(opponent),
         CardZoneRef::OpponentScoreArea => format!("the {opponent:?}'s score area"),
+        CardZoneRef::OwnScoreArea => "your score area".to_string(),
         // Installed zones carry an install and never reach here; a
         // position with none is still somewhere on the table.
         CardZoneRef::OwnInstalled | CardZoneRef::OpponentInstalled => "installed".to_string(),

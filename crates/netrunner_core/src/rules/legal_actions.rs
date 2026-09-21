@@ -341,9 +341,7 @@ fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
             crate::rules::payment::Ask::Pools(question) => {
                 (question.min..=question.max).map(|amount| PlayerAction::ChooseNumber { amount }).collect()
             }
-            crate::rules::payment::Ask::Card(question) => {
-                question.eligible.iter().map(|&position| PlayerAction::ToggleCardSelection { position: position as usize }).collect()
-            }
+            ask => ask.answers().into_iter().map(|answer| ask.action_for(answer)).collect(),
         };
     }
     let mut candidates = static_candidates();

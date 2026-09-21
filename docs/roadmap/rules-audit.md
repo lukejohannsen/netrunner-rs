@@ -1916,7 +1916,7 @@ one.
    *Deferred by name:* the approach-server step as a phase of its own (it
    stays `Success`'s entry, which nothing needs apart), and a trigger on
    passing ice, until a card prints one.
-8. **Cost types — IN PROGRESS (21 September 2026)** (§2.4; was item 5).
+8. **Cost types — DONE (21 September 2026, six PRs; the last stage's entry closes it)** (§2.4; was item 5).
    jinteki's 50 are the backlog, taken as cards need them.
 
    **What reading it found first: no card needs a cost type to exist, and
@@ -2082,6 +2082,63 @@ one.
    accepted more often now that the accept is priced exactly), Corp
    flatline wins 11 → 12 and Runner agenda wins 147 → 146 — one game, inside
    the seed-spread band, so **no strength effect is claimed**.
+
+   **Stage 6: a forfeit is a cost, and so is the way a rez is paid**
+   (`feat/cost-forfeit`). `Cost::Forfeit(n)` asks the Corp which agenda,
+   through the same one-card question over a new zone word,
+   `CardZoneRef::OwnScoreArea` (a scored agenda keeps its install handle,
+   so two copies are two answers). `Effect::ForfeitAgendas` took the
+   lowest-scoring agenda unasked, on the argument that it always
+   dominates — true of points, not of an agenda whose counters are worth
+   spending first, which is the Corp's to weigh; the heuristic now weighs
+   it by its evaluator, one ply ahead. A `RezAlternative` is a `cost` and a
+   `discount`, where it was an `Effect` behind a requirement
+   (`ForfeitAgendas` behind `ScoreAreaHasAtLeast`, a card selection behind
+   `ZoneHasAtLeast`) resolved as "pay, then rez" out of a `PresentChoice`.
+   **Which way is part of paying**, so it is the payment's third kind of
+   question (`payment::Ask::Alternative`, answered by
+   `ResolvePendingChoice`), and a rez of Biawak or Plutus is one replayed
+   `RezIce`: the way, the agenda or the three cards, and the credits.
+   Greenmail's "when you forfeit this" hears the cost through
+   `dispatch_cost_events`, called by `rez_ice`. Plutus's three cards are
+   revealed as they are trashed, so they land faceup. **Deleted:**
+   `Effect::ForfeitAgendas` and `EffectRequirement::ScoreAreaHasAtLeast`,
+   both used by exactly these two cards.
+
+   **Measured** against stage 5. Random: 74 payment questions (26 before),
+   Biawak never rezzed in the pass (1 before) and a random forfeit's agenda
+   is now a random one. Heuristic, both shapes: **Plutus rezzed 10 → 20** —
+   the stage 5 mechanism again: rezzing it by its three cards had parked a
+   card prompt that scored the unresolved-decision penalty one ply ahead,
+   and a parked payment is scored as the payment made, with the three
+   cheapest cards gone. Biawak rezzed 5 → 3. Corp agenda wins 33 → 31,
+   Runner 146 → 149: inside the seed-spread band, so **no strength effect is
+   claimed**.
+
+   **The item, closed.** `Cost` grew 10 → 14 (`RemoveTags`, `SufferDamage`,
+   `Trash`, `Forfeit`), over 184 card files: 3 single-use, and `ClearTags`
+   and `TrashRandomFromHq` named by no card file (the second is built by
+   the engine for Shred). `Effect` 71 → 70 with 26 single-use and 3 unused,
+   both unchanged; `EffectRequirement` 36 → 35, 18 single-use, unchanged.
+   Ten cards that wrote a printed cost as an effect now pay it as a cost,
+   and three rules came of it that the next card inherits: a cost is paid
+   before the effect and never prevented; its affordability is the scan the
+   payment picks from; and a cost that takes cards asks by replay, one card
+   at a time.
+
+   *Deferred by name.* **IP Enforcement**'s "as an additional cost to play
+   this operation, remove X tags" is correct in outcome and fixed by the
+   agenda chosen after the play; moving it is an X cost the pool does not
+   otherwise print (`InstallAgendaFromRunnerScoreArea` removes the tags,
+   and is the code to delete when it moves). **Détente**'s "[click], add 2
+   hosted cards to HQ: … Any player can use this ability" needs access
+   outside a run and an ability either player uses — backlog item 10; a
+   `Cost` to return hosted cards would plug into `Ask::Card` with
+   `CardZoneRef::HostedOnSource`. **Found, not fixed:** `Effect::
+   RezInstalled` → `engine::rez_install` never reads `rez_alternatives`,
+   so a Plutus rezzed by another card's text skips its additional cost; no
+   card in the pool rezzes an asset by text. **Open:** whether damage paid
+   as a cost is Net Shield's "first time each turn" (stage 4).
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
    spec that reaches a real state through `setup` and actions, plus helpers
    that address cards by name. It is test code only.

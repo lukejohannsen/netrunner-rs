@@ -283,11 +283,6 @@ pub enum EffectRequirement {
     /// and Aggressive Trendsetting's "the first time the Runner trashes an
     /// installed Corp card", checked from `Trigger::OnTrashedFromAccess`
     /// while the access that trashed it is still the pending one.
-    /// The Corp's score area holds at least this many agendas — the gate
-    /// on every forfeit alternative (`dsl::card::RezAlternative`), since a
-    /// forfeit with nothing to give up is not a way to pay. A count of
-    /// agendas, not of points: what a forfeit consumes is a card.
-    ScoreAreaHasAtLeast(u32),
     /// A run is in progress and has not yet reached access — Proprionegation's
     /// "use this ability only during a run". `DuringEncounter` is the
     /// narrower sibling (the Runner committed to a specific piece of ice);

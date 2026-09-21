@@ -98,6 +98,7 @@ pub fn describe_zone(zone: &CardZoneRef) -> &'static str {
         CardZoneRef::OpponentHand => "the opponent's hand",
         CardZoneRef::OpponentDeck => "the opponent's deck",
         CardZoneRef::OpponentScoreArea => "the opponent's score area",
+        CardZoneRef::OwnScoreArea => "your score area",
     }
 }
 
@@ -109,6 +110,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::ClearTags => "remove all tags".to_string(),
         Cost::RemoveTags(n) => format!("remove {}", plural(*n, "tag", "tags")),
         Cost::SufferDamage(kind, n) => format!("suffer {n} {} damage", damage_word(kind)),
+        Cost::Forfeit(n) => format!("forfeit {}", plural(*n, "agenda", "agendas")),
         Cost::Trash { from, count, .. } => format!("trash {} from {}", plural(*count, "card", "cards"), describe_zone(from)),
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
         Cost::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
@@ -276,7 +278,6 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::MoveThisCardToRoot(server) => format!("move this card to {}", describe_server(*server)),
         Effect::PlayOperation { .. } => "play an operation".to_string(),
         Effect::ResolveSubroutineOfSelectedIce => "resolve a subroutine of the chosen ice".to_string(),
-        Effect::ForfeitAgendas(n) => format!("forfeit {}", plural(*n, "agenda", "agendas")),
         Effect::MoveRunToOutermost(server) => format!("move the run to the outermost ice of {}", describe_server(*server)),
         Effect::InstallAgendaFromRunnerScoreArea => "install an agenda from the Runner's score area".to_string(),
         Effect::SwapApproachedIceWithCard { .. } => "swap the approached ice with a card".to_string(),
@@ -469,6 +470,28 @@ pub fn decision_card(view: &ClientView) -> Option<&CardId> {
     }
 }
 
+/// One of a card's printed ways to pay for its rez
+/// (`CardDefinition::rez_alternatives`), as its button reads: what it
+/// costs beside the credits, and what it takes off them — "Forfeit 1
+/// agenda, 10 credits off", "Pay the full rez cost".
+pub fn rez_alternative_label(card: &netrunner_core::dsl::CardId, index: usize, registry: &CardRegistry) -> String {
+    let Some(alternative) = registry.get(card).and_then(|def| def.rez_alternatives.get(index)) else {
+        return format!("Choose option {}", index + 1);
+    };
+    let mut words = match &alternative.cost {
+        Some(cost) => describe_cost(cost),
+        None if alternative.discount == 0 => "pay the rez cost".to_string(),
+        None => "pay the full rez cost".to_string(),
+    };
+    if alternative.discount > 0 {
+        words = format!("{words}, {} off", plural(alternative.discount, "credit", "credits"));
+    }
+    if let Some(first) = words.get(0..1) {
+        words.replace_range(0..1, &first.to_uppercase());
+    }
+    words
+}
+
 /// What the actions pane is asking, when a card is asking it: `Bigger
 /// Picture asks — choose one`. `None` for an ordinary turn, where the
 /// pane keeps its usual title.
@@ -487,6 +510,7 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
                 describe_zone(&question.zone),
                 question.remaining
             ),
+            netrunner_core::rules::PaymentAsk::Alternative { card, .. } => format!("Rez {} — how will you pay?", title(card, registry)),
         });
     }
     let name = decision_card(view).map(|id| title(id, registry));
