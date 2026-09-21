@@ -36,7 +36,7 @@ use crate::rules::active;
 use crate::rules::turn_log::{self, AsOf};
 use crate::rules::event::GameEvent;
 use crate::rules::run::ServerId;
-use crate::rules::state::{DeferredTrigger, GamePhase, GameState, Heard, InstallId, InstallSlot, Side};
+use crate::rules::state::{DeferredTrigger, GamePhase, GameState, Heard, InstallId, InstallSlot, Side, WouldHappen};
 
 /// What an event is about — the thing a `Subject::This` is compared with.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -185,8 +185,11 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::TagsCleared { side: Side::Corp }
         | GameEvent::TagsGiven { side: Side::Corp, .. } => Vec::new(),
 
-        GameEvent::DamageAboutToResolve { .. } => vec![moment(Trigger::OnDamageAboutToResolve, &About::Nothing, None)],
-        GameEvent::TrashAboutToResolve { .. } => vec![moment(Trigger::OnTrashAboutToResolve, &About::Nothing, None)],
+        // "When you would suffer damage" is the one "would" a card in the
+        // pool is printed about; a tag or a trash about to happen is an
+        // occurrence of nothing until a card listens for one.
+        GameEvent::AboutToResolve { what: WouldHappen::Damage { .. } } => vec![moment(Trigger::OnDamageAboutToResolve, &About::Nothing, None)],
+        GameEvent::AboutToResolve { what: WouldHappen::Tags { .. } | WouldHappen::Trash { .. } } => Vec::new(),
 
         GameEvent::ClickSpent { .. }
         | GameEvent::CreditsGained { .. }
@@ -244,8 +247,7 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
         | GameEvent::ClicksLost { .. }
         | GameEvent::ClicksGained { .. }
         | GameEvent::RecurringCreditsSpent { .. }
-        | GameEvent::DamagePrevented { .. }
-        | GameEvent::TrashPrevented { .. }
+        | GameEvent::Prevented { .. }
         | GameEvent::CountersAdded { .. }
         | GameEvent::CountersRemoved { .. }
         | GameEvent::PendingChoicePresented { .. }

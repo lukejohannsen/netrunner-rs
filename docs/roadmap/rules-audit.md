@@ -1119,10 +1119,82 @@ one.
    reset sites, one second scan and twenty-three free-form tag strings
    are gone; `GameState` gained two, both fixed-size.
 
-4. **Generic prevention** (§2.2; was item 2). Give the existing
+4. **Generic prevention — IN PROGRESS (20 September 2026; stage 1 of 3)**
+   (§2.2; was item 2). As the second pass wrote it: give the existing
    `WindowCheckpoint::Prevention` window a kind parameter, so tags,
    end-the-run, jack-out and expose use the same window that damage and
    trash use, rather than a third special case.
+
+   **What reading it found first.** `Effect::PreventDamage` and
+   `PreventTrash` are both on the DSL Growth Rule's unused list: **no card
+   in the pool had ever opened the window, so neither sweep had.** Shred is
+   the one pool card that prints "prevent", and it went round the window
+   through a field on the run. So the item is three stages: the mechanism
+   and what was wrong with it (this one), Shred onto it, then the Core
+   Set's three interrupts — Decoy, Net Shield, Sacrificial Construct — with
+   an Eternal-format deck pair so both sweeps reach them, since no Core
+   card is Startup-legal and the sample decks are. Crash Space (payment
+   sources, item 5) and Zaibatsu Loyalty (expose, item 10) are deferred by
+   name.
+
+   **Stage 1 — what is prevented is a word, and one door asks it
+   (`feat/what-is-prevented-is-a-word`).** `rules::prevention`: the effect
+   that deals damage, gives a tag or trashes an installed card calls
+   `prevention::would`, which parks a `WouldHappen` in
+   `GameState::pending_prevention`, asks, and makes what is left happen.
+   What a card prevents is `dsl::Preventable` — `Damage { kind, up_to }`,
+   `Tags(n)`, `Trash(filter)` — the payload of one `Effect::Prevent`;
+   `PreventDamage`, `PreventTrash`, `PendingPreventionKind`,
+   `PreventionKind`, two errors and four events (now `AboutToResolve` and
+   `Prevented`, each carrying the `WouldHappen`) are gone, and
+   `Trigger::OnTrashAboutToResolve` with them, which no card had ever
+   declared (`Effect` 72 → 71, `Trigger` 29 → 28). *Rejected:* the "kind
+   parameter on the window" the item asked for — the window never needed
+   to know; what did was the parked thing and the word that matches it.
+   **Five things were wrong with the mechanism nobody had reached**, each
+   now a test that drives real actions against fixture cards:
+   (1) *the window took the one window slot and never gave it back* —
+   `paid_ability_window` is a single `Option`, so a prevention opened
+   during a run's window replaced it, and the next window the flow opened
+   (`open_window_if_at_checkpoint` after an access, the turn's own)
+   replaced the prevention with the damage still parked; it nests now
+   (`PendingPrevention::interrupted`, written by
+   `paid_ability::open_window_for`), and the toggle for the action that
+   opened it goes to the window that action was taken in.
+   (2) *anything could be done in it* — an ability that dealt damage
+   inside the window would have replaced the parked damage; only an
+   interrupt (`Effect::prevents`) and a pass are legal now, by one guard in
+   `apply_action`. (3) *it opened for a card nobody could use* — the gate
+   was "some card in play prints a prevention", for either player, at any
+   price; it is `prevention::could_prevent` (the word matches this, the
+   requirement is met, the cost is affordable), and the window closes by
+   itself once all of it is prevented or nobody can prevent more. The
+   same ability counted as "usable" for the post-action window, which
+   would have opened one after every action of a Decoy's owner's opponent.
+   (4) *most trashes never reached it* — every card in the pool that
+   trashes a Runner program does it through a selection (Ansel 1.0,
+   Ballista, Biawak, Bumi 1.0, Retribution), which moved the card itself
+   and said so in a comment ("parity is a follow-up"). (5) *tags had no
+   door at all.* And one found on the way: **"the subroutines are not
+   finished" was passed on by hand at five sites, to a parked decision and
+   a parked paid choice and nothing else**, so a tag (or a trace) parked
+   out of a subroutine's *choice* ended the encounter with the ice's later
+   subroutines unfired — one function now,
+   `pending_choice::mark_parked_resume_subroutines`, for all four parked
+   states, and the test for it fails without the line. A parked trash
+   names an install handle and no card, so it rides in a view and an event
+   unmasked; the masking arm that dropped the old event for a facedown
+   install is gone with the field it guarded. **A cost is not prevented**
+   (`Cost::TakeTags`, a card trashed to pay, the Runner's paid trash on
+   access, the memory-limit trash, a player choosing among their own
+   installs), and "up to 3" prevents as much as is left — a number to
+   choose is item 6. *Measured:* `scripts/coverage_identical.py main
+   --head-worktree`, 192 games a report: **identical ×4** (random and
+   heuristic, by view and by index) — as it must be, with no pool card
+   able to open the window; that it *is* unreachable is the finding, and
+   stage 3 is what ends it. `OBS_SIZE` 2262 and `ActionSpace` 1646
+   unmoved (the two prevention slots now read amount and prevented for
+   every kind). New: the **Prevention Rule** in `AGENTS.md`.
 5. **Where a payment comes from** (§6.4; new). Pools that compete and a
    player who chooses between them — stealth is the family that forces it.
    Today every pool is spent automatically in a fixed order.

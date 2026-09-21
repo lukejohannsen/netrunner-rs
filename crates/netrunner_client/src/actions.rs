@@ -15,7 +15,7 @@
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{
-    ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, ServerId, Side,
+    ConcealedAction, GameEvent, InstallId, InstallSlot, PendingDecision, PlayerAction, PublicAction, ServerId, Side, WouldHappen,
 };
 use netrunner_core::view::ClientView;
 use netrunner_session::PublicHistoryEntry;
@@ -299,6 +299,13 @@ pub fn narrate_event(
         GameEvent::DamageTaken { damage_type, amount } => {
             format!("the Runner took {amount} {} damage", format!("{damage_type:?}").to_lowercase())
         }
+        // A prevention used to leave no line at all: the log showed damage
+        // dealt short of what the card says, and nothing about why.
+        GameEvent::Prevented { what, amount } => match what {
+            WouldHappen::Damage { kind, .. } => format!("{amount} {} damage was prevented", format!("{kind:?}").to_lowercase()),
+            WouldHappen::Tags { .. } => format!("{amount} tag(s) prevented"),
+            WouldHappen::Trash { .. } => "a trash was prevented".to_string(),
+        },
         GameEvent::RunnerFlatlined => "the Runner is flatlined".to_string(),
         GameEvent::TagsGiven { side, amount } => format!("{side:?} took {amount} tag(s)"),
         GameEvent::TagRemoved { side } => format!("{side:?} removed a tag"),
@@ -362,10 +369,8 @@ pub fn narrate_event(
         GameEvent::HandKept { .. } | GameEvent::MulliganTaken { .. } | GameEvent::AdditionalAccessGranted {
         .. } | GameEvent::AccessReplacementSet { .. } | GameEvent::AccessReplaced { .. } |
         GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. } | GameEvent::ClicksGained { .. } |
-        GameEvent::RecurringCreditsSpent { .. } | GameEvent::DamageAboutToResolve { .. } |
-        GameEvent::TrashAboutToResolve { .. } | GameEvent::DamagePrevented { .. } |
-        GameEvent::TrashPrevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { ..
-        } | GameEvent::BasicDrawActionTaken { .. } |
+        GameEvent::RecurringCreditsSpent { .. } | GameEvent::AboutToResolve { .. } |
+        GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::BasicDrawActionTaken { .. } |
         GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. } |
         GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. } |
         GameEvent::PendingPaidChoiceDeclined { .. } => return None,

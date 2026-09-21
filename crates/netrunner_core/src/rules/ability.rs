@@ -5,17 +5,16 @@ use crate::dsl::{
 };
 use crate::rules::continuous;
 use crate::rules::lingering::{self, Lingering, LingeringEffect, On, Until};
-use crate::rules::damage;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::listeners;
 use crate::rules::event::GameEvent;
-use crate::rules::paid_ability;
+use crate::rules::prevention;
 use crate::rules::run::{self, AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{
     ArchivedCard, Clicks, Credits, DeferredTrigger, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, OncePerTurnKey, PendingChoiceResume, PendingDecision, PendingPaidChoice,
-    PendingPaidChoiceResume, PendingPrevention, PendingPreventionKind, PreventionKind, PreventionResume, Side,
-    TraceResume, TraceState, WindowCheckpoint,
+    PendingPaidChoiceResume, Side, WouldHappen,
+    TraceResume, TraceState,
 };
 
 /// Everything about the resolution *currently in flight* that an effect or
@@ -223,25 +222,10 @@ pub fn evaluate_effect(
     match effect {
         Effect::GainCredits(side, amount) => gain_credits_from_ability(state, registry, *side, *amount, ctx),
 
+        // Damage, a tag and the trash of an installed card are each about to
+        // happen before they happen: `rules::prevention` is the one door.
         Effect::DealDamage(damage_type, amount) => {
-            // Only parks a `PendingPrevention`/opens a window if some
-            // installed/rigged card actually has a matching `Paid`
-            // `PreventDamage` ability — a zero-overhead no-op for every
-            // registry with no such card (the entire baseline set today),
-            // so this stays a synchronous `apply_damage` call exactly as
-            // before in the common case.
-            if has_matching_paid_ability(state, registry, |e| matches!(e, Effect::PreventDamage(_))) {
-                park_damage_prevention(state, registry, *damage_type, *amount, ctx)
-            } else {
-                let (mut events, discarded) = damage::apply_damage(state, *damage_type, *amount);
-                // Overwrite rather than append: the requirement reading this
-                // (`LastDamageTrashedOddCostCard`) asks about the *most
-                // recent* damage, so a second `DealDamage` in the same
-                // `Sequence` must not be answered from the first's discards.
-                ctx.damage_discarded = discarded;
-                events.extend(dispatch_damage_taken(state, registry, &events)?);
-                Ok(events)
-            }
+            prevention::would(state, registry, WouldHappen::Damage { kind: *damage_type, amount: *amount as u32 }, ctx)
         }
 
         Effect::ModifyStrength(delta) => {
@@ -348,17 +332,7 @@ pub fn evaluate_effect(
             Ok(events)
         }
 
-        Effect::GiveTags(amount) => {
-            // Always targets the Runner — see GiveTags's own doc comment.
-            state.runner.tags = state.runner.tags.saturating_add(*amount);
-            let tags_given_event = GameEvent::TagsGiven { side: Side::Runner, amount: *amount };
-            // Dispatched recursively, same precedent as `InitiateRun`'s own
-            // arm — e.g. NBN: Reality Plus's `Trigger::OnTagsGiven` needs to
-            // fire no matter which card/effect actually gave the tag.
-            let mut events = vec![tags_given_event.clone()];
-            events.extend(dispatcher::dispatch_event(state, registry, &tags_given_event)?);
-            Ok(events)
-        }
+        Effect::GiveTags(amount) => prevention::would(state, registry, WouldHappen::Tags { amount: *amount }, ctx),
 
         Effect::RemoveTags(amount) => {
             // The event reports what actually came off, not what was asked
@@ -393,41 +367,16 @@ pub fn evaluate_effect(
             if matches!(target, CardTarget::HostedOnThisCard) {
                 return trash_hosted_cards(state, registry, ctx);
             }
-            // Same zero-overhead-unless-a-card-cares gating as `DealDamage`.
-            if has_matching_paid_ability(state, registry, |e| matches!(e, Effect::PreventTrash)) {
-                park_trash_prevention(state, registry, target.clone(), ctx)
-            } else {
-                trash_card(state, target, ctx)
+            // Only an installed card's trash can be prevented, and only
+            // then is it resolved to a handle first: with nobody to ask,
+            // the target is trashed the way it always was.
+            match installed_target(state, target, ctx) {
+                Some(what) if prevention::could_prevent(state, registry, &what) => prevention::would(state, registry, what, ctx),
+                _ => trash_card(state, target, ctx),
             }
         }
 
-        Effect::PreventDamage(amount) => {
-            let pending = state.pending_prevention.as_mut().ok_or(RulesError::NoPendingPrevention)?;
-            match &mut pending.kind {
-                PendingPreventionKind::Damage { prevented, .. } => {
-                    *prevented = prevented.saturating_add(*amount);
-                    Ok(Vec::new())
-                }
-                PendingPreventionKind::Trash { .. } => Err(RulesError::PreventionKindMismatch {
-                    expected: PreventionKind::Damage,
-                    actual: PreventionKind::Trash,
-                }),
-            }
-        }
-
-        Effect::PreventTrash => {
-            let pending = state.pending_prevention.as_mut().ok_or(RulesError::NoPendingPrevention)?;
-            match &mut pending.kind {
-                PendingPreventionKind::Trash { prevented, .. } => {
-                    *prevented = true;
-                    Ok(Vec::new())
-                }
-                PendingPreventionKind::Damage { .. } => Err(RulesError::PreventionKindMismatch {
-                    expected: PreventionKind::Trash,
-                    actual: PreventionKind::Damage,
-                }),
-            }
-        }
+        Effect::Prevent(word) => prevention::prevent(state, registry, word),
 
         Effect::AddCounters(amount) => modify_counters(state, ctx, i64::from(*amount)),
 
@@ -1508,24 +1457,11 @@ pub fn resolve_unbroken_subroutines(
         events.push(GameEvent::SubroutineFired { card_id, index, effect });
         events.extend(fired_events);
 
-        // If that subroutine's effect was a Trace or parked a
-        // PendingPrevention, mark it so the eventual resolution knows to
-        // resume this loop afterward.
-        if let Some(trace) = state.active_trace.as_mut() {
-            trace.resume = TraceResume::ResumeSubroutines;
-        }
-        if let Some(pending) = state.pending_prevention.as_mut() {
-            pending.resume = PreventionResume::ResumeSubroutines;
-        }
-        if let Some(pending) = state.pending_paid_choice.as_mut() {
-            pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
-        }
-        // Covers all three `PendingDecision` variants (`ChooseEffect` was
-        // the only one that existed when this call was first written;
-        // `ChooseCards`/`ChooseServer` need the same marking — e.g. Ansel
-        // 1.0's first subroutine parks a `ChooseCards`, which must resume
-        // this loop once resolved so its later subroutines still fire).
-        crate::rules::pending_choice::mark_pending_decision_resume_subroutines(state);
+        // Whatever that subroutine's effect parked — a trace, a
+        // prevention, a paid choice, a decision (Ansel 1.0's first
+        // subroutine parks a `ChooseCards`) — must resume this loop once
+        // it resolves, so the later subroutines still fire.
+        crate::rules::pending_choice::mark_parked_resume_subroutines(state);
     }
 
     Ok(events)
@@ -1667,94 +1603,59 @@ pub(crate) fn would_fire(state: &GameState, registry: &CardRegistry, due: &Defer
     })
 }
 
-/// Whether any rezzed Corp install or Runner rig card has a `Trigger::Paid`
-/// ability whose effect matches `predicate` — the gate `DealDamage`/
-/// `TrashCard` use to decide whether to park a `PendingPrevention` and open
-/// a `WindowCheckpoint::Prevention` window at all, versus resolving
-/// synchronously exactly as before. Mirrors `dispatcher.rs`'s `TurnStarted`
-/// arm's candidate-collection shape (rezzed Corp installs ∪ full Runner
-/// rig), generalized to both sides since either could in principle carry a
-/// prevention ability.
-fn has_matching_paid_ability(state: &GameState, registry: &CardRegistry, predicate: impl Fn(&Effect) -> bool) -> bool {
-    let corp_ids = state.corp.installed.iter().filter(|c| c.rezzed).map(|c| &c.card);
-    let runner_ids = state.runner.rig.iter().map(|c| &c.card);
-    corp_ids.chain(runner_ids).any(|card_id| {
-        registry
-            .get(card_id)
-            .is_some_and(|card| card.abilities.iter().any(|a| a.trigger == Trigger::Paid && predicate(&a.effect)))
-    })
-}
-
-/// Parks a `PendingPreventionKind::Damage`, fires any automatic
-/// `Trigger::OnDamageAboutToResolve` reaction, then opens a
-/// `WindowCheckpoint::Prevention` window with the Runner holding priority
-/// first — damage in this engine's model always targets the Runner (see
-/// `Effect::DealDamage`'s own doc comment), so the Runner is the side with
-/// something to prevent.
-fn park_damage_prevention(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    damage_type: crate::dsl::DamageType,
-    amount: usize,
-    ctx: &ResolutionContext<'_>,
-) -> Result<Vec<GameEvent>, RulesError> {
-    state.pending_prevention = Some(PendingPrevention {
-        kind: PendingPreventionKind::Damage { damage_type, amount, prevented: 0 },
-        source_card: ctx.acting_card.cloned(),
-        source_install: ctx.acting_install,
-        resume: PreventionResume::None,
-    });
-    let about_to_resolve = GameEvent::DamageAboutToResolve { damage_type, amount };
-    let mut events = vec![about_to_resolve.clone()];
-    events.extend(dispatcher::dispatch_event(state, registry, &about_to_resolve)?);
-    events.push(paid_ability::open_window_for(state, Side::Runner, WindowCheckpoint::Prevention));
-    Ok(events)
-}
-
-/// Parks a `PendingPreventionKind::Trash`, fires any automatic
-/// `Trigger::OnTrashAboutToResolve` reaction, then opens a
-/// `WindowCheckpoint::Prevention` window with priority given to whichever
-/// side owns the targeted card (see `owning_side_of_target`) — unlike
-/// damage, a trash effect can target either side's card.
-fn park_trash_prevention(
-    state: &mut GameState,
-    registry: &CardRegistry,
-    target: CardTarget,
-    ctx: &ResolutionContext<'_>,
-) -> Result<Vec<GameEvent>, RulesError> {
-    let acting_card = ctx.acting_card;
-    let priority = owning_side_of_target(&target, acting_card, registry);
-    state.pending_prevention = Some(PendingPrevention {
-        kind: PendingPreventionKind::Trash { target: target.clone(), prevented: false },
-        source_card: ctx.acting_card.cloned(),
-        source_install: ctx.acting_install,
-        resume: PreventionResume::None,
-    });
-    let about_to_resolve = GameEvent::TrashAboutToResolve { target };
-    let mut events = vec![about_to_resolve.clone()];
-    events.extend(dispatcher::dispatch_event(state, registry, &about_to_resolve)?);
-    events.push(paid_ability::open_window_for(state, priority, WindowCheckpoint::Prevention));
-    Ok(events)
-}
-
-/// Which side owns the card a `CardTarget` names — `CorpInstalled`/
-/// `RunnerRig`/`TopOfStack` all say so directly; `ThisCard` is resolved via
-/// `acting_card`'s own registry-declared `side`, defaulting to `Runner` if
-/// unresolvable (the overwhelmingly common case for a trash-prevention
-/// trigger).
-fn owning_side_of_target(target: &CardTarget, acting_card: Option<&CardId>, registry: &CardRegistry) -> Side {
+/// The installed card an `Effect::TrashCard` target names, as the thing
+/// `rules::prevention` would park — `None` for a target that is not an
+/// install (the top of a deck, the cards hosted on a host, a card trashing
+/// itself out of a hand), whose trash no card in the pool can prevent.
+fn installed_target(state: &GameState, target: &CardTarget, ctx: &ResolutionContext<'_>) -> Option<WouldHappen> {
+    let corp = |position: usize| {
+        let install = &state.corp.installed[position];
+        WouldHappen::Trash { owner: Side::Corp, install: install.install_id }
+    };
+    let rig = |position: usize| {
+        let install = &state.runner.rig[position];
+        WouldHappen::Trash { owner: Side::Runner, install: install.install_id }
+    };
     match target {
-        CardTarget::CorpInstalled { .. } => Side::Corp,
-        CardTarget::RunnerRig(_) => Side::Runner,
-        CardTarget::TopOfStack { side, .. } => *side,
-        CardTarget::ThisCard => {
-            acting_card.and_then(|id| registry.get(id)).map(|c| c.side).unwrap_or(Side::Runner)
+        CardTarget::ThisCard => acting_corp_position(state, ctx).map(corp).or_else(|| acting_rig_position(state, ctx).map(rig)),
+        CardTarget::CorpInstalled { card, server } => {
+            state.corp.installed.iter().position(|installed| installed.card == *card && installed.server == *server).map(corp)
         }
-        // A Trojan's host is always a Corp installed card.
-        CardTarget::HostIce => Side::Corp,
-        // Never reaches a prevention window (see `Effect::TrashCard`'s
-        // arm); the host is the Runner's.
-        CardTarget::HostedOnThisCard => Side::Runner,
+        CardTarget::HostIce => {
+            let (host, _, _) = resolve_corp_installed_target(state, target, ctx).ok()?;
+            state.corp.installed.iter().position(|installed| installed.install_id == host).map(corp)
+        }
+        CardTarget::RunnerRig(card) => state.runner.rig.iter().position(|installed| &installed.card == card).map(rig),
+        CardTarget::TopOfStack { .. } | CardTarget::HostedOnThisCard => None,
+    }
+}
+
+/// Trashes one installed card by its handle — what a parked trash resolves
+/// to once nobody prevented it, and what a selection-trash the players were
+/// asked about does. Exact with two copies installed, where
+/// `trash_card`'s `CardTarget`s name a card and take the first. Nothing
+/// happens if the install left play while the trash was parked.
+pub(crate) fn trash_install(state: &mut GameState, owner: Side, install: InstallId) -> Vec<GameEvent> {
+    match owner {
+        Side::Corp => {
+            let Some(position) = state.corp.installed.iter().position(|c| c.install_id == install) else { return Vec::new() };
+            let removed = state.corp.installed.remove(position);
+            // A rezzed install was faceup on the table, and a card the
+            // Runner is accessing has been seen whatever its rez state.
+            let seen = removed.rezzed || runner_is_accessing(state, &removed.card);
+            state.corp.archives.push(orient(removed.card.clone(), seen));
+            let mut events = vec![GameEvent::CardTrashed { side: Side::Corp, card: removed.card }];
+            events.extend(cascade_trash_hosted_programs(state, install));
+            events
+        }
+        Side::Runner => {
+            let Some(position) = state.runner.rig.iter().position(|c| c.install_id == install) else { return Vec::new() };
+            let removed = state.runner.rig.remove(position);
+            state.runner.heap.push(removed.card.clone());
+            let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone() }];
+            events.extend(cascade_trash_hosted_on_rig_card(state, &removed));
+            events
+        }
     }
 }
 
@@ -2879,7 +2780,7 @@ mod tests {
     use crate::rules::state::CompletedRun;
     use crate::rules::state::InstallId;
     use crate::rules::test_support::fixture_install_id;
-    use crate::dsl::{AbilityDef, CardDefinition, CardId, CardType, DamageType, IceType, SubroutineDef, TriggeredEffect};
+    use crate::dsl::{CardDefinition, CardId, CardType, DamageType, IceType, SubroutineDef, TriggeredEffect};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunPhase as RP, RunState, ServerId, SubroutineStatus};
     use crate::rules::state::{
         AgendaPoints, Clicks, CorpState, GamePhase, InstalledCard, InstalledRunnerCard,
@@ -2939,162 +2840,6 @@ mod tests {
         assert_eq!(state.runner.grip.len(), 1);
         assert_eq!(state.runner.heap.len(), 1);
         assert!(matches!(events[0], GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 1 }));
-    }
-
-    /// A minimal card carrying one `Trigger::Paid` ability with the given
-    /// `effect` — for exercising `has_matching_paid_ability`'s scan.
-    fn card_with_paid_ability(id: &str, side: Side, effect: Effect) -> CardDefinition {
-        CardDefinition {
-            id: CardId(id.to_string()),
-            title: id.to_string(),
-            side,
-            card_type: CardType::Program,
-            abilities: vec![AbilityDef { text: None, trigger: Trigger::Paid, cost: None, requirement: None, effect, cost_discount_if: None, used_by: None }],
-            is_playable: true,
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn deal_damage_with_no_prevention_ability_in_play_resolves_immediately_unchanged() {
-        let mut state = game_state();
-        state.runner.grip = vec![CardId("card_0".to_string())];
-        // A registered card is in play, but its Paid ability isn't a
-        // prevention one — the scan must still see this as "no prevention
-        // available" and resolve synchronously.
-        let registry = CardRegistry::from_cards(vec![card_with_paid_ability(
-            "corroder",
-            Side::Runner,
-            Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
-        )]);
-        state.runner.rig = vec![InstalledRunnerCard {
-            card: CardId("corroder".to_string()),
-            base_strength: 2,
-            ..Default::default()
-        }];
-
-        let events = evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 1), &mut ResolutionContext::for_card(None), &registry).unwrap();
-
-        assert!(state.runner.grip.is_empty());
-        assert!(state.pending_prevention.is_none());
-        assert!(matches!(events[0], GameEvent::DamageTaken { .. }));
-    }
-
-    #[test]
-    fn deal_damage_with_a_prevention_ability_in_play_parks_a_pending_prevention_and_opens_a_window() {
-        let mut state = game_state();
-        state.runner.grip = vec![CardId("card_0".to_string())];
-        let registry = CardRegistry::from_cards(vec![card_with_paid_ability(
-            "feedback_filter",
-            Side::Runner,
-            Effect::PreventDamage(1),
-        )]);
-        state.runner.rig = vec![InstalledRunnerCard {
-            card: CardId("feedback_filter".to_string()),
-            ..Default::default()
-        }];
-
-        evaluate_effect(&mut state, &Effect::DealDamage(DamageType::Net, 2), &mut ResolutionContext::for_card(None), &registry).unwrap();
-
-        // Nothing applied yet — the grip is untouched until the window closes.
-        assert_eq!(state.runner.grip.len(), 1);
-        assert_eq!(
-            state.pending_prevention.as_ref().map(|p| &p.kind),
-            Some(&PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 2, prevented: 0 })
-        );
-        let window = state.paid_ability_window.expect("a Prevention window should be open");
-        assert_eq!(window.checkpoint, WindowCheckpoint::Prevention);
-        assert_eq!(window.active_priority, Side::Runner);
-    }
-
-    #[test]
-    fn prevent_damage_reduces_the_parked_amount() {
-        let mut state = game_state();
-        state.pending_prevention = Some(PendingPrevention {
-            kind: PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 3, prevented: 0 },
-            source_card: None,
-            source_install: None,
-            resume: PreventionResume::None,
-        });
-
-        evaluate_effect(&mut state, &Effect::PreventDamage(1), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
-
-        assert_eq!(
-            state.pending_prevention.map(|p| p.kind),
-            Some(PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 3, prevented: 1 })
-        );
-    }
-
-    #[test]
-    fn prevent_damage_with_no_pending_prevention_errors() {
-        let mut state = game_state();
-        let result = evaluate_effect(&mut state, &Effect::PreventDamage(1), &mut ResolutionContext::for_card(None), &CardRegistry::new());
-        assert_eq!(result, Err(RulesError::NoPendingPrevention));
-    }
-
-    #[test]
-    fn prevent_damage_against_a_pending_trash_errors_prevention_kind_mismatch() {
-        let mut state = game_state();
-        state.pending_prevention = Some(PendingPrevention {
-            kind: PendingPreventionKind::Trash { target: CardTarget::RunnerRig(CardId("corroder".to_string())), prevented: false },
-            source_card: None,
-            source_install: None,
-            resume: PreventionResume::None,
-        });
-
-        let result = evaluate_effect(&mut state, &Effect::PreventDamage(1), &mut ResolutionContext::for_card(None), &CardRegistry::new());
-
-        assert_eq!(
-            result,
-            Err(RulesError::PreventionKindMismatch { expected: PreventionKind::Damage, actual: PreventionKind::Trash })
-        );
-    }
-
-    #[test]
-    fn trash_card_with_a_prevention_ability_in_play_parks_a_pending_prevention_and_opens_a_window() {
-        let mut state = game_state();
-        state.runner.rig = vec![
-            InstalledRunnerCard {
-                card: CardId("plascrete".to_string()),
-                ..Default::default()
-            },
-            InstalledRunnerCard {
-                card: CardId("corroder".to_string()),
-                base_strength: 2,
-                ..Default::default()
-            },
-        ];
-        let registry = CardRegistry::from_cards(vec![card_with_paid_ability("plascrete", Side::Runner, Effect::PreventTrash)]);
-
-        let target = CardTarget::RunnerRig(CardId("corroder".to_string()));
-        evaluate_effect(&mut state, &Effect::TrashCard(target.clone()), &mut ResolutionContext::for_card(None), &registry).unwrap();
-
-        // Nothing trashed yet, and the card named by `target` is still rigged.
-        assert!(state.runner.rig.iter().any(|c| c.card == CardId("corroder".to_string())));
-        assert_eq!(
-            state.pending_prevention.as_ref().map(|p| &p.kind),
-            Some(&PendingPreventionKind::Trash { target, prevented: false })
-        );
-        let window = state.paid_ability_window.expect("a Prevention window should be open");
-        assert_eq!(window.checkpoint, WindowCheckpoint::Prevention);
-        // The targeted card is the Runner's, so the Runner holds priority.
-        assert_eq!(window.active_priority, Side::Runner);
-    }
-
-    #[test]
-    fn prevent_trash_marks_the_parked_trash_prevented() {
-        let mut state = game_state();
-        let target = CardTarget::RunnerRig(CardId("corroder".to_string()));
-        state.pending_prevention = Some(PendingPrevention {
-            kind: PendingPreventionKind::Trash { target: target.clone(), prevented: false },
-            source_card: None,
-            source_install: None,
-            resume: PreventionResume::None,
-        });
-
-        evaluate_effect(&mut state, &Effect::PreventTrash, &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
-
-        assert_eq!(state.pending_prevention.map(|p| p.kind), Some(PendingPreventionKind::Trash { target, prevented: true }));
     }
 
     #[test]

@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{EffectDuration, CardId, CardTarget, DamageType, Effect};
+use crate::dsl::{EffectDuration, CardId, DamageType, Effect};
 use crate::rules::run::ServerId;
-use crate::rules::state::Side;
+use crate::rules::state::{Side, WouldHappen};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameEvent {
@@ -341,10 +341,14 @@ pub enum GameEvent {
     ClicksGained { side: Side, amount: u32 },
     RecurringCreditsSpent { amount: u32 },
     AgendaScored { card: CardId, agenda_points: u32, server: ServerId },
-    DamageAboutToResolve { damage_type: DamageType, amount: usize },
-    TrashAboutToResolve { target: CardTarget },
-    DamagePrevented { amount: usize },
-    TrashPrevented { target: CardTarget },
+    /// Something a card may prevent was parked (`rules::prevention`), and
+    /// the players are about to be asked. One event for every kind: what it
+    /// is is the payload, as it is for the parked thing itself. Were four
+    /// events, a pair per kind, with tags about to need a third pair.
+    AboutToResolve { what: WouldHappen },
+    /// `amount` of `what` was prevented; the rest, if any, follows as the
+    /// event it always was.
+    Prevented { what: WouldHappen, amount: u32 },
     /// **Deliberately no install handle, unlike `CardInstalled`,
     /// `CardAdvanced`, `IceSwapped`, `CardMoved` and `CardDerezzed`.**
     ///
@@ -451,9 +455,8 @@ impl GameEvent {
             | GameEvent::AdditionalAccessGranted { .. } | GameEvent::AccessReplacementSet { .. }
             | GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. }
             | GameEvent::ClicksGained { .. } | GameEvent::RecurringCreditsSpent { .. }
-            | GameEvent::AgendaScored { .. } | GameEvent::DamageAboutToResolve { .. }
-            | GameEvent::TrashAboutToResolve { .. } | GameEvent::DamagePrevented { .. }
-            | GameEvent::TrashPrevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
+            | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. }
+            | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
             | GameEvent::BasicDrawActionTaken { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
             | GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. }

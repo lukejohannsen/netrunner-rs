@@ -7,11 +7,11 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{CardId, Trigger};
 use crate::rules::ability;
-use crate::rules::damage;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{self, AccessPhase, RunAction, RunPhase};
-use crate::rules::state::{GamePhase, GameState, InstallId, PaidAbilityWindow, PendingPreventionKind, PreventionResume, Side, WindowCheckpoint};
+use crate::rules::prevention;
+use crate::rules::state::{GamePhase, GameState, InstallId, PaidAbilityWindow, Side, WindowCheckpoint};
 use crate::rules::turn;
 
 /// Opens a PAW at `checkpoint` with `active_priority` getting priority first
@@ -19,8 +19,16 @@ use crate::rules::turn;
 /// `open_window`/`open_window_if_at_checkpoint` (run checkpoints) and
 /// `turn::end_turn`/`turn::enter_start_of_turn` (turn-boundary checkpoints).
 pub(crate) fn open_window_for(state: &mut GameState, active_priority: Side, checkpoint: WindowCheckpoint) -> GameEvent {
-    state.paid_ability_window =
-        Some(PaidAbilityWindow { active_priority, consecutive_passes: 0, checkpoint, return_phase: Box::new(state.phase) });
+    let window = PaidAbilityWindow { active_priority, consecutive_passes: 0, checkpoint, return_phase: Box::new(state.phase) };
+    // While the players are being asked about a prevention, a window the
+    // game's own flow opens waits beneath it: the slot is one `Option`, and
+    // this call used to take it, leaving the parked damage with no window
+    // to be resolved from. `prevention::finish` puts the waiting one back.
+    let beneath = prevention::asking(state) && checkpoint != WindowCheckpoint::Prevention;
+    match state.pending_prevention.as_mut() {
+        Some(pending) if beneath => pending.interrupted = Some(window),
+        _ => state.paid_ability_window = Some(window),
+    }
     GameEvent::PaidAbilityWindowOpened { side: active_priority }
 }
 
@@ -106,14 +114,33 @@ pub(crate) fn require_no_window(state: &GameState) -> Result<(), RulesError> {
 /// there'd be none). Scoped to `Run` specifically: `StartOfTurn`/`EndOfTurn`
 /// windows have no active run by construction, so `active_run.is_none()`
 /// alone can't be the staleness signal for them the way it is for `Run`.
+///
+/// **The window it toggles is the one the action was taken in.** An action
+/// that left the players being asked about a prevention opened that window
+/// itself — nothing but an interrupt is legal inside one, and an interrupt
+/// reports through `note_interrupt` — so the window it was taken in is the
+/// one now waiting beneath (`PendingPrevention::interrupted`), and the
+/// prevention window keeps the priority `rules::prevention` gave it.
 pub(crate) fn note_window_action(state: &mut GameState, side: Side) {
-    let is_stale_run_window = state.active_run.is_none()
-        && matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run));
-    if is_stale_run_window {
-        state.paid_ability_window = None;
+    let beneath = prevention::asking(state);
+    let run_is_gone = state.active_run.is_none();
+    let slot = match state.pending_prevention.as_mut() {
+        Some(pending) if beneath => &mut pending.interrupted,
+        _ => &mut state.paid_ability_window,
+    };
+    if run_is_gone && matches!(slot.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run)) {
+        *slot = None;
         return;
     }
-    if let Some(window) = state.paid_ability_window.as_mut() {
+    if let Some(window) = slot.as_mut() {
+        window.consecutive_passes = 0;
+        window.active_priority = side.other();
+    }
+}
+
+/// Rule 4 for an interrupt, which is taken *in* the prevention window.
+pub(crate) fn note_interrupt(state: &mut GameState, side: Side) {
+    if let Some(window) = state.paid_ability_window.as_mut().filter(|w| w.checkpoint == WindowCheckpoint::Prevention) {
         window.consecutive_passes = 0;
         window.active_priority = side.other();
     }
@@ -185,7 +212,7 @@ fn close_window(
             Ok(Vec::new())
         }
         WindowCheckpoint::EndOfTurn { side } => turn::finish_end_turn(state, side, registry),
-        WindowCheckpoint::Prevention => close_prevention_window(state, registry),
+        WindowCheckpoint::Prevention => prevention::finish(state, registry),
         WindowCheckpoint::PostAction { side } => {
             // Nothing to resume — the window never changed the phase, and
             // the acting player simply carries on with their turn. Set it
@@ -225,7 +252,12 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
         // counters, and `OncePerTurn` is spent per copy.
         let ctx = ability::ResolutionContext::for_install(install, &card_id);
         card.abilities.iter().any(|ability| {
+            // An interrupt is not something to do in a window of one's own
+            // choosing (`rules::prevention` says when): counting it opened
+            // a window after every action for a player whose only move in
+            // it was to pass.
             ability.trigger == Trigger::Paid
+                && ability.effect.prevents().is_none()
                 && ability.requirement.as_ref().is_none_or(|req| ability::check_requirement(state, req, side, &ctx, registry).is_ok())
                 && ability.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(state, side, cost, &ctx))
         })
@@ -242,60 +274,11 @@ pub(crate) fn has_usable_paid_ability(state: &GameState, registry: &CardRegistry
 /// is `PassPriority`. No identity in the pool declares a paid ability
 /// today; when one does, it needs an install handle first, and this list
 /// grows with it.
-fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, CardId)> {
+pub(crate) fn active_cards_of(state: &GameState, side: Side) -> Vec<(InstallId, CardId)> {
     match side {
         Side::Corp => state.corp.installed.iter().filter(|c| c.rezzed).map(|c| (c.install_id, c.card.clone())).collect(),
         Side::Runner => state.runner.rig.iter().map(|c| (c.install_id, c.card.clone())).collect(),
     }
-}
-
-/// `close_window`'s `WindowCheckpoint::Prevention` arm: applies whatever's
-/// left unprevented, emits `DamagePrevented`/`TrashPrevented` for whatever
-/// was, and — if this was parked mid-subroutine-resolution — resumes
-/// `resolve_encounter_ice`'s loop, mirroring `close_run_window`'s
-/// `EncounterIce` arm's own resumption call.
-fn close_prevention_window(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
-    let pending = state
-        .pending_prevention
-        .take()
-        .expect("WindowCheckpoint::Prevention implies pending_prevention is Some");
-
-    let mut events = match pending.kind {
-        PendingPreventionKind::Damage { damage_type, amount, prevented } => {
-            let mut events = Vec::new();
-            if prevented > 0 {
-                events.push(GameEvent::DamagePrevented { amount: prevented });
-            }
-            // Discards are dropped here rather than recorded: a prevention
-            // window resumes on a later `PlayerAction`, so there is no
-            // `Sequence` left for `LastDamageTrashedOddCostCard` to read
-            // them from. That was already true of the old `GameState` field
-            // in practice — a parked `DealDamage` breaks its `Sequence`, so
-            // the requirement was never reached down this path.
-            let (damage_events, _discarded) = damage::apply_damage(state, damage_type, amount.saturating_sub(prevented));
-            events.extend(ability::dispatch_damage_taken(state, registry, &damage_events)?);
-            events.extend(damage_events);
-            events
-        }
-        PendingPreventionKind::Trash { target, prevented } => {
-            if prevented {
-                vec![GameEvent::TrashPrevented { target }]
-            } else {
-                // Calls `ability::trash_card` directly rather than
-                // re-evaluating `Effect::TrashCard` through
-                // `evaluate_effect` — that entry point re-checks whether to
-                // park a *new* prevention window, which would loop forever
-                // here (the card granting the ability doesn't get "used up"
-                // by one activation).
-                ability::trash_card(state, &target, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?
-            }
-        }
-    };
-
-    if pending.resume == PreventionResume::ResumeSubroutines {
-        events.extend(resolve_encounter_ice(state, registry)?);
-    }
-    Ok(events)
 }
 
 /// `close_window`'s `WindowCheckpoint::Run` arm. Keys off `state.active_run`'s
@@ -409,7 +392,7 @@ mod tests {
     use super::*;
     use crate::dsl::{CardId, DamageType, Effect, IceType, SubroutineDef};
     use crate::rules::run::{EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
-    use crate::rules::state::{ArchivedCard, AgendaPoints, Clicks, Credits, CorpState, MemoryUnits, PendingPrevention, PlayerResources, RunnerState,
+    use crate::rules::state::{ArchivedCard, AgendaPoints, Clicks, Credits, CorpState, MemoryUnits, PendingPrevention, PreventionResume, WouldHappen, PlayerResources, RunnerState,
     };
 
     fn registry() -> CardRegistry {
@@ -870,7 +853,9 @@ mod tests {
         let mut state = base_state();
         state.runner.grip = vec![CardId("card_0".to_string()), CardId("card_1".to_string()), CardId("card_2".to_string())];
         state.pending_prevention = Some(PendingPrevention {
-            kind: PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 3, prevented: 1 },
+            what: WouldHappen::Damage { kind: DamageType::Net, amount: 3 },
+            prevented: 1,
+            interrupted: None,
             source_card: None,
             source_install: None,
             resume: PreventionResume::None,
@@ -890,7 +875,7 @@ mod tests {
         // 3 damage parked, 1 already prevented — 2 actually land.
         assert_eq!(state.runner.grip.len(), 1);
         assert_eq!(state.runner.heap.len(), 2);
-        assert!(events.contains(&GameEvent::DamagePrevented { amount: 1 }));
+        assert!(events.contains(&GameEvent::Prevented { what: WouldHappen::Damage { kind: DamageType::Net, amount: 3 }, amount: 1 }));
         assert!(events.contains(&GameEvent::DamageTaken { damage_type: DamageType::Net, amount: 2 }));
     }
 
@@ -922,7 +907,9 @@ mod tests {
         });
         crate::rules::test_support::install_the_runs_ice(&mut state);
         state.pending_prevention = Some(PendingPrevention {
-            kind: PendingPreventionKind::Damage { damage_type: DamageType::Net, amount: 1, prevented: 0 },
+            what: WouldHappen::Damage { kind: DamageType::Net, amount: 1 },
+            prevented: 0,
+            interrupted: None,
             source_card: None,
             source_install: None,
             resume: PreventionResume::ResumeSubroutines,

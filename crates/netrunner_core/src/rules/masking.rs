@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardTarget, Cost, IceType};
+use crate::dsl::{CardId, Cost, IceType};
 use crate::rules::action::{PlayerAction, TargetZone};
 use crate::rules::event::GameEvent;
 use crate::rules::{continuous, lingering};
@@ -684,14 +684,6 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
             (viewer.is(Side::Runner) || *server == ServerId::Archives).then(visible).flatten()
         }
         GameEvent::AccessPassed { .. } => viewer.is(Side::Runner).then(visible).flatten(),
-        // A prevention window naming an unrezzed Corp install. No card in
-        // the pool opens one today (`PreventTrash` is unused); the rule is
-        // here so the day one does, it is not a leak.
-        GameEvent::TrashAboutToResolve { target: CardTarget::CorpInstalled { card, .. } }
-        | GameEvent::TrashPrevented { target: CardTarget::CorpInstalled { card, .. } } => {
-            (!concealed(card)).then(visible).flatten()
-        }
-        GameEvent::TrashAboutToResolve { .. } | GameEvent::TrashPrevented { .. } => visible(),
         // The one card-bearing field that can be struck out in place.
         GameEvent::TraceInitiated { base, initiating_card: Some(card) } if concealed(card) => {
             Some(GameEvent::TraceInitiated { base: *base, initiating_card: None })
@@ -797,8 +789,10 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::ClicksGained { .. }
         | GameEvent::RecurringCreditsSpent { .. }
         | GameEvent::AgendaScored { .. }
-        | GameEvent::DamageAboutToResolve { .. }
-        | GameEvent::DamagePrevented { .. }
+        // A parked trash names its card by install handle alone
+        // (`WouldHappen::Trash`), so there is nothing here to strike out.
+        | GameEvent::AboutToResolve { .. }
+        | GameEvent::Prevented { .. }
         | GameEvent::BasicDrawActionTaken { .. }
         | GameEvent::PendingChoicePresented { .. }
         | GameEvent::PendingChoiceResolved { .. }
@@ -1970,15 +1964,20 @@ mod tests {
         );
     }
 
+    /// A parked trash names an install handle and no card, so the event —
+    /// and the parked thing itself, which a view carries verbatim — says
+    /// nothing about a facedown Corp card. It named the card, and had a
+    /// masking arm of its own to drop it.
     #[test]
-    fn a_prevention_window_on_an_unrezzed_install_is_dropped_for_the_runner() {
+    fn a_trash_about_to_happen_names_no_card_and_passes_unmasked() {
         let state = game_state(corp_state_with_cards());
-        let hidden = GameEvent::TrashAboutToResolve {
-            target: CardTarget::CorpInstalled { card: id("ice_wall"), server: ServerId::Hq },
-        };
-        let rig = GameEvent::TrashPrevented { target: CardTarget::RunnerRig(id("botulus")) };
-        assert_eq!(mask_event_for_player(&hidden, &state, Side::Runner), None);
-        assert_eq!(mask_event_for_player(&rig, &state, Side::Runner), Some(rig.clone()));
+        let what = crate::rules::WouldHappen::Trash { owner: Side::Corp, install: InstallId(1069) };
+        let about_to = GameEvent::AboutToResolve { what: what.clone() };
+        let prevented = GameEvent::Prevented { what, amount: 1 };
+        for viewer in [Side::Corp, Side::Runner] {
+            assert_eq!(mask_event_for_player(&about_to, &state, viewer), Some(about_to.clone()));
+            assert_eq!(mask_event_for_player(&prevented, &state, viewer), Some(prevented.clone()));
+        }
     }
 
     #[test]

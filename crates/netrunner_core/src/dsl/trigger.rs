@@ -81,15 +81,15 @@ pub enum Trigger {
     /// agenda (`run::resolve_steal`) — e.g. Jinteki: Personal Evolution
     /// reacting to either scoring or a steal.
     OnAgendaStolen,
-    /// Fires the instant an `Effect::DealDamage` is parked in
-    /// `GameState::pending_prevention` (`GameEvent::DamageAboutToResolve`),
-    /// before its `WindowCheckpoint::Prevention` window opens — for a
-    /// card's own *automatic* (non-`Paid`) reaction. A `Paid` prevention
-    /// ability is instead activated player-side via
-    /// `PlayerAction::ActivateAbility` during the window itself.
+    /// "When you would suffer damage": fires the instant damage is parked
+    /// for prevention (`GameEvent::AboutToResolve` about
+    /// `WouldHappen::Damage`), before the players are asked — for a card's
+    /// own triggered reaction. An interrupt a player *uses* is a `Paid`
+    /// ability instead, activated while they are asked
+    /// (`rules::prevention`). The one "would" with a trigger: a tag or a
+    /// trash about to happen gets one the day a card listens for it
+    /// (`OnTrashAboutToResolve` was here for years with no card).
     OnDamageAboutToResolve,
-    /// Mirrors `OnDamageAboutToResolve` for a parked `Effect::TrashCard`.
-    OnTrashAboutToResolve,
     /// Fires against the card itself the instant it's rezzed
     /// (`GameEvent::IceRezzed` — despite the name, already fired for any
     /// Corp rez, not just ICE, per `engine::rez_ice`'s own doc comment) —
@@ -160,8 +160,8 @@ pub enum Trigger {
     /// identity when `GameEvent::DamageTaken` resolves. Only the Corp deals
     /// damage in this pool, so the dealer is the damaged side's opponent.
     /// AU Co.: The Gold Standard in Clones counts it. Distinct from
-    /// `OnDamageAboutToResolve`, which is the prevention window and fires
-    /// before the damage lands.
+    /// `OnDamageAboutToResolve`, which fires before the damage lands, while
+    /// it is parked for prevention.
     OnDamageDealt,
     /// "Whenever you trash 1 or more cards from HQ" — fired against the
     /// Corp's identity once per batch (`GameEvent::CardsTrashedFromHq`),
@@ -310,7 +310,7 @@ impl Trigger {
     /// `every_trigger_is_listed_at_its_own_index` holds the two together,
     /// and its exhaustive `match` is what stops a new variant compiling
     /// until it is listed here.
-    pub const ALL: [Trigger; 29] = [
+    pub const ALL: [Trigger; 28] = [
         Trigger::OnPlay,
         Trigger::OnRunStart,
         Trigger::OnEncounter,
@@ -323,7 +323,6 @@ impl Trigger {
         Trigger::OnAgendaScored,
         Trigger::OnAgendaStolen,
         Trigger::OnDamageAboutToResolve,
-        Trigger::OnTrashAboutToResolve,
         Trigger::OnRez,
         Trigger::OnApproachServer,
         Trigger::OnRunEnded,
@@ -374,12 +373,7 @@ impl Trigger {
             Trigger::OnRunStart | Trigger::OnIceApproached | Trigger::OnApproachServer | Trigger::OnSuccessfulRun | Trigger::OnRunEnded => {
                 TriggerAbout::Server
             }
-            // A phase, a count or a player, never a card. The two prevention
-            // moments are here too: what is about to be trashed is a
-            // `CardTarget` still to be resolved, not a card, and no card
-            // declares either trigger — "prevent **this card** being
-            // trashed" is the text that would move `OnTrashAboutToResolve`
-            // up.
+            // A phase, a count or a player, never a card.
             Trigger::OnTurnStart
             | Trigger::OnActionPhaseEnd
             | Trigger::OnDiscardPhaseEnd
@@ -389,7 +383,6 @@ impl Trigger {
             | Trigger::OnDamageDealt
             | Trigger::OnCardsTrashedFromHq
             | Trigger::OnDamageAboutToResolve
-            | Trigger::OnTrashAboutToResolve
             | Trigger::Paid => TriggerAbout::Nothing,
         }
     }
@@ -435,7 +428,6 @@ impl Trigger {
             | Trigger::OnTagsGiven
             | Trigger::OnTagRemoved
             | Trigger::OnDamageAboutToResolve
-            | Trigger::OnTrashAboutToResolve
             | Trigger::Paid => Hears::Everyone,
         }
     }
@@ -453,7 +445,7 @@ mod tests {
         // Exhaustive, so a new variant stops here until it is added to
         // `Trigger::ALL` — the turn log indexes a fixed array by it.
         let listed = |trigger: Trigger| match trigger {
-            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnTrashAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnOperationPlayed | Trigger::OnTagRemoved => Trigger::ALL.contains(&trigger),
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnOperationPlayed | Trigger::OnTagRemoved => Trigger::ALL.contains(&trigger),
         };
         assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }

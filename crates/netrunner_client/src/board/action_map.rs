@@ -35,7 +35,7 @@ use std::collections::BTreeSet;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::CardId;
 use netrunner_core::rules::{
-    GamePhase, InstallId, PendingDecision, PendingPreventionKind, PlayerAction, PublicAccessPhase, RunPhase, ServerId, Side,
+    GamePhase, InstallId, PendingDecision, PlayerAction, PublicAccessPhase, RunPhase, ServerId, Side, WouldHappen,
 };
 use netrunner_core::view::{ClientView, ServerView};
 
@@ -473,11 +473,17 @@ impl Prompt {
             return Some(Prompt { title: format!("{}: pay?", asked_by(&paid.prompting_card, &paid.source_card)), detail });
         }
         if let Some(prevention) = &view.pending_prevention {
-            let title = match &prevention.kind {
-                PendingPreventionKind::Damage { damage_type, amount, prevented } => {
-                    format!("Prevent {} {} damage? ({prevented} prevented)", amount, format!("{damage_type:?}").to_lowercase())
+            let left = prevention.what.amount().saturating_sub(prevention.prevented);
+            let title = match &prevention.what {
+                WouldHappen::Damage { kind, .. } => format!("Prevent {left} {} damage?", format!("{kind:?}").to_lowercase()),
+                WouldHappen::Tags { .. } => format!("Prevent {left} tag{}?", if left == 1 { "" } else { "s" }),
+                WouldHappen::Trash { owner, install } => {
+                    let card = match owner {
+                        Side::Runner => view.runner.rig.iter().find(|c| c.install_id == *install).map(|c| &c.card),
+                        Side::Corp => None,
+                    };
+                    format!("Prevent the trash of {}?", title_of(card, registry))
                 }
-                PendingPreventionKind::Trash { .. } => "Prevent the trash?".to_string(),
             };
             return Some(Prompt { title, detail: format!("{} offers to", title_of(prevention.source_card.as_ref(), registry)) });
         }

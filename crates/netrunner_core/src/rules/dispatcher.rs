@@ -557,7 +557,7 @@ mod tests {
         }];
         assert!(state.runner.grip.is_empty(), "any damage flatlines");
 
-        let damage = GameEvent::DamageAboutToResolve { damage_type: crate::dsl::DamageType::Net, amount: 1 };
+        let damage = GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: crate::dsl::DamageType::Net, amount: 1 } };
         let events = dispatch_event(&mut state, &registry, &damage).unwrap();
 
         assert_eq!(state.phase, GamePhase::GameOver(Side::Corp));
@@ -671,7 +671,7 @@ mod tests {
         let events = dispatch_event(
             &mut state,
             &registry,
-            &GameEvent::DamageAboutToResolve { damage_type: crate::dsl::DamageType::Net, amount: 1 },
+            &GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: crate::dsl::DamageType::Net, amount: 1 } },
         )
         .unwrap();
 
@@ -679,12 +679,12 @@ mod tests {
         assert_eq!(events, vec![GameEvent::TriggerFired { card: CardId("interface".to_string()), trigger: Trigger::OnDamageAboutToResolve }, GameEvent::CreditsGained { side: Side::Runner, amount: 1 }, GameEvent::AbilityGainedCredits { side: Side::Runner, card: CardId("interface".to_string()) }]);
     }
 
-    /// `DamageAboutToResolve`/`TrashAboutToResolve` are the only dispatches
-    /// whose audience spans both sides, so they are the only ones where
+    /// Damage about to resolve (`GameEvent::AboutToResolve`) is a dispatch
+    /// whose audience spans both sides, and so one where
     /// active-player-first is observable. It used to be ignored here:
     /// `both_sides_candidates` emitted Corp before Runner unconditionally.
     ///
-    /// No card in the current pool declares either trigger, so this pins
+    /// No card in the current pool declares the trigger, so this pins
     /// behavior that is unreachable in a real game today — it exists so the
     /// first card that does declare one resolves in rules order.
     #[test]
@@ -712,7 +712,7 @@ mod tests {
             }];
             state.runner.rig = vec![rig_card("runner_reactor")];
         };
-        let damage = GameEvent::DamageAboutToResolve { damage_type: crate::dsl::DamageType::Net, amount: 1 };
+        let damage = GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: crate::dsl::DamageType::Net, amount: 1 } };
 
         let mut runner_turn = empty_state();
         runner_turn.phase = GamePhase::Action(Side::Runner);
@@ -756,7 +756,7 @@ mod tests {
     /// the deferred-trigger queue every later reacting card fired anyway.
     ///
     /// Uses a deliberately **cross-side** audience
-    /// (`DamageAboutToResolve`), so no `ChooseTriggerOrder` is offered —
+    /// (damage about to resolve), so no `ChooseTriggerOrder` is offered —
     /// cross-side order is fixed by rule, not the player's to pick. That
     /// isolates the deferral guard from the ordering layer built on top of
     /// it; the same-side case is covered by
@@ -792,7 +792,7 @@ mod tests {
         }];
         let corp_credits_before = state.corp.resources.credits;
 
-        let damage = GameEvent::DamageAboutToResolve { damage_type: crate::dsl::DamageType::Net, amount: 1 };
+        let damage = GameEvent::AboutToResolve { what: crate::rules::WouldHappen::Damage { kind: crate::dsl::DamageType::Net, amount: 1 } };
         dispatch_event(&mut state, &registry, &damage).unwrap();
 
         assert!(state.pending_decision.is_some(), "the Runner's card parked its choice, resolving first");
