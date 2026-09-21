@@ -197,7 +197,7 @@ impl ActionMap {
         let entries = view
             .legal_actions
             .iter()
-            .map(|action| ActionEntry { action: action.clone(), label: describe_action(action, registry, Some(view)), targets: targets_of(action) })
+            .map(|action| ActionEntry { action: action.clone(), label: describe_action(action, registry, Some(view)), targets: targets_of(action, view) })
             .collect();
         let selection = Selection::of(view, registry);
         let collapsed = selection.as_ref().map(|selection| selection.hidden()).unwrap_or_default();
@@ -374,8 +374,17 @@ impl ActionMap {
 /// two things (an install names the card and the server; a trojan the
 /// card and its host), so either click offers it. A draw is on the deck
 /// it draws from, so the zone's sheet offers it beside the control bar.
-fn targets_of(action: &PlayerAction) -> Vec<Target> {
+///
+/// An operation is played from where the engine takes it: HQ if it is
+/// there, otherwise Archives (Petty Cash's own permission, the engine's
+/// `operation_comes_from_archives`). Mapped to the hand card regardless,
+/// a Petty Cash in Archives named a card the hand did not hold, so no
+/// click on the board offered it — only the play helper's flat list did.
+fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
     match action {
+        PlayerAction::PlayOperation { card_id } if !view.corp.hq_cards.as_ref().is_some_and(|hq| hq.contains(card_id)) => {
+            vec![Target::Server(ServerId::Archives)]
+        }
         PlayerAction::DrawCardClick { side: Side::Corp } => vec![Target::Server(ServerId::RnD)],
         PlayerAction::DrawCardClick { side: Side::Runner } => vec![Target::Pile(Pile::Stack)],
         PlayerAction::InstallCard { card_id, zone, .. } => vec![Target::HandCard(card_id.clone()), Target::Server(*zone)],
@@ -935,6 +944,24 @@ mod tests {
 
     /// A click on a hand card and a click on a server reach the same
     /// install entry, and the panel's index is the one list's.
+    #[test]
+    fn petty_cash_played_from_archives_is_reached_from_archives() {
+        let id = |name: &str| CardId(name.to_string());
+        let registry = crate::decks::sample_deck_registry();
+        let mut state = GameState::new(0);
+        state.phase = netrunner_core::rules::GamePhase::Action(Side::Corp);
+        state.corp.resources.clicks = netrunner_core::rules::Clicks(3);
+        state.corp.resources.credits = netrunner_core::rules::Credits(3);
+        state.corp.archives = vec![netrunner_core::rules::ArchivedCard::faceup(id("petty_cash"))];
+        state.corp.playable_from_archives = vec![id("petty_cash")];
+        let view = Session::new(state, registry.clone(), Seat::External, Seat::External).view_for(Side::Corp);
+        let play = PlayerAction::PlayOperation { card_id: id("petty_cash") };
+        assert!(view.legal_actions.contains(&play), "the engine offers it: {:?}", view.legal_actions);
+        let map = ActionMap::build(&view, &registry);
+        let entry = map.entries.iter().find(|entry| entry.action == play).unwrap();
+        assert_eq!(entry.targets, vec![Target::Server(ServerId::Archives)], "the card is in Archives, not the hand");
+    }
+
     #[test]
     fn an_install_is_reached_from_its_card_and_from_its_server() {
         let registry = crate::decks::sample_deck_registry();
