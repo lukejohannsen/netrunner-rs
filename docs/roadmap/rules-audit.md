@@ -2000,6 +2000,37 @@ one.
    heuristic Corp never activates it); random, no game moved — only
    `effects_seen/RemoveTags` 52 → 31, the 21 activations whose removal is
    now a cost, and the `Sequence` each one no longer needs.
+
+   **Stage 4: suffering damage is a cost** (`feat/cost-suffer-damage`).
+   `Cost::SufferDamage(type, n)`, paid through `damage::apply_damage` and
+   never `prevention::would` — "the act of paying a cost cannot be
+   modified or cancelled by optional interrupt abilities" (CR 1.16.1a) —
+   so nothing announces it as about to resolve and Net Shield is not
+   asked. Semak-samun's "End the run unless the Runner suffers 3 net
+   damage" is an `OfferPaidChoice` with it, Funhouse's shape for a tag;
+   as a `PresentChoice` option the damage was an effect, and a Runner
+   with Net Shield could pay with 2 of the 3
+   (`semak_samun_damage_is_a_cost_and_net_shield_is_not_asked`). **The
+   ruling: payable only with at least n cards in the grip** (1.16.1, a
+   cost is paid in full) — a Runner with fewer can only let the run end,
+   where the effect let a random Runner flatline itself. A mandatory
+   interrupt that would prevent the damage would make the cost unpayable
+   (1.16.1b); no pool card prints one. *Open, and left:* whether damage
+   paid as a cost is Net Shield's "first time each turn you would suffer
+   net damage" — it is not announced, so the turn does not count it.
+   **Measured** against stage 3: random, Corp flatline wins 95 → 91 (the
+   self-flatlines gone), `AboutToResolve` 433 → 425, Accept/Decline up by
+   the Semak decisions. Heuristic: the same wins (33 / 11 / 147 / 1) and a
+   drift from game 23 on, which is **the tie-break, not a preference**:
+   at that decision both builds score the two answers identically on every
+   sample tried, and under the deck's aggressive weights 29 of 200 samples
+   tie inside `TIE_BREAK_JITTER` — the jitter is drawn in legal-action
+   order, and a paid choice lists Decline first where the choice listed
+   the damage first. **Also found:** the random reports by view and by
+   index stopped sharing an md5 at game 17, where the random Corp installs
+   ice on `Remote(10)` — past the servers `ActionSpace` can name — so the
+   two shapes have different legal sets from there. It is the cap, reached
+   by a new trajectory, not this change.
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
    spec that reaches a real state through `setup` and actions, plus helpers
    that address cards by name. It is test code only.

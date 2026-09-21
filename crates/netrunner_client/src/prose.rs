@@ -108,6 +108,7 @@ pub fn describe_cost(cost: &Cost) -> String {
         Cost::TrashSelf => "trash this card".to_string(),
         Cost::ClearTags => "remove all tags".to_string(),
         Cost::RemoveTags(n) => format!("remove {}", plural(*n, "tag", "tags")),
+        Cost::SufferDamage(kind, n) => format!("suffer {n} {} damage", damage_word(kind)),
         Cost::TakeTags(n) => format!("take {}", plural(*n, "tag", "tags")),
         Cost::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
         Cost::RemoveSelfFromGame => "remove this card from the game".to_string(),

@@ -2121,6 +2121,7 @@ pub(crate) fn cost_is_affordable(
         // draw on different resources).
         Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, registry, side, part, purpose, ctx)),
         Cost::RemoveTags(amount) => state.runner.tags >= *amount,
+        Cost::SufferDamage(_, amount) => state.runner.grip.len() >= *amount as usize,
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
     }
@@ -2218,6 +2219,16 @@ pub(crate) fn pay_cost_ctx(
             Ok(vec![GameEvent::TagsRemoved { side: Side::Runner, amount: *amount }])
         }
 
+        Cost::SufferDamage(damage_type, amount) => {
+            if state.runner.grip.len() < *amount as usize {
+                return Err(RulesError::NotEnoughCardsInGrip { required: *amount, available: state.runner.grip.len() as u32 });
+            }
+            // Straight to the damage, never through `prevention::would`: a
+            // cost is not prevented (1.16.1a). Its `DamageTaken` is
+            // dispatched by the payer (`dispatch_cost_events`).
+            Ok(crate::rules::damage::apply_damage(state, *damage_type, *amount as usize).0)
+        }
+
         Cost::TakeTags(amount) => {
             state.runner.tags = state.runner.tags.saturating_add(*amount);
             Ok(vec![GameEvent::TagsGiven { side: Side::Runner, amount: *amount }])
@@ -2278,7 +2289,7 @@ pub(crate) fn dispatch_cost_events(
 ) -> Result<Vec<GameEvent>, RulesError> {
     let mut fired = Vec::new();
     for event in cost_events {
-        if !crate::rules::listeners::moments(state, event).is_empty() {
+        if !state.is_over() && !crate::rules::listeners::moments(state, event).is_empty() {
             fired.extend(dispatcher::dispatch_event(state, registry, event)?);
         }
     }

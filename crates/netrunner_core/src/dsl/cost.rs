@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use super::effect::DamageType;
+
 /// What a player must pay to activate a `Paid`-triggered `AbilityDef`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Cost {
@@ -35,6 +37,20 @@ pub enum Cost {
     /// rather than folded into `OfferPaidChoice` itself so it composes with
     /// `Cost::AnyOf` the same way every other cost does.
     TakeTags(u32),
+    /// The Runner suffers `u32` damage of a type as payment — Semak-samun's
+    /// "End the run unless the Runner suffers 3 net damage", the damage
+    /// twin of Funhouse's `TakeTags`. Paid through `damage::apply_damage`
+    /// and never `prevention::would`: an optional interrupt cannot modify
+    /// or cancel the paying of a cost (Comprehensive Rules 1.16.1a), so Net
+    /// Shield is not asked, and nothing announces the damage as about to
+    /// resolve. As a `PresentChoice` option it was an effect, and it was.
+    ///
+    /// Payable only with at least that many cards in the grip (1.16.1: a
+    /// cost is paid in full). A Runner with fewer can only let the run
+    /// end; the damage would flatline them, which is not paying it. A
+    /// mandatory interrupt that would prevent the damage would also make
+    /// the cost unpayable (1.16.1b); no pool card prints one.
+    SufferDamage(DamageType, u32),
     /// The payer chooses which of these to pay — e.g. Manegarm Skunkworks's
     /// "spend [click][click] or pay 5 credits." Resolving *which* option is
     /// a player decision, not something `pay_cost` can pick on its own —
