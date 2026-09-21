@@ -496,25 +496,17 @@ pub(crate) fn resolve_accept(
     // (Clearinghouse): see `ResolutionContext::last_known`.
     let last_known = ability::last_known(state, &payer);
     let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, Purpose::Other, &payer)?;
-    // A tag paid as a cost (`Cost::TakeTags`, Funhouse's "end the run
-    // unless the Runner takes 1 tag") is still the Runner taking a tag:
-    // NBN: Reality Plus's `Trigger::OnTagsGiven` must fire for it, exactly
-    // as it does when `Effect::GiveTags` dispatches its own event. Only the
-    // *cost's* `TagsGiven` events are dispatched here — an `if_paid` that
-    // gives tags dispatches for itself inside `evaluate_effect` — and the
-    // dispatch runs after `if_paid` so the choice's own effect resolves
-    // first; if that effect parked something, the `TagsGiven` arm's
-    // `fire_each` queues the reaction rather than firing under it.
-    let cost_tag_events: Vec<GameEvent> =
-        cost_events.iter().filter(|e| matches!(e, GameEvent::TagsGiven { .. })).cloned().collect();
+    // Dispatched after `if_paid`: see `ability::dispatch_cost_events`.
+    // A tag paid as a cost (Funhouse's "end the run unless the Runner
+    // takes 1 tag") is still the Runner taking a tag, and NBN: Reality
+    // Plus hears it.
+    let paid = cost_events.clone();
     let mut events = cost_events;
     events.push(GameEvent::PendingPaidChoiceAccepted { side: pending.side });
     let mut ctx = ability::ResolutionContext { last_known, ..payer };
     ctx.prompting_card = pending.prompting_card.as_ref().or(pending.source_card.as_ref());
     events.extend(ability::evaluate_effect(state, &pending.if_paid, &mut ctx, registry)?);
-    for tag_event in cost_tag_events {
-        events.extend(crate::rules::dispatcher::dispatch_event(state, registry, &tag_event)?);
-    }
+    events.extend(ability::dispatch_cost_events(state, registry, &paid)?);
 
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_paid`

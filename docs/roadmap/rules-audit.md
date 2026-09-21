@@ -1977,6 +1977,29 @@ one.
    damage that ends the game rather than never. Random differs throughout,
    by trajectory: the random Corp picks among different actions (39 of its
    decisions moved), and Clearinghouse's own numbers are within that drift.
+
+   **Stage 3: removing a tag is a cost** (`feat/cost-remove-tags`).
+   `Cost::RemoveTags(n)`, payable only with n tags to remove, and Synapse
+   Global: Faster than Thought's "[click], remove 1 tag: Gain 2[credit]" is
+   `AllOf[Clicks(1), RemoveTags(1)]` with the `IsTagged` requirement gone —
+   the requirement was affordability, written beside the payment. The
+   removal is the identity's own trigger ("the first time each turn a tag
+   is removed"), so a cost's events now reach the listeners: **`pay_cost_ctx`
+   dispatches nothing, and the payer calls `ability::dispatch_cost_events`
+   after the effect**, which generalises the one special case
+   `resolve_accept` had (a `TagsGiven` paid as Funhouse's cost, which NBN:
+   Reality Plus hears) to every cost event a card can hear. *After the
+   effect, not between:* Comprehensive Rules 1.16.3 puts a checkpoint after
+   a payment, which would resolve Synapse's install before its credits; a
+   dispatch there would leave the effect to run under whatever the
+   reaction parks, which only a `Sequence` knows how to wait behind, and no
+   pool card can tell the orders apart. So Synapse's 2[credit] now land
+   before its install prompt rather than after. `ClearTags` is used by no
+   card, and is kept as the word for "remove all tags" beside the new one.
+   **Measured** against stage 2: heuristic identical in both shapes (the
+   heuristic Corp never activates it); random, no game moved — only
+   `effects_seen/RemoveTags` 52 → 31, the 21 activations whose removal is
+   now a cost, and the `Sequence` each one no longer needs.
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
    spec that reaches a real state through `setup` and actions, plus helpers
    that address cards by name. It is test code only.

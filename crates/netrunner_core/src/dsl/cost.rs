@@ -20,6 +20,14 @@ pub enum Cost {
     /// word for tags made this look like that action's cost, which it has
     /// never had anything to do with.
     ClearTags,
+    /// Remove `u32` of the Runner's tags — Synapse Global: Faster than
+    /// Thought's "[click], remove 1 tag: Gain 2[credit]." Payable only with
+    /// that many tags to remove (Comprehensive Rules 1.16.1: a cost is paid
+    /// in full or not at all), which is what the ability's `IsTagged`
+    /// requirement stood in for while the removal was the effect's first
+    /// step. Not `ClearTags`, which removes however many there are and is
+    /// payable at none.
+    RemoveTags(u32),
     /// The Runner accepts `u32` tags as payment — e.g. Funhouse's "end the
     /// run unless the Runner takes 1 tag." Only ever meaningful as
     /// `Effect::OfferPaidChoice`'s `cost` (there's no `AbilityDef` in this

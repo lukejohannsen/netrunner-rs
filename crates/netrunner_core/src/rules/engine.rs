@@ -2004,6 +2004,7 @@ fn activate_ability(
     // Taken before the cost, which may trash the card the effect reads
     // (Fermenter): see `ResolutionContext::last_known`.
     let last_known = ability::last_known(&next, &ability_ctx(is_identity, target, &card_id));
+    let mut cost_events = Vec::new();
     if let Some(cost) = &ability.cost {
         // A conditional per-ability discount (e.g. Marjanah: "-1 to use if
         // you made a successful run this turn") only meaningfully applies
@@ -2017,11 +2018,13 @@ fn activate_ability(
             }
             _ => cost.clone(),
         };
-        events.extend(ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Ability(card_def), &ability_ctx(is_identity, target, &card_id))?);
+        cost_events = ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Ability(card_def), &ability_ctx(is_identity, target, &card_id))?;
+        events.extend(cost_events.iter().cloned());
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
     let mut effect_ctx = ability::ResolutionContext { last_known, ..ability_ctx(is_identity, target, &card_id) };
     events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut effect_ctx, registry)?);
+    events.extend(ability::dispatch_cost_events(&mut next, registry, &cost_events)?);
     // `check_requirement` above only reads — without this, a `Paid`
     // ability's `EffectRequirement::OncePerTurn` (e.g. Telework Contract's
     // click ability) would never actually get marked used and could be

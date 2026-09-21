@@ -10003,9 +10003,10 @@ mod system_gateway {
 
         let (state, _) = apply_action(&state, &registry, ability.clone()).expect("click, remove a tag");
         assert_eq!(state.runner.tags, 1);
-        // …and the removal offers a free install out of HQ, *before* the
-        // ability's own credits: the prompt parks mid-`Sequence` and the
-        // gain is the continuation.
+        // …and the removal, the ability's cost, offers a free install out
+        // of HQ once the ability has paid its 2: a cost's events are
+        // dispatched after its effect (`ability::dispatch_cost_events`).
+        assert_eq!(state.corp.resources.credits, Credits(12), "the credits came first");
         assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })));
         let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).expect("pick it");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm");
@@ -10018,8 +10019,10 @@ mod system_gateway {
         assert_eq!(state.runner.tags, 0);
         assert!(state.pending_decision.is_none(), "once per turn");
 
-        // With no tag at all the ability is not offered.
+        // With no tag at all the ability is not offered: there is no tag
+        // to pay with, and a cost is paid in full or not at all.
         assert!(!crate::rules::legal_actions(&state, &registry).contains(&PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 }));
+        assert!(apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId::CORP_IDENTITY, ability_index: 0 }).is_err());
     }
 
     #[test]
