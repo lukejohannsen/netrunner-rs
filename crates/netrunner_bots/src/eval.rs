@@ -929,18 +929,13 @@ fn lerp(a: &Weights, b: &Weights, t: f64) -> Weights {
 /// payment's own answers are finite and each is a legal action. `None`
 /// when nothing is parked, or no answer goes through.
 fn through_parked_payment(state: &GameState, registry: &CardRegistry, w: &Weights) -> Option<GameState> {
-    use netrunner_core::rules::{PaymentAsk, PlayerAction};
     let payment = state.pending_payment.as_ref()?;
     let payer = payment.side;
-    let answer = |value: u32| match payment.question {
-        PaymentAsk::Pools(_) => PlayerAction::ChooseNumber { amount: value },
-        PaymentAsk::Card(_) => PlayerAction::ToggleCardSelection { position: value as usize },
-    };
     payment
         .question
         .answers()
         .into_iter()
-        .filter_map(|value| netrunner_core::rules::apply_action(state, registry, answer(value)).ok())
+        .filter_map(|value| netrunner_core::rules::apply_action(state, registry, payment.question.action_for(value)).ok())
         .map(|(next, _)| through_parked_payment(&next, registry, w).unwrap_or(next))
         .map(|paid| (evaluate_state_with(&paid, payer, registry, w), paid))
         .max_by(|(a, _), (b, _)| a.total_cmp(b))

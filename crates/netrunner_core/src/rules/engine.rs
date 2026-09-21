@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardSubtype, CardType, Cost, CounterKind, Effect, Prohibition, Trigger};
+use crate::dsl::{CardId, CardSubtype, CardType, Cost, CounterKind, Prohibition, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
@@ -96,6 +96,13 @@ pub fn apply_action(
                 return Err(RulesError::CardNotEligibleForSelection(position as usize));
             }
             position
+        }
+        (crate::rules::payment::Ask::Alternative { offered, .. }, PlayerAction::ResolvePendingChoice { option_index }) => {
+            let index = u32::try_from(option_index).map_err(|_| RulesError::InvalidChoiceIndex(option_index))?;
+            if !offered.contains(&index) {
+                return Err(RulesError::InvalidChoiceIndex(option_index));
+            }
+            index
         }
         _ => return Err(RulesError::ActionBlockedByPendingPayment { side: pending.side }),
     };
@@ -887,27 +894,26 @@ fn rez_ice(
     // Cards that print another way to pay for their own rez — Biawak's
     // "you can forfeit 1 agenda ... to pay for 10[c] of its rez cost" and
     // Plutus's "as an additional cost to rez this asset, forfeit 1 agenda
-    // or reveal and trash 3 cards from HQ". Each available alternative
-    // becomes "pay, then rez", the Corp picks when more than one is
-    // available, and a card whose alternatives are all unavailable cannot
-    // be rezzed at all. Biawak lists a no-op alternative beside its
-    // forfeit, which is exactly the difference between an optional
-    // discount and an additional cost.
+    // or reveal and trash 3 cards from HQ". Each way the Corp could
+    // complete is offered, the Corp is asked which when more than one is,
+    // its cost is paid beside the rez's credits in this one action, and a
+    // card whose ways are all unavailable cannot be rezzed at all. Biawak
+    // lists a plain rez beside its forfeit, which is exactly the
+    // difference between an optional discount and an additional cost.
     if !card_def.rez_alternatives.is_empty() {
         let ctx = ability::ResolutionContext::for_card(Some(&ice_id));
         let mut cheapest = u32::MAX;
         let mut wallet = 0;
-        let options: Vec<Effect> = card_def
+        let offered: Vec<u32> = card_def
             .rez_alternatives
             .iter()
-            .filter(|alternative| {
-                alternative.requirement.as_ref().is_none_or(|requirement| {
-                    ability::check_requirement(&next, requirement, side, &ctx, registry).is_ok()
-                })
+            .enumerate()
+            .filter(|(_, alternative)| {
+                alternative.cost.as_ref().is_none_or(|cost| ability::cost_is_affordable(&next, registry, side, cost, Purpose::Other, &ctx))
             })
             // …and priced: an alternative the Corp cannot finish paying is
             // not offered. See `rez_price`.
-            .filter(|alternative| {
+            .filter(|(_, alternative)| {
                 let (cost, available) = rez_price(&next, registry, ice, true, alternative.discount);
                 if cost < cheapest {
                     cheapest = cost;
@@ -915,25 +921,43 @@ fn rez_ice(
                 }
                 available >= cost
             })
-            .map(|alternative| {
-                Effect::Sequence(vec![
-                    alternative.pay.clone(),
-                    Effect::RezInstalled { install: ice, pay_cost: true, discount: alternative.discount },
-                ])
-            })
+            .map(|(index, _)| index as u32)
             .collect();
-        let effect = match options.len() {
+        let chosen = match offered.len() {
             // Nothing available at all is the card's own restriction;
             // something available but unaffordable is the ordinary
             // "cannot pay", reported as such so the two read differently.
             0 if cheapest == u32::MAX => return Err(RulesError::NoAvailableRezAlternative { card: ice_id }),
             0 => return Err(RulesError::NotEnoughCredits { side, available: wallet, requested: cheapest }),
-            // One way to pay is not a choice; resolve it rather than ask.
-            1 => options.into_iter().next().expect("length checked"),
-            _ => Effect::PresentChoice { chooser: side, options, texts: Vec::new() },
+            // One way to pay is not a choice; take it rather than ask.
+            1 => offered[0],
+            // Which way is part of paying, so it is asked the way the rest
+            // of the payment is — by replay (`payment::Ask::Alternative`),
+            // ahead of anything the way it names asks in turn.
+            _ if next.payment_answers.is_empty() => {
+                let count = offered.len() as u32;
+                return Err(RulesError::PaymentChoiceNeeded {
+                    side,
+                    amount: count,
+                    question: crate::rules::payment::Ask::Alternative { card: ice_id.clone(), offered },
+                });
+            }
+            _ => {
+                let answer = next.payment_answers.remove(0);
+                if !offered.contains(&answer) {
+                    return Err(RulesError::InvalidChoiceIndex(answer as usize));
+                }
+                answer
+            }
         };
-        let mut ctx = ability::ResolutionContext::for_card(Some(&ice_id));
-        let events = ability::evaluate_effect(&mut next, &effect, &mut ctx, registry)?;
+        let alternative = &card_def.rez_alternatives[chosen as usize];
+        let paid = match &alternative.cost {
+            Some(cost) => ability::pay_cost_ctx(&mut next, registry, side, cost, Purpose::Other, &ctx)?,
+            None => Vec::new(),
+        };
+        let mut events = paid.clone();
+        events.extend(rez_install(&mut next, registry, ice, true, alternative.discount)?);
+        events.extend(ability::dispatch_cost_events(&mut next, registry, &paid)?);
         paid_ability::note_window_action(&mut next, side);
         return Ok((next, events));
     }

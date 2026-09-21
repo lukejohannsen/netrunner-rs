@@ -850,26 +850,6 @@ pub enum Effect {
     /// (Ansel 1.0's install-inward) finds no host and no-ops, since the
     /// encountered ice is Mycoweb.
     ResolveSubroutineOfSelectedIce,
-    /// The Corp forfeits `u32` agendas from its score area — Biawak's "you
-    /// can forfeit 1 agenda as you rez this ice to pay for 10[c] of its
-    /// rez cost", where `engine::rez_ice` offers this and a plain rez as a
-    /// `PresentChoice`. A forfeited agenda leaves the game rather than
-    /// going to Archives (it was never on the table), taking its agenda
-    /// counters with it, and the Corp's score drops accordingly.
-    ///
-    /// An `Effect` and not a `Cost`, though the printed text is a cost:
-    /// **which** agenda goes has to be decided, and when this was written
-    /// only an effect had the `CardRegistry` needed to compare their point
-    /// values. (`ability::pay_cost` takes one now, for `rules::payment`; the
-    /// other reason stands — the forfeit is offered as a choice, which a
-    /// cost is not.)
-    /// The lowest-scoring agenda goes, ties broken by the fewest agenda
-    /// counters. That is the dominant choice in every position this pool
-    /// can produce (points decide the game; the only other thing a scored
-    /// agenda carries here is Dividends counters), so the Corp is not
-    /// asked a second question — it is asked whether to forfeit at all,
-    /// which is the decision the card is about.
-    ForfeitAgendas(u32),
     /// Moves the run to the outermost position of `ServerId` — Proprionegation's
     /// "the Runner moves to the outermost position of Archives. (They
     /// approach any ice in that position.)". The run's ice list is rebuilt
@@ -1254,7 +1234,6 @@ impl Effect {
             | Effect::MoveThisCardToRoot(..)
             | Effect::PlayOperation { .. }
             | Effect::ResolveSubroutineOfSelectedIce
-            | Effect::ForfeitAgendas(..)
             | Effect::MoveRunToOutermost(..)
             | Effect::InstallAgendaFromRunnerScoreArea
             | Effect::SwapApproachedIceWithCard { .. }

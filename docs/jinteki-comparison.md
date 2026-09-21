@@ -152,6 +152,18 @@ agenda, take damage as a cost, trash an installed card of a type, spend a
 power or virus counter from another card, X credits, add a card to the
 bottom of the deck.
 
+*Done, 21 September 2026 (Rules Audit backlog item 8, six PRs):* taken as the
+pool needed them, which was not for a missing type — no card waited on one
+— but for ten printed costs written as effects. `Cost` is 14 variants:
+`RemoveTags`, `SufferDamage`, `Trash` (a zone and a filter) and `Forfeit`
+joined it. jinteki's `payable?` is `cost_is_affordable`, read off the same
+scan the payment picks from; a cost that takes cards asks inside the
+payment by replay (`payment::Ask`), one card at a time, which is where our
+answer to jinteki's prompts-inside-`pay` lives. X credits and a card to the
+bottom of the deck are still unprinted in the pool; the standing
+`AdditionalCost` effect §6.2 sketched is not needed until a card adds a
+cost to another card's.
+
 ### 2.5 Prohibitions
 
 jinteki asks one predicate before every restricted action — `can-run?`,

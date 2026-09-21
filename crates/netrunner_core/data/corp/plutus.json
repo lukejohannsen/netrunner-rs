@@ -8,30 +8,17 @@
   "unique": true,
   "rez_alternatives": [
     {
-      "requirement": {
-        "ScoreAreaHasAtLeast": 1
-      },
-      "pay": {
-        "ForfeitAgendas": 1
+      "cost": {
+        "Forfeit": 1
       }
     },
     {
-      "requirement": {
-        "ZoneHasAtLeast": {
-          "zone": "OwnHq",
-          "count": 3
-        }
-      },
-      "pay": {
-        "PromptChooseCards": {
-          "side": "Corp",
-          "source": "OwnHq",
+      "cost": {
+        "Trash": {
+          "from": "OwnHq",
           "filter": "Any",
-          "min": 3,
-          "max": 3,
-          "reveal": true,
-          "shuffle_after": false,
-          "destination": "OwnArchives"
+          "count": 3,
+          "reveal": true
         }
       }
     }

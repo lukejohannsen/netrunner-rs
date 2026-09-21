@@ -109,7 +109,7 @@ pub(crate) fn zone_card_ids(state: &GameState, chooser: Side, zone: &CardZoneRef
             Side::Corp => state.corp.r_and_d.clone(),
             Side::Runner => state.runner.stack.clone(),
         },
-        CardZoneRef::OpponentScoreArea => match owner {
+        CardZoneRef::OpponentScoreArea | CardZoneRef::OwnScoreArea => match owner {
             Side::Corp => state.corp.scored_agendas.iter().map(|s| s.card.clone()).collect(),
             Side::Runner => state.runner.scored_agendas.clone(),
         },
@@ -133,6 +133,11 @@ pub(crate) fn zone_install_ids(state: &GameState, chooser: Side, zone: &CardZone
             Side::Corp => Some(state.corp.installed.iter().map(|c| c.install_id).collect()),
             Side::Runner => Some(state.runner.rig.iter().map(|c| c.install_id).collect()),
         },
+        // A scored agenda keeps the handle it was installed under, which is
+        // what tells two scored copies apart (one carries counters).
+        CardZoneRef::OwnScoreArea if owning_side(chooser, zone) == Side::Corp => {
+            Some(state.corp.scored_agendas.iter().map(|s| s.install_id).collect())
+        }
         _ => None,
     }
 }
@@ -395,7 +400,7 @@ fn plain_zone_mut<'a>(state: &'a mut GameState, chooser: Side, zone: &CardZoneRe
         // A source only — `Effect::InstallAgendaFromRunnerScoreArea` takes
         // the card out itself, and nothing ever pushes into a score area
         // through a selection's `destination`.
-        CardZoneRef::OpponentScoreArea => None,
+        CardZoneRef::OpponentScoreArea | CardZoneRef::OwnScoreArea => None,
         CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => None,
     }
 }

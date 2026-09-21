@@ -557,17 +557,20 @@ pub struct CardDefinition {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RezAlternative {
-    /// Gate on the board: Biawak's and Plutus's forfeits need an agenda in
-    /// the score area, Plutus's other half needs three cards in HQ.
-    /// Unavailable alternatives are never offered, so a player cannot pick
-    /// one that would resolve to nothing.
+    /// Paid before the rez, beside its credits: Biawak's and Plutus's
+    /// `Cost::Forfeit(1)`, Plutus's `Cost::Trash` of three cards from HQ;
+    /// none for the plain rez Biawak lists beside its forfeit. An
+    /// alternative is offered only when this is affordable
+    /// (`ability::cost_is_affordable`, the scan the payment reads), and the
+    /// rez is priced with its discount (`engine::rez_price`), so a player
+    /// cannot pick one that would resolve to nothing.
+    ///
+    /// It was an `Effect` behind a requirement — `ForfeitAgendas` behind
+    /// `ScoreAreaHasAtLeast`, a card selection behind `ZoneHasAtLeast` —
+    /// resolved as "pay, then rez" out of a `PresentChoice`, which is what
+    /// kept the forfeit an effect that never asked which agenda.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub requirement: Option<crate::dsl::EffectRequirement>,
-    /// Paid before the rez, as the card being rezzed. May park a decision
-    /// of its own (Plutus's "trash 3 cards from HQ" is a selection): the
-    /// rez is the tail of a `Sequence`, which resumes after each parked
-    /// step.
-    pub pay: crate::dsl::Effect,
+    pub cost: Option<crate::dsl::Cost>,
     /// Credits knocked off the rez cost by taking this alternative —
     /// Biawak's 10. `0` for an additional cost that buys no discount.
     #[serde(default, skip_serializing_if = "is_zero")]

@@ -161,6 +161,15 @@ pub struct Question {
 pub enum Ask {
     Pools(Question),
     Card(CardQuestion),
+    /// Which of a card's printed ways to pay for its own rez
+    /// (`CardDefinition::rez_alternatives`) — Biawak's forfeit or its full
+    /// price, Plutus's forfeit or its three cards — by index into that
+    /// list, among the `offered` ones the Corp could complete. Answered by
+    /// `PlayerAction::ResolvePendingChoice`. It was a `PresentChoice` of
+    /// "pay, then rez" sequences, which is what kept the forfeit an effect.
+    /// `card` is the card being rezzed, for the payer's prompt to read its
+    /// ways off.
+    Alternative { card: crate::dsl::CardId, offered: Vec<u32> },
 }
 
 impl Ask {
@@ -170,6 +179,17 @@ impl Ask {
         match self {
             Ask::Pools(question) => (question.min..=question.max).collect(),
             Ask::Card(question) => question.eligible.clone(),
+            Ask::Alternative { offered, .. } => offered.clone(),
+        }
+    }
+
+    /// The action that gives `answer` — one of `answers()`.
+    pub fn action_for(&self, answer: u32) -> crate::rules::PlayerAction {
+        use crate::rules::PlayerAction;
+        match self {
+            Ask::Pools(_) => PlayerAction::ChooseNumber { amount: answer },
+            Ask::Card(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
+            Ask::Alternative { .. } => PlayerAction::ResolvePendingChoice { option_index: answer as usize },
         }
     }
 }
@@ -426,8 +446,10 @@ pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, pu
 /// both are counted.
 ///
 /// **A cost that takes cards** asks too (`Ask::Card`), and is paid by one
-/// of two actions only: an activated ability (Carnivore, LEO Construction)
-/// and a parked paid choice accepted (Anoetic Void). The debug assertion in
+/// of three actions only: an activated ability (Carnivore, LEO
+/// Construction), a parked paid choice accepted (Anoetic Void), and a rez
+/// of a card that prints another way to pay for it (Biawak, Plutus: which
+/// way is asked too, `Ask::Alternative`). The debug assertion in
 /// `engine::apply_action` is what says so if a third appears.
 pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
     pools_could_ask(state) || pays_a_cost_that_may_ask(state, registry, action)
@@ -452,6 +474,12 @@ fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: 
                 .is_some_and(crate::dsl::Cost::may_ask)
         }
         PlayerAction::AcceptPendingPaidChoice { .. } => state.pending_paid_choice.as_ref().is_some_and(|choice| choice.cost.may_ask()),
+        // A card that prints another way to pay for its rez asks which,
+        // and what the way it names takes.
+        PlayerAction::RezIce { ice } => state
+            .find_corp_install(*ice)
+            .and_then(|installed| registry.get(&installed.card))
+            .is_some_and(|def| !def.rez_alternatives.is_empty()),
         _ => false,
     }
 }

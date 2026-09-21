@@ -524,6 +524,13 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         // of the effect. "Option 0 | Option 1" was a menu with no words on
         // it.
         PlayerAction::ResolvePendingChoice { option_index } => {
+            // A parked payment asking which way to pay for a rez is answered
+            // ahead of any choice beneath it.
+            if let Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Alternative { card, .. }, .. }) =
+                view.and_then(|v| v.pending_payment.as_ref()?.own.as_ref())
+            {
+                return crate::prose::rez_alternative_label(card, *option_index, registry);
+            }
             let parked = view.and_then(|v| match &v.pending_decision {
                 Some(PendingDecision::ChooseEffect { options, option_texts, .. }) => {
                     Some((options.get(*option_index), option_texts.get(*option_index)))

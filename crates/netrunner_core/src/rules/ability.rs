@@ -1272,36 +1272,6 @@ pub fn evaluate_effect(
             Ok(Vec::new())
         }
 
-        Effect::ForfeitAgendas(count) => {
-            let mut events = Vec::new();
-            for _ in 0..*count {
-                // Lowest printed points first, ties to the fewest agenda
-                // counters — see the variant's doc comment for why the
-                // Corp is not asked which.
-                let chosen = state
-                    .corp
-                    .scored_agendas
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, scored)| {
-                        (crate::rules::win::agenda_value(&scored.card, registry).unwrap_or(0), scored.agenda_counters)
-                    })
-                    .map(|(index, _)| index);
-                let Some(index) = chosen else { break };
-                let forfeited = state.corp.scored_agendas.remove(index);
-                state.corp.removed_from_game.push(forfeited.card.clone());
-                // The agenda's own "when you forfeit this" reaction
-                // (Greenmail) fires as the card, with no install: it has
-                // already left the score area, and a `Some` install that
-                // is gone resolves to nothing.
-                let forfeited_event = GameEvent::AgendaForfeited { card: forfeited.card.clone() };
-                events.push(forfeited_event.clone());
-                events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card.clone() });
-                events.extend(dispatcher::dispatch_event(state, registry, &forfeited_event)?);
-            }
-            Ok(events)
-        }
-
         Effect::InstallAgendaFromRunnerScoreArea => {
             let card_id = acting_card.ok_or(RulesError::UnresolvedCardTarget)?.clone();
             let Some(position) = state.runner.scored_agendas.iter().position(|c| c == &card_id) else {
@@ -2122,6 +2092,7 @@ pub(crate) fn cost_is_affordable(
         Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, registry, side, part, purpose, ctx)),
         Cost::RemoveTags(amount) => state.runner.tags >= *amount,
         Cost::SufferDamage(_, amount) => state.runner.grip.len() >= *amount as usize,
+        Cost::Forfeit(count) => side == Side::Corp && state.corp.scored_agendas.len() >= *count as usize,
         // The same scan the payment picks from.
         Cost::Trash { from, filter, count, .. } => {
             crate::rules::pending_choice::eligible_positions(state, registry, side, from, filter, ctx.acting_install).len() >= *count as usize
@@ -2231,6 +2202,33 @@ pub(crate) fn pay_cost_ctx(
             // cost is not prevented (1.16.1a). Its `DamageTaken` is
             // dispatched by the payer (`dispatch_cost_events`).
             Ok(crate::rules::damage::apply_damage(state, *damage_type, *amount as usize).0)
+        }
+
+        Cost::Forfeit(count) => {
+            // Only the Corp's score area holds agendas with a handle each;
+            // no Runner card in the pool forfeits.
+            if side != Side::Corp || state.corp.scored_agendas.len() < *count as usize {
+                return Err(RulesError::NotEnoughAgendasToForfeit { required: *count, available: state.corp.scored_agendas.len() as u32 });
+            }
+            let zone = crate::dsl::CardZoneRef::OwnScoreArea;
+            let eligible: Vec<usize> = (0..state.corp.scored_agendas.len()).collect();
+            let picked = crate::rules::pending_choice::pick_for_cost(state, side, &zone, &eligible, *count, None)?;
+            // Resolved to handles before any agenda leaves, which would
+            // shift the positions still to be read.
+            let installs: Vec<InstallId> = picked.iter().map(|&p| state.corp.scored_agendas[p].install_id).collect();
+            let mut events = Vec::new();
+            for install in installs {
+                let Some(position) = state.corp.scored_agendas.iter().position(|s| s.install_id == install) else { continue };
+                let forfeited = state.corp.scored_agendas.remove(position);
+                // Out of the game rather than to Archives (it was never on
+                // the table), taking its counters with it. Returned, not
+                // dispatched: the payer dispatches (`dispatch_cost_events`),
+                // which is how Greenmail hears its own forfeit.
+                state.corp.removed_from_game.push(forfeited.card.clone());
+                events.push(GameEvent::AgendaForfeited { card: forfeited.card.clone() });
+                events.push(GameEvent::CardRemovedFromGame { side: Side::Corp, card: forfeited.card });
+            }
+            Ok(events)
         }
 
         Cost::Trash { from, filter, count, reveal } => {
@@ -2554,9 +2552,6 @@ pub fn check_requirement(
             let here = acting_corp_install(state, ctx).map(|installed| installed.server);
             if from.is_some() && from == here { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
-        EffectRequirement::ScoreAreaHasAtLeast(count) => {
-            if state.corp.scored_agendas.len() as u32 >= *count { Ok(()) } else { Err(RulesError::RequirementNotMet) }
-        }
         EffectRequirement::CurrentlyAccessingInstalledCard { rezzed_only } => {
             // `AccessState::pending_install` is set when the card being
             // accessed is a root install, and is still set while its
@@ -2708,7 +2703,6 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::IdentityFlipped
         | EffectRequirement::CurrentlyAccessingNonAgenda
         | EffectRequirement::CurrentlyAccessingInstalledCard { .. }
-        | EffectRequirement::ScoreAreaHasAtLeast(_)
         | EffectRequirement::AgendaCameFromThisCardsServer
         | EffectRequirement::ProtectingRemote
         | EffectRequirement::SubroutineResolvedThisRun

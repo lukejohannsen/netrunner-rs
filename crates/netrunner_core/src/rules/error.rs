@@ -12,6 +12,8 @@ pub enum RulesError {
     NotEnoughCardsInGrip { required: u32, available: u32 },
     #[error("a cost trashes {required} card(s) and only {available} qualify")]
     NotEnoughCardsToTrash { required: u32, available: u32 },
+    #[error("a cost forfeits {required} agenda(s) and only {available} are scored")]
+    NotEnoughAgendasToForfeit { required: u32, available: u32 },
     #[error("{side:?} attempted to spend {requested} click(s) but only has {available}")]
     NotEnoughClicks {
         side: Side,

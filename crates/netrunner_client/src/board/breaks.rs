@@ -350,11 +350,7 @@ impl Search<'_> {
             // it, so the first that applies is one the person could give.
             // No breaker in the pool pays with cards, but an answer is an
             // answer: a card question takes its first card the same way.
-            let answer = |value: u32| match question {
-                netrunner_core::rules::PaymentAsk::Pools(_) => PlayerAction::ChooseNumber { amount: value },
-                netrunner_core::rules::PaymentAsk::Card(_) => PlayerAction::ToggleCardSelection { position: value as usize },
-            };
-            next = question.answers().into_iter().find_map(|value| apply_action(&next, self.registry, answer(value)).ok())?.0;
+            next = question.answers().into_iter().find_map(|value| apply_action(&next, self.registry, question.action_for(value)).ok())?.0;
         }
         if pending_on(&next, self.ice) != Some(true) {
             return Some(next);

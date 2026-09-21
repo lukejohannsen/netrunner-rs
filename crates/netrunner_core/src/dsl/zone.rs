@@ -64,6 +64,10 @@ pub enum CardZoneRef {
     /// score area"). A source only: nothing puts a card *into* an
     /// opponent's score area.
     OpponentScoreArea,
+    /// The chooser's own score area — where a forfeited agenda comes from
+    /// (`Cost::Forfeit`: Biawak's and Plutus's "forfeit 1 agenda"). A source
+    /// only, like `OpponentScoreArea`.
+    OwnScoreArea,
 }
 
 impl CardZoneRef {
@@ -84,7 +88,8 @@ impl CardZoneRef {
             | CardZoneRef::OpponentDiscard
             | CardZoneRef::OwnInstalled
             | CardZoneRef::HostedOnSource
-            | CardZoneRef::OpponentScoreArea => false,
+            | CardZoneRef::OpponentScoreArea
+            | CardZoneRef::OwnScoreArea => false,
         }
     }
 }

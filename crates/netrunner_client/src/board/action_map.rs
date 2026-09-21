@@ -476,6 +476,10 @@ impl Prompt {
                         format!("The cost takes {} more.", question.remaining)
                     },
                 },
+                Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Alternative { card, .. }, .. }) => Prompt {
+                    title: format!("Rez {}", title_of(Some(card), registry)),
+                    detail: "It prints more than one way to pay for it. Which?".to_string(),
+                },
                 None => Prompt { title: format!("The {:?} is choosing how to pay", payment.side), detail: String::new() },
             });
         }

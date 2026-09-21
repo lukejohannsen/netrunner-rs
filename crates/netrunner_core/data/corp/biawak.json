@@ -142,18 +142,11 @@
   "is_playable": true,
   "rez_alternatives": [
     {
-      "requirement": {
-        "ScoreAreaHasAtLeast": 1
-      },
-      "pay": {
-        "ForfeitAgendas": 1
+      "cost": {
+        "Forfeit": 1
       },
       "discount": 10
     },
-    {
-      "pay": {
-        "Sequence": []
-      }
-    }
+    {}
   ]
 }
