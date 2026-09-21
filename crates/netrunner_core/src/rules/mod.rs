@@ -24,6 +24,7 @@ mod state;
 pub(crate) mod test_support;
 mod trace;
 mod turn;
+pub mod turn_log;
 mod win;
 
 pub use ability::{evaluate_effect, pay_cost, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};

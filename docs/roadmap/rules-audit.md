@@ -872,12 +872,93 @@ one.
    field. That is backlog item 3's query, and the `OncePerTurn` on these
    two cards is what it replaces. `netrunner_bots::determinize` still
    clears `once_per_turn_used` in every sample, as it cleared the flag.
-3. **"The first time each turn" as a query** (§6.3; new). Roughly ten
-   per-turn fields on `GameState`, an `EffectRequirement` apiece, where
-   jinteki filters a turn log (`first-event?` alone is called 136 times).
-   Candidate: constant-size per-turn and per-run counters keyed by an
-   event-kind enum with a filter — not an event `Vec`, which every search
-   clone would pay for.
+3. **"The first time each turn" as a query — TAKEN UP (20 September 2026,
+   four stages; the first is built)** (§6.3; new). Roughly ten per-turn
+   fields on `GameState`, an `EffectRequirement` apiece, where jinteki
+   filters a turn log (`first-event?` alone is called 136 times).
+   Candidate, as the second pass wrote it: constant-size per-turn and
+   per-run counters keyed by an event-kind enum with a filter — not an
+   event `Vec`, which every search clone would pay for.
+
+   **The shape, and what it was chosen over.** `rules::turn_log`:
+   `GameState::this_turn`, a flat `Copy` table with a row per `Trigger` and
+   a column per `Class` of thing the moment was about (a card's type, a
+   server with the remotes as one, or whose moment it was), and
+   `GameState::last_turn`, its row totals for the turn that ended most
+   recently. The event-kind enum is `Trigger` and the classifier is
+   `listeners::moments`, both of which existed: `turn_log::record` is one
+   call at the top of `dispatcher::dispatch_event`, the door
+   `dispatcher::audit` already holds every hearable event to, and
+   `turn_log::rotate` is the one reset, at every turn start, both sides.
+   *Rejected:* a list of named facts (`TurnFact::SuccessfulRunOnHq` is
+   `Trigger::OnSuccessfulRunOnHq` coming back one enum over, the variant
+   item 1's last stage deleted, and every new kind of occurrence would be
+   a Rust edit for a card with no new mechanic in it); and the event
+   `Vec`. **A class holds only what both players saw:** the Corp installs
+   facedown and an advanced card is masked, so a count keyed by *that*
+   card's type would tell the Runner an agenda went down —
+   `turn_log::concealed`, exhaustive over `Trigger`, counts those as
+   `Kind::Unseen`, which is what will let the log ride in a view whole.
+   *Out of scope, deliberately:* `servers_run_this_turn` (Red Team and the
+   evaluator need the remote's own number — which servers is a list, how
+   many times is the log), `installed_this_turn`,
+   `discarded_this_discard_phase`, `extra_clicks_next_turn`,
+   `last_completed_run` and the `RunState` counters (no card in the pool
+   prints "the first time each run"; it would be this struct on
+   `RunState`).
+
+   **The stages.** (1) the log, and the "this turn / last turn" flags
+   onto it; (2) the view carries the log and each side's once-per-turn
+   uses, so `determinize` stops zeroing them, and `OncePerTurn` loses its
+   free-form tag; (3) "the first time each turn" becomes a word in the
+   trigger *condition* beside `when`, judged in the scan on a count that
+   already includes the occurrence, as a refactor for the cards where the
+   two spellings agree; (4) the correction — a card that arrives after
+   the turn's first occurrence missed it (DZMZ Optimizer, Docklands Pass,
+   Détente, Verbal Plasticity, Cacophony, Phật Gioan Baotixita, Aggressive
+   Trendsetting), which closes the item. Ryō "Phoenix" Ōno's "after a
+   subroutine resolved during that run" is the one named deferral.
+
+   **Stage 1 — DONE (20 September 2026),
+   `feat/a-turn-is-counted-where-it-is-heard`.** Five fields went into
+   the log — `made_successful_run_this_turn` and `…_last_turn`,
+   `played_operation_this_turn`, `agenda_points_scored_this_turn`,
+   `actions_taken_this_turn` — with their three write sites in three
+   handlers, five reset and snapshot sites, and three requirements
+   (`MadeSuccessfulRunThisTurn`, `PlayedOperationThisTurn`,
+   `RunnerMadeSuccessfulRunLastTurn`), which are
+   `AmountAtLeast(TimesThisTurn(trigger), 1)` and `TimesLastTurn` on the
+   six cards that used them. `Amount` is `Copy`, so the two new amounts
+   name a `Trigger` and no filter. `NoActionTakenThisTurn` and
+   `AgendaPointsScoredThisTurn` stay and read the log: finishing an action
+   is not a moment any card hears, and the points are a sum, taken off
+   `AgendaScored` at the same door. The view keeps its shape, its two
+   fields derived from the log, and `determinize` rebuilds a log from
+   those two facts alone, so a sample is exactly as blind as it was;
+   stage 2 is where that changes. *One deviation from the plan:* the
+   token that proves a trigger is judged after its own occurrence was
+   counted moves to stage 3, where it is first read.
+
+   *Measured.* Old beside new at every read and at the two view fields,
+   both 256-seed sweeps in a debug build (1,536 games). **The actions
+   count, the operation flag, the agenda points and last turn's run: no
+   read disagreed. No event was dispatched without a record to match** —
+   `audit` checked "at least once" and a count needs "exactly once", so
+   that check is now permanent. **"A successful run this turn": 12,470
+   requirement reads and 173,786 view builds disagreed, every one on the
+   Corp's turn** (8,868 + 123,797 in its action phase, the rest at its
+   turn start, its discard and nine finished games) — the flag was reset
+   only when the *Runner's* turn began, so it stood through the Corp turn
+   that followed a run. The requirement reads there are Carmen's price
+   being shown for a card the Runner cannot install on that turn; the view
+   field is what `eval`'s run term read through a whole Corp turn. With
+   the old path deleted, `scripts/coverage_identical.py main
+   --head-worktree`, 192 games a report, seed 1: **identical, four reports
+   of four** — the evaluator's stale term moved no heuristic game. *Stored
+   states:* a saved `GameState` loses five fields and gains two that
+   default; a `MatchHistory` replays from its actions and is unaffected.
+   The pool fingerprint moves (six card files), so a corpus recorded
+   before this is refused by the trainer.
 4. **Generic prevention** (§2.2; was item 2). Give the existing
    `WindowCheckpoint::Prevention` window a kind parameter, so tags,
    end-the-run, jack-out and expose use the same window that damage and

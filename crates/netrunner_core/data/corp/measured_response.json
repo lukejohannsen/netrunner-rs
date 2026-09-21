@@ -13,7 +13,7 @@
           4
         ]
       },
-      "RunnerMadeSuccessfulRunLastTurn"
+      { "AmountAtLeast": [{ "TimesLastTurn": "OnSuccessfulRun" }, 1] }
     ]
   },
   "triggers": [

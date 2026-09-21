@@ -2451,12 +2451,6 @@ pub fn check_requirement(
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
-        EffectRequirement::RunnerMadeSuccessfulRunLastTurn => {
-            if !state.runner.made_successful_run_last_turn {
-                return Err(RulesError::RequirementNotMet);
-            }
-            Ok(())
-        }
         EffectRequirement::LastDamageTrashedOddCostCard => {
             // Read from the resolution in flight, not from `GameState`:
             // *Diviner* asks about the `DealDamage` immediately preceding
@@ -2489,12 +2483,6 @@ pub fn check_requirement(
             let stole = state.last_completed_run.as_ref().is_some_and(|run| run.agendas_stolen > 0);
             if stole { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
-        EffectRequirement::MadeSuccessfulRunThisTurn => {
-            if !state.runner.made_successful_run_this_turn {
-                return Err(RulesError::RequirementNotMet);
-            }
-            Ok(())
-        }
         EffectRequirement::ThisCardCountersAtMost(amount) => {
             let current = counters_of(state, ctx).unwrap_or(0);
             if current > *amount {
@@ -2525,9 +2513,6 @@ pub fn check_requirement(
                 run.phase == RunPhase::EncounterIce && run.ice.get(run.position).is_some_and(|ice| ice.install_id == host)
             });
             if matches { Ok(()) } else { Err(RulesError::RequirementNotMet) }
-        }
-        EffectRequirement::PlayedOperationThisTurn => {
-            if state.corp.played_operation_this_turn { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::DuringRun => {
             // Not merely `active_run.is_some()`: once the Runner is
@@ -2594,7 +2579,7 @@ pub fn check_requirement(
             if resolve_amount(amount, ctx, state, registry) >= *min { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::NoActionTakenThisTurn => {
-            if state.actions_taken_this_turn == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
+            if state.this_turn.actions_finished() == 0 { Ok(()) } else { Err(RulesError::RequirementNotMet) }
         }
         EffectRequirement::ProtectingRemote => {
             let protecting = acting_corp_install(state, ctx)
@@ -2796,7 +2781,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::PrintedInstallCost => ctx.acting_card.and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::RemainingAfterSelection(total) => total.saturating_sub(ctx.selected_count),
         Amount::Fixed(n) => *n,
-        Amount::AgendaPointsScoredThisTurn => state.corp.agenda_points_scored_this_turn,
+        Amount::AgendaPointsScoredThisTurn => state.this_turn.agenda_points_scored(),
+        Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
+        Amount::TimesLastTurn(trigger) => state.last_turn.times(*trigger),
         Amount::HostedCounters => counters_of(state, ctx).unwrap_or(0),
         Amount::HostedAdvancementTokens => advancement_tokens_of(state, ctx).unwrap_or(0),
         Amount::InstalledIcebreakerCount => installed_icebreaker_count(state, registry),
@@ -2863,7 +2850,6 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::ZoneHasAtLeast { .. }
         | EffectRequirement::Not(_)
         | EffectRequirement::RezzedDuringRunAgainstThisServer
-        | EffectRequirement::RunnerMadeSuccessfulRunLastTurn
         | EffectRequirement::LastDamageTrashedOddCostCard
         | EffectRequirement::LastRunWasOnHqOrRnD
         | EffectRequirement::StoleAgendaDuringLastRun
@@ -2871,14 +2857,12 @@ pub(crate) fn consume_requirement(
         | EffectRequirement::AccessingArchives
         | EffectRequirement::AccessedAnyCardDuringLastRun
         | EffectRequirement::ThisCardIsInstalled
-        | EffectRequirement::MadeSuccessfulRunThisTurn
         | EffectRequirement::ThisCardCountersAtMost(_)
         | EffectRequirement::CurrentlyAccessingACard
         | EffectRequirement::ThisCardCountersAtLeast(_)
         | EffectRequirement::EncounteringHostIce
         | EffectRequirement::DuringEncounter
         | EffectRequirement::DuringRun
-        | EffectRequirement::PlayedOperationThisTurn
         | EffectRequirement::WasFirstAdvancementThisCard
         | EffectRequirement::CorpCreditsAtLeast(_)
         | EffectRequirement::RunEventActive

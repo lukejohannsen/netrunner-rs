@@ -64,6 +64,8 @@ pub fn describe_amount(amount: &Amount) -> String {
     match amount {
         Amount::Fixed(n) => n.to_string(),
         Amount::AgendaPointsScoredThisTurn => "the agenda points scored this turn".to_string(),
+        Amount::TimesThisTurn(trigger) => format!("the times \"{}\" has happened this turn", humanize(format!("{trigger:?}"))),
+        Amount::TimesLastTurn(trigger) => format!("the times \"{}\" happened last turn", humanize(format!("{trigger:?}"))),
         Amount::HostedCounters => "the counters on this card".to_string(),
         Amount::HostedAdvancementTokens => "the advancement tokens on this card".to_string(),
         Amount::InstalledIcebreakerCount => "the number of installed icebreakers".to_string(),

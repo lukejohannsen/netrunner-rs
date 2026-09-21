@@ -142,3 +142,16 @@ pub(crate) fn ice_printing(card_id: &str, strength: i32) -> crate::dsl::CardDefi
         ..crate::dsl::CardDefinition::default()
     }
 }
+
+/// A run succeeded earlier this turn, as far as any card asks — counted
+/// the way the engine counts it, because there is no flag to set.
+pub(crate) fn a_run_succeeded_this_turn(state: &mut GameState) {
+    let event = crate::rules::GameEvent::RunSucceeded { server: crate::rules::ServerId::Hq };
+    crate::rules::turn_log::record(state, &crate::cards::CardRegistry::default(), &event);
+}
+
+/// A run succeeded during the turn that has just ended.
+pub(crate) fn a_run_succeeded_last_turn(state: &mut GameState) {
+    a_run_succeeded_this_turn(state);
+    crate::rules::turn_log::rotate(state);
+}

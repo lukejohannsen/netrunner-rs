@@ -124,10 +124,6 @@ pub enum EffectRequirement {
     /// ApproachIce`/`EncounterIce`) — e.g. Ping's "when you rez this ice
     /// during a run against this server."
     RezzedDuringRunAgainstThisServer,
-    /// The Runner made a successful run during their immediately preceding
-    /// turn (`RunnerState::made_successful_run_last_turn`) — e.g. Public
-    /// Trail's play requirement.
-    RunnerMadeSuccessfulRunLastTurn,
     /// The most recent `Effect::DealDamage` **in this same resolution**
     /// discarded at least one card whose registry `cost` is odd — e.g.
     /// Diviner's subroutine ("if you trash a card this way with a printed
@@ -162,15 +158,6 @@ pub enum EffectRequirement {
     /// `Not(AccessingArchives)` — hence the positive form here, leaving the
     /// negation to the `Not` combinator that already exists.
     AccessingArchives,
-    /// The Runner has made at least one successful run this turn
-    /// (`RunnerState::made_successful_run_this_turn`) — e.g. Mutual Favor's
-    /// "if you made a successful run this turn, you may install [the found
-    /// program]." Introduced ahead of its originally planned milestone
-    /// (formalized further alongside Carmen/Marjanah's cost discounts) since
-    /// the backing state (`made_successful_run_this_turn`) already existed
-    /// and Mutual Favor needed the read now — no behavior change expected
-    /// when those cards are added later.
-    MadeSuccessfulRunThisTurn,
     /// `acting_card`'s current generic counter total (wherever it's
     /// currently installed/rigged) is at most `amount` — e.g. a
     /// hosted-credit-pool resource/asset detecting "this pool is now empty"
@@ -282,8 +269,10 @@ pub enum EffectRequirement {
     /// requirement. `ThisCardCountersAtLeast` predates it and stays.
     AmountAtLeast(crate::dsl::Amount, u32),
     /// The active side has not finished an action yet this turn
-    /// (`GameState::actions_taken_this_turn == 0`) — Petty Cash's play
-    /// condition. Not derivable from clicks: see the field's doc.
+    /// (`TurnLog::actions_finished`) — Petty Cash's play condition. Not an
+    /// `Amount::TimesThisTurn`: finishing an action is not a moment any
+    /// card hears, so it has no `Trigger` to be counted under. Not
+    /// derivable from clicks either: see the field's doc.
     NoActionTakenThisTurn,
     /// The triggering `OperationPlayed` was played from Archives rather
     /// than HQ — Petty Cash's "if you played this operation from anywhere
@@ -306,12 +295,6 @@ pub enum EffectRequirement {
     /// forfeit with nothing to give up is not a way to pay. A count of
     /// agendas, not of points: what a forfeit consumes is a card.
     ScoreAreaHasAtLeast(u32),
-    /// The Corp has played an operation during this turn
-    /// (`CorpState::played_operation_this_turn`) — Nebula Talent
-    /// Management's "if you played an operation this turn". Reading a flag
-    /// rather than consuming a `OncePerTurn` tag: the question is asked at
-    /// the end of the action phase and must not spend anything.
-    PlayedOperationThisTurn,
     /// A run is in progress and has not yet reached access — Proprionegation's
     /// "use this ability only during a run". `DuringEncounter` is the
     /// narrower sibling (the Runner committed to a specific piece of ice);

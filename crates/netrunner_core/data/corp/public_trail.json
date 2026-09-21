@@ -4,7 +4,7 @@
   "side": "Corp",
   "card_type": "Operation",
   "cost": 4,
-  "play_requirement": "RunnerMadeSuccessfulRunLastTurn",
+  "play_requirement": { "AmountAtLeast": [{ "TimesLastTurn": "OnSuccessfulRun" }, 1] },
   "triggers": [
     {
       "trigger": "OnPlay",

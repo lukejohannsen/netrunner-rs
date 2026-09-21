@@ -5,6 +5,7 @@ use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::paid_ability;
+use crate::rules::turn_log;
 use crate::rules::win;
 use crate::rules::state::{ArchivedCard, Clicks, GamePhase, GameState, Side, WindowCheckpoint};
 
@@ -179,14 +180,6 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     // function's doc comment for why leaving them was unsafe.
     next.resources_mut(side).clicks = Clicks(0);
 
-    if side == Side::Runner {
-        // Snapshot before `enter_start_of_turn` (reached via this same
-        // `EndOfTurn` window, or via `discard_card` if a mandatory discard
-        // intervenes first) resets `made_successful_run_this_turn` for the
-        // Runner's new turn — see `EffectRequirement::
-        // RunnerMadeSuccessfulRunLastTurn`'s doc comment.
-        next.runner.made_successful_run_last_turn = next.runner.made_successful_run_this_turn;
-    }
 
     events.push(paid_ability::open_window_for(&mut next, side, WindowCheckpoint::EndOfTurn { side }));
 
@@ -334,7 +327,9 @@ pub(crate) fn enter_start_of_turn(
     let turn_started_event = GameEvent::TurnStarted { side: next_side, clicks };
     events.push(turn_started_event.clone());
 
-    next.actions_taken_this_turn = 0;
+    // Before `TurnStarted` is dispatched, so the new turn's first moment is
+    // the turn beginning.
+    turn_log::rotate(next);
     if next_side == Side::Corp {
         // Top of R&D mirrors `RunnerState::stack`'s convention — drawing
         // pops the end of the Vec (see `engine.rs::draw_card_click`).
@@ -354,8 +349,6 @@ pub(crate) fn enter_start_of_turn(
         // reads from both sides of.
         next.corp.once_per_turn_used.clear();
         next.runner.once_per_turn_used.clear();
-        next.corp.agenda_points_scored_this_turn = 0;
-        next.corp.played_operation_this_turn = false;
         // Everything still installed was necessarily installed on an earlier
         // turn — Seamless Launch's "did not install this turn" eligibility.
         for installed in &mut next.corp.installed {
@@ -366,7 +359,6 @@ pub(crate) fn enter_start_of_turn(
         // Both sides — see the Corp branch above.
         next.runner.once_per_turn_used.clear();
         next.corp.once_per_turn_used.clear();
-        next.runner.made_successful_run_this_turn = false;
         next.runner.servers_run_this_turn.clear();
     }
 

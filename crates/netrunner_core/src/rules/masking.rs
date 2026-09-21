@@ -196,7 +196,8 @@ pub struct PublicRunnerState {
     /// where the engine will.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
-    /// Never masked — `RunnerState::made_successful_run_this_turn`; a run's
+    /// Never masked — whether `GameState::this_turn` has counted an
+    /// `OnSuccessfulRun` (`rules::turn_log`); a run's
     /// success is announced to both players. Carried for the same reason
     /// as `servers_run_this_turn`: a bot's determinized sample must agree
     /// with the real state about it, both for the engine (Carmen's
@@ -1009,7 +1010,7 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         scored_agendas: runner.scored_agendas.clone(),
         link_strength: runner.link_strength,
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
-        made_successful_run_this_turn: runner.made_successful_run_this_turn,
+        made_successful_run_this_turn: state.this_turn.times(crate::dsl::Trigger::OnSuccessfulRun) > 0,
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
         identity_flipped: runner.identity_flipped,
     }

@@ -13,7 +13,7 @@
           {
             "Not": "IdentityFlipped"
           },
-          "PlayedOperationThisTurn"
+          { "AmountAtLeast": [{ "TimesThisTurn": "OnOperationPlayed" }, 1] }
         ]
       },
       "effects": [

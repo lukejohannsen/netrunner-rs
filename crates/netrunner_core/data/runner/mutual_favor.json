@@ -21,7 +21,7 @@
             "destination": "OwnGrip",
             "then": {
               "EffectIf": {
-                "condition": "MadeSuccessfulRunThisTurn",
+                "condition": { "AmountAtLeast": [{ "TimesThisTurn": "OnSuccessfulRun" }, 1] },
                 "effect": {
                   "PresentChoice": {
                     "chooser": "Runner",

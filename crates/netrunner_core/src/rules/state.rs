@@ -6,6 +6,7 @@ use crate::dsl::{CardFilter, CardId, CardTarget, CardZoneRef, Cost, DamageType, 
 use crate::rules::event::GameEvent;
 use crate::rules::lingering::LingeringEffect;
 use crate::rules::run::{RunState, ServerId};
+use crate::rules::turn_log::{LastTurn, TurnLog};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Side {
@@ -284,12 +285,6 @@ pub struct CorpState {
     /// recurring_credits` (`0` for an identity with no such pool, e.g.
     /// every identity but NBN: Making News in the baseline set).
     pub recurring_credits_max: u32,
-    /// Sum of printed agenda points on agendas scored this Corp turn — read
-    /// by `dsl::effect::Amount::AgendaPointsScoredThisTurn` (e.g.
-    /// Neurospike). Incremented in `engine::score_agenda`, reset to `0` at
-    /// the start of every Corp turn (`turn::enter_start_of_turn`).
-    #[serde(default)]
-    pub agenda_points_scored_this_turn: u32,
     /// Clicks banked onto the Corp's *next* turn allotment by
     /// `Effect::GainClicksNextTurn` (Aggressive Trendsetting), added to
     /// the printed three by `turn::enter_start_of_turn` and zeroed as it
@@ -309,14 +304,6 @@ pub struct CorpState {
     /// Public information, like everything else about an identity.
     #[serde(default)]
     pub identity_counters: u32,
-    /// Whether the Corp has played an operation this turn — Nebula Talent
-    /// Management: Making Stars flips itself at the end of an action phase
-    /// that saw one. Set by `engine::play_operation_card` (both the click
-    /// action and `Effect::PlayOperation`), cleared at every Corp turn
-    /// start. A flag rather than a `OncePerTurn` tag because nothing
-    /// *consumes* it: two cards may ask, and asking must not spend it.
-    #[serde(default)]
-    pub played_operation_this_turn: bool,
     /// The Corp-side twin of `RunnerState::identity_flipped` — Nebula
     /// Talent Management: Making Stars is the first Corp identity with two
     /// sides. `Effect::FlipIdentity` toggles whichever side is resolving
@@ -566,14 +553,6 @@ pub struct RunnerState {
     /// the start of every Runner turn.
     #[serde(default)]
     pub once_per_turn_used: HashSet<OncePerTurnKey>,
-    /// Whether the Runner has made at least one successful run this turn
-    /// (any server) — set by `dispatcher::dispatch_event`'s `RunSucceeded`
-    /// arm, reset to `false` at the start of every Runner turn. Backs
-    /// `EffectRequirement::RunnerMadeSuccessfulRunLastTurn` via
-    /// `made_successful_run_last_turn` below, and (from M5 on) install-cost
-    /// discounts like Carmen's.
-    #[serde(default)]
-    pub made_successful_run_this_turn: bool,
     /// The cards the Runner discarded to hand size in their most recent
     /// discard phase, in discard order — Magdalene Keino-Chemutai's "from
     /// among those cards". On `GameState`, not the resolution context,
@@ -602,13 +581,6 @@ pub struct RunnerState {
     /// same as a click. Public — both players watched the runs happen.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
-    /// Snapshot of `made_successful_run_this_turn` taken when the Runner's
-    /// turn ends (`turn::end_turn`), read by `EffectRequirement::
-    /// RunnerMadeSuccessfulRunLastTurn` — e.g. Public Trail's play
-    /// requirement ("play only if the Runner made a successful run during
-    /// their last turn").
-    #[serde(default)]
-    pub made_successful_run_last_turn: bool,
 }
 
 impl RunnerState {
@@ -1261,17 +1233,13 @@ pub struct GameState {
     /// effects are not, and why nothing depends on when the list is swept.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lingering: Vec<LingeringEffect>,
-    /// Actions the active side has *finished* this turn — every basic
-    /// click action and run, not scoring (which is not an action) and not
-    /// a click spent as a paid-ability cost. Reset when a turn begins.
-    /// Backs `EffectRequirement::NoActionTakenThisTurn` (Petty Cash's
-    /// "play only if you have not finished an action yet this turn").
-    /// On `GameState` rather than derived from clicks: Petty Cash itself
-    /// refunds the click it cost when played from Archives, so "clicks
-    /// still at the turn's starting value" would wrongly let a second copy
-    /// follow the first.
+    /// What has happened this turn, counted where it is heard — see
+    /// `rules::turn_log`. Never add a `*_this_turn` field beside it.
     #[serde(default)]
-    pub actions_taken_this_turn: u32,
+    pub this_turn: TurnLog,
+    /// The turn before, as far as a card asks — `turn_log::LastTurn`.
+    #[serde(default)]
+    pub last_turn: LastTurn,
     /// Triggers owed but not yet fired, because an earlier trigger in the
     /// same dispatch parked something blocking. Drained by
     /// `dispatcher::drain_deferred_triggers` from `engine::apply_action`,
@@ -1363,7 +1331,8 @@ impl Default for GameState {
             pending_decision: None,
             last_completed_run: None,
             lingering: Vec::new(),
-            actions_taken_this_turn: 0,
+            this_turn: TurnLog::default(),
+            last_turn: LastTurn::default(),
             deferred_triggers: Vec::new(),
             seed: 0,
             rng_step: 0,

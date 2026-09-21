@@ -904,8 +904,30 @@ pub enum Amount {
     /// an ordinary fixed number when no dynamic formula is needed.
     Fixed(u32),
     /// Sum of printed agenda points on agendas the Corp has scored this
-    /// turn (`CorpState::agenda_points_scored_this_turn`) — e.g. Neurospike.
+    /// turn (`TurnLog::agenda_points_scored`) — e.g. Neurospike. A sum, so
+    /// not a `TimesThisTurn`, which counts.
     AgendaPointsScoredThisTurn,
+    /// How many times this trigger's moment has happened this turn, to
+    /// anyone and about anything (`rules::turn_log`) — "if you made a
+    /// successful run this turn" is `AmountAtLeast(TimesThisTurn(
+    /// OnSuccessfulRun), 1)` (Carmen, Marjanah, Mutual Favor), "if you
+    /// played an operation this turn" the same over `OnOperationPlayed`
+    /// (Nebula Talent Management). Composition didn't work because no
+    /// existing `Amount` reads the turn; this one took over three
+    /// requirements that each read a flag of their own
+    /// (`MadeSuccessfulRunThisTurn`, `PlayedOperationThisTurn`, and
+    /// `RunnerMadeSuccessfulRunLastTurn` below). It names a `Trigger` and
+    /// no filter because `Amount` is `Copy`. **Not how a card says "the
+    /// first time each turn"** — that is a word in the trigger condition.
+    TimesThisTurn(crate::dsl::Trigger),
+    /// The same count for the turn that ended most recently, either
+    /// side's (`turn_log::LastTurn`) — "play only if the Runner made a
+    /// successful run during their last turn" (Public Trail, Measured
+    /// Response), asked on the Corp's turn, when the last turn was the
+    /// Runner's. Its own variant rather than a flag on the one above: a
+    /// last turn keeps its totals only, and a card file should not be
+    /// able to ask it for more.
+    TimesLastTurn(crate::dsl::Trigger),
     /// `acting_card`'s own hosted generic counter count — e.g. Conduit's
     /// R&D-access bonus.
     HostedCounters,

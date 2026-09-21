@@ -14,7 +14,7 @@
         }
       },
       "applies_to": "This",
-      "while": "MadeSuccessfulRunThisTurn",
+      "while": { "AmountAtLeast": [{ "TimesThisTurn": "OnSuccessfulRun" }, 1] },
       "text": "If you made a successful run this turn, this program costs 2[credit] less to install."
     }
   ],
