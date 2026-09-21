@@ -912,11 +912,49 @@ fn lerp(a: &Weights, b: &Weights, t: f64) -> Weights {
     }
 }
 
+/// A payment parked on its payer's answer (`netrunner_core::rules::
+/// PendingPayment`), priced as the payment made: each answer is applied,
+/// any further question answered the same way, and the payer's best result
+/// by the payer's own reckoning is the state scored.
+///
+/// A parked payment is the untouched state with a question on it — the
+/// action it waits on has not happened at all, by construction (the
+/// engine unwinds and replays) — so without this the action that parks one
+/// scores as if it did nothing. That is not a small error: when the
+/// Corp's accept of Anoetic Void's offer began asking which two cards of
+/// HQ to trash, the one accept the heuristic made in a 192-game pass
+/// became a decline, because "accept" now looked like "nothing" beside a
+/// run continuing. The same shape as `pending_decision_upside` pricing a
+/// parked prompt's continuation, and exact rather than a bound: the
+/// payment's own answers are finite and each is a legal action. `None`
+/// when nothing is parked, or no answer goes through.
+fn through_parked_payment(state: &GameState, registry: &CardRegistry, w: &Weights) -> Option<GameState> {
+    use netrunner_core::rules::{PaymentAsk, PlayerAction};
+    let payment = state.pending_payment.as_ref()?;
+    let payer = payment.side;
+    let answer = |value: u32| match payment.question {
+        PaymentAsk::Pools(_) => PlayerAction::ChooseNumber { amount: value },
+        PaymentAsk::Card(_) => PlayerAction::ToggleCardSelection { position: value as usize },
+    };
+    payment
+        .question
+        .answers()
+        .into_iter()
+        .filter_map(|value| netrunner_core::rules::apply_action(state, registry, answer(value)).ok())
+        .map(|(next, _)| through_parked_payment(&next, registry, w).unwrap_or(next))
+        .map(|paid| (evaluate_state_with(&paid, payer, registry, w), paid))
+        .max_by(|(a, _), (b, _)| a.total_cmp(b))
+        .map(|(_, paid)| paid)
+}
+
 /// `evaluate_state` under a particular `Weights` — what a `Personality`
 /// gives the heuristic, MCTS and the uniform PUCT evaluator.
 pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistry, w: &Weights) -> f64 {
     if let GamePhase::GameOver(winner) = state.phase {
         return if winner == side { WIN_SCORE } else { -WIN_SCORE };
+    }
+    if let Some(paid) = through_parked_payment(state, registry, w) {
+        return evaluate_state_with(&paid, side, registry, w);
     }
 
     // Before the shared prefix, not inside the per-side arm: a stance moves
@@ -1791,6 +1829,53 @@ mod tests {
 
     fn empty() -> CardRegistry {
         CardRegistry::new()
+    }
+
+    /// A payment parked on a card question is scored as the payment made,
+    /// with the pick its payer likes best — here the Runner keeps the
+    /// program (held, it is worth something) and trashes the event — not
+    /// as the untouched board the parked state is.
+    #[test]
+    fn a_parked_card_payment_is_scored_as_the_payers_best_answer() {
+        use netrunner_core::dsl::{Cost, CardFilter, CardZoneRef, Effect};
+        use netrunner_core::rules::{apply_action, Clicks, GamePhase, PlayerAction};
+        let card = |id: &str, card_type: CardType| CardDefinition {
+            id: CardId(id.to_string()),
+            title: id.to_string(),
+            side: Side::Runner,
+            card_type,
+            is_playable: true,
+            ..Default::default()
+        };
+        let mut trasher = card("trasher", CardType::Resource);
+        trasher.abilities = vec![AbilityDef {
+            trigger: Trigger::Paid,
+            cost: Some(Cost::Trash { from: CardZoneRef::OwnGrip, filter: CardFilter::Any, count: 1, reveal: false }),
+            text: None,
+            requirement: None,
+            effect: Effect::GainCredits(Side::Runner, 5),
+            cost_discount_if: None,
+            used_by: None,
+        }];
+        let registry = CardRegistry::from_cards(vec![trasher, card("an_event", CardType::Event), card("a_program", CardType::Program)]);
+        let mut state = GameState::new(0);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![CardId("an_event".to_string()), CardId("a_program".to_string())];
+        state.runner.rig = vec![InstalledRunnerCard { card: CardId("trasher".to_string()), install_id: InstallId(2001), ..Default::default() }];
+
+        let (parked, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 }).expect("asks");
+        assert!(parked.pending_payment.is_some());
+        let w = Weights::default();
+        let scores: Vec<f64> = (0..2)
+            .map(|position| {
+                let (paid, _) = apply_action(&parked, &registry, PlayerAction::ToggleCardSelection { position }).expect("pays");
+                evaluate_state_with(&paid, Side::Runner, &registry, &w)
+            })
+            .collect();
+        let best = scores.iter().copied().fold(f64::MIN, f64::max);
+        assert_eq!(evaluate_state_with(&parked, Side::Runner, &registry, &w), best);
+        assert!(evaluate_state_with(&parked, Side::Runner, &registry, &w) > evaluate_state_with(&state, Side::Runner, &registry, &w), "5 credits, paid for");
     }
 
     #[test]

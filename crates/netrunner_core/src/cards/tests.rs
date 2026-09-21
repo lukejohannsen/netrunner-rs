@@ -2919,24 +2919,13 @@ mod system_gateway {
         let (state, _) = crate::rules::test_support::through_movement(&state, &registry)
             .expect("reach the approach-server step, firing OnApproachServer");
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
-            .expect("corp pays 2 to trash");
-        let (state, _) = apply_action(
-            &state,
-            &registry,
-            PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") },
-        )
-        .expect("toggle hedge_fund");
-        let (state, _) = apply_action(
-            &state,
-            &registry,
-            PlayerAction::ToggleCardSelection { position: position_of(&state, "government_subsidy") },
-        )
-        .expect("toggle government_subsidy");
-        let (state, events) =
-            apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("confirm trash, ending the run");
+        // Exactly two cards in HQ for a cost of two: nothing to ask, so the
+        // accept pays both parts and ends the run in one action.
+        let (state, events) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
+            .expect("corp pays 2 and trashes both, ending the run");
 
         assert_eq!(state.corp.resources.credits, Credits(3), "5 - 2");
+        assert!(state.corp.archives.iter().all(|a| a.facedown), "trashed out of HQ unseen");
         assert!(state.corp.hq.is_empty());
         assert_eq!(state.corp.archives.len(), 2);
         assert!(state.active_run.is_none(), "the run should have ended");
@@ -2987,6 +2976,20 @@ mod system_gateway {
         assert!(state.pending_paid_choice.is_none(), "{:?}", state.pending_paid_choice);
         assert_eq!(state.corp.resources.credits, Credits(5));
         assert!(state.active_run.is_some());
+
+        // Three cards: the Corp says which two, and pays both parts or
+        // neither — the credits are not spent until the cards are named.
+        let state = base(5, vec!["hedge_fund", "government_subsidy", "ice_wall"]);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None }).expect("accept");
+        assert!(state.pending_payment.is_some());
+        assert_eq!(state.corp.resources.credits, Credits(5), "nothing spent while the Corp is asked");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "hedge_fund") }).expect("one");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ice_wall") }).expect("two");
+        assert_eq!(state.corp.hq, vec![CardId("government_subsidy".to_string())]);
+        assert_eq!(state.corp.resources.credits, Credits(3));
+        assert!(state.active_run.is_none(), "the run ended");
     }
 
     #[test]
@@ -3724,6 +3727,7 @@ mod system_gateway {
             CardId("carnivore".to_string()),
             CardId("sure_gamble".to_string()),
             CardId("diesel".to_string()),
+            CardId("overclock".to_string()),
         ];
         state.corp.installed = vec![crate::rules::InstalledCard {
             install_id: fixture_install_id("pad_campaign"),
@@ -3749,29 +3753,41 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp })
             .expect("corp passes pending-choice window");
 
-        let (state, _) = apply_action(
+        // Three cards for a cost of two: the Runner is asked which, one card
+        // at a time, and the action waits on the answers (`payment::Ask::Card`).
+        let (state, events) = apply_action(
             &state,
             &registry,
             PlayerAction::ActivateAbility { target: install_of(&state, "carnivore"), ability_index: 0 },
         )
-        .expect("activating parks the grip-selection decision");
+        .expect("activating asks which grip cards pay for it");
+        assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::PaymentChoiceOffered { side: Side::Runner })));
+        assert_eq!(state.runner.grip.len(), 3, "nothing is paid until the Runner has said which");
+        assert!(
+            crate::rules::legal_actions_for(&state, &registry, Side::Runner)
+                .iter()
+                .all(|a| matches!(a, PlayerAction::ToggleCardSelection { .. })),
+            "a card, and nothing else"
+        );
+        let corp_view = crate::view::build_client_view(&state, &registry, crate::rules::Viewer::Player(Side::Corp));
+        assert!(corp_view.pending_payment.as_ref().is_some_and(|p| p.own.is_none()), "the Corp sees who is paying, not with what");
+        assert!(corp_view.selection.is_empty());
 
         let (state, _) = apply_action(
             &state,
             &registry,
             PlayerAction::ToggleCardSelection { position: position_of(&state, "sure_gamble") },
         )
-        .expect("select first grip card");
-        let (state, _) = apply_action(
+        .expect("the first card");
+        assert!(state.pending_payment.is_some(), "one card is not the cost");
+        let (state, events) = apply_action(
             &state,
             &registry,
             PlayerAction::ToggleCardSelection { position: position_of(&state, "diesel") },
         )
-        .expect("select second grip card");
-        let (state, events) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection)
-            .expect("confirm trashes the 2 grip cards, then the accessed card for free");
+        .expect("the second card trashes both, then the accessed card for free");
 
-        assert!(state.runner.grip.is_empty());
+        assert_eq!(state.runner.grip, vec![CardId("overclock".to_string())]);
         assert_eq!(state.runner.heap.len(), 2, "the 2 trashed grip cards");
         assert!(
             state.corp.archives_contains(&CardId("pad_campaign".to_string())),
@@ -5208,10 +5224,12 @@ mod system_gateway {
     }
 
     /// Carnivore's "trash 2 cards from your grip" is offered only when there
-    /// are 2 to trash. Before its `ZoneHasAtLeast` gate, the ability was
-    /// legal with one card in the grip: `PromptChooseCards` silently parked
+    /// are 2 to trash. Before a `ZoneHasAtLeast` gate, the ability was legal
+    /// with one card in the grip: `PromptChooseCards` silently parked
     /// nothing, the accessed card stayed, and Carnivore's once-per-turn was
-    /// spent on it.
+    /// spent on it. The gate was affordability written beside the payment;
+    /// the trash is now the cost (`Cost::Trash`), and its scan is the
+    /// answer.
     #[test]
     fn carnivore_is_not_offered_and_spends_nothing_with_fewer_than_two_grip_cards() {
         let registry = sg_registry();
@@ -5238,7 +5256,7 @@ mod system_gateway {
         let activate = PlayerAction::ActivateAbility { target: fixture_install_id("carnivore"), ability_index: 0 };
 
         assert!(!crate::rules::legal_actions_for(&state, &registry, Side::Runner).contains(&activate), "one card in grip");
-        assert_eq!(apply_action(&state, &registry, activate.clone()).err(), Some(RulesError::RequirementNotMet));
+        assert_eq!(apply_action(&state, &registry, activate.clone()).err(), Some(RulesError::NotEnoughCardsToTrash { required: 2, available: 1 }));
         assert!(state.runner.once_per_turn_used.is_empty(), "a refused activation consumes nothing");
 
         state.runner.grip.push(CardId("overclock".to_string()));
@@ -7025,7 +7043,7 @@ mod system_gateway {
         let pump = PlayerAction::ActivateAbility { target: corroder, ability_index: 0 };
         let (parked, _) = apply_action(&state, &registry, pump).expect("the pump parks a question");
         let payment = parked.pending_payment.as_ref().expect("1[c], and 2 + 5 that could pay it");
-        assert_eq!(payment.question, crate::rules::PaymentQuestion { pool: crate::rules::Pool::Hosted(toolbox), min: 0, max: 1 });
+        assert_eq!(payment.question, crate::rules::PaymentAsk::Pools(crate::rules::PaymentQuestion { pool: crate::rules::Pool::Hosted(toolbox), min: 0, max: 1 }));
 
         let (run_pays, _) = apply_action(&parked, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("none of The Toolbox's");
         assert_eq!(run_pays.runner.rig[0].counters, 2, "The Toolbox keeps both for the next run");
@@ -7131,7 +7149,7 @@ mod system_gateway {
         let azimat = crate::rules::Pool::Hosted(parked.runner.rig[0].install_id);
         assert_eq!(
             payment.question,
-            crate::rules::PaymentQuestion { pool: azimat, min: 0, max: 2 },
+            crate::rules::PaymentAsk::Pools(crate::rules::PaymentQuestion { pool: azimat, min: 0, max: 2 }),
             "Azimat's pay less and last longer; the run's pay anything and are gone sooner — so how many of Azimat's 2"
         );
 
@@ -8458,12 +8476,12 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach Brân");
         let (state, _) = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Runner }).expect("runner passes");
         assert!(crate::rules::legal_actions(&state, &registry).contains(&identity_ability), "a rezzed bioroid protects the attacked server");
+        // Ansel protects R&D, not the attacked server: Brân is the only card
+        // the cost can take, so nothing is asked and the trash is the price
+        // paid before the run ends (`Cost::Trash`), not a selection the
+        // "End the run." then resolved as.
         let (state, _) = apply_action(&state, &registry, identity_ability.clone()).expect("use the identity");
-        assert!(matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })));
-        // Ansel protects R&D, not the attacked server: only Brân is offered.
-        assert!(apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "ansel_1_0") }).is_err(), "not offered");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ToggleCardSelection { position: position_of(&state, "bran_1_0") }).expect("pick Brân");
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("trash it");
+        assert!(state.pending_payment.is_none() && state.pending_decision.is_none(), "nothing to ask");
         assert!(state.active_run.is_none(), "the run ended");
         assert!(state.corp.archives.iter().any(|a| a.card.0 == "bran_1_0" && !a.facedown), "a rezzed card lands faceup");
         assert_eq!(state.corp.installed.len(), 1);
@@ -9662,7 +9680,22 @@ mod system_gateway {
         let (void, _) = crate::rules::test_support::through_movement(&void, &registry).expect("approach");
         let (void, _) = apply_action(&void, &registry, PlayerAction::AcceptPendingPaidChoice { cost_option_index: None })
             .expect("pay 2");
-        assert_eq!(confirm_every_subset("anoetic_void", void), 10);
+        // Its two cards are a cost now, asked one at a time with no confirm
+        // (`payment::Ask::Card`): every pair of picks, in either order, pays.
+        let first = eligible_positions(&void);
+        assert_eq!(first.len(), 5, "every card in HQ can pay");
+        let mut paid = 0;
+        for &a in &first {
+            let (one, _) = apply_action(&void, &registry, toggle(a)).unwrap_or_else(|e| panic!("anoetic_void: first pick {a} failed: {e:?}"));
+            let second = eligible_positions(&one);
+            assert!(!second.contains(&a), "a card is picked once");
+            for &b in &second {
+                let (both, _) = apply_action(&one, &registry, toggle(b)).unwrap_or_else(|e| panic!("anoetic_void: picks {a}, {b} failed: {e:?}"));
+                assert!(both.pending_payment.is_none() && both.active_run.is_none(), "anoetic_void: {a}, {b} paid and ended the run");
+                paid += 1;
+            }
+        }
+        assert_eq!(paid, 20);
 
         // Sprint: draw 3 into a 4-card hand, then shuffle exactly 2 of the 7 back.
         let mut sprint = base_state();

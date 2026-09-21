@@ -110,11 +110,20 @@ pub(crate) fn install_of(state: &GameState, card: &str) -> InstallId {
 /// Same first-match caveat as [`install_of`]: a test selecting two copies of
 /// one card must spell the positions out, as
 /// `carnivore_can_select_two_copies_of_the_same_card` does.
+///
+/// A parked payment that asks for a card (`payment::Ask::Card`) is answered
+/// by position too, and comes first, as `apply_action` answers it first.
 pub(crate) fn position_of(state: &GameState, card: &str) -> usize {
+    let id = CardId(card.to_string());
+    if let Some(crate::rules::PendingPayment { side, question: crate::rules::payment::Ask::Card(question), .. }) = &state.pending_payment {
+        return pending_choice::zone_card_ids(state, *side, &question.zone, None)
+            .iter()
+            .position(|c| *c == id)
+            .unwrap_or_else(|| panic!("{card} is not in the zone the payment asks about"));
+    }
     let Some(PendingDecision::ChooseCards { side, source, source_install, .. }) = &state.pending_decision else {
         panic!("no ChooseCards decision is parked");
     };
-    let id = CardId(card.to_string());
     pending_choice::zone_card_ids(state, *side, source, *source_install)
         .iter()
         .position(|c| *c == id)

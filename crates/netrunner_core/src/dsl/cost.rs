@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::effect::DamageType;
+use super::zone::{CardFilter, CardZoneRef};
 
 /// What a player must pay to activate a `Paid`-triggered `AbilityDef`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +52,28 @@ pub enum Cost {
     /// mandatory interrupt that would prevent the damage would also make
     /// the cost unpayable (1.16.1b); no pool card prints one.
     SufferDamage(DamageType, u32),
+    /// The payer trashes `count` of their own cards in `from` that match
+    /// `filter` — Carnivore's "Trash 2 cards from your grip:", LEO
+    /// Construction's "Trash 1 rezzed bioroid card in the root of or
+    /// protecting the attacked server:", Anoetic Void's "pay 2[credit] and
+    /// trash 2 cards from HQ". Each was a `PromptChooseCards` in the
+    /// effect with a `ZoneHasAtLeast` requirement standing in for
+    /// affordability, which let the requirement and the payment drift
+    /// apart, and resolved the rest of the ability as the card it had just
+    /// trashed (LEO's "End the run." ran as the bioroid).
+    ///
+    /// Affordable when that many cards match; the payer is asked which, one
+    /// card at a time, only when the answer changes what they are left with
+    /// (`payment::Ask::Card`). A card trashed from HQ lands facedown unless
+    /// `reveal`; a trashed install that was faceup stays faceup. Never
+    /// prevented: the payer is choosing among their own cards (CR 1.16.1a).
+    Trash {
+        from: CardZoneRef,
+        filter: CardFilter,
+        count: u32,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        reveal: bool,
+    },
     /// The payer chooses which of these to pay — e.g. Manegarm Skunkworks's
     /// "spend [click][click] or pay 5 credits." Resolving *which* option is
     /// a player decision, not something `pay_cost` can pick on its own —
@@ -92,4 +115,17 @@ pub enum Cost {
     /// into the effect would resolve it *after* the ability instead of as
     /// its price.
     AllOf(Vec<Cost>),
+}
+
+impl Cost {
+    /// Whether paying this could ask the payer which cards — the structural
+    /// half of `payment::could_ask`, which copies an action only where a
+    /// question is possible.
+    pub fn may_ask(&self) -> bool {
+        match self {
+            Cost::Trash { .. } => true,
+            Cost::AnyOf(costs) | Cost::AllOf(costs) => costs.iter().any(Cost::may_ask),
+            _ => false,
+        }
+    }
 }

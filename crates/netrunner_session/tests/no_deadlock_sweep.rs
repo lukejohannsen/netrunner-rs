@@ -403,16 +403,42 @@ fn assert_no_concealed_card_is_named(
 /// every position the chooser can act on — each toggle the engine offers
 /// and each card already chosen — so a client can put a card's name on
 /// every button of the prompt and never fall back to a number.
+///
+/// Two things choose cards: a parked selection (`PendingDecision::
+/// ChooseCards`), and a payment asking its payer which card a cost takes
+/// (`PaymentAsk::Card`), which is answered first and whose question only
+/// the payer's view carries (`PublicPendingPayment::own`).
 fn assert_selection_is_the_choosers_alone(view: &netrunner_core::view::ClientView, seed: u64, matchup: &str, viewer: Viewer) {
-    use netrunner_core::rules::{PendingDecision, PlayerAction};
+    use netrunner_core::rules::{PaymentAsk, PendingDecision, PlayerAction};
     let listed: std::collections::BTreeSet<usize> = view.selection.iter().map(|c| c.position).collect();
+    let toggles = || {
+        view.legal_actions.iter().filter_map(|a| match a {
+            PlayerAction::ToggleCardSelection { position } => Some(*position),
+            _ => None,
+        })
+    };
+    if let Some(payment) = &view.pending_payment {
+        match &payment.own {
+            Some(own) if matches!(own.question, PaymentAsk::Card(_)) => {
+                for position in toggles() {
+                    assert!(
+                        listed.contains(&position),
+                        "seed {seed} ({matchup}): {viewer:?} can pay with position {position} but the selection does not name it — {:?}",
+                        view.selection
+                    );
+                }
+            }
+            _ => assert!(
+                view.selection.is_empty(),
+                "seed {seed} ({matchup}): {viewer:?} is not choosing a card to pay with and was shown the selection — {:?}",
+                view.selection
+            ),
+        }
+        return;
+    }
     match &view.pending_decision {
         Some(PendingDecision::ChooseCards { side, selected, .. }) if viewer.is(*side) => {
-            let toggles = view.legal_actions.iter().filter_map(|a| match a {
-                PlayerAction::ToggleCardSelection { position } => Some(*position),
-                _ => None,
-            });
-            for position in toggles.chain(selected.iter().copied()) {
+            for position in toggles().chain(selected.iter().copied()) {
                 assert!(
                     listed.contains(&position),
                     "seed {seed} ({matchup}): {viewer:?} can act on position {position} but the selection does not name it — {:?}",

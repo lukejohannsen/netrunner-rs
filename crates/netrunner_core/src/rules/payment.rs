@@ -142,6 +142,49 @@ pub struct Question {
     pub max: u32,
 }
 
+/// What a parked payment asks its payer. Credits are asked about by
+/// number (`Pools`, answered by `PlayerAction::ChooseNumber`); a cost that
+/// takes cards is asked about **one card at a time** (`Card`, answered by
+/// `PlayerAction::ToggleCardSelection` naming the card's position) —
+/// Carnivore's "trash 2 cards from your grip", LEO Construction's "trash 1
+/// rezzed bioroid", Anoetic Void's two cards from HQ.
+///
+/// One card at a time, with no confirm and no deselect, because each
+/// answer is recorded the moment it is given and the action replayed with
+/// it, exactly as a number is: a pick is progress, so a bot has nothing to
+/// wander between, and `engine::completes` searches picks the way it
+/// searches numbers. Toggle-then-confirm was the shape of a card *effect*
+/// (`PendingDecision::ChooseCards`), which parks a selection that can be
+/// edited; a replayed payment holds no state but its answers. A person
+/// who wants a pick back takes the move back.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Ask {
+    Pools(Question),
+    Card(CardQuestion),
+}
+
+impl Ask {
+    /// Every answer the question admits, for `engine::completes` to try and
+    /// `legal_actions` to offer.
+    pub fn answers(&self) -> Vec<u32> {
+        match self {
+            Ask::Pools(question) => (question.min..=question.max).collect(),
+            Ask::Card(question) => question.eligible.clone(),
+        }
+    }
+}
+
+/// Which card a cost takes next: one of `eligible`, positions in `zone` as
+/// the payer sees it before anything is paid (`pending_choice::
+/// zone_card_ids`), with the cards already picked left out. `remaining`
+/// counts this pick.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct CardQuestion {
+    pub zone: crate::dsl::CardZoneRef,
+    pub eligible: Vec<u32>,
+    pub remaining: u32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Source {
     pub pool: Pool,
@@ -381,7 +424,39 @@ pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, pu
 /// since a wrong `true` costs one clone and a wrong `false` would lose the
 /// question. Which side pays is not known until the action is applied, so
 /// both are counted.
-pub(crate) fn could_ask(state: &GameState) -> bool {
+///
+/// **A cost that takes cards** asks too (`Ask::Card`), and is paid by one
+/// of two actions only: an activated ability (Carnivore, LEO Construction)
+/// and a parked paid choice accepted (Anoetic Void). The debug assertion in
+/// `engine::apply_action` is what says so if a third appears.
+pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
+    pools_could_ask(state) || pays_a_cost_that_may_ask(state, registry, action)
+}
+
+fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
+    use crate::rules::{InstallId, PlayerAction};
+    match action {
+        PlayerAction::ActivateAbility { target, ability_index } => {
+            let card = match *target {
+                InstallId::CORP_IDENTITY => state.corp.identity.as_ref(),
+                InstallId::RUNNER_IDENTITY => state.runner.identity.as_ref(),
+                target => state
+                    .find_corp_install(target)
+                    .map(|c| &c.card)
+                    .or_else(|| state.corp.find_scored(target).map(|s| &s.card))
+                    .or_else(|| state.find_rig_install(target).map(|c| &c.card)),
+            };
+            card.and_then(|card| registry.get(card))
+                .and_then(|def| def.abilities.get(*ability_index))
+                .and_then(|ability| ability.cost.as_ref())
+                .is_some_and(crate::dsl::Cost::may_ask)
+        }
+        PlayerAction::AcceptPendingPaidChoice { .. } => state.pending_paid_choice.as_ref().is_some_and(|choice| choice.cost.may_ask()),
+        _ => false,
+    }
+}
+
+fn pools_could_ask(state: &GameState) -> bool {
     let run_pool = state.active_run.as_ref().is_some_and(|run| run.bad_publicity_credits > 0 || run.bonus_run_credits > 0);
     let runner = usize::from(run_pool) + state.runner.rig.iter().filter(|card| card.counters > 0).count();
     let corp = usize::from(state.corp.identity_counters > 0) + state.corp.installed.iter().filter(|card| card.rezzed && card.counters > 0).count();
@@ -437,7 +512,7 @@ pub(crate) fn pay(
         return Err(RulesError::NotEnoughCredits { side, available: total, requested: amount });
     }
     let entries: Vec<(Source, Class)> = sources.iter().map(|source| (*source, class_of(state, registry, side, source.pool))).collect();
-    let planned = plan(&entries, amount, &state.payment_answers).map_err(|question| RulesError::PaymentChoiceNeeded { side, amount, question })?;
+    let planned = plan(&entries, amount, &state.payment_answers).map_err(|question| RulesError::PaymentChoiceNeeded { side, amount, question: Ask::Pools(question) })?;
     state.payment_answers.drain(..planned.answers_used);
 
     let mut events = Vec::new();
@@ -785,15 +860,15 @@ mod tests {
     fn a_question_is_possible_only_with_two_places_that_could_hold_credits_on_one_side() {
         let rig_card = |counters| InstalledRunnerCard { install_id: fixture_install_id("azimat"), card: CardId("azimat".to_string()), counters, ..Default::default() };
         let mut state = runner_turn(9);
-        assert!(!could_ask(&state), "a credit pool and nothing else");
+        assert!(!pools_could_ask(&state), "a credit pool and nothing else");
         state.runner.rig = vec![rig_card(2)];
-        assert!(!could_ask(&state), "one hosted pool: it goes before the credit pool, unasked");
+        assert!(!pools_could_ask(&state), "one hosted pool: it goes before the credit pool, unasked");
         state.active_run = Some(RunState { bad_publicity_credits: 1, bonus_run_credits: 5, ..Default::default() });
-        assert!(could_ask(&state), "a hosted pool and the run's");
+        assert!(pools_could_ask(&state), "a hosted pool and the run's");
         state.runner.rig = vec![rig_card(0)];
-        assert!(!could_ask(&state), "the run's two pools are one class, and an empty host is no pool");
+        assert!(!pools_could_ask(&state), "the run's two pools are one class, and an empty host is no pool");
         state.corp.identity_counters = 2;
-        assert!(!could_ask(&state), "one place on each side is not two on either");
+        assert!(!pools_could_ask(&state), "one place on each side is not two on either");
     }
 
     fn rig_card(id: &str, counters: u32) -> InstalledRunnerCard {

@@ -252,14 +252,17 @@ fn present_card_for_access(
     if let Some(interactive) = applies.then(|| registry.get(card_id).and_then(|c| c.interactive_on_access.as_ref())).flatten()
     {
         let decider = interactive.interaction.payer();
-        let can_pay = match &interactive.cost {
-            Cost::Credits(amount) => payment::available(state, registry, decider, Purpose::Other) >= *amount,
-            // Other cost kinds aren't precomputed elsewhere either
-            // (`resolve_steal`'s `steal_cost` handling is the same) —
-            // `resolve_pay_access_trigger`'s `ability::pay_cost` call
-            // re-validates affordability for every `Cost` variant regardless.
-            _ => true,
-        };
+        // The one affordability question, which the payment reads too: a
+        // catch-all `true` here offered a cost that takes cards the payer
+        // does not have (`Cost::Trash`), and the pay then refused it.
+        let can_pay = ability::cost_is_affordable(
+            state,
+            registry,
+            decider,
+            &interactive.cost,
+            Purpose::Other,
+            &ability::ResolutionContext::for_card(Some(card_id)),
+        );
         let cost = interactive.cost.clone();
         let run = state.active_run.as_mut().expect("present_card_for_access called mid-access");
         let access = run.access_state.as_mut().expect("present_card_for_access called mid-access");
