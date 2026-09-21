@@ -21,9 +21,7 @@
       "cost": {
         "Clicks": 1
       },
-      "requirement": {
-        "OncePerTurn": "telework_contract"
-      },
+      "requirement": "OncePerTurn",
       "effect": {
         "Sequence": [
           {

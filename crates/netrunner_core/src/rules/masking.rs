@@ -5,8 +5,9 @@ use crate::dsl::{CardId, CardTarget, Cost, IceType};
 use crate::rules::action::{PlayerAction, TargetZone};
 use crate::rules::event::GameEvent;
 use crate::rules::{continuous, lingering};
+use crate::rules::turn_log::{LastTurn, TurnLog};
 use crate::rules::run::{AccessPhase, AccessState, EncounteredSubroutine, RunIce, RunPhase, RunState, ServerId};
-use crate::rules::state::{ArchivedCard, CorpState, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
+use crate::rules::state::{ArchivedCard, CorpState, OncePerTurnKey, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits, PaidAbilityWindow, PendingDecision, ScoredAgenda,
     PendingPrevention, PlayerResources, Side, TraceState,
 };
 
@@ -117,6 +118,16 @@ pub struct PublicCorpState {
     /// `CorpState::identity_flipped` — public, like the Runner's.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// The Corp's once-per-turn abilities already used this turn
+    /// (`CorpState::once_per_turn_used`), in the set's own order. Using one
+    /// is done on the table, so both players know — **except a use by an
+    /// install the viewer cannot see**, which would name a facedown card:
+    /// to anyone but the Corp an entry is kept only when it is about no
+    /// install, a rezzed one or a scored agenda. Carried because nothing a
+    /// view states could rebuild it, so every bot sample began the turn
+    /// with every once-per-turn ability unspent.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub once_per_turn_used: Vec<OncePerTurnKey>,
     /// Recurring credits still unspent this turn, and the pool they refill
     /// to. Never masked: recurring credits sit as visible tokens on the
     /// card that grants them, so both players can always count them.
@@ -196,16 +207,6 @@ pub struct PublicRunnerState {
     /// where the engine will.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
-    /// Never masked — whether `GameState::this_turn` has counted an
-    /// `OnSuccessfulRun` (`rules::turn_log`); a run's
-    /// success is announced to both players. Carried for the same reason
-    /// as `servers_run_this_turn`: a bot's determinized sample must agree
-    /// with the real state about it, both for the engine (Carmen's
-    /// discount) and for `netrunner_bots::eval`'s run term, which reads it
-    /// — a sample that always started the turn without a success would
-    /// price a second successful run as a first (ROADMAP Phase 3 §1).
-    #[serde(default)]
-    pub made_successful_run_this_turn: bool,
     /// `RunnerState::discarded_this_discard_phase`, public like the heap it
     /// indexes into: a discard to hand size is made on the table. Carried
     /// so a parked Magdalene Keino-Chemutai choice can be re-evaluated from
@@ -216,6 +217,10 @@ pub struct PublicRunnerState {
     /// `RunnerState::identity_flipped` — a flip identity's side is public.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// `RunnerState::once_per_turn_used`, whole: the rig is faceup. See
+    /// `PublicCorpState::once_per_turn_used`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub once_per_turn_used: Vec<OncePerTurnKey>,
 }
 
 /// A run's ICE as seen by a particular viewer: `rezzed` is always public,
@@ -354,6 +359,17 @@ pub struct PublicGameState {
     /// will end with the encounter.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lingering: Vec<lingering::LingeringEffect>,
+    /// `GameState::this_turn` and `last_turn`, whole and the same to every
+    /// viewer. They need no mask because `rules::turn_log` never counted
+    /// anything one player did not see: a moment about a concealed card is
+    /// a `Kind::Unseen`. Carried so a bot's sample agrees with the real
+    /// state about the turn — before they were, a sample's last turn was
+    /// empty (Public Trail unplayable inside one), no operation had been
+    /// played and no agenda scored (Neurospike dealt 0).
+    #[serde(default)]
+    pub this_turn: TurnLog,
+    #[serde(default)]
+    pub last_turn: LastTurn,
 }
 
 /// Who a masked projection is for.
@@ -418,6 +434,8 @@ pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer:
         pending_paid_choice: state.pending_paid_choice.clone(),
         pending_decision: state.pending_decision.as_ref().map(|decision| mask_pending_decision(decision, state, viewer)),
         lingering: state.lingering.iter().filter(|effect| effect.holds(state)).cloned().collect(),
+        this_turn: state.this_turn,
+        last_turn: state.last_turn,
     }
 }
 
@@ -970,6 +988,18 @@ fn mask_corp_state(corp: &CorpState, owner_view: bool) -> PublicCorpState {
         removed_from_game: corp.removed_from_game.clone(),
         identity_counters: corp.identity_counters,
         identity_flipped: corp.identity_flipped,
+        once_per_turn_used: corp
+            .once_per_turn_used
+            .iter()
+            .filter(|used| {
+                owner_view
+                    || used.install.is_none_or(|install| {
+                        corp.installed.iter().any(|card| card.install_id == install && card.rezzed)
+                            || corp.scored_agendas.iter().any(|scored| scored.install_id == install)
+                    })
+            })
+            .cloned()
+            .collect(),
         recurring_credits: corp.recurring_credits,
         recurring_credits_max: corp.recurring_credits_max,
     }
@@ -1010,9 +1040,9 @@ fn mask_runner_state(state: &GameState, registry: &CardRegistry, owner_view: boo
         scored_agendas: runner.scored_agendas.clone(),
         link_strength: runner.link_strength,
         servers_run_this_turn: runner.servers_run_this_turn.clone(),
-        made_successful_run_this_turn: state.this_turn.times(crate::dsl::Trigger::OnSuccessfulRun) > 0,
         discarded_this_discard_phase: runner.discarded_this_discard_phase.clone(),
         identity_flipped: runner.identity_flipped,
+        once_per_turn_used: runner.once_per_turn_used.iter().cloned().collect(),
     }
 }
 

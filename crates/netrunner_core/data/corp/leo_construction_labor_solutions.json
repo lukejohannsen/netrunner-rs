@@ -11,9 +11,7 @@
       "trigger": "Paid",
       "requirement": {
         "And": [
-          {
-            "OncePerTurn": "leo_construction_labor_solutions"
-          },
+          "OncePerTurn",
           {
             "ZoneHasAtLeast": {
               "zone": "OwnInstalled",

@@ -230,19 +230,6 @@ impl TurnLog {
         u32::from(self.agenda_points_scored)
     }
 
-    /// The log a `ClientView` lets a bot rebuild: the two facts the view
-    /// states, and nothing else. **What the successful run was on is not
-    /// one of them**, so the cell is an arbitrary one of its row — a sample
-    /// answers "did a run succeed this turn" and must not be asked where.
-    /// The view carrying the log itself is what replaces this.
-    pub fn from_what_a_view_shows(actions_finished: u32, made_successful_run: bool) -> TurnLog {
-        let mut log = TurnLog { actions_finished: u8::try_from(actions_finished).unwrap_or(u8::MAX), ..TurnLog::default() };
-        if made_successful_run {
-            log.bump(Trigger::OnSuccessfulRun, Class::Server(ServerClass::Hq));
-        }
-        log
-    }
-
     fn bump(&mut self, trigger: Trigger, class: Class) {
         let cell = &mut self.counts[trigger.index()][class.column()];
         *cell = cell.saturating_add(1);

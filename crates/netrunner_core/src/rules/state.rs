@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
@@ -217,16 +217,23 @@ impl ArchivedCard {
     }
 }
 
-/// One use of an `EffectRequirement::OncePerTurn(tag)` gate this turn.
+/// One use of an `EffectRequirement::OncePerTurn` gate this turn: the card
+/// that printed it, and which copy.
 ///
-/// Keyed by the *install* as well as the tag: "once per turn" is a property
-/// of a card, and three installed *Telework Contracts* are three cards with
-/// three uses — a bare `HashSet<String>` gave them one between them. A gate
-/// on something with no install (an identity, an event) keys on the tag
-/// alone, exactly as before.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// "Once per turn" is a property of a card, and three installed *Telework
+/// Contracts* are three cards with three uses, so the key is the install;
+/// an identity or an event has none and keys on the card alone. **It was
+/// a free-form tag beside the install** (`OncePerTurn("telework_contract")`),
+/// which every card file spelled as its own id, and which let two cards
+/// share a use by sharing a string. Naming the card instead is also what
+/// lets a view carry the set: an entry is a card both players can see, or
+/// it is a concealed Corp install and is left out.
+///
+/// `card` is `None` only where a requirement is checked with no card in
+/// hand, which no card file can do.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct OncePerTurnKey {
-    pub tag: String,
+    pub card: Option<CardId>,
     pub install: Option<InstallId>,
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -311,12 +318,12 @@ pub struct CorpState {
     /// one effect and one requirement serve both.
     #[serde(default)]
     pub identity_flipped: bool,
-    /// Tags consumed by `EffectRequirement::OncePerTurn(tag)` gates the Corp
-    /// has already fired this turn — the generalized replacement for adding
-    /// another bespoke per-effect bool alongside `first_install_used_this_turn`.
-    /// Cleared at the start of every Corp turn (`turn::enter_start_of_turn`).
+    /// The Corp's once-per-turn abilities used this turn
+    /// (`EffectRequirement::OncePerTurn`, `OncePerTurnKey`). Cleared for both
+    /// sides at every turn start (`turn::enter_start_of_turn`): once per
+    /// *turn*, either player's. Ordered, so a view carries it as it is.
     #[serde(default)]
-    pub once_per_turn_used: HashSet<OncePerTurnKey>,
+    pub once_per_turn_used: BTreeSet<OncePerTurnKey>,
     /// Cards removed from the game entirely — Spin Doctor's "Remove this
     /// asset from the game" cost. Deliberately *not* Archives: a removed
     /// card must never be recurrable, accessible, or counted by anything
@@ -547,12 +554,10 @@ pub struct RunnerState {
     /// fired this turn. Reset to `false` at the start of every Runner turn;
     /// consumed the same way as `CorpState::first_install_used_this_turn`.
     pub first_hq_run_used_this_turn: bool,
-    /// Tags consumed by `EffectRequirement::OncePerTurn(tag)` gates the
-    /// Runner has already fired this turn — see `CorpState::
-    /// once_per_turn_used`'s doc comment for the full rationale. Cleared at
-    /// the start of every Runner turn.
+    /// The Runner's once-per-turn abilities used this turn — see
+    /// `CorpState::once_per_turn_used`.
     #[serde(default)]
-    pub once_per_turn_used: HashSet<OncePerTurnKey>,
+    pub once_per_turn_used: BTreeSet<OncePerTurnKey>,
     /// The cards the Runner discarded to hand size in their most recent
     /// discard phase, in discard order — Magdalene Keino-Chemutai's "from
     /// among those cards". On `GameState`, not the resolution context,

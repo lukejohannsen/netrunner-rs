@@ -12,9 +12,7 @@
       "subject": "Any",
       "requirement": {
         "And": [
-          {
-            "OncePerTurn": "aggressive_trendsetting"
-          },
+          "OncePerTurn",
           {
             "CurrentlyAccessingInstalledCard": {}
           }

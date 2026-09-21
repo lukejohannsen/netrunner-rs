@@ -10,9 +10,7 @@
       "trigger": "Paid",
       "requirement": {
         "And": [
-          {
-            "OncePerTurn": "carnivore"
-          },
+          "OncePerTurn",
           {
             "And": [
               "CurrentlyAccessingACard",

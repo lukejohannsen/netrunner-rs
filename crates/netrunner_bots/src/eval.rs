@@ -2699,7 +2699,8 @@ mod tests {
     fn a_successful_run_this_turn_keeps_the_run_term_once() {
         let registry = CardRegistry::new();
         let mut breached = GameState::new(0);
-        breached.this_turn = netrunner_core::rules::turn_log::TurnLog::from_what_a_view_shows(0, true);
+        // Counted the way the engine counts it: there is no flag to set.
+        netrunner_core::rules::dispatch_event(&mut breached, &registry, &netrunner_core::rules::GameEvent::RunSucceeded { server: netrunner_core::rules::ServerId::Archives }).expect("a run succeeds");
         let fresh = GameState::new(0);
         let delta = evaluate_state(&breached, Side::Runner, &registry) - evaluate_state(&fresh, Side::Runner, &registry);
         assert!((delta - SUCCESSFUL_RUN_WEIGHT).abs() < 1e-9);

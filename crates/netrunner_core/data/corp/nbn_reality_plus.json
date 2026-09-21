@@ -8,9 +8,7 @@
   "triggers": [
     {
       "trigger": "OnTagsGiven",
-      "requirement": {
-        "OncePerTurn": "nbn_reality_plus"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "PresentChoice": {

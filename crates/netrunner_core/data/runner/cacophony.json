@@ -10,9 +10,7 @@
     {
       "trigger": "OnTrashedFromAccess",
       "subject": "Any",
-      "requirement": {
-        "OncePerTurn": "cacophony"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "AddCounters": 1
@@ -22,9 +20,7 @@
     {
       "trigger": "OnAgendaStolen",
       "subject": "Any",
-      "requirement": {
-        "OncePerTurn": "cacophony"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "AddCounters": 1

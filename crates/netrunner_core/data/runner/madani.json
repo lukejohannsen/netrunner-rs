@@ -36,9 +36,7 @@
       "cost": {
         "Credits": 0
       },
-      "requirement": {
-        "OncePerTurn": "madani"
-      },
+      "requirement": "OncePerTurn",
       "effect": {
         "PromptChooseCards": {
           "side": "Runner",

@@ -28,9 +28,7 @@
           "Hq"
         ]
       },
-      "requirement": {
-        "OncePerTurn": "detente"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "PresentChoice": {

@@ -67,6 +67,10 @@ pub struct CorpClientView {
     /// Public — a flip identity's side is visible to both players.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// `PublicCorpState::once_per_turn_used` — which also says what a
+    /// Runner's view leaves out of it.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub once_per_turn_used: Vec<crate::rules::OncePerTurnKey>,
     /// The Corp's identity card — public, see
     /// `masking::PublicCorpState::identity`. A client can name the opponent
     /// from it; a determinizing bot narrows the hidden zones to that
@@ -97,9 +101,6 @@ pub struct RunnerClientView {
     /// `PublicRunnerState::servers_run_this_turn`.
     #[serde(default)]
     pub servers_run_this_turn: Vec<ServerId>,
-    /// `PublicRunnerState::made_successful_run_this_turn`.
-    #[serde(default)]
-    pub made_successful_run_this_turn: bool,
     /// Cards discarded to hand size in the Runner's last discard phase —
     /// public, see `PublicRunnerState::discarded_this_discard_phase`.
     #[serde(default)]
@@ -107,6 +108,9 @@ pub struct RunnerClientView {
     /// `PublicRunnerState::identity_flipped`.
     #[serde(default)]
     pub identity_flipped: bool,
+    /// `PublicRunnerState::once_per_turn_used`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub once_per_turn_used: Vec<crate::rules::OncePerTurnKey>,
     /// The Runner's identity card — public, see `CorpClientView::identity`.
     #[serde(default)]
     pub identity: Option<CardId>,
@@ -127,12 +131,15 @@ pub struct ClientView {
     /// `GameState::turn` verbatim — public information, and counted per
     /// side's turn rather than per round (see that field's doc comment).
     pub turn: u32,
-    /// `TurnLog::actions_finished` (`GameState::this_turn`) — public, like
-    /// `turn`: both players watched every action. Carried so a
-    /// determinized search state agrees with the real one about Petty
-    /// Cash's play condition.
+    /// What has happened this turn and last, as far as any card asks
+    /// (`rules::turn_log`) — `PublicGameState::this_turn` verbatim, the
+    /// same to every viewer. `this_turn.actions_finished()` is what
+    /// `actions_taken_this_turn` was, and a successful run this turn is
+    /// `this_turn.times(Trigger::OnSuccessfulRun) > 0`.
     #[serde(default)]
-    pub actions_taken_this_turn: u32,
+    pub this_turn: crate::rules::turn_log::TurnLog,
+    #[serde(default)]
+    pub last_turn: crate::rules::turn_log::LastTurn,
     /// `GameState::rules` verbatim — a client has to be able to say how
     /// many agenda points win this match.
     #[serde(default)]
@@ -291,6 +298,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         recurring_credits: public.corp.recurring_credits,
         identity_counters: public.corp.identity_counters,
         identity_flipped: public.corp.identity_flipped,
+        once_per_turn_used: public.corp.once_per_turn_used,
         identity: public.corp.identity,
         recurring_credits_max: public.corp.recurring_credits_max,
         hq_count: zone_count(&public.corp.hq),
@@ -316,9 +324,9 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         rig: public.runner.rig,
         link_strength: public.runner.link_strength,
         servers_run_this_turn: public.runner.servers_run_this_turn.clone(),
-        made_successful_run_this_turn: public.runner.made_successful_run_this_turn,
         discarded_this_discard_phase: public.runner.discarded_this_discard_phase.clone(),
         identity_flipped: public.runner.identity_flipped,
+        once_per_turn_used: public.runner.once_per_turn_used,
         identity: public.runner.identity,
         scored_agendas: public.runner.scored_agendas,
     };
@@ -327,7 +335,8 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         viewer,
         active_player: active_player(state.phase),
         turn: state.turn,
-        actions_taken_this_turn: state.this_turn.actions_finished(),
+        this_turn: public.this_turn,
+        last_turn: public.last_turn,
         rules: state.rules,
         phase: public.phase,
         corp,

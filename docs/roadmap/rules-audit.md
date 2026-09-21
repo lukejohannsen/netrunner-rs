@@ -959,6 +959,48 @@ one.
    default; a `MatchHistory` replays from its actions and is unaffected.
    The pool fingerprint moves (six card files), so a corpus recorded
    before this is refused by the trainer.
+
+   **Stage 2 — DONE (20 September 2026), `feat/the-view-carries-the-turn`.**
+   `ClientView::this_turn` and `last_turn` are the state's, whole and the
+   same to every viewer — they need no mask, because the log never
+   counted what one player did not see — and each side's
+   `once_per_turn_used` rides beside them. `determinize` copies all of
+   it where it rebuilt a log from two facts and started every sample with
+   every once-per-turn ability unspent. The view's two derived fields
+   (`actions_taken_this_turn`, `made_successful_run_this_turn`) are gone;
+   the observation reads the log into the same slot (`OBS_SIZE` 2262,
+   `ActionSpace` 1646, both unmoved). **`OncePerTurn` lost its free-form
+   tag**: the key is the card and which copy (`OncePerTurnKey { card,
+   install }`), where every card file had spelled the tag as its own id
+   and a shared string was a shared use. Naming the card is also what
+   makes the set maskable: to anyone but the Corp an entry is kept only
+   when it is about no install, a rezzed one or a scored agenda, since a
+   use by a facedown install would name it. That is the one approximation
+   a Runner's sample keeps. The sets are `BTreeSet`s, so a view carries
+   them in an order that does not depend on a hasher. Twenty-one card
+   files change spelling and nothing else.
+
+   *Measured.* What a sample used to lose, counted in `determinize` over
+   both 256-seed sweeps in a debug build: of 197,130 samples taken after
+   the first turn began, **32,575 had a successful run last turn that the
+   sample forgot (25,926 of them the Corp's, the seat that plays Public
+   Trail and Measured Response), 3,563 an operation played this turn,
+   5,521 agenda points scored this turn, and 29,034 a spent once-per-turn
+   ability the sample believed unspent** (25,490 the Runner's, 4,857 the
+   Corp's). `scripts/coverage_identical.py main --head-worktree`, 192
+   games a report, seed 1: **random identical, both shapes — the engine
+   did not move; heuristic differs, both shapes, as it should.** Runner
+   wins 151 → 149 of 192 (0.786 → 0.776, inside the seed-spread band, so
+   no strength claim), steps 78,706 → 76,454. The attributable deltas:
+   Neurospike played 0 → 1 (in a sample it dealt 0, so it was never worth
+   a click), Zahya Sadeghi's trigger 274 → 250 and Carmen's ability 154 →
+   109 (samples that knew a once-per-turn was spent stopped planning
+   around it). **Public Trail is still never played by the heuristic (0 →
+   0)**: it is legal inside a Corp sample now, and the evaluator does not
+   value a tag; that is the bot's, and nothing here claims otherwise.
+   *Wire:* `ClientView` loses two fields and gains four, so a client and
+   a server must be built from the same side of this commit.
+
 4. **Generic prevention** (§2.2; was item 2). Give the existing
    `WindowCheckpoint::Prevention` window a kind parameter, so tags,
    end-the-run, jack-out and expose use the same window that damage and

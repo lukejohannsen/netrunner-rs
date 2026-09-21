@@ -9,9 +9,7 @@
     {
       "trigger": "OnTrashedFromAccess",
       "subject": "Any",
-      "requirement": {
-        "OncePerTurn": "rene_loup_arcemont"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "GainCredits": [

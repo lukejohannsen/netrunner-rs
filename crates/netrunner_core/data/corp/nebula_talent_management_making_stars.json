@@ -32,9 +32,7 @@
       "requirement": {
         "And": [
           "IdentityFlipped",
-          {
-            "OncePerTurn": "nebula_talent_management_making_stars"
-          }
+          "OncePerTurn"
         ]
       },
       "effects": [

@@ -7,9 +7,7 @@
   "triggers": [
     {
       "trigger": "OnBasicDrawAction",
-      "requirement": {
-        "OncePerTurn": "verbal_plasticity"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "DrawCards": [

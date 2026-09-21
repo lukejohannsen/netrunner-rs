@@ -8,9 +8,7 @@
   "triggers": [
     {
       "trigger": "OnTagRemoved",
-      "requirement": {
-        "OncePerTurn": "synapse_global_faster_than_thought"
-      },
+      "requirement": "OncePerTurn",
       "effects": [
         {
           "PromptChooseCards": {

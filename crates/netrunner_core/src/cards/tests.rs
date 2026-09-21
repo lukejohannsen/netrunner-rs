@@ -1388,7 +1388,7 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 1 })));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardDrawn { side: Side::Runner })));
         assert!(state.runner.stack.is_empty(), "the drawn card should have left the stack");
-        assert!(state.runner.once_per_turn_used.iter().any(|k| k.tag == "rene_loup_arcemont"));
+        assert!(state.runner.once_per_turn_used.iter().any(|k| k.card == Some(CardId("rene_loup_arcemont".to_string()))));
     }
 
     #[test]
@@ -3507,7 +3507,7 @@ mod system_gateway {
         );
         assert!(!state.corp.installed.iter().any(|c| c.card == CardId("pad_campaign".to_string())));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashedFromAccess { cost_paid: 0, .. })));
-        assert!(state.runner.once_per_turn_used.iter().any(|k| k.tag == "carnivore"));
+        assert!(state.runner.once_per_turn_used.iter().any(|k| k.card == Some(CardId("carnivore".to_string()))));
     }
 
     #[test]
