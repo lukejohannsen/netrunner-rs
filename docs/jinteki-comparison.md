@@ -393,6 +393,20 @@ enum with a filter** (`Count { of: TurnFact, at_least / exactly }`), which is
 constant-size, replaces the fields above, and makes `last turn` a second
 copy of the same map.
 
+**Done, 20 September 2026** (`docs/roadmap/rules-audit.md`, backlog item 3,
+four PRs). The shape is the candidate's, with the event-kind enum and the
+filter found rather than built: the enum is `Trigger` and the classifier is
+`listeners::moments`, so `rules::turn_log` is one `record` at the top of
+`dispatch_event` into a fixed-size table keyed by trigger, whose moment it
+was, and a class of what it was about that holds only what both players saw.
+"If you … this turn" is `Amount::TimesThisTurn(trigger)`; "the first time each
+turn" is not a query a card writes at all but one word beside its trigger
+and its `when` (`first_each_turn`), judged in the listener scan against the
+count taken as the event was recorded — jinteki's `first-event?` is asked at
+resolution, and ours cannot be. `last turn` is the second copy, as row totals.
+The fields above are gone but `servers_run_this_turn`, which is a list of
+servers rather than a count.
+
 ### 6.4 Smaller things the first pass did not see
 
 - **Where a payment comes from.** §2.4 covered *what* is paid. jinteki's

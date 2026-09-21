@@ -1988,7 +1988,7 @@ mod tests {
             GameEvent::CreditsGained { side: Side::Corp, amount: 1 },
             GameEvent::IceRezzed { card: id("ice_wall"), server: ServerId::Hq, install: InstallId(1069) },
             GameEvent::AgendaScored { card: id("hostile_takeover"), agenda_points: 1, server: ServerId::Remote(0) },
-            GameEvent::CardTrashedFromAccess { card: id("nico_campaign"), cost_paid: 3 },
+            GameEvent::CardTrashedFromAccess { card: id("nico_campaign"), cost_paid: 3, install: None },
         ] {
             for viewer in [Side::Corp, Side::Runner] {
                 assert_eq!(mask_event_for_player(&event, &state, viewer), Some(event.clone()));

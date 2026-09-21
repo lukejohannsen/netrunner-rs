@@ -1242,9 +1242,10 @@ fn seed_rig_card(
 }
 
 /// The credit cost installing `card_def` from the grip would charge right
-/// now, **without** spending any "first time each turn" — the read-only
-/// preview `can_install_runner_card_from_grip` needs. The real install goes
-/// through `continuous::pay_install_cost_of`, which does spend them.
+/// now — the preview `can_install_runner_card_from_grip` needs, and the
+/// same question the real install puts (`continuous::install_cost_of`):
+/// "the first time each turn" is read off the turn, so asking spends
+/// nothing and there is no second path to disagree with.
 ///
 /// Every install path prices through the layer now. There used to be an
 /// `InstallKind` here saying which paths Kate's and DZMZ Optimizer's
@@ -1409,7 +1410,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
         CardType::Program => {
             let memory_cost = card_def.memory_cost.unwrap_or(0);
             require_memory_for(next, registry, memory_cost)?;
-            let cost = continuous::pay_install_cost_of(next, registry, &card_def)
+            let cost = continuous::install_cost_of(next, registry, &card_def)
                 .saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
@@ -1418,7 +1419,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Hardware => {
-            let cost = continuous::pay_install_cost_of(next, registry, &card_def).saturating_sub(discount);
+            let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             next.runner.rig.push(rig_card);
@@ -1426,7 +1427,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             dispatcher::emit(next, registry, &mut events, installed_event)?;
         }
         CardType::Resource => {
-            let cost = continuous::pay_install_cost_of(next, registry, &card_def).saturating_sub(discount);
+            let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
             events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             next.runner.rig.push(rig_card);
@@ -1469,7 +1470,7 @@ fn install_hardware(
         return Err(RulesError::ConsoleLimitExceeded);
     }
 
-    let cost = continuous::pay_install_cost_of(&mut next, registry, card_def);
+    let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
@@ -1544,7 +1545,7 @@ fn install_program(
 
     // The card's own discount (see `per_card_install_discount`) stacks
     // independently on top of the once-per-turn discount above.
-    let cost = continuous::pay_install_cost_of(&mut next, registry, card_def);
+    let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
@@ -1607,7 +1608,7 @@ fn install_program_on_ice(
     // to precede it because a bad host is the more specific complaint.
     require_memory_for(&next, registry, memory_cost)?;
 
-    let cost = continuous::pay_install_cost_of(&mut next, registry, card_def);
+    let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
@@ -1645,7 +1646,7 @@ fn install_resource(
     if card_def.card_type != CardType::Resource {
         return Err(RulesError::CardNotResource { card: card_id });
     }
-    let cost = continuous::pay_install_cost_of(&mut next, registry, card_def);
+    let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
     // Hosted credits a card lets the Runner spend on this kind of resource

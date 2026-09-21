@@ -19,7 +19,7 @@
     {
       "trigger": "OnAgendaScored",
       "subject": "Any",
-      "requirement": "OncePerTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "OfferPaidChoice": {
@@ -62,7 +62,7 @@
     {
       "trigger": "OnAgendaStolen",
       "subject": "Any",
-      "requirement": "OncePerTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "OfferPaidChoice": {

@@ -45,7 +45,13 @@ pub(crate) enum About {
     /// A card, pinned to the copy the event happened to where the event or
     /// the state can say which. `None` is a card that has no handle any
     /// more (played, stolen, forfeited, trashed): only it can be "this".
-    Card { card: CardId, install: Option<InstallId> },
+    ///
+    /// `installed` is whether the card was on the table when it happened,
+    /// kept apart from `install` because a card the Runner has just
+    /// trashed was installed and has no handle left: giving it one would
+    /// have `dispatcher::still_applies` look for the install and stand the
+    /// trigger down.
+    Card { card: CardId, install: Option<InstallId>, installed: bool },
     Server(ServerId),
 }
 
@@ -79,7 +85,7 @@ struct Listener {
 /// for. They are listed by name, not caught by `_`, so that adding a
 /// `GameEvent` is a decision made here rather than a silence.
 pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
-    let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install };
+    let card = |card: &CardId, install: Option<InstallId>| About::Card { card: card.clone(), install, installed: install.is_some() };
     let moment = |trigger, about: &About, of| Moment { trigger, about: about.clone(), of };
     match event {
         GameEvent::EventPlayed { side, card: played } => vec![moment(Trigger::OnPlay, &card(played, None), Some(*side))],
@@ -112,8 +118,9 @@ pub(crate) fn moments(state: &GameState, event: &GameEvent) -> Vec<Moment> {
             let install = install.or_else(|| root_install_of(state, accessed, *server));
             vec![moment(Trigger::OnAccessed, &card(accessed, install), Some(Side::Runner))]
         }
-        GameEvent::CardTrashedFromAccess { card: trashed, .. } => {
-            vec![moment(Trigger::OnTrashedFromAccess, &card(trashed, None), Some(Side::Runner))]
+        GameEvent::CardTrashedFromAccess { card: trashed, install, .. } => {
+            let about = About::Card { card: trashed.clone(), install: None, installed: install.is_some() };
+            vec![moment(Trigger::OnTrashedFromAccess, &about, Some(Side::Runner))]
         }
 
         // The agenda reacts from the score area, under the handle it kept
@@ -279,7 +286,7 @@ pub(crate) fn plan_for(state: &GameState, registry: &CardRegistry, event: &GameE
             // outlives this resolution. Which of the card's effects use it
             // is decided per effect when they fire.
             let (target, target_install) = match &moment.about {
-                About::Card { card, install } if hearing.any(|triggered| triggered.acts_on_subject) => (Some(card.clone()), *install),
+                About::Card { card, install, .. } if hearing.any(|triggered| triggered.acts_on_subject) => (Some(card.clone()), *install),
                 _ => (None, None),
             };
             let heard = match (listener.active, is_this(&listener, moment)) {
@@ -314,7 +321,7 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
         About::Card { install: Some(install), .. } => listener.install == Some(*install),
         // A card with no handle left is "this" only to itself, and it is
         // listening only because it is the subject.
-        About::Card { install: None, card } => !listener.active && &listener.card == card,
+        About::Card { install: None, card, .. } => !listener.active && &listener.card == card,
         About::Server(server) => listener.server == Some(*server),
     }
 }
@@ -323,6 +330,9 @@ fn is_this(listener: &Listener, moment: &Moment) -> bool {
 fn passes(registry: &CardRegistry, filter: &EventFilter, about: &About) -> bool {
     match (filter, about) {
         (EventFilter::Card(filter), About::Card { card, .. }) => {
+            registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
+        }
+        (EventFilter::InstalledCard(filter), About::Card { card, installed: true, .. }) => {
             registry.get(card).is_some_and(|definition| crate::dsl::card_matches_filter(definition, filter))
         }
         (EventFilter::Server(servers), About::Server(server)) => servers.contains(server),
@@ -388,7 +398,7 @@ fn listeners(state: &GameState, registry: &CardRegistry, moments: &[Moment]) -> 
     // if it is active; where it is not — face down, in a hand or a deck,
     // gone from the table — it listens for what is about itself.
     for moment in moments {
-        let About::Card { card, install } = &moment.about else { continue };
+        let About::Card { card, install, .. } = &moment.about else { continue };
         let Some(side) = registry.get(card).map(|definition| definition.side) else { continue };
         let group = match side {
             Side::Corp => &mut corp,
@@ -718,5 +728,50 @@ mod tests {
         assert_eq!(who(&super::plan_for(&state, &registry, &corps, &as_of)), vec![("haas_bioroid_engineering_the_future", Heard::AsBystander)], "the Corp's first, after the Runner's");
         let as_of = turn_log::record(&mut state, &registry, &corps);
         assert!(super::plan_for(&state, &registry, &corps, &as_of).is_empty());
+    }
+
+    /// One printed ability in two entries shares one count: "the first
+    /// time each turn you steal **or** trash a Corp card" (Cacophony). With
+    /// a once-per-turn apiece they shared a use; with a count apiece a
+    /// steal after a trash would be a second first time.
+    #[test]
+    fn a_cards_first_time_entries_share_one_count() {
+        let mut cacophony = listens("cacophony", Side::Runner, CardType::Resource, Trigger::OnTrashedFromAccess, Some(Subject::Any));
+        let stolen = TriggeredEffect { trigger: Trigger::OnAgendaStolen, ..cacophony.triggers[0].clone() };
+        cacophony.triggers.push(stolen);
+        cacophony.triggers.iter_mut().for_each(|triggered| triggered.first_each_turn = true);
+        let registry = registry(vec![cacophony]);
+        let mut state = GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() };
+        state.runner.rig = vec![in_the_rig("cacophony", 1)];
+
+        let trashed = GameEvent::CardTrashedFromAccess { card: CardId("pad_campaign".to_string()), cost_paid: 4, install: None };
+        let stole = GameEvent::AgendaStolen { card: CardId("offworld_office".to_string()), agenda_points: 2 };
+        let as_of = turn_log::record(&mut state, &registry, &trashed);
+        assert_eq!(super::plan_for(&state, &registry, &trashed, &as_of).len(), 1);
+        let as_of = turn_log::record(&mut state, &registry, &stole);
+        assert!(super::plan_for(&state, &registry, &stole, &as_of).is_empty(), "a steal after a trash is the second time");
+    }
+
+    /// "Trashes an **installed** Corp card" is in the trigger condition
+    /// (`EventFilter::InstalledCard`), so a trash out of HQ is not the
+    /// turn's first of what Aggressive Trendsetting counts. As an
+    /// intervening if it would have been, and the installed trash after it
+    /// would have found the first time gone.
+    #[test]
+    fn a_trash_out_of_hq_is_not_the_first_installed_card_trashed() {
+        let mut trendsetting = listens("aggressive_trendsetting", Side::Corp, CardType::Agenda, Trigger::OnTrashedFromAccess, Some(Subject::Any));
+        trendsetting.triggers[0].when = Some(EventFilter::InstalledCard(crate::dsl::CardFilter::Any));
+        trendsetting.triggers[0].first_each_turn = true;
+        let registry = registry(vec![trendsetting, listens("pad_campaign", Side::Corp, CardType::Asset, Trigger::OnTurnStart, None)]);
+        let mut state = GameState { phase: GamePhase::Action(Side::Runner), ..Default::default() };
+        state.corp.scored_agendas = vec![crate::rules::state::ScoredAgenda { card: CardId("aggressive_trendsetting".to_string()), install_id: InstallId(7), agenda_counters: 0 }];
+
+        let trash = |install| GameEvent::CardTrashedFromAccess { card: CardId("pad_campaign".to_string()), cost_paid: 4, install };
+        let as_of = turn_log::record(&mut state, &registry, &trash(None));
+        assert!(super::plan_for(&state, &registry, &trash(None), &as_of).is_empty(), "out of HQ");
+        let as_of = turn_log::record(&mut state, &registry, &trash(Some(InstallId(3))));
+        assert_eq!(who(&super::plan_for(&state, &registry, &trash(Some(InstallId(3))), &as_of)), vec![("aggressive_trendsetting", Heard::AsBystander)]);
+        let as_of = turn_log::record(&mut state, &registry, &trash(Some(InstallId(4))));
+        assert!(super::plan_for(&state, &registry, &trash(Some(InstallId(4))), &as_of).is_empty(), "the second installed card");
     }
 }

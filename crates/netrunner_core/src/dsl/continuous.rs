@@ -36,8 +36,8 @@ pub struct ContinuousEffect {
     pub applies_to: Scope,
     /// Whether the effect is on, asked as the printing card each time the
     /// layer is asked — Carmen's "if you made a successful run this turn".
-    /// A `OncePerTurn` here is spent by the one caller that *uses* the
-    /// number rather than reads it (`continuous::pay_install_cost_of`).
+    /// Read and never spent: `validate` refuses a `OncePerTurn` here,
+    /// because nothing that reads a standing effect *uses* the card.
     #[serde(default, rename = "while", skip_serializing_if = "Option::is_none")]
     pub condition: Option<EffectRequirement>,
     /// "The **first** program you install each turn": the effect reaches

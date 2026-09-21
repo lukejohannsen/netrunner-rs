@@ -10,7 +10,7 @@
     {
       "trigger": "OnTrashedFromAccess",
       "subject": "Any",
-      "requirement": "OncePerTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "AddCounters": 1
@@ -20,7 +20,7 @@
     {
       "trigger": "OnAgendaStolen",
       "subject": "Any",
-      "requirement": "OncePerTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "AddCounters": 1

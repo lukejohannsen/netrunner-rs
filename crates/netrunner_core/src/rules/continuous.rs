@@ -264,32 +264,18 @@ pub fn ice_gains_subtype(state: &GameState, registry: &CardRegistry, install: In
     any(state, registry, target, |kind| *kind == ContinuousKind::GainSubtype(subtype))
 }
 
-/// What installing `card` costs the Runner right now, read-only.
+/// What installing `card` costs the Runner right now. The one question,
+/// for a price shown and for the install that pays it: "the first program
+/// you install each turn" is read off the turn
+/// (`ContinuousEffect::first_each_turn`), so there is nothing to spend.
+/// There was a `pay_install_cost_of` beside this — a second scan at the
+/// real install that spent each discount's `OncePerTurn` — and a discount
+/// that was a use of the card is what let a DZMZ Optimizer installed after
+/// the turn's first program lower the second.
 pub(crate) fn install_cost_of(state: &GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
     (card.cost as i32 + sum(state, registry, Target::Card(card), install_cost)).max(0) as u32
 }
 
-/// [`install_cost_of`], for the install that is actually happening: spends
-/// the "first time each turn" of every effect that lowered it.
-pub(crate) fn pay_install_cost_of(state: &mut GameState, registry: &CardRegistry, card: &CardDefinition) -> u32 {
-    let cost = install_cost_of(state, registry, card);
-    let mut spent = Vec::new();
-    for_each_applying(state, registry, Target::Card(card), |effect, source, _| {
-        if install_cost(&effect.kind).is_some()
-            && let Some(condition) = &effect.condition
-        {
-            spent.push((condition.clone(), source.side, source.install, source.card.clone()));
-        }
-    });
-    for (condition, side, install, card) in spent {
-        let ctx = match install {
-            Some(install) => ResolutionContext::for_install(install, &card),
-            None => ResolutionContext::for_card(Some(&card)),
-        };
-        ability::consume_requirement(state, &condition, side, &ctx);
-    }
-    cost
-}
 
 /// What is added to the printed cost of rezzing the Corp install
 /// `install`: what the table adds while it stands (Fransofia Ward's
@@ -336,7 +322,7 @@ pub(crate) fn trash_cost_delta(state: &GameState, registry: &CardRegistry, insta
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsl::{Amount, CardFilter, EffectRequirement};
+    use crate::dsl::{Amount, CardFilter};
     use crate::rules::run::RunState;
     use crate::rules::state::{GamePhase, InstalledCard};
 
@@ -435,14 +421,16 @@ mod tests {
     }
 
     /// Two copies of "the first program you install each turn costs 1[c]
-    /// less" are two abilities, each with its own first time: the install
-    /// that uses both spends both, and the next pays in full. The field this
-    /// replaced returned the first source it found and shared one flag.
+    /// less" are two abilities about one fact: the turn's first program
+    /// takes both, and the next pays in full because it is not the first.
+    /// The field this replaced returned the first source it found; the
+    /// `OncePerTurn` that replaced the field gave each copy a use of its
+    /// own, which a copy installed mid-turn still had.
     #[test]
-    fn two_copies_of_a_first_time_each_turn_discount_stack_and_are_each_spent() {
+    fn two_copies_of_a_first_install_discount_stack_and_neither_outlives_the_first_install() {
         let mut optimizer =
             prints("optimizer", Side::Runner, CardType::Hardware, ContinuousKind::InstallCost(flat(-1)), Scope::Installing(CardFilter::CardType(CardType::Program)));
-        optimizer.continuous[0].condition = Some(EffectRequirement::OncePerTurn);
+        optimizer.continuous[0].first_each_turn = true;
         let program = blank("program", Side::Runner, CardType::Program, 3);
         let hardware = blank("hardware", Side::Runner, CardType::Hardware, 3);
         let registry = CardRegistry::from_cards(vec![optimizer, program.clone(), hardware.clone()]);
@@ -452,7 +440,11 @@ mod tests {
         assert_eq!(install_cost_of(&state, &registry, &hardware), 3, "not a program");
         assert_eq!(install_cost_of(&state, &registry, &program), 1);
         assert_eq!(install_cost_of(&state, &registry, &program), 1, "asking spends nothing");
-        assert_eq!(pay_install_cost_of(&mut state, &registry, &program), 1);
-        assert_eq!(install_cost_of(&state, &registry, &program), 3, "both first times are spent");
+        let installed = crate::rules::GameEvent::HardwareInstalled { side: Side::Runner, card: CardId("hardware".to_string()), credits_paid: 3 };
+        crate::rules::turn_log::record(&mut state, &registry, &installed);
+        assert_eq!(install_cost_of(&state, &registry, &program), 1, "a piece of hardware is not the turn's first program");
+        let installed = crate::rules::GameEvent::ProgramInstalled { side: Side::Runner, card: CardId("program".to_string()), memory_cost: 1, credits_paid: 1 };
+        crate::rules::turn_log::record(&mut state, &registry, &installed);
+        assert_eq!(install_cost_of(&state, &registry, &program), 3, "the turn has had its first program");
     }
 }
