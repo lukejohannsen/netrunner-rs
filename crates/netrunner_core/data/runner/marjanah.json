@@ -14,7 +14,7 @@
         "Credits": 2
       },
       "cost_discount_if": [
-        "MadeSuccessfulRunThisTurn",
+        { "AmountAtLeast": [{ "TimesThisTurn": "OnSuccessfulRun" }, 1] },
         1
       ],
       "effect": {

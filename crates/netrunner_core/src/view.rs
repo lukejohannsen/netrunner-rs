@@ -127,7 +127,7 @@ pub struct ClientView {
     /// `GameState::turn` verbatim — public information, and counted per
     /// side's turn rather than per round (see that field's doc comment).
     pub turn: u32,
-    /// `GameState::actions_taken_this_turn` verbatim — public, like
+    /// `TurnLog::actions_finished` (`GameState::this_turn`) — public, like
     /// `turn`: both players watched every action. Carried so a
     /// determinized search state agrees with the real one about Petty
     /// Cash's play condition.
@@ -327,7 +327,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         viewer,
         active_player: active_player(state.phase),
         turn: state.turn,
-        actions_taken_this_turn: state.actions_taken_this_turn,
+        actions_taken_this_turn: state.this_turn.actions_finished(),
         rules: state.rules,
         phase: public.phase,
         corp,

@@ -1504,7 +1504,7 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.resources.credits = Credits(10);
         state.corp.hq = vec![CardId("public_trail".to_string())];
-        state.runner.made_successful_run_last_turn = true;
+        crate::rules::test_support::a_run_succeeded_last_turn(&mut state);
 
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("public_trail".to_string()) })
@@ -2074,7 +2074,7 @@ mod system_gateway {
         state.phase = GamePhase::Action(Side::Runner);
         state.runner.resources.clicks = Clicks(4);
         state.runner.resources.credits = Credits(5);
-        state.runner.made_successful_run_this_turn = true;
+        crate::rules::test_support::a_run_succeeded_this_turn(&mut state);
         state.runner.grip = vec![CardId("mutual_favor".to_string())];
         state.runner.stack = vec![CardId("corroder".to_string())];
 
@@ -3041,6 +3041,47 @@ mod system_gateway {
         assert!(state.runner.servers_run_this_turn.is_empty(), "cleared when the Runner's turn began");
     }
 
+    /// The turn is counted where it is heard and rotated at every turn
+    /// start. `made_successful_run_this_turn` was reset only when the
+    /// *Runner's* turn began, so it read true through the whole Corp turn
+    /// after a run; "last turn" was a snapshot of it taken at the Runner's
+    /// `EndTurn`.
+    #[test]
+    fn a_successful_run_is_this_turns_until_the_turn_ends_and_last_turns_for_the_corp() {
+        let registry = sg_registry();
+        let state = red_team_state();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Archives }).expect("run");
+        let mut state = finish_run(state, &registry);
+        assert_eq!(state.this_turn.times(crate::dsl::Trigger::OnSuccessfulRun), 1);
+        assert_eq!(state.this_turn.actions_finished(), 1, "the run was an action");
+
+        let runner_turn = state.turn;
+        state.corp.r_and_d = vec![CardId("hedge_fund".to_string()); 3];
+        state.corp.hq = vec![CardId("public_trail".to_string())];
+        let play = PlayerAction::PlayOperation { card_id: CardId("public_trail".to_string()) };
+        let mut offered_on_the_corps_turn = false;
+        while state.turn < runner_turn + 2 {
+            let actor = crate::rules::current_actor(&state).expect("someone always has a decision");
+            let legal = crate::rules::legal_actions_for(&state, &registry, actor);
+            if state.turn == runner_turn + 1 && state.phase == GamePhase::Action(Side::Corp) && !offered_on_the_corps_turn {
+                offered_on_the_corps_turn = true;
+                assert_eq!(state.this_turn.times(crate::dsl::Trigger::OnSuccessfulRun), 0, "the Corp's turn saw no run");
+                assert_eq!(state.last_turn.times(crate::dsl::Trigger::OnSuccessfulRun), 1);
+                assert!(legal.contains(&play), "\"made a successful run during their last turn\"");
+            }
+            let action = legal
+                .iter()
+                .find(|a| matches!(a, PlayerAction::PassPriority { .. }))
+                .or_else(|| legal.iter().find(|a| matches!(a, PlayerAction::EndTurn)))
+                .or_else(|| legal.first())
+                .cloned()
+                .expect("a legal action");
+            state = apply_action(&state, &registry, action).expect("drive to the Runner's next turn").0;
+        }
+        assert!(offered_on_the_corps_turn);
+        assert_eq!(state.last_turn.times(crate::dsl::Trigger::OnSuccessfulRun), 0, "the last turn is now the Corp's");
+    }
+
     #[test]
     fn telework_contract_installs_with_nine_counters_and_pays_out_three_credits_once_per_turn() {
         let registry = sg_registry();
@@ -3624,7 +3665,7 @@ mod system_gateway {
         .expect("install carmen without a successful run this turn");
         assert_eq!(state_no_run.runner.resources.credits, Credits(5), "10 - 5, no discount");
 
-        state.runner.made_successful_run_this_turn = true;
+        crate::rules::test_support::a_run_succeeded_this_turn(&mut state);
         let (state_after_run, _) = apply_action(
             &state,
             &registry,
@@ -3674,7 +3715,7 @@ mod system_gateway {
         assert_eq!(state_no_run.runner.resources.credits, Credits(8), "10 - 2, no discount");
 
         let mut state_with_run = state;
-        state_with_run.runner.made_successful_run_this_turn = true;
+        crate::rules::test_support::a_run_succeeded_this_turn(&mut state_with_run);
         let (state_after_run, _) = apply_action(
             &state_with_run,
             &registry,
@@ -4638,7 +4679,7 @@ mod system_gateway {
         let (state, _) =
             apply_action(&state, &registry, PlayerAction::ScoreAgenda { target: install_of(&state, "offworld_office") })
                 .expect("score offworld office");
-        assert_eq!(state.corp.agenda_points_scored_this_turn, 2);
+        assert_eq!(state.this_turn.agenda_points_scored(), 2);
 
         let (state, events) =
             apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("neurospike".to_string()) })
@@ -7509,7 +7550,7 @@ mod system_gateway {
         assert!(crate::rules::legal_actions(&state, &registry).contains(&play));
         let (state, _) = apply_action(&state, &registry, play.clone()).expect("from HQ, as the first action");
         assert_eq!((state.corp.resources.credits, state.corp.resources.clicks), (Credits(12), Clicks(2)), "-3 +5, no click back from HQ");
-        assert_eq!(state.actions_taken_this_turn, 1);
+        assert_eq!(state.this_turn.actions_finished(), 1);
         assert!(state.corp.archives_contains(&petty_cash), "the played copy joins the one already there");
         assert_eq!(state.corp.archives.len(), 2);
         // A second one, from Archives, is no longer the first action.
@@ -8250,7 +8291,7 @@ mod system_gateway {
         let mut state = base_state();
         state.corp.hq = vec![CardId("measured_response".to_string())];
         state.runner.grip = vec![CardId("sure_gamble".to_string()); 5];
-        state.runner.made_successful_run_last_turn = true;
+        crate::rules::test_support::a_run_succeeded_last_turn(&mut state);
         let play = PlayerAction::PlayOperation { card_id: CardId("measured_response".to_string()) };
 
         // Threat 2: one 2-point agenda in the Runner's score area is not enough.
@@ -8261,7 +8302,7 @@ mod system_gateway {
         // Threat 4, but no run last turn.
         state.runner.scored_agendas = vec![CardId("offworld_office".to_string()); 2];
         let mut quiet = state.clone();
-        quiet.runner.made_successful_run_last_turn = false;
+        quiet.last_turn = Default::default();
         assert!(!crate::rules::legal_actions(&quiet, &registry).contains(&play));
 
         let (state, _) = apply_action(&state, &registry, play).expect("play");

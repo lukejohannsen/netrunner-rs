@@ -646,15 +646,12 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // trace-bid range in the sample.
         recurring_credits: view.corp.recurring_credits,
         recurring_credits_max: view.corp.recurring_credits_max,
-        agenda_points_scored_this_turn: 0, once_per_turn_used: std::collections::HashSet::new(),
+        once_per_turn_used: std::collections::HashSet::new(),
         // Not carried by `ClientView`, and a rollout re-derives it from its
         // own play-out — the same approximation as `installed_this_turn`.
         extra_clicks_next_turn: 0,
         // Public on the identity, and carried straight off the view.
         identity_counters: view.corp.identity_counters,
-        // Not carried by `ClientView`; a rollout re-derives it from its own
-        // play-out, as with `installed_this_turn`.
-        played_operation_this_turn: false,
         // Public, and carried: a flipped Corp identity has different text.
         identity_flipped: view.corp.identity_flipped,
         removed_from_game: view.corp.removed_from_game.clone(),
@@ -737,11 +734,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         link_strength: view.runner.link_strength,
         first_hq_run_used_this_turn: false,
         once_per_turn_used: std::collections::HashSet::new(),
-        // Public and carried, like `servers_run_this_turn` beside it: the
-        // evaluator's run term reads it, so a sample that forgot this
-        // turn's success priced the next one as the first.
-        made_successful_run_this_turn: view.runner.made_successful_run_this_turn,
-        made_successful_run_last_turn: false, servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
+        servers_run_this_turn: view.runner.servers_run_this_turn.clone(),
         discarded_this_discard_phase: view.runner.discarded_this_discard_phase.clone(),
         identity_flipped: view.runner.identity_flipped,
     };
@@ -769,7 +762,14 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // real one about the turn number would mis-evaluate any "on turn N"
         // effect the search looks ahead through.
         turn: view.turn,
-        actions_taken_this_turn: view.actions_taken_this_turn,
+        // The two facts about the turn a view states — public, and read by
+        // the engine (Carmen's discount, Petty Cash) and the evaluator's run
+        // term alike, so a sample that forgot this turn's success priced
+        // the next one as the first.
+        this_turn: netrunner_core::rules::turn_log::TurnLog::from_what_a_view_shows(view.actions_taken_this_turn, view.runner.made_successful_run_this_turn),
+        // Not carried by `ClientView`: a sample's last turn is empty, so
+        // Public Trail is unplayable inside one.
+        last_turn: netrunner_core::rules::turn_log::LastTurn::default(),
         active_run,
         paid_ability_window: view.paid_ability_window.clone(),
         active_trace: view.active_trace.clone(),
@@ -948,12 +948,11 @@ mod tests {
                 identity: None,
                 extra_clicks_next_turn: 0,
                 identity_counters: 0,
-                played_operation_this_turn: false,
                 identity_flipped: false,
                 bad_publicity: 0,
                 first_install_used_this_turn: false,
                 recurring_credits: 0,
-                recurring_credits_max: 0, agenda_points_scored_this_turn: 0, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
+                recurring_credits_max: 0, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
@@ -983,7 +982,7 @@ mod tests {
                 heap: Vec::new(),
                 link_strength: 0,
                 first_hq_run_used_this_turn: false,
-                once_per_turn_used: std::collections::HashSet::new(), made_successful_run_this_turn: false, made_successful_run_last_turn: false, servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
+                once_per_turn_used: std::collections::HashSet::new(), servers_run_this_turn: Vec::new(), discarded_this_discard_phase: Vec::new(), identity_flipped: false,
             },
             phase: GamePhase::Action(Side::Runner),
             seed: 1,

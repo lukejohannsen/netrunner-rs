@@ -13,6 +13,7 @@ use crate::rules::setup;
 use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ScoredAgenda, Side, WindowCheckpoint};
 use crate::rules::trace;
 use crate::rules::turn;
+use crate::rules::turn_log;
 use crate::rules::checkpoint;
 use crate::rules::continuous;
 
@@ -186,7 +187,7 @@ pub fn apply_action(
     // "have not finished an action yet this turn" counts. Before the drain:
     // a deferred trigger is part of the same action, not a new one.
     if finishes_action {
-        next.actions_taken_this_turn = next.actions_taken_this_turn.saturating_add(1);
+        turn_log::record_action_finished(&mut next);
     }
     events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
     // The standing checks once more, for whatever changed them without an
@@ -285,7 +286,7 @@ enum ActionKind {
 }
 
 /// Whether `action` is an *action* in the rules' sense — one of the things
-/// a player spends their turn on — for `GameState::actions_taken_this_turn`.
+/// a player spends their turn on — for `TurnLog::actions_finished`.
 /// Every basic click action, and a run; not scoring, which `classify_action`
 /// groups with the click actions only for its window and run guards.
 fn counts_as_turn_action(action: &PlayerAction) -> bool {
@@ -968,7 +969,7 @@ fn complete_run(
     // This is the Runner committing past the approach-server step, and it
     // is the moment the run becomes *successful*: `RunSucceeded` fires
     // here — Jailbreak's rider, Docklands Pass, every "when your run is
-    // successful" trigger, `made_successful_run_this_turn` — and not at
+    // successful" trigger, the turn log's count of it — and not at
     // `ServerApproached`, where it used to, so a run Anoetic Void or
     // Manegarm Skunkworks ends at approach never counts (ROADMAP Rules
     // Audit T9). A trigger here may park a decision; `current_actor` puts
@@ -1206,7 +1207,6 @@ pub(crate) fn play_operation_card(
     // Operations, the Weyland Consortium: Building a Better World-style
     // identity reaction (unconditional — no per-turn gate, unlike
     // `OnSuccessfulRun`/`OnInstall` above) from this one event.
-    next.corp.played_operation_this_turn = true;
     let played_event = GameEvent::OperationPlayed { side, card: card_id.clone(), from_archives };
     dispatcher::emit(next, registry, &mut events, played_event)?;
 
@@ -1969,8 +1969,6 @@ fn score_agenda(
     let agenda_counters = card_def.dividends.unwrap_or(0).saturating_mul(advancement_tokens - required);
     next.corp.scored_agendas.push(ScoredAgenda { card: card_id.clone(), install_id, agenda_counters });
     next.corp.resources.agenda_points = next.corp.resources.agenda_points.gain(agenda_points);
-    next.corp.agenda_points_scored_this_turn =
-        next.corp.agenda_points_scored_this_turn.saturating_add(agenda_points);
 
     let scored_event = GameEvent::AgendaScored { card: card_id.clone(), agenda_points, server };
     let mut events = vec![scored_event.clone()];
@@ -3124,7 +3122,7 @@ mod tests {
     /// Rules Audit T9: a run ended at the approach-server step by an
     /// "when the Runner approaches this server" ability was never
     /// successful — no `RunSucceeded`, no "when your run is successful"
-    /// payout, no `made_successful_run_this_turn`. And when nothing ends
+    /// payout, no successful run in the turn log. And when nothing ends
     /// it there, success arrives on `CompleteRun`, not before.
     #[test]
     fn a_run_ended_at_approach_is_not_successful_and_success_arrives_on_commit() {
@@ -3174,7 +3172,7 @@ mod tests {
         assert!(!events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. })), "{events:?}");
         assert!(ended.active_run.is_none());
         assert_eq!(ended.runner.resources.credits, Credits(5), "no successful-run payout");
-        assert!(!ended.runner.made_successful_run_this_turn);
+        assert_eq!(ended.this_turn.times(Trigger::OnSuccessfulRun), 0);
 
         // Without the Void, approaching is still not succeeding; committing is.
         let mut state = state;
@@ -3189,7 +3187,7 @@ mod tests {
         let (committed, events) = apply_action(&approached, &registry, PlayerAction::CompleteRun).unwrap();
         assert!(events.contains(&GameEvent::RunSucceeded { server: ServerId::Remote(0) }));
         assert_eq!(committed.runner.resources.credits, Credits(6), "the payout fires on commit");
-        assert!(committed.runner.made_successful_run_this_turn);
+        assert_eq!(committed.this_turn.times(Trigger::OnSuccessfulRun), 1);
         assert!(
             !crate::rules::legal_actions(&committed, &registry).contains(&PlayerAction::JackOut),
             "a successful run cannot be jacked out of"

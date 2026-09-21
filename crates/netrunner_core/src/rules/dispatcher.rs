@@ -41,6 +41,7 @@ use crate::rules::checkpoint;
 use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::listeners;
+use crate::rules::turn_log;
 use crate::rules::state::{DeferredTrigger, GameState, PendingDecision, Side};
 
 /// Fires every trigger `event` is an occurrence of and returns the
@@ -55,6 +56,9 @@ pub fn dispatch_event(
 ) -> Result<Vec<GameEvent>, RulesError> {
     #[cfg(debug_assertions)]
     audit::dispatched(event);
+    // Counted before anything reacts: a card that asks about the turn while
+    // it reacts to this occurrence finds the occurrence already in it.
+    turn_log::record(state, registry, event);
     // The checkpoint comes before the reactions (CR 10.3): a steal that
     // reaches the threshold has won before anything reacts to the steal.
     let mut events = checkpoint::state_based(state, registry, Some(event));
@@ -169,7 +173,8 @@ pub(crate) mod audit {
     }
 
     /// Panics, naming the event, if `events` holds one a card could hear
-    /// that was never dispatched.
+    /// that was never dispatched — or if one was dispatched that `events`
+    /// does not hold.
     ///
     /// A finished game is exempt: a run that ends because the game did
     /// dispatches nothing on purpose (`still_applies`, `fire_plan`).
@@ -193,6 +198,18 @@ pub(crate) mod audit {
                 ),
             }
         }
+        // And no more than once: `turn_log::record` counts at this door,
+        // so a second dispatch of one occurrence would be a second
+        // occurrence to every card that asks about the turn. What is left
+        // in the frame was dispatched with no record to match. An access is
+        // the other half of `is_owed`: recorded by the action that
+        // presented the card, dispatched by this one.
+        if let Some(extra) = dispatched.iter().find(|extra| !matches!(extra, GameEvent::CardAccessed { .. }) && !listeners::moments(state, extra).is_empty()) {
+            panic!(
+                "{} was dispatched more often than it is in the action's record, and the turn log counted each: {extra:?}",
+                extra.variant_name()
+            );
+        }
     }
 }
 
@@ -213,7 +230,6 @@ fn resolve_run_riders(
 ) -> Result<Vec<GameEvent>, RulesError> {
     match event {
         GameEvent::RunSucceeded { .. } => {
-            state.runner.made_successful_run_this_turn = true;
             let rider = state.active_run.as_mut().and_then(|run| {
                 run.on_success_effect.take().map(|effect| (effect, run.on_success_card.take(), run.on_success_install.take()))
             });
@@ -1139,7 +1155,7 @@ mod tests {
         assert_eq!(state.corp.resources.credits, Credits(8), "only the rezzed root install fired");
         assert!(events.contains(&GameEvent::CreditsGained { side: Side::Corp, amount: 3 }));
         assert!(!events.iter().any(|e| matches!(e, GameEvent::CreditsGained { amount: 99, .. })));
-        assert!(!state.runner.made_successful_run_this_turn, "approaching is not succeeding");
+        assert_eq!(state.this_turn.times(Trigger::OnSuccessfulRun), 0, "approaching is not succeeding");
     }
 
     #[test]

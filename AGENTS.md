@@ -114,6 +114,16 @@ What a card does for as long as it is active — "+1[mu]", "costs 2[c] less to i
 
 **A strength is asked, never kept.** `continuous::breaker_strength` and `continuous::ice_strength` are the two questions — printed, plus what the table adds, plus what is lingering — and the break contest, the events, the view and the bots' pricing all put them. A run's ice stores no strength: `RunIce::current_strength` was baked from a `StrengthModifier` when the run began, on the ground that nothing moves it mid-run, and Syailendra places a counter on an Ice Wall mid-run. A test fixture whose contest turns on a number registers a card that prints it (`rules::test_support::ice_printing`). The layer is Rules Audit backlog item 2, closed (`docs/roadmap/rules-audit.md`).
 
+### Turn History Rule
+
+What has happened this turn is counted in one place. `rules::turn_log` keeps `GameState::this_turn` — a fixed-size table, one row per `Trigger`, one column per `Class` of thing the moment was about — and `GameState::last_turn`, its row totals for the turn that ended most recently. `turn_log::record` is called at the top of `dispatcher::dispatch_event`, the one door every event a card can hear goes through, and bumps a cell per `listeners::moments` entry; `turn_log::rotate` is the one reset, at every turn start, for both sides. A card asks with `Amount::TimesThisTurn(trigger)` / `TimesLastTurn(trigger)` under the existing `AmountAtLeast` — "if you made a successful run this turn" is a card file, not a field.
+
+**Never add a `*_this_turn` or `*_last_turn` field, and never an `EffectRequirement` that reads one.** Five fields and three requirements were exactly that — `made_successful_run_this_turn` and `…_last_turn`, `played_operation_this_turn`, `agenda_points_scored_this_turn`, `actions_taken_this_turn` — each written by whichever handler produced the fact and reset under whichever side's branch its first card cared about, so the Runner's successful run read true through the whole of the Corp's next turn, to the view and to the bots' evaluator alike. A fact a card needs that the log cannot say is a gap in the log's vocabulary (a `Class`, a sum beside `agenda_points_scored`), fixed there for every card.
+
+**A class holds only what both players saw.** The Corp installs facedown and an advanced card's identity is masked, so those moments are counted as `Kind::Unseen` (`turn_log::concealed`, exhaustive over `Trigger`: a new trigger about a card does not compile until someone says who saw the card). That is what lets the log ride in a view whole, with no masking function of its own. **No event `Vec`:** `GameState` is cloned on every action and thousands of times per search, and the log is `Copy`.
+
+**Which servers is a list; how many times is the log.** `RunnerState::servers_run_this_turn` stays, because Red Team and the evaluator need the remote's own number and a class has none. `installed_this_turn` is about one card, `last_completed_run` about one run; neither is a count of occurrences. **A debug build holds the count honest:** `dispatcher::audit` fails an action that dispatched an event more often than its record holds it, as it already failed one that dispatched it less.
+
 ### DSL Growth Rule
 
 Adding an `Effect` or `EffectRequirement` variant is the expensive move: it grows the engine's permanent surface for one card's benefit.

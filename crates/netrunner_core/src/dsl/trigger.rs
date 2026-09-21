@@ -294,6 +294,49 @@ pub enum EventFilter {
 }
 
 impl Trigger {
+    /// Every trigger, in declaration order — the rows of
+    /// `rules::turn_log::TurnLog`, which counts a turn's moments in a flat
+    /// array and so needs a trigger to be a number. `index` is that number;
+    /// `every_trigger_is_listed_at_its_own_index` holds the two together,
+    /// and its exhaustive `match` is what stops a new variant compiling
+    /// until it is listed here.
+    pub const ALL: [Trigger; 29] = [
+        Trigger::OnPlay,
+        Trigger::OnRunStart,
+        Trigger::OnEncounter,
+        Trigger::OnTurnStart,
+        Trigger::OnAccessed,
+        Trigger::OnTrashedFromAccess,
+        Trigger::OnSuccessfulRun,
+        Trigger::Paid,
+        Trigger::OnInstall,
+        Trigger::OnAgendaScored,
+        Trigger::OnAgendaStolen,
+        Trigger::OnDamageAboutToResolve,
+        Trigger::OnTrashAboutToResolve,
+        Trigger::OnRez,
+        Trigger::OnApproachServer,
+        Trigger::OnRunEnded,
+        Trigger::OnBasicDrawAction,
+        Trigger::OnTagsGiven,
+        Trigger::OnAdvance,
+        Trigger::OnDiscardPhaseEnd,
+        Trigger::OnActionPhaseEnd,
+        Trigger::OnCardInstalled,
+        Trigger::OnDamageDealt,
+        Trigger::OnCardsTrashedFromHq,
+        Trigger::OnAbilityGainedCredits,
+        Trigger::OnForfeit,
+        Trigger::OnIceApproached,
+        Trigger::OnOperationPlayed,
+        Trigger::OnTagRemoved,
+    ];
+
+    /// This trigger's position in `ALL`.
+    pub fn index(self) -> usize {
+        self as usize
+    }
+
     /// What this trigger's moment is *about* — a card, a server, or nothing
     /// a card could point at. It decides two things a card file is held to
     /// by `CardDefinition::validate`: whether a `TriggeredEffect` must say
@@ -385,5 +428,23 @@ impl Trigger {
             | Trigger::OnTrashAboutToResolve
             | Trigger::Paid => Hears::Everyone,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_trigger_is_listed_at_its_own_index() {
+        for (position, trigger) in Trigger::ALL.iter().enumerate() {
+            assert_eq!(trigger.index(), position, "{trigger:?}");
+        }
+        // Exhaustive, so a new variant stops here until it is added to
+        // `Trigger::ALL` — the turn log indexes a fixed array by it.
+        let listed = |trigger: Trigger| match trigger {
+            Trigger::OnPlay | Trigger::OnRunStart | Trigger::OnEncounter | Trigger::OnTurnStart | Trigger::OnAccessed | Trigger::OnTrashedFromAccess | Trigger::OnSuccessfulRun | Trigger::Paid | Trigger::OnInstall | Trigger::OnAgendaScored | Trigger::OnAgendaStolen | Trigger::OnDamageAboutToResolve | Trigger::OnTrashAboutToResolve | Trigger::OnRez | Trigger::OnApproachServer | Trigger::OnRunEnded | Trigger::OnBasicDrawAction | Trigger::OnTagsGiven | Trigger::OnAdvance | Trigger::OnDiscardPhaseEnd | Trigger::OnActionPhaseEnd | Trigger::OnCardInstalled | Trigger::OnDamageDealt | Trigger::OnCardsTrashedFromHq | Trigger::OnAbilityGainedCredits | Trigger::OnForfeit | Trigger::OnIceApproached | Trigger::OnOperationPlayed | Trigger::OnTagRemoved => Trigger::ALL.contains(&trigger),
+        };
+        assert!(Trigger::ALL.iter().all(|trigger| listed(*trigger)));
     }
 }

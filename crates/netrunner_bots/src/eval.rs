@@ -286,7 +286,7 @@ const KNOWN_AMBUSH_WEIGHT: f64 = 1.5;
 /// trash rather than on the breaker in its grip.
 const OPPONENT_BOARD_WEIGHT: f64 = 0.5;
 /// A run reached its server this turn
-/// (`RunnerState::made_successful_run_this_turn`): the run term, kept for
+/// (`GameState::this_turn`, `rules::turn_log`): the run term, kept for
 /// the rest of the turn, so that **breaching keeps it and only leaving
 /// forfeits it.**
 ///
@@ -978,7 +978,7 @@ pub fn evaluate_state_with(state: &GameState, side: Side, registry: &CardRegistr
             score -= w.grip_floor.saturating_sub(state.runner.grip.len()) as f64 * w.grip_shortfall_weight;
             score += held_cards_value(state, registry, w) * w.held_card_weight;
             score -= visible_corp_board(state, registry, w) * w.opponent_board_weight;
-            if state.runner.made_successful_run_this_turn {
+            if state.this_turn.times(Trigger::OnSuccessfulRun) > 0 {
                 score += w.successful_run_weight;
             }
             if let Some(run) = &state.active_run {
@@ -2699,7 +2699,7 @@ mod tests {
     fn a_successful_run_this_turn_keeps_the_run_term_once() {
         let registry = CardRegistry::new();
         let mut breached = GameState::new(0);
-        breached.runner.made_successful_run_this_turn = true;
+        breached.this_turn = netrunner_core::rules::turn_log::TurnLog::from_what_a_view_shows(0, true);
         let fresh = GameState::new(0);
         let delta = evaluate_state(&breached, Side::Runner, &registry) - evaluate_state(&fresh, Side::Runner, &registry);
         assert!((delta - SUCCESSFUL_RUN_WEIGHT).abs() < 1e-9);
