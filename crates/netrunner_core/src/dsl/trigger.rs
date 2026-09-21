@@ -290,6 +290,17 @@ pub enum EventFilter {
     /// "a remote server", which a list of ids could not say and a variant
     /// here would.
     Server(Vec<crate::rules::ServerId>),
+    /// The card the moment is about matches **and was installed when it
+    /// happened** — Aggressive Trendsetting's "the first time the Runner
+    /// trashes an **installed** Corp card", against a card trashed out of
+    /// HQ or R&D. Composition didn't work: `Card` is decided off the
+    /// definition alone, and the state half ("was it on the table") was an
+    /// intervening if (`CurrentlyAccessingInstalledCard`), which is the
+    /// wrong place for it once "the first time each turn" counts what the
+    /// condition admits — a trash out of HQ would have been the turn's
+    /// first. Read off the moment (`listeners::About::Card::installed`),
+    /// which the event states, so it cannot have changed since.
+    InstalledCard(crate::dsl::CardFilter),
 }
 
 impl Trigger {

@@ -28,7 +28,7 @@
           "Hq"
         ]
       },
-      "requirement": "OncePerTurn",
+      "first_each_turn": true,
       "effects": [
         {
           "PresentChoice": {

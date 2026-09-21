@@ -60,14 +60,18 @@ use crate::rules::run::ServerId;
 use crate::rules::state::{GameState, Side};
 
 const TRIGGERS: usize = Trigger::ALL.len();
-/// The widest of the three column sets: a card's `Kind`.
-const CLASSES: usize = Kind::COUNT;
+/// The widest of the three column sets: a card's `Kind`, once for a card
+/// that was on the table when it happened and once for one that was not.
+const CLASSES: usize = Kind::COUNT * 2;
 
 /// What a counted moment was about, as coarsely as a card in the pool
 /// distinguishes — and no finer than both players saw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Class {
-    Card(Kind),
+    /// `installed`: the card was on the table when it happened — a rez,
+    /// an install, a card trashed out of a root rather than out of HQ.
+    /// Public wherever the moment is: both players see where an access is.
+    Card { kind: Kind, installed: bool },
     Server(ServerClass),
     /// A moment about nothing a card could point at — a phase, a tag.
     Nothing,
@@ -91,6 +95,19 @@ pub enum Kind {
 
 impl Kind {
     const COUNT: usize = 11;
+    const ALL: [Kind; Kind::COUNT] = [
+        Kind::Unseen,
+        Kind::Agenda,
+        Kind::Asset,
+        Kind::Operation,
+        Kind::Ice,
+        Kind::Hardware,
+        Kind::Resource,
+        Kind::Program,
+        Kind::Event,
+        Kind::Identity,
+        Kind::Upgrade,
+    ];
 
     fn of(card_type: &CardType) -> Kind {
         match card_type {
@@ -123,7 +140,7 @@ pub enum ServerClass {
 impl Class {
     fn column(self) -> usize {
         match self {
-            Class::Card(kind) => kind as usize,
+            Class::Card { kind, installed } => kind as usize + if installed { Kind::COUNT } else { 0 },
             Class::Server(server) => server as usize,
             Class::Nothing => 0,
         }
@@ -196,8 +213,10 @@ fn class_of(registry: &CardRegistry, moment: &Moment) -> Class {
         About::Server(ServerId::RnD) => Class::Server(ServerClass::RnD),
         About::Server(ServerId::Hq) => Class::Server(ServerClass::Hq),
         About::Server(ServerId::Remote(_)) => Class::Server(ServerClass::Remote),
-        About::Card { .. } if concealed(moment.trigger, moment.of) => Class::Card(Kind::Unseen),
-        About::Card { card, .. } => Class::Card(registry.get(card).map_or(Kind::Unseen, |definition| Kind::of(&definition.card_type))),
+        About::Card { installed, .. } if concealed(moment.trigger, moment.of) => Class::Card { kind: Kind::Unseen, installed: *installed },
+        About::Card { card, installed, .. } => {
+            Class::Card { kind: registry.get(card).map_or(Kind::Unseen, |definition| Kind::of(&definition.card_type)), installed: *installed }
+        }
     }
 }
 
@@ -218,7 +237,7 @@ pub(crate) struct Occurrences {
     /// `None`: anyone's.
     of: Option<Side>,
     /// A bit per column; `None`: every column.
-    columns: Option<u16>,
+    columns: Option<u32>,
 }
 
 impl Occurrences {
@@ -230,7 +249,7 @@ impl Occurrences {
 
     pub(crate) fn meant_by(trigger: Trigger, when: Option<&EventFilter>, controller: Side) -> Result<Occurrences, String> {
         let of = (trigger.hears() == Hears::OwnSide).then_some(controller);
-        let bit = |class: Class| 1u16 << class.column();
+        let bit = |class: Class| 1u32 << class.column();
         let columns = match when {
             None => None,
             Some(EventFilter::Server(servers)) => Some(
@@ -244,20 +263,11 @@ impl Occurrences {
                     })
                     .fold(0, |mask, column| mask | column),
             ),
-            Some(EventFilter::Card(_)) if concealed(trigger, of) => {
+            Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) if concealed(trigger, of) => {
                 return Err(format!("the card a {trigger:?} is about is hidden from a player, so the turn counts it without its type and \"the first\" cannot be narrowed by one"));
             }
-            Some(EventFilter::Card(filter)) => {
-                let kinds = match filter {
-                    CardFilter::CardType(card_type) => std::slice::from_ref(card_type),
-                    CardFilter::CardTypeOneOf(card_types) => card_types.as_slice(),
-                    _ => return Err(format!("the turn counts a card by its type and nothing finer, so \"the first\" cannot be narrowed by {filter:?}")),
-                };
-                if kinds.iter().any(|card_type| matches!(card_type, CardType::Ice(_))) {
-                    return Err("the turn counts ice as ice, whatever its type".to_string());
-                }
-                Some(kinds.iter().map(|card_type| bit(Class::Card(Kind::of(card_type)))).fold(0, |mask, column| mask | column))
-            }
+            Some(EventFilter::Card(filter)) => Some(kinds(filter)?.iter().map(|kind| bit(Class::Card { kind: *kind, installed: false }) | bit(Class::Card { kind: *kind, installed: true })).fold(0, |mask, column| mask | column)),
+            Some(EventFilter::InstalledCard(filter)) => Some(kinds(filter)?.iter().map(|kind| bit(Class::Card { kind: *kind, installed: true })).fold(0, |mask, column| mask | column)),
         };
         Ok(Occurrences { trigger, of, columns })
     }
@@ -274,6 +284,20 @@ pub(crate) fn first_time_of(definition: &CardDefinition) -> Vec<Occurrences> {
         .filter(|triggered| triggered.first_each_turn)
         .filter_map(|triggered| Occurrences::meant_by(triggered.trigger, triggered.when.as_ref(), definition.side).ok())
         .collect()
+}
+
+/// The `Kind`s a card filter admits, where it is no finer than one.
+fn kinds(filter: &CardFilter) -> Result<Vec<Kind>, String> {
+    let card_types = match filter {
+        CardFilter::Any => return Ok(Kind::ALL.to_vec()),
+        CardFilter::CardType(card_type) => std::slice::from_ref(card_type),
+        CardFilter::CardTypeOneOf(card_types) => card_types.as_slice(),
+        _ => return Err(format!("the turn counts a card by its type and nothing finer, so \"the first\" cannot be narrowed by {filter:?}")),
+    };
+    if card_types.iter().any(|card_type| matches!(card_type, CardType::Ice(_))) {
+        return Err("the turn counts ice as ice, whatever its type".to_string());
+    }
+    Ok(card_types.iter().map(Kind::of).collect())
 }
 
 /// The log as it stood when one event had just been counted — what a
@@ -558,8 +582,8 @@ mod tests {
             server: ServerId::Remote(0),
         };
         record(&mut state, &registry, &corp);
-        assert_eq!(state.this_turn.times_about(Trigger::OnInstall, Class::Card(Kind::Unseen)), 1);
-        assert_eq!(state.this_turn.times_about(Trigger::OnInstall, Class::Card(Kind::Agenda)), 0);
+        assert_eq!(state.this_turn.times_about(Trigger::OnInstall, Class::Card { kind: Kind::Unseen, installed: true }), 1);
+        assert_eq!(state.this_turn.times_about(Trigger::OnInstall, Class::Card { kind: Kind::Agenda, installed: true }), 0);
     }
 
     #[test]

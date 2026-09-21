@@ -2815,8 +2815,7 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
 /// Spends what `requirement` gates — a `OncePerTurn`, anywhere under an
 /// `And` — once the thing it gated has actually been used: a trigger whose
 /// effects resolved, a paid ability that resolved (`engine::
-/// activate_ability`), an install that took a discount
-/// (`continuous::pay_install_cost_of`). Kept apart from `check_requirement`,
+/// activate_ability`). Kept apart from `check_requirement`,
 /// which only reads, because the same requirement is also asked where
 /// nothing is used: a legal-action probe, a price shown, `would_fire`.
 pub(crate) fn consume_requirement(

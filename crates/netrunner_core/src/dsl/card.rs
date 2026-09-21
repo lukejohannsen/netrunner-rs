@@ -623,6 +623,8 @@ pub enum CardValidationError {
     TriggerActsOnNoCard(CardId, Trigger),
     #[error("card {0:?}: \"the first time each turn\" (`first_each_turn`) does not fit — {1}")]
     FirstTimeDoesNotFit(CardId, String),
+    #[error("card {0:?}: `OncePerTurn` does not fit — {1}")]
+    OncePerTurnDoesNotFit(CardId, &'static str),
     #[error("card {0:?}: a continuous {1} effect does not fit — {2}")]
     ContinuousEffectDoesNotFit(CardId, &'static str, &'static str),
     #[error("card {0:?}: a prohibition lasts a run or a turn — nothing prints one for an encounter, and the guards that ask are not asked during one")]
@@ -741,7 +743,7 @@ impl CardDefinition {
             let about = triggered.trigger.about();
             let filter_fits = match &triggered.when {
                 None => true,
-                Some(EventFilter::Card(_)) => about == TriggerAbout::Card,
+                Some(EventFilter::Card(_) | EventFilter::InstalledCard(_)) => about == TriggerAbout::Card,
                 Some(EventFilter::Server(_)) => about == TriggerAbout::Server,
             };
             if !filter_fits {
@@ -780,15 +782,24 @@ impl CardDefinition {
                 return Err(self.first_time_misfit(format!("one event is both a {one:?} and a {other:?}, and the card's first-time entries share a count")));
             }
         }
+        // A use limit needs something that uses the card. A trigger that
+        // fires and a paid ability that resolves do; nothing that reads a
+        // standing effect does, so a `OncePerTurn` there would never be
+        // spent. And the key is the card and which copy, so two once-per-
+        // turn abilities on one card would share a use — no card prints two.
+        if self.continuous.iter().any(|effect| effect.condition.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn)) {
+            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "a continuous effect is read, never used, so its `while` cannot be a `OncePerTurn`"));
+        }
+        let once_per_turn = self.triggers.iter().filter_map(|triggered| triggered.requirement.as_ref()).chain(self.abilities.iter().filter_map(|ability| ability.requirement.as_ref()));
+        if once_per_turn.filter(|requirement| requirement.mentions_once_per_turn()).count() > 1 {
+            return Err(CardValidationError::OncePerTurnDoesNotFit(self.id.clone(), "two once-per-turn abilities on one card would share one use (`OncePerTurnKey` is the card and which copy)"));
+        }
         for effect in self.continuous.iter().filter(|effect| effect.first_each_turn) {
             let Scope::Installing(filter) = &effect.applies_to else {
                 return Err(self.first_time_misfit("a continuous effect is about the first of something only where it is about an install (`Installing`)".to_string()));
             };
             if let Err(why) = crate::rules::turn_log::Occurrences::installs(filter, self.side) {
                 return Err(self.first_time_misfit(why));
-            }
-            if effect.condition.as_ref().is_some_and(EffectRequirement::mentions_once_per_turn) {
-                return Err(self.first_time_misfit("`OncePerTurn` is a use limit on the card, and the first install each turn is a fact about the turn".to_string()));
             }
         }
         // `Prohibit { until: Encounter }` parses and would hold for a window
@@ -1147,7 +1158,13 @@ mod tests {
         };
         assert_eq!(discount(Scope::Installing(CardFilter::CardType(CardType::Program)), None).validate(), Ok(()));
         assert!(refused(discount(Scope::Installing(CardFilter::Icebreaker), None)));
-        assert!(refused(discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn))));
+        assert!(matches!(
+            discount(Scope::Installing(CardFilter::CardType(CardType::Program)), Some(EffectRequirement::OncePerTurn)).validate(),
+            Err(CardValidationError::OncePerTurnDoesNotFit(..))
+        ));
+        let once = |trigger: Trigger| TriggeredEffect { first_each_turn: false, ..first(trigger, None, None, Some(EffectRequirement::OncePerTurn)) };
+        assert_eq!(card(Side::Corp, vec![once(Trigger::OnTagsGiven)]).validate(), Ok(()));
+        assert!(matches!(card(Side::Corp, vec![once(Trigger::OnTagsGiven), once(Trigger::OnTagRemoved)]).validate(), Err(CardValidationError::OncePerTurnDoesNotFit(..))));
         assert!(refused(discount(Scope::Controller, None)));
     }
 

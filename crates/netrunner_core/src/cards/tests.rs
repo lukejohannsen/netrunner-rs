@@ -3553,7 +3553,7 @@ mod system_gateway {
         )
         .expect("install corroder");
         assert_eq!(state.runner.resources.credits, Credits(9), "10 - 2 (cost) + 1 (DZMZ discount)");
-        assert_eq!(state.runner.once_per_turn_used.len(), 1, "this copy's first time is spent");
+        assert!(state.runner.once_per_turn_used.is_empty(), "read off the turn: nothing on the card is spent");
 
         let (state, _) = apply_action(
             &state,
@@ -3581,6 +3581,52 @@ mod system_gateway {
         let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()) })
             .expect("install gordian blade");
         assert_eq!(state.runner.resources.credits, Credits(6), "both first times are spent");
+    }
+
+    /// The report this item closes on. "The first program you install each
+    /// turn" is a fact about the turn, and an Optimizer that arrives after
+    /// that program has missed it. While the discount was a once-per-turn
+    /// use of the *card*, a copy installed mid-turn still had its use and
+    /// lowered the turn's second program.
+    #[test]
+    fn a_dzmz_optimizer_installed_after_the_turns_first_program_discounts_nothing_until_next_turn() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("corroder".to_string()), CardId("dzmz_optimizer".to_string()), CardId("gordian_blade".to_string()), CardId("corroder".to_string())];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) }).expect("the turn's first program");
+        assert_eq!(state.runner.resources.credits, Credits(8), "10 - 2");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallHardware { card_id: CardId("dzmz_optimizer".to_string()) }).expect("install the optimizer");
+        assert_eq!(state.runner.resources.credits, Credits(6), "8 - 2");
+        let (mut state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("gordian_blade".to_string()) }).expect("the turn's second program");
+        assert_eq!(state.runner.resources.credits, Credits(2), "6 - 4: not the first program this turn, whoever was watching the first");
+
+        crate::rules::turn_log::rotate(&mut state);
+        state.runner.resources.clicks = Clicks(4);
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallProgram { card_id: CardId("corroder".to_string()) }).expect("next turn's first program");
+        assert_eq!(state.runner.resources.credits, Credits(1), "2 - 2 + 1");
+    }
+
+    /// The same sentence on a trigger: a Verbal Plasticity installed after
+    /// the turn's first basic draw has missed it.
+    #[test]
+    fn a_verbal_plasticity_installed_after_the_turns_first_draw_draws_nothing_extra() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(10);
+        state.runner.grip = vec![CardId("verbal_plasticity".to_string())];
+        state.runner.stack = (0..4).map(|i| CardId(format!("stack_card_{i}"))).collect();
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("the turn's first draw");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::InstallResource { card_id: CardId("verbal_plasticity".to_string()) }).expect("install");
+        let held = state.runner.grip.len();
+        let (state, _) = apply_action(&state, &registry, PlayerAction::DrawCardClick { side: Side::Runner }).expect("the turn's second draw");
+        assert_eq!(state.runner.grip.len(), held + 1, "one card: this was not the turn's first draw");
     }
 
     /// Kate had no test: her discount was a field only an identity could

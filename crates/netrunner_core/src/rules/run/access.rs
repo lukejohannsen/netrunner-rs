@@ -773,7 +773,7 @@ pub fn trash_currently_accessed_card_without_cost(
     let install = access.pending_install;
 
     move_to_archives(state, registry, &card_id, server, install);
-    let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 0 };
+    let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 0, install };
     let mut events = vec![trashed_event.clone()];
     events.extend(dispatcher::dispatch_event(state, registry, &trashed_event)?);
     events.extend(advance_or_finish(state, registry, server, card_id)?);
@@ -817,7 +817,7 @@ pub fn resolve_trash(
     let (mut events, from_pools) = ability::drain_hosted_credit_pools(state, registry, cost, pays_trash_costs)?;
     events.extend(ability::pay_cost(state, Side::Runner, &Cost::Credits(cost - from_pools), Some(card_id))?);
     move_to_archives(state, registry, card_id, pending.server, pending.install);
-    let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost };
+    let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost, install: pending.install };
     dispatcher::emit(state, registry, &mut events, trashed_event)?;
 
     events.extend(advance_or_finish(state, registry, pending.server, card_id.clone())?);
@@ -1906,7 +1906,7 @@ mod tests {
             events,
             vec![
                 GameEvent::CreditsSpent { side: Side::Runner, amount: 2 },
-                GameEvent::CardTrashedFromAccess { card: card_id, cost_paid: 2 },
+                GameEvent::CardTrashedFromAccess { card: card_id, cost_paid: 2, install: Some(crate::rules::state::InstallId(0)) },
                 GameEvent::RunCompleted { server: ServerId::Remote(0) },
             ]
         );
@@ -2317,7 +2317,7 @@ mod tests {
         assert_eq!(events[0], GameEvent::CreditsSpent { side: Side::Runner, amount: 2 });
         assert_eq!(
             events[1],
-            GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 2 }
+            GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: 2, install: Some(crate::rules::state::InstallId(0)) }
         );
         assert_eq!(
             events[2],

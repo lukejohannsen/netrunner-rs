@@ -248,7 +248,18 @@ pub enum GameEvent {
         card: Option<CardId>,
         advancement_tokens: u32,
     },
-    CardTrashedFromAccess { card: CardId, cost_paid: u32 },
+    /// `install`: the root install the card was, when the Runner trashed it
+    /// off the table rather than out of HQ, R&D or Archives — public, like
+    /// the access itself. It is what lets a card say "trashes an
+    /// **installed** Corp card" in its trigger condition
+    /// (`EventFilter::InstalledCard`); `serde(default)` for histories
+    /// recorded before the field existed.
+    CardTrashedFromAccess {
+        card: CardId,
+        cost_paid: u32,
+        #[serde(default)]
+        install: Option<crate::rules::state::InstallId>,
+    },
     AccessPassed { card: CardId },
     PaidAbilityWindowOpened { side: Side },
     PriorityPassed { side: Side },

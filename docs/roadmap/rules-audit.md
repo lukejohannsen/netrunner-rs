@@ -872,8 +872,9 @@ one.
    field. That is backlog item 3's query, and the `OncePerTurn` on these
    two cards is what it replaces. `netrunner_bots::determinize` still
    clears `once_per_turn_used` in every sample, as it cleared the flag.
-3. **"The first time each turn" as a query — TAKEN UP (20 September 2026,
-   four stages; the first is built)** (§6.3; new). Roughly ten per-turn
+   **Both closed by item 3** (its stages 2 and 4, below).
+3. **"The first time each turn" as a query — DONE (20 September 2026, four
+   PRs; the last stage's entry closes it)** (§6.3; new). Roughly ten per-turn
    fields on `GameState`, an `EffectRequirement` apiece, where jinteki
    filters a turn log (`first-event?` alone is called 136 times).
    Candidate, as the second pass wrote it: constant-size per-turn and
@@ -1054,6 +1055,69 @@ one.
    report, seed 1: **identical, four reports of four.** *Wire and stored
    states:* the log's sparse cells gain a field, `DeferredTrigger` gains
    one that defaults; the pool fingerprint moves (eight card files).
+
+   **Stage 4 — DONE (20 September 2026),
+   `feat/a-card-that-arrives-late-missed-the-first-time`. The correction,
+   and it closes the item.** The eight cards that can become active
+   mid-turn say `first_each_turn` and lose their `OncePerTurn`: DZMZ
+   Optimizer (on its `Installing` effect), Docklands Pass, Détente, Verbal
+   Plasticity, "Knickknack" O'Brian, Cacophony and Phật Gioan Baotixita
+   (both entries of each, one shared count) and Aggressive Trendsetting.
+   While the first time was a once-per-turn *use of the card*, a copy that
+   arrived after the turn's first occurrence still had its use, and so
+   did one whose first trigger stood down. **`continuous::
+   pay_install_cost_of` is gone** — the second scan at the real install
+   that spent each discount — and all seven Runner install paths ask
+   `install_cost_of`, the question a price shown already asked, so the
+   two cannot disagree. `validate` now refuses a `OncePerTurn` on a
+   continuous effect (nothing that reads one *uses* the card, so it would
+   never be spent) and two once-per-turn abilities on one card (the key
+   is the card and which copy).
+
+   *Aggressive Trendsetting* prints "the first time the Runner trashes an
+   **installed** Corp card", and "installed" had been an intervening if
+   (`CurrentlyAccessingInstalledCard`). Left there, a trash out of HQ
+   would have been the turn's first of what the entry counts. It is in
+   the condition now: `EventFilter::InstalledCard(filter)`, read off
+   `listeners::About::Card::installed`, which `CardTrashedFromAccess`
+   states (`install`, new, public like the access) — kept apart from the
+   moment's `install`, which stays `None` for a card with no handle left
+   or `dispatcher::still_applies` would stand its trigger down. The log's
+   card classes split by it. One `EventFilter` variant, single-use, with
+   its reason on the variant. **Ryō "Phoenix" Ōno is the one named
+   deferral**: "the first time each turn a run becomes successful *after
+   a subroutine resolved during that run*" narrows the first time by the
+   state of the run, which no class holds; it stays `And(OncePerTurn,
+   SubroutineResolvedThisRun)`, exact for an identity with no "may".
+
+   *Measured.* Both spellings on the card and the old one deciding, both
+   256-seed sweeps in a debug build (1,536 games). The sweep's one-ply
+   agents try actions on clones of the real state, so a disagreement
+   prints many times; **the honest unit is the game-turn: DZMZ Optimizer
+   discounted a program that was not the turn's first in 13 game-turns,
+   Verbal Plasticity drew an extra card on a later draw in 12, "Knickknack"
+   O'Brian offered its trash on a later run in 6, Docklands Pass granted an
+   access on a later HQ breach in 2.** Détente, Cacophony, Phật Gioan
+   Baotixita and Aggressive Trendsetting never disagreed — the last
+   because a scored agenda cannot arrive on the Runner's turn, so its
+   change is the spelling alone. With the old spelling deleted,
+   `scripts/coverage_identical.py main --head-worktree`, 192 games a
+   report, seed 1: **heuristic identical, both shapes** (in one pass the
+   heuristic never installs one of these after the turn's first
+   occurrence); **random differs, both shapes, as it must** — steps 68,586
+   → 68,557, end reasons 94 / 84 / 14 → 95 / 83 / 14 (one game of 192),
+   `knickknack_obrian/OnRunStart` 59 → 51, `ProgramInstalled` 407 → 404,
+   `CreditsSpent` 4,561 → 4,540; 26 of 132 trigger keys moved, the rest
+   trajectory drift after the first divergence.
+
+   *The ledger (DSL Growth Rule), re-measured across the item:* `Effect`
+   72 → 72; `EffectRequirement` 41 → 36 (five gone, three of them
+   single-use); `Amount` 14 → 16 (`TimesThisTurn` four cards,
+   `TimesLastTurn` two); `EventFilter` 2 → 3 (`InstalledCard`, one card).
+   `first_each_turn` is on sixteen cards and `OncePerTurn` is left on the
+   seven that print "Once per turn →" or are Ryō. Seven state fields, seven
+   reset sites, one second scan and twenty-three free-form tag strings
+   are gone; `GameState` gained two, both fixed-size.
 
 4. **Generic prevention** (§2.2; was item 2). Give the existing
    `WindowCheckpoint::Prevention` window a kind parameter, so tags,

@@ -10,14 +10,10 @@
     {
       "trigger": "OnTrashedFromAccess",
       "subject": "Any",
-      "requirement": {
-        "And": [
-          "OncePerTurn",
-          {
-            "CurrentlyAccessingInstalledCard": {}
-          }
-        ]
+      "when": {
+        "InstalledCard": "Any"
       },
+      "first_each_turn": true,
       "effects": [
         {
           "OfferPaidChoice": {
