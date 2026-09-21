@@ -1568,6 +1568,26 @@ one.
    pools compete on every break. (The sweeps are release builds, where the
    `debug_assert` that a replay used every answer is compiled out; the
    debug-build suite is what exercises it.)
+   **What it costs, measured because the PR had to admit it was not.**
+   Parking needs a copy of the action made *before* it is applied — what
+   asks is known only once the action has been moved into a handler — and
+   the first version copied it on every application. On a byte-identical
+   heuristic pass (192 games, seed 1, one report hash across every binary,
+   three alternating rounds, pinned binaries): `main` 17.19–17.39 s, stage
+   3 **+2.4% and +3.8%** in two sessions, the ranges never overlapping. A
+   throwaway build with only the clone removed ran at 0.9998 of `main`:
+   **the clone was the whole cost** — the planner, the classes and the two
+   new `GameState` fields cost nothing measurable — because the
+   legal-action probe applies every candidate and most fail at the first
+   guard. `payment::could_ask` is an allocation-free *necessary* condition
+   (a question needs two non-wallet pools of different classes, and every
+   such pool is credits on the run, the Corp identity, a rezzed install or
+   a rig card; fewer than two on either side and nothing can ask), and the
+   copy is made only where it holds. It over-counts on purpose — a wrong
+   yes costs a clone, a wrong no would lose the question, which a debug
+   build refuses (forced to "no", the parking test fails on that
+   assertion). With it: **+1.0%** (17.29–17.40 s against 17.15–17.22 s),
+   still not overlapping — the scan itself, left there.
 6. **A numeric decision** (§6.4; new). `PendingDecision` has no "choose a
    number", so X costs and "pay up to N" have nowhere to park. One variant,
    and an `ActionSpace` segment appended at the end (the append-never-shift
