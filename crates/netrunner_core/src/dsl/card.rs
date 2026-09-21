@@ -280,11 +280,27 @@ pub struct CardDefinition {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub additional_play_cost: Option<Cost>,
 
-    /// Recurring-credit pool size for an identity, refilled to this amount
-    /// at the start of every Corp turn (`turn::enter_start_of_turn`) and
-    /// spendable on Corp trace bids before the Corp's own wallet — e.g. NBN:
-    /// Making News's 2 recurring credits. `None` for the common case (no
-    /// pool). `Some` only meaningful on an identity (`CardType::Identity`).
+    /// "N[recurring-credit]" as the card prints it — Azimat's and Mahkota
+    /// Langit Grid's 2, NBN: Making News's 2. Comprehensive Rules 1.10.5a:
+    /// "When this card becomes active, place N credits on it. Before
+    /// abilities meet their trigger conditions for your turn beginning, if
+    /// there are fewer than N credits on this card, place credits on it
+    /// until there are N credits on it." The credits are the card's hosted
+    /// `counters` (`counter_kind: Credit`; an identity's are
+    /// `CorpState::identity_counters`), and what they may be spent on is
+    /// `pays_for`.
+    ///
+    /// **A declaration, never a trigger.** It was an `OnInstall`/`OnRez` and
+    /// an `OnTurnStart` trigger on each card, resolving an
+    /// `Effect::RefillCountersTo` — so the refill happened *as* the turn
+    /// began, among the abilities the rule puts it before, and a player with
+    /// another turn-start trigger was asked to order it (`dispatcher::
+    /// offer_trigger_order` counts any trigger with no failing requirement).
+    /// `rules::payment::refill` is a step of the turn now, and
+    /// `payment::place_recurring` the step of becoming active (1.10.5b). On
+    /// an identity it used to be a second mechanism altogether: a pair of
+    /// fields on `CorpState`, spendable only because `pay_cost` checked
+    /// whether a trace was active. `None` for the common case.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub recurring_credits: Option<u32>,
 
@@ -597,6 +613,12 @@ pub enum PaysFor {
     /// are deliberately not covered — the printed text names assets and
     /// ice.
     RezzingInThisServer,
+    /// Either player's bid in a trace attempt — NBN: Making News's "Use
+    /// these credits during trace attempts". It was not a word at all: the
+    /// identity's credits were a source whenever the Corp paid anything
+    /// while a trace was active, which was exact only because nothing else
+    /// can be paid for then.
+    TraceAttempts,
 }
 
 /// Semantic checks `serde`'s structural `Deserialize` can't express on its
@@ -612,6 +634,10 @@ pub enum CardValidationError {
     AgendaHasSubroutines(CardId),
     #[error("card {0:?} says what its hosted credits pay for but hosts no credits (`counter_kind: Credit`), or is an event or operation, which hosts nothing")]
     PaysForWithoutHostedCredits(CardId),
+    #[error("card {0:?} prints recurring credits but hosts no credits (`counter_kind: Credit`) or says nothing they may be spent on (`pays_for`)")]
+    RecurringCreditsWithNowhereToGo(CardId),
+    #[error("Runner identity {0:?} prints recurring credits, and only the Corp's identity can host credits in this engine (`CorpState::identity_counters`)")]
+    RunnerIdentityHostsNothing(CardId),
     #[error("card {0:?} trashes itself when a payment empties it (`trash_when_empty`) but no payment can take its credits (`pays_for` is empty)")]
     TrashWhenEmptyWithNothingToEmptyIt(CardId),
     #[error("Ice {0:?} must have a strength")]
@@ -743,6 +769,14 @@ impl CardDefinition {
         let hosts_credits = self.counter_kind == Some(CounterKind::Credit) && !matches!(self.card_type, CardType::Event | CardType::Operation);
         if !self.pays_for.is_empty() && !hosts_credits {
             return Err(CardValidationError::PaysForWithoutHostedCredits(self.id.clone()));
+        }
+        if self.recurring_credits.is_some() && (self.counter_kind != Some(CounterKind::Credit) || self.pays_for.is_empty()) {
+            return Err(CardValidationError::RecurringCreditsWithNowhereToGo(self.id.clone()));
+        }
+        // No Runner identity in the pool prints them, and there is nowhere
+        // to put them: refused, rather than a pool that silently never fills.
+        if self.recurring_credits.is_some() && self.card_type == CardType::Identity && self.side == Side::Runner {
+            return Err(CardValidationError::RunnerIdentityHostsNothing(self.id.clone()));
         }
         if self.trash_when_empty && self.pays_for.is_empty() {
             return Err(CardValidationError::TrashWhenEmptyWithNothingToEmptyIt(self.id.clone()));
@@ -1276,5 +1310,44 @@ mod tests {
         assert_eq!(ice(EffectDuration::Run).validate(), Ok(()));
         assert_eq!(ice(EffectDuration::Turn).validate(), Ok(()));
         assert_eq!(ice(EffectDuration::Encounter).validate(), Err(CardValidationError::ProhibitionForAnEncounter(CardId("bar".to_string()))));
+    }
+
+    #[test]
+    fn validate_refuses_hosted_credit_words_that_nothing_could_reach() {
+        let id = || CardId("pool".to_string());
+        let card = |edit: fn(&mut CardDefinition)| {
+            let mut card = CardDefinition {
+                id: id(),
+                side: Side::Runner,
+                card_type: CardType::Program,
+                counter_kind: Some(CounterKind::Credit),
+                recurring_credits: Some(2),
+                pays_for: vec![PaysFor::TrashCosts],
+                ..CardDefinition::default()
+            };
+            edit(&mut card);
+            card.validate()
+        };
+        assert_eq!(card(|_| {}), Ok(()), "Azimat's shape");
+        assert_eq!(card(|c| c.counter_kind = None), Err(CardValidationError::PaysForWithoutHostedCredits(id())));
+        assert_eq!(card(|c| c.card_type = CardType::Event), Err(CardValidationError::PaysForWithoutHostedCredits(id())), "an event is never installed");
+        assert_eq!(card(|c| c.pays_for.clear()), Err(CardValidationError::RecurringCreditsWithNowhereToGo(id())), "credits nothing may be spent on");
+        assert_eq!(card(|c| c.card_type = CardType::Identity), Err(CardValidationError::RunnerIdentityHostsNothing(id())));
+        assert_eq!(
+            card(|c| {
+                c.card_type = CardType::Identity;
+                c.side = Side::Corp;
+            }),
+            Ok(()),
+            "NBN: Making News's shape"
+        );
+        assert_eq!(
+            card(|c| {
+                c.recurring_credits = None;
+                c.pays_for.clear();
+                c.trash_when_empty = true;
+            }),
+            Err(CardValidationError::TrashWhenEmptyWithNothingToEmptyIt(id()))
+        );
     }
 }

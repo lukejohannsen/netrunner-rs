@@ -643,8 +643,6 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // Public (visible tokens on the granting card) and carried by the
         // view; zeroing them narrowed the Corp's affordable actions and
         // trace-bid range in the sample.
-        recurring_credits: view.corp.recurring_credits,
-        recurring_credits_max: view.corp.recurring_credits_max,
         // Public, and carried: which once-per-turn abilities are spent. A
         // Runner's view leaves out a use by a facedown Corp install, which
         // the sample then believes unspent — the one approximation left.
@@ -951,8 +949,7 @@ mod tests {
                 identity_counters: 0,
                 identity_flipped: false,
                 bad_publicity: 0,
-                recurring_credits: 0,
-                recurring_credits_max: 0, removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
+                removed_from_game: Vec::new(), once_per_turn_used: Default::default(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
@@ -1392,8 +1389,10 @@ mod tests {
 
         let mut state = CoreGameState::new(0);
         state.phase = GamePhase::Action(Side::Runner);
-        state.corp.recurring_credits = 2;
-        state.corp.recurring_credits_max = 3;
+        // An identity's recurring credits are hosted on it (NBN: Making
+        // News), so a sample carries them the way it carries any identity
+        // counter, with nothing of its own to copy.
+        state.corp.identity_counters = 2;
         state.corp.installed = vec![InstalledCard {
             card: CardId("corp_ice_0".to_string()),
             server: netrunner_core::rules::ServerId::Remote(0),
@@ -1460,8 +1459,7 @@ mod tests {
                 "{side:?}: a Trojan's host is public"
             );
 
-            assert_eq!(sampled.corp.recurring_credits, 2, "{side:?}");
-            assert_eq!(sampled.corp.recurring_credits_max, 3, "{side:?}");
+            assert_eq!(sampled.corp.identity_counters, 2, "{side:?}: credits hosted on the identity");
             // Rezzed, so its counters are visible to both sides.
             assert_eq!(sampled.corp.installed[0].counters, 4, "{side:?}");
         }

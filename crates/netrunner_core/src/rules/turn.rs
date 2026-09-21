@@ -338,7 +338,6 @@ pub(crate) fn enter_start_of_turn(
             events.push(GameEvent::CardDrawn { side: Side::Corp });
         }
 
-        next.corp.recurring_credits = next.corp.recurring_credits_max;
         // Both sides, at every turn start — "once per turn" means once per
         // *turn*, and a Corp ability used on the Corp's own turn must be
         // usable again during the Runner's. Clearing only the starting
@@ -359,6 +358,15 @@ pub(crate) fn enter_start_of_turn(
         next.corp.once_per_turn_used.clear();
         next.runner.servers_run_this_turn.clear();
     }
+
+    // Comprehensive Rules 1.10.5a/c: recurring credits refill "before
+    // abilities meet their trigger conditions for your turn beginning" — a
+    // step of the turn, ahead of the dispatch below. It was that dispatch:
+    // an `OnTurnStart` trigger on each card, resolved among the abilities
+    // the rule puts it before and offered to its owner to order against
+    // them. (NBN: Making News's was a line in the Corp branch above, the
+    // same step written a second way.)
+    events.extend(crate::rules::payment::refill(next, registry, next_side)?);
 
     // `Trigger::OnTurnStart` — e.g. PAD Campaign's "gain 1 credit". Only
     // rezzed Corp installs / any Runner rig card (always face-up) get their

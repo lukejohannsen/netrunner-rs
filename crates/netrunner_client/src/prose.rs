@@ -29,7 +29,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
-    Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, Preventable, Prohibition,
+    Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, PaysFor, Preventable, Prohibition,
     Scope, SubroutineBreakCount,
 };
 use netrunner_core::rules::{PendingDecision, ServerId, Side};
@@ -204,7 +204,6 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::Prevent(Preventable::Trash(filter)) => format!("prevent 1 installed card from being trashed ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Effect::AddCounters(n) => format!("place {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
-        Effect::RefillCountersTo(n) => format!("refill to {}", plural(*n, "counter", "counters")),
         Effect::EffectIf { condition, effect } => format!("if {}: {}", humanize(format!("{condition:?}")), describe_effect(effect, registry)),
         Effect::OfferPaidChoice { side, cost, if_paid, if_declined, .. } => format!(
             "{} may pay {} to {}; otherwise {}",
@@ -337,6 +336,20 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
             None => lines.push(format!("• [{when}] → {reading}")),
         }
     }
+    // What the card says about credits hosted on it. Neither was ever read
+    // out: what hosted credits pay for had no words here at all, and the
+    // refill was two trigger lines ("On install", "On turn start") that
+    // said when it happened and not what the credits were for.
+    if let Some(credits) = card.recurring_credits {
+        lines.push(format!(
+            "• [recurring] → when this becomes active, and before your turn begins, refill to {}",
+            plural(credits, "hosted credit", "hosted credits")
+        ));
+    }
+    if !card.pays_for.is_empty() {
+        let purposes: Vec<String> = card.pays_for.iter().map(describe_pays_for).collect();
+        lines.push(format!("• [hosted credits] → may be spent {}", purposes.join(", or ")));
+    }
     for effect in &card.continuous {
         let reading = describe_continuous(effect);
         match &effect.text {
@@ -356,6 +369,18 @@ pub fn engine_reading(card: &CardDefinition, registry: &CardRegistry) -> Vec<Str
         lines.push(format!("• [subroutine] \"{}\" → {}", sub.text.trim_end_matches('.'), describe_effect(&sub.effect, registry)));
     }
     lines
+}
+
+/// What a card's hosted credits may be spent on (`dsl::PaysFor`), as the
+/// end of the sentence "may be spent …". Exhaustive, so a new word does not
+/// compile until it has one here.
+pub fn describe_pays_for(word: &PaysFor) -> String {
+    match word {
+        PaysFor::TrashCosts => "to pay trash costs".to_string(),
+        PaysFor::Installing(filter) => format!("to install a card matching {}", humanize(format!("{filter:?}"))),
+        PaysFor::RezzingInThisServer => "to rez assets in the root of this server and ice protecting it".to_string(),
+        PaysFor::TraceAttempts => "during trace attempts".to_string(),
+    }
 }
 
 /// A standing effect as a sentence: whom it is about, what changes, and

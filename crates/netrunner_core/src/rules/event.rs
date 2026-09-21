@@ -339,7 +339,6 @@ pub enum GameEvent {
     CreditsLost { side: Side, amount: u32 },
     ClicksLost { side: Side, amount: u32 },
     ClicksGained { side: Side, amount: u32 },
-    RecurringCreditsSpent { amount: u32 },
     AgendaScored { card: CardId, agenda_points: u32, server: ServerId },
     /// Something a card may prevent was parked (`rules::prevention`), and
     /// the players are about to be asked. One event for every kind: what it
@@ -454,7 +453,7 @@ impl GameEvent {
             | GameEvent::BadPublicityGiven { .. } | GameEvent::BadPublicityRemoved { .. }
             | GameEvent::AdditionalAccessGranted { .. } | GameEvent::AccessReplacementSet { .. }
             | GameEvent::AccessReplaced { .. } | GameEvent::CreditsLost { .. } | GameEvent::ClicksLost { .. }
-            | GameEvent::ClicksGained { .. } | GameEvent::RecurringCreditsSpent { .. }
+            | GameEvent::ClicksGained { .. }
             | GameEvent::AgendaScored { .. } | GameEvent::AboutToResolve { .. }
             | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
             | GameEvent::BasicDrawActionTaken { .. }
