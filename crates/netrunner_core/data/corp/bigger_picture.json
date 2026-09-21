@@ -18,71 +18,78 @@
                 "GiveTags": 1
               },
               {
-                "Sequence": [
-                  {
-                    "LoseCreditsAmount": [
-                      "Runner",
-                      "RunnerTags"
+                "ChooseNumber": {
+                  "chooser": "Corp",
+                  "max": "RunnerTags",
+                  "then": {
+                    "Sequence": [
+                      {
+                        "RemoveTags": "ChosenNumber"
+                      },
+                      {
+                        "LoseCreditsAmount": [
+                          "Runner",
+                          "ChosenNumber"
+                        ]
+                      },
+                      {
+                        "GainCreditsAmount": [
+                          "Corp",
+                          "CreditsLostThisResolution"
+                        ]
+                      },
+                      {
+                        "LoseCreditsAmount": [
+                          "Runner",
+                          "ChosenNumber"
+                        ]
+                      },
+                      {
+                        "GainCreditsAmount": [
+                          "Corp",
+                          "CreditsLostThisResolution"
+                        ]
+                      },
+                      {
+                        "LoseCreditsAmount": [
+                          "Runner",
+                          "ChosenNumber"
+                        ]
+                      },
+                      {
+                        "GainCreditsAmount": [
+                          "Corp",
+                          "CreditsLostThisResolution"
+                        ]
+                      },
+                      {
+                        "LoseCreditsAmount": [
+                          "Runner",
+                          "ChosenNumber"
+                        ]
+                      },
+                      {
+                        "GainCreditsAmount": [
+                          "Corp",
+                          "CreditsLostThisResolution"
+                        ]
+                      },
+                      {
+                        "LoseCreditsAmount": [
+                          "Runner",
+                          "ChosenNumber"
+                        ]
+                      },
+                      {
+                        "GainCreditsAmount": [
+                          "Corp",
+                          "CreditsLostThisResolution"
+                        ]
+                      }
                     ]
                   },
-                  {
-                    "GainCreditsAmount": [
-                      "Corp",
-                      "CreditsLostThisResolution"
-                    ]
-                  },
-                  {
-                    "LoseCreditsAmount": [
-                      "Runner",
-                      "RunnerTags"
-                    ]
-                  },
-                  {
-                    "GainCreditsAmount": [
-                      "Corp",
-                      "CreditsLostThisResolution"
-                    ]
-                  },
-                  {
-                    "LoseCreditsAmount": [
-                      "Runner",
-                      "RunnerTags"
-                    ]
-                  },
-                  {
-                    "GainCreditsAmount": [
-                      "Corp",
-                      "CreditsLostThisResolution"
-                    ]
-                  },
-                  {
-                    "LoseCreditsAmount": [
-                      "Runner",
-                      "RunnerTags"
-                    ]
-                  },
-                  {
-                    "GainCreditsAmount": [
-                      "Corp",
-                      "CreditsLostThisResolution"
-                    ]
-                  },
-                  {
-                    "LoseCreditsAmount": [
-                      "Runner",
-                      "RunnerTags"
-                    ]
-                  },
-                  {
-                    "GainCreditsAmount": [
-                      "Corp",
-                      "CreditsLostThisResolution"
-                    ]
-                  },
-                  {
-                    "RemoveTags": 99
-                  }
-                ]
+                  "text": "Remove any number of tags"
+                }
               }
             ],
             "texts": [

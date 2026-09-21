@@ -150,6 +150,7 @@ pub(super) fn affordance_of(action: &PlayerAction, passing: bool) -> Affordance 
         | PlayerAction::ToggleCardSelection { .. }
         | PlayerAction::ConfirmCardSelection
         | PlayerAction::ChooseServerForPendingDecision { .. }
+        | PlayerAction::ChooseNumber { .. }
         | PlayerAction::KeepHand
         | PlayerAction::TakeMulligan
         // Discarding to hand size is the engine telling the person the

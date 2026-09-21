@@ -326,6 +326,7 @@ fn try_replace_access(
         .access_replacement
         .take()
         .expect("just confirmed access_replacement is Some above");
+    let card = state.active_run.as_mut().and_then(|run| run.access_replacement_card.take());
 
     if optional {
         // "You **may** … instead of breaching" (Account Siphon): the
@@ -343,15 +344,15 @@ fn try_replace_access(
                 crate::dsl::Effect::Sequence(vec![effect, crate::dsl::Effect::EndTheRun]),
                 crate::dsl::Effect::Sequence(Vec::new()),
             ],
-            source_card: None,
-            prompting_card: None,
+            source_card: card.clone(),
+            prompting_card: card,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,
         });
         return Ok(Some(vec![GameEvent::PendingChoicePresented { chooser: Side::Runner, option_count: 2 }]));
     }
 
-    let mut events = ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(None), registry)?;
+    let mut events = ability::evaluate_effect(state, &effect, &mut ability::ResolutionContext::for_card(card.as_ref()), registry)?;
     super::engine::end_run(state);
     events.push(GameEvent::AccessReplaced { server });
     Ok(Some(events))

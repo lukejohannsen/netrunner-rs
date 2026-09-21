@@ -456,6 +456,17 @@ servers rather than a count.
   `ChooseCards`, `ChooseServer`, `ChooseTriggerOrder`; the only number a
   player ever types is a trace bid. X costs and "pay up to N" have nowhere
   to park. jinteki has number, credit and counter prompts as kinds.
+
+  **Stage 1 done, 21 September 2026** (`docs/roadmap/rules-audit.md`,
+  backlog item 6). One kind, not three: a number from a range, offered as
+  one legal action per number the way a trace bid is, so nothing about a
+  client or a bot had to learn a new shape of prompt. What it found on the
+  way in is that the pool already printed chosen numbers and each card had
+  taken the most its text allows — Bigger Picture removing every tag is
+  the one that mattered. The chosen number is written into the effect
+  that resolves with it, which a continuation-passing engine like
+  jinteki's gets for free from a closure and ours has to say. X costs are
+  not built: no card in the pool prints one.
 - **One replacement per run.** `RunState::access_replacement` is a single
   `Option`; jinteki collects every `:successful-run` replacement and
   `choose-replacement-ability` asks the Runner which, adding "Breach" unless

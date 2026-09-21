@@ -23,7 +23,17 @@
                 ]
               },
               {
-                "RemoveTags": 2
+                "ChooseNumber": {
+                  "chooser": "Runner",
+                  "max": {
+                    "Fixed": 2
+                  },
+                  "of": "RunnerTags",
+                  "then": {
+                    "RemoveTags": "ChosenNumber"
+                  },
+                  "text": "Remove up to 2 tags"
+                }
               }
             ],
             "texts": [

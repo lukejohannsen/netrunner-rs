@@ -315,6 +315,21 @@ pub enum EffectRequirement {
 }
 
 impl EffectRequirement {
+    /// See `Effect::with_chosen_number`: a condition inside a chosen
+    /// number's `then` may read the number ("if you removed 2 or more").
+    pub fn with_chosen_number(self, number: u32) -> EffectRequirement {
+        match self {
+            EffectRequirement::AmountAtLeast(crate::dsl::Amount::ChosenNumber, at_least) => {
+                EffectRequirement::AmountAtLeast(crate::dsl::Amount::Fixed(number), at_least)
+            }
+            EffectRequirement::Not(inner) => EffectRequirement::Not(Box::new(inner.with_chosen_number(number))),
+            EffectRequirement::And(a, b) => {
+                EffectRequirement::And(Box::new(a.with_chosen_number(number)), Box::new(b.with_chosen_number(number)))
+            }
+            other => other,
+        }
+    }
+
     /// Whether this is, or contains under `And`/`Not`, a `OncePerTurn`.
     pub fn mentions_once_per_turn(&self) -> bool {
         match self {

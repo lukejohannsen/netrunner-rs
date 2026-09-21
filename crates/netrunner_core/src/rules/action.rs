@@ -393,7 +393,7 @@ pub enum PlayerAction {
     /// `RulesError::ActionBlockedByActiveTrace` — see `engine::apply_action`.
     /// See `rules::trace::submit_corp_bid`.
     SubmitCorpTraceBid { amount: u32 },
-    /// Runner commits `amount` credits (added to `RunnerState::link_strength`)
+    /// Runner commits `amount` credits (added to their link, `continuous::link`)
     /// against the Corp's already-submitted trace strength. Runner-only.
     /// Legal only while `active_trace` is `Some` with `corp_bid` set
     /// (`RulesError::TraceNotAwaitingRunnerBid` otherwise);
@@ -461,6 +461,20 @@ pub enum PlayerAction {
     /// initiating a run against it. `RulesError::NoPendingDecision` if none
     /// is parked (or a different variant is).
     ChooseServerForPendingDecision { server: ServerId },
+    /// Answers a pending `PendingDecision::ChooseNumber` with `amount`,
+    /// which resolves its `then` with that number. Whichever side the
+    /// decision names — no `side` field, as for every other answer to a
+    /// parked decision. `RulesError::NoPendingDecision` if none is parked
+    /// (or a different variant is); `RulesError::ChosenNumberOutOfRange` if
+    /// `amount` is outside the range the decision was parked with.
+    ///
+    /// Its own action rather than `ResolvePendingChoice { option_index }`
+    /// read as a number: that segment is `MAX_PENDING_CHOICE_OPTIONS` wide
+    /// and means "the nth thing the card lists", and a policy should not
+    /// have to learn that slot 3 is sometimes the number 3. The last
+    /// variant, and the last `ActionSpace` segment — appended, so no
+    /// existing index moved.
+    ChooseNumber { amount: u32 },
 }
 
 impl PlayerAction {
@@ -515,6 +529,7 @@ impl PlayerAction {
         "ToggleCardSelection",
         "ConfirmCardSelection",
         "ChooseServerForPendingDecision",
+        "ChooseNumber",
     ];
 
     /// This action's variant name — `"InstallProgram"`, never the payload.
@@ -581,6 +596,7 @@ mod tests {
             PlayerAction::ToggleCardSelection { position: 0 },
             PlayerAction::ConfirmCardSelection,
             PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq },
+            PlayerAction::ChooseNumber { amount: 0 },
         ];
         // The exhaustiveness pressure: a new variant fails to compile here.
         for action in &all {
@@ -625,7 +641,8 @@ mod tests {
                 | PlayerAction::ResolvePendingChoice { .. }
                 | PlayerAction::ToggleCardSelection { .. }
                 | PlayerAction::ConfirmCardSelection
-                | PlayerAction::ChooseServerForPendingDecision { .. } => {}
+                | PlayerAction::ChooseServerForPendingDecision { .. }
+                | PlayerAction::ChooseNumber { .. } => {}
             }
         }
         all

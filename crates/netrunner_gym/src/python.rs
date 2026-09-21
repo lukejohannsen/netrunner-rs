@@ -178,9 +178,14 @@ mod tests {
     /// `MAX_INSTALLED_PER_SIDE` one and layout v2 could not be: indices
     /// **shift** and an exported policy needs retraining rather than a
     /// resize. Keep appending where there is a choice.
+    ///
+    /// 1646 → 1677 for `ChooseNumber` (Rules Audit backlog item 6) was such
+    /// a choice, and appended: a policy exported at 1646 keeps every index
+    /// and needs 31 more outputs, which the mask holds illegal until a
+    /// card asks for a number.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 1646);
+        assert_eq!(ACTION_SPACE_SIZE, 1677);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

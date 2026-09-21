@@ -346,7 +346,8 @@ impl Session {
             let source_card = match decision {
                 PendingDecision::ChooseCards { source_card, prompting_card, .. }
                 | PendingDecision::ChooseEffect { source_card, prompting_card, .. }
-                | PendingDecision::ChooseServer { source_card, prompting_card, .. } => {
+                | PendingDecision::ChooseServer { source_card, prompting_card, .. }
+                | PendingDecision::ChooseNumber { source_card, prompting_card, .. } => {
                     prompting_card.clone().or_else(|| source_card.clone())
                 }
                 PendingDecision::ChooseTriggerOrder { .. } => None,

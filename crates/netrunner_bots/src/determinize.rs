@@ -587,7 +587,9 @@ fn determinize_run(
         ice_bypassed: false,
         additional_rd_access: 0,
         additional_hq_access: 0,
-        access_replacement: None, cards_accessed_count: 0,
+        access_replacement: None,
+        access_replacement_card: None,
+        cards_accessed_count: 0,
         // Approximated, like `cards_accessed_count`/`bad_publicity_credits`
         // above: `ClientView` doesn't carry either, and both only matter at
         // the moment the run ends (`Trigger::OnRunEnded`), which a

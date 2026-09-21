@@ -76,6 +76,7 @@ pub fn describe_amount(amount: &Amount) -> String {
         Amount::RemainingAfterSelection(n) => format!("{n} less the cards chosen"),
         Amount::ThreatLevel => "the threat level".to_string(),
         Amount::RunnerTags => "the Runner's tags".to_string(),
+        Amount::ChosenNumber => "the number chosen".to_string(),
         Amount::InHeapWithSubtype(subtype) => format!("the number of {} cards in the heap", humanize(format!("{subtype:?}")).to_lowercase()),
         Amount::IceProtectingThisServer => "the number of pieces of ice protecting this server".to_string(),
     }
@@ -161,7 +162,8 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::DrawCardsAmount(side, amount) => format!("{} draws cards equal to {}", who(*side), describe_amount(amount)),
         Effect::EndTheRun => "end the run".to_string(),
         Effect::GiveTags(n) => format!("give the Runner {}", plural(*n, "tag", "tags")),
-        Effect::RemoveTags(n) => format!("remove {}", plural(*n, "tag", "tags")),
+        Effect::RemoveTags(Amount::Fixed(n)) => format!("remove {}", plural(*n, "tag", "tags")),
+        Effect::RemoveTags(amount) => format!("remove tags equal to {}", describe_amount(amount)),
         Effect::GiveBadPublicity(n) => format!("the Corp takes {}", plural(*n, "bad publicity", "bad publicity")),
         Effect::RemoveBadPublicity(n) => format!("remove {}", plural(*n, "bad publicity", "bad publicity")),
         Effect::TrashCard(target) => format!("trash {}", describe_target(target, registry)),
@@ -216,6 +218,13 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
             "{} chooses: {}",
             who(*chooser),
             options.iter().map(|option| describe_effect(option, registry)).collect::<Vec<_>>().join(" / ")
+        ),
+        Effect::ChooseNumber { chooser, min, max, of, then, .. } => format!(
+            "{} chooses a number from {min} to {}{}, then: {}",
+            who(*chooser),
+            describe_amount(max),
+            of.as_ref().map(|of| format!(" (at most {})", describe_amount(of))).unwrap_or_default(),
+            describe_effect(then, registry)
         ),
         Effect::ResolveSomeOf { chooser, count, options, .. } => format!(
             "{} chooses {} of: {}",
@@ -451,7 +460,8 @@ pub fn decision_card(view: &ClientView) -> Option<&CardId> {
     match view.pending_decision.as_ref()? {
         PendingDecision::ChooseEffect { source_card, prompting_card, .. }
         | PendingDecision::ChooseCards { source_card, prompting_card, .. }
-        | PendingDecision::ChooseServer { source_card, prompting_card, .. } => prompting_card.as_ref().or(source_card.as_ref()),
+        | PendingDecision::ChooseServer { source_card, prompting_card, .. }
+        | PendingDecision::ChooseNumber { source_card, prompting_card, .. } => prompting_card.as_ref().or(source_card.as_ref()),
         PendingDecision::ChooseTriggerOrder { .. } => None,
     }
 }
@@ -485,6 +495,10 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
             None => asks("choose a server to run".to_string()),
         },
         PendingDecision::ChooseTriggerOrder { .. } => Some("Choose which trigger resolves first".to_string()),
+        // The card's own clause is the question (the Linked Clause Rule):
+        // "Bigger Picture asks — Remove any number of tags (0 to 3)".
+        PendingDecision::ChooseNumber { text, min, max, .. } if !text.is_empty() => asks(format!("{text} ({min} to {max})")),
+        PendingDecision::ChooseNumber { min, max, .. } => asks(format!("choose a number from {min} to {max}")),
     }
 }
 

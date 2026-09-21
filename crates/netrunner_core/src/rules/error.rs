@@ -311,6 +311,9 @@ pub enum RulesError {
     #[error("choice option index {0} is out of range for this pending decision")]
     InvalidChoiceIndex(usize),
 
+    #[error("{amount} is outside the {min}..={max} this pending decision asks for")]
+    ChosenNumberOutOfRange { amount: u32, min: u32, max: u32 },
+
     #[error("cannot take that action while a paid choice is pending ({side:?} must Accept or Decline it)")]
     ActionBlockedByPendingPaidChoice { side: Side },
 

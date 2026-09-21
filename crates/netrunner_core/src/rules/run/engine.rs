@@ -179,6 +179,7 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
         additional_rd_access: 0,
         additional_hq_access: 0,
         access_replacement: None,
+        access_replacement_card: None,
         access_state: None,
         bad_publicity_credits: state.corp.bad_publicity,
         server,

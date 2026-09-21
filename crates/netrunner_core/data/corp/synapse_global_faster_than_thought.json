@@ -49,7 +49,9 @@
       "effect": {
         "Sequence": [
           {
-            "RemoveTags": 1
+            "RemoveTags": {
+              "Fixed": 1
+            }
           },
           {
             "GainCredits": [

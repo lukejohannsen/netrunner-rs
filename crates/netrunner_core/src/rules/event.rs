@@ -379,6 +379,12 @@ pub enum GameEvent {
     PendingChoicePresented { chooser: Side, option_count: usize },
     /// `PlayerAction::ResolvePendingChoice` picked this option.
     PendingChoiceResolved { chooser: Side, option_index: usize },
+    /// `Effect::ChooseNumber` parked a `state::PendingDecision::
+    /// ChooseNumber`, awaiting `PlayerAction::ChooseNumber`.
+    NumberChoiceOffered { chooser: Side, min: u32, max: u32 },
+    /// `PlayerAction::ChooseNumber` named this number. Not emitted when the
+    /// range held one number and nobody was asked.
+    NumberChosen { chooser: Side, amount: u32 },
     /// `Effect::OfferPaidChoice` parked a `state::PendingPaidChoice`,
     /// awaiting `PlayerAction::AcceptPendingPaidChoice`/
     /// `DeclinePendingPaidChoice`.
@@ -464,6 +470,7 @@ impl GameEvent {
             | GameEvent::Prevented { .. } | GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. }
             | GameEvent::BasicDrawActionTaken { .. }
             | GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. }
+            | GameEvent::NumberChoiceOffered { .. } | GameEvent::NumberChosen { .. }
             | GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. }
             | GameEvent::PendingPaidChoiceDeclined { .. } => false,
         }

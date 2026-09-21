@@ -373,7 +373,11 @@ pub fn narrate_event(
         GameEvent::CountersAdded { .. } | GameEvent::CountersRemoved { .. } | GameEvent::BasicDrawActionTaken { .. } |
         GameEvent::PendingChoicePresented { .. } | GameEvent::PendingChoiceResolved { .. } |
         GameEvent::PendingPaidChoiceOffered { .. } | GameEvent::PendingPaidChoiceAccepted { .. } |
-        GameEvent::PendingPaidChoiceDeclined { .. } | GameEvent::PaymentChoiceOffered { .. } => return None,
+        GameEvent::PendingPaidChoiceDeclined { .. } | GameEvent::PaymentChoiceOffered { .. } |
+        GameEvent::NumberChoiceOffered { .. } => return None,
+        // A number named aloud is part of the record: what followed —
+        // two tags off, ten credits across — only reads with it.
+        GameEvent::NumberChosen { amount, .. } => format!("chose {amount}"),
     };
     Some(line)
 }
@@ -468,6 +472,9 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::PassPriority { side } => format!("Pass priority ({side:?})"),
         PlayerAction::SubmitCorpTraceBid { amount } => format!("Bid {amount} (Corp trace)"),
         PlayerAction::SubmitRunnerTraceBid { amount } => format!("Bid {amount} (Runner trace)"),
+        // The question is the card's own clause, over the buttons
+        // (`prose::decision_prompt`); a button is its number.
+        PlayerAction::ChooseNumber { amount } => format!("Choose {amount}"),
         // A paid choice is a cost and a consequence. The card's own clause
         // (`PendingPaidChoice::text`, quoted from the printed text) says
         // both; the cost is spelled out beside it because a `[click]` and
@@ -696,6 +703,7 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::ToggleCardSelection { .. } => "Add this card to the cards a card effect is asking you to choose, or take it back out to choose a different one.".to_string(),
         PlayerAction::ConfirmCardSelection => "Confirm the cards you selected: the card effect goes ahead with them.".to_string(),
         PlayerAction::ChooseServerForPendingDecision { server } => format!("Choose {server:?} as the server this card effect applies to: where the card it installs goes, or the server it runs."),
+        PlayerAction::ChooseNumber { amount } => format!("Answer the card that is asking for a number with {amount}: how many tags, credits or counters its effect is about."),
     }
 }
 
@@ -1203,6 +1211,7 @@ mod tests {
             PlayerAction::ToggleCardSelection { position: 0 },
             PlayerAction::ConfirmCardSelection,
             PlayerAction::ChooseServerForPendingDecision { server: ServerId::RnD },
+            PlayerAction::ChooseNumber { amount: 2 },
         ];
         assert_eq!(actions.len(), PlayerAction::VARIANT_NAMES.len(), "one instance per variant");
         let registry = CardRegistry::new();

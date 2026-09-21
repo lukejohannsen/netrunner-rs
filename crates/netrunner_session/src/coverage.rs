@@ -478,6 +478,16 @@ pub const ACTIONS_RARE_WITH_SAMPLE_DECKS: &[(&str, &str, u64)] = &[
     // to the hundreds once T1 is deleted; re-measure then.
     ("BreakSubroutineWithClick", "needs an encounter with a rezzed Ansel 1.0 or Brân 1.0", 1024),
     ("RemoveTag", "needs a tag the Runner still has on their own turn, with 2 credits", 128),
+    // Measured 3 in one 192-game random pass of the pool, by view and by
+    // index alike, and none at all from a heuristic seat, which plays
+    // neither card: Bigger Picture wants a tagged Runner and Lie Low is
+    // mostly played for its cards, with no tag to remove and so nothing to
+    // ask. A sweep is one-third random, so about 1 in 192 of its games —
+    // the 768-game view sweep reached it and the index sweep did not. The
+    // mechanism is held by volume elsewhere: 101 numbers chosen over 576
+    // random games of the three deck pairs that hold both cards, none
+    // stalled (`docs/roadmap/rules-audit.md`, backlog item 6).
+    ("ChooseNumber", "needs Bigger Picture's or Lie Low's tag removal chosen by a random seat against a tagged Runner", 2048),
     // *Byte!* (Pork Chops, Elevation Stage 7) is the pool's first
     // interactive-on-access card, so both halves of that decision left
     // `ACTIONS_UNREACHABLE_WITH_SAMPLE_DECKS`. Paying needs the Corp
