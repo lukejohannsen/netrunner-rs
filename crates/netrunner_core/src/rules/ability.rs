@@ -2120,6 +2120,7 @@ pub(crate) fn cost_is_affordable(
         // is exact for the shapes in the pool (clicks plus a self-trash
         // draw on different resources).
         Cost::AllOf(parts) => parts.iter().all(|part| cost_is_affordable(state, registry, side, part, purpose, ctx)),
+        Cost::RemoveTags(amount) => state.runner.tags >= *amount,
         Cost::TrashSelf | Cost::RemoveSelfFromGame | Cost::TakeTags(_) | Cost::ClearTags => true,
         Cost::TrashRandomFromHq(count) => state.corp.hq.len() as u32 >= *count,
     }
@@ -2207,6 +2208,16 @@ pub(crate) fn pay_cost_ctx(
             Ok(vec![GameEvent::TagsCleared { side }])
         }
 
+        Cost::RemoveTags(amount) => {
+            if state.runner.tags < *amount {
+                return Err(RulesError::RunnerNotTagged);
+            }
+            state.runner.tags -= *amount;
+            // Returned, not dispatched: the payer dispatches its cost's
+            // events after the effect (`dispatch_cost_events`).
+            Ok(vec![GameEvent::TagsRemoved { side: Side::Runner, amount: *amount }])
+        }
+
         Cost::TakeTags(amount) => {
             state.runner.tags = state.runner.tags.saturating_add(*amount);
             Ok(vec![GameEvent::TagsGiven { side: Side::Runner, amount: *amount }])
@@ -2240,6 +2251,38 @@ pub(crate) fn pay_cost_ctx(
             modify_counters(state, ctx, -i64::from(*amount))
         }
     }
+}
+
+/// Dispatches the events a cost produced that a card can hear — a tag
+/// taken (`Cost::TakeTags`: NBN: Reality Plus hears Funhouse's), a tag
+/// removed (`Cost::RemoveTags`: Synapse Global hears its own ability's) —
+/// for a payer to call once the effect the cost paid for has resolved.
+///
+/// After the effect and not between the cost and it, which is the order
+/// `resolve_accept` always had for a tag paid as a cost: if the effect
+/// parks something, a reaction dispatched here is queued behind it rather
+/// than fired underneath. Comprehensive Rules 1.16.3 puts a checkpoint
+/// after the payment, which would resolve such a reaction *before* the
+/// effect; no card in the pool can tell the two orders apart (Synapse's
+/// credits land before its install prompt rather than after), and a
+/// dispatch ahead of the effect would have to hold the effect behind
+/// whatever the reaction parks, which only a `Sequence` knows how to do.
+///
+/// `pay_cost_ctx` dispatches nothing itself, so every site that pays a
+/// data-driven cost calls this; `dispatcher::audit` names one that does
+/// not, in every test and both sweeps.
+pub(crate) fn dispatch_cost_events(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    cost_events: &[GameEvent],
+) -> Result<Vec<GameEvent>, RulesError> {
+    let mut fired = Vec::new();
+    for event in cost_events {
+        if !crate::rules::listeners::moments(state, event).is_empty() {
+            fired.extend(dispatcher::dispatch_event(state, registry, event)?);
+        }
+    }
+    Ok(fired)
 }
 
 /// Checks an `AbilityDef::requirement` gate before its cost/effect resolve —

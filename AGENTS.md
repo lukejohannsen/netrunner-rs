@@ -152,6 +152,8 @@ A player's credits are not all in one place: beside the credit pool there are th
 
 **A parked payment is ahead of the thing, not caused by it, so it is the one parked state that is masked** — in the view (`masking::PublicPendingPayment`: who is paying is public, what for is the payer's) **and in the log** (`masking::mask_logged_action_for_player`): the log mask shows a played event whole because an *applied* play is public, and a parked one is only submitted. Whenever something parks ahead of an action, check both channels.
 
+**A printed cost is a `Cost`, never an effect** (Rules Audit backlog item 8). "[trash]:", "remove 1 tag:", "trash this asset to…", "unless the Runner suffers…" are paid before what they pay for (Comprehensive Rules 1.16) and are never prevented (1.16.1a); written as an effect, a self-trash went through the prevention window and Sacrificial Construct saved a Fermenter that had just cashed in. An effect that reads the card its own cost removed reads `ResolutionContext::last_known`, taken by the payer before it pays. "If you do" is not a cost (1.16.11): Idiosyncresis's trash stays an effect. **`pay_cost_ctx` dispatches nothing; the payer dispatches its cost's events after the effect** (`ability::dispatch_cost_events`), so a new site that pays a data-driven cost calls it, and `dispatcher::audit` names one that does not.
+
 **A standing number is asked, never kept — link too.** `continuous::link` is the identity's printed link plus what the rig declares (`ContinuousKind::Link`, The Toolbox); it was `RunnerState::link_strength`, written once at setup.
 
 ### DSL Growth Rule

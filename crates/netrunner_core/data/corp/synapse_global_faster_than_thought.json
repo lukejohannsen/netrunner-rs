@@ -43,22 +43,19 @@
     {
       "trigger": "Paid",
       "cost": {
-        "Clicks": 1
-      },
-      "requirement": "IsTagged",
-      "effect": {
-        "Sequence": [
+        "AllOf": [
           {
-            "RemoveTags": {
-              "Fixed": 1
-            }
+            "Clicks": 1
           },
           {
-            "GainCredits": [
-              "Corp",
-              2
-            ]
+            "RemoveTags": 1
           }
+        ]
+      },
+      "effect": {
+        "GainCredits": [
+          "Corp",
+          2
         ]
       },
       "text": "[click], remove 1 tag: Gain 2[credit]."
