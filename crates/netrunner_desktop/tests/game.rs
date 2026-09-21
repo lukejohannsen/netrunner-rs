@@ -26,7 +26,7 @@ use netrunner_client::start::{Level, StartChoice, DEFAULT_CORP_DECK, DEFAULT_RUN
 use netrunner_core::rules::{GamePhase, PlayerAction, ServerId, Side};
 use netrunner_desktop::core::ClientCore;
 use netrunner_desktop::nav::Navigate;
-use netrunner_desktop::screens::game::{ActionsMenu, ChoiceCard, Click, Contact, DecisionPopup, Glowing, EndTurnNotice, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate};
+use netrunner_desktop::screens::game::{ActionsMenu, ChoiceCard, Click, Contact, DecisionPopup, Glowing, HelpRow, HudPanel, PhaseBarRow, PhaseStep, HudReadout, InstallFact, ScoreDetails, ScoreRow, LogRow, Model, Overlay, RunLane, ServerColumn, BoardFit, ControlBar, HandSlot, LiftedCard, ServerPlate};
 use netrunner_core::rules::InstallId;
 use netrunner_desktop::widgets::card_face::BodyText;
 use netrunner_desktop::screens::new_game::{self, ActiveMatch, LastGame};
@@ -602,8 +602,8 @@ fn letter(app: &mut App, key_code: KeyCode, c: &str) {
 /// by what they type: at the mulligan 1 keeps; on the Runner's turn C
 /// takes a credit, Ctrl-C does nothing, ? lists the keys and nothing acts
 /// under the list, M and I open the hovered card's menu and sheet, H turns
-/// the play helper on and saves it, and Enter with clicks left asks for a
-/// second Enter on the rail before the turn ends.
+/// the play helper on and saves it, and Enter with clicks left does
+/// nothing, because End turn is not offered then.
 #[test]
 fn the_keys_press_the_buttons_they_stand_for() {
     let (mut app, _dir) = headless_client();
@@ -658,14 +658,12 @@ fn the_keys_press_the_buttons_they_stand_for() {
     assert!(app.world().resource::<ClientCore>().settings.desktop.play_helper);
     letter(&mut app, KeyCode::KeyH, "h");
     assert!(!app.world().resource::<ClientCore>().settings.desktop.play_helper);
-    // Enter with clicks left: a notice on the rail, then the turn ends.
+    // Enter with clicks left does nothing: the engine does not list End
+    // turn while clicks remain (CR 5.6.2b), and a key is only its button.
     assert!(app.world().resource::<Model>().0.clicks_left() > 0);
+    let before = app.world().resource::<Model>().0.applied;
     type_key(&mut app, KeyCode::Enter, Key::Enter);
-    assert_eq!(app.world_mut().query::<&EndTurnNotice>().iter(app.world()).count(), 1, "the rail asks for a second Enter");
-    assert!(app.world().resource::<Model>().0.awaiting, "and nothing was sent");
-    type_key(&mut app, KeyCode::Enter, Key::Enter);
-    wait_for(&mut app, "the turn to end", |app| app.world().resource::<Model>().0.view.as_ref().is_some_and(|v| !matches!(v.phase, GamePhase::Action(Side::Runner)) || v.paid_ability_window.is_some()));
-    assert_eq!(app.world_mut().query::<&EndTurnNotice>().iter(app.world()).count(), 0);
+    assert!(app.world().resource::<Model>().0.awaiting && app.world().resource::<Model>().0.applied == before, "Enter sent nothing");
 }
 
 /// The bar has every control of the side, greyed until the engine lists
@@ -682,10 +680,21 @@ fn the_control_bar_greys_what_is_not_legal_and_submits_what_is() {
     }
     assert!(entity_with(&mut app, &Click::Control(Control::PurgeViruses)).is_none(), "the Corp's control is not on the Runner's bar");
     to_the_runners_turn(&mut app);
-    let (end_turn, disabled) = control_button(&mut app, Control::EndTurn);
-    assert!(!disabled, "End turn is live on the Runner's turn");
+    let (_, disabled) = control_button(&mut app, Control::EndTurn);
+    assert!(disabled, "End turn is greyed while the Runner has clicks (CR 5.6.2b)");
     let (_, jack_out) = control_button(&mut app, Control::JackOut);
     assert!(jack_out, "Jack out is greyed outside a run");
+    // Spend the clicks on the bar's own credit button.
+    while app.world().resource::<Model>().0.clicks_left() > 0 {
+        let left = app.world().resource::<Model>().0.clicks_left();
+        let (gain, disabled) = control_button(&mut app, Control::GainCredit);
+        assert!(!disabled, "a credit is always there to take");
+        press_entity(&mut app, gain);
+        wait_for(&mut app, "the click to be spent", |app| app.world().resource::<Model>().0.clicks_left() < left);
+        until_the_runners_turn(&mut app);
+    }
+    let (end_turn, disabled) = control_button(&mut app, Control::EndTurn);
+    assert!(!disabled, "End turn is live once the clicks are spent");
     let before = app.world().resource::<Model>().0.applied;
     press_entity(&mut app, end_turn);
     // Not `!awaiting`: at the bottom rung the Corp's next decision, and

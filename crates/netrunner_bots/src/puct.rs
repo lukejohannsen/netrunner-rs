@@ -1660,12 +1660,12 @@ mod tests {
     /// repeat bookkeeping lives on the agent.
     #[test]
     fn select_action_escapes_after_max_greedy_repeats() {
-        struct AlwaysEndTurn;
-        impl PolicyEvaluator for AlwaysEndTurn {
+        struct AlwaysGainCredit;
+        impl PolicyEvaluator for AlwaysGainCredit {
             fn evaluate(&self, state: &GameState, registry: &CardRegistry) -> (Vec<f32>, f32) {
                 let mask = get_action_mask(state, registry);
                 let mut priors = vec![0.0f32; ActionSpace::SIZE];
-                if let Some(index) = ActionSpace::index_of(state, &PlayerAction::EndTurn).filter(|&index| mask[index]) {
+                if let Some(index) = ActionSpace::index_of(state, &PlayerAction::GainCreditClick { side: Side::Corp }).filter(|&index| mask[index]) {
                     priors[index] = 1.0;
                 }
                 (priors, 0.0)
@@ -1685,14 +1685,14 @@ mod tests {
         let mut agent = PuctAgent::with_config(
             Side::Corp,
             7,
-            AlwaysEndTurn,
+            AlwaysGainCredit,
             PuctConfig { c_puct: 1.5, iterations: 16, max_depth: 2, ..PuctConfig::default() },
         );
         for _ in 0..MAX_GREEDY_REPEATS + 1 {
-            assert_eq!(agent.select_action(&view, &registry), PlayerAction::EndTurn, "greedy up to the bound");
+            assert_eq!(agent.select_action(&view, &registry), PlayerAction::GainCreditClick { side: Side::Corp }, "greedy up to the bound");
         }
         let escaped = agent.select_action(&view, &registry);
-        assert_ne!(escaped, PlayerAction::EndTurn, "the pick after the bound must be something else");
+        assert_ne!(escaped, PlayerAction::GainCreditClick { side: Side::Corp }, "the pick after the bound must be something else");
         assert!(view.legal_actions.contains(&escaped));
     }
 

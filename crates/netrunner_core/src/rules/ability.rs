@@ -3099,7 +3099,7 @@ mod tests {
         state.runner.once_per_turn_used.insert(OncePerTurnKey { card: None, install: None });
         assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Err(RulesError::RequirementNotMet));
 
-        crate::rules::turn::enter_start_of_turn(&mut state, &mut Vec::new(), Side::Runner, &CardRegistry::new()).unwrap();
+        crate::rules::turn::enter_start_of_turn(&mut state, &mut Vec::new(), Side::Runner).unwrap();
 
         assert_eq!(check_requirement(&state, &requirement, Side::Runner, &ResolutionContext::for_card(None), &CardRegistry::new()), Ok(()));
     }

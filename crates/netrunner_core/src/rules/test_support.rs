@@ -206,3 +206,17 @@ pub(crate) fn through_movement(
     }
     Ok((state, events))
 }
+
+/// `state` with the active side's clicks spent, ready for `EndTurn`.
+///
+/// `EndTurn` is refused while clicks remain (CR 5.6.2b; `RulesError::
+/// ClicksRemain`), and most tests that end a turn are about what the turn
+/// boundary does, not about how the clicks went. This stands in for
+/// spending them, without the credits or cards spending them would add.
+pub(crate) fn clicks_spent(state: &GameState) -> GameState {
+    let mut state = state.clone();
+    if let crate::rules::GamePhase::Action(side) = state.phase {
+        state.resources_mut(side).clicks = crate::rules::state::Clicks(0);
+    }
+    state
+}

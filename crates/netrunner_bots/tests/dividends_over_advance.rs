@@ -6,18 +6,21 @@
 //! costs no click, so both lines end with the agenda scored and the
 //! second is one click and one credit dearer for one counter. This test
 //! pins two things the 192-game reports cannot say precisely: that the
-//! term moves the decision at all, and that it does not move it for an
-//! agenda that pays no Dividends.
+//! term moves the *value* at all, and that it does not for an agenda that
+//! pays no Dividends.
 //!
-//! **It also records the budget.** A state evaluator cannot prefer the
-//! intermediate position on its own — the over-advanced agenda is worth
-//! ~2 while scoring it is worth ~40 — so the preference only appears
-//! once the search reaches the position *after* the score, where the two
-//! lines differ by the counter alone. That takes roughly 512 iterations
-//! here; at the 32 the benchmark and the coverage reports use, the Corp
-//! still scores at once. Recorded rather than tuned away: raising the
-//! weight until 32 iterations found it would mean valuing a counter
-//! above a point of agenda, which is wrong.
+//! **It also records the budget, and the budget moved.** A state evaluator
+//! cannot prefer the intermediate position on its own — the over-advanced
+//! agenda is worth ~2 while scoring it is worth ~40 — so the preference
+//! only appears once the search reaches the position *after* the score.
+//! Until September 2026 that took roughly 512 iterations. Since `EndTurn`
+//! is refused while clicks remain (CR 5.6.2b) and a turn begins with a
+//! window of its own (CR 5.6.1b), a turn is several plies longer, and no
+//! budget up to 4096 finds it: the 1.2 the counter is worth at the end of
+//! the turn is inside what the Runner's replies do to a 16-ply leaf.
+//! Recorded rather than tuned away: raising the weight until a search
+//! found it would mean valuing a counter above a point of agenda, which
+//! is wrong. The evaluator's own preference is pinned below instead.
 
 use netrunner_bots::{BotAgent, HeuristicAgent, PuctAgent, PuctConfig, UniformPolicyEvaluator};
 use netrunner_core::cards::CardRegistry;
@@ -72,16 +75,33 @@ fn choice_at(dividends: Option<u32>, iterations: usize) -> PlayerAction {
 const ADVANCE: PlayerAction = PlayerAction::AdvanceCard { target: InstallId(1) };
 const SCORE: PlayerAction = PlayerAction::ScoreAgenda { target: InstallId(1) };
 
+/// The term, where it acts: after "advance once more, then score" the
+/// Corp's position is worth more than after "score now" — the counter
+/// (2.0) against the click and credit it cost (0.8) — and for an agenda
+/// that pays no Dividends it is worth less.
 #[test]
-fn a_deep_search_over_advances_a_dividends_agenda() {
-    assert_eq!(choice_at(Some(1), 512), ADVANCE, "one more click buys a counter, and the points are still there after");
+fn the_evaluator_prefers_the_over_advanced_score_only_for_a_dividends_agenda() {
+    use netrunner_core::rules::apply_action;
+    for (dividends, better) in [(Some(1), true), (None, false)] {
+        let (state, registry) = position(dividends);
+        let value = |s: &GameState| netrunner_bots::evaluate_state(s, Side::Corp, &registry);
+        let scored = apply_action(&state, &registry, SCORE).expect("score").0;
+        let advanced = apply_action(&state, &registry, ADVANCE).expect("advance").0;
+        let advanced_then_scored = apply_action(&advanced, &registry, SCORE).expect("then score").0;
+        assert_eq!(value(&advanced_then_scored) > value(&scored), better, "dividends {dividends:?}");
+    }
+}
+
+/// The budget, recorded: see the module comment for why a deep search
+/// now scores at once.
+#[test]
+fn a_deep_search_now_scores_a_dividends_agenda_at_once() {
+    assert_eq!(choice_at(Some(1), 512), SCORE, "found at 512 before a turn's clicks had to be spent");
 }
 
 /// The control, and the one that would catch a weight set too high: the
 /// same position on an agenda that pays nothing for the extra token must
-/// not be advanced at any budget. (The deep search banks a credit
-/// instead of scoring at once — also sound, since scoring costs no click
-/// and can wait until the turn ends.)
+/// not be advanced at any budget.
 #[test]
 fn the_same_search_never_over_advances_an_agenda_that_pays_no_dividends() {
     for iterations in [32, 128, 512, 2048] {

@@ -60,7 +60,7 @@ fn hand_size(state: &GameState, side: Side) -> usize {
 /// How many cards `side` must still discard to be within its hand limit,
 /// derived fresh from live state every time.
 ///
-/// The **single** authority on that count: both `finish_end_turn` (deciding
+/// The **single** authority on that count: both `begin_discard_step` (deciding
 /// whether a discard phase is owed at all) and `discard_card` (deciding
 /// whether one is finished) call this rather than tracking a countdown, so
 /// the two can never disagree.
@@ -131,37 +131,25 @@ fn discard_to_pile(state: &mut GameState, side: Side, card_id: CardId) {
     }
 }
 
-/// End the active side's turn. Opens a `WindowCheckpoint::EndOfTurn { side }`
-/// paid ability window; closing it hands control to the other side via
-/// `finish_end_turn` (see that function's doc comment for what happens
-/// next — the hand-size/`Discard`/`enter_start_of_turn` logic this
-/// function used to run inline).
+/// Ends the active side's action phase: "If the Corp has any unspent
+/// [click], the Corp takes an action. Otherwise, skip to (d)" (CR 5.6.2b;
+/// the Runner's is 5.7.1f), and an action window "does not give the option
+/// to pass" (CR 9.2.6b). So `EndTurn` is refused while `side` has clicks
+/// left (`RulesError::ClicksRemain`): it is how the active player passes
+/// the paid ability window at the top of an action phase they have no
+/// clicks left for, and nothing else. It used to be legal with clicks in
+/// hand, and a bot, or a person pressing Enter, gave them up.
 ///
-/// Deliberately NOT modeled: card reactions to the end-of-turn *window*
-/// itself — only the window/priority machinery is generic. (Reactions to
-/// the discard phase ending are a different, modelled thing:
-/// `Trigger::OnDiscardPhaseEnd`, dispatched from `finish_end_turn`/
-/// `discard_card` — *Jinteki: Restoring Humanity*. An earlier version of
-/// this comment said no card had an end-of-turn trigger at all.)
+/// What follows is the rules' own order (CR 5.6.2d–5.6.3e, 5.7.1h–5.7.2e):
+/// the action phase ends ([`GameEvent::ActionPhaseEnded`], Cacophony), the
+/// side discards to its maximum hand size ([`begin_discard_step`]), a
+/// paid ability window opens (`WindowCheckpoint::EndOfTurn`), unspent
+/// clicks are lost, and the turn formally ends ([`finish_turn`]). The
+/// engine used to zero the clicks and open the window first and discard
+/// last.
 ///
-/// Credits are untouched — they carry over turn to turn. **Clicks are
-/// not**: unspent clicks are lost the moment a turn ends, so this zeroes
-/// them for `side`.
-///
-/// This used to leave them in place, on the reasoning that "every
-/// click-spending action is already gated by `engine::require_phase`, so
-/// leftover clicks are inert." That holds for *actions* and fails for
-/// *paid abilities*: `engine::activate_ability` resolves the acting side
-/// from card ownership whenever a `PaidAbilityWindow` is open, explicitly
-/// bypassing phase. A `Cost::Clicks` ability (Regolith Mining License's
-/// `[click]: take 3[c]`) could therefore be paid for off-turn, out of
-/// clicks that should no longer exist — at any run checkpoint, either turn
-/// boundary, or a `WindowCheckpoint::PostAction`.
-///
-/// Zeroed here rather than in `enter_start_of_turn` because clicks are
-/// lost when *this* turn ends, which is strictly earlier than when the
-/// opponent's begins — and the gap between the two is exactly the
-/// `EndOfTurn` window where they were spendable.
+/// Credits are untouched — they carry over turn to turn. The window keeps
+/// `phase == Action(side)`, which `run::check_run_may_begin` reads.
 pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = require_action_phase(state)?;
     if state.active_run.is_some() {
@@ -173,54 +161,29 @@ pub fn end_turn(state: &GameState, registry: &CardRegistry) -> Result<(GameState
     // letting it be resubmitted mid-window and silently reset priority back
     // to `side` regardless of who actually holds it.
     paid_ability::require_no_window(state)?;
+    let clicks = state.resources(side).clicks.0;
+    if clicks > 0 {
+        return Err(RulesError::ClicksRemain { side, clicks });
+    }
 
     let mut next = state.clone();
-    let mut events = vec![GameEvent::TurnEnded { side }];
-    // "When your action phase ends" (Cacophony) — before the end-of-turn
-    // window, which is the next step of the turn.
+    let mut events = Vec::new();
+    // "The Corp's action phase formally ends. Conditions related to the
+    // action phase ending are met" (CR 5.6.2d) — Cacophony.
     let action_phase_ended = GameEvent::ActionPhaseEnded { side };
     dispatcher::emit(&mut next, registry, &mut events, action_phase_ended)?;
-
-    // Before the window opens, so the window itself can't spend them —
-    // it is part of the turn ending, not more action phase. See this
-    // function's doc comment for why leaving them was unsafe.
-    next.resources_mut(side).clicks = Clicks(0);
-
-
-    events.push(paid_ability::open_window_for(&mut next, side, WindowCheckpoint::EndOfTurn { side }));
-
+    if next.is_over() {
+        return Ok((next, events));
+    }
+    events.extend(begin_discard_step(&mut next, side, registry)?);
     Ok((next, events))
 }
 
-/// Resumes what [`end_turn`]'s `WindowCheckpoint::EndOfTurn` window was
-/// pausing: the hand-size check `end_turn` used to run inline. Hands control
-/// to the other side via `enter_start_of_turn` if `side`'s hand is within
-/// its max hand size (`CORP_MAX_HAND_SIZE`/`RUNNER_MAX_HAND_SIZE`); otherwise
-/// transitions to `GamePhase::Discard { side, required }` first — control
-/// only passes once `PlayerAction::DiscardCard` (via [`discard_card`])
-/// clears it. Called only from `paid_ability::close_window`'s `EndOfTurn`
-/// arm.
-/// Emits `GameEvent::DiscardPhaseEnded` for `side` and dispatches whatever
-/// reacts to it. Called from both places a discard phase can end — cleared
-/// by `discard_card`, or skipped outright by `finish_end_turn` when the side
-/// was already within hand size — so `Trigger::OnDiscardPhaseEnd` fires
-/// exactly once per turn either way.
-fn dispatch_discard_phase_end(
-    state: &mut GameState,
-    side: Side,
-    registry: &CardRegistry,
-) -> Result<Vec<GameEvent>, RulesError> {
-    let event = GameEvent::DiscardPhaseEnded { side };
-    let mut events = vec![event.clone()];
-    events.extend(dispatcher::dispatch_event(state, registry, &event)?);
-    Ok(events)
-}
-
-pub(crate) fn finish_end_turn(
-    state: &mut GameState,
-    side: Side,
-    registry: &CardRegistry,
-) -> Result<Vec<GameEvent>, RulesError> {
+/// The discard step (CR 5.6.3a, 5.7.2a): `side` discards down to its
+/// maximum hand size. Parks in `GamePhase::Discard { side, required }`
+/// while cards are owed — [`discard_card`] clears it — and goes straight
+/// on to the end-of-turn window when none are.
+fn begin_discard_step(state: &mut GameState, side: Side, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
     let mut events = Vec::new();
     // A new Runner discard phase starts with an empty record whether or
     // not anything will be discarded in it — see
@@ -243,21 +206,62 @@ pub(crate) fn finish_end_turn(
         state.phase = GamePhase::Discard { side, required: over_by };
         events.push(GameEvent::DiscardPending { side, required: over_by });
     } else {
-        // The discard phase ends here even though it was skipped outright —
-        // in rules terms the phase still happened, so anything keyed on its
-        // end (Jinteki: Restoring Humanity) must still fire.
-        events.extend(dispatch_discard_phase_end(state, side, registry)?);
-        enter_start_of_turn(state, &mut events, side.other(), registry)?;
+        events.push(open_end_of_turn_window(state, side));
     }
     Ok(events)
 }
 
+/// The discard phase's paid ability window (CR 5.6.3b, 5.7.2b), after the
+/// discard. It runs under `Action(side)`, the phase the turn's guards
+/// already read as "this side's turn, no run may start"; closing it is
+/// [`finish_turn`].
+fn open_end_of_turn_window(state: &mut GameState, side: Side) -> GameEvent {
+    state.phase = GamePhase::Action(side);
+    paid_ability::open_window_for(state, side, WindowCheckpoint::EndOfTurn { side })
+}
+
+/// Emits `GameEvent::DiscardPhaseEnded` for `side` and dispatches whatever
+/// reacts to it — once per turn, at the turn's formal end, whether or not
+/// anything was discarded: in rules terms the phase still happened, so
+/// anything keyed on its end (Jinteki: Restoring Humanity) still fires.
+fn dispatch_discard_phase_end(
+    state: &mut GameState,
+    side: Side,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let event = GameEvent::DiscardPhaseEnded { side };
+    let mut events = vec![event.clone()];
+    events.extend(dispatcher::dispatch_event(state, registry, &event)?);
+    Ok(events)
+}
+
+/// Resumes after the end-of-turn window closes (`paid_ability::
+/// close_window`'s `EndOfTurn` arm): unspent clicks are lost (CR 5.6.3c),
+/// the turn formally ends — "conditions related to the turn or discard
+/// phase ending are met" (CR 5.6.3d) — and play proceeds to the other
+/// side's turn.
+pub(crate) fn finish_turn(
+    state: &mut GameState,
+    side: Side,
+    registry: &CardRegistry,
+) -> Result<Vec<GameEvent>, RulesError> {
+    // After the window, not before it: the window belongs to the discard
+    // phase of a turn whose clicks are not yet lost. No card in the pool
+    // gains a click there, and `EndTurn` is refused with clicks left, so
+    // this is almost always 0 already.
+    state.resources_mut(side).clicks = Clicks(0);
+    let mut events = vec![GameEvent::TurnEnded { side }];
+    events.extend(dispatch_discard_phase_end(state, side, registry)?);
+    enter_start_of_turn(state, &mut events, side.other())?;
+    Ok(events)
+}
+
 /// Discard `card_id` from hand to satisfy a pending mandatory discard (see
-/// [`end_turn`]). Errors with `RulesError::NotInDiscardPhase` outside
-/// `GamePhase::Discard`, or `RulesError::CardNotInHand` if the card isn't in
-/// the owing side's hand. Once the phase's `required` count reaches zero,
-/// hands control to the other side via `enter_start_of_turn` — the same
-/// handoff `end_turn` performs directly when no discard was owed at all.
+/// [`begin_discard_step`]). Errors with `RulesError::NotInDiscardPhase`
+/// outside `GamePhase::Discard`, or `RulesError::CardNotInHand` if the card
+/// isn't in the owing side's hand. Once the phase's `required` count
+/// reaches zero, opens the end-of-turn window — the same step
+/// `begin_discard_step` takes directly when no discard was owed at all.
 pub fn discard_card(
     state: &GameState,
     card_id: CardId,
@@ -276,8 +280,7 @@ pub fn discard_card(
     // phase's stored count — see `cards_over_hand_limit`'s doc comment.
     let remaining = cards_over_hand_limit(&next, side, registry);
     if remaining == 0 {
-        events.extend(dispatch_discard_phase_end(&mut next, side, registry)?);
-        enter_start_of_turn(&mut next, &mut events, side.other(), registry)?;
+        events.push(open_end_of_turn_window(&mut next, side));
     } else {
         next.phase = GamePhase::Discard { side, required: remaining };
     }
@@ -285,48 +288,27 @@ pub fn discard_card(
     Ok((next, events))
 }
 
-/// Flips control, refills clicks, and resolves `StartOfTurn(next_side)`'s
-/// mandatory triggers before auto-advancing to `Action(next_side)`.
-/// Centralizing entry here (rather than a bare side check inline in
-/// `end_turn`, as before `GamePhase` existed) is what lets a future
-/// `StartOfTurn(Runner)` trigger reuse this hook instead of `end_turn`/
-/// `discard_card` growing another special case. Called from both `end_turn`
-/// (hand size already within limits) and `discard_card` (last mandatory
-/// discard just cleared).
+/// The first steps of `next_side`'s turn, up to its first window: "The
+/// Corp gains their allotted clicks", then "a paid ability window occurs"
+/// (CR 5.6.1a–b; the Runner's are 5.7.1a–b). The turn's own bookkeeping —
+/// the turn counter, the turn log, the once-per-turn uses — moves here,
+/// because the window already belongs to the new turn. Closing the window
+/// is [`begin_turn`].
 ///
-/// If control is passing to the Corp and their R&D is empty, the Corp is
-/// unable to make their mandatory draw and loses immediately (deck-out) —
-/// the turn never actually starts: no clicks are refilled and no
-/// `TurnStarted` is emitted, only `GameEvent::GameOver`. This check has to
-/// live here rather than in `win::check_win_conditions`, since it's this
-/// exact draw attempt that fails, not a standing condition safely
-/// re-derivable from `GameState` alone elsewhere — see
-/// `check_win_conditions`'s doc comment.
+/// The one entry to a turn: from [`finish_turn`], and from setup for the
+/// Corp's first.
 pub(crate) fn enter_start_of_turn(
     next: &mut GameState,
     events: &mut Vec<GameEvent>,
     next_side: Side,
-    registry: &CardRegistry,
 ) -> Result<(), RulesError> {
     // The discard-phase-end dispatch just before this can end the game
     // (a flatlining `OnDiscardPhaseEnd`); writing `StartOfTurn` over a
-    // `GameOver` would revert the win. Same guard again below, after the
-    // start-of-turn triggers, before a window is opened over the corpse.
+    // `GameOver` would revert the win.
     if next.is_over() {
         return Ok(());
     }
     next.phase = GamePhase::StartOfTurn(next_side);
-
-    if next_side == Side::Corp && next.corp.r_and_d.is_empty() {
-        events.extend(win::end_game(next, Side::Runner));
-        return Ok(());
-    }
-
-    // Below the deck-out return above, so a Corp that cannot make its
-    // mandatory draw never counts the turn it failed to start — matching
-    // this function's own "the turn never actually starts" rule, and
-    // keeping `turn` in lockstep with `TurnStarted`, which is emitted
-    // nowhere else.
     next.turn += 1;
 
     // Aggressive Trendsetting's "+1 allotted [click] for your next turn",
@@ -338,69 +320,74 @@ pub(crate) fn enter_start_of_turn(
         Side::Corp => std::mem::take(&mut next.corp.extra_clicks_next_turn),
         Side::Runner => 0,
     };
-    let clicks = clicks_for(next_side) + banked;
-    next.resources_mut(next_side).clicks = Clicks(clicks);
-    let turn_started_event = GameEvent::TurnStarted { side: next_side, clicks };
-    events.push(turn_started_event.clone());
+    next.resources_mut(next_side).clicks = Clicks(clicks_for(next_side) + banked);
 
-    // Before `TurnStarted` is dispatched, so the new turn's first moment is
-    // the turn beginning.
+    // Before the turn's first moment, so the new turn counts from here.
     turn_log::rotate(next);
-    if next_side == Side::Corp {
-        // Top of R&D mirrors `RunnerState::stack`'s convention — drawing
-        // pops the end of the Vec (see `engine.rs::draw_card_click`).
-        if let Some(card) = next.corp.r_and_d.pop() {
-            next.corp.hq.push(card);
-            events.push(GameEvent::CardDrawn { side: Side::Corp });
-        }
-
-        // Both sides, at every turn start — "once per turn" means once per
-        // *turn*, and a Corp ability used on the Corp's own turn must be
-        // usable again during the Runner's. Clearing only the starting
-        // side's set made a Corp gate span its own turn and the Runner's
-        // as one window, which Phật Gioan Baotixita ("the first time each
-        // turn an agenda is scored or stolen" — either player's turn)
-        // reads from both sides of.
-        next.corp.once_per_turn_used.clear();
-        next.runner.once_per_turn_used.clear();
-        // Everything still installed was necessarily installed on an earlier
-        // turn — Seamless Launch's "did not install this turn" eligibility.
-        for installed in &mut next.corp.installed {
-            installed.installed_this_turn = false;
-        }
-    } else {
-        // Both sides — see the Corp branch above.
-        next.runner.once_per_turn_used.clear();
-        next.corp.once_per_turn_used.clear();
-        next.runner.servers_run_this_turn.clear();
+    // Both sides, at every turn start — "once per turn" means once per
+    // *turn*, and a Corp ability used on the Corp's own turn must be
+    // usable again during the Runner's. Clearing only the starting side's
+    // set made a Corp gate span its own turn and the Runner's as one
+    // window, which Phật Gioan Baotixita ("the first time each turn an
+    // agenda is scored or stolen" — either player's turn) reads from both
+    // sides of.
+    next.corp.once_per_turn_used.clear();
+    next.runner.once_per_turn_used.clear();
+    match next_side {
+        // Everything still installed was necessarily installed on an
+        // earlier turn — Seamless Launch's "did not install this turn"
+        // eligibility.
+        Side::Corp => next.corp.installed.iter_mut().for_each(|installed| installed.installed_this_turn = false),
+        Side::Runner => next.runner.servers_run_this_turn.clear(),
     }
 
-    // Comprehensive Rules 1.10.5a/c: recurring credits refill "before
-    // abilities meet their trigger conditions for your turn beginning" — a
-    // step of the turn, ahead of the dispatch below. It was that dispatch:
-    // an `OnTurnStart` trigger on each card, resolved among the abilities
-    // the rule puts it before and offered to its owner to order against
-    // them. (NBN: Making News's was a line in the Corp branch above, the
-    // same step written a second way.)
-    events.extend(crate::rules::payment::refill(next, registry, next_side)?);
-
-    // `Trigger::OnTurnStart` — e.g. PAD Campaign's "gain 1 credit". Only
-    // rezzed Corp installs / any Runner rig card (always face-up) get their
-    // start-of-turn ability; an unrezzed asset stays silent, same as every
-    // other rez-gated ability in this engine — `dispatch_event` applies this
-    // same scoping from `GameEvent::TurnStarted::side`.
-    events.extend(dispatcher::dispatch_event(next, registry, &turn_started_event)?);
-    if next.is_over() {
-        return Ok(());
-    }
-
-    // Open a paid ability window before handing control over, giving both
-    // sides a chance to fire a `Trigger::Paid` ability at the top of the new
-    // turn. `next.phase` stays `StartOfTurn(next_side)` while it's open;
-    // closing it (`paid_ability::close_window`'s `StartOfTurn` arm) sets
-    // `phase = Action(next_side)`.
-    events.push(paid_ability::open_window_for(next, next_side, WindowCheckpoint::StartOfTurn { side: next_side }));
+    events.push(paid_ability::open_window_for(next, next_side, WindowCheckpoint::TurnBeginning { side: next_side }));
     Ok(())
+}
+
+/// Resumes after the turn's first window closes (`paid_ability::
+/// close_window`'s `TurnBeginning` arm), in the rules' order (CR
+/// 5.6.1c–f, 5.7.1c–e): recurring credits refill, the turn formally begins
+/// (`GameEvent::TurnStarted`, which `Trigger::OnTurnStart` hears), the Corp
+/// makes its mandatory draw, and a window opens ahead of the first action
+/// (`WindowCheckpoint::StartOfTurn`, whose closing sets `Action(side)`).
+///
+/// The Corp used to draw before its turn began, so Au Co.'s look at the
+/// top 3 of R&D saw the three after the drawn card, and a Corp with an
+/// empty R&D lost before its turn started. Now the draw is the step it
+/// is, and a failed one loses there (CR 1.7.2c) — after the turn-begins
+/// abilities, which may have drawn or looked, have resolved.
+pub(crate) fn begin_turn(state: &mut GameState, side: Side, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+    // Comprehensive Rules 1.10.5a/c: recurring credits refill "before
+    // abilities meet their trigger conditions for your turn beginning".
+    let mut events = crate::rules::payment::refill(state, registry, side)?;
+
+    // "The Corp's turn formally begins. Conditions related to the turn
+    // beginning are met" (CR 5.6.1d) — PAD Campaign's "gain 1 credit".
+    let clicks = state.resources(side).clicks.0;
+    let turn_started = GameEvent::TurnStarted { side, clicks };
+    dispatcher::emit(state, registry, &mut events, turn_started)?;
+    if state.is_over() {
+        return Ok(events);
+    }
+
+    if side == Side::Corp {
+        // "The Corp performs their mandatory draw" (CR 5.6.1e). Top of R&D
+        // is the end of the Vec, as `RunnerState::stack`'s is.
+        match state.corp.r_and_d.pop() {
+            Some(card) => {
+                state.corp.hq.push(card);
+                events.push(GameEvent::CardDrawn { side: Side::Corp });
+            }
+            None => {
+                events.extend(win::end_game(state, Side::Runner));
+                return Ok(events);
+            }
+        }
+    }
+
+    events.push(paid_ability::open_window_for(state, side, WindowCheckpoint::StartOfTurn { side }));
+    Ok(events)
 }
 
 #[cfg(test)]
@@ -550,18 +537,20 @@ mod tests {
         let (next, _) = close_all_windows(next, &registry);
         assert_eq!(next.turn, 1, "Runner's turn began");
 
-        let mut next = next;
+        let mut next = crate::rules::test_support::clicks_spent(&next);
         next.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
         let (next, _) = end_turn(&next, &registry).expect("should succeed");
         let (next, _) = close_all_windows(next, &registry);
         assert_eq!(next.turn, 2, "Corp's turn began");
     }
 
-    /// A Corp that cannot make its mandatory draw loses before the turn
-    /// starts — no clicks, no `TurnStarted`, and so no increment either.
-    /// `turn` and `TurnStarted` must never disagree.
+    /// A Corp that cannot make its mandatory draw loses at the draw (CR
+    /// 5.6.1e, 1.7.2c), which comes after its turn has formally begun
+    /// (5.6.1d) — so the turn is counted, `TurnStarted` is in the record
+    /// ahead of the `GameOver`, and the two never disagree. The Corp used to
+    /// lose before its turn started.
     #[test]
-    fn a_corp_deck_out_does_not_advance_the_turn_counter() {
+    fn a_corp_deck_out_comes_after_its_turn_begins() {
         let state = game_state(Side::Runner, 0, 5, 0, 2);
         let registry = CardRegistry::new();
         let turn_before = state.turn;
@@ -572,8 +561,10 @@ mod tests {
         events.extend(close_events);
 
         assert_eq!(next.phase, GamePhase::GameOver(Side::Runner));
-        assert_eq!(next.turn, turn_before, "the turn never started, so it is not counted");
-        assert!(!events.iter().any(|e| matches!(e, GameEvent::TurnStarted { .. })));
+        assert_eq!(next.turn, turn_before + 1, "the turn began, then the draw failed");
+        let began = events.iter().position(|e| matches!(e, GameEvent::TurnStarted { side: Side::Corp, .. })).expect("the turn began");
+        let over = events.iter().position(|e| matches!(e, GameEvent::GameOver { winner: Side::Runner })).expect("and was lost");
+        assert!(began < over, "{events:?}");
     }
 
     #[test]
@@ -585,15 +576,33 @@ mod tests {
         assert_eq!(next.runner.resources.credits, Credits(2));
     }
 
+    /// CR 5.6.2b: "If the Corp has any unspent [click], the Corp takes an
+    /// action", and an action window "does not give the option to pass"
+    /// (CR 9.2.6b). Ending the turn holding clicks used to be legal, and
+    /// gave them up.
     #[test]
-    fn ending_a_turn_with_clicks_left_loses_them() {
-        // Ends the turn early, holding 2 of 3 clicks.
+    fn ending_a_turn_with_clicks_left_is_refused() {
         let state = game_state(Side::Corp, 2, 5, 0, 2);
 
-        let (next, _events) = end_turn(&state, &CardRegistry::new()).expect("should succeed");
+        assert_eq!(end_turn(&state, &CardRegistry::new()), Err(RulesError::ClicksRemain { side: Side::Corp, clicks: 2 }));
+        let legal = crate::rules::legal_actions(&state, &CardRegistry::new());
+        assert!(!legal.contains(&PlayerAction::EndTurn), "{legal:?}");
+    }
+
+    /// Unspent clicks are lost at CR 5.6.3c, after the discard phase's
+    /// window and before the turn formally ends. `EndTurn` needs none left,
+    /// so this is a click gained after it: the loss still happens.
+    #[test]
+    fn a_click_gained_in_the_end_of_turn_window_is_lost_with_the_turn() {
+        let state = game_state(Side::Corp, 0, 5, 0, 2);
+        let registry = CardRegistry::new();
+        let (mut next, _) = end_turn(&state, &registry).expect("should succeed");
+        next.corp.resources.clicks = Clicks(1);
+        let (next, events) = close_all_windows(next, &registry);
 
         assert_eq!(next.corp.resources.clicks, Clicks(0), "unspent clicks are lost at end of turn");
         assert_eq!(next.corp.resources.credits, Credits(5), "credits, unlike clicks, carry over");
+        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Corp }));
     }
 
     /// The regression this exists for. `activate_ability` resolves the
@@ -624,8 +633,9 @@ mod tests {
             ..Default::default()
         });
 
-        // Corp ends its turn holding 2 clicks, with the asset rezzed.
-        let mut state = game_state(Side::Corp, 2, 5, 0, 2);
+        // Corp ends its turn, with the asset rezzed. It cannot end it
+        // holding clicks (CR 5.6.2b), so none are left to spend.
+        let mut state = game_state(Side::Corp, 0, 5, 0, 2);
         state.corp.installed = vec![InstalledCard {
             install_id: InstallId(1068),
             card: CardId("regolith_mining_license".to_string()),
@@ -676,39 +686,51 @@ mod tests {
         assert_eq!(window.consecutive_passes, 0);
         assert_eq!(
             events,
-            vec![
-                GameEvent::TurnEnded { side: Side::Corp },
-                GameEvent::ActionPhaseEnded { side: Side::Corp },
-                GameEvent::PaidAbilityWindowOpened { side: Side::Corp }
-            ]
+            vec![GameEvent::ActionPhaseEnded { side: Side::Corp }, GameEvent::PaidAbilityWindowOpened { side: Side::Corp }],
+            "the discard step came first, with nothing to discard; the turn ends when the window closes"
         );
         // Control hasn't actually passed yet — this is still the ending side's turn.
         assert_eq!(next.phase, GamePhase::Action(Side::Corp));
     }
 
+    /// CR 5.6.1: the Corp gains its clicks, a window opens, recurring
+    /// credits refill, the turn formally begins, and only then does the
+    /// Corp draw — followed by the window ahead of its first action. The
+    /// engine used to draw first and have one window, after everything.
     #[test]
-    fn enter_start_of_turn_opens_a_start_of_turn_window_after_mandatory_draw_and_ontrunstart_triggers() {
+    fn a_corp_turn_begins_with_clicks_and_a_window_then_begins_formally_then_draws() {
         let mut state = game_state(Side::Runner, 0, 5, 0, 2);
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
         let registry = CardRegistry::new();
+        let pass = |state: GameState, events: &mut Vec<GameEvent>| {
+            let side = state.paid_ability_window.as_ref().expect("a window is open").active_priority;
+            let (state, ev) = crate::rules::apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("pass");
+            events.extend(ev);
+            state
+        };
 
         let (state, mut events) = end_turn(&state, &registry).expect("should succeed");
-        let side = state.paid_ability_window.as_ref().expect("EndOfTurn window should be open").active_priority;
-        let (state, ev) = crate::rules::apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("first pass should succeed");
-        events.extend(ev);
-        let side = state.paid_ability_window.as_ref().expect("still open after one pass").active_priority;
-        let (state, ev) = crate::rules::apply_action(&state, &registry, PlayerAction::PassPriority { side })
-            .expect("second pass should close the EndOfTurn window and open a StartOfTurn one");
-        events.extend(ev);
+        let state = pass(pass(state, &mut events), &mut events);
 
-        // Corp already drew (mandatory draw is part of entering their turn).
-        assert!(state.corp.hq.contains(&CardId("hedge_fund".to_string())));
+        // 5.6.1a–b: clicks, then the window — nothing has begun or been drawn.
         assert_eq!(state.phase, GamePhase::StartOfTurn(Side::Corp));
+        assert_eq!(state.corp.resources.clicks, Clicks(3));
+        let window = state.paid_ability_window.as_ref().expect("the turn's first window");
+        assert_eq!(window.checkpoint, WindowCheckpoint::TurnBeginning { side: Side::Corp });
+        assert_eq!(window.active_priority, Side::Corp);
+        assert!(!events.iter().any(|e| matches!(e, GameEvent::TurnStarted { .. })));
+        assert!(!state.corp.hq.contains(&CardId("hedge_fund".to_string())));
+
+        let mut events = Vec::new();
+        let state = pass(pass(state, &mut events), &mut events);
+
+        // 5.6.1d–e, then 5.6.2a: the turn begins, the Corp draws, a window.
+        let began = events.iter().position(|e| *e == GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }).expect("the turn began");
+        let drew = events.iter().position(|e| *e == GameEvent::CardDrawn { side: Side::Corp }).expect("the Corp drew");
+        assert!(began < drew, "{events:?}");
+        assert!(state.corp.hq.contains(&CardId("hedge_fund".to_string())));
         let window = state.paid_ability_window.expect("a StartOfTurn window should be open");
         assert_eq!(window.checkpoint, WindowCheckpoint::StartOfTurn { side: Side::Corp });
-        assert_eq!(window.active_priority, Side::Corp);
-        assert!(events.contains(&GameEvent::CardDrawn { side: Side::Corp }));
-        assert!(events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
     }
 
     #[test]
@@ -756,16 +778,13 @@ mod tests {
         events.extend(close_events);
 
         // Deck-out: the Corp can't make their mandatory draw, so the game
-        // ends immediately — no underflow/panic, but also no turn starts
-        // (no clicks refilled, no `TurnStarted`), and no further window
-        // opens once `GameOver` is reached.
+        // ends at the draw (CR 1.7.2c) — no underflow/panic, and no
+        // further window opens once `GameOver` is reached.
         assert!(next.corp.hq.is_empty());
         assert_eq!(next.phase, GamePhase::GameOver(Side::Runner));
-        assert_eq!(next.corp.resources.clicks, Clicks(0));
         assert_eq!(next.paid_ability_window, None);
         assert!(events.contains(&GameEvent::TurnEnded { side: Side::Runner }));
         assert!(events.contains(&GameEvent::GameOver { winner: Side::Runner }));
-        assert!(!events.contains(&GameEvent::TurnStarted { side: Side::Corp, clicks: 3 }));
     }
 
     #[test]
@@ -805,7 +824,9 @@ mod tests {
         assert_eq!(next.phase, GamePhase::Discard { side: Side::Corp, required: 1 });
         // Control has NOT passed to the Runner yet — clicks are untouched.
         assert_eq!(next.runner.resources.clicks, Clicks(0));
-        assert!(events.contains(&GameEvent::TurnEnded { side: Side::Corp }));
+        // The discard comes before the window and the turn's end (CR 5.6.3).
+        assert!(next.paid_ability_window.is_none());
+        assert!(!events.contains(&GameEvent::TurnEnded { side: Side::Corp }));
         assert!(events.contains(&GameEvent::DiscardPending { side: Side::Corp, required: 1 }));
     }
 
@@ -820,8 +841,9 @@ mod tests {
             let mut state = game_state(Side::Runner, 0, 5, 0, 2);
             state.corp.r_and_d = vec![CardId("filler".to_string())];
             state.runner.brain_damage = core_damage;
-            let (next, _) = end_turn(&state, &registry).expect("the Runner ends their turn");
-            let (next, events) = close_all_windows(next, &registry);
+            let (next, mut events) = end_turn(&state, &registry).expect("the Runner ends their turn");
+            let (next, close_events) = close_all_windows(next, &registry);
+            events.extend(close_events);
 
             if flatlined {
                 assert_eq!(next.phase, GamePhase::GameOver(Side::Corp), "{events:?}");
@@ -891,7 +913,7 @@ mod tests {
     /// carrying a fabricated `required`: since `cards_over_hand_limit`
     /// re-derives the count from live state, a stored count that live state
     /// doesn't support is no longer meaningful (and could never be produced
-    /// by `finish_end_turn` in the first place).
+    /// by `begin_discard_step` in the first place).
     #[test]
     fn discard_card_with_more_than_one_owed_stays_in_discard_phase() {
         let mut state = game_state(Side::Corp, 0, 5, 0, 2);
@@ -914,7 +936,7 @@ mod tests {
 
     /// The stored `required` is a report, not the authority: a phase
     /// claiming more discards than live state actually owes resolves on the
-    /// live figure. Unreachable via `finish_end_turn` today — this pins the
+    /// live figure. Unreachable via `begin_discard_step` today — this pins the
     /// re-derivation itself, which exists so a future mid-discard trigger
     /// (drawing a card, raising max hand size, dealing brain damage) can't
     /// desynchronize the count. See `cards_over_hand_limit`.

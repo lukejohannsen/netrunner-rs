@@ -257,10 +257,6 @@ pub struct RunIdentityArt(Handle<Image>);
 #[derive(Component)]
 pub struct PhaseStep(pub netrunner_client::board::phase::State);
 
-/// The rail's line asking for a second Enter, for a test to find.
-#[derive(Component)]
-pub struct EndTurnNotice;
-
 /// A row of the list of keys, for a test to count.
 #[derive(Component)]
 pub struct HelpRow;
@@ -2305,13 +2301,6 @@ fn spawn_rail(parent: &mut ChildSpawnerCommands, theme: &Theme, game: &Game, hel
     }
     if let Some(reason) = &game.break_stopped {
         parent.spawn((widgets::notice(theme, reason.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
-    }
-    if game.end_turn_armed {
-        let clicks = match game.clicks_left() {
-            1 => "1 click".to_string(),
-            n => format!("{n} clicks"),
-        };
-        parent.spawn((EndTurnNotice, widgets::notice(theme, format!("{clicks} left — press Enter again to end the turn."), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));
     }
     if let Some(reason) = &game.stalled {
         parent.spawn((widgets::notice(theme, reason.clone(), ()), TextLayout::new(Justify::Left, LineBreak::WordBoundary)));

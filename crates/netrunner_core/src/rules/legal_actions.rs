@@ -914,7 +914,8 @@ mod tests {
     fn click_count_constraint() {
         let with_clicks = legal_actions(&corp_state(3, 5), &CardRegistry::new());
         assert!(with_clicks.contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
-        assert!(with_clicks.contains(&PlayerAction::EndTurn));
+        // CR 5.6.2b: with clicks left, the Corp takes an action.
+        assert!(!with_clicks.contains(&PlayerAction::EndTurn));
 
         let without_clicks = legal_actions(&corp_state(0, 5), &CardRegistry::new());
         assert!(!without_clicks.contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
@@ -1028,7 +1029,7 @@ mod tests {
         }
         assert!(runner_legal.contains(&PlayerAction::GainCreditClick { side: Side::Runner }));
         assert!(runner_legal.contains(&PlayerAction::DrawCardClick { side: Side::Runner }));
-        assert!(runner_legal.contains(&PlayerAction::EndTurn));
+        assert!(!runner_legal.contains(&PlayerAction::EndTurn), "four clicks left");
 
         let corp_legal = legal_actions(&corp_state(3, 5), &registry);
         for action in &corp_legal {
@@ -1442,6 +1443,7 @@ mod tests {
         let registry = CardRegistry::new();
         assert!(legal_actions_for(&corp, &registry, Side::Corp).contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
         assert!(!legal_actions_for(&corp, &registry, Side::Runner).contains(&PlayerAction::GainCreditClick { side: Side::Corp }));
+        let corp = corp_state(0, 5);
         assert!(legal_actions_for(&corp, &registry, Side::Corp).contains(&PlayerAction::EndTurn));
         assert!(!legal_actions_for(&corp, &registry, Side::Runner).contains(&PlayerAction::EndTurn));
     }

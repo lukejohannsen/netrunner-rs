@@ -13,12 +13,11 @@
 //! declined by the person: the bar's buttons ask nothing either, and a
 //! key that asks is slower than the pointer it replaces.
 //!
-//! **Enter asks twice while clicks are left.** The engine lists `EndTurn`
-//! with clicks unspent, as it should (a player may end early), so the one
-//! key that gives something up asks for a second press when it would —
-//! the rail says how many clicks are left — and ends the turn at once when
-//! none are. The bar's End turn button is unchanged: a pointer aimed at it
-//! is not a stray.
+//! **Enter is End turn, and asks nothing.** It used to ask for a second
+//! press while clicks were left, because the engine listed `EndTurn` then
+//! and one stray key gave the clicks up. The engine no longer does: a
+//! player with clicks must take an action (CR 5.6.2b), so End turn is
+//! greyed until they are spent, and Enter does nothing until then.
 //!
 //! **Letters are read by what they type, not where they sit.** The screen
 //! hands over the logical key, so C is the key marked C on an AZERTY or a
@@ -105,7 +104,7 @@ pub fn shortcut(key: Key, shift: bool, side: Side) -> Option<Shortcut> {
 /// them: the keys that act, then the keys that read, then the rest.
 pub const LIST: &[(&str, &str)] = &[
     ("Space", "Pass priority, or continue the run"),
-    ("Enter", "End turn (twice, with clicks left)"),
+    ("Enter", "End turn (once your clicks are spent)"),
     ("C", "Take 1 credit"),
     ("D", "Draw a card"),
     ("R", "Remove a tag (Runner)"),
