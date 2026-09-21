@@ -311,7 +311,7 @@ pub fn evaluate_effect(
             // The event reports what actually came off, not what was asked
             // for: a trigger keyed on a tag being removed (Synapse Global)
             // must not fire on a request that removed nothing.
-            let removed = state.runner.tags.min(*amount);
+            let removed = state.runner.tags.min(resolve_amount(amount, ctx, state, registry));
             state.runner.tags -= removed;
             let event = GameEvent::TagsRemoved { side: Side::Runner, amount: removed };
             // Dispatched here rather than from the caller, for the same
@@ -844,6 +844,7 @@ pub fn evaluate_effect(
         Effect::SetAccessReplacement { server, effect, optional } => {
             let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
             run.access_replacement = Some((*server, (**effect).clone(), *optional));
+            run.access_replacement_card = acting_card.cloned();
             Ok(vec![GameEvent::AccessReplacementSet { server: *server }])
         }
 
@@ -963,6 +964,32 @@ pub fn evaluate_effect(
                 resume: PendingChoiceResume::None,
             });
             Ok(vec![GameEvent::PendingChoicePresented { chooser: *chooser, option_count: options.len() }])
+        }
+
+        Effect::ChooseNumber { chooser, min, max, of, then, text } => {
+            let mut most = resolve_amount(max, ctx, state, registry).min(crate::rules::action_mask::MAX_CHOSEN_NUMBER);
+            if let Some(of) = of {
+                most = most.min(resolve_amount(of, ctx, state, registry));
+            }
+            if most <= *min {
+                // One number, or none the card allows: nobody is asked.
+                // A range the state has emptied ("up to 2" of no tags)
+                // resolves with what there is, as `RemoveTags` always
+                // removed what it could.
+                return evaluate_effect(state, &then.as_ref().clone().with_chosen_number(most), ctx, registry);
+            }
+            state.pending_decision = Some(PendingDecision::ChooseNumber {
+                chooser: *chooser,
+                min: *min,
+                max: most,
+                then: then.clone(),
+                text: text.clone(),
+                source_card: acting_card.cloned(),
+                prompting_card: ctx.attributed_card(),
+                source_install: ctx.acting_install,
+                resume: PendingChoiceResume::None,
+            });
+            Ok(vec![GameEvent::NumberChoiceOffered { chooser: *chooser, min: *min, max: most }])
         }
 
         Effect::GainCreditsPerCardAccessedThisRun(side) => {
@@ -1253,7 +1280,7 @@ pub fn evaluate_effect(
             state.runner.scored_agendas.remove(position);
             state.runner.resources.agenda_points =
                 crate::rules::state::AgendaPoints(state.runner.resources.agenda_points.0.saturating_sub(points));
-            let mut events = evaluate_effect(state, &Effect::RemoveTags(points), ctx, registry)?;
+            let mut events = evaluate_effect(state, &Effect::RemoveTags(Amount::Fixed(points)), ctx, registry)?;
             // A fresh remote: see the variant's doc comment for why the
             // Corp is not asked where.
             let existing = crate::rules::legal_actions::existing_remote_ids(state);
@@ -2510,6 +2537,9 @@ pub(crate) fn resolve_amount(amount: &Amount, ctx: &ResolutionContext<'_>, state
         Amount::PrintedInstallCost => ctx.acting_card.and_then(|card| registry.get(card)).map_or(0, |def| def.cost),
         Amount::RemainingAfterSelection(total) => total.saturating_sub(ctx.selected_count),
         Amount::Fixed(n) => *n,
+        // A placeholder `Effect::with_chosen_number` writes over before a
+        // `then` resolves; read anywhere else it is nothing.
+        Amount::ChosenNumber => 0,
         Amount::AgendaPointsScoredThisTurn => state.this_turn.agenda_points_scored(),
         Amount::TimesThisTurn(trigger) => state.this_turn.times(*trigger),
         Amount::TimesLastTurn(trigger) => state.last_turn.times(*trigger),
@@ -2824,7 +2854,7 @@ mod tests {
     fn remove_tags_saturates_at_zero() {
         let mut state = game_state();
         state.runner.tags = 1;
-        let events = evaluate_effect(&mut state, &Effect::RemoveTags(5), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+        let events = evaluate_effect(&mut state, &Effect::RemoveTags(Amount::Fixed(5)), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
 
         assert_eq!(state.runner.tags, 0);
         // The event reports the tag that actually came off, not the five

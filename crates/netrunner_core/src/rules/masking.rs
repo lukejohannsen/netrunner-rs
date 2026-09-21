@@ -612,7 +612,9 @@ pub fn mask_action_for_player(action: &PlayerAction, actor: Side, viewer: impl I
         | PlayerAction::ResolvePendingChoice { .. }
         | PlayerAction::ToggleCardSelection { .. }
         | PlayerAction::ConfirmCardSelection
-        | PlayerAction::ChooseServerForPendingDecision { .. } => PublicAction::Visible(action.clone()),
+        | PlayerAction::ChooseServerForPendingDecision { .. }
+        // A number named aloud: how many tags, how many credits.
+        | PlayerAction::ChooseNumber { .. } => PublicAction::Visible(action.clone()),
     }
 }
 
@@ -863,6 +865,8 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::BasicDrawActionTaken { .. }
         | GameEvent::PendingChoicePresented { .. }
         | GameEvent::PendingChoiceResolved { .. }
+        | GameEvent::NumberChoiceOffered { .. }
+        | GameEvent::NumberChosen { .. }
         | GameEvent::PendingPaidChoiceOffered { .. }
         | GameEvent::PendingPaidChoiceAccepted { .. }
         | GameEvent::PendingPaidChoiceDeclined { .. } => visible(),
@@ -891,7 +895,8 @@ fn mask_pending_decision(decision: &PendingDecision, state: &GameState, viewer: 
     match &mut masked {
         PendingDecision::ChooseEffect { source_card, prompting_card, .. }
         | PendingDecision::ChooseCards { source_card, prompting_card, .. }
-        | PendingDecision::ChooseServer { source_card, prompting_card, .. } => {
+        | PendingDecision::ChooseServer { source_card, prompting_card, .. }
+        | PendingDecision::ChooseNumber { source_card, prompting_card, .. } => {
             *source_card = conceal(source_card);
             *prompting_card = conceal(prompting_card);
         }

@@ -93,6 +93,35 @@ mod tests {
         }
     }
 
+    /// `Effect::with_chosen_number` ends in `other => other`, so an effect
+    /// that holds an `Amount` and is missing from it would keep the
+    /// placeholder and resolve as 0. Held to the pool instead of to the
+    /// match: every `then` a card file writes must come out of the
+    /// substitution naming no placeholder at all.
+    #[test]
+    fn a_chosen_number_reaches_every_amount_a_card_writes() {
+        let mut asked = 0;
+        for card in embedded_playable_cards() {
+            let roots = card
+                .abilities
+                .iter()
+                .map(|ability| &ability.effect)
+                .chain(card.triggers.iter().flat_map(|triggered| &triggered.effects))
+                .chain(card.subroutines.iter().map(|subroutine| &subroutine.effect))
+                .chain(card.interactive_on_access.iter().flat_map(|interactive| &interactive.effects));
+            for root in roots {
+                root.for_each_effect(&mut |effect| {
+                    let crate::dsl::Effect::ChooseNumber { then, .. } = effect else { return };
+                    asked += 1;
+                    let written = serde_json::to_string(&then.as_ref().clone().with_chosen_number(7)).expect("an effect serializes");
+                    assert!(!written.contains("ChosenNumber"), "{:?} — the number never reaches part of its `then`: {written}", card.id);
+                    assert!(written.contains("{\"Fixed\":7}"), "{:?} asks for a number and never reads it: {written}", card.id);
+                });
+            }
+        }
+        assert!(asked >= 3, "{asked} cards ask for a number — Bigger Picture, Lie Low and Account Siphon do");
+    }
+
     /// Embedded cards are the playable pool; anything else is a bug in a
     /// card file, since `rules::deck::validate_deck` rejects unplayable cards.
     #[test]
@@ -349,7 +378,8 @@ mod catalog_join_tests {
                 Effect::EffectIf { effect, .. }
                 | Effect::Trace { on_success: effect, .. }
                 | Effect::SetAccessReplacement { effect, .. }
-                | Effect::SetRunEndedEffect(effect) => walk(effect, out),
+                | Effect::SetRunEndedEffect(effect)
+                | Effect::ChooseNumber { then: effect, .. } => walk(effect, out),
                 Effect::PromptChooseCards { then: Some(then), .. } => walk(then, out),
                 Effect::PromptChooseServer { on_success, on_start, .. } => {
                     on_success.iter().for_each(|e| walk(e, out));
@@ -438,6 +468,10 @@ mod catalog_join_tests {
                         }
                         None => failures.push(format!("{} — a paid choice has no printed clause", card.title)),
                     },
+                    Effect::ChooseNumber { text, .. } => {
+                        checked += 1;
+                        failures.extend(quote("chosen number", text));
+                    }
                     _ => {}
                 }
             }

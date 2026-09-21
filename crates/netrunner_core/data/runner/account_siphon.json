@@ -17,29 +17,38 @@
             "server": "Hq",
             "optional": true,
             "effect": {
-              "Sequence": [
-                {
-                  "LoseCredits": [
-                    "Corp",
-                    5
+              "ChooseNumber": {
+                "chooser": "Runner",
+                "max": {
+                  "Fixed": 5
+                },
+                "then": {
+                  "Sequence": [
+                    {
+                      "LoseCreditsAmount": [
+                        "Corp",
+                        "ChosenNumber"
+                      ]
+                    },
+                    {
+                      "GainCreditsAmount": [
+                        "Runner",
+                        "CreditsLostThisResolution"
+                      ]
+                    },
+                    {
+                      "GainCreditsAmount": [
+                        "Runner",
+                        "CreditsLostThisResolution"
+                      ]
+                    },
+                    {
+                      "GiveTags": 2
+                    }
                   ]
                 },
-                {
-                  "GainCreditsAmount": [
-                    "Runner",
-                    "CreditsLostThisResolution"
-                  ]
-                },
-                {
-                  "GainCreditsAmount": [
-                    "Runner",
-                    "CreditsLostThisResolution"
-                  ]
-                },
-                {
-                  "GiveTags": 2
-                }
-              ]
+                "text": "force the Corp to lose up to 5[credit]"
+              }
             }
           }
         }

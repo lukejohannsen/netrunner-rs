@@ -1017,6 +1017,30 @@ pub enum PendingDecision {
         /// mid-encounter.
         resume: PendingChoiceResume,
     },
+    /// `Effect::ChooseNumber` parked this — `chooser` names a number from
+    /// `min` to `max` via `PlayerAction::ChooseNumber`, and `then` resolves
+    /// with it as `Amount::ChosenNumber`. `max` is flat: resolved, and
+    /// capped, when the decision was parked, so the range offered cannot
+    /// move under the chooser while something else resolves.
+    ///
+    /// Passed through a view whole, like `ChooseEffect`: the bounds are
+    /// counts both players can see (tags, a printed number) for every card
+    /// in the pool. A card whose bound counts something hidden — cards in
+    /// a hand — needs a masking rule before it needs this variant.
+    ChooseNumber {
+        chooser: Side,
+        min: u32,
+        max: u32,
+        then: Box<Effect>,
+        /// `Effect::ChooseNumber::text`, the prompt.
+        text: String,
+        source_card: Option<CardId>,
+        /// See `ChooseCards::prompting_card`.
+        prompting_card: Option<CardId>,
+        /// See `PendingPaidChoice::source_install`.
+        source_install: Option<InstallId>,
+        resume: PendingChoiceResume,
+    },
     ChooseServer {
         chooser: Side,
         rez_cost_delta: i32,

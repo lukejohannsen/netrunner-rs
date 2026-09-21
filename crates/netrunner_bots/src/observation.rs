@@ -742,7 +742,13 @@ fn encode_decision(view: &ClientView, features: &mut Vec<f32>) {
     let chooser = decision.map(|decision| match decision {
         PendingDecision::ChooseEffect { chooser, .. }
         | PendingDecision::ChooseTriggerOrder { chooser, .. }
-        | PendingDecision::ChooseServer { chooser, .. } => *chooser,
+        | PendingDecision::ChooseServer { chooser, .. }
+        // A number decision has an owner and **no flag or range of its
+        // own above**: a slot for it would move every feature after it,
+        // and what it offers is already in the action mask — the legal
+        // numbers are a contiguous run of the `ChooseNumber` segment.
+        // Revisit with the next deliberate reshape of the observation.
+        | PendingDecision::ChooseNumber { chooser, .. } => *chooser,
         PendingDecision::ChooseCards { side, .. } => *side,
     });
     let access_decider = view.active_run.as_ref().and_then(|run| match &run.access_state.as_ref()?.phase {

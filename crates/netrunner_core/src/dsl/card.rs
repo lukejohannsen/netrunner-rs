@@ -650,6 +650,8 @@ pub enum CardValidationError {
     RunnerIdentityHostsNothing(CardId),
     #[error("card {0:?} trashes itself when a payment empties it (`trash_when_empty`) but no payment can take its credits (`pays_for` is empty)")]
     TrashWhenEmptyWithNothingToEmptyIt(CardId),
+    #[error("card {0:?} reads `Amount::ChosenNumber` outside the `then` of an `Effect::ChooseNumber`, where no number has been chosen and it is 0")]
+    ChosenNumberNobodyChose(CardId),
     #[error("Ice {0:?} must have a strength")]
     IceMissingStrength(CardId),
     #[error("card {0:?} of type {1:?} must not have a strength — only Ice and breaker-style Programs do")]
@@ -870,6 +872,11 @@ impl CardDefinition {
         // in which nobody scores, steals or trashes: a card that reads as
         // working and forbids nothing.
         let mut prohibits_for_an_encounter = false;
+        // `Amount::ChosenNumber` outside an `Effect::ChooseNumber::then`
+        // parses and reads as 0: a card that removes no tags and says
+        // nothing. The substitution stops at a `then`, so a root it
+        // changes names the placeholder where no number was chosen.
+        let mut chosen_number_nobody_chose = false;
         let roots = self
             .abilities
             .iter()
@@ -881,6 +888,10 @@ impl CardDefinition {
             root.for_each_effect(&mut |effect| {
                 prohibits_for_an_encounter |= matches!(effect, Effect::Prohibit { until: EffectDuration::Encounter, .. });
             });
+            chosen_number_nobody_chose |= root.clone().with_chosen_number(1) != *root;
+        }
+        if chosen_number_nobody_chose {
+            return Err(CardValidationError::ChosenNumberNobodyChose(self.id.clone()));
         }
         if prohibits_for_an_encounter {
             return Err(CardValidationError::ProhibitionForAnEncounter(self.id.clone()));
@@ -1322,6 +1333,46 @@ mod tests {
         assert_eq!(ice(EffectDuration::Run).validate(), Ok(()));
         assert_eq!(ice(EffectDuration::Turn).validate(), Ok(()));
         assert_eq!(ice(EffectDuration::Encounter).validate(), Err(CardValidationError::ProhibitionForAnEncounter(CardId("bar".to_string()))));
+    }
+
+    /// `Amount::ChosenNumber` means something only inside the `then` of the
+    /// `ChooseNumber` that asked for it. Outside one it parses and is 0 —
+    /// a card that reads as working and removes no tags.
+    #[test]
+    fn validate_refuses_a_chosen_number_nobody_chose() {
+        use crate::dsl::effect::Amount;
+        let event = |effect| CardDefinition {
+            id: CardId("baz".to_string()),
+            side: Side::Corp,
+            card_type: CardType::Ice(IceType::CodeGate),
+            strength: Some(1),
+            subroutines: vec![SubroutineDef { text: String::new(), effect, only_breakable_by: None }],
+            ..CardDefinition::default()
+        };
+        let asked = Effect::ChooseNumber {
+            chooser: Side::Corp,
+            min: 0,
+            max: Amount::Fixed(2),
+            of: None,
+            then: Box::new(Effect::Sequence(vec![Effect::RemoveTags(Amount::ChosenNumber)])),
+            text: "Remove up to 2 tags".to_string(),
+        };
+        assert_eq!(event(asked).validate(), Ok(()));
+        assert_eq!(
+            event(Effect::Sequence(vec![Effect::RemoveTags(Amount::ChosenNumber)])).validate(),
+            Err(CardValidationError::ChosenNumberNobodyChose(CardId("baz".to_string())))
+        );
+        // A bound is outside the `then` too: there is no number yet to
+        // bound the number by.
+        let bounded_by_itself = Effect::ChooseNumber {
+            chooser: Side::Runner,
+            min: 0,
+            max: Amount::ChosenNumber,
+            of: None,
+            then: Box::new(Effect::Sequence(Vec::new())),
+            text: String::new(),
+        };
+        assert_eq!(event(bounded_by_itself).validate(), Err(CardValidationError::ChosenNumberNobodyChose(CardId("baz".to_string()))));
     }
 
     #[test]

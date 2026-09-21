@@ -1679,10 +1679,105 @@ one.
    four are single-use, one `ContinuousKind` (single-use), two `CorpState`
    fields, one `RunnerState` field, one event and five affordability sums
    gone.
-6. **A numeric decision** (§6.4; new). `PendingDecision` has no "choose a
-   number", so X costs and "pay up to N" have nowhere to park. One variant,
-   and an `ActionSpace` segment appended at the end (the append-never-shift
-   rule), so it is a retraining event to plan for rather than stumble into.
+6. **A numeric decision — IN PROGRESS (21 September 2026)** (§6.4; new).
+   `PendingDecision` has no "choose a number", so X costs and "pay up to
+   N" have nowhere to park. One variant, and an `ActionSpace` segment
+   appended at the end (the append-never-shift rule), so it is a
+   retraining event to plan for rather than stumble into.
+
+   **What reading it found first.** The pool already prints chosen
+   numbers, and every card that does had been written round the gap by
+   taking the most its text allows: Bigger Picture's "remove **any number
+   of** tags" removed all of them (`RemoveTags 99`), Account Siphon's
+   "lose **up to 5**[credit]" was always 5, Lie Low's "remove **up to 2**
+   tags" always 2. For two of them the most is nearly always right. For
+   Bigger Picture it gave away the decision the card is — how tagged to
+   leave the Runner, with a second copy in hand playable only against a
+   tagged one. Phật Gioan Baotixita says its "up to 2" as two nested paid
+   choices, which is correct and stays (one prompt would need `1 +` the
+   number, which `Amount` cannot say); Crash Space's "prevent up to 3" is
+   never worth less than the most; IP Enforcement's X is fixed by the
+   agenda chosen. **No pool card prints an X cost** — Psychographics and
+   Corporate Troubleshooter are in the catalog and not the pool — so none
+   is built (the DSL Growth Rule). Two stages: the decision and the three
+   cards (this one), then the payment split item 5 left as a named
+   simplification.
+
+   **Stage 1 — a number is a decision**
+   (`feat/a-number-is-a-decision`). `Effect::ChooseNumber { chooser, min,
+   max, of, then, text }` parks `PendingDecision::ChooseNumber` and is
+   answered by `PlayerAction::ChooseNumber { amount }`, every number in
+   the range a legal action exactly as a trace offers every bid — so both
+   clients, the bots and the masks took it as they take a bid, and the
+   prompt is the card's printed clause over a row of numbers. `max` is an
+   `Amount`, resolved and capped (`MAX_CHOSEN_NUMBER`, 30, a trace's cap)
+   when the decision parks, and `of` caps it again — "up to 2" *of* the
+   tags there are — so a number that could do nothing is never offered,
+   and **a range of one number asks nobody.** Its own action rather than
+   `ResolvePendingChoice` read as a number: that segment means "the nth
+   thing the card lists", and a policy should not have to learn that slot
+   3 is sometimes the number 3. **`ActionSpace` 1646 → 1677, appended:**
+   31 slots after what was the last segment, pinned by a test that the
+   segment starts at 1646, so every recorded index means what it meant.
+   `OBS_SIZE` is unmoved at 2262 **on purpose**: a parked-kind flag for
+   the new decision would shift every feature after it, and what it
+   offers is already in the mask as a contiguous run of the new segment —
+   to revisit with the next deliberate reshape, which the seven free
+   vocabulary slots already force. `Effect` 70 → 71 (26 single-use, 3
+   unused, 184 card files), `Amount` 16 → 17; `RemoveTags` takes an
+   `Amount` where it took a number.
+   **The number is written into the effect that waits.** Inside `then` a
+   card file writes `Amount::ChosenNumber`, a placeholder, and
+   `Effect::with_chosen_number` writes `Fixed(n)` over it when the number
+   is chosen — the convention `PromptChooseServer::on_success` follows for
+   its server. Rejected: a field on `ResolutionContext`, where the rest of
+   the per-resolution scratch lives and which does not survive a park.
+   That is not theoretical in the pool: Bigger Picture's "the Runner loses
+   5[credit] for each tag removed this way" comes *after* the tag removal,
+   which Synapse Global: Faster than Thought answers with an install
+   prompt of its own — a sample deck (*Gimbatul*) plays exactly that pair,
+   and the test of it would have had the Runner lose nothing. A
+   continuation is an `Effect`, so a number written into it rides through
+   any park with no field anywhere. The substitution ends in `other =>
+   other`, so it is held to the pool rather than to the match:
+   `a_chosen_number_reaches_every_amount_a_card_writes` requires every
+   card's `then` to come out naming no placeholder, and `validate` refuses
+   one written outside a `then`, where it parses and is 0.
+   **What the first card test found.** Account Siphon's "you may …
+   instead of breaching" resolved with no acting card, and
+   `evaluate_sequence` pins a continuation to a card — so the moment its
+   effect could park, the `EndTheRun` the engine puts behind it was
+   dropped, and the run stood open after the siphon. Latent since the
+   continuation was added, for any replacement that parks; reached by
+   making this one ask. `RunState::access_replacement_card` remembers the
+   card that set the replacement, as `on_success_card` does for a run's
+   rider (and its credit gain is now attributed to a card ability, which
+   it is). *Found while reading and not fixed:* no view carries a pending
+   access replacement, so a bot sample taken mid-run on an Account Siphon
+   has none. Siphon is in no deck; owed when one plays it.
+   *Measured against what was written down first* (`507d6e0` against
+   `main` `47d62c8`, pinned binaries, 192 games a report). Predicted:
+   heuristic identical — no card file added, and the heuristic plays
+   neither card; random differing in a handful of games, view and index
+   still equal to each other. **Heuristic identical, by view and by index;
+   random differs in exactly 3 games of 192** (seeds 73–75, all *Fine
+   Print*'s Bigger Picture), `ChooseNumber` 0 → 3, steps 67,598 → 67,480,
+   end-reason totals unmoved at 99 / 79 / 14, and the two random reports
+   hash alike. **The predicted risk also landed: 3 in 192 is reach, not
+   coverage.** Lie Low is played 15 times in that pass and almost never
+   with a tag to remove, so it asks nothing; the default 32-seed sweeps
+   never apply the action, and at 256 seeds the view sweep reached it and
+   the index sweep did not (the index *path* does — the `--index-path`
+   report counts the same 3). It is on `ACTIONS_RARE_WITH_SAMPLE_DECKS` at
+   2,048 games with that reason, and the mechanism is held by volume
+   instead: **101 numbers chosen over 576 random games** of the three deck
+   pairs that hold both cards (*Gimbatul* / *Dashing Mad* 17, *Fine Print*
+   / *Tickets Please* 54, *Not So Subtle* / *Professional Opportunities*
+   30; Synapse Global's trigger 408 times in the first), none stalled.
+   Both 256-seed sweeps pass; `cargo test --workspace` green, clippy
+   silent. *Not looked at:* the desktop pop-up with a long row of numbers
+   — it is the trace bid's row, which wraps, but no screenshot was taken
+   of this prompt.
 7. **A movement phase in the run** (§2.6; was item 4), before a card needs
    "when the Runner passes ICE".
 8. **Cost types** (§2.4; was item 5). jinteki's 50 are the backlog, taken

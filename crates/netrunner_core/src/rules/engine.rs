@@ -223,6 +223,7 @@ fn apply_action_once(
                 | PlayerAction::ConfirmCardSelection
                 | PlayerAction::ChooseServerForPendingDecision { .. }
                 | PlayerAction::ChooseTriggerToResolve { .. }
+                | PlayerAction::ChooseNumber { .. }
         )
     {
         return Err(RulesError::ActionBlockedByPendingDecision { side });
@@ -330,6 +331,11 @@ fn apply_action_once(
         }
         PlayerAction::ChooseTriggerToResolve { index } => {
             choose_trigger_to_resolve(state, registry, index)
+        }
+        PlayerAction::ChooseNumber { amount } => {
+            let mut next = state.clone();
+            let events = pending_choice::resolve_choose_number(&mut next, registry, amount)?;
+            Ok((next, events))
         }
     }?;
 
@@ -525,7 +531,8 @@ fn classify_action(action: &PlayerAction) -> ActionKind {
         | PlayerAction::ToggleCardSelection { .. }
         | PlayerAction::ConfirmCardSelection
         | PlayerAction::ChooseServerForPendingDecision { .. }
-        | PlayerAction::ChooseTriggerToResolve { .. } => ActionKind::Other,
+        | PlayerAction::ChooseTriggerToResolve { .. }
+        | PlayerAction::ChooseNumber { .. } => ActionKind::Other,
     }
 }
 

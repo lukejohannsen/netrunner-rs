@@ -260,8 +260,8 @@ fn siphon_to_choice(corp_credits: u32) -> (crate::rules::GameState, CardRegistry
 #[test]
 fn account_siphon_gains_two_per_credit_the_corp_actually_lost() {
     let (state, registry) = siphon_to_choice(3);
-    let (state, events) =
-        apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take the siphon");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take the siphon");
+    let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 5 }).expect("all 5");
 
     assert_eq!(state.corp.resources.credits, Credits(0), "the Corp had 3 to lose");
     assert_eq!(state.runner.resources.credits, Credits(11), "5 + 2 per credit lost (6), not a flat 10");
@@ -274,14 +274,35 @@ fn account_siphon_gains_two_per_credit_the_corp_actually_lost() {
 #[test]
 fn account_siphon_replaces_hq_access_and_accesses_zero_cards() {
     let (state, registry) = siphon_to_choice(10);
-    let (state, events) =
-        apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take the siphon");
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take the siphon");
+    let (state, events) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 5 }).expect("all 5");
 
     assert_eq!(state.corp.resources.credits, Credits(5), "Corp should lose 5 credits");
     assert_eq!(state.runner.resources.credits, Credits(15), "5 + 2 per credit lost (10)");
     assert_eq!(state.runner.tags, 2);
     assert_eq!(state.corp.hq.len(), 2, "HQ itself is untouched — access was replaced, not resolved");
     assert!(!events.iter().any(|e| matches!(e, crate::rules::GameEvent::CardAccessed { .. })));
+}
+
+/// "…lose **up to** 5[credit]": the number is the Runner's, and every one
+/// of 0 to 5 is offered and nothing else. It was always 5.
+#[test]
+fn account_siphon_takes_the_number_of_credits_the_runner_names() {
+    let (state, registry) = siphon_to_choice(10);
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("take the siphon");
+    assert_eq!(
+        crate::rules::legal_actions(&state, &registry),
+        (0..=5).map(|amount| PlayerAction::ChooseNumber { amount }).collect::<Vec<_>>(),
+        "the numbers, and only the numbers"
+    );
+    assert_eq!(
+        apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 6 }).err(),
+        Some(RulesError::ChosenNumberOutOfRange { amount: 6, min: 0, max: 5 })
+    );
+    let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("just 2");
+    assert_eq!(state.corp.resources.credits, Credits(8));
+    assert_eq!(state.runner.resources.credits, Credits(9), "5 + 2 per credit lost (4)");
+    assert_eq!(state.runner.tags, 2, "the tags are not per credit");
 }
 
 /// The other half of the printed "may": declining the siphon consumes the
@@ -6683,8 +6704,25 @@ mod system_gateway {
         assert_eq!(played.runner.resources.clicks, Clicks(2), "a Double");
         let (drew, _) = apply_action(&played, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("draw 4");
         assert_eq!(drew.runner.grip.len(), 4);
-        let (untagged, _) = apply_action(&played, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("remove tags");
+        let (asked, _) = apply_action(&played, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("remove tags");
+        assert_eq!(
+            crate::rules::legal_actions(&asked, &registry),
+            (0..=2).map(|amount| PlayerAction::ChooseNumber { amount }).collect::<Vec<_>>(),
+            "up to 2"
+        );
+        let (untagged, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("both");
         assert_eq!(untagged.runner.tags, 1, "remove up to 2 tags");
+
+        // "Up to 2" of the tags there are: with one tag, 2 is not offered…
+        let mut one_tag = played.clone();
+        one_tag.runner.tags = 1;
+        let (asked, _) = apply_action(&one_tag, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("remove tags");
+        assert_eq!(crate::rules::legal_actions(&asked, &registry).len(), 2, "0 or 1");
+        // …and with none there is nothing to choose, so nobody is asked.
+        let mut no_tags = played.clone();
+        no_tags.runner.tags = 0;
+        let (settled, _) = apply_action(&no_tags, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("remove tags");
+        assert!(settled.pending_decision.is_none(), "{:?}", settled.pending_decision);
     }
 
     #[test]
@@ -9885,11 +9923,59 @@ mod system_gateway {
         let (tagged, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("give a tag");
         assert_eq!(tagged.runner.tags, 3);
 
-        // …or 5 credits a tag, straight across the table.
-        let (drained, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("drain");
+        // …or 5 credits a tag, straight across the table, for as many
+        // tags as the Corp names.
+        let (asked, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("drain");
+        assert_eq!(
+            crate::rules::legal_actions(&asked, &registry),
+            (0..=2).map(|amount| PlayerAction::ChooseNumber { amount }).collect::<Vec<_>>(),
+            "any number of the Runner's 2 tags"
+        );
+        let (drained, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("both");
         assert_eq!(drained.runner.resources.credits, Credits(2), "12 less 5 per tag");
         assert_eq!(drained.corp.resources.credits, Credits(10), "and the Corp takes what they lost");
         assert_eq!(drained.runner.tags, 0, "the tags come off");
+
+        // The decision the card is: one tag's worth, and the Runner is
+        // still tagged for the second copy. It used to take every tag.
+        let (kept, _) = apply_action(&asked, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("just one");
+        assert_eq!(kept.runner.tags, 1, "still tagged");
+        assert_eq!(kept.runner.resources.credits, Credits(7));
+        assert_eq!(kept.corp.resources.credits, Credits(5));
+        assert!(crate::rules::legal_actions(&kept, &registry).contains(&PlayerAction::PlayOperation { card_id: CardId("bigger_picture".to_string()) }));
+    }
+
+    /// Synapse Global hears the tag come off and asks the Corp about an
+    /// install, which parks the rest of Bigger Picture's sentence behind a
+    /// decision — and the number chosen has to be there when it resumes.
+    /// It is, because it was written into the effect that waits
+    /// (`Effect::with_chosen_number`); on a `ResolutionContext` it would
+    /// have been gone, and the Runner would have lost nothing.
+    #[test]
+    fn a_chosen_number_survives_the_decision_another_card_parks_in_the_middle_of_it() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.corp.identity = Some(CardId("synapse_global_faster_than_thought".to_string()));
+        state.corp.resources.credits = Credits(0);
+        state.corp.hq = vec![CardId("bigger_picture".to_string()), CardId("ice_wall".to_string())];
+        state.runner.resources.credits = Credits(20);
+        state.runner.tags = 3;
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayOperation { card_id: CardId("bigger_picture".to_string()) }).expect("play");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("drain");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("two of three");
+        assert_eq!(state.runner.tags, 1);
+        assert!(
+            matches!(state.pending_decision, Some(crate::rules::PendingDecision::ChooseCards { side: Side::Corp, .. })),
+            "Synapse Global asks before the credits move — got {:?}",
+            state.pending_decision
+        );
+        assert_eq!(state.runner.resources.credits, Credits(20), "nothing lost yet");
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ConfirmCardSelection).expect("install nothing");
+        let (state, _) = pass_until_settled(state, &registry);
+        assert_eq!(state.runner.resources.credits, Credits(10), "5 a tag, for the 2 that were chosen");
+        assert_eq!(state.corp.resources.credits, Credits(10));
     }
 
     #[test]

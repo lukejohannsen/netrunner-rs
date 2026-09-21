@@ -418,6 +418,7 @@ fn targets_of(action: &PlayerAction) -> Vec<Target> {
         | PlayerAction::PassPriority { .. }
         | PlayerAction::SubmitCorpTraceBid { .. }
         | PlayerAction::SubmitRunnerTraceBid { .. }
+        | PlayerAction::ChooseNumber { .. }
         | PlayerAction::AcceptPendingPaidChoice { .. }
         | PlayerAction::DeclinePendingPaidChoice
         | PlayerAction::ResolvePendingChoice { .. }
@@ -472,6 +473,11 @@ impl Prompt {
                     Prompt { title: format!("{}: choose {range} card{}", asked_by(prompting_card, source_card), if *max == 1 { "" } else { "s" }), detail }
                 }
                 PendingDecision::ChooseTriggerOrder { .. } => Prompt { title: "Choose which triggers first".to_string(), detail: String::new() },
+                // The card's clause is the question, the range its detail.
+                PendingDecision::ChooseNumber { text, min, max, source_card, prompting_card, .. } => Prompt {
+                    title: format!("{}: {}", asked_by(prompting_card, source_card), if text.is_empty() { "choose a number" } else { text.as_str() }),
+                    detail: format!("{min} to {max}"),
+                },
                 PendingDecision::ChooseServer { source_card, prompting_card, install, .. } => match Placement::of(view, registry) {
                     Some(placement) => Prompt { title: format!("{}: {}", asked_by(prompting_card, source_card), placement.question()), detail: placement.detail() },
                     None if install.is_some() => Prompt { title: format!("{}: installing a card", asked_by(prompting_card, source_card)), detail: String::new() },
@@ -587,7 +593,8 @@ impl Prompt {
         }
         if let Some(decision) = &view.pending_decision {
             return match decision {
-                PendingDecision::ChooseEffect { chooser, source_card, prompting_card, .. } => {
+                PendingDecision::ChooseEffect { chooser, source_card, prompting_card, .. }
+                | PendingDecision::ChooseNumber { chooser, source_card, prompting_card, .. } => {
                     view.viewer.is(*chooser).then(|| asked_by(prompting_card, source_card)).flatten()
                 }
                 PendingDecision::ChooseServer { chooser, source_card, prompting_card, install, .. } => match Placement::of(view, registry) {

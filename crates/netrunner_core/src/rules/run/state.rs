@@ -276,6 +276,16 @@ pub struct RunState {
     /// replacement parks the breach-owner's choice at access time instead
     /// of firing unconditionally.
     pub access_replacement: Option<(ServerId, Effect, bool)>,
+    /// The card `access_replacement` resolves *as* — the one whose text set
+    /// it, as `on_success_card` is for the run's rider. Without it the
+    /// replacement resolved with no acting card, and a `Sequence` with no
+    /// acting card cannot wait behind a decision (`ability::
+    /// evaluate_sequence` pins a continuation to a card): when Account
+    /// Siphon's "up to 5[credit]" became a number the Runner is asked for,
+    /// the `EndTheRun` behind it was dropped and the run stood open after
+    /// the siphon. `None` in a state recorded before the field existed.
+    #[serde(default)]
+    pub access_replacement_card: Option<CardId>,
     /// How many cards this run's access presented in total, set once by
     /// `run::access::access_server` when it computes the accessed set (`0`
     /// if the run hasn't reached access yet, or accessed an empty zone).
@@ -392,6 +402,7 @@ impl Default for RunState {
             additional_rd_access: 0,
             additional_hq_access: 0,
             access_replacement: None,
+            access_replacement_card: None,
             cards_accessed_count: 0,
             redirect_on_approach: None,
             bonus_run_credits: 0,

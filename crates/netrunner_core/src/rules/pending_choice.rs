@@ -27,6 +27,7 @@ pub(crate) fn pending_decision_chooser(state: &GameState) -> Option<Side> {
         PendingDecision::ChooseCards { side, .. } => Some(*side),
         PendingDecision::ChooseServer { chooser, .. } => Some(*chooser),
         PendingDecision::ChooseTriggerOrder { chooser, .. } => Some(*chooser),
+        PendingDecision::ChooseNumber { chooser, .. } => Some(*chooser),
     }
 }
 
@@ -45,7 +46,8 @@ pub(crate) fn mark_parked_resume_subroutines(state: &mut GameState) {
         Some(PendingDecision::ChooseEffect { resume, .. })
         | Some(PendingDecision::ChooseCards { resume, .. })
         | Some(PendingDecision::ChooseServer { resume, .. })
-        | Some(PendingDecision::ChooseTriggerOrder { resume, .. }) => {
+        | Some(PendingDecision::ChooseTriggerOrder { resume, .. })
+        | Some(PendingDecision::ChooseNumber { resume, .. }) => {
             *resume = PendingChoiceResume::ResumeSubroutines
         }
         None => {}
@@ -564,6 +566,38 @@ pub(crate) fn resolve_choice(
         // the "resume subroutines once fully resolved" intent onto it
         // rather than losing it. Harmless when nothing new was parked:
         // `resolve_encounter_ice` below just no-ops in that case.
+        mark_parked_resume_subroutines(state);
+        events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
+    }
+    Ok(events)
+}
+
+/// Resolves `PlayerAction::ChooseNumber`: `then`, with the number written
+/// into it (`Effect::with_chosen_number`), as the card that asked.
+pub(crate) fn resolve_choose_number(
+    state: &mut GameState,
+    registry: &CardRegistry,
+    amount: u32,
+) -> Result<Vec<GameEvent>, RulesError> {
+    let Some(PendingDecision::ChooseNumber { min, max, .. }) = state.pending_decision.as_ref() else {
+        return Err(RulesError::NoPendingDecision);
+    };
+    if amount < *min || amount > *max {
+        return Err(RulesError::ChosenNumberOutOfRange { amount, min: *min, max: *max });
+    }
+    let Some(PendingDecision::ChooseNumber { chooser, then, source_card, prompting_card, source_install, resume, .. }) =
+        state.pending_decision.take()
+    else {
+        return Err(RulesError::NoPendingDecision);
+    };
+
+    let mut events = vec![GameEvent::NumberChosen { chooser, amount }];
+    let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+    ctx.prompting_card = prompting_card.as_ref().or(source_card.as_ref());
+    events.extend(ability::evaluate_effect(state, &then.with_chosen_number(amount), &mut ctx, registry)?);
+
+    if resume == PendingChoiceResume::ResumeSubroutines {
+        // As `resolve_choice`: `then` may have parked something further.
         mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }

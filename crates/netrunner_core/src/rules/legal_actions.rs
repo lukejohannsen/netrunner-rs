@@ -313,7 +313,8 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
         | PlayerAction::ToggleCardSelection { .. }
         | PlayerAction::ConfirmCardSelection
         | PlayerAction::ChooseServerForPendingDecision { .. }
-        | PlayerAction::ChooseTriggerToResolve { .. } => {
+        | PlayerAction::ChooseTriggerToResolve { .. }
+        | PlayerAction::ChooseNumber { .. } => {
             // A parked payment is answered by `ResolvePendingChoice` too, and
             // comes first for the reason `current_actor` gives.
             state
@@ -402,6 +403,11 @@ fn pending_decision_candidates(state: &GameState, registry: &CardRegistry) -> Ve
         // is purely which order they resolve in, so none can be illegal.
         Some(crate::rules::state::PendingDecision::ChooseTriggerOrder { pending, .. }) => {
             (0..pending.len()).map(|index| PlayerAction::ChooseTriggerToResolve { index }).collect()
+        }
+        // Every number in the range, as a trace offers every bid: the
+        // range was settled when the decision was parked.
+        Some(crate::rules::state::PendingDecision::ChooseNumber { min, max, .. }) => {
+            (*min..=*max).map(|amount| PlayerAction::ChooseNumber { amount }).collect()
         }
     }
 }

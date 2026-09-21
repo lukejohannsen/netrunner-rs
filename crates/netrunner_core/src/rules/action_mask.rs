@@ -62,6 +62,14 @@ pub const MAX_DECK_ZONE: usize = 50;
 /// leaving the RL path able to address only the oldest twelve cards.
 pub const MAX_ACCESS_SELECTION: usize = 32;
 pub const MAX_TRACE_BID: u32 = 30;
+
+/// The largest number `PlayerAction::ChooseNumber` can carry, and so one
+/// less than its segment's width. The same 30 as a trace bid and for the
+/// same reason — a number a player names is a count of credits, tags or
+/// counters, and no pool card's bound comes near it (Bigger Picture's is
+/// the Runner's tags, Account Siphon's is 5). `Effect::ChooseNumber` caps
+/// the range it parks here, so an action the engine offers always encodes.
+pub const MAX_CHOSEN_NUMBER: u32 = 30;
 /// The largest `Cost::AnyOf` any System Gateway card offers (Manegarm
 /// Skunkworks: clicks or credits) — widen if a future card needs more
 /// alternatives.
@@ -209,13 +217,20 @@ const BREAK_SUBROUTINE_WITH_CLICK_LEN: usize = MAX_SUBROUTINES;
 const CHOOSE_TRIGGER_START: usize = BREAK_SUBROUTINE_WITH_CLICK_START + BREAK_SUBROUTINE_WITH_CLICK_LEN;
 pub(crate) const CHOOSE_TRIGGER_LEN: usize = MAX_INSTALLED_PER_SIDE;
 
+/// `ChooseNumber` — the number itself, like a trace bid. **Appended after
+/// what was the last segment** (Rules Audit backlog item 6), so every
+/// index a recorded game or a trained policy holds still means what it
+/// meant: 1646 → 1677, the head wider and nothing moved.
+const CHOOSE_NUMBER_START: usize = CHOOSE_TRIGGER_START + CHOOSE_TRIGGER_LEN;
+const CHOOSE_NUMBER_LEN: usize = MAX_CHOSEN_NUMBER as usize + 1;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = CHOOSE_TRIGGER_START + CHOOSE_TRIGGER_LEN;
+    pub const SIZE: usize = CHOOSE_NUMBER_START + CHOOSE_NUMBER_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -352,6 +367,7 @@ impl ActionSpace {
             PlayerAction::SubmitRunnerTraceBid { amount } => {
                 (*amount <= MAX_TRACE_BID).then_some(RUNNER_TRACE_BID_START + *amount as usize)
             }
+            PlayerAction::ChooseNumber { amount } => (*amount <= MAX_CHOSEN_NUMBER).then_some(CHOOSE_NUMBER_START + *amount as usize),
 
             PlayerAction::AcceptPendingPaidChoice { cost_option_index } => match cost_option_index {
                 None => Some(ACCEPT_PENDING_PAID_CHOICE_START),
@@ -548,6 +564,9 @@ impl ActionSpace {
             // action means "the `local`-th pending trigger", and
             // `apply_action` is the one to say whether that exists.
             return Some(PlayerAction::ChooseTriggerToResolve { index: local });
+        }
+        if let Some(local) = in_segment(index, CHOOSE_NUMBER_START, CHOOSE_NUMBER_LEN) {
+            return Some(PlayerAction::ChooseNumber { amount: local as u32 });
         }
         None
     }
@@ -1156,6 +1175,30 @@ mod tests {
     }
 
     #[test]
+    fn a_number_decision_roundtrips_and_matches_mask() {
+        let registry = CardRegistry::new();
+        let mut state = base_state();
+        state.pending_decision = Some(crate::rules::state::PendingDecision::ChooseNumber {
+            chooser: Side::Corp,
+            min: 1,
+            max: MAX_CHOSEN_NUMBER,
+            then: Box::new(crate::dsl::Effect::RemoveTags(crate::dsl::Amount::ChosenNumber)),
+            text: String::new(),
+            source_card: None,
+            prompting_card: None,
+            source_install: None,
+            resume: crate::rules::state::PendingChoiceResume::None,
+        });
+
+        assert_roundtrips(&state, &registry);
+        assert_mask_matches_legal_actions(&state, &registry);
+        let mask = get_action_mask(&state, &registry);
+        assert!(!mask[CHOOSE_NUMBER_START], "0 is below the range");
+        assert!(mask[CHOOSE_NUMBER_START + 1] && mask[ActionSpace::SIZE - 1], "1 through the cap, the last slot in the space");
+        assert_eq!(mask.iter().filter(|legal| **legal).count(), MAX_CHOSEN_NUMBER as usize);
+    }
+
+    #[test]
     fn step_rejects_actions_outside_legal_actions() {
         let registry = CardRegistry::new();
         let mut state = base_state();
@@ -1387,7 +1430,14 @@ mod tests {
         // break's hole was reclaimed and `PurgeVirusCounters` folded into
         // the unit block. Every card in the pool is checked against the
         // per-card caps by `every_card_fits_the_action_space_caps`.
-        assert_eq!(ActionSpace::SIZE, 1646);
+        //
+        // **1646 → 1677: `ChooseNumber` (Rules Audit backlog item 6),
+        // appended.** `MAX_CHOSEN_NUMBER + 1` = 31 slots after what was the
+        // last segment, so — unlike the two growths above — every index
+        // below 1646 means what it meant, and a recorded policy needs a
+        // wider head, not retraining from nothing.
+        assert_eq!(ActionSpace::SIZE, 1677);
+        assert_eq!(CHOOSE_NUMBER_START, 1646, "appended: nothing before it moved");
     }
 
     /// Rules Audit T11: the cap that was wrong for Ansel 1.0 and Brân 1.0

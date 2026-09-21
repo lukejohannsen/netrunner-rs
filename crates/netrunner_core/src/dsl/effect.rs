@@ -101,8 +101,11 @@ pub enum Effect {
     /// tags exist solely on `RunnerState` in this data model, so
     /// `Side::Corp` would never be a legal target.
     GiveTags(u32),
-    /// Deliberately no `Side` param, same rationale as `GiveTags`.
-    RemoveTags(u32),
+    /// Deliberately no `Side` param, same rationale as `GiveTags`. An
+    /// `Amount` rather than a number since Bigger Picture's "remove any
+    /// number of tags" became a number the Corp chooses
+    /// (`Amount::ChosenNumber`) instead of every tag there is.
+    RemoveTags(Amount),
     /// Deliberately no `Side` param — Bad Publicity exists solely on
     /// `CorpState` in this data model, same rationale as `GiveTags`.
     GiveBadPublicity(u32),
@@ -698,6 +701,38 @@ pub enum Effect {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         texts: Vec<String>,
     },
+    /// `chooser` names a number from `min` to `max` and `then` resolves
+    /// with it as `Amount::ChosenNumber` — "remove **any number of** tags"
+    /// (Bigger Picture), "lose **up to 5** credits" (Account Siphon),
+    /// "remove **up to 2** tags" (Lie Low). Composition didn't work because
+    /// every existing decision picks from a list written in the card file
+    /// (`PresentChoice`, capped at `MAX_PENDING_CHOICE_OPTIONS`) or from
+    /// cards in a zone, and a number is neither: the three cards above each
+    /// took the most their text allows, which for Bigger Picture gave away
+    /// the one decision the card is — how tagged to leave the Runner.
+    ///
+    /// `max` is resolved when the decision is parked and capped at
+    /// `action_mask::MAX_CHOSEN_NUMBER`; `of`, when present, caps it again
+    /// — "up to 2" *of* the tags there are (`max: Fixed(2), of:
+    /// RunnerTags`), so a number that could do nothing is never offered.
+    /// **Nothing is asked when there is nothing to choose:** a range of one
+    /// number resolves `then` with it at once.
+    ///
+    /// Not how an X *cost* is said — no card in the pool prints one, and a
+    /// cost is chosen before it is paid, which is a question for the
+    /// action that pays it, not for an effect.
+    ChooseNumber {
+        chooser: Side,
+        #[serde(default)]
+        min: u32,
+        max: Amount,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        of: Option<Amount>,
+        then: Box<Effect>,
+        /// The printed clause the number is about (the Linked Clause
+        /// Rule), shown as the prompt.
+        text: String,
+    },
     /// Flips the Runner's identity to its other side
     /// (`RunnerState::identity_flipped`) — Dewi Subrotoputri. A flag rather
     /// than swapping the identity card: one card, two sides, and every
@@ -969,6 +1004,19 @@ pub enum Amount {
     /// `EffectRequirement::AmountAtLeast`. `EffectRequirement::IsTagged`
     /// answers only "at least one".
     RunnerTags,
+    /// The number `Effect::ChooseNumber` was answered with, inside its
+    /// `then`. **A placeholder, written over when the number is chosen**
+    /// (`Effect::with_chosen_number`, the convention
+    /// `PromptChooseServer::on_success` already follows for its server):
+    /// the `then` that resolves holds `Fixed(n)` wherever the card file
+    /// wrote this. Rejected: a field on `ResolutionContext`, which is where
+    /// the rest of the per-resolution scratch lives and which does not
+    /// survive a park — and "the Runner loses 5[c] for each tag removed
+    /// this way" comes after a tag removal another card may react to. A
+    /// continuation is an `Effect`, so a number written into it rides
+    /// along with no field anywhere. Resolves to 0 if it is ever read
+    /// unsubstituted; `validate` refuses one written outside a `then`.
+    ChosenNumber,
     /// Cards in the Runner's heap that print the subtype — Rising Tide's
     /// "+1 strength for each fracter in your heap", which was
     /// `StrengthModifier::PerFracterInHeap` until a continuous effect's
@@ -1072,6 +1120,43 @@ pub enum SubroutineBreakCount {
 }
 
 impl Effect {
+    /// This effect with every `Amount::ChosenNumber` written over by
+    /// `Fixed(number)` — what `Effect::ChooseNumber::then` becomes once the
+    /// number is chosen. Stops at a nested `ChooseNumber`'s own `then`,
+    /// whose placeholder is that choice's (its bounds are this one's).
+    ///
+    /// Ends in `other => other`, as `substitute_chosen_server` does, so a
+    /// new variant holding an `Amount` could be missed here;
+    /// `a_chosen_number_reaches_every_amount_a_card_writes` holds the pool
+    /// to it instead — no card's `then` may come out still naming the
+    /// placeholder.
+    pub fn with_chosen_number(self, number: u32) -> Effect {
+        let amount = |amount: Amount| if amount == Amount::ChosenNumber { Amount::Fixed(number) } else { amount };
+        let boxed = |effect: Box<Effect>| Box::new(effect.with_chosen_number(number));
+        let all = |effects: Vec<Effect>| effects.into_iter().map(|e| e.with_chosen_number(number)).collect();
+        match self {
+            Effect::GainCreditsAmount(side, a) => Effect::GainCreditsAmount(side, amount(a)),
+            Effect::LoseCreditsAmount(side, a) => Effect::LoseCreditsAmount(side, amount(a)),
+            Effect::DrawCardsAmount(side, a) => Effect::DrawCardsAmount(side, amount(a)),
+            Effect::RemoveTags(a) => Effect::RemoveTags(amount(a)),
+            Effect::MillRnDAmount(a) => Effect::MillRnDAmount(amount(a)),
+            Effect::DealDamageAmount(kind, a) => Effect::DealDamageAmount(kind, amount(a)),
+            Effect::AddAdditionalAccessAmount { server, amount: a } => Effect::AddAdditionalAccessAmount { server, amount: amount(a) },
+            Effect::BoostStrengthAmount { amount: a, duration } => Effect::BoostStrengthAmount { amount: amount(a), duration },
+            Effect::ChooseNumber { chooser, min, max, of, then, text } => {
+                Effect::ChooseNumber { chooser, min, max: amount(max), of: of.map(amount), then, text }
+            }
+            Effect::Sequence(effects) => Effect::Sequence(all(effects)),
+            Effect::PresentChoice { chooser, options, texts } => Effect::PresentChoice { chooser, options: all(options), texts },
+            Effect::ResolveSomeOf { chooser, count, options, texts } => Effect::ResolveSomeOf { chooser, count, options: all(options), texts },
+            Effect::EffectIf { condition, effect } => Effect::EffectIf { condition: condition.with_chosen_number(number), effect: boxed(effect) },
+            Effect::OfferPaidChoice { side, cost, if_paid, if_declined, text } => {
+                Effect::OfferPaidChoice { side, cost, if_paid: boxed(if_paid), if_declined: boxed(if_declined), text }
+            }
+            other => other,
+        }
+    }
+
     /// Calls `f` on this effect and then on every effect nested inside it,
     /// depth-first in authoring order.
     ///
@@ -1100,6 +1185,7 @@ impl Effect {
             Effect::EffectIf { effect, .. }
             | Effect::Trace { on_success: effect, .. }
             | Effect::SetRunEndedEffect(effect)
+            | Effect::ChooseNumber { then: effect, .. }
             | Effect::SetAccessReplacement { effect, .. } => effect.for_each_effect(f),
             Effect::OfferPaidChoice { if_paid, if_declined, .. } => {
                 if_paid.for_each_effect(f);
