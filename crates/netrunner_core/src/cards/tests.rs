@@ -6907,7 +6907,18 @@ mod system_gateway {
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: CardId("shred".to_string()) }).expect("play");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) }).expect("run");
-        assert!(state.active_run.as_ref().unwrap().end_run_prevention.is_some(), "armed on start");
+        let armed = |state: &GameState| {
+            state.lingering.iter().any(|e| matches!(e.what, crate::rules::lingering::Lingering::PreventRunEnding(_)) && e.holds(state))
+        };
+        assert!(armed(&state), "armed on start");
+        // It stands on the table for both players to see, so a view carries
+        // it and a bot's sample is bound by it. As a field of the run it
+        // was in no view, and every sample ended the run at the first
+        // "End the run".
+        for viewer in [Side::Corp, Side::Runner] {
+            let view = crate::view::build_client_view(&state, &registry, viewer);
+            assert!(view.lingering.iter().any(|e| matches!(e.what, crate::rules::lingering::Lingering::PreventRunEnding(_))), "{viewer:?}");
+        }
         // Approach, encounter, and let Wall of Static's End the run fire.
         let state = advance_until_choice(state, &registry);
         assert!(state.active_run.is_some(), "the run has not ended: the end was intercepted");
@@ -6923,6 +6934,29 @@ mod system_gateway {
         let (declined, _) = apply_action(&state, &registry, PlayerAction::DeclinePendingPaidChoice).expect("the corp declines");
         assert!(declined.active_run.is_some(), "the run goes on");
         assert_eq!(declined.corp.hq.len(), 2);
+        // "The first time": asked once, used or not.
+        assert!(!armed(&declined) && !armed(&paid_state));
+        let mut again = declined.clone();
+        let shred = CardId("shred".to_string());
+        crate::rules::evaluate_effect(&mut again, &crate::dsl::Effect::EndTheRun, &mut crate::rules::ResolutionContext::for_card(Some(&shred)), &registry)
+            .expect("a second end the run");
+        assert!(again.active_run.is_none() && again.pending_paid_choice.is_none(), "the second time the Corp ends the run, it ends");
+    }
+
+    /// X is the root of the server attacked when the run would end, and
+    /// with nothing in it there is nothing to pay: the run just ends.
+    #[test]
+    fn shred_against_an_empty_root_prevents_nothing() {
+        let registry = sg_registry();
+        let mut state = runner_turn(5, 4);
+        state.runner.grip = vec![CardId("shred".to_string())];
+        state.corp.hq = vec![CardId("hedge_fund".to_string())];
+        state.corp.installed = vec![corp_ice("wall_of_static", ServerId::Hq)];
+        let (state, _) = apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: CardId("shred".to_string()) }).expect("play");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Hq }).expect("run");
+        let state = advance_until_choice(state, &registry);
+        assert!(state.active_run.is_none() && state.pending_paid_choice.is_none());
+        assert!(state.lingering.iter().all(|e| !matches!(e.what, crate::rules::lingering::Lingering::PreventRunEnding(_))), "and nothing is left armed for the next run");
     }
 
     #[test]

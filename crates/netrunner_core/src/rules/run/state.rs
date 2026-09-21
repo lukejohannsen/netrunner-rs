@@ -323,10 +323,6 @@ pub struct RunState {
     pub on_end_card: Option<CardId>,
     #[serde(default)]
     pub on_end_install: Option<InstallId>,
-    /// `Effect::ArmRunEndPrevention` — consumed by the first
-    /// `Effect::EndTheRun` of this run. Shred.
-    #[serde(default)]
-    pub end_run_prevention: Option<crate::dsl::EndRunPrevention>,
     /// Whether any subroutine has resolved during this run
     /// (`EffectRequirement::SubroutineResolvedThisRun`) — Ryō "Phoenix" Ōno.
     #[serde(default)]
@@ -407,7 +403,6 @@ impl Default for RunState {
             on_end_effect: None,
             on_end_card: None,
             on_end_install: None,
-            end_run_prevention: None,
             subroutine_resolved: false,
             on_success_card: None,
             on_success_install: None,
