@@ -473,7 +473,11 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
     // A parked payment is asked ahead of anything parked beneath it, as the
     // engine answers it. Only the payer's view has one to word.
     if let Some(payment) = view.pending_payment.as_ref().and_then(|payment| payment.own.as_ref()) {
-        return Some(format!("Pay {} — whose credits first?", plural(payment.amount, "credit", "credits")));
+        return Some(format!(
+            "Pay {} — how many from {}?",
+            plural(payment.amount, "credit", "credits"),
+            pool_name(payment.question.pool, view, registry)
+        ));
     }
     let name = decision_card(view).map(|id| title(id, registry));
     let asks = |what: String| Some(match &name { Some(card) => format!("{card} asks — {what}"), None => what });

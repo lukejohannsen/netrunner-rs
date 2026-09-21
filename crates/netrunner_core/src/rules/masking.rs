@@ -534,7 +534,7 @@ pub enum ConcealedAction {
 /// step before the table did — while `PublicPendingPayment` was carefully
 /// withholding the same card from their view. The step's own record says
 /// which it was: a park's events are `PaymentChoiceOffered` and nothing
-/// else. The answer's entry is an index and its events are the action's
+/// else. The answer's entry is a number and its events are the action's
 /// real ones, masked as ever, so the log catches up the moment the card is
 /// actually played.
 ///
@@ -1442,9 +1442,9 @@ mod tests {
         state.pending_payment = Some(crate::rules::state::PendingPayment {
             side: Side::Runner,
             action: PlayerAction::PlayEvent { card_id: secret.clone() },
-            answers: vec![crate::rules::payment::Pool::Run],
+            answers: vec![1],
             amount: 3,
-            options: vec![crate::rules::payment::Pool::BadPublicity, crate::rules::payment::Pool::Run],
+            question: crate::rules::payment::Question { pool: crate::rules::payment::Pool::BadPublicity, min: 0, max: 2 },
         });
 
         let own = mask_state_for_player(&state, Side::Runner).pending_payment.expect("the payer sees it");

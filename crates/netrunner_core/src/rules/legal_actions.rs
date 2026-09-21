@@ -315,7 +315,7 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
         | PlayerAction::ChooseServerForPendingDecision { .. }
         | PlayerAction::ChooseTriggerToResolve { .. }
         | PlayerAction::ChooseNumber { .. } => {
-            // A parked payment is answered by `ResolvePendingChoice` too, and
+            // A parked payment is answered by `ChooseNumber` too, and
             // comes first for the reason `current_actor` gives.
             state
                 .pending_payment
@@ -328,6 +328,15 @@ fn action_owner(state: &GameState, registry: &CardRegistry, action: &PlayerActio
 }
 
 fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
+    // How many credits a parked payment takes from the pool it asks about
+    // (`PendingPayment::question`) — and nothing else: `apply_action`
+    // answers the payment ahead of whatever is parked beneath it, which
+    // may itself be a number decision, whose candidates would read as the
+    // payment's and appear twice. The probe still has the last word, since
+    // an answer is legal only if the action can be completed after it.
+    if let Some(payment) = &state.pending_payment {
+        return (payment.question.min..=payment.question.max).map(|amount| PlayerAction::ChooseNumber { amount }).collect();
+    }
     let mut candidates = static_candidates();
     candidates.extend(install_card_candidates(state, registry));
     candidates.extend(rez_ice_candidates(state));
@@ -343,14 +352,6 @@ fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
     candidates.extend(trace_bid_candidates(state, registry));
     candidates.extend(pending_paid_choice_candidates(state));
     candidates.extend(pending_decision_candidates(state, registry));
-    // Which pool a parked payment is taken from first — one option per class
-    // on offer (`PendingPayment::options`). The probe sends these through
-    // `apply_action`, which answers the payment ahead of any decision parked
-    // beneath it, so an index the decision would also accept means the
-    // payment here.
-    if let Some(payment) = &state.pending_payment {
-        candidates.extend((0..payment.options.len()).map(|option_index| PlayerAction::ResolvePendingChoice { option_index }));
-    }
     candidates
 }
 

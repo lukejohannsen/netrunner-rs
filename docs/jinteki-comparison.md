@@ -446,7 +446,7 @@ servers rather than a count.
   choice of provider to the player, ours asks **only when the answer changes
   what the payer is left with** — a pool never worth more than another is
   spent first unasked — and answers with the existing choice action rather
-  than a credit-by-credit prompt, which waits on a numeric decision. (How
+  than a credit-by-credit prompt, which waited on a numeric decision (item 6, since built: the question is now how many credits come from which pool). (How
   often jinteki's prompt appears was not measured or read for this item.) It parks by *replaying* the action, which jinteki's continuation
   style has no need of and a pure `apply_action` makes nearly free.
   Recurring credits became a declaration refilled as a step of the turn
@@ -466,7 +466,11 @@ servers rather than a count.
   the one that mattered. The chosen number is written into the effect
   that resolves with it, which a continuation-passing engine like
   jinteki's gets for free from a closure and ours has to say. X costs are
-  not built: no card in the pool prints one.
+  not built: no card in the pool prints one. **Stage 2, the same day:** a
+  payment two pools could make is split to the credit by the same number
+  ("how many from Azimat?"), which is jinteki's credit prompt reached from
+  the other side — asked only when the split changes what the payer is
+  left with.
 - **One replacement per run.** `RunState::access_replacement` is a single
   `Option`; jinteki collects every `:successful-run` replacement and
   `choose-replacement-ability` asks the Runner which, adding "Breach" unless

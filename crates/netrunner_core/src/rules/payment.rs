@@ -35,7 +35,8 @@
 //! makes it matter: a play cost, an advance and a steal cost are `Other`
 //! until a card prints "use these credits to play…".
 //!
-//! **Which pool goes first is the payer's to say, when it matters** (`plan`).
+//! **How a payment is split between pools is the payer's to say, when it
+//! matters** (`plan`).
 //! Every pool has a class — what its credits may be spent on, and how long
 //! they last (`Breadth`, `Life`) — and a pool whose credits are never worth
 //! more than another's is spent before it without a question: The Toolbox
@@ -43,6 +44,8 @@
 //! left to ask is two pools neither of which is the other's lesser, and a
 //! payment too small to take both: Azimat's credits pay only trash costs
 //! and last the turn, a run's pay anything and are gone when it ends. The
+//! payer says how many of the credits come from the first such class
+//! (`Question`, a `PlayerAction::ChooseNumber`), to the credit. The
 //! order used to be fixed — hosted credits, bad publicity, the run's, the
 //! identity's, the credit pool — which drained Azimat on a run whose own
 //! credits were about to vanish.
@@ -96,8 +99,8 @@ pub(crate) enum Purpose<'a> {
 }
 
 /// A place credits can be taken from. Serialisable because a parked payment
-/// names the pools it is asking about (`PendingPayment::options`), and
-/// public because a client labels each option by it.
+/// names the pool it is asking about (`PendingPayment::question`), and
+/// public because a client words the question by it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Pool {
     /// Credits hosted on an active installed card whose `pays_for` covers
@@ -119,6 +122,24 @@ pub enum Pool {
     Identity,
     /// The credit pool itself. Always a source and always last.
     Wallet,
+}
+
+/// What a payment asks its payer: how many of its credits come from
+/// `pool`'s class, from `min` to `max`. The rest comes from the other pools
+/// that could have gone first, which `min` already makes sure can cover it.
+/// Answered by `PlayerAction::ChooseNumber` (Rules Audit backlog item 6).
+///
+/// It was "which pool first?", answered by `ResolvePendingChoice`, with the
+/// chosen class emptied as far as the payment went — a simplification item
+/// 5 named, because a split needs a number for an answer and no decision
+/// took one. A number says everything which-first could (all of it, or none
+/// of it) and what it could not: one credit off Azimat and one off the run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Question {
+    /// The class asked about, named by its first pool in table order.
+    pub pool: Pool,
+    pub min: u32,
+    pub max: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,29 +208,36 @@ pub(crate) struct Planned {
 }
 
 /// Which pools a payment of `amount` is taken from, and how much from each —
-/// or, as the `Err`, the pools the payer has to choose between first.
+/// or, as the `Err`, what the payer has to say first.
 ///
 /// **The payer is asked only when the answer changes what they are left
 /// with.** A pool whose credits are never worth more than another's is
 /// spent before it without a question (The Toolbox before Cyberfeeder on a
 /// break; every pool before the credit pool), two pools of one class are
 /// spent in table order, and when the payment is large enough to empty
-/// every pool that could go first, the order between them is nothing. What
-/// is left is two pools neither of which is the other's lesser — Azimat's
-/// credits pay only trash costs but last the turn, the run's pay anything
-/// and are gone when it ends — and a payment too small to take both.
+/// every pool that could go first, how it is split between them is
+/// nothing. What is left is two pools neither of which is the other's
+/// lesser — Azimat's credits pay only trash costs but last the turn, the
+/// run's pay anything and are gone when it ends — and a payment too small
+/// to take both.
 ///
-/// `chosen` is what the payer has already answered for this payment, in
-/// order; an answer names any pool of the class meant. **The chosen class
-/// is emptied as far as the payment goes**: splitting one payment credit
-/// by credit between two pools needs a number for an answer, which is
-/// Rules Audit backlog item 6, and is named here rather than quietly
-/// unsupported. At most `MAX_PENDING_CHOICE_OPTIONS` classes are offered —
-/// the answer is a `ResolvePendingChoice` — and no pool prints enough
-/// incomparable words to reach it.
+/// **Then the payer says how many come from the first of those classes**
+/// (`Question`), and that class is done with: what it did not give stays
+/// on its cards, and the loop goes on with the rest. The range is what the
+/// payment allows — no more than the class holds or the payment needs, and
+/// no fewer than the other classes that could go first would leave
+/// uncovered — so every number in it is a payment that can be made, and
+/// the last class is never asked about. `chosen` is what the payer has
+/// already answered for this payment, in order; a number outside the range
+/// is asked for again. A range that does not fit a `ChooseNumber`
+/// (`MAX_CHOSEN_NUMBER`) is cut to it, and one that cannot be — the fewest
+/// the class must give is more than a number can say — is not asked: the
+/// classes go in table order, as two pools of one class do. No pool in the
+/// game holds thirty credits another class cannot cover.
 ///
 /// Pure: `entries` in, a plan out. `sources` and `class_of` read the state.
-pub(crate) fn plan(entries: &[(Source, Class)], amount: u32, chosen: &[Pool]) -> Result<Planned, Vec<Pool>> {
+pub(crate) fn plan(entries: &[(Source, Class)], amount: u32, chosen: &[u32]) -> Result<Planned, Question> {
+    let cap = crate::rules::action_mask::MAX_CHOSEN_NUMBER;
     let mut left: Vec<(Source, &Class)> = entries.iter().filter(|(source, _)| source.pool != Pool::Wallet).map(|(s, c)| (*s, c)).collect();
     let mut spent: Vec<(Pool, u32)> = Vec::new();
     let mut remaining = amount;
@@ -222,33 +250,24 @@ pub(crate) fn plan(entries: &[(Source, Class)], amount: u32, chosen: &[Pool]) ->
         // One class among them, or enough to empty them all: no question.
         let held: u32 = first.iter().map(|&i| left[i].0.credits).sum();
         let one_class = first.iter().all(|&i| left[i].1.no_better_than(left[first[0]].1) && left[first[0]].1.no_better_than(left[i].1));
-        let take: Vec<usize> = if one_class || remaining >= held {
-            first
+        // The first class among them, and what the payment lets it give.
+        let asked: Vec<usize> = first.iter().copied().filter(|&i| left[i].1 == left[first[0]].1).collect();
+        let asked_holds: u32 = asked.iter().map(|&i| left[i].0.credits).sum();
+        let fewest = remaining.saturating_sub(held - asked_holds);
+        let (take, mut budget): (Vec<usize>, u32) = if one_class || remaining >= held || fewest > cap {
+            (first, remaining)
         } else {
-            let mut classes: Vec<usize> = Vec::new();
-            for &i in &first {
-                if !classes.iter().any(|&seen| left[seen].1 == left[i].1) {
-                    classes.push(i);
-                }
-            }
+            let question = Question { pool: left[asked[0]].0.pool, min: fewest, max: asked_holds.min(remaining).min(cap) };
             match answers.next() {
-                // An answer has to be one of the classes on offer. One that
-                // names a pool which is there but could not go first would
-                // take nothing and leave nothing changed — this loop would
-                // not end — so it is asked again instead.
-                Some(answer) => {
-                    let offered = first.iter().find(|&&i| left[i].0.pool == *answer).map(|&i| left[i].1.clone());
-                    let class = offered.ok_or_else(|| classes.iter().map(|&i| left[i].0.pool).collect::<Vec<_>>())?;
-                    first.into_iter().filter(|&i| *left[i].1 == class).collect()
-                }
-                None => {
-                    classes.truncate(crate::rules::action_mask::MAX_PENDING_CHOICE_OPTIONS);
-                    return Err(classes.into_iter().map(|i| left[i].0.pool).collect());
-                }
+                Some(&number) if (question.min..=question.max).contains(&number) => (asked, number),
+                // No answer yet, or one the payment cannot be made with —
+                // which is put again rather than bent into range.
+                _ => return Err(question),
             }
         };
         for &i in &take {
-            let spend = left[i].0.credits.min(remaining);
+            let spend = left[i].0.credits.min(budget);
+            budget -= spend;
             remaining -= spend;
             if spend > 0 {
                 spent.push((left[i].0.pool, spend));
@@ -402,7 +421,7 @@ pub(crate) fn available(state: &GameState, registry: &CardRegistry, side: Side, 
 /// Pays `amount` credits for `purpose`. `RulesError::NotEnoughCredits` —
 /// before anything is spent — if `sources` do not hold it, and
 /// `RulesError::PaymentChoiceNeeded`, also before anything is spent, if the
-/// payer has to say which pool goes first and has not (`plan`); `engine::
+/// payer has to say how many come from which pool and has not (`plan`); `engine::
 /// apply_action` turns that into a parked `PendingPayment`. The payer's
 /// answers are taken from the front of `GameState::payment_answers`.
 pub(crate) fn pay(
@@ -418,7 +437,7 @@ pub(crate) fn pay(
         return Err(RulesError::NotEnoughCredits { side, available: total, requested: amount });
     }
     let entries: Vec<(Source, Class)> = sources.iter().map(|source| (*source, class_of(state, registry, side, source.pool))).collect();
-    let planned = plan(&entries, amount, &state.payment_answers).map_err(|options| RulesError::PaymentChoiceNeeded { side, amount, options })?;
+    let planned = plan(&entries, amount, &state.payment_answers).map_err(|question| RulesError::PaymentChoiceNeeded { side, amount, question })?;
     state.payment_answers.drain(..planned.answers_used);
 
     let mut events = Vec::new();
@@ -639,7 +658,7 @@ mod tests {
 
     // `plan` is pure, so its rules are pinned here without an engine.
 
-    fn spend(planned: Result<Planned, Vec<Pool>>) -> Result<Vec<(Pool, u32)>, Vec<Pool>> {
+    fn spend(planned: Result<Planned, Question>) -> Result<Vec<(Pool, u32)>, Question> {
         planned.map(|planned| planned.spend)
     }
     fn words(list: &[PaysFor]) -> Breadth {
@@ -684,14 +703,31 @@ mod tests {
         assert_eq!(spend(plan(&[bad_publicity(2), run_credits(5), wallet(1)], 3, &[])), Ok(vec![(Pool::BadPublicity, 2), (Pool::Run, 1), (Pool::Wallet, 0)]));
     }
 
+    fn ask(pool: Pool, min: u32, max: u32) -> Question {
+        Question { pool, min, max }
+    }
+
     #[test]
     fn two_pools_neither_the_others_lesser_are_a_question_when_the_payment_cannot_take_both() {
         // Azimat pays less but lasts longer; the run's credits pay anything and are gone sooner.
         let table = [azimat(2), run_credits(5), wallet(3)];
-        assert_eq!(plan(&table, 2, &[]), Err(vec![AZIMAT, Pool::Run]));
-        assert_eq!(spend(plan(&table, 2, &[AZIMAT])), Ok(vec![(AZIMAT, 2), (Pool::Wallet, 0)]));
-        assert_eq!(spend(plan(&table, 2, &[Pool::Run])), Ok(vec![(Pool::Run, 2), (Pool::Wallet, 0)]));
-        assert_eq!(spend(plan(&table, 4, &[AZIMAT])), Ok(vec![(AZIMAT, 2), (Pool::Run, 2), (Pool::Wallet, 0)]), "the chosen pool first, as far as it goes");
+        assert_eq!(plan(&table, 2, &[]), Err(ask(AZIMAT, 0, 2)));
+        assert_eq!(spend(plan(&table, 2, &[2])), Ok(vec![(AZIMAT, 2), (Pool::Wallet, 0)]));
+        assert_eq!(spend(plan(&table, 2, &[0])), Ok(vec![(Pool::Run, 2), (Pool::Wallet, 0)]));
+        // What which-first could not say, and the reason for the number.
+        assert_eq!(spend(plan(&table, 2, &[1])), Ok(vec![(AZIMAT, 1), (Pool::Run, 1), (Pool::Wallet, 0)]));
+    }
+
+    #[test]
+    fn the_range_is_what_the_payment_allows() {
+        let table = [azimat(2), run_credits(5), wallet(3)];
+        // 6 of the 7 they hold: the run can cover 5, so Azimat gives at least 1.
+        assert_eq!(plan(&table, 6, &[]), Err(ask(AZIMAT, 1, 2)));
+        assert_eq!(spend(plan(&table, 6, &[1])), Ok(vec![(AZIMAT, 1), (Pool::Run, 5), (Pool::Wallet, 0)]));
+        // 1 credit: Azimat holds 2 and may give no more than is owed.
+        assert_eq!(plan(&table, 1, &[]), Err(ask(AZIMAT, 0, 1)));
+        // The credit pool is never part of the split: every other pool goes before it.
+        assert_eq!(spend(plan(&table, 6, &[2])), Ok(vec![(AZIMAT, 2), (Pool::Run, 4), (Pool::Wallet, 0)]));
     }
 
     #[test]
@@ -702,28 +738,47 @@ mod tests {
     }
 
     #[test]
-    fn an_answer_names_a_class_and_bad_publicity_and_the_runs_credits_are_one() {
-        let table = [azimat(2), bad_publicity(1), run_credits(5), wallet(0)];
-        assert_eq!(plan(&table, 3, &[]), Err(vec![AZIMAT, Pool::BadPublicity]), "one option for the class, named by its first pool");
-        assert_eq!(spend(plan(&table, 3, &[Pool::Run])), Ok(vec![(Pool::BadPublicity, 1), (Pool::Run, 2), (Pool::Wallet, 0)]));
+    fn a_question_is_about_a_class_and_bad_publicity_and_the_runs_credits_are_one() {
+        let table = [bad_publicity(1), azimat(2), run_credits(5), wallet(0)];
+        assert_eq!(plan(&table, 3, &[]), Err(ask(Pool::BadPublicity, 1, 3)), "the class holds 6, named by its first pool; Azimat covers 2 at most");
+        assert_eq!(spend(plan(&table, 3, &[2])), Ok(vec![(Pool::BadPublicity, 1), (Pool::Run, 1), (AZIMAT, 1), (Pool::Wallet, 0)]), "table order inside the class");
     }
 
     #[test]
-    fn an_answer_that_was_not_on_offer_is_asked_again_and_the_plan_still_ends() {
-        let narrow = entry(TOOLBOX, 2, words(&[PaysFor::TrashCosts]), Life::Turn);
-        let broad = entry(FEEDER, 2, words(&[PaysFor::TrashCosts, PaysFor::TraceAttempts]), Life::Turn);
-        // `FEEDER` is there, but `TOOLBOX` is strictly its lesser: it cannot go first.
-        let table = [narrow, broad, run_credits(5), wallet(0)];
-        assert_eq!(plan(&table, 1, &[]), Err(vec![TOOLBOX, Pool::Run]));
-        assert_eq!(plan(&table, 1, &[FEEDER]), Err(vec![TOOLBOX, Pool::Run]), "there, but not one of the pools that could go first");
-        assert_eq!(plan(&table, 1, &[Pool::Identity]), Err(vec![TOOLBOX, Pool::Run]), "not there at all");
+    fn three_classes_are_two_questions_and_the_last_is_never_asked_about() {
+        let icebreakers = entry(TOOLBOX, 2, words(&[PaysFor::UsingIcebreakers]), Life::Turn);
+        let table = [azimat(2), icebreakers, run_credits(2), wallet(0)];
+        assert_eq!(plan(&table, 3, &[]), Err(ask(AZIMAT, 0, 2)));
+        assert_eq!(plan(&table, 3, &[1]), Err(ask(TOOLBOX, 0, 2)), "2 still owed, and the run could cover it all");
+        assert_eq!(spend(plan(&table, 3, &[1, 1])), Ok(vec![(AZIMAT, 1), (TOOLBOX, 1), (Pool::Run, 1), (Pool::Wallet, 0)]));
+        assert_eq!(spend(plan(&table, 3, &[0, 1])), Ok(vec![(TOOLBOX, 1), (Pool::Run, 2), (Pool::Wallet, 0)]));
+        assert_eq!(plan(&table, 3, &[0]), Err(ask(TOOLBOX, 1, 2)), "with Azimat out of it the other two hold 4 of the 3");
+    }
+
+    #[test]
+    fn a_number_outside_the_range_is_asked_for_again_and_the_plan_still_ends() {
+        let table = [azimat(2), run_credits(5), wallet(3)];
+        assert_eq!(plan(&table, 6, &[0]), Err(ask(AZIMAT, 1, 2)), "0 would leave a credit nobody can pay");
+        assert_eq!(plan(&table, 6, &[3]), Err(ask(AZIMAT, 1, 2)), "more than the pool holds");
+    }
+
+    #[test]
+    fn a_range_a_number_cannot_say_is_cut_to_one_it_can_or_not_asked() {
+        let cap = crate::rules::action_mask::MAX_CHOSEN_NUMBER;
+        let table = [azimat(cap + 10), run_credits(cap + 10), wallet(0)];
+        assert_eq!(plan(&table, cap + 5, &[]), Err(ask(AZIMAT, 0, cap)), "cut to what `ChooseNumber` can carry");
+        // Azimat must give at least cap + 5: no number says so, so table order.
+        assert_eq!(
+            spend(plan(&table, 2 * cap + 15, &[])),
+            Ok(vec![(AZIMAT, cap + 10), (Pool::Run, cap + 5), (Pool::Wallet, 0)])
+        );
     }
 
     #[test]
     fn a_plan_says_how_many_answers_it_took_so_the_next_payment_starts_after_them() {
         let table = [azimat(2), run_credits(5), wallet(3)];
-        assert_eq!(plan(&table, 2, &[AZIMAT, Pool::Run]).map(|p| p.answers_used), Ok(1), "one question, one answer taken; the second is the next payment's");
-        assert_eq!(plan(&table, 7, &[AZIMAT]).map(|p| p.answers_used), Ok(0), "no question, so the answer is left for whoever asks");
+        assert_eq!(plan(&table, 2, &[2, 0]).map(|p| p.answers_used), Ok(1), "one question, one answer taken; the second is the next payment's");
+        assert_eq!(plan(&table, 7, &[2]).map(|p| p.answers_used), Ok(0), "no question, so the answer is left for whoever asks");
     }
 
     #[test]
