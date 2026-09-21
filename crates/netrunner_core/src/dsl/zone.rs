@@ -121,8 +121,9 @@ pub enum CardFilter {
     /// availability check — already goes through.
     NotInstalledThisTurn,
     /// A card the Runner could install from the grip right now — a
-    /// non-Trojan Program, Hardware or Resource that is affordable, fits
-    /// the memory budget and respects the console limit: the target set of
+    /// non-Trojan Program, Hardware or Resource that is affordable, and a
+    /// program that fits once programs are trashed to make room (CR
+    /// 3.9.3b; a second console is no bar, CR 3.8.5b): the target set of
     /// Pantograph's "you may install 1 card from your grip". The type half
     /// lives in `card_matches_filter`; affordability and the budgets are
     /// state-dependent, answered by `rules::engine::

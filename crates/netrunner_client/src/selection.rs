@@ -52,17 +52,49 @@ pub struct Candidate {
     pub selected: bool,
 }
 
-/// A parked `ChooseCards` as its chooser reads it. `None` for anyone else,
-/// whose view carries no candidates to name.
+/// A parked `ChooseCards` as its chooser reads it, or an install asking
+/// which like card it trashes next. `None` for anyone else, whose view
+/// carries no candidates to name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Selection {
     pub candidates: Vec<Candidate>,
     pub min: u32,
     pub max: u32,
+    /// What choosing a card does.
+    pub verb: Verb,
+}
+
+/// What a toggle does to the card it names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Verb {
+    /// Adds it to a card's selection, or takes it back out.
+    Select,
+    /// Trashes it as part of an install (CR 8.5.6), at once: an install
+    /// asks one card at a time and keeps each answer, so there is nothing
+    /// to take back and the confirm is "no more".
+    Trash,
 }
 
 impl Selection {
     pub fn of(view: &ClientView, registry: &CardRegistry) -> Option<Selection> {
+        // An install's question is answered ahead of anything parked
+        // beneath it, and only its installer's view carries it.
+        if let Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Install(_), .. }) =
+            view.pending_payment.as_ref().and_then(|payment| payment.own.as_ref())
+        {
+            let candidates = view
+                .selection
+                .iter()
+                .map(|candidate| {
+                    let (name, place, concealed) = match candidate.install {
+                        Some(install) => install_words(view, install, candidate.card.as_ref(), registry),
+                        None => (candidate.card.as_ref().map_or_else(|| "a card".to_string(), |card| card_title(card, registry)), String::new(), false),
+                    };
+                    Candidate { position: candidate.position, card: candidate.card.clone(), name, place, concealed, selected: false }
+                })
+                .collect();
+            return Some(Selection { candidates, min: 0, max: 1, verb: Verb::Trash });
+        }
         let Some(PendingDecision::ChooseCards { side, source, min, max, selected, source_card, .. }) = &view.pending_decision else {
             return None;
         };
@@ -83,7 +115,7 @@ impl Selection {
                 Candidate { position: candidate.position, card: candidate.card.clone(), name, place, concealed, selected: selected.contains(&candidate.position) }
             })
             .collect();
-        Some(Selection { candidates, min: *min, max: *max })
+        Some(Selection { candidates, min: *min, max: *max, verb: Verb::Select })
     }
 
     pub fn candidate(&self, position: usize) -> Option<&Candidate> {
@@ -110,6 +142,9 @@ impl Selection {
     /// The label of the toggle at `position`.
     pub fn toggle_label(&self, position: usize) -> Option<String> {
         let candidate = self.candidate(position)?;
+        if self.verb == Verb::Trash {
+            return Some(format!("Trash {}", self.display(candidate)));
+        }
         if candidate.selected {
             // With room for one card, taking it back is how a person picks
             // another; with room for several it is one card out of many.
@@ -121,6 +156,9 @@ impl Selection {
 
     /// The confirm's label: what is being confirmed, by name.
     pub fn confirm_label(&self) -> String {
+        if self.verb == Verb::Trash {
+            return "Trash no more".to_string();
+        }
         match self.chosen_words() {
             Some(words) => format!("Confirm {words}"),
             None => "Choose none".to_string(),

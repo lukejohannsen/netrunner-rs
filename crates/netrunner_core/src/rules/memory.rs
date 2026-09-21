@@ -23,15 +23,20 @@
 //!
 //! **The budget can go negative, and the rules say what happens then.** An
 //! earlier version of this doc claimed a negative budget was "not reachable
-//! through `apply_action`" because `install_program` refuses an install over
-//! budget. That guards one direction only: the *other* side of the ledger
+//! through `apply_action`" because `install_program` refused an install over
+//! budget. (It no longer refuses: an install over the limit trashes
+//! programs first, `rules::install_trash`, CR 3.9.3b.) That guarded one
+//! direction only: the *other* side of the ledger
 //! moves when a console leaves play — *Retribution* and *Ansel 1.0* both
 //! trash a Runner's installed hardware through `pending_choice::
 //! remove_installed_card` — and every program stayed installed with the
 //! report saturated at `0` (ROADMAP Rules Audit, Tier 2). Netrunner's rule
 //! is a checkpoint condition: while the Runner has more memory in use than
 //! available, they must trash installed programs of their choice until they
-//! are within the limit. `enforce_limit` is that checkpoint.
+//! are within the limit (CR 3.9.3c). `enforce_limit` is that checkpoint.
+//! An *install* over the limit is the other rule, 3.9.3b, and is not this
+//! one's: the programs go before the new one is installed, and the new one
+//! is never a candidate (`install_trash::before_program_install`).
 
 use crate::cards::CardRegistry;
 use crate::dsl::{CardFilter, CardType, CardZoneRef, Effect};

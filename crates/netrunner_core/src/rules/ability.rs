@@ -1178,7 +1178,7 @@ pub fn evaluate_effect(
             // that cannot be installed at all.
             let Some(position) = position else { return Ok(Vec::new()) };
             let Some(card_def) = registry.get(&card_id) else { return Ok(Vec::new()) };
-            let mut allowed = crate::rules::engine::corp_install_destinations(state, registry, card_def, *ignore_costs);
+            let mut allowed = crate::rules::engine::corp_install_destinations(state, card_def, *ignore_costs);
             if *remote_only {
                 allowed.retain(|server| matches!(server, crate::rules::run::ServerId::Remote(_)));
             }
@@ -1310,6 +1310,7 @@ pub fn evaluate_effect(
                 crate::rules::state::InstallSlot::Root,
                 false,
                 0,
+                false,
             )?);
             Ok(events)
         }

@@ -1803,7 +1803,7 @@ mod tests {
 
     #[test]
     fn a_corp_install_action_is_concealed_from_the_runner_but_not_the_corp() {
-        let action = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice };
+        let action = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice, trash_first: false };
         assert_eq!(
             mask_action_for_player(&action, Side::Corp, Side::Runner),
             PublicAction::Concealed(ConcealedAction::InstallCard { zone: ServerId::Remote(0), slot: InstallSlot::Ice })
@@ -2185,7 +2185,7 @@ mod tests {
 
     #[test]
     fn a_spectators_log_conceals_both_sides_card_naming_actions() {
-        let corp_install = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice };
+        let corp_install = PlayerAction::InstallCard { card_id: id("ice_wall"), zone: ServerId::Remote(0), slot: InstallSlot::Ice, trash_first: false };
         assert_eq!(
             mask_action_for_player(&corp_install, Side::Corp, Viewer::Spectator),
             mask_action_for_player(&corp_install, Side::Corp, Side::Runner)

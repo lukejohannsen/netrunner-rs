@@ -35,7 +35,26 @@ pub enum PlayerAction {
     /// which it can't look up — no `CardRegistry` is wired in) so that
     /// `run::access_server` can correctly exclude ICE from what a run
     /// accesses on a remote server.
-    InstallCard { card_id: CardId, zone: TargetZone, slot: InstallSlot },
+    ///
+    /// `trash_first` is the Corp's "may first trash" (CR 8.5.6a, 8.5.6b):
+    /// `false` trashes only what the rules make a trash — the agenda or
+    /// asset already in a remote's root under a new agenda or asset, the
+    /// region under a new region — and `true` also asks, one card at a
+    /// time, which other cards in that root or protecting that server go
+    /// first (`payment::Ask::Install`). It is a flag on the action rather
+    /// than a question every install asks because the answer is nearly
+    /// always "none": asked on every ice install onto an iced server it
+    /// was a prompt many times a game with one sensible answer. So the
+    /// install that trashes is its own entry, offered only when there is a
+    /// card it could trash beyond what is forced, and it trashes at least
+    /// one.
+    InstallCard {
+        card_id: CardId,
+        zone: TargetZone,
+        slot: InstallSlot,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        trash_first: bool,
+    },
     /// Flip an already-installed card face-up. Corp-only. No click cost (rez is
     /// not a click action). Pays the card's registry `cost` in credits via
     /// `ability::pay_cost` — `RulesError::CardNotFoundInRegistry` if it
@@ -102,14 +121,18 @@ pub enum PlayerAction {
     PlayOperation { card_id: CardId },
     /// Spend 1 click and `card_id`'s registry `cost` in credits (less any
     /// install discount), move `card_id` from the Grip into the Rig.
-    /// Runner-only. One console at a time (`RulesError::ConsoleLimitExceeded`);
-    /// a second copy of a ◆ card trashes the first.
+    /// Runner-only. A second console trashes the first (CR 3.8.5b, at the
+    /// checkpoint), as a second copy of a ◆ card does.
     InstallHardware { card_id: CardId },
     /// Spend 1 click and `card_id`'s registry `cost` in credits (less any
     /// install discount), move `card_id` from the Grip into the Rig.
-    /// Runner-only. Its memory cost is read from the registry and must fit
-    /// `rules::memory::available_memory`; a second copy of a ◆ card trashes
-    /// the first.
+    /// Runner-only. Its memory cost is read from the registry; a program
+    /// that would go over the memory limit makes the Runner trash installed
+    /// programs until it fits (CR 3.9.3b, 8.5.6c: asked one at a time,
+    /// `payment::Ask::Install`), and is refused only if trashing every one
+    /// would not be enough. `trash_first` is the Runner's "may first trash
+    /// any number of programs" when nothing forces it — see `InstallCard`.
+    /// A second copy of a ◆ card trashes the first.
     ///
     /// **Carries no memory cost, deliberately.** It used to, and the caller
     /// had to name a value matching the card's registry `memory_cost`
@@ -123,7 +146,11 @@ pub enum PlayerAction {
     /// How many memory units this reserves is therefore not a property of
     /// the action at all — see `runner::available_memory`, which derives
     /// the Runner's free memory from what is on the board.
-    InstallProgram { card_id: CardId },
+    InstallProgram {
+        card_id: CardId,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        trash_first: bool,
+    },
     /// Spend 1 click and `card_id`'s registry `cost` in credits, move
     /// `card_id` from the Grip into the Rig. Runner-only. Mirrors
     /// `InstallHardware` exactly (no memory-unit reservation, unlike
@@ -145,7 +172,14 @@ pub enum PlayerAction {
     /// host.** Naming it by `CardId` handed the Runner the identity their
     /// own `ClientView` masks to `None` — a fog-of-war leak straight
     /// through `legal_actions_for`. See `state::InstallId`.
-    InstallProgramOnIce { card_id: CardId, host: InstallId },
+    ///
+    /// `trash_first` as `InstallProgram`'s: a Trojan is a program.
+    InstallProgramOnIce {
+        card_id: CardId,
+        host: InstallId,
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        trash_first: bool,
+    },
     /// Breaks a subroutine by spending a Runner click instead of matching a
     /// breaker to it — Bioroid-style ICE only (`dsl::CardDefinition::
     /// click_breakable == true`, e.g. Ansel 1.0, Brân 1.0). A dedicated
@@ -561,7 +595,7 @@ mod tests {
         let all = vec![
             PlayerAction::GainCreditClick { side: Side::Corp },
             PlayerAction::DrawCardClick { side: Side::Corp },
-            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Hq, slot: InstallSlot::Ice },
+            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
             PlayerAction::RezIce { ice: install },
             PlayerAction::InitiateRun { server: ServerId::Hq },
             PlayerAction::ContinueRun,
@@ -570,9 +604,9 @@ mod tests {
             PlayerAction::PlayEvent { card_id: card() },
             PlayerAction::PlayOperation { card_id: card() },
             PlayerAction::InstallHardware { card_id: card() },
-            PlayerAction::InstallProgram { card_id: card() },
+            PlayerAction::InstallProgram { card_id: card(), trash_first: false },
             PlayerAction::InstallResource { card_id: card() },
-            PlayerAction::InstallProgramOnIce { card_id: card(), host: install },
+            PlayerAction::InstallProgramOnIce { card_id: card(), host: install, trash_first: false },
             PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },
             PlayerAction::EndTurn,
             PlayerAction::DiscardCard { card_id: card() },

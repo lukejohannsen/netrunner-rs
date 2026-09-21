@@ -103,6 +103,23 @@ impl<'a> Placement<'a> {
             .map(|c| c.card.as_ref().map_or_else(|| "the card there".to_string(), |id| card_title(id, self.registry)))
     }
 
+    /// Whether the card is a region, which trashes a region already in the
+    /// root it goes into (CR 3.6.5d) — it was not offered there until Rules
+    /// Conformance B.
+    fn is_region(&self) -> bool {
+        self.card.as_ref().and_then(|card| self.registry.get(card)).is_some_and(|def| def.subtypes.contains(&netrunner_core::dsl::CardSubtype::Region))
+    }
+
+    /// The region in `server`'s root, which a region installed there would
+    /// trash.
+    fn region_there(&self, server: ServerId) -> Option<String> {
+        self.server(server)?
+            .root
+            .iter()
+            .find(|c| c.card.as_ref().and_then(|id| self.registry.get(id)).is_some_and(|d| d.subtypes.contains(&netrunner_core::dsl::CardSubtype::Region)))
+            .map(|c| c.card.as_ref().map_or_else(|| "the region there".to_string(), |id| card_title(id, self.registry)))
+    }
+
     /// The label of the choice of `server`.
     pub fn label(&self, server: ServerId) -> String {
         if self.is_ice() {
@@ -125,6 +142,9 @@ impl<'a> Placement<'a> {
             ServerId::Remote(_) => server_name(server),
             central => format!("the root of {}", server_name(central)),
         };
+        if let Some(region) = self.is_region().then(|| self.region_there(server)).flatten() {
+            return format!("Install in {place} — trashes {region}");
+        }
         match (self.occupant(server), self.takes_the_remote()) {
             (Some(there), Some(true)) => format!("Install in {place} — trashes {there}"),
             (Some(there), None) => format!("Install in {place} — holds {there}"),

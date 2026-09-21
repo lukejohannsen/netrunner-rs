@@ -162,6 +162,12 @@ pub(crate) fn selection_positions(
     // so a card it asks for is the selection on the table, over anything
     // parked beneath it.
     if let Some(payment) = &state.pending_payment {
+        // An install's question names its own candidates, as the table
+        // stood when it asked.
+        if let crate::rules::payment::Ask::Install(question) = &payment.question {
+            let candidates = question.eligible.iter().map(|c| (c.position as usize, c.card.clone(), Some(c.install))).collect();
+            return Some(SelectionPositions { chooser: payment.side, corp_archives: false, candidates });
+        }
         let crate::rules::payment::Ask::Card(question) = &payment.question else { return None };
         let cards = zone_card_ids(state, payment.side, &question.zone, None);
         let installs = zone_install_ids(state, payment.side, &question.zone);
@@ -285,7 +291,7 @@ fn instance_matches_filter(
         // Runner has no rez state, so a rig card is never eligible.
         CardFilter::UnrezzedIce => corp_install.is_some_and(|c| !c.rezzed),
         // The state-dependent half of "could the Runner install this right
-        // now": affordability, memory budget, console limit — shared with
+        // now": affordability and whether a program could fit — shared with
         // `Effect::InstallRunnerCardFromGrip`'s own re-check so the offer
         // and the resolution can never disagree. Grip cards only; the
         // definition-level type half already ran in `card_matches_filter`.
@@ -1184,6 +1190,7 @@ pub(crate) fn resolve_choose_server(
             slot,
             pending_install.pay_cost,
             pending_install.discount,
+            false,
         )?);
         // The offering card's rider, with the chosen server substituted in
         // (`PromptInstallCorpCard::then`) — resolved as the parking install,

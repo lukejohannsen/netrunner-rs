@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{AbilityDef, CardId, CardSubtype, CardType, Cost, CounterKind, Prohibition, Trigger};
+use crate::dsl::{AbilityDef, CardId, CardType, Cost, CounterKind, Prohibition, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
@@ -96,6 +96,16 @@ pub fn apply_action(
                 return Err(RulesError::CardNotEligibleForSelection(position as usize));
             }
             position
+        }
+        (crate::rules::payment::Ask::Install(question), PlayerAction::ToggleCardSelection { position }) => {
+            let position = u32::try_from(position).map_err(|_| RulesError::CardNotEligibleForSelection(position))?;
+            if !question.eligible.iter().any(|candidate| candidate.position == position) {
+                return Err(RulesError::CardNotEligibleForSelection(position as usize));
+            }
+            position
+        }
+        (crate::rules::payment::Ask::Install(question), PlayerAction::ConfirmCardSelection) if question.may_stop => {
+            crate::rules::install_trash::STOP
         }
         (crate::rules::payment::Ask::Alternative { offered, .. }, PlayerAction::ResolvePendingChoice { option_index }) => {
             let index = u32::try_from(option_index).map_err(|_| RulesError::InvalidChoiceIndex(option_index))?;
@@ -294,8 +304,8 @@ fn apply_action_once(
     let resolved = match action {
         PlayerAction::GainCreditClick { side } => gain_credit_click(state, side),
         PlayerAction::DrawCardClick { side } => draw_card_click(state, registry, side),
-        PlayerAction::InstallCard { card_id, zone, slot } => {
-            install_card(state, registry, card_id, zone, slot)
+        PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
+            install_card(state, registry, card_id, zone, slot, trash_first)
         }
         PlayerAction::RezIce { ice } => rez_ice(state, registry, ice),
         PlayerAction::InitiateRun { server } => initiate_run(state, registry, server),
@@ -305,10 +315,10 @@ fn apply_action_once(
         PlayerAction::PlayEvent { card_id } => play_event(state, registry, card_id),
         PlayerAction::PlayOperation { card_id } => play_operation(state, registry, card_id),
         PlayerAction::InstallHardware { card_id } => install_hardware(state, registry, card_id),
-        PlayerAction::InstallProgram { card_id } => install_program(state, registry, card_id),
+        PlayerAction::InstallProgram { card_id, trash_first } => install_program(state, registry, card_id, trash_first),
         PlayerAction::InstallResource { card_id } => install_resource(state, registry, card_id),
-        PlayerAction::InstallProgramOnIce { card_id, host } => {
-            install_program_on_ice(state, registry, card_id, host)
+        PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
+            install_program_on_ice(state, registry, card_id, host, trash_first)
         }
         PlayerAction::BreakSubroutineWithClick { ice_id, subroutine_index } => {
             break_subroutine_with_click(state, ice_id, subroutine_index, registry)
@@ -665,6 +675,7 @@ fn install_card(
     card_id: CardId,
     zone: TargetZone,
     slot: InstallSlot,
+    trash_first: bool,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
@@ -684,20 +695,21 @@ fn install_card(
     next.corp.hq.remove(position);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0)?);
+    events.extend(place_corp_card(&mut next, registry, card_id, zone, slot, true, 0, trash_first)?);
     Ok((next, events))
 }
 
 /// The placement half every Corp install shares — `install_card` (the
 /// click action) and `pending_choice::resolve_choose_server`'s install
 /// branch (`Effect::PromptInstallCorpCard`, Ansel 1.0): type/slot
-/// validation, the one-agenda-or-asset-per-remote install-over, the
+/// validation, the like cards trashed first (`install_trash`: the forced
+/// ones always, the Corp's own picks when `trash_first`), the
 /// per-protecting-ICE install tax (when `pay_cost`, less `discount` —
-/// Mercia B4LL4RD's "paying 1[c] less"), the region limit, the unique
-/// rule, the outermost ICE insertion, and the `CardInstalled` event with
-/// its identity dispatch. The caller owns getting the card *out* of
-/// wherever it was (HQ by id, an origin zone by position) and its own
-/// guards.
+/// Mercia B4LL4RD's "paying 1[c] less"), the unique rule, the outermost
+/// ICE insertion, and the `CardInstalled` event with its identity dispatch.
+/// The caller owns getting the card *out* of wherever it was (HQ by id, an
+/// origin zone by position) and its own guards.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn place_corp_card(
     next: &mut GameState,
     registry: &CardRegistry,
@@ -706,6 +718,7 @@ pub(crate) fn place_corp_card(
     slot: InstallSlot,
     pay_cost: bool,
     discount: u32,
+    trash_first: bool,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let side = Side::Corp;
     // The registry lookup stays even though the printed cost is not paid
@@ -729,40 +742,12 @@ pub(crate) fn place_corp_card(
             return Err(RulesError::CardTypeMismatch { card: card_id, expected: "an agenda, asset or upgrade" });
         }
     }
-    // "Limit 1 region per server": a root already holding a region,
-    // rezzed or not, cannot take another. A rejection rather than an
-    // install-over — the printed limit is a restriction on installing,
-    // not a replacement rule like the one-agenda-or-asset-per-remote
-    // rule below. Nothing enforced it before Mahkota Langit Grid, the
-    // pool's first region (ROADMAP Rules Audit, Forfeit and Region).
-    if slot == InstallSlot::Root && card_def.subtypes.contains(&CardSubtype::Region) && root_holds_region(next, registry, zone) {
-        return Err(RulesError::RegionLimitExceeded { server: zone });
-    }
-    let mut events = Vec::new();
-
-    // A remote holds one agenda or asset. Installing a second is
-    // "installing over": the occupant is trashed as part of the install —
-    // to Archives, faceup if it was rezzed (the Runner had seen it) and
-    // facedown otherwise. Upgrades stack in a root freely and do not block
-    // this. Nothing enforced any of it before, so a remote could hold three
-    // agendas and a single breach accessed them all (ROADMAP Rules Audit
-    // T5).
-    if slot == InstallSlot::Root && matches!(card_def.card_type, CardType::Agenda | CardType::Asset) {
-        let occupant = next.corp.installed.iter().position(|c| {
-            c.server == zone
-                && c.slot == InstallSlot::Root
-                && registry.get(&c.card).is_some_and(|d| matches!(d.card_type, CardType::Agenda | CardType::Asset))
-        });
-        if let Some(pos) = occupant {
-            let trashed = next.corp.installed.remove(pos);
-            next.corp.archives.push(if trashed.rezzed {
-                ArchivedCard::faceup(trashed.card.clone())
-            } else {
-                ArchivedCard::facedown(trashed.card.clone())
-            });
-            events.push(GameEvent::CardTrashed { side, card: trashed.card });
-        }
-    }
+    // Step 8.5.16c, before the cost: a remote holds one agenda or asset
+    // and a root one region, so the old one goes (CR 8.5.6a, 3.6.5d), and
+    // with `trash_first` whatever else the Corp picks. The second region
+    // was refused until Rules Conformance B, and the agenda-or-asset
+    // install-over was the only trash an install made.
+    let mut events = crate::rules::install_trash::before_corp_install(next, registry, &card_id, card_def, zone, slot, trash_first)?;
     // Installing costs the Corp nothing for an agenda, asset or upgrade,
     // and 1[c] per piece of ICE already protecting the server for ICE —
     // the printed `cost` is the *rez* cost and is paid by `rez_ice`. This
@@ -829,7 +814,7 @@ pub(crate) fn place_corp_card(
 /// empty for an installable type. Computed at park time and safe to trust
 /// at resolution: a parked decision blocks every other action, so nothing
 /// can change in between.
-pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegistry, card_def: &crate::dsl::CardDefinition, ignore_costs: bool) -> Vec<ServerId> {
+pub(crate) fn corp_install_destinations(state: &GameState, card_def: &crate::dsl::CardDefinition, ignore_costs: bool) -> Vec<ServerId> {
     let existing = super::legal_actions::existing_remote_ids(state);
     let mut remotes: Vec<ServerId> = existing.iter().copied().map(ServerId::Remote).collect();
     remotes.push(ServerId::Remote(super::legal_actions::fresh_remote_id(&existing)));
@@ -838,12 +823,6 @@ pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegist
         CardType::Upgrade => {
             let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
             zones.extend(remotes);
-            // The region limit `place_corp_card` enforces, applied to the
-            // offer so the parked choice never names a server that would
-            // reject the install.
-            if card_def.subtypes.contains(&CardSubtype::Region) {
-                zones.retain(|zone| !root_holds_region(state, registry, *zone));
-            }
             zones
         }
         CardType::Ice(_) => {
@@ -856,18 +835,6 @@ pub(crate) fn corp_install_destinations(state: &GameState, registry: &CardRegist
         }
         _ => Vec::new(),
     }
-}
-
-/// Whether `server`'s root already holds a `CardSubtype::Region` card,
-/// rezzed or not — the "limit 1 region per server" test `place_corp_card`
-/// enforces and `corp_install_destinations` prunes by.
-fn root_holds_region(state: &GameState, registry: &CardRegistry, server: ServerId) -> bool {
-    state
-        .corp
-        .installed
-        .iter()
-        .filter(|c| c.server == server && c.slot == InstallSlot::Root)
-        .any(|c| registry.get(&c.card).is_some_and(|def| def.subtypes.contains(&CardSubtype::Region)))
 }
 
 /// How many pieces of ICE already protect `server` — the install cost of
@@ -1511,9 +1478,9 @@ pub(crate) fn preview_runner_install_cost(
 /// `Effect::InstallRunnerCardFromGrip` share, so a selection never offers
 /// an install its resolution would refuse: an installable type (a
 /// non-Trojan Program, Hardware or Resource — a Trojan's host is a choice
-/// no parked effect models yet), affordable, within the memory budget,
-/// respecting the console limit. The click is no part of it: an effect
-/// install costs none.
+/// no parked effect models yet), affordable, and for a program able to fit
+/// once programs are trashed to make room (CR 3.9.3b). The click is no part
+/// of it: an effect install costs none.
 pub(crate) fn can_install_runner_card_from_grip(
     state: &GameState,
     registry: &CardRegistry,
@@ -1582,23 +1549,16 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
     }
     let Some(card_def) = registry.get(card_id) else { return false };
     match card_def.card_type {
+        // A program that does not fit is installed by trashing programs to
+        // make room (CR 3.9.3b), so it is out only if trashing every one
+        // would not be enough; a second console trashes the first (CR
+        // 3.8.5b). Both were refusals until Rules Conformance B.
         CardType::Program => {
-            if card_def.installs_on_ice
-                || memory::available_memory(state, registry) < card_def.memory_cost.unwrap_or(0)
-            {
+            if card_def.installs_on_ice || !crate::rules::install_trash::program_could_fit(state, registry, card_def.memory_cost.unwrap_or(0)) {
                 return false;
             }
         }
-        CardType::Hardware => {
-            if card_def.subtypes.contains(&CardSubtype::Console)
-                && state.runner.rig.iter().any(|installed| {
-                    registry.get(&installed.card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Console))
-                })
-            {
-                return false;
-            }
-        }
-        CardType::Resource => {}
+        CardType::Hardware | CardType::Resource => {}
         _ => return false,
     }
     payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= preview_runner_install_cost(state, registry, card_def).saturating_sub(discount)
@@ -1655,7 +1615,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
     match card_def.card_type {
         CardType::Program => {
             let memory_cost = card_def.memory_cost.unwrap_or(0);
-            require_memory_for(next, registry, memory_cost)?;
+            events.extend(crate::rules::install_trash::before_program_install(next, registry, &card_id, memory_cost, false)?);
             let cost = continuous::install_cost_of(next, registry, &card_def)
                 .saturating_sub(discount);
             events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
@@ -1700,18 +1660,10 @@ fn install_hardware(
     if card_def.card_type != CardType::Hardware {
         return Err(RulesError::CardTypeMismatch { card: card_id, expected: "hardware" });
     }
-    // "Limit 1 console per player" (e.g. Carnivore, Pennyshaver, Pantograph)
-    // — checked after the ordinary phase/click/hand checks above, matching
-    // every other card-specific rejection in this function (e.g.
-    // `install_program`'s memory-budget check) running only once the action
-    // is otherwise well-formed.
-    if card_def.subtypes.contains(&CardSubtype::Console)
-        && next.runner.rig.iter().any(|installed| {
-            registry.get(&installed.card).is_some_and(|c| c.subtypes.contains(&CardSubtype::Console))
-        })
-    {
-        return Err(RulesError::ConsoleLimitExceeded);
-    }
+    // "Limit 1 console per player" is not checked here: a second console
+    // is installed, and the checkpoint the install's event runs trashes
+    // the older one (CR 3.8.5b, 10.3.1d; `checkpoint::enforce_consoles`).
+    // It was refused until Rules Conformance B.
 
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
@@ -1736,24 +1688,11 @@ fn install_hardware(
     Ok((next, events))
 }
 
-/// Rejects an install the Runner has no memory for, **before** any cost is
-/// paid, so an unaffordable one leaves the game state untouched.
-///
-/// Reads the derived budget (`memory::available_memory`) rather than a
-/// running balance: the two are the same number, but only one of them can
-/// go stale.
-fn require_memory_for(state: &GameState, registry: &CardRegistry, cost: u32) -> Result<(), RulesError> {
-    let available = memory::available_memory(state, registry);
-    if cost > available {
-        return Err(RulesError::InsufficientMemory { available, requested: cost });
-    }
-    Ok(())
-}
-
 fn install_program(
     state: &GameState,
     registry: &CardRegistry,
     card_id: CardId,
+    trash_first: bool,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
@@ -1776,20 +1715,19 @@ fn install_program(
     if card_def.installs_on_ice {
         return Err(RulesError::TrojanMustBeHostedOnIce(card_id));
     }
-    // The registry is the only authority on the cost — the action no longer
-    // carries one that could disagree with it. Checked against the derived
-    // budget rather than a running balance: the two are the same number,
-    // but only one of them can go stale. Ordered after the phase/click/hand
-    // checks like every other card-specific rejection here; an `Err` throws
-    // the whole cloned `next` away, so nothing is spent either way.
+    // The registry is the only authority on the memory cost — the action no
+    // longer carries one that could disagree with it. Step 8.5.16c comes
+    // before the price: the programs the memory limit makes the Runner
+    // trash, and with `trash_first` any they choose (CR 3.9.3b, 8.5.6c).
+    // An install over the limit was refused until Rules Conformance B.
     let memory_cost = card_def.memory_cost.unwrap_or(0);
-    require_memory_for(&next, registry, memory_cost)?;
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(crate::rules::install_trash::before_program_install(&mut next, registry, &card_id, memory_cost, trash_first)?);
 
     // The card's own discount (see `per_card_install_discount`) stacks
     // independently on top of the once-per-turn discount above.
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
-    let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
     events.extend(install_into_rig(&mut next, registry, &card_id, None)?);
     // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
@@ -1815,6 +1753,7 @@ fn install_program_on_ice(
     registry: &CardRegistry,
     card_id: CardId,
     host: InstallId,
+    trash_first: bool,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let side = Side::Runner;
     require_phase(state, GamePhase::Action(side))?;
@@ -1845,13 +1784,13 @@ fn install_program_on_ice(
     let mut next = state.clone();
     spend_click(&mut next, side)?;
     take_from_grip(&mut next, side, &card_id)?;
-    // Same budget check as `install_program`. The host validation above has
+    // Same step 8.5.16c as `install_program`. The host validation above has
     // to precede it because a bad host is the more specific complaint.
-    require_memory_for(&next, registry, memory_cost)?;
+    let mut events = vec![GameEvent::ClickSpent { side }];
+    events.extend(crate::rules::install_trash::before_program_install(&mut next, registry, &card_id, memory_cost, trash_first)?);
 
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
-    let mut events = vec![GameEvent::ClickSpent { side }];
     events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
     events.extend(install_into_rig(&mut next, registry, &card_id, Some(host))?);
     let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
@@ -2851,7 +2790,7 @@ mod tests {
             PlayerAction::InstallCard {
                 card_id: card_id.clone(),
                 zone: ServerId::Hq,
-                slot: InstallSlot::Ice,
+                slot: InstallSlot::Ice, trash_first: false,
             },
         )
         .expect("action should succeed");
@@ -2917,7 +2856,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice },
+            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
         )
         .expect("third ICE on HQ costs 2");
         assert_eq!(next.corp.resources.credits, Credits(3), "two ICE already on HQ; the one on R&D does not count");
@@ -2959,7 +2898,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id: doctor.clone(), zone: ServerId::Remote(1), slot: InstallSlot::Root },
+            PlayerAction::InstallCard { card_id: doctor.clone(), zone: ServerId::Remote(1), slot: InstallSlot::Root, trash_first: false },
         )
         .unwrap();
         // A facedown card is not active, so the second copy sits beside the
@@ -3011,7 +2950,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root },
+            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
         )
         .expect("installing over is legal");
 
@@ -3028,7 +2967,7 @@ mod tests {
         let (next, _) = apply_action(
             &next,
             &registry,
-            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root },
+            PlayerAction::InstallCard { card_id: agenda.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
         )
         .expect("a second copy over the first");
         assert_eq!(next.corp.archives.last().map(|a| a.facedown), Some(true));
@@ -3037,7 +2976,7 @@ mod tests {
         let (next, events) = apply_action(
             &next,
             &registry,
-            PlayerAction::InstallCard { card_id: upgrade.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root },
+            PlayerAction::InstallCard { card_id: upgrade.clone(), zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
         )
         .expect("upgrades stack");
         assert!(!events.iter().any(|e| matches!(e, GameEvent::CardTrashed { .. })));
@@ -3056,7 +2995,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root, trash_first: false },
         )
         .expect("a broke Corp can still install an asset");
         assert_eq!(next.corp.resources.credits, Credits(0));
@@ -3071,7 +3010,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice },
+            PlayerAction::InstallCard { card_id: card_id.clone(), zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
         );
 
         assert_eq!(result, Err(RulesError::CardNotFoundInRegistry(card_id)));
@@ -3096,7 +3035,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry,
-            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
         );
 
         assert_eq!(
@@ -3112,7 +3051,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
         );
 
         assert_eq!(
@@ -3134,7 +3073,7 @@ mod tests {
             PlayerAction::InstallCard {
                 card_id: card_id.clone(),
                 zone: ServerId::Hq,
-                slot: InstallSlot::Ice,
+                slot: InstallSlot::Ice, trash_first: false,
             },
         );
 
@@ -3151,7 +3090,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice },
+            PlayerAction::InstallCard { card_id, zone: ServerId::Hq, slot: InstallSlot::Ice, trash_first: false },
         );
 
         assert_eq!(
@@ -4501,7 +4440,7 @@ mod tests {
         let (next, events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone() },
+            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false },
         )
         .expect("action should succeed");
 
@@ -4536,7 +4475,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallProgram { card_id },
+            PlayerAction::InstallProgram { card_id, trash_first: false },
         );
 
         assert_eq!(
@@ -4555,7 +4494,7 @@ mod tests {
         let result = apply_action(
             &state,
             &registry(),
-            PlayerAction::InstallProgram { card_id: card_id.clone() },
+            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false },
         );
 
         assert_eq!(
@@ -4579,7 +4518,7 @@ mod tests {
         reg.insert(oversized);
 
         let result =
-            apply_action(&state, &reg, PlayerAction::InstallProgram { card_id: card_id.clone() });
+            apply_action(&state, &reg, PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false });
 
         assert_eq!(result, Err(RulesError::InsufficientMemory { available: 4, requested: 5 }));
 
@@ -4602,7 +4541,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone() },
+            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false },
         )
         .expect("action should succeed");
 
@@ -4626,7 +4565,7 @@ mod tests {
         let (next, _events) = apply_action(
             &state,
             &reg,
-            PlayerAction::InstallProgram { card_id: card_id.clone() },
+            PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false },
         )
         .expect("action should succeed");
 
@@ -6123,7 +6062,7 @@ mod tests {
         let mut corp = corp_state(3, 5);
         corp.corp.hq = vec![card("agenda"), card("ice")];
         let install = |card_id: &str, zone: ServerId, slot: InstallSlot| {
-            apply_action(&corp, &registry, PlayerAction::InstallCard { card_id: card(card_id), zone, slot })
+            apply_action(&corp, &registry, PlayerAction::InstallCard { card_id: card(card_id), zone, slot, trash_first: false })
         };
         assert_eq!(
             install("agenda", ServerId::Remote(0), InstallSlot::Ice).err(),
@@ -6152,7 +6091,7 @@ mod tests {
             Some(RulesError::CardTypeMismatch { card: card("program"), expected: "hardware" })
         );
         assert_eq!(
-            play(PlayerAction::InstallProgram { card_id: card("hardware") }),
+            play(PlayerAction::InstallProgram { card_id: card("hardware"), trash_first: false }),
             Some(RulesError::CardTypeMismatch { card: card("hardware"), expected: "a program" })
         );
         assert_eq!(
@@ -6161,7 +6100,7 @@ mod tests {
         );
         assert_eq!(play(PlayerAction::PlayEvent { card_id: card("event") }), None);
         assert_eq!(play(PlayerAction::InstallHardware { card_id: card("hardware") }), None);
-        assert_eq!(play(PlayerAction::InstallProgram { card_id: card("program") }), None);
+        assert_eq!(play(PlayerAction::InstallProgram { card_id: card("program"), trash_first: false }), None);
         assert_eq!(play(PlayerAction::InstallResource { card_id: card("resource") }), None);
     }
 

@@ -224,13 +224,27 @@ pub(crate) const CHOOSE_TRIGGER_LEN: usize = MAX_INSTALLED_PER_SIDE;
 const CHOOSE_NUMBER_START: usize = CHOOSE_TRIGGER_START + CHOOSE_TRIGGER_LEN;
 const CHOOSE_NUMBER_LEN: usize = MAX_CHOSEN_NUMBER as usize + 1;
 
+/// The installs that trash like cards first (`trash_first`, CR 8.5.6) —
+/// `InstallCard`, `InstallProgram` and `InstallProgramOnIce` again, laid
+/// out as their plain segments are. **Appended** (Rules Conformance B), so
+/// nothing moved: 1677 → 2621. The flag doubles each install's slots rather
+/// than being a question after the install because the question would be
+/// asked of nearly every install with one sensible answer
+/// (`rules::install_trash`).
+const INSTALL_CARD_TRASHING_START: usize = CHOOSE_NUMBER_START + CHOOSE_NUMBER_LEN;
+const INSTALL_CARD_TRASHING_LEN: usize = INSTALL_CARD_LEN;
+const INSTALL_PROGRAM_TRASHING_START: usize = INSTALL_CARD_TRASHING_START + INSTALL_CARD_TRASHING_LEN;
+const INSTALL_PROGRAM_TRASHING_LEN: usize = INSTALL_PROGRAM_LEN;
+const INSTALL_PROGRAM_ON_ICE_TRASHING_START: usize = INSTALL_PROGRAM_TRASHING_START + INSTALL_PROGRAM_TRASHING_LEN;
+const INSTALL_PROGRAM_ON_ICE_TRASHING_LEN: usize = INSTALL_PROGRAM_ON_ICE_LEN;
+
 /// A fixed, categorical index space over `PlayerAction` — see the module
 /// doc comment. A zero-sized marker type; every operation is an associated
 /// function/const, since the encoding itself carries no per-instance state.
 pub struct ActionSpace;
 
 impl ActionSpace {
-    pub const SIZE: usize = CHOOSE_NUMBER_START + CHOOSE_NUMBER_LEN;
+    pub const SIZE: usize = INSTALL_PROGRAM_ON_ICE_TRASHING_START + INSTALL_PROGRAM_ON_ICE_TRASHING_LEN;
 
     /// The flat index `action` occupies given `state` — `None` if `action`
     /// can't be placed (a dynamic field exceeds its cap, or a
@@ -261,11 +275,12 @@ impl ActionSpace {
             PlayerAction::GainCreditClick { side } => Some(GAIN_CREDIT_START + side_index(*side)),
             PlayerAction::PassPriority { side } => Some(PASS_PRIORITY_START + side_index(*side)),
 
-            PlayerAction::InstallCard { card_id, zone, slot } => {
+            PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
                 let hand_slot = bounded_position(&state.corp.hq, card_id, MAX_HAND_SIZE)?;
                 let zone_idx = encode_zone(*zone)?;
                 let slot_idx = encode_install_slot(*slot);
-                Some(INSTALL_CARD_START + (hand_slot * ZONE_COUNT + zone_idx) * 2 + slot_idx)
+                let start = if *trash_first { INSTALL_CARD_TRASHING_START } else { INSTALL_CARD_START };
+                Some(start + (hand_slot * ZONE_COUNT + zone_idx) * 2 + slot_idx)
             }
 
             PlayerAction::RezIce { ice } => {
@@ -286,16 +301,18 @@ impl ActionSpace {
             PlayerAction::InstallHardware { card_id } => {
                 Some(INSTALL_HARDWARE_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
-            PlayerAction::InstallProgram { card_id, .. } => {
-                Some(INSTALL_PROGRAM_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
+            PlayerAction::InstallProgram { card_id, trash_first } => {
+                let start = if *trash_first { INSTALL_PROGRAM_TRASHING_START } else { INSTALL_PROGRAM_START };
+                Some(start + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
             PlayerAction::InstallResource { card_id } => {
                 Some(INSTALL_RESOURCE_START + bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?)
             }
-            PlayerAction::InstallProgramOnIce { card_id, host, .. } => {
+            PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
                 let hand_slot = bounded_position(&state.runner.playable_hand(), card_id, MAX_HAND_SIZE)?;
                 let ice_slot = bounded_position_installed(&state.corp.installed, *host, MAX_INSTALLED_PER_SIDE)?;
-                Some(INSTALL_PROGRAM_ON_ICE_START + hand_slot * MAX_INSTALLED_PER_SIDE + ice_slot)
+                let start = if *trash_first { INSTALL_PROGRAM_ON_ICE_TRASHING_START } else { INSTALL_PROGRAM_ON_ICE_START };
+                Some(start + hand_slot * MAX_INSTALLED_PER_SIDE + ice_slot)
             }
             PlayerAction::PlayOperation { card_id } => {
                 Some(PLAY_OPERATION_START + bounded_position(&state.corp.playable_hand(), card_id, MAX_HAND_SIZE)?)
@@ -431,13 +448,15 @@ impl ActionSpace {
         if let Some(local) = in_segment(index, PASS_PRIORITY_START, PASS_PRIORITY_LEN) {
             return Some(PlayerAction::PassPriority { side: side_from_index(local)? });
         }
-        if let Some(local) = in_segment(index, INSTALL_CARD_START, INSTALL_CARD_LEN) {
-            let hand_slot = local / (ZONE_COUNT * 2);
-            let rem = local % (ZONE_COUNT * 2);
-            let zone = decode_zone(rem / 2)?;
-            let slot = decode_install_slot(rem % 2)?;
-            let card_id = state.corp.hq.get(hand_slot)?.clone();
-            return Some(PlayerAction::InstallCard { card_id, zone, slot });
+        for (start, trash_first) in [(INSTALL_CARD_START, false), (INSTALL_CARD_TRASHING_START, true)] {
+            if let Some(local) = in_segment(index, start, INSTALL_CARD_LEN) {
+                let hand_slot = local / (ZONE_COUNT * 2);
+                let rem = local % (ZONE_COUNT * 2);
+                let zone = decode_zone(rem / 2)?;
+                let slot = decode_install_slot(rem % 2)?;
+                let card_id = state.corp.hq.get(hand_slot)?.clone();
+                return Some(PlayerAction::InstallCard { card_id, zone, slot, trash_first });
+            }
         }
         if let Some(local) = in_segment(index, REZ_ICE_START, REZ_ICE_LEN) {
             let ice = state.corp.installed.get(local)?.install_id;
@@ -454,9 +473,11 @@ impl ActionSpace {
             let card_id = state.runner.playable_hand().get(local)?.clone();
             return Some(PlayerAction::InstallHardware { card_id });
         }
-        if let Some(local) = in_segment(index, INSTALL_PROGRAM_START, INSTALL_PROGRAM_LEN) {
-            let card_id = state.runner.playable_hand().get(local)?.clone();
-            return Some(PlayerAction::InstallProgram { card_id });
+        for (start, trash_first) in [(INSTALL_PROGRAM_START, false), (INSTALL_PROGRAM_TRASHING_START, true)] {
+            if let Some(local) = in_segment(index, start, INSTALL_PROGRAM_LEN) {
+                let card_id = state.runner.playable_hand().get(local)?.clone();
+                return Some(PlayerAction::InstallProgram { card_id, trash_first });
+            }
         }
         if let Some(local) = in_segment(index, PLAY_OPERATION_START, PLAY_OPERATION_LEN) {
             let card_id = state.corp.playable_hand().get(local)?.clone();
@@ -545,12 +566,14 @@ impl ActionSpace {
             let card_id = state.runner.playable_hand().get(local)?.clone();
             return Some(PlayerAction::InstallResource { card_id });
         }
-        if let Some(local) = in_segment(index, INSTALL_PROGRAM_ON_ICE_START, INSTALL_PROGRAM_ON_ICE_LEN) {
-            let hand_slot = local / MAX_INSTALLED_PER_SIDE;
-            let ice_slot = local % MAX_INSTALLED_PER_SIDE;
-            let card_id = state.runner.playable_hand().get(hand_slot)?.clone();
-            let host = state.corp.installed.get(ice_slot)?.install_id;
-            return Some(PlayerAction::InstallProgramOnIce { card_id, host });
+        for (start, trash_first) in [(INSTALL_PROGRAM_ON_ICE_START, false), (INSTALL_PROGRAM_ON_ICE_TRASHING_START, true)] {
+            if let Some(local) = in_segment(index, start, INSTALL_PROGRAM_ON_ICE_LEN) {
+                let hand_slot = local / MAX_INSTALLED_PER_SIDE;
+                let ice_slot = local % MAX_INSTALLED_PER_SIDE;
+                let card_id = state.runner.playable_hand().get(hand_slot)?.clone();
+                let host = state.corp.installed.get(ice_slot)?.install_id;
+                return Some(PlayerAction::InstallProgramOnIce { card_id, host, trash_first });
+            }
         }
         // Same out-of-order-panic hazard as `INSTALL_PROGRAM_ON_ICE` above —
         // `BREAK_SUBROUTINE_WITH_CLICK` is defined last in the const chain,
@@ -1194,7 +1217,7 @@ mod tests {
         assert_mask_matches_legal_actions(&state, &registry);
         let mask = get_action_mask(&state, &registry);
         assert!(!mask[CHOOSE_NUMBER_START], "0 is below the range");
-        assert!(mask[CHOOSE_NUMBER_START + 1] && mask[ActionSpace::SIZE - 1], "1 through the cap, the last slot in the space");
+        assert!(mask[CHOOSE_NUMBER_START + 1] && mask[CHOOSE_NUMBER_START + CHOOSE_NUMBER_LEN - 1], "1 through the cap, the segment's last slot");
         assert_eq!(mask.iter().filter(|legal| **legal).count(), MAX_CHOSEN_NUMBER as usize);
     }
 
@@ -1436,8 +1459,15 @@ mod tests {
         // last segment, so — unlike the two growths above — every index
         // below 1646 means what it meant, and a recorded policy needs a
         // wider head, not retraining from nothing.
-        assert_eq!(ActionSpace::SIZE, 1677);
+        //
+        // **1677 → 2621: the installs that trash first (Rules Conformance
+        // B), appended.** `InstallCard`, `InstallProgram` and
+        // `InstallProgramOnIce` again with `trash_first`, laid out as their
+        // plain segments (416 + 16 + 512); every index below 1677 is
+        // unchanged.
+        assert_eq!(ActionSpace::SIZE, 2621);
         assert_eq!(CHOOSE_NUMBER_START, 1646, "appended: nothing before it moved");
+        assert_eq!(INSTALL_CARD_TRASHING_START, 1677, "appended after ChooseNumber");
     }
 
     /// Rules Audit T11: the cap that was wrong for Ansel 1.0 and Brân 1.0

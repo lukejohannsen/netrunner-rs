@@ -388,11 +388,11 @@ fn targets_of(action: &PlayerAction, view: &ClientView) -> Vec<Target> {
         PlayerAction::DrawCardClick { side: Side::Corp } => vec![Target::Server(ServerId::RnD)],
         PlayerAction::DrawCardClick { side: Side::Runner } => vec![Target::Pile(Pile::Stack)],
         PlayerAction::InstallCard { card_id, zone, .. } => vec![Target::HandCard(card_id.clone()), Target::Server(*zone)],
-        PlayerAction::InstallProgramOnIce { card_id, host } => vec![Target::HandCard(card_id.clone()), Target::Install(*host)],
+        PlayerAction::InstallProgramOnIce { card_id, host, .. } => vec![Target::HandCard(card_id.clone()), Target::Install(*host)],
         PlayerAction::PlayEvent { card_id }
         | PlayerAction::PlayOperation { card_id }
         | PlayerAction::InstallHardware { card_id }
-        | PlayerAction::InstallProgram { card_id }
+        | PlayerAction::InstallProgram { card_id, .. }
         | PlayerAction::InstallResource { card_id }
         | PlayerAction::DiscardCard { card_id } => vec![Target::HandCard(card_id.clone())],
         PlayerAction::ActivateAbility { target, .. } if *target == InstallId::CORP_IDENTITY => vec![Target::Identity(Side::Corp)],
@@ -479,6 +479,12 @@ impl Prompt {
                 Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Alternative { card, .. }, .. }) => Prompt {
                     title: format!("Rez {}", title_of(Some(card), registry)),
                     detail: "It prints more than one way to pay for it. Which?".to_string(),
+                },
+                // An install trashing like cards (CR 8.5.6) asks one card
+                // at a time, so the buttons under this are the cards.
+                Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Install(question), .. }) => Prompt {
+                    title: format!("Install {}: trash which first?", title_of(Some(&question.card), registry)),
+                    detail: crate::prose::install_trash_detail(question),
                 },
                 None => Prompt { title: format!("The {:?} is choosing how to pay", payment.side), detail: String::new() },
             });
@@ -897,7 +903,11 @@ mod tests {
                                             || matches!(action, PlayerAction::InstallCard { .. } | PlayerAction::ChooseServerForPendingDecision { .. });
                                         assert!(exists, "seed {seed}: {action:?} targets a server that does not exist");
                                     }
-                                    Target::Position(_) => assert!(matches!(view.pending_decision, Some(PendingDecision::ChooseCards { .. }))),
+                                    Target::Position(_) => assert!(
+                                        matches!(view.pending_decision, Some(PendingDecision::ChooseCards { .. }))
+                                            || view.pending_payment.as_ref().is_some_and(|payment| payment.own.is_some()),
+                                        "seed {seed}: {action:?} names a position with nothing asking for one"
+                                    ),
                                     Target::Pile(_) => assert_eq!(side, Side::Runner, "seed {seed}: {action:?} targets a pile the Corp does not have"),
                                     Target::Identity(owner) => {
                                         let shown = match owner {

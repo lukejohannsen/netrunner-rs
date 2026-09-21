@@ -64,8 +64,13 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   - The only install-time trash is the forced one of an agenda or asset (see B3).
   - So a card going to Archives means both cards were agendas or assets, and no trash means at
     least one of them is an upgrade.
+  - **Closed by B** (`fix/install-trashes-cr-8-5-6`): the Corp may now trash any card in the
+    root first (8.5.6a), so a trash no longer says what either card is. What is left, "no trash,
+    so one of them is an upgrade", is the rules' own: 8.5.6a forces the trash at any table, and
+    the engine shows no more than a table does. The facedown card's name stays masked in the
+    event and in Archives.
 
-**B. Installing (8.5.6): what the rules make a trash is a refusal**
+**B. Installing (8.5.6): what the rules make a trash is a refusal** (fixed, B4 remains)
 - **B1 ✔ A program over the memory limit is refused** (3.9.3b, 8.5.6c: the Runner trashes
   programs to make room). `engine::require_memory_for` returns `InsufficientMemory`. Reached in
   basic play.
@@ -77,6 +82,43 @@ fixes them. The letters are this file's addresses: "Rules Conformance B1".
   - An existing region is refused where the rules trash it (3.6.5d, `RegionLimitExceeded`).
   - Ice on the server (8.5.6b, and trashed ice is not counted in the install cost): not offered.
   - Reached on every ice install.
+- **B fixed** (`fix/install-trashes-cr-8-5-6`), in a module of its own, `rules::install_trash`,
+  run at step 8.5.16c: after the destination, before the install cost.
+  - **B1:** a program over the limit is installed, and the Runner trashes programs of their
+    choice until it fits. "When the Runner installs a program that would increase the total
+    memory cost of installed programs over their memory limit, they must trash one or more
+    installed programs such that the total memory cost of installed programs including the new
+    program will not exceed their memory limit" (3.9.3b). They are asked one program at a time
+    (`payment::Ask::Install`), by the replay a payment is parked by. With one program there is
+    one answer, and it is taken unasked. The new program is never a choice, because it is not yet
+    installed (8.5.16a). `InsufficientMemory` is left only for a program that would not fit with
+    every program gone.
+  - **B2:** "If a player ever controls more than one installed console, all but the most
+    recently active console are trashed. Trashing cards this way cannot be prevented" (3.8.5b).
+    That is `checkpoint::enforce_consoles`, beside the ◆ rule it shares 10.3.1d with.
+    `ConsoleLimitExceeded` is gone.
+  - **B3:** "the Corp may first trash any number of other cards already installed in the root of
+    that server … If the card to be installed is a region, the Corp must trash any other region
+    from that server" (8.5.6a), and "the Corp may first trash any number of other ice already
+    installed protecting that server. Ice trashed in this way will not be counted when
+    determining the install cost of the new ice" (8.5.6b). The forced trashes are made unasked,
+    since there is at most one of each. `RegionLimitExceeded` is gone.
+  - **What the player may trash is a separate entry** (decided with the person, 21 September
+    2026). Asked on every install, the question would come many times a game with "none" almost
+    always the answer. So `InstallCard`, `InstallProgram` and `InstallProgramOnIce` carry
+    `trash_first`. The plain install makes only the forced trashes. The install that trashes
+    first is offered only where there is a card it could choose. It takes at least one, so the
+    two entries are never the same move (`RulesError::NothingToTrashFirst`). After the first,
+    "Trash no more" is an answer. `ActionSpace` 1677 → 2621, appended: the three install segments
+    again, and no index moved.
+  - Trashed cards go where 8.5.7 puts them: a Corp card to Archives as it was on the table, a
+    Runner card to the heap with what it hosted. Nothing trashed here is prevented.
+- **B4 An install by a card's text makes only the forced trashes.** 8.5.6 applies to every
+  install. A card's text has no entry to carry `trash_first`, so the Corp cannot, for example,
+  trash ice first when Mercia B4LL4RD or Ansel 1.0 installs one. No card in the pool installs
+  over something on purpose, so this is recorded rather than owed. The forced trashes (memory,
+  region, agenda or asset) apply to text installs as to any other. The memory question is asked
+  inside a text install by replay too (`install_trash::could_ask`).
 
 **C. The turn (5.6, 5.7)**
 - **C1 ✔ The Corp draws before its turn begins.** `turn::enter_start_of_turn` draws, then refills
@@ -212,6 +254,28 @@ Both 256-seed sweeps are clean, coverage gate included.
 
 Both 256-seed sweeps are clean, coverage gate included.
 
+**Measured for B**, one full pass of the pool (192 games), main against the branch on pinned
+binaries (`scripts/coverage_identical.py`). The random seating reads the same by view and by
+index.
+- **The random seat trashes like cards now.** `CardTrashed` 1048 → 1653: it picks the install
+  that trashes first about as often as any other entry, and then trashes at random.
+- **A full rig makes room instead of stopping.** Random `ProgramInstalled` 435 → 503 and
+  `InstallProgram` 325 → 399. Heuristic `ProgramInstalled` rose on all three seeds: 266 → 279,
+  280 → 282 and 267 → 277. That is B1: the fifth program used not to be offered at all.
+- **A second console goes in.** Random `HardwareInstalled` 133 → 150.
+- **The heuristic never takes an install that trashes first**: 0 of 192 games on seed 1, by the
+  games' own records. Its one-ply evaluator scores what a card is worth on the table, and a
+  trash only removes one. Its other moves are trajectory drift. The extra legal entries re-roll
+  its tie-breaks, and Corp point wins 19 → 29 on seed 1 did not hold on seeds 2 and 3 (21 → 21,
+  22 → 20).
+- **Nothing is refused that the rules allow.** `MemoryLimitExceeded` stays 0 in every shape.
+  The checkpoint's memory rule (3.9.3c) is still reached only when memory drops later, and no
+  install goes over the limit any more.
+
+Both 256-seed sweeps are clean at release, coverage gate included. At 128 seeds they are also
+clean in a debug build, where `engine::apply_action`'s assertion checks that `payment::could_ask`
+foresaw every question an install asked, text installs included.
+
 **Fix order, one PR each:**
 1. G, which does not touch play.
 2. D1, E1, E2, F3, F4, F5.
@@ -284,10 +348,10 @@ with the rule quoted.
 | 3.3 | Assets | unreviewed |  |
 | 3.4 | Ice | unreviewed |  |
 | 3.5 | Operations | unreviewed |  |
-| 3.6 | Upgrades | deviates | B3: a second region is refused (3.6.5d). |
+| 3.6 | Upgrades | conforms | Read for B. A second region trashes the first as part of the install (3.6.5d, 8.5.6a). 3.6.5e (a swap or move putting two regions in one root) has no card in the pool. |
 | 3.7 | Events | unreviewed |  |
-| 3.8 | Hardware | deviates | B2. |
-| 3.9 | Programs | deviates | B1. |
+| 3.8 | Hardware | conforms | Read for B. A second console trashes the older one at the checkpoint, unpreventably (3.8.5b). |
+| 3.9 | Programs | conforms | Read for B. An install over the limit trashes programs of the Runner's choice first (3.9.3b). A limit that drops later is the checkpoint's (3.9.3c, `memory::enforce_limit`). Memory cost is not a cost (3.9.3d). |
 | 3.10 | Resources | unreviewed |  |
 
 ### 4. Game Zones
@@ -299,7 +363,7 @@ with the rule quoted.
 | 4.3 | Hand | read in part | Audit: HQ and grip contents go to their owner only; matches. |
 | 4.4 | Discard Pile | deviates | A2 (4.4.2). 4.4.6b: HQ discards and unrezzed installs go facedown, rezzed or revealed ones faceup; matches. |
 | 4.5 | Score Area | unreviewed |  |
-| 4.6 | Play Area | deviates | A3 (4.6.6f). The view and desktop mask a root card by identity only, so a slot shows no type. Remotes exist while occupied, and new ice goes outermost; these match. The other board-layout rules (4.6.5c, 4.6.7b–d, 4.6.8c, 4.6.9a) have not been read against the board yet. |
+| 4.6 | Play Area | read in part | A3 closed by B (4.6.6f). The view and desktop mask a root card by identity only, so a slot shows no type. Remotes exist while occupied, and new ice goes outermost; these match. The other board-layout rules (4.6.5c, 4.6.7b–d, 4.6.8c, 4.6.9a) have not been read against the board yet. |
 | 4.7 | Bank | unreviewed |  |
 | 4.8 | Set Aside | not modelled | No set-aside zone (Rules Audit backlog item 10); masking needs an explicit who-may-see rule first. |
 | 4.9 | Remove from the Game | unreviewed |  |
@@ -348,7 +412,7 @@ with the rule quoted.
 | 8.2 | Card Movements | unreviewed |  |
 | 8.3 | Arranging and Rearranging Cards | unreviewed |  |
 | 8.4 | Drawing Cards | unreviewed |  |
-| 8.5 | Installing and Uninstalling Cards | deviates | B1, B2, B3. 1[c] per ice, trash then pay, trashed cards keep their status; matches. |
+| 8.5 | Installing and Uninstalling Cards | deviates | B4 only. B1–B3 fixed: like cards are trashed at 8.5.16c, before the install cost, with the forced ones unasked and the player's own behind `trash_first`. 1[c] per ice not counting trashed ice, trashed cards keep their status (8.5.7), and a server emptied by its own install's trash keeps its identity (8.5.9); these match. |
 | 8.6 | Playing Events and Operations | read in part | F6 (order only). |
 | 8.7 | Searching for Cards | unreviewed |  |
 | 8.8 | Swapping Cards | unreviewed |  |
@@ -376,7 +440,7 @@ with the rule quoted.
 |---|---|---|---|
 | 10.1 | General | unreviewed |  |
 | 10.2 | Information | unreviewed |  |
-| 10.3 | Checkpoints | deviates | B2 (10.3.1d, console), E3. The step order (durations, win, unique, triggers) matches. |
+| 10.3 | Checkpoints | deviates | E3. B2 fixed: 10.3.1d's console half is `checkpoint::enforce_consoles`. The step order (durations, win, unique, triggers) matches. |
 | 10.4 | Damage | read in part | F2 fixed: the responsible player is recorded (10.4.1). Flatline, core-damage hand size, random trash match. |
 | 10.5 | Tags | read in part | Audit: both tag basic actions check tags and cost [click] + 2[credit]; matches. |
 | 10.6 | Bad Publicity | read in part | Audit: bad publicity credits are a separate run pool fixed at run creation (10.6.3c); matches v26.03. |

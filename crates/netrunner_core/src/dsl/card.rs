@@ -61,18 +61,16 @@ pub enum CardSubtype {
     /// no subroutines to click through. Authored on every bioroid (Ansel
     /// 1.0, Brân 1.0, Bumi 1.0, Mercia B4LL4RD).
     Bioroid,
-    /// A Region upgrade — "Limit 1 region per server". A singleton
-    /// restriction like `Console`, enforced by `engine::place_corp_card`
-    /// (`RulesError::RegionLimitExceeded`) and pruned out of
-    /// `engine::corp_install_destinations`' offer: a root already holding
-    /// a rezzed or unrezzed region cannot take another. Mahkota Langit
-    /// Grid is the pool's only region.
+    /// A Region upgrade — "Limit 1 region per server". Installing one into
+    /// a root that already holds a region, rezzed or not, trashes the old
+    /// one as part of the install (CR 3.6.5d, 8.5.6a;
+    /// `rules::install_trash`). It was a refusal until Rules Conformance B.
+    /// Mahkota Langit Grid is the pool's only region.
     Region,
-    /// A singleton restriction, not a trigger-dispatch tag like the other
-    /// two variants: `engine::install_hardware` rejects installing a second
-    /// `Console`-subtyped Hardware while one is already in the Runner's rig
-    /// (`RulesError::ConsoleLimitExceeded`) — e.g. Carnivore, Pennyshaver,
-    /// Pantograph ("Limit 1 console per player").
+    /// "Limit 1 console per player" — e.g. Carnivore, Pennyshaver,
+    /// Pantograph. Installing a second trashes the first at the next
+    /// checkpoint (CR 3.8.5b, 10.3.1d; `checkpoint::enforce_consoles`). It
+    /// was a refusal until Rules Conformance B.
     Console,
 }
 

@@ -111,10 +111,21 @@ pub(crate) fn install_of(state: &GameState, card: &str) -> InstallId {
 /// one card must spell the positions out, as
 /// `carnivore_can_select_two_copies_of_the_same_card` does.
 ///
-/// A parked payment that asks for a card (`payment::Ask::Card`) is answered
-/// by position too, and comes first, as `apply_action` answers it first.
+/// A parked payment that asks for a card (`payment::Ask::Card`), or an
+/// install asking which like card it trashes (`payment::Ask::Install`), is
+/// answered by position too, and comes first, as `apply_action` answers it
+/// first.
 pub(crate) fn position_of(state: &GameState, card: &str) -> usize {
     let id = CardId(card.to_string());
+    // An install's question names its candidates outright.
+    if let Some(crate::rules::PendingPayment { question: crate::rules::payment::Ask::Install(question), .. }) = &state.pending_payment {
+        return question
+            .eligible
+            .iter()
+            .find(|candidate| candidate.card == id)
+            .map(|candidate| candidate.position as usize)
+            .unwrap_or_else(|| panic!("{card} is not one the install could trash"));
+    }
     if let Some(crate::rules::PendingPayment { side, question: crate::rules::payment::Ask::Card(question), .. }) = &state.pending_payment {
         return pending_choice::zone_card_ids(state, *side, &question.zone, None)
             .iter()

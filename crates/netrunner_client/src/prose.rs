@@ -492,6 +492,16 @@ pub fn rez_alternative_label(card: &netrunner_core::dsl::CardId, index: usize, r
     words
 }
 
+/// The line under an install's question (CR 8.5.6): why a card has to go,
+/// or that the rest is up to the installer.
+pub fn install_trash_detail(question: &netrunner_core::rules::InstallQuestion) -> String {
+    match (question.memory_short, question.may_stop) {
+        (0, true) => "Trash another, or install it now.".to_string(),
+        (0, false) => "Trash at least one.".to_string(),
+        (short, _) => format!("It needs {short} more MU: trash a program to make room."),
+    }
+}
+
 /// What the actions pane is asking, when a card is asking it: `Bigger
 /// Picture asks — choose one`. `None` for an ordinary turn, where the
 /// pane keeps its usual title.
@@ -511,6 +521,9 @@ pub fn decision_prompt(view: &ClientView, registry: &CardRegistry) -> Option<Str
                 question.remaining
             ),
             netrunner_core::rules::PaymentAsk::Alternative { card, .. } => format!("Rez {} — how will you pay?", title(card, registry)),
+            netrunner_core::rules::PaymentAsk::Install(question) => {
+                format!("Install {} — trash which first? {}", title(&question.card, registry), install_trash_detail(question))
+            }
         });
     }
     let name = decision_card(view).map(|id| title(id, registry));
