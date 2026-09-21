@@ -201,7 +201,6 @@ fn concealed(trigger: Trigger, of: Option<Side>) -> bool {
         | Trigger::OnDamageDealt
         | Trigger::OnCardsTrashedFromHq
         | Trigger::OnDamageAboutToResolve
-        | Trigger::OnTrashAboutToResolve
         | Trigger::Paid => false,
     }
 }

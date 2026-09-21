@@ -41,7 +41,7 @@ This document outlines the architectural patterns, state boundary rules, and des
 └── Phase complete ──► Discard / StartOfTurn
 ```
 
-A `Prevention` window opens **only** when some installed or rigged card actually has a matching `PreventDamage`/`PreventTrash` paid ability — zero overhead otherwise.
+A `Prevention` window opens **only** when somebody could use an interrupt on the thing about to happen — an ability whose effect is an `Effect::Prevent` that matches it, requirement met and cost affordable (`prevention::could_prevent`) — zero overhead otherwise. It is the one window that **nests**: `paid_ability_window` is a single slot, so the window a prevention opens over, and any window the game's flow opens while the players are being asked, waits in `PendingPrevention::interrupted` and comes back when the asking is over. While something is parked for prevention, `apply_action` admits an interrupt and a pass and nothing else (row 4 below, narrowed).
 
 ### The Blocking-Guard Precedence Invariant
 

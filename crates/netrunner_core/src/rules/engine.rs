@@ -8,6 +8,7 @@ use crate::rules::event::GameEvent;
 use crate::rules::memory;
 use crate::rules::paid_ability;
 use crate::rules::pending_choice;
+use crate::rules::prevention;
 use crate::rules::run::{self, RunAction, RunPhase, ServerId};
 use crate::rules::setup;
 use crate::rules::state::{ArchivedCard, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard, ScoredAgenda, Side, WindowCheckpoint};
@@ -80,6 +81,16 @@ pub fn apply_action(
         )
     {
         return Err(RulesError::ActionBlockedByPendingDecision { side });
+    }
+    // While something is parked for prevention, the only things either
+    // player may do are use an ability that prevents it and pass — an
+    // interrupt window admits nothing else (`rules::prevention`). Last of
+    // the parked-state guards: a decision a "would" trigger parked is
+    // answered first, by the actions its own guard above lets through.
+    // `activate_ability` holds the other half, that the ability is an
+    // interrupt.
+    if state.pending_prevention.is_some() && !matches!(action, PlayerAction::ActivateAbility { .. } | PlayerAction::PassPriority { .. }) {
+        return Err(RulesError::ActionBlockedByPrevention);
     }
     // Classified before the match consumes `action` — read by the run guard
     // immediately below as well as by `open_post_action_window` at the end.
@@ -190,6 +201,13 @@ pub fn apply_action(
         turn_log::record_action_finished(&mut next);
     }
     events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
+    // A prevention left parked behind a decision that has now been answered
+    // moves on here (`prevention::settle`), and what it was holding up — the
+    // rest of a `Sequence`, queued as a continuation — drains after it.
+    while let Some(settled) = prevention::settle(&mut next, registry)? {
+        events.extend(settled);
+        events.extend(dispatcher::drain_deferred_triggers(&mut next, registry)?);
+    }
     // The standing checks once more, for whatever changed them without an
     // event a card can hear — agenda points moved by a card's text, a
     // unique card turned faceup by one. After the drain: a deferred trigger
@@ -1819,6 +1837,12 @@ fn activate_ability(
     // and phase checks below, so they are applied to the side that will
     // actually be spending.
     let side = ability.used_by.unwrap_or(side);
+    // An interrupt window admits interrupts only. Whether this one is about
+    // what is parked is `Effect::Prevent`'s own refusal, below.
+    let interrupting = state.pending_prevention.is_some();
+    if interrupting && ability.effect.prevents().is_none() {
+        return Err(RulesError::ActionBlockedByPrevention);
+    }
     if let Some(window) = &state.paid_ability_window {
         if window.active_priority != side {
             return Err(RulesError::NotYourPriority { expected: window.active_priority, actual: side });
@@ -1859,7 +1883,12 @@ fn activate_ability(
     if let Some(requirement) = &ability.requirement {
         ability::consume_requirement(&mut next, requirement, side, &ability_ctx(is_identity, target, &card_id));
     }
-    paid_ability::note_window_action(&mut next, side);
+    if interrupting {
+        paid_ability::note_interrupt(&mut next, side);
+        events.extend(prevention::after_interrupt(&mut next, registry)?);
+    } else {
+        paid_ability::note_window_action(&mut next, side);
+    }
 
     Ok((next, events))
 }

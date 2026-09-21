@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use serde::{Deserialize, Serialize};
 
-use crate::dsl::{CardFilter, CardId, CardTarget, CardZoneRef, Cost, DamageType, Effect, Trigger};
+use crate::dsl::{CardFilter, CardId, CardZoneRef, Cost, DamageType, Effect, Trigger};
 use crate::rules::event::GameEvent;
 use crate::rules::lingering::LingeringEffect;
 use crate::rules::run::{RunState, ServerId};
@@ -654,12 +654,12 @@ pub enum WindowCheckpoint {
     /// reset) has resolved, before the mandatory hand-size check. Closing
     /// resumes exactly where `turn::end_turn` paused: `turn::finish_end_turn`.
     EndOfTurn { side: Side },
-    /// Opened the instant a `DealDamage`/`TrashCard` effect is parked in
-    /// `GameState::pending_prevention` (only when at least one installed/
-    /// rigged card actually has a matching `Effect::PreventDamage`/
-    /// `PreventTrash` `Paid` ability — see `ability::evaluate_effect`'s
-    /// `DealDamage`/`TrashCard` arms). Closing applies whatever's left
-    /// unprevented via `paid_ability::close_window`'s `Prevention` arm.
+    /// The players are being asked about something parked in
+    /// `GameState::pending_prevention` — opened by `rules::prevention`, and
+    /// only when somebody could use an interrupt on it. The one window that
+    /// nests (`PendingPrevention::interrupted`) and the one that admits
+    /// nothing but an interrupt and a pass. Closing makes what is left
+    /// happen (`prevention::finish`).
     Prevention,
     /// Opened after `side` takes an ordinary basic click action, so their
     /// **opponent** gets a chance to use a paid ability before play
@@ -755,38 +755,65 @@ pub enum PreventionResume {
     ResumeSubroutines,
 }
 
-/// Which kind of `PendingPrevention` is parked — used only to name the two
-/// sides of a mismatch in `RulesError::PreventionKindMismatch`;
-/// `PendingPreventionKind` itself carries the actual payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PreventionKind {
-    Damage,
-    Trash,
-}
-
-/// What's parked, waiting on a `WindowCheckpoint::Prevention` window before
-/// it actually applies. `prevented` tracks how much of it has been
-/// prevented so far — incrementally for `Damage` (`Effect::PreventDamage`
-/// saturating-reduces `amount`), all-or-nothing for `Trash`
-/// (`Effect::PreventTrash` sets it outright, since real Netrunner trash
-/// prevention isn't partial).
+/// What is about to happen that a card may prevent — the thing parked in
+/// `GameState::pending_prevention` while `rules::prevention` asks. One
+/// variant per `dsl::Preventable`, carrying what the engine needs to make
+/// it happen once the asking is over.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum PendingPreventionKind {
-    Damage { damage_type: DamageType, amount: usize, prevented: usize },
-    Trash { target: CardTarget, prevented: bool },
+pub enum WouldHappen {
+    /// The Runner would suffer this much damage.
+    Damage { kind: DamageType, amount: u32 },
+    /// The Runner would take this many tags.
+    Tags { amount: u32 },
+    /// An installed card would be trashed by a card's text. Named by its
+    /// handle and nothing else: with two copies installed the one the
+    /// effect pointed at is the one that goes, and a handle says nothing
+    /// about a facedown Corp card, so this rides in a view and in an event
+    /// as it is.
+    Trash { owner: Side, install: InstallId },
 }
 
-/// An effect paused mid-resolution so both sides get a `PaidAbilityWindow`
-/// to respond with a matching `Effect::PreventDamage`/`PreventTrash` `Paid`
-/// ability before it actually applies — the same "park in `GameState`,
-/// block unrelated actions via the window that's opened alongside it, and
-/// resume on window close" idiom `TraceState` already established for
-/// `Effect::Trace`. Lives as a sibling field on `GameState`, not nested in
-/// `RunState`, for the same reason `TraceState` does: a standalone
-/// Operation with no active run can deal damage.
+impl WouldHappen {
+    /// How much of it there is to prevent: the damage, the tags, the one
+    /// card.
+    pub fn amount(&self) -> u32 {
+        match self {
+            WouldHappen::Damage { amount, .. } | WouldHappen::Tags { amount } => *amount,
+            WouldHappen::Trash { .. } => 1,
+        }
+    }
+
+    /// Who it happens to, and so who is asked first.
+    pub fn affects(&self) -> Side {
+        match self {
+            WouldHappen::Damage { .. } | WouldHappen::Tags { .. } => Side::Runner,
+            WouldHappen::Trash { owner, .. } => *owner,
+        }
+    }
+}
+
+/// Something paused on the point of happening, so that a card may prevent
+/// some of it (`rules::prevention`) — the same "park in `GameState`, block
+/// unrelated actions, resume when the asking is over" idiom `TraceState`
+/// established for `Effect::Trace`. Lives as a sibling field on
+/// `GameState`, not nested in `RunState`, for the same reason `TraceState`
+/// does: an operation with no run active can deal damage.
+///
+/// `prevented` is one count for every kind (a trash is 0 or 1). It used to
+/// be a field per kind inside a two-variant enum, with an effect per kind
+/// to write it and an error for writing the wrong one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PendingPrevention {
-    pub kind: PendingPreventionKind,
+    pub what: WouldHappen,
+    pub prevented: u32,
+    /// The window this one was opened over, put back when it closes — and
+    /// the window the game's own flow opens *while* this is parked, which
+    /// waits here rather than replacing the one the players are in
+    /// (`paid_ability::open_window_for`). `paid_ability_window` is a single
+    /// slot; before this, a prevention window opened during a run's window
+    /// took the slot and nothing gave it back.
+    #[serde(default)]
+    pub interrupted: Option<PaidAbilityWindow>,
     /// CardDefinition whose effect triggered this — same role as `TraceState::
     /// initiating_card`/`evaluate_effect`'s `acting_card` parameter.
     pub source_card: Option<CardId>,

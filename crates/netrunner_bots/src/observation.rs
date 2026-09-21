@@ -50,7 +50,7 @@ use std::sync::OnceLock;
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{CardDefinition, CardId, CardType, Cost, IceType};
 use netrunner_core::rules::{
-    ActionSpace, GamePhase, GameState, InstallSlot, MaskedZone, PendingDecision, PendingPreventionKind, PublicAccessPhase,
+    ActionSpace, GamePhase, GameState, InstallSlot, MaskedZone, PendingDecision, PublicAccessPhase,
     PublicAccessState, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunIce, PublicRunState, RunPhase, ServerId,
     Side, SubroutineStatus,
 };
@@ -758,14 +758,13 @@ fn encode_decision(view: &ClientView, features: &mut Vec<f32>) {
         }
         None => features.extend([0.0; 3]),
     }
-    match view.pending_prevention.as_ref().map(|prevention| &prevention.kind) {
-        Some(PendingPreventionKind::Damage { amount, prevented, .. }) => {
-            features.push(norm(*amount as f32, MAX_PENDING_DAMAGE));
-            features.push(norm(*prevented as f32, MAX_PENDING_DAMAGE));
-        }
-        Some(PendingPreventionKind::Trash { prevented, .. }) => {
-            features.push(0.0);
-            features.push(flag(*prevented));
+    // How much is about to happen and how much of it has been prevented,
+    // whatever it is — damage, tags, one card's trash. The same two slots
+    // the damage-or-trash pair filled; no pool card had ever lit them.
+    match view.pending_prevention.as_ref() {
+        Some(prevention) => {
+            features.push(norm(prevention.what.amount() as f32, MAX_PENDING_DAMAGE));
+            features.push(norm(prevention.prevented as f32, MAX_PENDING_DAMAGE));
         }
         None => features.extend([0.0; 2]),
     }

@@ -29,7 +29,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
-    Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, Prohibition,
+    Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, Preventable, Prohibition,
     Scope, SubroutineBreakCount,
 };
 use netrunner_core::rules::{PendingDecision, ServerId, Side};
@@ -196,8 +196,12 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::GainClicks(side, n) => format!("{} gains {}", who(*side), plural(*n, "click", "clicks")),
         Effect::GainClicksNextTurn(side, n) => format!("{} gains {} next turn", who(*side), plural(*n, "click", "clicks")),
         Effect::InitiateRun(server) => format!("run {}", describe_server(*server)),
-        Effect::PreventDamage(n) => format!("prevent {} damage", n),
-        Effect::PreventTrash => "prevent this card from being trashed".to_string(),
+        Effect::Prevent(Preventable::Damage { kind, up_to }) => match kind {
+            Some(kind) => format!("prevent up to {up_to} {} damage", format!("{kind:?}").to_lowercase()),
+            None => format!("prevent up to {up_to} damage"),
+        },
+        Effect::Prevent(Preventable::Tags(n)) => format!("prevent {n} tag{}", if *n == 1 { "" } else { "s" }),
+        Effect::Prevent(Preventable::Trash(filter)) => format!("prevent 1 installed card from being trashed ({})", humanize(format!("{filter:?}")).to_lowercase()),
         Effect::AddCounters(n) => format!("place {}", plural(*n, "counter", "counters")),
         Effect::RemoveCounters(n) => format!("remove {}", plural(*n, "counter", "counters")),
         Effect::RefillCountersTo(n) => format!("refill to {}", plural(*n, "counter", "counters")),

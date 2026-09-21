@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::dsl::{CardId, IceType};
 use crate::rules::run::{RunPhase, ServerId};
-use crate::rules::state::{GamePhase, InstallId, PreventionKind, Side};
+use crate::rules::state::{GamePhase, InstallId, Side};
 
 #[derive(Debug, Clone, PartialEq, Eq, Error)]
 pub enum RulesError {
@@ -268,11 +268,11 @@ pub enum RulesError {
     #[error("ICE {card:?} can only be rezzed while the Runner is approaching it")]
     IceNotBeingApproached { card: CardId },
 
-    #[error("no pending prevention window is currently open")]
-    NoPendingPrevention,
+    #[error("nothing this prevents is about to happen")]
+    NothingToPrevent,
 
-    #[error("expected a {expected:?} prevention window but {actual:?} is currently pending")]
-    PreventionKindMismatch { expected: PreventionKind, actual: PreventionKind },
+    #[error("only an ability that prevents it, or a pass, while the players are asked about a prevention")]
+    ActionBlockedByPrevention,
 
 
     #[error("card {0:?} is not an active installed/rigged card and cannot hold counters")]

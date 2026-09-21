@@ -13,8 +13,9 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::lingering::{Lingering, LingeringEffect, On, Until};
 use crate::rules::paid_ability;
+use crate::rules::prevention;
 use crate::rules::run;
-use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side};
+use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, PendingChoiceResume, PendingDecision, PendingPaidChoiceResume, Side, WouldHappen};
 
 /// Who `state.pending_decision` is currently awaiting a choice from, if
 /// anything is parked — used by `engine::apply_action`'s blocking guard and
@@ -28,12 +29,17 @@ pub(crate) fn pending_decision_chooser(state: &GameState) -> Option<Side> {
     }
 }
 
-/// Marks a just-parked `GameState::pending_decision` so its eventual
-/// resolution knows to resume `ability::resolve_unbroken_subroutines` —
-/// mirrors the analogous marking `resolve_unbroken_subroutines` already
-/// does for `active_trace`/`pending_prevention`/`pending_paid_choice`. A
-/// no-op if nothing is currently parked.
-pub(crate) fn mark_pending_decision_resume_subroutines(state: &mut GameState) {
+/// Marks whatever is parked right now — a decision, a paid choice, a trace,
+/// a prevention — so its eventual resolution knows to resume
+/// `ability::resolve_unbroken_subroutines`. A no-op if nothing is.
+///
+/// One function for all four because the intent is one: "the subroutines
+/// are not finished". It marked the decision only, and each of its five
+/// callers marked the paid choice by hand beside it and nothing else, so a
+/// subroutine whose *choice* dealt damage or gave a tag that was then
+/// parked for prevention lost the intent — the ice's later subroutines
+/// never fired and nothing was left to end the encounter.
+pub(crate) fn mark_parked_resume_subroutines(state: &mut GameState) {
     match state.pending_decision.as_mut() {
         Some(PendingDecision::ChooseEffect { resume, .. })
         | Some(PendingDecision::ChooseCards { resume, .. })
@@ -42,6 +48,15 @@ pub(crate) fn mark_pending_decision_resume_subroutines(state: &mut GameState) {
             *resume = PendingChoiceResume::ResumeSubroutines
         }
         None => {}
+    }
+    if let Some(pending) = state.pending_paid_choice.as_mut() {
+        pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
+    }
+    if let Some(trace) = state.active_trace.as_mut() {
+        trace.resume = crate::rules::state::TraceResume::ResumeSubroutines;
+    }
+    if let Some(pending) = state.pending_prevention.as_mut() {
+        pending.resume = crate::rules::state::PreventionResume::ResumeSubroutines;
     }
 }
 
@@ -497,10 +512,7 @@ pub(crate) fn resolve_accept(
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_paid`
         // may itself park a further decision/paid choice.
-        mark_pending_decision_resume_subroutines(state);
-        if let Some(new_pending) = state.pending_paid_choice.as_mut() {
-            new_pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
-        }
+        mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
     Ok(events)
@@ -519,10 +531,7 @@ pub(crate) fn resolve_decline(state: &mut GameState, registry: &CardRegistry) ->
     if pending.resume == PendingPaidChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `if_declined`
         // may itself park a further decision/paid choice.
-        mark_pending_decision_resume_subroutines(state);
-        if let Some(new_pending) = state.pending_paid_choice.as_mut() {
-            new_pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
-        }
+        mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
     Ok(events)
@@ -554,10 +563,7 @@ pub(crate) fn resolve_choice(
         // the "resume subroutines once fully resolved" intent onto it
         // rather than losing it. Harmless when nothing new was parked:
         // `resolve_encounter_ice` below just no-ops in that case.
-        mark_pending_decision_resume_subroutines(state);
-        if let Some(pending) = state.pending_paid_choice.as_mut() {
-            pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
-        }
+        mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
     Ok(events)
@@ -740,6 +746,28 @@ pub(crate) fn resolve_confirm_card_selection(
             // Archives. A card from a hidden zone (HQ, R&D) was not seen; a
             // rezzed install or any Runner card was.
             let mut cascade = Vec::new();
+            // One card of the other player's, trashed off the table by a
+            // card's text, is about to be trashed before it is: if somebody
+            // could prevent that, `rules::prevention` parks it and the card
+            // stays where it is for now. This is every way the pool trashes
+            // a Runner program (Ansel 1.0, Ballista, Biawak, Bumi 1.0,
+            // Retribution), and it used to move the card itself, past the
+            // window `Effect::TrashCard` went through. A player choosing
+            // among their *own* installs is paying for something, and a
+            // cost is not prevented; more than one card at a time is a gap
+            // no card in the pool reaches (every such selection is of 1).
+            if matches!(source, CardZoneRef::OpponentInstalled)
+                && is_discard_pile(dest)
+                && selected.len() == 1
+                && let Some(install) = selected_installs.get(index)
+            {
+                let what = WouldHappen::Trash { owner: owning_side(side, &source), install: *install };
+                if prevention::could_prevent(state, registry, &what) {
+                    let mut ctx = ability::ResolutionContext::for_parked(source_install, source_card.as_ref());
+                    events.extend(prevention::would(state, registry, what, &mut ctx)?);
+                    continue;
+                }
+            }
             let moved: Option<bool> = match &source {
                 CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => selected_installs
                     .get(index)
@@ -791,10 +819,8 @@ pub(crate) fn resolve_confirm_card_selection(
                 // Carnivore, Longevity Serum, Hansei Review, Anoetic Void,
                 // the memory-limit trash) was invisible to the coverage
                 // harness's per-card `trashed` count. Nothing dispatches on
-                // `CardTrashed`, so this changes no rules. Unlike
-                // `Effect::TrashCard` it does not open a prevention window;
-                // no card in the pool declares `OnTrashAboutToResolve`, so
-                // parity is a follow-up if one ever does.
+                // `CardTrashed`, so this changes no rules. (A trash somebody
+                // could prevent never gets here: see the top of this loop.)
                 if is_discard_pile(dest) {
                     events.push(GameEvent::CardTrashed { side: owning_side(side, dest), card: card_id.clone() });
                 }
@@ -877,7 +903,21 @@ pub(crate) fn resolve_confirm_card_selection(
             }
             (other, _, _) => Some(other),
         };
-        if let Some(effect) = effect {
+        // The trash above was parked for prevention: the `then` waits its
+        // turn behind it, as the rest of a `Sequence` does.
+        if let (Some(effect), Some(card), true) = (&effect, acting, state.pending_prevention.is_some()) {
+            state.deferred_triggers.push(crate::rules::state::DeferredTrigger {
+                card: card.clone(),
+                trigger: crate::dsl::Trigger::OnPlay,
+                target: None,
+                install: acting_install,
+                target_install: None,
+                event: None,
+                continuation: Some(effect.clone()),
+                heard: Default::default(),
+                not_the_first_this_turn: false,
+            });
+        } else if let Some(effect) = effect {
             let mut ctx = ability::ResolutionContext::for_parked(acting_install, acting);
             ctx.selected_count = selected.len() as u32;
             // The `then` acts *as* the selection (above) but *is* still the
@@ -891,10 +931,7 @@ pub(crate) fn resolve_confirm_card_selection(
     if resume == PendingChoiceResume::ResumeSubroutines {
         // Same nested-parking propagation as `resolve_choice` — `then` may
         // itself park a further decision/paid choice.
-        mark_pending_decision_resume_subroutines(state);
-        if let Some(pending) = state.pending_paid_choice.as_mut() {
-            pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
-        }
+        mark_parked_resume_subroutines(state);
         events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
     }
     Ok(events)
@@ -988,10 +1025,7 @@ pub(crate) fn resolve_choose_server(
             // identity reaction); propagate the resume intent exactly as
             // `resolve_confirm_card_selection` does before resuming the
             // encounter this decision interrupted.
-            mark_pending_decision_resume_subroutines(state);
-            if let Some(pending) = state.pending_paid_choice.as_mut() {
-                pending.resume = PendingPaidChoiceResume::ResumeSubroutines;
-            }
+            mark_parked_resume_subroutines(state);
             events.extend(paid_ability::resolve_encounter_ice(state, registry)?);
         }
         return Ok(events);

@@ -231,19 +231,19 @@ pub enum Effect {
     /// Siphon) by simply listing `InitiateRun` before the access-modifying
     /// effect(s) that follow it.
     InitiateRun(ServerId),
-    /// Saturating-reduces the `amount` of a `PendingPreventionKind::Damage`
-    /// currently parked in `GameState::pending_prevention` (a card's
-    /// `Trigger::Paid` ability activated during the resulting
-    /// `WindowCheckpoint::Prevention` window — e.g. a future "Feedback
-    /// Filter"-style card). `RulesError::NoPendingPrevention` if nothing is
-    /// parked, `RulesError::PreventionKindMismatch` if what's parked isn't
-    /// `Damage`.
-    PreventDamage(usize),
-    /// Marks a parked `PendingPreventionKind::Trash` as prevented outright —
-    /// trash prevention is binary (all-or-nothing per instance), unlike
-    /// damage's incremental `amount`. Same error conditions as
-    /// `PreventDamage`, mismatched on `Trash` instead of `Damage`.
-    PreventTrash,
+    /// Prevents some of whatever is parked in `GameState::
+    /// pending_prevention` — "Prevent 1 tag", "Prevent up to 3 meat
+    /// damage", "Prevent a player from trashing 1 installed program". What
+    /// is prevented is the payload, a `Preventable`, so a new kind of
+    /// prevention is a word there and an arm in `rules::prevention`, never
+    /// an effect of its own: `PreventDamage` and `PreventTrash` were two,
+    /// and tags would have been the third. An ability whose effect holds
+    /// one is an **interrupt** (`Effect::prevents`): the only thing either
+    /// player may activate while a `WindowCheckpoint::Prevention` window is
+    /// open, and refused everywhere else, because this arm errors
+    /// (`RulesError::NothingToPrevent`) unless something it matches is
+    /// parked — which is also what keeps it out of `legal_actions`.
+    Prevent(Preventable),
     /// Saturating-adds `amount` generic counters (see `dsl::card::
     /// CounterKind`) to whichever card activated this effect — always
     /// `acting_card`, the same target `BoostStrength` uses, since a
@@ -1024,6 +1024,26 @@ pub enum EffectDuration {
     Turn,
 }
 
+/// What an `Effect::Prevent` prevents, as the card prints it after the word
+/// "prevent". Only what a card in the pool prints: bad publicity, an expose
+/// and a jack-out are each a variant here and an arm in `rules::prevention`
+/// the day a card needs one (Zaibatsu Loyalty is deferred on expose, which
+/// the engine does not have).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Preventable {
+    /// "Prevent up to 3 meat damage" (`kind: Some(Meat)`), "prevent 1 net
+    /// damage". `None` is damage of any kind. "Up to" prevents as much of
+    /// it as is left: nobody prevents less than they paid for, and a
+    /// number to choose would need a decision the engine does not have
+    /// (Rules Audit backlog item 6).
+    Damage { kind: Option<DamageType>, up_to: u32 },
+    /// "Prevent 1 tag."
+    Tags(u32),
+    /// "Prevent a player from trashing 1 installed program or piece of
+    /// hardware" — one installed card the filter admits.
+    Trash(CardFilter),
+}
+
 /// What a player cannot do while an `Effect::Prohibit` holds. Only what a
 /// card in the pool prints; each is asked through `continuous::cannot`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -1115,8 +1135,7 @@ impl Effect {
             | Effect::LoseClicks(..)
             | Effect::GainClicks(..)
             | Effect::InitiateRun(..)
-            | Effect::PreventDamage(..)
-            | Effect::PreventTrash
+            | Effect::Prevent(..)
             | Effect::AddCounters(..)
             | Effect::RemoveCounters(..)
             | Effect::GainCreditsPerCardAccessedThisRun(..)
@@ -1185,6 +1204,19 @@ impl Effect {
         let mut ends = false;
         self.for_each_effect(&mut |effect| ends |= matches!(effect, Effect::EndTheRun));
         ends
+    }
+
+    /// The prevention this effect holds, if it holds one — what makes the
+    /// ability printing it an interrupt. The first found: no card prints
+    /// two.
+    pub fn prevents(&self) -> Option<Preventable> {
+        let mut found = None;
+        self.for_each_effect(&mut |effect| {
+            if let (None, Effect::Prevent(what)) = (&found, effect) {
+                found = Some(what.clone());
+            }
+        });
+        found
     }
 
     /// The variant name of this effect — `"Sequence"`, `"GainCredits"` —
