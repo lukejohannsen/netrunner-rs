@@ -1,0 +1,74 @@
+# Null Signal Games revise the Comprehensive Rules a few times a year, and
+# nothing in this repo used to notice. This job compares the live page with
+# the committed copy under rules/ and, when they differ, opens an issue whose
+# body is the script's report: the rules added, removed, changed or
+# renumbered, and every `CR <number>` citation in the workspace that points
+# at one of them. That list is the to-do list for adopting the new version —
+# re-run scripts/rules_sync.py with no flags, fix what the citation gate
+# names, re-read the changed rules against the engine, and record what was
+# found in docs/roadmap/rules-conformance.md.
+#
+# It gates nothing: a new rules version is work to schedule, not a broken
+# build. One open issue at a time — a later difference is a comment on it,
+# so a slow adoption does not pile up a week's issue each Monday.
+name: Rules watch
+
+on:
+  # Two hours after the weekly CI run and an hour after the deep sweep.
+  schedule:
+    - cron: '0 8 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # The only write this workflow makes is the issue.
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Exit 1 is "differs", which is this job's reason to exist rather than
+      # a failure; anything else (the page did not fetch or no longer
+      # parses) fails the job so the break is seen.
+      - name: Compare the live rules with the committed copy
+        id: check
+        run: |
+          set +e
+          python3 scripts/rules_sync.py --check > report.md
+          status=$?
+          set -e
+          cat report.md
+          case "$status" in
+            0) echo "changed=false" >> "$GITHUB_OUTPUT" ;;
+            1) echo "changed=true" >> "$GITHUB_OUTPUT" ;;
+            *) exit "$status" ;;
+          esac
+      # The report goes in by file, never interpolated into the script: it
+      # quotes text from a page this repository does not control.
+      - name: Open or update the issue
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          title="The Comprehensive Rules changed upstream"
+          {
+            echo "\`scripts/rules_sync.py --check\` found the live rules at https://rules.nullsignal.games/ differ from \`rules/\`."
+            echo
+            cat report.md
+            echo
+            echo "Adopt it: \`python3 scripts/rules_sync.py\`, then \`cargo test -p netrunner_core --test rules_citations\`, re-read each rule listed against the engine, and record the outcome in \`docs/roadmap/rules-conformance.md\`."
+          } > body.md
+          existing=$(gh issue list --state open --search "\"$title\" in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file body.md
+          else
+            gh issue create --title "$title" --body-file body.md
+          fi
