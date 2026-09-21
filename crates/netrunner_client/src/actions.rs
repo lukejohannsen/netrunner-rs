@@ -474,7 +474,19 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::SubmitRunnerTraceBid { amount } => format!("Bid {amount} (Runner trace)"),
         // The question is the card's own clause, over the buttons
         // (`prose::decision_prompt`); a button is its number.
-        PlayerAction::ChooseNumber { amount } => format!("Choose {amount}"),
+        PlayerAction::ChooseNumber { amount } => {
+            // A parked payment is answered ahead of any decision beneath
+            // it, and its number is credits off a card the button names.
+            let payment = view.and_then(|v| Some((v, v.pending_payment.as_ref()?.own.as_ref()?)));
+            match payment {
+                Some((view, payment)) => format!(
+                    "{amount} from {}, {} from the rest",
+                    crate::prose::pool_name(payment.question.pool, view, registry),
+                    payment.amount.saturating_sub(*amount)
+                ),
+                None => format!("Choose {amount}"),
+            }
+        }
         // A paid choice is a cost and a consequence. The card's own clause
         // (`PendingPaidChoice::text`, quoted from the printed text) says
         // both; the cost is spelled out beside it because a `[click]` and
@@ -512,12 +524,6 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         // of the effect. "Option 0 | Option 1" was a menu with no words on
         // it.
         PlayerAction::ResolvePendingChoice { option_index } => {
-            // A parked payment's options are pools, and it is answered
-            // ahead of any decision parked beneath it.
-            let pool = view.and_then(|v| Some((v, *v.pending_payment.as_ref()?.own.as_ref()?.options.get(*option_index)?)));
-            if let Some((view, pool)) = pool {
-                return format!("Spend credits from {} first", crate::prose::pool_name(pool, view, registry));
-            }
             let parked = view.and_then(|v| match &v.pending_decision {
                 Some(PendingDecision::ChooseEffect { options, option_texts, .. }) => {
                     Some((options.get(*option_index), option_texts.get(*option_index)))

@@ -293,8 +293,8 @@ pub enum RulesError {
     /// leaves the engine. **Its own variant on purpose** — `Effect::
     /// RezInstalled` swallows `NotEnoughCredits`, and a question that read
     /// as one would be quietly dropped there.
-    #[error("{side:?} must choose which credits to spend first")]
-    PaymentChoiceNeeded { side: Side, amount: u32, options: Vec<crate::rules::payment::Pool> },
+    #[error("{side:?} must say how many credits come from which pool")]
+    PaymentChoiceNeeded { side: Side, amount: u32, question: crate::rules::payment::Question },
 
     #[error("{side:?} is choosing which credits to spend; nothing else may happen until they have")]
     ActionBlockedByPendingPayment { side: Side },

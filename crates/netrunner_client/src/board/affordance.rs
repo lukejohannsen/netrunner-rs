@@ -86,7 +86,7 @@ pub(super) fn in_a_passing_moment(view: &ClientView) -> bool {
         || view.pending_prevention.is_some()
         || view.pending_paid_choice.is_some()
         || view.pending_decision.is_some()
-        // A payment waiting on which credits go first is a prompt parked on
+        // A payment waiting on how its credits are split is a prompt parked on
         // its payer like any other.
         || view.pending_payment.is_some()
 }

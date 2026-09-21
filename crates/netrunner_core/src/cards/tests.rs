@@ -6887,11 +6887,11 @@ mod system_gateway {
         let pump = PlayerAction::ActivateAbility { target: corroder, ability_index: 0 };
         let (parked, _) = apply_action(&state, &registry, pump).expect("the pump parks a question");
         let payment = parked.pending_payment.as_ref().expect("1[c], and 2 + 5 that could pay it");
-        assert_eq!(payment.options, vec![crate::rules::Pool::Hosted(toolbox), crate::rules::Pool::Run]);
+        assert_eq!(payment.question, crate::rules::PaymentQuestion { pool: crate::rules::Pool::Hosted(toolbox), min: 0, max: 1 });
 
-        let (run_first, _) = apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the run's first");
-        assert_eq!(run_first.runner.rig[0].counters, 2, "The Toolbox keeps both for the next run");
-        assert_eq!(run_first.active_run.as_ref().map(|run| run.bonus_run_credits), Some(4));
+        let (run_pays, _) = apply_action(&parked, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("none of The Toolbox's");
+        assert_eq!(run_pays.runner.rig[0].counters, 2, "The Toolbox keeps both for the next run");
+        assert_eq!(run_pays.active_run.as_ref().map(|run| run.bonus_run_credits), Some(4));
     }
 
     /// Found by the 256-seed view sweep at seed 173 (Hostile Bid against Pay
@@ -6991,7 +6991,11 @@ mod system_gateway {
         let payment = parked.pending_payment.clone().expect("parked");
         assert_eq!((payment.side, payment.amount, payment.action.clone()), (Side::Runner, 4, trash));
         let azimat = crate::rules::Pool::Hosted(parked.runner.rig[0].install_id);
-        assert_eq!(payment.options, vec![azimat, crate::rules::Pool::Run], "Azimat's pay less and last longer; the run's pay anything and are gone sooner");
+        assert_eq!(
+            payment.question,
+            crate::rules::PaymentQuestion { pool: azimat, min: 0, max: 2 },
+            "Azimat's pay less and last longer; the run's pay anything and are gone sooner — so how many of Azimat's 2"
+        );
 
         // Nothing has happened: the state is the one the action was applied
         // to, but for the question.
@@ -7002,20 +7006,25 @@ mod system_gateway {
         assert_eq!(crate::rules::current_actor(&parked), Some(Side::Runner));
         assert_eq!(
             crate::rules::legal_actions(&parked, &registry),
-            vec![PlayerAction::ResolvePendingChoice { option_index: 0 }, PlayerAction::ResolvePendingChoice { option_index: 1 }]
+            (0..=2).map(|amount| PlayerAction::ChooseNumber { amount }).collect::<Vec<_>>()
         );
         assert_eq!(
             apply_action(&parked, &registry, PlayerAction::PassAccessedCard { card_id: CardId("pad_campaign".to_string()) }).unwrap_err(),
             crate::rules::RulesError::ActionBlockedByPendingPayment { side: Side::Runner }
         );
         assert_eq!(
-            apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 2 }).unwrap_err(),
-            crate::rules::RulesError::InvalidChoiceIndex(2)
+            apply_action(&parked, &registry, PlayerAction::ChooseNumber { amount: 3 }).unwrap_err(),
+            crate::rules::RulesError::ChosenNumberOutOfRange { amount: 3, min: 0, max: 2 }
+        );
+        // The answer it used to take is one more thing that must wait.
+        assert_eq!(
+            apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).unwrap_err(),
+            crate::rules::RulesError::ActionBlockedByPendingPayment { side: Side::Runner }
         );
     }
 
     #[test]
-    fn the_answer_applies_the_parked_action_with_the_chosen_pool_spent_first() {
+    fn the_answer_applies_the_parked_action_with_that_many_credits_from_the_pool_asked_about() {
         let registry = sg_registry();
         let before = overclock_run_with_azimat_accessing_a_pad_campaign(&registry);
         let trash = PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) };
@@ -7030,19 +7039,23 @@ mod system_gateway {
             })
         };
 
-        // Azimat first: its 2, then 2 of the run's 5.
-        let (azimat_first, events) =
-            apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("Azimat first");
+        // Both of Azimat's, then 2 of the run's 5.
+        let (azimat_first, events) = apply_action(&parked, &registry, PlayerAction::ChooseNumber { amount: 2 }).expect("both of Azimat's");
         assert_eq!(azimat_first.runner.rig[0].counters, 0);
         assert_eq!(from_the_run(&events), Some(2));
 
-        // The run's first: 4 of its 5, and Azimat keeps its 2 for a second run this turn.
-        let (run_first, events) =
-            apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the run's first");
+        // None of them: 4 of the run's 5, and Azimat keeps its 2 for a second run this turn.
+        let (run_first, events) = apply_action(&parked, &registry, PlayerAction::ChooseNumber { amount: 0 }).expect("none of Azimat's");
         assert_eq!(run_first.runner.rig[0].counters, 2);
         assert_eq!(from_the_run(&events), Some(4));
 
-        for after in [&azimat_first, &run_first] {
+        // One of them, which no answer could say while the question was
+        // which pool goes first.
+        let (split, events) = apply_action(&parked, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("one of Azimat's");
+        assert_eq!(split.runner.rig[0].counters, 1);
+        assert_eq!(from_the_run(&events), Some(3));
+
+        for after in [&azimat_first, &run_first, &split] {
             assert!(after.pending_payment.is_none() && after.payment_answers.is_empty(), "nothing of the question is left behind");
             assert_eq!(after.corp.archives, vec![ArchivedCard::faceup(CardId("pad_campaign".to_string()))], "and the action it was parked on happened");
             assert_eq!(after.runner.resources.credits, Credits(0));

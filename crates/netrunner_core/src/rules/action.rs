@@ -468,6 +468,10 @@ pub enum PlayerAction {
     /// (or a different variant is); `RulesError::ChosenNumberOutOfRange` if
     /// `amount` is outside the range the decision was parked with.
     ///
+    /// **Also the answer to a parked payment** (`state::PendingPayment`):
+    /// how many of its credits come from the pool it asks about, which is
+    /// answered ahead of any decision parked beneath it.
+    ///
     /// Its own action rather than `ResolvePendingChoice { option_index }`
     /// read as a number: that segment is `MAX_PENDING_CHOICE_OPTIONS` wide
     /// and means "the nth thing the card lists", and a policy should not

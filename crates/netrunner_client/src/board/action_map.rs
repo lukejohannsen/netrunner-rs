@@ -452,7 +452,10 @@ impl Prompt {
             return Some(match &payment.own {
                 Some(own) => Prompt {
                     title: format!("Pay {} credit{}", own.amount, if own.amount == 1 { "" } else { "s" }),
-                    detail: "More than one card could pay. Whose credits are spent first?".to_string(),
+                    detail: format!(
+                        "More than one place could pay. How many come from {}? The rest comes from the others.",
+                        prose::pool_name(own.question.pool, view, registry)
+                    ),
                 },
                 None => Prompt { title: format!("The {:?} is choosing which credits to spend", payment.side), detail: String::new() },
             });
@@ -707,21 +710,22 @@ mod tests {
     }
 
     /// Both clients get every word of a parked payment from here, so this
-    /// is the one place they are checked: the prompt, a button per pool
-    /// named by the card it is on, and no card shown as the one asking.
+    /// is the one place they are checked: the prompt, a button per number
+    /// naming the card the credits come off, and no card shown as the one
+    /// asking.
     #[test]
-    fn a_parked_payment_is_a_prompt_with_a_button_for_each_pool_named_by_its_card() {
+    fn a_parked_payment_is_a_prompt_with_a_button_for_each_split_naming_the_card_it_comes_off() {
         let (registry, state) = a_parked_payment();
 
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
         let map = ActionMap::build(&view, &registry);
         let labels: Vec<&str> = map.decisions().into_iter().map(|index| map.entries[index].label.as_str()).collect();
-        assert_eq!(labels, vec!["Spend credits from Azimat first", "Spend credits from the run first"]);
-        assert_eq!(map.entries.len(), 2, "and nothing else is on offer while it is parked");
+        assert_eq!(labels, vec!["0 from Azimat, 4 from the rest", "1 from Azimat, 3 from the rest", "2 from Azimat, 2 from the rest"]);
+        assert_eq!(map.entries.len(), 3, "and nothing else is on offer while it is parked");
         let prompt = Prompt::of(&view, &registry).expect("the payer is prompted");
         assert_eq!(prompt.title, "Pay 4 credits");
         assert_eq!(Prompt::card(&view, &registry), None, "no one card asks where a payment comes from");
-        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Pay 4 credits — whose credits first?"));
+        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Pay 4 credits — how many from Azimat?"));
 
         // The other chair: nothing to press, and told why the table paused.
         let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);

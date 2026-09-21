@@ -1679,7 +1679,7 @@ one.
    four are single-use, one `ContinuousKind` (single-use), two `CorpState`
    fields, one `RunnerState` field, one event and five affordability sums
    gone.
-6. **A numeric decision — IN PROGRESS (21 September 2026)** (§6.4; new).
+6. **A numeric decision — DONE (21 September 2026)** (§6.4; new).
    `PendingDecision` has no "choose a number", so X costs and "pay up to
    N" have nowhere to park. One variant, and an `ActionSpace` segment
    appended at the end (the append-never-shift rule), so it is a
@@ -1778,6 +1778,58 @@ one.
    silent. *Not looked at:* the desktop pop-up with a long row of numbers
    — it is the trace bid's row, which wraps, but no screenshot was taken
    of this prompt.
+
+   **Stage 2 — a payment is split by number, which closes the item**
+   (`feat/a-payment-is-split-by-number`). Item 5 asked "which pool
+   first?" and emptied the chosen class as far as the payment went — a
+   simplification it named, because a split needs a number for an answer.
+   The question is now `payment::Question { pool, min, max }`: **how many
+   of the credits come from the first class that could go first**,
+   answered by `PlayerAction::ChooseNumber`. The range is what the payment
+   allows — no more than the class holds or the payment needs, no fewer
+   than the other such classes would leave uncovered — so every number
+   offered is a payment that can be made, the class asked about is then
+   done with (what it did not give stays on its cards), and the last
+   class is never asked about: two classes are one question, three are
+   two. A number says both of the old answers (all of it, none of it) and
+   the split between them, so `ResolvePendingChoice` left the payment
+   path rather than staying for half of it. A range a `ChooseNumber`
+   cannot carry is cut to 30, and one whose *fewest* is past 30 is not
+   asked (table order); no pool in the game is near either. Everything
+   else item 5 built stands as it was: parked by replay, an action parks
+   only if some sequence of answers completes it (the search now runs
+   over the numbers in the range), masked in the view and in the log — a
+   step that parks again is concealed whatever action it was, so a number
+   given to a first question is not shown before the action it pays for
+   is. **While a payment is parked its numbers are the only candidates:**
+   a number decision parked beneath it offers the same action, and the
+   payment answers first. `board::breaks` answers a question with the
+   first number that goes through, which by the rule above is one the
+   person could give, and still waits for theirs when the route is
+   carried out. The words are `netrunner_client`'s for both clients: "Pay
+   4 credits — how many from Azimat?", and a button a split ("1 from
+   Azimat, 3 from the rest").
+   *Measured against what was written down first* (`f6a0541` against
+   `main` `72cd4f5`, pinned binaries, 192 games a report). Predicted:
+   heuristic identical; random differing in at most the one game of the
+   pool that asks. **Heuristic identical, by view and by index; random
+   differs by one answer and what it paid with, and by nothing else** —
+   `ChooseNumber` 3 → 4, `ResolvePendingChoice` 1,001 → 1,000, and the
+   random seat took Azimat's credit where it had taken the run's
+   (`CountersRemoved` 1,444 → 1,445, `BonusRunCreditsSpent` 11 → 10);
+   steps, end reasons and every other key unmoved, view and index alike.
+   On the deck pair that asks (*Hostile Bid* against *Pay As You Go*, 192
+   random games): **35 questions, 35 numbers, 0 stalled**, end reasons 32
+   / 109 / 51 against 32 / 110 / 50; the heuristic pass of the same pair
+   is unmoved at 66,472 steps, asking nothing. Both 256-seed sweeps pass;
+   `cargo test --workspace` green, clippy silent.
+   **Across the item:** one `Effect` and one `Amount`, one `PlayerAction`
+   on an appended `ActionSpace` segment (1646 → 1677), one
+   `PendingDecision`, no observation change; three cards that took the
+   most their text allows now ask, and a payment is split to the credit.
+   *Deferred by name:* Phật Gioan Baotixita as one prompt (needs `1 +` the
+   number, which `Amount` cannot say; its two paid choices are correct),
+   and X costs, which no pool card prints.
 7. **A movement phase in the run** (§2.6; was item 4), before a card needs
    "when the Runner passes ICE".
 8. **Cost types** (§2.4; was item 5). jinteki's 50 are the backlog, taken

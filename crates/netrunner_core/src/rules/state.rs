@@ -911,12 +911,12 @@ pub struct PendingPayment {
     /// which is why the other player's view carries none of this but `side`
     /// (`masking::PublicPendingPayment`): an unplayed event is still hidden.
     pub action: crate::rules::action::PlayerAction,
-    pub answers: Vec<crate::rules::payment::Pool>,
+    pub answers: Vec<u32>,
     /// How many credits the payment is for, for the prompt.
     pub amount: u32,
-    /// One pool per class on offer; `ResolvePendingChoice::option_index`
-    /// indexes it.
-    pub options: Vec<crate::rules::payment::Pool>,
+    /// How many of them come from which pool, and the range the payment
+    /// allows; `PlayerAction::ChooseNumber` answers it.
+    pub question: crate::rules::payment::Question,
 }
 
 /// A decision parked by an `Effect`, awaiting a resolving `PlayerAction`.
@@ -1264,7 +1264,7 @@ pub struct GameState {
     #[serde(default)]
     pub pending_decision: Option<PendingDecision>,
     /// A payment that found pools the payer has to choose between — see
-    /// `PendingPayment`. Answered by `PlayerAction::ResolvePendingChoice`.
+    /// `PendingPayment`. Answered by `PlayerAction::ChooseNumber`.
     #[serde(default)]
     pub pending_payment: Option<PendingPayment>,
     /// The payer's answers, while the action that asked for them is being
@@ -1276,7 +1276,7 @@ pub struct GameState {
     /// Hygiene Rule's test); not a `ResolutionContext` field because the
     /// payment that reads it may be many resolutions deep.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub payment_answers: Vec<crate::rules::payment::Pool>,
+    pub payment_answers: Vec<u32>,
     /// A snapshot of the most recently concluded run (its normal
     /// `RunCompleted`/`RunJackedOut`/`RunEndedByEffect` conclusions only —
     /// see `dispatcher::dispatch_event`'s `Trigger::OnRunEnded` arm doc

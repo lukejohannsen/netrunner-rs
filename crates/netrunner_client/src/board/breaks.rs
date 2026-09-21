@@ -338,14 +338,19 @@ impl Search<'_> {
     /// engine parks the ability and asks its payer (`PendingPayment`); left
     /// there, the next step is refused — only an answer is legal — and the
     /// card has no route at all, on exactly the board where The Toolbox sits
-    /// beside a run's credits. The first option is taken: which pool pays
-    /// changes neither whether the route works nor what it costs (`purse`),
+    /// beside a run's credits. The first number that goes through is taken:
+    /// how the payment is split changes neither whether the route works nor
+    /// what it costs (`purse`),
     /// and the question is put to the person for real when they carry the
     /// route out, where `AutoBreak::next` waits for their answer.
     fn step(&self, state: &GameState, ability_index: usize) -> Option<GameState> {
         let (mut next, _) = apply_action(state, self.registry, self.action(ability_index)).ok()?;
-        while next.pending_payment.is_some() {
-            next = apply_action(&next, self.registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).ok()?.0;
+        while let Some(question) = next.pending_payment.as_ref().map(|payment| payment.question) {
+            // An answer is legal only if the step can be completed after
+            // it, so the first that applies is one the person could give.
+            next = (question.min..=question.max)
+                .find_map(|amount| apply_action(&next, self.registry, PlayerAction::ChooseNumber { amount }).ok())?
+                .0;
         }
         if pending_on(&next, self.ice) != Some(true) {
             return Some(next);
@@ -668,9 +673,11 @@ mod tests {
                     submitted += 1;
                 }
                 Next::Wait if state.pending_payment.is_some() => {
-                    // The search answered with option 0; the person says 1.
-                    assert_eq!(now.legal_actions.len(), 2, "the two pools, and nothing else");
-                    state = apply_action(&state, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the run's first").0;
+                    // 1[c] owed, 0 or 1 of it from The Toolbox. The search
+                    // took the first number that goes through, 0; the
+                    // person says 1.
+                    assert_eq!(now.legal_actions, vec![PlayerAction::ChooseNumber { amount: 0 }, PlayerAction::ChooseNumber { amount: 1 }]);
+                    state = apply_action(&state, &registry, PlayerAction::ChooseNumber { amount: 1 }).expect("The Toolbox's credit").0;
                     asked += 1;
                 }
                 Next::Wait => state = apply_action(&state, &registry, PlayerAction::PassPriority { side: Side::Corp }).expect("the Corp passes back").0,
@@ -680,8 +687,8 @@ mod tests {
             assert!(submitted + asked <= 2 * route.steps.len(), "the driver is not making progress");
         }
         assert_eq!((submitted, asked), (route.steps.len(), 2), "a pump and a break, each asked about once");
-        assert_eq!(state.runner.rig[1].counters, 2, "The Toolbox was never touched: the person said the run's credits, twice");
-        assert_eq!(state.active_run.as_ref().unwrap().bonus_run_credits, 5 - route.credits, "and it cost what the route said");
+        assert_eq!(state.active_run.as_ref().unwrap().bonus_run_credits, 5, "the run's credits were never touched: the person said The Toolbox's, twice");
+        assert_eq!(state.runner.rig[1].counters, 2 - route.credits, "and it cost what the route said");
     }
 
     #[test]
