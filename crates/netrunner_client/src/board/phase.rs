@@ -10,7 +10,7 @@
 //! marked** — the HUD's rule ([`super::hud`]), for the same reason: a bar
 //! whose steps appeared as they were reached would be a different bar
 //! every time it was read. So a turn is always its three steps, and a run
-//! always its four, and [`Step::state`] says which one the game is in.
+//! always its five, and [`Step::state`] says which one the game is in.
 //!
 //! **A run is a second segment, not more steps on the first.** A run
 //! happens inside the Runner's action step (and the Corp's, off a card),
@@ -139,18 +139,21 @@ fn turn_steps(view: &ClientView, at: usize) -> Vec<Step> {
         .collect()
 }
 
-/// A run's four steps, with the ice counted in the approach: the engine's
-/// finer moments (the rez window, a subroutine resolving, passing the
-/// piece) happen inside approach and encounter as actions, so they are not
-/// steps — a bar that grew a step per subroutine would be a different bar
-/// on every ice.
+/// A run's five steps, Null Signal Games' phases, with the ice counted in
+/// the approach: the engine's finer moments (the rez window, a subroutine
+/// resolving, the jack-out decision) happen inside a phase as actions, so
+/// they are not steps — a bar that grew a step per subroutine would be a
+/// different bar on every ice. Approach, encounter and movement repeat
+/// once per piece of ice, so the bar goes back from movement to approach;
+/// the count on the approach says how far in the run is.
 fn run_segment(phase: RunPhase, position: usize, ice: usize, server: &str) -> Segment {
     let at = match phase {
         RunPhase::Initiation => 0,
         RunPhase::ApproachIce => 1,
         RunPhase::EncounterIce => 2,
-        RunPhase::AccessingCard | RunPhase::Success => 3,
-        RunPhase::Ended => 4,
+        RunPhase::Movement => 3,
+        RunPhase::AccessingCard | RunPhase::Success => 4,
+        RunPhase::Ended => 5,
     };
     let of_ice = |what: &str| match (ice, position) {
         (0, _) => what.to_string(),
@@ -160,6 +163,7 @@ fn run_segment(phase: RunPhase, position: usize, ice: usize, server: &str) -> Se
         "Initiation".to_string(),
         of_ice("Approach"),
         of_ice("Encounter"),
+        "Movement".to_string(),
         "Access".to_string(),
         // The run is over but the trail is still on the board; naming the
         // last step keeps the bar the same width as it empties.
@@ -167,7 +171,7 @@ fn run_segment(phase: RunPhase, position: usize, ice: usize, server: &str) -> Se
     ];
     let steps = labels
         .into_iter()
-        .take(if at == 4 { 5 } else { 4 })
+        .take(if at == 5 { 6 } else { 5 })
         .enumerate()
         .map(|(i, label)| Step {
             label,
@@ -278,7 +282,7 @@ mod tests {
         let approaching = bar(&view);
         assert_eq!(approaching.segments.len(), 2, "the turn keeps its own steps");
         assert_eq!(approaching.segments[1].title, "Run on HQ");
-        assert_eq!(labels(&approaching.segments[1]), ["Initiation", "Approach", "Encounter", "Access"]);
+        assert_eq!(labels(&approaching.segments[1]), ["Initiation", "Approach", "Encounter", "Movement", "Access"]);
         assert_eq!(now(&approaching.segments[1]), ["Approach"]);
 
         run.ice = vec![ice(), ice(), ice()];
@@ -286,8 +290,15 @@ mod tests {
         run.phase = RunPhase::EncounterIce;
         view.active_run = Some(run.clone());
         let segment = &bar(&view).segments[1];
-        assert_eq!(labels(segment), ["Initiation", "Approach ice 2 of 3", "Encounter ice 2 of 3", "Access"]);
+        assert_eq!(labels(segment), ["Initiation", "Approach ice 2 of 3", "Encounter ice 2 of 3", "Movement", "Access"]);
         assert_eq!(now(segment), ["Encounter ice 2 of 3"]);
+
+        // Past it: the run is between pieces of ice, and the bar says so.
+        run.phase = RunPhase::Movement;
+        run.position = 2;
+        view.active_run = Some(run.clone());
+        assert_eq!(now(&bar(&view).segments[1]), ["Movement"]);
+        run.position = 1;
 
         run.phase = RunPhase::AccessingCard;
         view.active_run = Some(run.clone());
@@ -298,7 +309,7 @@ mod tests {
         run.phase = RunPhase::Ended;
         view.active_run = Some(run);
         let segment = &bar(&view).segments[1];
-        assert_eq!(labels(segment), ["Initiation", "Approach ice 2 of 3", "Encounter ice 2 of 3", "Access", "Run over"]);
+        assert_eq!(labels(segment), ["Initiation", "Approach ice 2 of 3", "Encounter ice 2 of 3", "Movement", "Access", "Run over"]);
         assert_eq!(now(segment), ["Run over"]);
     }
 

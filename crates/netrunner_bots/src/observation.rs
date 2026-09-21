@@ -104,7 +104,7 @@ const MAX_BAD_PUBLICITY_CREDITS: f32 = 5.0;
 const MAX_BONUS_RUN_CREDITS: f32 = 10.0;
 
 const PHASE_COUNT: usize = 5;
-const RUN_PHASE_COUNT: usize = 6;
+const RUN_PHASE_COUNT: usize = 7;
 /// HQ, R&D, Archives, remote — the remote's *index* is a separate scalar.
 const SERVER_KIND_COUNT: usize = 4;
 /// Barrier, Code Gate, Sentry — `eval::covers`'s order.
@@ -364,6 +364,9 @@ fn run_phase_one_hot(phase: RunPhase) -> [f32; RUN_PHASE_COUNT] {
         RunPhase::AccessingCard => 3,
         RunPhase::Success => 4,
         RunPhase::Ended => 5,
+        // Appended rather than placed in the run's reading order, so the
+        // six slots before it kept their meaning (Rules Audit item 7).
+        RunPhase::Movement => 6,
     };
     one_hot[index] = 1.0;
     one_hot

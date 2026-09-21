@@ -55,6 +55,10 @@ pub enum Stage {
     Starting,
     /// At the `n`th piece of ice (outermost first).
     AtIce(usize),
+    /// In the movement phase, between pieces of ice: `next` is the one the
+    /// Runner will approach, or `ice.len()` when the server is next. At no
+    /// ice, so a lane lights none.
+    Moving { next: usize },
     /// Approaching the server, every ice behind.
     AtServer,
     /// Breaching: `count` cards accessed so far, `card` the one the
@@ -141,6 +145,7 @@ impl RunTrail {
                 {
                     step.state = IceState::Passed;
                 }
+                self.stage = Stage::Moving { next: *position as usize + 1 };
             }
             GameEvent::IceBypassed { position, .. } => {
                 if let Some(step) = self.ice.get_mut(*position as usize) {
@@ -236,6 +241,7 @@ impl RunTrail {
         self.stage = match run.phase {
             RunPhase::Initiation => Stage::Starting,
             RunPhase::ApproachIce | RunPhase::EncounterIce => Stage::AtIce(run.position),
+            RunPhase::Movement => Stage::Moving { next: run.position },
             RunPhase::Success | RunPhase::Ended => {
                 if matches!(self.stage, Stage::Accessing { .. }) {
                     self.stage.clone()

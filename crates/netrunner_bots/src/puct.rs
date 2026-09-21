@@ -280,8 +280,9 @@ fn agent_to_move(state: &GameState, side: Side) -> bool {
 /// time in four or five, otherwise nothing, or a trash prompt that costs
 /// a ply — so at the approach-server step, where `JackOut` and
 /// `CompleteRun` both forfeit `ACTIVE_RUN_WEIGHT` and differ only by what
-/// the breach finds, the two read within 0.03 of each other and the
-/// choice went either way: 1,213 jack-outs in 192 games against the
+/// the breach finds (as they did until Rules Audit item 7 moved the
+/// jack-out to the movement phase before the approach), the two read
+/// within 0.03 of each other and the choice went either way: 1,213 jack-outs in 192 games against the
 /// heuristic Corp's 25, every traced one at the door. Averaging whole
 /// determinizations at the root (`PuctConfig::samples` 4) measured
 /// nothing, because each sample still sees one outcome and the budget
@@ -1824,10 +1825,12 @@ mod tests {
         );
     }
 
-    /// The door decision as a chance node: at the approach-server step a
-    /// `CompleteRun` edge fans out over `breach_outcomes` redraws of the
-    /// hidden cards, each a cached child with its own R&D, taken
-    /// round-robin — where every other edge keeps its one child.
+    /// The breach as a chance node: a `CompleteRun` edge fans out over
+    /// `breach_outcomes` redraws of the hidden cards, each a cached child
+    /// with its own R&D, taken round-robin — where every other edge keeps
+    /// its one child. The door decision is the movement phase's (`JackOut`
+    /// or `ContinueRun`, both plain edges), so the search starts there and
+    /// the breach is a few plies in, past the window and the approach.
     #[test]
     fn a_breach_edge_fans_out_over_redrawn_hidden_cards_and_a_plain_edge_does_not() {
         let mut registry = CardRegistry::new();
@@ -1848,13 +1851,13 @@ mod tests {
         state.corp.r_and_d = (0..6).map(|i| CardId(format!("operation_{i}"))).collect();
         state.active_run = Some(RunState {
             server: ServerId::RnD,
-            phase: RunPhase::Success,
+            phase: RunPhase::Movement,
             position: 0,
             jack_out_permitted: true,
             ..Default::default()
         });
         let view = build_client_view(&state, &registry, Side::Runner);
-        assert!(view.legal_actions.contains(&PlayerAction::CompleteRun) && view.legal_actions.contains(&PlayerAction::JackOut));
+        assert!(view.legal_actions.contains(&PlayerAction::ContinueRun) && view.legal_actions.contains(&PlayerAction::JackOut));
 
         let evaluator = UniformPolicyEvaluator::new(Side::Runner);
         let mut rng = StdRng::seed_from_u64(1);
@@ -1871,11 +1874,17 @@ mod tests {
         let mut root = PuctNode::new(sample);
         root.expand_root(&view.legal_actions, &registry, &evaluator, anchor, None);
         root.visits = 1;
-        for _ in 0..40 {
-            simulate(&mut root, &search, 6);
+        for _ in 0..160 {
+            simulate(&mut root, &search, 10);
         }
 
-        let complete = root.edges.iter().find(|e| e.action == PlayerAction::CompleteRun).unwrap();
+        fn find<'a>(node: &'a PuctNode, action: &PlayerAction) -> Option<&'a Edge> {
+            node.edges
+                .iter()
+                .find(|e| &e.action == action)
+                .or_else(|| node.edges.iter().filter_map(|e| e.child.as_deref()).find_map(|child| find(child, action)))
+        }
+        let complete = find(&root, &PlayerAction::CompleteRun).expect("the search reached the server");
         let jack_out = root.edges.iter().find(|e| e.action == PlayerAction::JackOut).unwrap();
         assert!(complete.visits > 3, "the breach was searched past its redraws: {} visits", complete.visits);
         assert_eq!(complete.outcomes.len(), 3, "one child per redraw, then round-robin");

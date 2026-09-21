@@ -160,7 +160,7 @@
       "hint": "Choose Activate ability 0 on Cleaver."
     },
     {
-      "prose": "Continue past the ice to the server.",
+      "prose": "Continue past the ice.",
       "allow": {
         "AnyOf": [
           {
@@ -173,7 +173,7 @@
       },
       "advance_when": {
         "Server": {
-          "kind": "ServerApproached",
+          "kind": "IcePassed",
           "server": "Hq"
         }
       },
@@ -188,7 +188,7 @@
       "hint": "Choose Continue run."
     },
     {
-      "prose": "You are at HQ, and this is the moment you may jack out. You have seen what guards HQ and the Corp has paid 6 for it; that is enough for today. Jack out.",
+      "prose": "You have passed Palisade and have not yet approached HQ: this is the moment you may jack out, before the Corp gets another chance to act. You have seen what guards HQ and the Corp has paid 6 for it; that is enough for today. Jack out.",
       "allow": {
         "AnyOf": [
           {

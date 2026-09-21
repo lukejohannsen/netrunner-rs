@@ -661,9 +661,9 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
         PlayerAction::InitiateRun { server } => format!(
             "Spend 1 click to run {server:?}: approach each piece of ice protecting it in turn, and if you get past them all, breach the server and access its cards."
         ),
-        PlayerAction::ContinueRun => "Move to the next phase of the run: approach the next piece of ice, or approach the server if there is none left.".to_string(),
-        PlayerAction::JackOut => "End the run voluntarily, keeping your credits. You can jack out after passing a piece of ice or on reaching the server; you cannot while encountering ice, or once the run is successful.".to_string(),
-        PlayerAction::CompleteRun => "Commit to the server: the run becomes successful, and you breach it and access its cards. This is the point of no return — jack out before it, not after.".to_string(),
+        PlayerAction::ContinueRun => "Move to the next step of the run. Between pieces of ice, going on rather than jacking out gives both players a last window, then you approach the next piece of ice, or the server if there is none left.".to_string(),
+        PlayerAction::JackOut => "End the run voluntarily, keeping your credits. You can jack out after passing a piece of ice, or before approaching a server with no ice — always before the Corp can rez what is ahead, never while encountering ice or once the server is approached.".to_string(),
+        PlayerAction::CompleteRun => "Commit to the server: the run becomes successful, and you breach it and access its cards. The chance to jack out was before you approached it.".to_string(),
         PlayerAction::PlayEvent { card_id } => format!(
             "Spend 1 click and the play cost to play {}: resolve its text, then it goes to the heap.",
             title(card_id)

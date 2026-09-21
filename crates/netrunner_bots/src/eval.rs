@@ -299,7 +299,10 @@ const OPPONENT_BOARD_WEIGHT: f64 = 0.5;
 /// traced PUCT Runner read the two within 0.03 of each other and walked
 /// away from the door 1,213 times in 192 games against the heuristic
 /// Corp — which, seeing one ply, keeps the run term through the access
-/// and left 25 times. Two other shapes were measured first and rejected
+/// and left 25 times. (Since Rules Audit item 7 the door is the movement
+/// phase before the server is approached, `JackOut` against
+/// `ContinueRun`; there is no jack-out at the approach any more, and the
+/// breach is a few plies further from it. The term is read the same way.) Two other shapes were measured first and rejected
 /// (ROADMAP Phase 3 §1): valuing the breach honestly in the search, as a
 /// chance node over redraws of the hidden cards
 /// (`PuctConfig::breach_outcomes`), was *worse* at every fan-out

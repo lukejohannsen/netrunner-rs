@@ -181,6 +181,16 @@ own. Every current card resolves correctly without them. Cards that act
 phase, and it is cheaper to add it while run-phase code is small than after
 a set has built on its absence.
 
+**Done (21 September 2026, Rules Audit item 7).** `RunPhase::Movement`
+now sits between every pass and the next approach, and before the
+approach of a server with no ice: the Runner decides to jack out, then
+both players have a window, then the approach. Building it found that
+its absence was not only vocabulary. The Runner could jack out after
+seeing the next ice rezzed, and an unrezzed upgrade on a server with no
+ice could never be rezzed before the approach. The approach-server step
+is still the entry to `Success` rather than a phase of its own, and no
+card yet hears a pass (no pool card prints "when the Runner passes").
+
 ---
 
 ## 3. Where netrunner-rs is stronger — keep these

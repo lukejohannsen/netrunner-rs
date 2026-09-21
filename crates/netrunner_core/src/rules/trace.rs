@@ -275,7 +275,7 @@ mod tests {
         submit_runner_bid(&mut state, 0, &registry).unwrap();
 
         assert_eq!(state.runner.tags, 3, "remaining subroutine should have fired after resume");
-        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success, "run should advance past the ICE");
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Movement, "run should advance past the ICE");
     }
 
     #[test]

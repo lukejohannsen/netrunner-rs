@@ -379,8 +379,7 @@ fn apply_action_once(
     // the same reason `memory::refresh` is. If that moved the run — the ICE
     // being encountered left play — it landed on a fresh checkpoint that
     // needs its window, exactly as a `ContinueRun` would give it.
-    let moved = run::reconcile_ice(&mut next, registry)?;
-    if !moved.is_empty() {
+    if let Some(moved) = run::reconcile_ice(&mut next, registry)? {
         events.extend(moved);
         events.extend(paid_ability::open_window_if_at_checkpoint(&mut next));
     }
@@ -1090,10 +1089,12 @@ fn jack_out(state: &GameState, registry: &CardRegistry) -> Result<(GameState, Ve
     let mut next = state.clone();
     let mut events = run::advance_run(&mut next, RunAction::JackOut, registry)?;
     run::end_run(&mut next);
-    // A window can be open here (e.g. mid-ApproachIce on the second+ ICE,
-    // where jack_out_permitted is already true from a prior pass) — clear it
-    // too, or it would survive with no active_run left to ever close it
-    // against, permanently blocking every ordinary action afterward.
+    // No run window is open when jacking out is legal — the movement
+    // phase's decision comes before its window — but one used to be (the
+    // approach window after a pass, where the Runner could see the rez and
+    // leave), and a window left over would survive with no active_run to
+    // close it against, blocking every ordinary action afterward. Cleared
+    // so that can never be the failure again.
     next.paid_ability_window = None;
 
     let jacked_out_event = events
@@ -1129,11 +1130,10 @@ fn complete_run(
     // Audit T9). A trigger here may park a decision; `current_actor` puts
     // a parked decision ahead of the window opened below, so it resolves
     // first and the window is entered afterwards.
-    // Committing also closes the jack-out window: the approach step was
-    // the Runner's last chance to leave, and a successful run proceeds to
-    // the breach. With approach and success merged, a random Runner
-    // jacked out of half its successful runs from the pre-access window.
-    next.active_run.as_mut().expect("checked Some above").jack_out_permitted = false;
+    // There is no jack-out to close here: the Runner's last chance to
+    // leave was the movement phase before the server was approached. (With
+    // approach and success merged, a random Runner once jacked out of half
+    // its successful runs from the pre-access window.)
     let succeeded = GameEvent::RunSucceeded { server };
     let mut events = vec![succeeded.clone()];
     events.extend(dispatcher::dispatch_event(&mut next, registry, &succeeded)?);
@@ -3339,7 +3339,7 @@ mod tests {
         }];
 
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) }).unwrap();
-        let (ended, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).unwrap();
+        let (ended, events) = crate::rules::test_support::through_movement(&state, &registry).unwrap();
         assert!(events.contains(&GameEvent::ServerApproached { server: ServerId::Remote(0) }));
         assert!(events.contains(&GameEvent::RunEndedByEffect { server: ServerId::Remote(0) }));
         assert!(!events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. })), "{events:?}");
@@ -3350,12 +3350,13 @@ mod tests {
         // Without the Void, approaching is still not succeeding; committing is.
         let mut state = state;
         state.corp.installed.clear();
-        let (approached, events) = apply_action(&state, &registry, PlayerAction::ContinueRun).unwrap();
+        let (approached, events) = crate::rules::test_support::through_movement(&state, &registry).unwrap();
         assert!(!events.iter().any(|e| matches!(e, GameEvent::RunSucceeded { .. })));
         assert_eq!(approached.runner.resources.credits, Credits(5));
-        assert!(
-            crate::rules::legal_actions(&approached, &registry).contains(&PlayerAction::JackOut),
-            "the approach step is the last chance to jack out"
+        assert_eq!(
+            crate::rules::legal_actions(&approached, &registry),
+            vec![PlayerAction::CompleteRun],
+            "the last chance to jack out was the movement phase, before the approach"
         );
         let (committed, events) = apply_action(&approached, &registry, PlayerAction::CompleteRun).unwrap();
         assert!(events.contains(&GameEvent::RunSucceeded { server: ServerId::Remote(0) }));
@@ -3606,17 +3607,17 @@ mod tests {
     }
 
     #[test]
-    fn runner_jack_out_succeeds_on_ice_less_server_before_access() {
+    fn runner_jack_out_succeeds_on_ice_less_server_before_the_approach() {
         let state = runner_state(3, 5, 3);
 
         let (after_initiate, _) = apply_action(&state, &registry(), PlayerAction::InitiateRun { server: ServerId::Hq })
             .expect("initiate run should succeed");
         let (after_continue, _) = apply_action(&after_initiate, &registry(), PlayerAction::ContinueRun)
             .expect("continue run should succeed");
-        assert_eq!(after_continue.active_run.as_ref().unwrap().phase, RunPhase::Success);
+        assert_eq!(after_continue.active_run.as_ref().unwrap().phase, RunPhase::Movement);
 
         let (after_jack_out, events) = apply_action(&after_continue, &registry(), PlayerAction::JackOut)
-            .expect("jack out should succeed at the server approach step");
+            .expect("jack out should succeed in the movement phase");
 
         assert_eq!(after_jack_out.active_run, None);
         assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }]);
@@ -3792,7 +3793,7 @@ mod tests {
         state.corp.hq = vec![CardId("hedge_fund".to_string())];
         state.active_run = Some(RunState {
             phase: RunPhase::Success,
-            jack_out_permitted: true,
+            jack_out_permitted: false,
             ..Default::default()
         });
         let (state, complete_events) =
@@ -3847,7 +3848,7 @@ mod tests {
                     },
                 }),
                 phase: RunPhase::AccessingCard,
-                // Closed on commit: a successful run cannot be jacked out of.
+                // A successful run cannot be jacked out of.
                 jack_out_permitted: false,
                 ..Default::default()
             })
@@ -3947,12 +3948,30 @@ mod tests {
         );
 
         // Both sides pass again -> window closes -> auto-resolves (0
-        // pending) -> passes the ICE -> Success, no ICE remaining so no new
-        // window opens.
+        // pending) -> passes the ICE into the movement phase, where the
+        // Runner decides alone, so no window opens.
         let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner })
             .expect("pass should succeed");
         let (state, events) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp })
             .expect("pass should succeed");
+        assert_eq!(state.runner.resources.clicks, Clicks(3));
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Movement);
+        assert!(state.paid_ability_window.is_none());
+        assert_eq!(
+            events,
+            vec![
+                GameEvent::PriorityPassed { side: Side::Corp },
+                GameEvent::PaidAbilityWindowClosed,
+                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
+            ]
+        );
+
+        // Going on opens movement's window; when it closes the server is
+        // approached, and that opens none.
+        let (state, events) = apply_action(&state, &registry(), PlayerAction::ContinueRun).expect("go on");
+        assert_eq!(events, vec![GameEvent::PaidAbilityWindowOpened { side: Side::Runner }]);
+        let (state, _) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Runner }).unwrap();
+        let (state, events) = apply_action(&state, &registry(), PlayerAction::PassPriority { side: Side::Corp }).unwrap();
         assert_eq!(state.runner.resources.clicks, Clicks(3));
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success);
         assert_eq!(
@@ -3960,7 +3979,6 @@ mod tests {
             vec![
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
                 GameEvent::ServerApproached { server: ServerId::Hq },
             ]
         );
@@ -6228,7 +6246,12 @@ mod tests {
         assert!(state.paid_ability_window.is_none(), "Initiation is not a checkpoint");
         assert_all_blocked(&state, "RunPhase::Initiation");
 
-        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("continue to success");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("into movement");
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Movement);
+        assert!(state.paid_ability_window.is_none(), "the jack-out decision is not a checkpoint");
+        assert_all_blocked(&state, "RunPhase::Movement");
+
+        let (state, _) = crate::rules::test_support::through_movement(&state, &registry).expect("to the server");
         assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success);
         assert!(state.paid_ability_window.is_none(), "Success is not a checkpoint");
         assert_all_blocked(&state, "RunPhase::Success");

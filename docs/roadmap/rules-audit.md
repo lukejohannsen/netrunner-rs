@@ -1830,8 +1830,92 @@ one.
    *Deferred by name:* Phật Gioan Baotixita as one prompt (needs `1 +` the
    number, which `Amount` cannot say; its two paid choices are correct),
    and X costs, which no pool card prints.
-7. **A movement phase in the run** (§2.6; was item 4), before a card needs
-   "when the Runner passes ICE".
+7. **A movement phase in the run — DONE (21 September 2026)** (§2.6; was
+   item 4), before a card needs "when the Runner passes ICE".
+   (`feat/run-movement-phase`, stacked on two fixes it surfaced.)
+
+   **What reading it found first.** The missing phase was not only
+   vocabulary. It was two rules deviations from CR 6.9.4 (a pass, b may
+   jack out, c move inward, d paid-ability window where the Corp may rez
+   what is not ice, e approach the next ice or the server):
+   `pass_current_ice` landed straight on the next `ApproachIce` with
+   `jack_out_permitted` true, and the `JackOut` handler has no window
+   guard, so **the Runner could watch the Corp rez the next ice and then
+   leave**. And an iceless server was approached in the action that
+   began the run, so **an unrezzed Anoetic Void or Manegarm Skunkworks
+   behind no ice could never be rezzed before the approach** it exists to
+   punish. No pool card prints "when the Runner passes", so no `Trigger`
+   is added (the DSL Growth Rule): `IcePassed` stays an occurrence of
+   nothing, and the phase is what a later `OnIcePassed` hangs on.
+
+   **The shape.** `RunPhase::Movement`, entered from every pass, from an
+   initiation with no ice, from ice that leaves the table while it is
+   approached or encountered (`reconcile_ice`, which no longer approaches
+   anything itself and says it moved with an `Option` rather than a
+   non-empty event list), and from Proprionegation onto an iceless
+   Archives. **Its two moments are told apart by `jack_out_permitted`,
+   with no new field:** true, no window, the Runner owes `ContinueRun`
+   or `JackOut` (6.9.4b); the `ContinueRun` shuts it and the handler's
+   `open_window_if_at_checkpoint` opens the ordinary run window (6.9.4d);
+   its close approaches (`approach_next`, 6.9.4e) and the approach
+   events are dispatched as before. **Jack-out is movement's only:**
+   false at every approach and **no longer legal at `Success`**, so
+   `advance_run`'s guard lost its special case. `CompleteRun` stays the
+   one step into `RunSucceeded`: an `OnApproachServer` trigger can park a
+   decision (Manegarm's), and an explicit action means nothing has to
+   auto-resume; `ActionSpace` is unmoved at 1677. **`OBS_SIZE` 2262 →
+   2263**: a seventh run-phase slot, appended to the one-hot so the six
+   before it keep their meaning. No promoted network reads it.
+
+   **Two bugs it surfaced, each fixed in its own commit beneath it.**
+   The 256-seed view sweep stalled at seed 86 (Peculiarity vs
+   Enthusiasm, random vs random): **Red Team**, trashed mid-run, left a
+   rider whose "take 3[c] from this resource" failed with
+   `CardNotEligibleForCounters`, which made `CompleteRun` illegal. On
+   `main` the Runner could still jack out at the server, which hid the
+   bug and cost a run that should have succeeded; with that gone the
+   position had no legal action. The rider is now `EffectIf
+   ThisCardIsInstalled` (card data only). And the client's
+   `every_legal_action_is_one_entry_and_every_target_is_on_the_board`
+   walked seed 3 into a **Petty Cash in Archives**, a legal
+   `PlayOperation` the action map pointed at a hand card that was not
+   there, so no click on the board offered it; an operation not in HQ is
+   now reached from Archives.
+
+   **Measured** (`scripts/coverage_identical.py main HEAD`, one pass of
+   the pool, 192 games a report; seeds 1 and 2; view and index shapes
+   agree). Not identical, as predicted. Random-vs-random, seed 1 / 2:
+   `ServerApproached` **2,573 → 1,322** / **2,767 → 1,297**, while
+   `RunSucceeded` holds (1,270 → 1,293 / 1,309 → 1,266). The random
+   Runner used to reach every approach and then jack out of half of them
+   at the door; it now makes that choice in movement, before the
+   approach, and an approach is nearly always a success (per server
+   kind the gap is the runs an upgrade ended there). So Anoetic Void and
+   Manegarm fire about half as often at random (67 → 31 and 102 → 37 on
+   seed 1). **Predicted the other way and wrong:** I expected more
+   upgrade firings from the new rez window, and missed that the
+   jack-out moving ahead of the approach halves how many approaches a
+   random Runner makes. `IceRezzed` 1,246 → 1,198: a random Runner no
+   longer sees a rez before it leaves. Heuristic-vs-heuristic: the
+   Runner stopped jacking out (18 → 1 / 15 → 6); its wins 152 → 147 and
+   159 → 161, opposite signs and inside the 0.026–0.047 seed-spread
+   band, so **no strength effect is claimed**. Steps per game +8–16%
+   (heuristic 430 → 468 on seed 1), far under `MAX_STEPS`. **Observed
+   and not explained:** heuristic Manegarm firings fall on both seeds
+   (120 → 89, 77 → 55) with its install and rez counts flat and
+   approaches down only 2.6%. A card test shows the engine is right (it
+   hears the approach behind ice, once:
+   `manegarm_skunkworks_hears_the_approach_after_the_last_ice_is_passed`),
+   so it is which runs the heuristic plays, and it is left there. Both
+   256-seed sweeps clean, coverage gate included; `cargo test
+   --workspace` green (desktop included), clippy silent, the `onnx`
+   feature's tests green. **Four lessons** said the Runner may jack out
+   at the server; *Tread Lightly* taught exactly that and now teaches
+   it after Palisade is passed.
+
+   *Deferred by name:* the approach-server step as a phase of its own (it
+   stays `Success`'s entry, which nothing needs apart), and a trigger on
+   passing ice, until a card prints one.
 8. **Cost types** (§2.4; was item 5). jinteki's 50 are the backlog, taken
    as cards need them.
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
