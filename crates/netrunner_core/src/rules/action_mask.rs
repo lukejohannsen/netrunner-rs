@@ -809,7 +809,7 @@ mod tests {
                     trigger: Trigger::Paid,
                     cost: Some(Cost::Credits(1)),
                     requirement: None,
-                    effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::BoostDuration::Encounter },
+                    effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::EffectDuration::Encounter },
                     cost_discount_if: None, used_by: None },
                 AbilityDef {
                     text: None,
@@ -1310,7 +1310,8 @@ mod tests {
             allowed_servers: None,
             on_success: None,
             on_start: None,
-            source_card: None,
+            // A rez cost that lasts the run is shown as the card that made it.
+            source_card: Some(CardId("tread_lightly".to_string())),
             prompting_card: None,
             source_install: None,
             resume: crate::rules::state::PendingChoiceResume::None,

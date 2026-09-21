@@ -74,8 +74,11 @@ fn is_one(amount: &Amount) -> bool {
 /// with jinteki.net names and no card here needs yet are additional
 /// subroutines, "cannot be broken", agenda points and advancement
 /// requirements that change while installed, additional costs to steal,
-/// what a card can host, and the number of cards accessed. Each is a variant
-/// here when a card prints it — never a field on `CardDefinition`.
+/// what a card can host, the number of cards accessed, and a standing
+/// prohibition (every "cannot" in the pool has a duration, so it is an
+/// `Effect::Prohibit` and `continuous::cannot` reads the lingering list).
+/// Each is a variant here when a card prints it — never a field on
+/// `CardDefinition`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ContinuousKind {
     /// Strength of an icebreaker (`continuous::breaker_strength`) or of a

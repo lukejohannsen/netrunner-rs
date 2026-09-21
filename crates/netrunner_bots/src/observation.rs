@@ -638,7 +638,9 @@ fn encode_run(view: &ClientView, features: &mut Vec<f32>) {
     features.push(flag(run.jack_out_permitted));
     features.push(norm(run.bad_publicity_credits as f32, MAX_BAD_PUBLICITY_CREDITS));
     features.push(norm(run.bonus_run_credits as f32, MAX_BONUS_RUN_CREDITS));
-    features.push(flag(run.runner_cannot_steal_or_trash));
+    // The same slot the run's own flag filled before the prohibition
+    // became a lingering effect, so a trained policy reads it unchanged.
+    features.push(flag(view.cannot(netrunner_core::dsl::Prohibition::StealOrTrash)));
     features.push(flag(run.redirect_on_approach.is_some()));
     for slot in 0..MAX_RUN_ICE_SLOTS {
         let start = features.len();

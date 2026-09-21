@@ -26,9 +26,9 @@
 //! which is what a rate has to be measured over. A second denominator,
 //! the engine's own `RezIce` legality, is reported beside it because the
 //! two differ: the term reads printed cost against credits and ignores
-//! `ice_rez_cost_modifier`, a deliberate over-estimate (see its doc
-//! comment), and the gap between the two columns is exactly how much that
-//! over-estimate costs.
+//! what a Tread Lightly run adds to it, a deliberate over-estimate (see
+//! its doc comment), and the gap between the two columns is exactly how
+//! much that over-estimate costs.
 //!
 //! **A window, not an event.** The Corp may act several times while the
 //! Runner approaches — rez an asset, then the ICE — so one approach to one

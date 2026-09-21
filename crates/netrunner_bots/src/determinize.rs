@@ -563,11 +563,10 @@ fn determinize_run(
         // Public and carried by the view — see `PublicRunState`. Zeroing
         // these made the sample poorer than the information the searcher
         // actually has: an action the Runner can really pay for out of
-        // Bad Publicity looked unaffordable, and a barred steal/trash
-        // looked permitted, in both cases deleting candidate actions.
+        // Bad Publicity looked unaffordable, deleting candidate actions.
+        // (A barred steal/trash is on `lingering`, carried below.)
         bad_publicity_credits: run.bad_publicity_credits,
         bonus_run_credits: run.bonus_run_credits,
-        runner_cannot_steal_or_trash: run.runner_cannot_steal_or_trash,
         redirect_on_approach: run.redirect_on_approach,
         // Not in the view: a run's end rider, Shred's armed prevention and
         // whether a subroutine resolved are known to the seat that set
@@ -588,7 +587,7 @@ fn determinize_run(
         ice_bypassed: false,
         additional_rd_access: 0,
         additional_hq_access: 0,
-        access_replacement: None, cards_accessed_count: 0, ice_rez_cost_modifier: 0,
+        access_replacement: None, cards_accessed_count: 0,
         // Approximated, like `cards_accessed_count`/`bad_publicity_credits`
         // above: `ClientView` doesn't carry either, and both only matter at
         // the moment the run ends (`Trigger::OnRunEnded`), which a
@@ -647,7 +646,7 @@ pub fn determinize(view: &ClientView, registry: &CardRegistry, rng: &mut impl Rn
         // trace-bid range in the sample.
         recurring_credits: view.corp.recurring_credits,
         recurring_credits_max: view.corp.recurring_credits_max,
-        agenda_points_scored_this_turn: 0, cannot_score_agendas_this_turn: false, once_per_turn_used: std::collections::HashSet::new(),
+        agenda_points_scored_this_turn: 0, once_per_turn_used: std::collections::HashSet::new(),
         // Not carried by `ClientView`, and a rollout re-derives it from its
         // own play-out — the same approximation as `installed_this_turn`.
         extra_clicks_next_turn: 0,
@@ -909,7 +908,7 @@ pub fn resample_hidden(state: &mut GameState, view: &ClientView, registry: &Card
 #[cfg(test)]
 mod tests {
     use super::*;
-    use netrunner_core::dsl::{CardDefinition, CardType, IceType};
+    use netrunner_core::dsl::{CardDefinition, CardType, IceType, Prohibition};
     use netrunner_core::rules::{
         AgendaPoints as AP, Clicks as C, CorpState as CS, Credits as Cr, GamePhase, GameState as CoreGameState,
         InstallSlot as CoreInstallSlot, InstalledCard, InstalledRunnerCard, MemoryUnits as MU, PlayerResources as PR,
@@ -954,7 +953,7 @@ mod tests {
                 bad_publicity: 0,
                 first_install_used_this_turn: false,
                 recurring_credits: 0,
-                recurring_credits_max: 0, agenda_points_scored_this_turn: 0, cannot_score_agendas_this_turn: false, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
+                recurring_credits_max: 0, agenda_points_scored_this_turn: 0, removed_from_game: Vec::new(), once_per_turn_used: std::collections::HashSet::new(),
                 scored_agendas: Vec::new(),
                 playable_from_archives: Vec::new(),
                 resources: PR { credits: Cr(5), clicks: C(3), agenda_points: AP(0) },
@@ -1417,9 +1416,21 @@ mod tests {
             phase: netrunner_core::rules::RunPhase::Initiation,
             bad_publicity_credits: 2,
             bonus_run_credits: 3,
-            runner_cannot_steal_or_trash: true,
             ..Default::default()
         });
+        // What is lingering is public too, and a sample that dropped it
+        // would steal through Ansel's bar, score through Luminal's lock
+        // and rez 3[c] short of a Tread Lightly run — the last two were
+        // fields no view carried, so every sample did.
+        {
+            use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
+            let entry = |what, on, until| LingeringEffect { what, on, until, source: CardId("source".to_string()) };
+            state.lingering = vec![
+                entry(Lingering::Cannot(Prohibition::StealOrTrash), On::Player(Side::Runner), Until::EndOfRun),
+                entry(Lingering::Cannot(Prohibition::ScoreAgendas), On::Player(Side::Corp), Until::EndOfTurn(state.turn)),
+                entry(Lingering::RezCost(3), On::EachIce, Until::EndOfRun),
+            ];
+        }
 
         for side in [Side::Corp, Side::Runner] {
             let view = build_client_view(&state, &registry, side);
@@ -1429,7 +1440,9 @@ mod tests {
             let run = sampled.active_run.as_ref().expect("the run survives");
             assert_eq!(run.bad_publicity_credits, 2, "{side:?}");
             assert_eq!(run.bonus_run_credits, 3, "{side:?}");
-            assert!(run.runner_cannot_steal_or_trash, "{side:?}");
+            assert!(continuous::cannot(&sampled, &registry, Prohibition::StealOrTrash), "{side:?}");
+            assert!(continuous::cannot(&sampled, &registry, Prohibition::ScoreAgendas), "{side:?}");
+            assert_eq!(netrunner_core::rules::lingering::ice_rez_cost(&sampled), 3, "{side:?}");
 
             assert_eq!(sampled.runner.rig[0].counters, 3, "{side:?}");
             assert_eq!(
@@ -1455,7 +1468,7 @@ mod tests {
     /// for.
     #[test]
     fn a_shown_strength_is_taken_apart_into_printed_lingering_and_table() {
-        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, Until};
+        use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
         use netrunner_core::rules::{InstallId, RunIce, RunPhase, RunState, ServerId};
 
         let registry = playable_registry();
@@ -1488,7 +1501,7 @@ mod tests {
         });
         let pump = |on, delta| LingeringEffect {
             what: Lingering::Strength(delta),
-            on,
+            on: On::Install(on),
             until: Until::EndOfEncounter(wall),
             source: CardId("corroder".to_string()),
         };

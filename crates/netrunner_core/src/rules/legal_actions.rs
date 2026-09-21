@@ -17,9 +17,10 @@
 //! answer. This module used to be the only place that rule lived.
 
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, CardType, Trigger};
+use crate::dsl::{CardId, CardType, Prohibition, Trigger};
 use crate::rules::action::PlayerAction;
 use crate::rules::apply_action;
+use crate::rules::continuous;
 use crate::rules::event::GameEvent;
 use crate::rules::run::{AccessPhase, RunPhase, ServerId, SubroutineStatus};
 use crate::rules::state::{GamePhase, GameState, InstallId, InstallSlot, Side};
@@ -322,7 +323,7 @@ fn candidate_actions(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAc
     candidates.extend(discard_candidates(state));
     candidates.extend(activate_ability_candidates(state, registry));
     candidates.extend(advance_score_trash_candidates(state, registry));
-    candidates.extend(access_flow_candidates(state));
+    candidates.extend(access_flow_candidates(state, registry));
     candidates.extend(pass_priority_candidates(state));
     candidates.extend(trace_bid_candidates(state));
     candidates.extend(pending_paid_choice_candidates(state));
@@ -673,15 +674,16 @@ fn paid_ability_candidates(card_id: &CardId, target: InstallId, registry: &CardR
 /// (Runner rig), keyed off each card's registry definition.
 fn advance_score_trash_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let mut candidates = Vec::new();
+    let cannot_score = continuous::cannot(state, registry, Prohibition::ScoreAgendas);
     for installed in &state.corp.installed {
         let Some(card) = registry.get(&installed.card) else { continue };
         if card.advancement_requirement.is_some() {
             candidates.push(PlayerAction::AdvanceCard { target: installed.install_id });
         }
-        // Luminal Transubstantiation's lockout — mirrors the same guard in
-        // `engine::score_agenda` so the mask never offers an action the
-        // engine would reject.
-        if card.card_type == CardType::Agenda && !state.corp.cannot_score_agendas_this_turn {
+        // Luminal Transubstantiation's lockout — the predicate
+        // `engine::score_agenda`'s guard asks, so the mask never offers an
+        // action the engine would reject.
+        if card.card_type == CardType::Agenda && !cannot_score {
             candidates.push(PlayerAction::ScoreAgenda { target: installed.install_id });
         }
     }
@@ -695,7 +697,7 @@ fn advance_score_trash_candidates(state: &GameState, registry: &CardRegistry) ->
 
 /// Exact read of the active run's `AccessPhase` — precise legal targets are
 /// already materialized in state, no guessing needed.
-fn access_flow_candidates(state: &GameState) -> Vec<PlayerAction> {
+fn access_flow_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let Some(run) = &state.active_run else { return Vec::new() };
     let Some(access) = &run.access_state else { return Vec::new() };
 
@@ -715,7 +717,7 @@ fn access_flow_candidates(state: &GameState) -> Vec<PlayerAction> {
             // kept out of the mask entirely, matching `resolve_steal`/
             // `resolve_trash`'s own hard error, rather than offering an
             // action that would just fail.
-            let steal_and_trash_blocked = run.runner_cannot_steal_or_trash;
+            let steal_and_trash_blocked = continuous::cannot(state, registry, Prohibition::StealOrTrash);
             if !steal_and_trash_blocked && (*mandatory_steal || steal_cost.is_some()) {
                 candidates.push(PlayerAction::StealAgenda { card_id: card_id.clone() });
             }
@@ -1049,7 +1051,7 @@ mod tests {
             trigger: Trigger::Paid,
             cost: Some(Cost::Credits(1)),
             requirement: None,
-            effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::BoostDuration::Encounter },
+            effect: Effect::BoostStrength { amount: 1, duration: crate::dsl::EffectDuration::Encounter },
             cost_discount_if: None, used_by: None }];
         registry.insert(breaker);
 

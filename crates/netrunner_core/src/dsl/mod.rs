@@ -13,6 +13,6 @@ pub use card::{
 };
 pub use continuous::{ContinuousEffect, ContinuousKind, Number, Scope};
 pub use cost::Cost;
-pub use effect::{Amount, BoostDuration, CardTarget, DamageType, Effect, EndRunPrevention, HostedCardOrigin, StackZone, SubroutineBreakCount};
+pub use effect::{Amount, EffectDuration, CardTarget, DamageType, Effect, EndRunPrevention, HostedCardOrigin, Prohibition, StackZone, SubroutineBreakCount};
 pub use trigger::{EventFilter, Hears, Subject, Trigger, TriggerAbout};
 pub use zone::{card_matches_filter, CardFilter, CardZoneRef};

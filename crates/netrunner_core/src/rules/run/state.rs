@@ -292,14 +292,6 @@ pub struct RunState {
     /// run.
     #[serde(default)]
     pub redirect_on_approach: Option<ServerId>,
-    /// A per-credit-cost delta applied to the Corp's rez cost for every
-    /// piece of ICE rezzed while this run is active (see `engine::rez_ice`'s
-    /// cost computation) — e.g. Tread Lightly's "+3 credits" for the
-    /// duration of the run it initiates. Naturally discarded when this
-    /// `RunState` is dropped/replaced, same lifecycle as
-    /// `bad_publicity_credits`. Usually `0`.
-    #[serde(default)]
-    pub ice_rez_cost_modifier: i32,
     /// An effect to evaluate if and when this run succeeds — e.g.
     /// Jailbreak's "If successful, draw 1 card and ... access 1 additional
     /// card". Seeded by `pending_choice::resolve_choose_server` (with any
@@ -360,13 +352,6 @@ pub struct RunState {
     /// Usually `0`.
     #[serde(default)]
     pub bonus_run_credits: u32,
-    /// Blocks `PlayerAction::StealAgenda`/`TrashAccessedCard` for the
-    /// remainder of this run once set (`Effect::
-    /// PreventStealAndTrashForRemainderOfRun`) — e.g. Ansel 1.0's third
-    /// subroutine. Naturally discarded when this `RunState` is
-    /// dropped/replaced, same lifecycle as `bonus_run_credits`.
-    #[serde(default)]
-    pub runner_cannot_steal_or_trash: bool,
     /// How many agendas the Runner has stolen during this run
     /// (`run::access::resolve_steal`). Snapshotted into
     /// `state::CompletedRun::agendas_stolen` when the run concludes, since
@@ -413,9 +398,7 @@ impl Default for RunState {
             access_replacement: None,
             cards_accessed_count: 0,
             redirect_on_approach: None,
-            ice_rez_cost_modifier: 0,
             bonus_run_credits: 0,
-            runner_cannot_steal_or_trash: false,
             initiated_by: None,
             ice_bypassed: false,
             agendas_stolen_this_run: 0,

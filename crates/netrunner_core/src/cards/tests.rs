@@ -2584,7 +2584,7 @@ mod system_gateway {
                 .expect("choose HQ to run");
 
         assert!(state.active_run.is_some());
-        assert_eq!(state.active_run.as_ref().unwrap().ice_rez_cost_modifier, 3);
+        assert_eq!(crate::rules::lingering::ice_rez_cost(&state), 3, "an effect with a duration, held for the run");
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::RunInitiated { server: ServerId::Hq })));
 
         let ice_wall_cost = registry.get(&CardId("ice_wall".to_string())).unwrap().cost;
@@ -2593,6 +2593,70 @@ mod system_gateway {
             .expect("rez ice_wall at the increased cost");
 
         assert_eq!(state.corp.resources.credits, Credits(10 - (ice_wall_cost + 3)));
+    }
+
+    /// "The rez cost of each piece of **ice** is increased by 3[credit]."
+    /// The +3 was a number on the run that `engine::rez_price` added to
+    /// anything rezzed in the attacked server, so an asset rezzed in its
+    /// root during the run cost 3 more than it prints (32 such pricings
+    /// in the 1,536-game shadow run). And it ends with the run.
+    #[test]
+    fn tread_lightly_raises_the_rez_cost_of_ice_and_of_nothing_else() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        state.runner.grip = vec![CardId("tread_lightly".to_string())];
+        state.corp.resources.credits = Credits(10);
+        state.corp.installed = vec![
+            crate::rules::InstalledCard {
+                install_id: InstallId(1031),
+                card: CardId("ice_wall".to_string()),
+                server: ServerId::Remote(0),
+                slot: InstallSlot::Ice,
+                ..Default::default()
+            },
+            crate::rules::InstalledCard {
+                install_id: InstallId(1032),
+                card: CardId("nico_campaign".to_string()),
+                server: ServerId::Remote(0),
+                ..Default::default()
+            },
+        ];
+        let nico_cost = registry.get(&CardId("nico_campaign".to_string())).unwrap().cost;
+
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::PlayEvent { card_id: CardId("tread_lightly".to_string()) })
+                .expect("play tread lightly");
+        let (state, _) =
+            apply_action(&state, &registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) })
+                .expect("run the remote");
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach ice_wall");
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, InstallId(1031)), 3);
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, InstallId(1032)), 0, "an asset is not ice");
+
+        // The Corp has priority in the approach window: the asset in the
+        // attacked server's root rezzes for what it prints.
+        let (rezzed, _) = apply_action(&state, &registry, PlayerAction::RezIce { ice: InstallId(1032) })
+            .expect("rez the asset mid-run");
+        assert_eq!(rezzed.corp.resources.credits, Credits(10 - nico_cost));
+
+        // Past the unrezzed ice, then out.
+        let mut state = state;
+        for _ in 0..8 {
+            if state.active_run.is_none() {
+                break;
+            }
+            state = close_all_windows(state, &registry).0;
+            state = apply_action(&state, &registry, PlayerAction::JackOut)
+                .or_else(|_| apply_action(&state, &registry, PlayerAction::ContinueRun))
+                .expect("the run moves on")
+                .0;
+        }
+        assert!(state.active_run.is_none());
+        assert_eq!(crate::rules::continuous::rez_cost_delta(&state, &registry, InstallId(1031)), 0, "and the +3 ended with it");
+        assert!(state.lingering.is_empty());
     }
 
     #[test]
@@ -4150,7 +4214,7 @@ mod system_gateway {
         assert_eq!(state.corp.resources.credits, Credits(10), "an asset installs for free — unchanged from the starting balance");
 
         // Subroutine 3: prevent steal/trash for the remainder of this run.
-        assert!(state.active_run.as_ref().unwrap().runner_cannot_steal_or_trash);
+        assert!(crate::rules::continuous::cannot(&state, &registry, crate::dsl::Prohibition::StealOrTrash));
     }
 
     /// Null Signal Games' install rule: new ICE goes in the **outermost**
@@ -4232,7 +4296,10 @@ mod system_gateway {
         );
         // The run is still standing on Ansel; its remaining subroutine
         // resolves and the encounter concludes normally.
-        assert!(state.active_run.as_ref().unwrap().runner_cannot_steal_or_trash, "subroutine 3 resolved after the install");
+        assert!(
+            crate::rules::continuous::cannot(&state, &registry, crate::dsl::Prohibition::StealOrTrash),
+            "subroutine 3 resolved after the install"
+        );
     }
 
     #[test]
@@ -5418,7 +5485,7 @@ mod system_gateway {
         // click (Rules Audit T6).
         assert_eq!(state.corp.resources.clicks, Clicks(6));
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::ClicksGained { side: Side::Corp, amount: 3 })));
-        assert!(state.corp.cannot_score_agendas_this_turn);
+        assert!(crate::rules::continuous::cannot(&state, &registry, crate::dsl::Prohibition::ScoreAgendas));
 
         // The second agenda is fully advanced but can no longer be scored,
         // and the mask agrees with the engine rather than offering it.
@@ -5432,21 +5499,31 @@ mod system_gateway {
         );
     }
 
+    /// "For the remainder of the turn" is read off the turn counter, so
+    /// the lock is over the moment the Corp's turn is — there is no reset
+    /// to run. It was a flag cleared when the Corp's *next* turn began,
+    /// which left it standing through the Runner's turn (harmlessly: the
+    /// Corp scores on its own turn; 5,422 such reads in the shadow run).
     #[test]
-    fn luminal_transubstantiations_scoring_lockout_lifts_next_corp_turn() {
+    fn luminal_transubstantiations_scoring_lockout_ends_with_the_turn() {
+        use crate::dsl::Prohibition;
+        use crate::rules::continuous::cannot;
+        use crate::rules::lingering::{Lingering, LingeringEffect, On, Until};
         let registry = sg_registry();
         let mut state = base_state();
-        state.corp.cannot_score_agendas_this_turn = true;
+        state.lingering = vec![LingeringEffect {
+            what: Lingering::Cannot(Prohibition::ScoreAgendas),
+            on: On::Player(Side::Corp),
+            until: Until::EndOfTurn(state.turn),
+            source: CardId("luminal_transubstantiation".to_string()),
+        }];
         state.corp.r_and_d = vec![CardId("hedge_fund".to_string())];
+        assert!(cannot(&state, &registry, Prohibition::ScoreAgendas));
 
-        // Corp ends its turn, Runner ends theirs, and the Corp's next
-        // start-of-turn clears the flag.
         let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("corp ends turn");
         let (state, _) = close_all_windows(state, &registry);
-        let (state, _) = apply_action(&state, &registry, PlayerAction::EndTurn).expect("runner ends turn");
-        let (state, _) = close_all_windows(state, &registry);
-
-        assert!(!state.corp.cannot_score_agendas_this_turn, "the lockout is turn-scoped");
+        assert!(!cannot(&state, &registry, Prohibition::ScoreAgendas), "the lockout is turn-scoped");
+        assert!(state.lingering.is_empty(), "and a checkpoint swept the entry, though nothing depended on it");
     }
 
     #[test]
@@ -6109,7 +6186,7 @@ mod system_gateway {
         .expect("pump cleaver");
         assert!(events.iter().any(|e| matches!(
             e,
-            crate::rules::GameEvent::StrengthBoosted { duration: crate::dsl::BoostDuration::Run, .. }
+            crate::rules::GameEvent::StrengthBoosted { duration: crate::dsl::EffectDuration::Run, .. }
         )));
         assert_eq!(state.lingering.len(), 1);
         assert_eq!(state.lingering[0].until, crate::rules::lingering::Until::EndOfRun, "not the end of the encounter");

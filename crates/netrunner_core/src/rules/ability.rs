@@ -1,10 +1,10 @@
 use crate::cards::CardRegistry;
 use crate::dsl::{
-    card_matches_filter, Amount, BoostDuration, CardFilter, CardId, CardSubtype, CardTarget, CardType, Cost, Effect,
+    card_matches_filter, Amount, EffectDuration, CardFilter, CardId, CardSubtype, CardTarget, CardType, Cost, Effect,
     EffectRequirement, HostedCardOrigin, StackZone, SubroutineBreakCount, Trigger, TriggeredEffect,
 };
 use crate::rules::continuous;
-use crate::rules::lingering::{self, Lingering, LingeringEffect, Until};
+use crate::rules::lingering::{self, Lingering, LingeringEffect, On, Until};
 use crate::rules::damage;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
@@ -262,7 +262,7 @@ pub fn evaluate_effect(
             let source = acting_card.cloned().unwrap_or_else(|| card_id.clone());
             state.lingering.push(LingeringEffect {
                 what: Lingering::Strength(*delta),
-                on: install,
+                on: On::Install(install),
                 until: Until::EndOfEncounter(install),
                 source,
             });
@@ -754,14 +754,12 @@ pub fn evaluate_effect(
             crate::rules::engine::install_runner_card_from_grip_paying_cost(state, registry, card_id)
         }
 
-        Effect::PreventStealAndTrashForRemainderOfRun => {
-            let run = state.active_run.as_mut().ok_or(RulesError::NoActiveRun)?;
-            run.runner_cannot_steal_or_trash = true;
-            Ok(Vec::new())
-        }
-
-        Effect::PreventScoringForRemainderOfTurn => {
-            state.corp.cannot_score_agendas_this_turn = true;
+        Effect::Prohibit { what, until } => {
+            let until = lingering::until(state, *until)?;
+            // The card whose text it is, for whoever shows it; a prohibition
+            // with no card behind it has nothing to be shown as.
+            let source = acting_card.cloned().ok_or(RulesError::UnresolvedCardTarget)?;
+            state.lingering.push(LingeringEffect { what: Lingering::Cannot(*what), on: On::Player(what.binds()), until, source });
             Ok(Vec::new())
         }
 
@@ -789,17 +787,11 @@ pub fn evaluate_effect(
             let host_install = state.runner.rig[position].install_id;
             let lasts_the_run = continuous::boosts_last_the_run(state, registry, host_install);
             let duration = match duration {
-                BoostDuration::Encounter if lasts_the_run => BoostDuration::Run,
+                EffectDuration::Encounter if lasts_the_run => EffectDuration::Run,
                 other => *other,
             };
-            let encountered = state.active_run.as_ref().and_then(|run| run.ice.get(run.position)).map(|ice| ice.install_id);
-            let until = match (duration, encountered) {
-                (BoostDuration::Encounter, Some(ice)) => Until::EndOfEncounter(ice),
-                (BoostDuration::Encounter, None) => return Err(RulesError::NotInEncounter),
-                (BoostDuration::Run, _) => Until::EndOfRun,
-                (BoostDuration::Turn, _) => Until::EndOfTurn(state.turn),
-            };
-            state.lingering.push(LingeringEffect { what: Lingering::Strength(*amount as i32), on: host_install, until, source: acting.clone() });
+            let until = lingering::until(state, duration)?;
+            state.lingering.push(LingeringEffect { what: Lingering::Strength(*amount as i32), on: On::Install(host_install), until, source: acting.clone() });
             let new_strength = lingering::rig_strength(state, &state.runner.rig[position]);
             Ok(vec![GameEvent::StrengthBoosted {
                 card_id: acting.clone(),
@@ -2989,7 +2981,7 @@ mod tests {
         let registry = CardRegistry::from_cards(vec![card_with_paid_ability(
             "corroder",
             Side::Runner,
-            Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+            Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
         )]);
         state.runner.rig = vec![InstalledRunnerCard {
             card: CardId("corroder".to_string()),
@@ -4034,7 +4026,7 @@ mod tests {
 
         let events = evaluate_effect(
             &mut state,
-            &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
+            &Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
             &CardRegistry::new())
         .unwrap();
 
@@ -4048,7 +4040,7 @@ mod tests {
                 card_id: acting,
                 new_strength: 3,
                 delta: 1,
-                duration: BoostDuration::Encounter,
+                duration: EffectDuration::Encounter,
             }]
         );
     }
@@ -4063,7 +4055,7 @@ mod tests {
         let mut state = ice_encounter_state(vec![installed_runner_card("corroder", 2)], 1);
         let breaker = state.runner.rig[0].install_id;
         let encountered = state.active_run.as_ref().unwrap().ice[0].install_id;
-        let pump = |amount, until| LingeringEffect { what: Lingering::Strength(amount), on: breaker, until, source: CardId("corroder".to_string()) };
+        let pump = |amount, until| LingeringEffect { what: Lingering::Strength(amount), on: On::Install(breaker), until, source: CardId("corroder".to_string()) };
         state.lingering = vec![pump(3, Until::EndOfEncounter(encountered)), pump(1, Until::EndOfTurn(state.turn))];
 
         evaluate_effect(&mut state, &Effect::EndTheRun, &mut ResolutionContext::for_card(None), &CardRegistry::new())
@@ -4084,7 +4076,7 @@ mod tests {
 
         evaluate_effect(
             &mut state,
-            &Effect::BoostStrength { amount: 2, duration: BoostDuration::Turn }, &mut ResolutionContext::for_card(Some(&acting)),
+            &Effect::BoostStrength { amount: 2, duration: EffectDuration::Turn }, &mut ResolutionContext::for_card(Some(&acting)),
             &CardRegistry::new())
         .unwrap();
 
@@ -4102,7 +4094,7 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(None),
+                &Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter }, &mut ResolutionContext::for_card(None),
                 &CardRegistry::new()),
             Err(RulesError::UnresolvedCardTarget)
         );
@@ -4117,7 +4109,7 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
+                &Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
                 &CardRegistry::new()),
             Err(RulesError::CardNotInRig { side: Side::Runner, card: acting })
         );
@@ -4137,7 +4129,7 @@ mod tests {
         assert_eq!(
             evaluate_effect(
                 &mut state,
-                &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
+                &Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
                 &CardRegistry::new()),
             Err(RulesError::NoActiveRun)
         );
@@ -4274,7 +4266,7 @@ mod tests {
 
         evaluate_effect(
             &mut state,
-            &Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
+            &Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter }, &mut ResolutionContext::for_card(Some(&acting)),
             &registry)
         .unwrap();
 

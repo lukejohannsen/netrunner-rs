@@ -446,8 +446,9 @@ one.
    8 + 6 → 14, Devadatta Drone 7, Maglectric Rapid 5, Conduit 4, Détente 3;
    5,785 firings either side); Baz 34 and Zwicky 27 unmoved, 43 and 41 on
    the heuristic seating. `ActionSpace` unchanged at 1646.
-2. **A continuous-effect layer, with a target and a payload** (§2.1 as
-   corrected by §6.2; was item 1). Not `{ kind, value: Amount, while }`: a
+2. **A continuous-effect layer, with a target and a payload — DONE (20
+   September 2026, six PRs, #96–#101)** (§2.1 as corrected by §6.2; was
+   item 1). Not `{ kind, value: Amount, while }`: a
    closed enum with a payload per kind — a number, a subtype, a subroutine,
    a cost, a prohibition — plus `applies_to: CardFilter` and `while:
    EffectRequirement`, with a `GameState` list for lingering ones. Replaces
@@ -788,11 +789,85 @@ one.
    reports of four.** So this stage is a correction the pool can reach
    and the sample decks, at this depth, do not. *Replays:* a recorded
    `MatchHistory` re-simulates, and one in which a stale strength decided
-   a break would diverge from here on; none in the sweeps would. Owed:
-   the prohibitions, which close the item.
+   a break would diverge from here on; none in the sweeps would.
 
-   *Still open from this stage.* "The first time each turn you install a
-   program" is still "once a turn, when it applies": a DZMZ installed after
+   **Prohibitions and Tread Lightly's rez cost are lingering effects — DONE
+   (20 September 2026, `feat/prohibitions-are-continuous-effects`). This
+   closes the item.** Three "for the remainder of…" effects were still a
+   field each, with a reset each: `CorpState::cannot_score_agendas_this_turn`
+   (Luminal Transubstantiation, cleared when the Corp's *next* turn began),
+   `RunState::runner_cannot_steal_or_trash` (Ansel 1.0) and
+   `RunState::ice_rez_cost_modifier` (Tread Lightly). The first and the
+   last were on fields no view carried, and `determinize` wrote `false`
+   and `0` for them: no bot sample was ever bound by the score lock, and
+   every sample of a Tread Lightly run priced the rez 3 short.
+
+   They are entries on `GameState::lingering` now, which stage 3 built and
+   stage 4 put in the view. `LingeringEffect::on` widened from an install
+   handle to `On::{Install, EachIce, Player}` and `Lingering` from one
+   kind to three (`Strength`, `RezCost`, `Cannot(Prohibition)`);
+   `lingering::until` is the one place a card's duration becomes an
+   `Until`. `continuous::rez_cost_delta` is table plus lingering, the twin
+   of `ice_strength`, and **`continuous::cannot` is the one predicate** the
+   guard in `apply_action` and `legal_actions` both ask — six reads of two
+   flags before. The wire field `PublicRunState::runner_cannot_steal_or_trash`
+   is gone too: `ClientView::cannot` reads the view's list, and the
+   observation encoder fills the same slot from it (`OBS_SIZE` 2262,
+   `ActionSpace::SIZE` 1646). Nothing has to end any of them: the turn
+   code's clear and the two "naturally discarded with the `RunState`"
+   comments went with the fields.
+
+   *The vocabulary: one `Effect` fewer.* `PreventScoringForRemainderOfTurn`
+   and `PreventStealAndTrashForRemainderOfRun`, single-use both, are
+   `Effect::Prohibit { what: Prohibition, until: EffectDuration }`, used
+   by both cards (`BoostDuration` renamed, since a boost is no longer the
+   only thing with one; card JSON unchanged by the rename). `validate`
+   refuses `Encounter`. Re-counted over the 178 card files: **26 of 72
+   `Effect` variants single-use, 5 unused** (28 of 73 before; the 29 of 74
+   in AGENTS.md predated stage 2's deletion of `GainMaxHandSize`). Tread
+   Lightly keeps `PromptChooseServer.rez_cost_delta`, and
+   `resolve_choose_server` makes the entry when the run starts.
+   *Rejected:* `On::Server`, which the plan for this list had — the card
+   says "each piece of ice", and a server named when the run began is the
+   wrong one after `redirect_on_approach`. *Rejected:* a "make a lingering
+   rez cost" `Effect` run from `on_start` — one card, one variant. *Not
+   built:* a declared `ContinuousKind::Cannot`; every prohibition in the
+   pool has a duration, so the kind is named on the enum as deferred and
+   `continuous::cannot` is where its scan would join.
+
+   *The rules bug the field hid: Tread Lightly taxed assets and upgrades.*
+   "During that run, the rez cost of each piece of **ice** is increased by
+   3[credit]." `engine::rez_price` prices every rez, and added the run's
+   number whenever the card being rezzed was in the attacked server — so a
+   Nico Campaign or a Manegarm Skunkworks rezzed in that server's root
+   mid-run cost 3 more than it prints. The entry is about `EachIce`.
+
+   *Measured.* Old beside new at all seven reads, both 256-seed sweeps in a
+   debug build (1,536 games). **Steal-or-trash: no read disagreed.**
+   **Rez price: 43 reads disagreed** — 32 on the authoritative state, all
+   the bug above (Nico Campaign 6, Mahkota Langit Grid 4, AMAZE Amusements
+   18, Manegarm Skunkworks 4, each at +3 and now +0), and 11 inside bot
+   samples, ice priced +0 by a sample whose run had lost the modifier and
+   +3 now (first taken for an entry outliving its run; the run in those
+   lines has `initiated_by: None`, which only `determinize` builds, and
+   `start_run` never once found an entry waiting). **Score lock: 5,422
+   reads disagreed, every one on a Runner turn** — the flag stood until the
+   Corp's next turn began and "the remainder of the turn" does not; the
+   Corp scores on its own turn, so none could matter. With the old path
+   deleted, `scripts/coverage_identical.py main --head-worktree`, 192
+   games a report, seed 1: **all four reports identical but for the
+   renamed key** — `effects_seen` `PreventStealAndTrash…` 12 → `Prohibit`
+   12 (random), 20 + 2 → 22 (heuristic). The heuristic seatings did not
+   move either: the sweep agents search too little under a lock or a Tread
+   Lightly run for the repaired samples to change a choice; the search
+   rungs are where it would show, and nothing here claims an effect
+   there. *Stored states:* `on` serializes as an enum where it was a bare
+   handle, so a saved `GameState` with a pump in flight no longer reads; a
+   `MatchHistory` replays from its actions and is unaffected, except one
+   in which an asset was rezzed at +3, which diverges from there.
+
+   *Still open from the item* (since its first stage). "The first time each
+   turn you install a program" is still "once a turn, when it applies": a DZMZ installed after
    the turn's first program discounts the second, as it did under the
    field. That is backlog item 3's query, and the `OncePerTurn` on these
    two cards is what it replaces. `netrunner_bots::determinize` still

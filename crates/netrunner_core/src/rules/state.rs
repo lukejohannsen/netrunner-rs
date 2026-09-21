@@ -330,16 +330,6 @@ pub struct CorpState {
     /// Cleared at the start of every Corp turn (`turn::enter_start_of_turn`).
     #[serde(default)]
     pub once_per_turn_used: HashSet<OncePerTurnKey>,
-    /// Whether the Corp is barred from scoring any further agenda for the
-    /// remainder of this turn — set by Luminal Transubstantiation's own
-    /// score trigger ("You cannot score agendas for the remainder of the
-    /// turn"), reset at the start of every Corp turn
-    /// (`turn::enter_start_of_turn`). Enforced in
-    /// `legal_actions::advance_score_trash_candidates` so `ScoreAgenda` is
-    /// never even offered, keeping the action mask and `engine::score_agenda`'s
-    /// own guard in agreement.
-    #[serde(default)]
-    pub cannot_score_agendas_this_turn: bool,
     /// Cards removed from the game entirely — Spin Doctor's "Remove this
     /// asset from the game" cost. Deliberately *not* Archives: a removed
     /// card must never be recurrable, accessible, or counted by anything
@@ -1000,9 +990,9 @@ pub enum PendingDecision {
     },
     /// `Effect::PromptChooseServer` parked this — `chooser` picks any
     /// `ServerId` via `PlayerAction::ChooseServerForPendingDecision`, which
-    /// initiates a run against it (seeding the new `RunState`'s
-    /// `ice_rez_cost_modifier`/`bonus_run_credits` from this variant's
-    /// fields — `0`/`0` for a plain "run any server").
+    /// initiates a run against it (`rez_cost_delta` becoming a
+    /// `Lingering::RezCost` that holds for that run, `bonus_run_credits`
+    /// seeding the new `RunState` — `0`/`0` for a plain "run any server").
     /// Which of `pending` — several of one side's own triggers, all due
     /// simultaneously — that side wants to resolve next. Parked by
     /// `dispatcher::fire_plan` when two or more of a player's own cards
@@ -1265,7 +1255,8 @@ pub struct GameState {
     #[serde(default)]
     pub last_completed_run: Option<CompletedRun>,
     /// Effects with a duration that are still running — a paid-for pump,
-    /// Leech's -1 — each resolved to a flat number when it was created. See
+    /// Leech's -1, Tread Lightly's +3 to rez, a prohibition "for the
+    /// remainder of" a run or a turn — each resolved flat when it was created. See
     /// `rules::lingering` for why these are stored when a card's standing
     /// effects are not, and why nothing depends on when the list is swept.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

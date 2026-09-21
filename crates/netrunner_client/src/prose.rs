@@ -29,7 +29,7 @@
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::dsl::{
-    Amount, BoostDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number,
+    Amount, EffectDuration, CardDefinition, CardId, CardTarget, CardZoneRef, ContinuousEffect, ContinuousKind, Cost, DamageType, Effect, EventFilter, Number, Prohibition,
     Scope, SubroutineBreakCount,
 };
 use netrunner_core::rules::{PendingDecision, ServerId, Side};
@@ -132,11 +132,11 @@ fn damage_word(kind: &DamageType) -> &'static str {
     }
 }
 
-fn duration(d: &BoostDuration) -> &'static str {
+fn duration(d: &EffectDuration) -> &'static str {
     match d {
-        BoostDuration::Encounter => "for this encounter",
-        BoostDuration::Run => "for this run",
-        BoostDuration::Turn => "for this turn",
+        EffectDuration::Encounter => "for this encounter",
+        EffectDuration::Run => "for this run",
+        EffectDuration::Turn => "for this turn",
     }
 }
 
@@ -248,8 +248,13 @@ pub fn describe_effect(effect: &Effect, registry: &CardRegistry) -> String {
         Effect::FlipIdentity => "flip the identity".to_string(),
         Effect::AddToBottomOfStack => "put it on the bottom of the stack".to_string(),
         Effect::HostRigCardOnInstall { .. } => "host it on an installed card".to_string(),
-        Effect::PreventStealAndTrashForRemainderOfRun => "cards cannot be stolen or trashed for the rest of the run".to_string(),
-        Effect::PreventScoringForRemainderOfTurn => "the Corp cannot score for the rest of the turn".to_string(),
+        Effect::Prohibit { what, until } => {
+            let what = match what {
+                Prohibition::StealOrTrash => "the Runner cannot steal or trash cards",
+                Prohibition::ScoreAgendas => "the Corp cannot score agendas",
+            };
+            format!("{what} {}", duration(until))
+        }
         Effect::PlaceAdvancementCounters(n) => format!("place {}", plural(*n, "advancement token", "advancement tokens")),
         Effect::MoveThisCardToRoot(server) => format!("move this card to {}", describe_server(*server)),
         Effect::PlayOperation { .. } => "play an operation".to_string(),

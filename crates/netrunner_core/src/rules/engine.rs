@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{HostedCreditUse, CardId, CardSubtype, CardType, Cost, CounterKind, Effect, Trigger};
+use crate::dsl::{HostedCreditUse, CardId, CardSubtype, CardType, Cost, CounterKind, Effect, Prohibition, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
@@ -788,17 +788,11 @@ fn rez_price(
     let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == ice) else { return (0, 0, false) };
     let server = installed.server;
     let Some(card_def) = registry.get(&installed.card) else { return (0, 0, false) };
-    // Tread Lightly-style "+3 credits to rez cost during this run" modifier,
-    // if this ICE's server is the one being run — applied to the printed
-    // cost before paying, never allowed to go negative.
-    let rez_cost_modifier =
-        state.active_run.as_ref().filter(|run| run.server == server).map_or(0, |run| run.ice_rez_cost_modifier);
-    // What the table adds while it stands (`ContinuousKind::RezCost` —
-    // Fransofia Ward's "+1[c] to rez each piece of ice"), where the run
-    // modifier above lasts a run.
-    let rig_modifier = continuous::rez_cost_delta(state, registry, ice);
+    // What the table adds while it stands (Fransofia Ward) and what is
+    // lingering (Tread Lightly), never allowed to take the cost below 0.
+    let added = continuous::rez_cost_delta(state, registry, ice);
     let rez_cost = if pay_cost {
-        (card_def.cost as i32 + rez_cost_modifier + rig_modifier).max(0).saturating_sub(discount as i32).max(0) as u32
+        (card_def.cost as i32 + added).max(0).saturating_sub(discount as i32).max(0) as u32
     } else {
         0
     };
@@ -1926,9 +1920,9 @@ fn score_agenda(
     let side = Side::Corp;
     require_phase(state, GamePhase::Action(side))?;
     paid_ability::require_no_window(state)?;
-    // Luminal Transubstantiation's lockout. Checked here as well as filtered
-    // out of `legal_actions` so the two can't disagree.
-    if state.corp.cannot_score_agendas_this_turn {
+    // Luminal Transubstantiation's lockout. Asked here and by
+    // `legal_actions`, of the same predicate, so the two can't disagree.
+    if continuous::cannot(state, registry, Prohibition::ScoreAgendas) {
         return Err(RulesError::CannotScoreAgendasThisTurn);
     }
 
@@ -2316,7 +2310,7 @@ mod tests {
     /// counts from 1, so this is safely past any fixture's installs.
     const ABSENT_INSTALL: InstallId = InstallId(9_999);
     use crate::dsl::{
-        AbilityDef, BoostDuration, CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount,
+        AbilityDef, EffectDuration, CardDefinition, CardType, Cost, Effect, IceType, SubroutineBreakCount,
         SubroutineDef, TriggeredEffect,
     };
     use crate::rules::run::{AccessPhase, EncounteredSubroutine, RunIce, RunState, ServerId, SubroutineStatus};
@@ -4689,7 +4683,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+            Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
         ));
 
         let (next, events) = apply_action(
@@ -4710,7 +4704,7 @@ mod tests {
                     card_id,
                     new_strength: 3,
                     delta: 1,
-                    duration: BoostDuration::Encounter,
+                    duration: EffectDuration::Encounter,
                 },
             ]
         );
@@ -6617,7 +6611,7 @@ mod tests {
             Side::Runner,
             Trigger::Paid,
             Some(Cost::Credits(1)),
-            Effect::BoostStrength { amount: 1, duration: BoostDuration::Encounter },
+            Effect::BoostStrength { amount: 1, duration: EffectDuration::Encounter },
         );
         card.abilities.push(AbilityDef {
             text: None,

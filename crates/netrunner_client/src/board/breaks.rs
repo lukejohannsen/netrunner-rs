@@ -407,7 +407,7 @@ fn view_purse(view: &ClientView) -> (u32, u32) {
 mod tests {
     use super::*;
     use netrunner_core::dsl::CardType;
-    use netrunner_core::rules::lingering::{Lingering, LingeringEffect, Until};
+    use netrunner_core::rules::lingering::{Lingering, LingeringEffect, On, Until};
     use netrunner_core::rules::{
         EncounteredSubroutine, InstallSlot, InstalledCard, InstalledRunnerCard, PaidAbilityWindow, RunIce, RunState, ServerId,
         WindowCheckpoint, GamePhase,
@@ -588,7 +588,7 @@ mod tests {
         let wall = state.active_run.as_ref().unwrap().ice[0].install_id;
         state.lingering.push(LingeringEffect {
             what: Lingering::Strength(1),
-            on: wall,
+            on: On::Install(wall),
             until: Until::EndOfEncounter(wall),
             source: CardId("wall_of_static".to_string()),
         });

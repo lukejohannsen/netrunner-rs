@@ -17,7 +17,12 @@
             3
           ]
         },
-        "PreventScoringForRemainderOfTurn"
+        {
+          "Prohibit": {
+            "what": "ScoreAgendas",
+            "until": "Turn"
+          }
+        }
       ]
     }
   ],

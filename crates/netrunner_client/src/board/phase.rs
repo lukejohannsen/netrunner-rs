@@ -271,7 +271,6 @@ mod tests {
             jack_out_permitted: true,
             bad_publicity_credits: 0,
             bonus_run_credits: 0,
-            runner_cannot_steal_or_trash: false,
             redirect_on_approach: None,
         };
         // No ice: the steps are there, and none of them counts a piece.
