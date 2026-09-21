@@ -26,9 +26,13 @@
 //! - *The memory limit* parks a decision (which program?), so it belongs
 //!   where a decision can be parked: the end of the action
 //!   (`memory::enforce_limit`), not the middle of a dispatch.
-//! - *The console limit* is a restriction on installing, and rejects.
 //! - *Empty remotes* need no clearing: a server is derived from what is
 //!   installed in it (`legal_actions::existing_remote_ids`).
+//!
+//! **The console limit is here** ([`enforce_consoles`]), beside the ◆ rule
+//! it shares a step with (CR 10.3.1d). It was a refusal to install, which
+//! the rules never were: a second console goes in, and the older one is
+//! trashed (3.8.5b).
 //!
 //! **Expired durations are here too** ([`expire_durations`]), and they are
 //! the one check that is not a rule: whether a lingering effect still holds
@@ -36,7 +40,7 @@
 //! the list is garbage collection and nothing depends on it running.
 
 use crate::cards::CardRegistry;
-use crate::dsl::CardId;
+use crate::dsl::{CardId, CardSubtype};
 use crate::rules::ability;
 use crate::rules::active;
 use crate::rules::event::GameEvent;
@@ -54,6 +58,31 @@ pub(crate) fn state_based(state: &mut GameState, registry: &CardRegistry, event:
     let mut events = win::check_win_conditions(state, registry);
     if !state.is_over() {
         events.extend(enforce_unique(state, registry, event));
+        events.extend(enforce_consoles(state, registry));
+    }
+    events
+}
+
+/// "If a player ever controls more than one installed console, all but the
+/// most recently active console are trashed. Trashing cards this way cannot
+/// be prevented" (CR 3.8.5b, 10.3.1d). Only the Runner has consoles, and a
+/// Runner card is active from the moment it is installed, so the most
+/// recently active is the newest install — the same reading the ◆ rule
+/// makes of the rig.
+fn enforce_consoles(state: &mut GameState, registry: &CardRegistry) -> Vec<GameEvent> {
+    let consoles: Vec<InstallId> = active::runner(state)
+        .filter(|card| card.place == active::Place::Installed)
+        .filter(|card| registry.get(card.card).is_some_and(|definition| definition.subtypes.contains(&CardSubtype::Console)))
+        .filter_map(|card| card.install)
+        .collect();
+    let Some(newest) = consoles.iter().copied().max() else { return Vec::new() };
+    let mut events = Vec::new();
+    for install in consoles.into_iter().filter(|install| *install != newest) {
+        let Some(position) = state.runner.rig.iter().position(|installed| installed.install_id == install) else { continue };
+        let trashed = state.runner.rig.remove(position);
+        state.runner.heap.push(trashed.card.clone());
+        events.push(GameEvent::CardTrashed { side: Side::Runner, card: trashed.card.clone() });
+        events.extend(ability::cascade_trash_hosted_on_rig_card(state, registry, &trashed));
     }
     events
 }

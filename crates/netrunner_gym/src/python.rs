@@ -183,9 +183,13 @@ mod tests {
     /// a choice, and appended: a policy exported at 1646 keeps every index
     /// and needs 31 more outputs, which the mask holds illegal until a
     /// card asks for a number.
+    ///
+    /// 1677 → 2621 for the installs that trash first (Rules Conformance B),
+    /// appended the same way: the three install segments again, with
+    /// `trash_first`, after `ChooseNumber`.
     #[test]
     fn action_space_size_constant_is_pinned() {
-        assert_eq!(ACTION_SPACE_SIZE, 1677);
+        assert_eq!(ACTION_SPACE_SIZE, 2621);
     }
 
     /// Pinned for the same reason as `ACTION_SPACE_SIZE`: it is the model's

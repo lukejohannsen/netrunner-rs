@@ -466,7 +466,7 @@ mod tests {
 
         let chosen = HeuristicAgent::new(Side::Corp, 3).select_action(&view, &registry);
         assert!(
-            matches!(&chosen, PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root } if card_id.0 == "agenda"),
+            matches!(&chosen, PlayerAction::InstallCard { card_id, zone: ServerId::Remote(0), slot: InstallSlot::Root, .. } if card_id.0 == "agenda"),
             "should install the agenda behind the ICE: {chosen:?}"
         );
     }

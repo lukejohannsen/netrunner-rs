@@ -170,6 +170,13 @@ pub enum Ask {
     /// `card` is the card being rezzed, for the payer's prompt to read its
     /// ways off.
     Alternative { card: crate::dsl::CardId, offered: Vec<u32> },
+    /// Which like card an install trashes next (CR 8.5.6,
+    /// `rules::install_trash`) — not a payment, but the step before one
+    /// (8.5.16c comes before 8.5.16d), and parked by the same replay.
+    /// Answered by `PlayerAction::ToggleCardSelection` naming a candidate's
+    /// position, or by `ConfirmCardSelection` for "no more" when
+    /// `may_stop`.
+    Install(InstallQuestion),
 }
 
 impl Ask {
@@ -180,6 +187,10 @@ impl Ask {
             Ask::Pools(question) => (question.min..=question.max).collect(),
             Ask::Card(question) => question.eligible.clone(),
             Ask::Alternative { offered, .. } => offered.clone(),
+            Ask::Install(question) => {
+                let stop = question.may_stop.then_some(crate::rules::install_trash::STOP);
+                stop.into_iter().chain(question.eligible.iter().map(|candidate| candidate.position)).collect()
+            }
         }
     }
 
@@ -190,6 +201,8 @@ impl Ask {
             Ask::Pools(_) => PlayerAction::ChooseNumber { amount: answer },
             Ask::Card(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
             Ask::Alternative { .. } => PlayerAction::ResolvePendingChoice { option_index: answer as usize },
+            Ask::Install(_) if answer == crate::rules::install_trash::STOP => PlayerAction::ConfirmCardSelection,
+            Ask::Install(_) => PlayerAction::ToggleCardSelection { position: answer as usize },
         }
     }
 }
@@ -203,6 +216,34 @@ pub struct CardQuestion {
     pub zone: crate::dsl::CardZoneRef,
     pub eligible: Vec<u32>,
     pub remaining: u32,
+}
+
+/// What an install asks before it pays: which like card goes next
+/// (`Ask::Install`). The installer's alone, like every parked payment, so
+/// it names the card being installed and each candidate outright — a
+/// client shows the cards without reading a table the replay has not
+/// changed yet.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InstallQuestion {
+    pub card: crate::dsl::CardId,
+    pub eligible: Vec<InstallCandidate>,
+    /// Whether "no more" is an answer: not while the memory limit still
+    /// needs room, nor before the first card of an install that trashes
+    /// first.
+    pub may_stop: bool,
+    /// How many memory units the program still needs freed; 0 when it
+    /// fits, and always 0 for the Corp.
+    pub memory_short: u32,
+}
+
+/// One card an install could trash: its position in the installer's
+/// `CardZoneRef::OwnInstalled`, which is what the answer names, the card
+/// there and its install.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct InstallCandidate {
+    pub position: u32,
+    pub card: crate::dsl::CardId,
+    pub install: InstallId,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -451,8 +492,11 @@ pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, pu
 /// of a card that prints another way to pay for it (Biawak, Plutus: which
 /// way is asked too, `Ask::Alternative`). The debug assertion in
 /// `engine::apply_action` is what says so if a third appears.
+///
+/// **An install asks too** (`Ask::Install`), before it pays: which like
+/// cards it trashes (`install_trash::could_ask`).
 pub(crate) fn could_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {
-    pools_could_ask(state) || pays_a_cost_that_may_ask(state, registry, action)
+    pools_could_ask(state) || pays_a_cost_that_may_ask(state, registry, action) || crate::rules::install_trash::could_ask(state, registry, action)
 }
 
 fn pays_a_cost_that_may_ask(state: &GameState, registry: &CardRegistry, action: &crate::rules::PlayerAction) -> bool {

@@ -484,6 +484,17 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
     remote_zones.push(ServerId::Remote(fresh_remote));
 
     let mut candidates = Vec::new();
+    // Each install twice: plain, and trashing like cards first (CR 8.5.6),
+    // which is offered only where the server already holds a card of the
+    // slot's kind — a fresh remote never does, and the probe refuses the
+    // rest (`RulesError::NothingToTrashFirst`).
+    let occupied = |zone: ServerId, slot: InstallSlot| state.corp.installed.iter().any(|c| c.server == zone && c.slot == slot);
+    let mut push = |card_id: &CardId, zone: ServerId, slot: InstallSlot| {
+        candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot, trash_first: false });
+        if occupied(zone, slot) {
+            candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot, trash_first: true });
+        }
+    };
     for card_id in &state.corp.hq {
         let Some(card) = registry.get(card_id) else { continue };
         match card.card_type {
@@ -491,12 +502,12 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
                 let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
                 zones.extend(remote_zones.iter().copied());
                 for zone in zones {
-                    candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot: InstallSlot::Ice });
+                    push(card_id, zone, InstallSlot::Ice);
                 }
             }
             CardType::Agenda | CardType::Asset => {
                 for zone in &remote_zones {
-                    candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone: *zone, slot: InstallSlot::Root });
+                    push(card_id, *zone, InstallSlot::Root);
                 }
             }
             // Upgrades protect a server's root the same way an Asset does,
@@ -507,7 +518,7 @@ fn install_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Pl
                 let mut zones = vec![ServerId::Hq, ServerId::RnD, ServerId::Archives];
                 zones.extend(remote_zones.iter().copied());
                 for zone in zones {
-                    candidates.push(PlayerAction::InstallCard { card_id: card_id.clone(), zone, slot: InstallSlot::Root });
+                    push(card_id, zone, InstallSlot::Root);
                 }
             }
             // Spelled out rather than `_ => {}` so a new `CardType` is a
@@ -555,6 +566,7 @@ fn initiate_run_candidates(state: &GameState) -> Vec<PlayerAction> {
 /// `CardType`.
 fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<PlayerAction> {
     let mut candidates = Vec::new();
+    let any_program_installed = program_installed(state, registry);
     // The grip plus any card hosted "as if it were in your grip" (Bling).
     for card_id in &state.runner.playable_hand() {
         let Some(card) = registry.get(card_id) else { continue };
@@ -575,8 +587,14 @@ fn play_card_candidates(state: &GameState, registry: &CardRegistry) -> Vec<Playe
             // comment that stood here justified the `0` by saying no
             // memory-unit stat existed on `CardDefinition`. That was true
             // when written and stopped being true when the field was added.
+            //
+            // Twice, like a Corp install: plain, and trashing programs first
+            // (CR 8.5.6c) when there is a program to trash.
             CardType::Program if !card.installs_on_ice => {
-                candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone() })
+                candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: false });
+                if any_program_installed {
+                    candidates.push(PlayerAction::InstallProgram { card_id: card_id.clone(), trash_first: true });
+                }
             }
             CardType::Resource => candidates.push(PlayerAction::InstallResource { card_id: card_id.clone() }),
             // A trojan (`installs_on_ice`) — offered by
@@ -618,18 +636,27 @@ fn install_program_on_ice_candidates(state: &GameState, registry: &CardRegistry)
         .map(|c| c.install_id)
         .collect();
     let mut candidates = Vec::new();
+    let any_program_installed = program_installed(state, registry);
     for card_id in &state.runner.playable_hand() {
         let Some(card) = registry.get(card_id) else { continue };
         if card.card_type == CardType::Program && card.installs_on_ice {
             for host in &host_ice {
-                candidates.push(PlayerAction::InstallProgramOnIce {
-                    card_id: card_id.clone(),
-                    host: *host,
-                });
+                for trash_first in [false, true] {
+                    if trash_first && !any_program_installed {
+                        continue;
+                    }
+                    candidates.push(PlayerAction::InstallProgramOnIce { card_id: card_id.clone(), host: *host, trash_first });
+                }
             }
         }
     }
     candidates
+}
+
+/// Whether the rig holds a program an install could trash first — the
+/// cheap gate on proposing `trash_first` at all.
+fn program_installed(state: &GameState, registry: &CardRegistry) -> bool {
+    state.runner.rig.iter().any(|c| registry.get(&c.card).is_some_and(|d| d.card_type == CardType::Program))
 }
 
 
@@ -939,7 +966,7 @@ mod tests {
             poor_legal.contains(&PlayerAction::InstallCard {
                 card_id: CardId("ice_wall".to_string()),
                 zone: ServerId::Hq,
-                slot: InstallSlot::Ice
+                slot: InstallSlot::Ice, trash_first: false,
             }),
             "the first ICE on a server is free, whatever it costs to rez"
         );
@@ -956,7 +983,7 @@ mod tests {
             !poor_legal.contains(&PlayerAction::InstallCard {
                 card_id: CardId("ice_wall".to_string()),
                 zone: ServerId::Hq,
-                slot: InstallSlot::Ice
+                slot: InstallSlot::Ice, trash_first: false,
             }),
             "a second ICE on HQ costs 1, which a broke Corp cannot pay"
         );
@@ -964,7 +991,7 @@ mod tests {
             poor_legal.contains(&PlayerAction::InstallCard {
                 card_id: CardId("ice_wall".to_string()),
                 zone: ServerId::RnD,
-                slot: InstallSlot::Ice
+                slot: InstallSlot::Ice, trash_first: false,
             }),
             "but the first ICE on R&D is still free"
         );
@@ -995,7 +1022,7 @@ mod tests {
                 legal.contains(&PlayerAction::InstallCard {
                     card_id: CardId("manegarm_skunkworks".to_string()),
                     zone,
-                    slot: InstallSlot::Root,
+                    slot: InstallSlot::Root, trash_first: false,
                 }),
                 "expected Upgrade to be installable into {zone:?}"
             );

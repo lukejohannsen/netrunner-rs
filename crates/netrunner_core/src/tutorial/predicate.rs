@@ -96,7 +96,7 @@ pub fn action_card(action: &PlayerAction, view: &ClientView) -> Option<CardId> {
         | PlayerAction::PlayEvent { card_id }
         | PlayerAction::PlayOperation { card_id }
         | PlayerAction::InstallHardware { card_id }
-        | PlayerAction::InstallProgram { card_id }
+        | PlayerAction::InstallProgram { card_id, .. }
         | PlayerAction::InstallResource { card_id }
         | PlayerAction::InstallProgramOnIce { card_id, .. }
         | PlayerAction::DiscardCard { card_id }
@@ -321,7 +321,7 @@ mod tests {
         assert!(predicate.matches(&PlayerAction::AdvanceCard { target: install }, &view));
         assert!(predicate.matches(&PlayerAction::ScoreAgenda { target: install }, &view));
         assert!(predicate.matches(
-            &PlayerAction::InstallCard { card_id: id("offworld_office"), zone: ServerId::Remote(2), slot: InstallSlot::Root },
+            &PlayerAction::InstallCard { card_id: id("offworld_office"), zone: ServerId::Remote(2), slot: InstallSlot::Root, trash_first: false },
             &view
         ));
         assert!(!predicate.matches(&PlayerAction::AdvanceCard { target: InstallId(99) }, &view), "an unknown handle names no card");

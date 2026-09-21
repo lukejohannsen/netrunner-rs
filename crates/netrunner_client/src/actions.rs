@@ -405,8 +405,13 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
     match action {
         PlayerAction::GainCreditClick { side } => format!("Gain 1 credit ({side:?})"),
         PlayerAction::DrawCardClick { .. } => "Draw a card".to_string(),
-        PlayerAction::InstallCard { card_id, zone, slot } => {
-            format!("Install {} into {:?} ({:?})", title(card_id), zone, slot)
+        PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
+            let first = match (trash_first, slot) {
+                (false, _) => "",
+                (true, InstallSlot::Ice) => ", trashing ice there first",
+                (true, InstallSlot::Root) => ", trashing cards in its root first",
+            };
+            format!("Install {} into {:?} ({:?}){first}", title(card_id), zone, slot)
         }
         PlayerAction::RezIce { ice } => format!("Rez {}", install_label(ice)),
         PlayerAction::InitiateRun { server } => format!("Run {server:?}"),
@@ -416,10 +421,11 @@ pub fn describe_action(action: &PlayerAction, registry: &CardRegistry, view: Opt
         PlayerAction::PlayEvent { card_id } => format!("Play {}", title(card_id)),
         PlayerAction::PlayOperation { card_id } => format!("Play {}", title(card_id)),
         PlayerAction::InstallHardware { card_id } => format!("Install {}", title(card_id)),
-        PlayerAction::InstallProgram { card_id, .. } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallProgram { card_id, trash_first: false } => format!("Install {}", title(card_id)),
+        PlayerAction::InstallProgram { card_id, trash_first: true } => format!("Install {}, trashing programs first", title(card_id)),
         PlayerAction::InstallResource { card_id } => format!("Install {}", title(card_id)),
-        PlayerAction::InstallProgramOnIce { card_id, host, .. } => {
-            format!("Install {} onto {}", title(card_id), install_label(host))
+        PlayerAction::InstallProgramOnIce { card_id, host, trash_first } => {
+            format!("Install {} onto {}{}", title(card_id), install_label(host), if *trash_first { ", trashing programs first" } else { "" })
         }
         // The subroutine's own printed text, so the click is spent on
         // "End the run" rather than on "subroutine 2".
@@ -654,13 +660,18 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
             Side::Corp => "Spend 1 click to draw the top card of R&D into HQ.".to_string(),
             Side::Runner => "Spend 1 click to draw the top card of your stack into your grip.".to_string(),
         },
-        PlayerAction::InstallCard { card_id, zone, slot } => {
+        PlayerAction::InstallCard { card_id, zone, slot, trash_first } => {
             let what = match slot {
                 InstallSlot::Ice => "as ice protecting",
                 InstallSlot::Root => "face down in the root of",
             };
+            let first = match (trash_first, slot) {
+                (false, _) => "",
+                (true, InstallSlot::Ice) => " First trash any of the ice already protecting it, one at a time: trashed ice is not counted in the install cost.",
+                (true, InstallSlot::Root) => " First trash any of the cards already in its root, one at a time.",
+            };
             format!(
-                "Spend 1 click to install {} {what} {zone:?}. Installing a new remote server creates it. Ice costs 1 credit per piece already protecting that server; the card stays unrezzed (and hidden) until you pay to rez it.",
+                "Spend 1 click to install {} {what} {zone:?}. Installing a new remote server creates it. Ice costs 1 credit per piece already protecting that server; the card stays unrezzed (and hidden) until you pay to rez it.{first}",
                 title(card_id)
             )
         }
@@ -680,9 +691,10 @@ pub fn explain_action(action: &PlayerAction, registry: &CardRegistry, view: Opti
             title(card_id)
         ),
         PlayerAction::InstallHardware { card_id } => format!("Spend 1 click and its install cost to install {} in your rig. Hardware stays in play.", title(card_id)),
-        PlayerAction::InstallProgram { card_id } => format!(
-            "Spend 1 click and its install cost to install {}. Programs take memory (MU); you have 4 MU by default, and an icebreaker is how you get through ice.",
-            title(card_id)
+        PlayerAction::InstallProgram { card_id, trash_first } => format!(
+            "Spend 1 click and its install cost to install {}. Programs take memory (MU); you have 4 MU by default, and an icebreaker is how you get through ice. With no room, you trash programs of your choice to make it.{}",
+            title(card_id),
+            if *trash_first { " First trash any of your installed programs, one at a time." } else { "" }
         ),
         PlayerAction::InstallResource { card_id } => format!(
             "Spend 1 click and its install cost to install {}. Resources stay in play but can be trashed by the Corp if you are tagged.",
@@ -1048,12 +1060,24 @@ mod tests {
             loop {
                 match session.step() {
                     SessionStep::Awaiting { side, view } => {
-                        if matches!(view.pending_decision, Some(PendingDecision::ChooseCards { side: chooser, .. }) if chooser == side) {
+                        // An install asking which like card it trashes
+                        // (CR 8.5.6) is a selection too, and is asked ahead
+                        // of anything parked beneath it.
+                        let install = match view.pending_payment.as_ref().and_then(|payment| payment.own.as_ref()) {
+                            Some(netrunner_core::rules::PendingPayment { question: netrunner_core::rules::PaymentAsk::Install(question), .. }) => Some(question.clone()),
+                            _ => None,
+                        };
+                        let choosing = view.pending_payment.is_none()
+                            && matches!(view.pending_decision, Some(PendingDecision::ChooseCards { side: chooser, .. }) if chooser == side);
+                        if choosing || install.is_some() {
                             prompts += 1;
                             let registry = session.registry();
                             let map = ActionMap::build(&view, registry);
                             let detail = Prompt::of(&view, registry).expect("a selection is a prompt").detail;
-                            assert!(detail.starts_with("Selected: ") || detail == "Nothing selected yet", "seed {seed}: {detail:?}");
+                            match &install {
+                                Some(question) => assert_eq!(detail, crate::prose::install_trash_detail(question), "seed {seed}"),
+                                None => assert!(detail.starts_with("Selected: ") || detail == "Nothing selected yet", "seed {seed}: {detail:?}"),
+                            }
                             // Titles the chooser's board conceals, less any
                             // the view shows elsewhere (two copies of one ICE).
                             let shown: std::collections::HashSet<String> = view
@@ -1083,11 +1107,11 @@ mod tests {
                                 let label = &entry.label;
                                 match entry.action {
                                     PlayerAction::ToggleCardSelection { .. } => assert!(
-                                        label.starts_with("Select ") || label.starts_with("Deselect "),
+                                        label.starts_with("Select ") || label.starts_with("Deselect ") || label.starts_with("Trash "),
                                         "seed {seed}: {label:?}"
                                     ),
                                     PlayerAction::ConfirmCardSelection => {
-                                        assert!(label.starts_with("Confirm ") || label == "Choose none", "seed {seed}: {label:?}")
+                                        assert!(label.starts_with("Confirm ") || label == "Choose none" || label == "Trash no more", "seed {seed}: {label:?}")
                                     }
                                     _ => continue,
                                 }
@@ -1128,7 +1152,10 @@ mod tests {
         use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
 
         let (mut installs, mut new_remotes, mut overs) = (0, 0, 0);
-        for seed in 0..32 {
+        // 48, not 32: an install-over by a card's text is rare, and the
+        // random Corp's installs that trash first (Rules Conformance B)
+        // moved the first one past seed 32 — seed 42 is the first now.
+        for seed in 0..48 {
             let (corp_deck, runner_deck) = sweep_decks_for_seed(seed);
             let mut registry = CardRegistry::new();
             register_playable_cards(&mut registry);
@@ -1185,7 +1212,7 @@ mod tests {
         let actions = vec![
             PlayerAction::GainCreditClick { side: Side::Corp },
             PlayerAction::DrawCardClick { side: Side::Runner },
-            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Remote(1), slot: InstallSlot::Ice },
+            PlayerAction::InstallCard { card_id: card(), zone: ServerId::Remote(1), slot: InstallSlot::Ice, trash_first: false },
             PlayerAction::RezIce { ice: install },
             PlayerAction::InitiateRun { server: ServerId::Hq },
             PlayerAction::ContinueRun,
@@ -1194,9 +1221,9 @@ mod tests {
             PlayerAction::PlayEvent { card_id: card() },
             PlayerAction::PlayOperation { card_id: card() },
             PlayerAction::InstallHardware { card_id: card() },
-            PlayerAction::InstallProgram { card_id: card() },
+            PlayerAction::InstallProgram { card_id: card(), trash_first: false },
             PlayerAction::InstallResource { card_id: card() },
-            PlayerAction::InstallProgramOnIce { card_id: card(), host: install },
+            PlayerAction::InstallProgramOnIce { card_id: card(), host: install, trash_first: false },
             PlayerAction::BreakSubroutineWithClick { ice_id: card(), subroutine_index: 0 },
             PlayerAction::EndTurn,
             PlayerAction::DiscardCard { card_id: card() },

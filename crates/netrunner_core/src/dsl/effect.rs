@@ -594,8 +594,8 @@ pub enum Effect {
     },
     /// Installs the resolving card — `acting_card`, a card sitting in the
     /// Runner's grip — into the rig, **paying** its install cost (with the
-    /// usual discounts) and respecting the memory budget, the console limit
-    /// and the unique rule: Pantograph's "you may install 1 card from your
+    /// usual discounts) and trashing programs to the memory limit, a second
+    /// console and the unique rule as any install does (CR 3.9.3b, 3.8.5b): Pantograph's "you may install 1 card from your
     /// grip", Mutual Favor's "you may install that program" (the search has
     /// already moved the found icebreaker to the grip, so both install from
     /// the one zone). A Trojan is out of scope — its host is a choice no

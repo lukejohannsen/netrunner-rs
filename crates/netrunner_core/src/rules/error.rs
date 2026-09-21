@@ -102,11 +102,13 @@ pub enum RulesError {
     #[error("attempted to spend {requested} memory unit(s) but only has {available}")]
     InsufficientMemory { available: u32, requested: u32 },
 
-    #[error("the Runner already has an installed Console — limit 1 per player")]
-    ConsoleLimitExceeded,
-
-    #[error("{server:?} already holds a Region — limit 1 region per server")]
-    RegionLimitExceeded { server: ServerId },
+    /// An install that trashes first (`trash_first`) with nothing to trash
+    /// beyond what the rules already make it trash — refused, so the entry
+    /// is never the same move as the plain install (`rules::install_trash`).
+    /// A second console and a second region used to be refusals of their
+    /// own; the rules make each a trash (CR 3.8.5b, 3.6.5d).
+    #[error("installing {card:?} has nothing to trash first")]
+    NothingToTrashFirst { card: CardId },
 
     #[error("subroutine {index} on {ice:?} can only be broken by a breaker printed with the subtype it names")]
     SubroutineNotBreakableByThis { ice: CardId, index: usize },

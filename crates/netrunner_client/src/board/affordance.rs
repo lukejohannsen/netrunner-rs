@@ -298,7 +298,7 @@ mod tests {
     fn a_turn_move_keeps_its_mood_inside_a_window() {
         // Nothing but the two dual actions reads the moment: an install
         // listed during an open window is still an install.
-        let install = PlayerAction::InstallProgram { card_id: netrunner_core::dsl::CardId("x".into()) };
+        let install = PlayerAction::InstallProgram { card_id: netrunner_core::dsl::CardId("x".into()), trash_first: false };
         assert_eq!(affordance_of(&install, true), Affordance::Usable);
     }
 }
