@@ -1,9 +1,10 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{CardId, Cost, HostedCreditUse, Prohibition};
+use crate::dsl::{CardId, Cost, Prohibition};
 use crate::rules::ability;
 use crate::rules::continuous;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
+use crate::rules::payment::{self, Purpose};
 use crate::rules::event::GameEvent;
 use crate::rules::run::state::{AccessPhase, AccessState, RunPhase, ServerId};
 use crate::rules::state::{ArchivedCard, GameState, InstallId, InstallSlot, Side};
@@ -252,7 +253,7 @@ fn present_card_for_access(
     {
         let decider = interactive.interaction.payer();
         let can_pay = match &interactive.cost {
-            Cost::Credits(amount) => state.resources(decider).credits.0 >= *amount,
+            Cost::Credits(amount) => payment::available(state, registry, decider, Purpose::Other) >= *amount,
             // Other cost kinds aren't precomputed elsewhere either
             // (`resolve_steal`'s `steal_cost` handling is the same) —
             // `resolve_pay_access_trigger`'s `ability::pay_cost` call
@@ -579,7 +580,7 @@ pub fn resolve_steal(
                 });
             }
         }
-        events.extend(ability::pay_cost(state, Side::Runner, cost, Some(card_id))?);
+        events.extend(ability::pay_cost(state, registry, Side::Runner, cost, Purpose::Other, Some(card_id))?);
     }
 
     // The agenda leaves the Corp's zone — HQ, the top of R&D, the remote's
@@ -793,29 +794,17 @@ pub fn resolve_trash(
     let pending = require_pending(state, card_id)?;
     let cost = pending.trash_cost.ok_or(RulesError::NotInAccessPhase)?;
 
-    // Hosted credits a card lets the Runner spend on trash costs (Azimat's
-    // `hosted_credits_usable_for: TrashCosts`) count towards affordability
-    // and are drained first, rig order, before the wallet — the same
-    // "pool before wallet" precedent `ability::pay_cost` applies to bad
-    // publicity and bonus run credits. Drained here rather than inside
-    // `pay_cost` because that waterfall is purpose-blind and these pools
-    // are not; this is the one site that knows the purpose is a trash
-    // cost. See `CardDefinition::hosted_credits_usable_for`.
-    let pays_trash_costs = |def: &crate::dsl::CardDefinition| def.hosted_credits_usable_for == Some(HostedCreditUse::TrashCosts);
-    let hosted: u32 = state
-        .runner
-        .rig
-        .iter()
-        .filter(|card| registry.get(&card.card).is_some_and(pays_trash_costs))
-        .map(|card| card.counters)
-        .sum();
-    let available = state.runner.resources.credits.0.saturating_add(hosted);
+    // Asked of the scan the payment spends from (`rules::payment`), so a
+    // pool that may pay a trash cost — Azimat's hosted credits, and the
+    // run's own: bad publicity, Overclock — counts here too. This was a
+    // sum of the credit pool and Azimat, which refused a trash the payment
+    // below would have taken the run's credits for.
+    let available = payment::available(state, registry, Side::Runner, Purpose::TrashCost);
     if available < cost {
         return Err(RulesError::CannotAffordTrashCost { card: card_id.clone(), available, requested: cost });
     }
 
-    let (mut events, from_pools) = ability::drain_hosted_credit_pools(state, registry, cost, pays_trash_costs)?;
-    events.extend(ability::pay_cost(state, Side::Runner, &Cost::Credits(cost - from_pools), Some(card_id))?);
+    let mut events = ability::pay_cost(state, registry, Side::Runner, &Cost::Credits(cost), Purpose::TrashCost, Some(card_id))?;
     move_to_archives(state, registry, card_id, pending.server, pending.install);
     let trashed_event = GameEvent::CardTrashedFromAccess { card: card_id.clone(), cost_paid: cost, install: pending.install };
     dispatcher::emit(state, registry, &mut events, trashed_event)?;
@@ -906,7 +895,7 @@ fn resolve_access_trigger(
                 });
             }
         }
-        events.extend(ability::pay_cost(state, pending.decider, &pending.cost, Some(card_id))?);
+        events.extend(ability::pay_cost(state, registry, pending.decider, &pending.cost, Purpose::Other, Some(card_id))?);
     }
 
     if paid != interaction.effects_resolve_on_decline() {

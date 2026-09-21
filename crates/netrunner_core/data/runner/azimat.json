@@ -25,7 +25,9 @@
     }
   ],
   "counter_kind": "Credit",
-  "hosted_credits_usable_for": "TrashCosts",
+  "pays_for": [
+    "TrashCosts"
+  ],
   "numeric_id": 35029,
   "is_playable": true
 }

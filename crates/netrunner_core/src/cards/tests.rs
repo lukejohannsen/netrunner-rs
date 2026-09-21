@@ -6720,6 +6720,85 @@ mod system_gateway {
         assert_eq!(state.runner.resources.credits, Credits(2), "nothing from the wallet");
     }
 
+    // `rules::payment`: whether a cost can be paid and paying it are one
+    // scan. Each test below (and two more beside the module) is a sum
+    // that used to be written out beside the payment and forgot a pool the
+    // payment then took.
+
+    /// An Overclock run against a remote holding a PAD Campaign, the wallet
+    /// emptied by the event's own cost, parked on the access.
+    fn overclock_run_accessing_a_pad_campaign(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn(1, 4);
+        state.runner.grip = vec![CardId("overclock".to_string())];
+        state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0))];
+        corp_rd_filler(&mut state);
+        let state = act(state, registry, PlayerAction::PlayEvent { card_id: CardId("overclock".to_string()) });
+        let state = act(state, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) });
+        assert_eq!(state.runner.resources.credits, Credits(0));
+        let state = act(state, registry, PlayerAction::ContinueRun);
+        act(state, registry, PlayerAction::CompleteRun)
+    }
+
+    #[test]
+    fn the_credits_a_run_brought_pay_a_trash_cost() {
+        let registry = sg_registry();
+        let state = overclock_run_accessing_a_pad_campaign(&registry);
+        let trash = PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) };
+        assert!(
+            crate::rules::legal_actions(&state, &registry).contains(&trash),
+            "\"You can spend hosted credits during that run\": 5 of them afford the 4[c] trash cost with an empty wallet"
+        );
+        let state = act(state, &registry, trash);
+        assert_eq!(state.corp.archives, vec![ArchivedCard::faceup(CardId("pad_campaign".to_string()))]);
+        assert_eq!(state.runner.resources.credits, Credits(0));
+    }
+
+    #[test]
+    fn bad_publicity_pays_a_trash_cost() {
+        let registry = sg_registry();
+        let mut state = runner_turn(1, 4);
+        state.corp.bad_publicity = 3;
+        state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0))];
+        let state = act(state, &registry, PlayerAction::InitiateRun { server: ServerId::Remote(0) });
+        let state = act(state, &registry, PlayerAction::ContinueRun);
+        let state = act(state, &registry, PlayerAction::CompleteRun);
+        let state = act(state, &registry, PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) });
+        assert_eq!(state.runner.resources.credits, Credits(0), "3 from bad publicity, 1 from the wallet");
+    }
+
+    #[test]
+    fn a_runner_traced_mid_run_may_bid_the_credits_the_run_brought() {
+        let registry = sg_registry();
+        let mut state = runner_turn(1, 4);
+        state.active_run = Some(crate::rules::RunState { bonus_run_credits: 2, ..Default::default() });
+        state.active_trace = Some(crate::rules::TraceState {
+            initiating_card: None,
+            initiating_install: None,
+            base_strength: 3,
+            corp_bid: Some(0),
+            effect_on_success: crate::dsl::Effect::GiveTags(1),
+            resume: crate::rules::TraceResume::None,
+        });
+        let bids: Vec<u32> = crate::rules::legal_actions(&state, &registry)
+            .into_iter()
+            .filter_map(|action| match action {
+                PlayerAction::SubmitRunnerTraceBid { amount } => Some(amount),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(bids, vec![0, 1, 2, 3], "every bid the payment would take: 1 in the wallet and 2 on the run");
+    }
+
+    #[test]
+    fn open_market_does_not_pay_for_a_resource_it_does_not_name() {
+        let registry = sg_registry();
+        let mut state = runner_turn(2, 4);
+        state.runner.rig = vec![rig_card_with_counters("open_market", 6)];
+        state.runner.grip = vec![CardId("verbal_plasticity".to_string())];
+        let install = PlayerAction::InstallResource { card_id: CardId("verbal_plasticity".to_string()) };
+        assert!(apply_action(&state, &registry, install).is_err(), "neither a connection nor a job: the wallet's 2[c] is all there is for a 3[c] resource");
+    }
+
     #[test]
     fn knickknack_obrian_may_trash_another_installed_card_for_its_printed_cost_once_per_turn() {
         let registry = sg_registry();

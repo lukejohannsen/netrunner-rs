@@ -8,14 +8,27 @@
     "Job"
   ],
   "counter_kind": "Credit",
-  "hosted_credits_usable_for": {
-    "ResourceInstalls": {
-      "subtypes": [
-        "Connection",
-        "Job"
-      ]
+  "pays_for": [
+    {
+      "Installing": {
+        "All": [
+          {
+            "CardType": "Resource"
+          },
+          {
+            "AnyOf": [
+              {
+                "HasSubtype": "Connection"
+              },
+              {
+                "HasSubtype": "Job"
+              }
+            ]
+          }
+        ]
+      }
     }
-  },
+  ],
   "trash_when_empty": true,
   "triggers": [
     {

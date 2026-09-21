@@ -8,7 +8,9 @@
     "Region"
   ],
   "counter_kind": "Credit",
-  "hosted_credits_usable_for": "RezInThisServer",
+  "pays_for": [
+    "RezzingInThisServer"
+  ],
   "continuous": [
     {
       "kind": {

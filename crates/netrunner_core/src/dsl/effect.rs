@@ -434,7 +434,7 @@ pub enum Effect {
     /// dispatch, under a comment saying the duplication was deliberate
     /// because only the paid path needed the payment and the priority
     /// window. Mycoweb prints a *discounted* rez, which needs the payment
-    /// waterfall (including a region's hosted rez credits), so the two
+    /// itself (a region's hosted rez credits among its sources), so the two
     /// paths had to converge; a second variant beside the first would have
     /// left three copies of one transition.
     ///
@@ -831,9 +831,11 @@ pub enum Effect {
     /// counters with it, and the Corp's score drops accordingly.
     ///
     /// An `Effect` and not a `Cost`, though the printed text is a cost:
-    /// **which** agenda goes has to be decided, and only an effect has the
-    /// `CardRegistry` needed to compare their point values —
-    /// `ability::pay_cost` deliberately has none, across forty call sites.
+    /// **which** agenda goes has to be decided, and when this was written
+    /// only an effect had the `CardRegistry` needed to compare their point
+    /// values. (`ability::pay_cost` takes one now, for `rules::payment`; the
+    /// other reason stands — the forfeit is offered as a choice, which a
+    /// cost is not.)
     /// The lowest-scoring agenda goes, ties broken by the fewest agenda
     /// counters. That is the dominant choice in every position this pool
     /// can produce (points decide the game; the only other thing a scored

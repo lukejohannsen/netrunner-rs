@@ -1,5 +1,5 @@
 use crate::cards::CardRegistry;
-use crate::dsl::{HostedCreditUse, CardId, CardSubtype, CardType, Cost, CounterKind, Effect, Prohibition, Trigger};
+use crate::dsl::{CardId, CardSubtype, CardType, Cost, CounterKind, Effect, Prohibition, Trigger};
 use crate::rules::ability;
 use crate::rules::action::{PlayerAction, ServerTarget, TargetZone};
 use crate::rules::dispatcher;
@@ -7,6 +7,7 @@ use crate::rules::error::RulesError;
 use crate::rules::event::GameEvent;
 use crate::rules::memory;
 use crate::rules::paid_ability;
+use crate::rules::payment::{self, Purpose};
 use crate::rules::pending_choice;
 use crate::rules::prevention;
 use crate::rules::run::{self, RunAction, RunPhase, ServerId};
@@ -171,7 +172,7 @@ pub fn apply_action(
             decline_access_trigger(state, registry, card_id)
         }
         PlayerAction::PassPriority { side } => pass_priority_action(state, registry, side),
-        PlayerAction::SubmitCorpTraceBid { amount } => submit_corp_trace_bid(state, amount),
+        PlayerAction::SubmitCorpTraceBid { amount } => submit_corp_trace_bid(state, registry, amount),
         PlayerAction::SubmitRunnerTraceBid { amount } => submit_runner_trace_bid(state, registry, amount),
         PlayerAction::AcceptPendingPaidChoice { cost_option_index } => {
             accept_pending_paid_choice(state, registry, cost_option_index)
@@ -568,7 +569,7 @@ pub(crate) fn place_corp_card(
         _ => 0,
     };
     if install_cost > 0 {
-        events.extend(ability::pay_cost(next, side, &Cost::Credits(install_cost), Some(&card_id))?);
+        events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(install_cost), Purpose::Install(card_def), Some(&card_id))?);
     }
     let install_id = next.allocate_install_id();
     let new_card = InstalledCard {
@@ -741,7 +742,7 @@ fn rez_ice(
             // …and priced: an alternative the Corp cannot finish paying is
             // not offered. See `rez_price`.
             .filter(|alternative| {
-                let (cost, available, _) = rez_price(&next, registry, ice, true, alternative.discount);
+                let (cost, available) = rez_price(&next, registry, ice, true, alternative.discount);
                 if cost < cheapest {
                     cheapest = cost;
                     wallet = available;
@@ -809,10 +810,9 @@ fn rez_price(
     ice: InstallId,
     pay_cost: bool,
     discount: u32,
-) -> (u32, u32, bool) {
-    let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == ice) else { return (0, 0, false) };
-    let server = installed.server;
-    let Some(card_def) = registry.get(&installed.card) else { return (0, 0, false) };
+) -> (u32, u32) {
+    let Some(installed) = state.corp.installed.iter().find(|c| c.install_id == ice) else { return (0, 0) };
+    let Some(card_def) = registry.get(&installed.card) else { return (0, 0) };
     // What the table adds while it stands (Fransofia Ward) and what is
     // lingering (Tread Lightly), never allowed to take the cost below 0.
     let added = continuous::rez_cost_delta(state, registry, ice);
@@ -821,30 +821,10 @@ fn rez_price(
     } else {
         0
     };
-    // Hosted credits a rezzed root upgrade lets the Corp spend on rezzing
-    // in its own server (Mahkota Langit Grid's `hosted_credits_usable_for:
-    // RezInThisServer`) count towards affordability and are drained first
-    // — the Corp-side twin of `run::access::resolve_trash`'s Azimat drain,
-    // and for the same reason it is not inside `pay_cost`: that waterfall
-    // is purpose-blind and these pools are not. Assets in the root and
-    // ice protecting the server, as printed; an upgrade being rezzed pays
-    // from the wallet alone.
-    let pool_eligible = matches!(card_def.card_type, CardType::Ice(_) | CardType::Asset);
-    let hosted: u32 = if pool_eligible {
-        state
-            .corp
-            .installed
-            .iter()
-            .filter(|c| c.rezzed && c.server == server && c.slot == InstallSlot::Root)
-            .filter(|c| {
-                registry.get(&c.card).is_some_and(|def| def.hosted_credits_usable_for == Some(HostedCreditUse::RezInThisServer))
-            })
-            .map(|c| c.counters)
-            .sum()
-    } else {
-        0
-    };
-    (rez_cost, state.corp.resources.credits.0.saturating_add(hosted), pool_eligible)
+    // What the Corp could put towards it is `rules::payment`'s answer for
+    // a rez of *this* install — the credit pool, and the hosted credits of
+    // a region in its server that says so (Mahkota Langit Grid).
+    (rez_cost, payment::available(state, registry, Side::Corp, Purpose::Rez(ice)))
 }
 
 /// Flips an installed Corp card faceup and pays for it — the half of
@@ -878,22 +858,12 @@ pub(crate) fn rez_install(
     // `rez_price`: a card the engine cannot describe is not rezzable.
     registry.get(&ice_id).ok_or_else(|| RulesError::CardNotFoundInRegistry(ice_id.clone()))?;
 
-    let (rez_cost, available, pool_eligible) = rez_price(next, registry, ice, pay_cost, discount);
-    let pays_here = |installed: &InstalledCard, def: &crate::dsl::CardDefinition| {
-        installed.server == server
-            && installed.slot == InstallSlot::Root
-            && def.hosted_credits_usable_for == Some(HostedCreditUse::RezInThisServer)
-    };
+    let (rez_cost, available) = rez_price(next, registry, ice, pay_cost, discount);
     if available < rez_cost {
         return Err(RulesError::NotEnoughCredits { side, available, requested: rez_cost });
     }
     next.corp.installed.iter_mut().find(|c| c.install_id == ice).expect("resolved above").rezzed = true;
-    let (mut events, from_pools) = if pool_eligible && rez_cost > 0 {
-        ability::drain_corp_hosted_credit_pools(next, registry, rez_cost, pays_here)?
-    } else {
-        (Vec::new(), 0)
-    };
-    events.extend(ability::pay_cost(next, side, &Cost::Credits(rez_cost - from_pools), Some(&ice_id))?);
+    let mut events = ability::pay_cost(next, registry, side, &Cost::Credits(rez_cost), Purpose::Rez(ice), Some(&ice_id))?;
 
     // The run's own view of this ICE (`RunIce::rezzed`) is not touched
     // here: `run::reconcile_ice` re-reads it from the install at the
@@ -1106,13 +1076,13 @@ fn play_event(
     }
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(card_def.cost), Some(&card_id))?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(card_def.cost), Purpose::Other, Some(&card_id))?);
     // A Double's extra click (or any other printed additional cost) is
     // part of paying to play, so it lands here with the credits — before
     // `OnPlay` — and an unaffordable one fails the play before anything
     // resolves, which is what makes `legal_actions`' probe drop it.
     if let Some(additional) = &card_def.additional_play_cost {
-        events.extend(ability::pay_cost(&mut next, side, additional, Some(&card_id))?);
+        events.extend(ability::pay_cost(&mut next, registry, side, additional, Purpose::Other, Some(&card_id))?);
     }
     let played_event = GameEvent::EventPlayed { side, card: card_id.clone() };
     dispatcher::emit(&mut next, registry, &mut events, played_event)?;
@@ -1167,13 +1137,13 @@ pub(crate) fn can_play_operation(state: &GameState, registry: &CardRegistry, car
     let present = if from_archives { state.corp.archives_contains(card_id) } else { state.corp.hq.contains(card_id) };
     present
         && card_def.card_type == CardType::Operation
-        && state.corp.resources.credits.0 >= card_def.cost
+        && payment::available(state, registry, Side::Corp, Purpose::Other) >= card_def.cost
         // Touch-ups' additional click, which the Corp must still have
         // after the one this play costs — `Effect::PlayOperationFromHq`
         // spends no click, so what is checked is simply that the cost is
         // payable now.
         && card_def.additional_play_cost.as_ref().is_none_or(|cost| {
-            ability::cost_is_affordable(state, Side::Corp, cost, &ability::ResolutionContext::for_card(Some(card_id)))
+            ability::cost_is_affordable(state, registry, Side::Corp, cost, Purpose::Other, &ability::ResolutionContext::for_card(Some(card_id)))
         })
         && card_def.play_requirement.as_ref().is_none_or(|requirement| {
             ability::check_requirement(state, requirement, Side::Corp, &ability::ResolutionContext::for_card(Some(card_id)), registry).is_ok()
@@ -1205,14 +1175,14 @@ pub(crate) fn play_operation_card(
         ability::check_requirement(next, requirement, side, &ability::ResolutionContext::for_card(Some(&card_id)), registry)?;
     }
 
-    let mut events = ability::pay_cost(next, side, &Cost::Credits(card_def.cost), Some(&card_id))?;
+    let mut events = ability::pay_cost(next, registry, side, &Cost::Credits(card_def.cost), Purpose::Other, Some(&card_id))?;
     // A Double's extra click (or any other printed additional cost) is
     // part of paying to play, so it lands with the credits and before
     // `OnPlay` — the same placement `play_event` gives it. Touch-ups is
     // the Corp's first Double; an unaffordable one fails the play, which
     // is what makes `legal_actions`' probe drop it.
     if let Some(additional) = &card_def.additional_play_cost {
-        events.extend(ability::pay_cost(next, side, additional, Some(&card_id))?);
+        events.extend(ability::pay_cost(next, registry, side, additional, Purpose::Other, Some(&card_id))?);
     }
     // A played Operation resolved in the open, so the Runner has seen it.
     // One played out of Archives leaves the game instead (Petty Cash's
@@ -1378,7 +1348,7 @@ pub(crate) fn can_install_runner_card_from_zone_with_discount(
         CardType::Resource => {}
         _ => return false,
     }
-    state.runner.resources.credits.0 >= preview_runner_install_cost(state, registry, card_def).saturating_sub(discount)
+    payment::available(state, registry, Side::Runner, Purpose::Install(card_def)) >= preview_runner_install_cost(state, registry, card_def).saturating_sub(discount)
 }
 
 /// `Effect::InstallRunnerCardFromGrip`'s working half: takes `card_id`
@@ -1435,7 +1405,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
             require_memory_for(next, registry, memory_cost)?;
             let cost = continuous::install_cost_of(next, registry, &card_def)
                 .saturating_sub(discount);
-            events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
+            events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             next.runner.rig.push(rig_card);
             let installed_event = GameEvent::ProgramInstalled { side, card: card_id, memory_cost: memory_cost as u8, credits_paid: cost };
@@ -1443,7 +1413,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
         }
         CardType::Hardware => {
             let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
-            events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
+            events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             next.runner.rig.push(rig_card);
             let installed_event = GameEvent::HardwareInstalled { side, card: card_id, credits_paid: cost };
@@ -1451,7 +1421,7 @@ pub(crate) fn install_runner_card_from_zone_with_discount(
         }
         CardType::Resource => {
             let cost = continuous::install_cost_of(next, registry, &card_def).saturating_sub(discount);
-            events.extend(ability::pay_cost(next, side, &Cost::Credits(cost), Some(&card_id))?);
+            events.extend(ability::pay_cost(next, registry, side, &Cost::Credits(cost), Purpose::Install(&card_def), Some(&card_id))?);
             let rig_card = seed_rig_card(next, registry, card_id.clone())?;
             next.runner.rig.push(rig_card);
             let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
@@ -1496,7 +1466,7 @@ fn install_hardware(
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
     // A console's memory is deliberately *not* applied here: memory is derived
@@ -1571,7 +1541,7 @@ fn install_program(
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
     // Noise: Hacker Extraordinaire-style identity reaction (Virus-subtype
@@ -1634,7 +1604,7 @@ fn install_program_on_ice(
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost), Some(&card_id))?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
     let mut rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     rig_card.hosted_on_ice = Some(host);
     next.runner.rig.push(rig_card);
@@ -1672,15 +1642,7 @@ fn install_resource(
     let cost = continuous::install_cost_of(&next, registry, card_def);
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    // Hosted credits a card lets the Runner spend on this kind of resource
-    // (Open Market: connections and jobs) pay first — see
-    // `CardDefinition::hosted_credits_usable_for`.
-    let subtypes = card_def.subtypes.clone();
-    let (pool_events, from_pools) = ability::drain_hosted_credit_pools(&mut next, registry, cost, |def| {
-        matches!(&def.hosted_credits_usable_for, Some(HostedCreditUse::ResourceInstalls { subtypes: paid }) if paid.iter().any(|s| subtypes.contains(s)))
-    })?;
-    events.extend(pool_events);
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(cost - from_pools), Some(&card_id))?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(cost), Purpose::Install(card_def), Some(&card_id))?);
     let rig_card = seed_rig_card(&mut next, registry, card_id.clone())?;
     next.runner.rig.push(rig_card);
     let installed_event = GameEvent::ResourceInstalled { side, card: card_id, credits_paid: cost };
@@ -1876,7 +1838,7 @@ fn activate_ability(
             }
             _ => cost.clone(),
         };
-        events.extend(ability::pay_cost_ctx(&mut next, side, &discounted, &ability_ctx(is_identity, target, &card_id))?);
+        events.extend(ability::pay_cost_ctx(&mut next, registry, side, &discounted, Purpose::Other, &ability_ctx(is_identity, target, &card_id))?);
     }
     events.push(GameEvent::AbilityActivated { side, card_id: card_id.clone(), ability_index });
     events.extend(ability::evaluate_effect(&mut next, &ability.effect, &mut ability_ctx(is_identity, target, &card_id), registry)?);
@@ -1916,7 +1878,7 @@ fn advance_card(
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(1), Some(&card_id))?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(1), Purpose::Other, Some(&card_id))?);
 
     let installed = next
         .corp
@@ -2034,7 +1996,7 @@ fn remove_tag(state: &GameState, registry: &CardRegistry) -> Result<(GameState, 
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(2), None)?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::Other, None)?);
 
     next.runner.tags -= 1;
     let removed = GameEvent::TagRemoved { side };
@@ -2067,7 +2029,7 @@ fn purge_virus_counters(
     paid_ability::require_no_window(state)?;
 
     let mut next = state.clone();
-    let mut events = ability::pay_cost(&mut next, side, &Cost::Clicks(3), None)?;
+    let mut events = ability::pay_cost(&mut next, registry, side, &Cost::Clicks(3), Purpose::Other, None)?;
     events.push(purge_all_virus_counters(&mut next, registry));
 
     Ok((next, events))
@@ -2120,7 +2082,7 @@ fn trash_resource(
     spend_click(&mut next, side)?;
 
     let mut events = vec![GameEvent::ClickSpent { side }];
-    events.extend(ability::pay_cost(&mut next, side, &Cost::Credits(2), None)?);
+    events.extend(ability::pay_cost(&mut next, registry, side, &Cost::Credits(2), Purpose::Other, None)?);
 
     let position = next
         .runner
@@ -2243,9 +2205,9 @@ fn pass_priority_action(
 }
 
 /// Resolves `PlayerAction::SubmitCorpTraceBid`, per its doc comment.
-fn submit_corp_trace_bid(state: &GameState, amount: u32) -> Result<(GameState, Vec<GameEvent>), RulesError> {
+fn submit_corp_trace_bid(state: &GameState, registry: &CardRegistry, amount: u32) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let mut next = state.clone();
-    let events = trace::submit_corp_bid(&mut next, amount)?;
+    let events = trace::submit_corp_bid(&mut next, registry, amount)?;
     Ok((next, events))
 }
 

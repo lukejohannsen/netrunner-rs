@@ -16,6 +16,7 @@ mod listeners;
 mod masking;
 pub mod memory;
 mod paid_ability;
+mod payment;
 pub(crate) mod pending_choice;
 mod run;
 mod setup;
@@ -28,7 +29,7 @@ mod prevention;
 pub mod turn_log;
 mod win;
 
-pub use ability::{evaluate_effect, pay_cost, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
+pub use ability::{evaluate_effect, process_card_triggers, resolve_unbroken_subroutines, ResolutionContext};
 pub use action::{PlayerAction, ServerTarget, TargetZone};
 pub use action_mask::{get_action_mask, ActionSpace};
 pub use damage::apply_damage;

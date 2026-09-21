@@ -10,6 +10,7 @@ use crate::dsl::{card_matches_filter, CardFilter, CardId, CardZoneRef, Cost, Eff
 use crate::rules::ability;
 use crate::rules::dispatcher;
 use crate::rules::error::RulesError;
+use crate::rules::payment::Purpose;
 use crate::rules::event::GameEvent;
 use crate::rules::lingering::{Lingering, LingeringEffect, On, Until};
 use crate::rules::paid_ability;
@@ -488,7 +489,7 @@ pub(crate) fn resolve_accept(
         other => other.clone(),
     };
 
-    let cost_events = ability::pay_cost_ctx(state, pending.side, &cost_to_pay, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?;
+    let cost_events = ability::pay_cost_ctx(state, registry, pending.side, &cost_to_pay, Purpose::Other, &ability::ResolutionContext::for_parked(pending.source_install, pending.source_card.as_ref()))?;
     // A tag paid as a cost (`Cost::TakeTags`, Funhouse's "end the run
     // unless the Runner takes 1 tag") is still the Runner taking a tag:
     // NBN: Reality Plus's `Trigger::OnTagsGiven` must fire for it, exactly

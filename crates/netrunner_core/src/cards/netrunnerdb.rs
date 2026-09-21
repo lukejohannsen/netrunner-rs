@@ -210,7 +210,7 @@ fn convert_one(dto: NetrunnerDbCardDto) -> Result<CardDefinition, CardConversion
         flavor: dto.flavor.as_deref().map(strip_markup),
         image_url: None,
         additional_play_cost: None,
-        hosted_credits_usable_for: None,
+        pays_for: Vec::new(),
         trash_when_empty: false,
         may_install_agendas_faceup: false,
         rez_alternatives: Vec::new(),
