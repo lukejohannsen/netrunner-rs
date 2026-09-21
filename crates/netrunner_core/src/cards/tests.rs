@@ -4412,6 +4412,61 @@ mod system_gateway {
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::CreditsGained { side: Side::Runner, amount: 6 })));
     }
 
+    /// "[click], [trash]:" is the price, paid before the credits (CR 1.16),
+    /// and a cost is never prevented (1.16.1a). Written as the effect's last
+    /// step, the trash went through the prevention window, so a Runner with
+    /// Sacrificial Construct beside it was asked, could save Fermenter, and
+    /// kept a card it had cashed in. The credits still count the counters
+    /// Fermenter held when it was trashed (`ResolutionContext::last_known`).
+    #[test]
+    fn fermenter_is_trashed_as_its_cost_and_sacrificial_construct_is_not_asked() {
+        let registry = super::registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(5);
+        let rig = |card: &str, install: u32, counters: u32| crate::rules::InstalledRunnerCard {
+            card: CardId(card.to_string()),
+            install_id: InstallId(install),
+            counters,
+            ..Default::default()
+        };
+        state.runner.rig = vec![rig("fermenter", 2001, 3), rig("sacrificial_construct", 2002, 0)];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(2001), ability_index: 0 })
+            .expect("cash out fermenter");
+
+        assert!(state.pending_prevention.is_none(), "a cost opens no prevention window");
+        assert_eq!(state.runner.resources.credits, Credits(11), "5 + the 3 counters it held × 2");
+        assert_eq!(state.runner.heap, vec![CardId("fermenter".to_string())]);
+        assert_eq!(state.runner.rig.len(), 1, "the construct is untouched");
+    }
+
+    /// The remembered numbers are the trashed install's, never a sibling
+    /// copy's: with a second Fermenter still installed, the first one's
+    /// cash-out reads what the first one held.
+    #[test]
+    fn a_trashed_fermenter_counts_its_own_counters_not_a_sibling_copys() {
+        let registry = sg_registry();
+        let mut state = base_state();
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.resources.credits = Credits(0);
+        let fermenter = |install: u32, counters: u32| crate::rules::InstalledRunnerCard {
+            install_id: InstallId(install),
+            card: CardId("fermenter".to_string()),
+            counters,
+            ..Default::default()
+        };
+        state.runner.rig = vec![fermenter(3001, 1), fermenter(3002, 4)];
+
+        let (state, _) = apply_action(&state, &registry, PlayerAction::ActivateAbility { target: InstallId(3001), ability_index: 0 })
+            .expect("cash the first");
+        assert_eq!(state.runner.resources.credits, Credits(2), "its own 1 counter, not the other copy's 4");
+        assert_eq!(state.runner.rig.len(), 1);
+        assert_eq!(state.runner.rig[0].counters, 4, "the other copy keeps its counters");
+    }
+
     #[test]
     fn cookbook_may_place_a_counter_on_a_newly_installed_virus_program_but_not_on_itself() {
         let registry = sg_registry();

@@ -1916,8 +1916,48 @@ one.
    *Deferred by name:* the approach-server step as a phase of its own (it
    stays `Success`'s entry, which nothing needs apart), and a trigger on
    passing ice, until a card prints one.
-8. **Cost types** (§2.4; was item 5). jinteki's 50 are the backlog, taken
-   as cards need them.
+8. **Cost types — IN PROGRESS (21 September 2026)** (§2.4; was item 5).
+   jinteki's 50 are the backlog, taken as cards need them.
+
+   **What reading it found first: no card needs a cost type to exist, and
+   ten write one as an effect.** Both set gates' exclusion lists are empty,
+   so nothing waits on a missing variant. What the pool has instead is
+   printed costs written as effects, which is wrong three ways. *The cost
+   is paid after the thing it pays for* (Fermenter and Rent Rioters
+   trashed themselves as the ability's last step). *A cost can be
+   prevented*, which Comprehensive Rules 1.16.1a forbids: Fermenter's
+   trash went through `prevention::would`, so a Runner with Sacrificial
+   Construct was asked and kept the card it had cashed in, and Semak-samun's
+   "unless the Runner suffers 3 net damage" can be met by Net Shield.
+   *Affordability is a requirement beside the payment*
+   (`ZoneHasAtLeast`, `ScoreAreaHasAtLeast` on Carnivore, LEO Construction,
+   Anoetic Void, Plutus), and `Effect::ForfeitAgendas` never asks the Corp
+   which agenda. The reason is one constraint: `ability::pay_cost_ctx`
+   could not ask a question, so every cost that picks a card became an
+   effect. The plan, in stacked PRs: the costs that pick nothing
+   (self-trash, remove tags, suffer damage), then a cost that picks cards
+   parked by replay the way a payment split already is
+   (`RulesError::PaymentChoiceNeeded`), then forfeit.
+
+   **Stage 1: a self-trash is a cost** (`fix/trash-self-is-a-cost`).
+   Fermenter is `AllOf[Clicks(1), TrashSelf]` and Rent Rioters
+   `AllOf[Clicks(3), TrashSelf]`, as Humanoid Resources already was.
+   Fermenter's "for each hosted virus counter" then reads a card its cost
+   has trashed, so the payer remembers the install's numbers before it pays
+   (`ResolutionContext::last_known`, taken in `engine::activate_ability`)
+   and `counters_of`/`advancement_tokens_of` read them only when the named
+   install has left play — the same object's memory, never a sibling copy's
+   (`a_trashed_fermenter_counts_its_own_counters_not_a_sibling_copys`). On
+   the context, not on `GameState`: the State Hygiene Rule's test, since
+   it is read within one resolution and nothing that reads it parks first.
+   `fermenter_is_trashed_as_its_cost_and_sacrificial_construct_is_not_asked`
+   failed on `main`. **Measured** (`coverage_identical.py main`, 192 games,
+   all four shapes): no game moved; only `effects_seen` did, `TrashCard` and
+   `Sequence` each down by the cash-outs now paid as a cost (61 random, 1
+   heuristic). Predicted identical, and missed that `effects_seen` counts
+   the trash that left the effect. Sacrificial Construct is in a Sweep deck
+   only, which no matchup pairs with Fermenter, so no game could show the
+   bug.
 9. **A scenario builder for card tests** (§4; was item 6). A deck-and-hand
    spec that reaches a real state through `setup` and actions, plus helpers
    that address cards by name. It is test code only.

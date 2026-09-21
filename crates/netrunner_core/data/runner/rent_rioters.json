@@ -12,19 +12,17 @@
     {
       "trigger": "Paid",
       "cost": {
-        "Clicks": 3
+        "AllOf": [
+          {
+            "Clicks": 3
+          },
+          "TrashSelf"
+        ]
       },
       "effect": {
-        "Sequence": [
-          {
-            "GainCredits": [
-              "Runner",
-              9
-            ]
-          },
-          {
-            "TrashCard": "ThisCard"
-          }
+        "GainCredits": [
+          "Runner",
+          9
         ]
       },
       "text": "[click][click][click],[trash]: Gain 9[credit]."
