@@ -379,7 +379,7 @@ fn happen(
             dispatcher::emit(state, registry, &mut events, GameEvent::TagsGiven { side: Side::Runner, amount })?;
             Ok(events)
         }
-        WouldHappen::Trash { owner, install } => Ok(ability::trash_install(state, *owner, *install)),
+        WouldHappen::Trash { owner, install } => Ok(ability::trash_install(state, registry, *owner, *install)),
     }
 }
 

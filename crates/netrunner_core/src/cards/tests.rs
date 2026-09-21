@@ -6637,7 +6637,7 @@ mod system_gateway {
 
         // The host leaving the rig takes the hardware with it.
         let mut state = state;
-        let removed = crate::rules::pending_choice::remove_installed_card(&mut state, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, InstallId(1))
+        let removed = crate::rules::pending_choice::remove_installed_card(&mut state, &registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, InstallId(1))
             .expect("cleaver was installed");
         assert_eq!(removed.0, CardId("cleaver".to_string()));
         assert!(removed.2.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { side: Side::Runner, card } if card.0 == "gamedragon_pro")));
@@ -7479,7 +7479,7 @@ mod system_gateway {
 
         // The console leaving takes its hosted cards to the heap.
         let mut state = state;
-        let removed = crate::rules::pending_choice::remove_installed_card(&mut state, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, InstallId(1))
+        let removed = crate::rules::pending_choice::remove_installed_card(&mut state, &registry, Side::Runner, &crate::dsl::CardZoneRef::OwnInstalled, InstallId(1))
             .expect("madani was installed");
         assert!(removed.2.iter().any(|e| matches!(e, crate::rules::GameEvent::CardTrashed { card, .. } if card.0 == "cleaver")));
         assert!(state.runner.heap.contains(&CardId("cleaver".to_string())));
@@ -9490,6 +9490,8 @@ mod system_gateway {
         let mut state = runner_turn(5, 4);
         state.corp.resources.credits = Credits(4);
         state.corp.scored_agendas = vec![crate::rules::ScoredAgenda::plain(CardId("greenmail".to_string()))];
+        let greenmail_points = registry.get(&CardId("greenmail".to_string())).and_then(|c| c.agenda_points).expect("an agenda");
+        state.corp.resources.agenda_points = crate::rules::AgendaPoints(greenmail_points);
         state.corp.installed = vec![ice_installed("biawak", ServerId::Hq, false)];
         let (state, _) = apply_action(&state, &registry, PlayerAction::InitiateRun { server: ServerId::Hq }).expect("run");
         let (state, _) = apply_action(&state, &registry, PlayerAction::ContinueRun).expect("approach");
@@ -9497,6 +9499,9 @@ mod system_gateway {
         assert!(state.corp.installed[0].rezzed);
         assert!(state.corp.scored_agendas.is_empty());
         assert_eq!(state.corp.resources.credits, Credits(4), "4 paid for the rez, 4 back from Greenmail");
+        // CR 1.17.1: the score is the score area's, so the forfeit took
+        // Greenmail's points with it. The shown score used to keep them.
+        assert_eq!(state.corp.resources.agenda_points.0, 0);
         assert!(events.iter().any(|e| matches!(e, crate::rules::GameEvent::AgendaForfeited { .. })));
     }
 

@@ -439,6 +439,7 @@ fn is_corp_archives(chooser: Side, zone: &CardZoneRef) -> bool {
 /// in the rig pointing at ICE that no longer existed.
 pub(crate) fn remove_installed_card(
     state: &mut GameState,
+    registry: &CardRegistry,
     chooser: Side,
     zone: &CardZoneRef,
     install_id: InstallId,
@@ -457,7 +458,7 @@ pub(crate) fn remove_installed_card(
         Side::Runner => {
             let pos = state.runner.rig.iter().position(|c| c.install_id == install_id)?;
             let removed = state.runner.rig.remove(pos);
-            let cascade = ability::cascade_trash_hosted_on_rig_card(state, &removed);
+            let cascade = ability::cascade_trash_hosted_on_rig_card(state, registry, &removed);
             Some((removed.card, true, cascade))
         }
     }
@@ -527,6 +528,7 @@ pub(crate) fn pick_for_cost(
 /// `CardsTrashedFromHq` among them (AU Co.).
 pub(crate) fn trash_as_cost(
     state: &mut GameState,
+    registry: &CardRegistry,
     side: Side,
     zone: &CardZoneRef,
     positions: &[usize],
@@ -551,7 +553,7 @@ pub(crate) fn trash_as_cost(
             (Some(ids), _) => {
                 let install = ids.get(positions[index]).copied().ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
                 let (_, was_public, hosted) =
-                    remove_installed_card(state, side, zone, install).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
+                    remove_installed_card(state, registry, side, zone, install).ok_or(RulesError::CardNotEligibleForSelection(positions[index]))?;
                 cascade = hosted;
                 was_public
             }
@@ -943,7 +945,7 @@ pub(crate) fn resolve_confirm_card_selection(
             let moved: Option<bool> = match &source {
                 CardZoneRef::OpponentInstalled | CardZoneRef::OwnInstalled => selected_installs
                     .get(index)
-                    .and_then(|install_id| remove_installed_card(state, side, &source, *install_id))
+                    .and_then(|install_id| remove_installed_card(state, registry, side, &source, *install_id))
                     .map(|(_, was_public, hosted)| {
                         cascade = hosted;
                         was_public

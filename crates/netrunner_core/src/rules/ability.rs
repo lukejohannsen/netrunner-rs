@@ -297,9 +297,13 @@ pub fn evaluate_effect(
         Effect::DrawCards(side, amount) => {
             // Mirrors engine::draw_card_click's existing per-card pattern,
             // generalized to `amount` and either side's deck. An empty
-            // deck is a silent stop (fewer than `amount` cards drawn, even
-            // zero) rather than an error, matching draw_card_click's
-            // established precedent.
+            // stack is a silent stop for the Runner, who never decks out.
+            // The Corp loses: "The Runner wins if the Corp is required to
+            // draw a card from R&D but cannot because R&D is empty" (CR
+            // 1.7.2c). That is a failed attempt, not a standing condition,
+            // so it is here rather than in `checkpoint`; it was a silent
+            // stop for both, and Sprint or Spin Doctor on an empty R&D
+            // drew nothing and played on.
             let mut events = Vec::new();
             for _ in 0..*amount {
                 let drawn = match side {
@@ -314,7 +318,12 @@ pub fn evaluate_effect(
                         }
                         events.push(GameEvent::CardDrawn { side: *side });
                     }
-                    None => break,
+                    None => {
+                        if *side == Side::Corp {
+                            events.extend(crate::rules::win::end_game(state, Side::Runner));
+                        }
+                        break;
+                    }
                 }
             }
             Ok(events)
@@ -383,7 +392,7 @@ pub fn evaluate_effect(
             // the target is trashed the way it always was.
             match installed_target(state, target, ctx) {
                 Some(what) if prevention::could_prevent(state, registry, &what) => prevention::would(state, registry, what, ctx),
-                _ => trash_card(state, target, ctx),
+                _ => trash_card(state, registry, target, ctx),
             }
         }
 
@@ -620,7 +629,7 @@ pub fn evaluate_effect(
                 if state.corp.r_and_d.is_empty() {
                     break;
                 }
-                events.extend(trash_card(state, &CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }, ctx)?);
+                events.extend(trash_card(state, registry, &CardTarget::TopOfStack { side: Side::Corp, zone: StackZone::RAndD }, ctx)?);
             }
             Ok(events)
         }
@@ -1652,7 +1661,7 @@ fn installed_target(state: &GameState, target: &CardTarget, ctx: &ResolutionCont
 /// asked about does. Exact with two copies installed, where
 /// `trash_card`'s `CardTarget`s name a card and take the first. Nothing
 /// happens if the install left play while the trash was parked.
-pub(crate) fn trash_install(state: &mut GameState, owner: Side, install: InstallId) -> Vec<GameEvent> {
+pub(crate) fn trash_install(state: &mut GameState, registry: &CardRegistry, owner: Side, install: InstallId) -> Vec<GameEvent> {
     match owner {
         Side::Corp => {
             let Some(position) = state.corp.installed.iter().position(|c| c.install_id == install) else { return Vec::new() };
@@ -1670,7 +1679,7 @@ pub(crate) fn trash_install(state: &mut GameState, owner: Side, install: Install
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card.clone());
             let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: removed.card.clone() }];
-            events.extend(cascade_trash_hosted_on_rig_card(state, &removed));
+            events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
             events
         }
     }
@@ -1748,12 +1757,6 @@ pub(crate) fn dispatch_damage_taken(
     Ok(fired)
 }
 
-/// `Effect::AddCounters`/`RemoveCounters`'s shared implementation:
-/// saturating-applies `delta` (negative to remove) to `acting_card`'s
-/// `counters` field, wherever it's currently installed/rigged. Mirrors
-/// `trash_this_card`'s "try Corp installed, then Runner rig" search order,
-/// but doesn't need `trash_this_card`'s hand/deck arms — counters only ever
-/// live on an installed/rigged card, never in a hand or deck zone.
 /// Credits gained by a resolving card, as opposed to by a click or a
 /// trace payout: pays them, emits `CreditsGained`, and — when there is an
 /// acting card to name — `GameEvent::AbilityGainedCredits` with its
@@ -1766,6 +1769,12 @@ pub(crate) fn dispatch_damage_taken(
 /// round — and safe in practice because the one reader is gated
 /// `OncePerTurn`; a second reader that gains credits must carry the same
 /// gate.
+///
+/// A gain of 0 does not take place: "If a value aggregated in this way is
+/// less than or equal to 0, instead the part of the effect associated with
+/// that value does not take place at all" (CR 9.12.2b). It used to emit a
+/// gain of 0, which The Zwicky Group heard as the card gaining credits and
+/// drew for: Bigger Picture against a Runner with no credits to lose.
 fn gain_credits_from_ability(
     state: &mut GameState,
     registry: &CardRegistry,
@@ -1773,6 +1782,9 @@ fn gain_credits_from_ability(
     amount: u32,
     ctx: &ResolutionContext<'_>,
 ) -> Result<Vec<GameEvent>, RulesError> {
+    if amount == 0 {
+        return Ok(Vec::new());
+    }
     state.resources_mut(side).credits = state.resources(side).credits.gain(amount);
     let mut events = vec![GameEvent::CreditsGained { side, amount }];
     if let Some(card) = ctx.acting_card {
@@ -1782,6 +1794,12 @@ fn gain_credits_from_ability(
     Ok(events)
 }
 
+/// `Effect::AddCounters`/`RemoveCounters`'s shared implementation:
+/// saturating-applies `delta` (negative to remove) to `acting_card`'s
+/// `counters` field, wherever it's currently installed/rigged. Mirrors
+/// `trash_this_card`'s "try Corp installed, then Runner rig" search order,
+/// but doesn't need `trash_this_card`'s hand/deck arms — counters only ever
+/// live on an installed/rigged card, never in a hand or deck zone.
 pub(crate) fn modify_counters(
     state: &mut GameState,
     ctx: &ResolutionContext<'_>,
@@ -1812,13 +1830,14 @@ pub(crate) fn modify_counters(
 
 pub(crate) fn trash_card(
     state: &mut GameState,
+    registry: &CardRegistry,
     target: &CardTarget,
     ctx: &ResolutionContext<'_>,
 ) -> Result<Vec<GameEvent>, RulesError> {
     match target {
         CardTarget::ThisCard => {
             ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?;
-            trash_this_card(state, ctx)
+            trash_this_card(state, registry, ctx)
         }
 
         CardTarget::CorpInstalled { card, server } => {
@@ -1844,7 +1863,7 @@ pub(crate) fn trash_card(
         // it recurses into that same arm).
         CardTarget::HostIce => {
             let (_, host, server) = resolve_corp_installed_target(state, target, ctx)?;
-            trash_card(state, &CardTarget::CorpInstalled { card: host, server }, ctx)
+            trash_card(state, registry, &CardTarget::CorpInstalled { card: host, server }, ctx)
         }
 
         // Handled by `evaluate_effect`'s `TrashCard` arm before it gets
@@ -1861,7 +1880,7 @@ pub(crate) fn trash_card(
             let removed = state.runner.rig.remove(position);
             state.runner.heap.push(removed.card.clone());
             let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card.clone() }];
-            events.extend(cascade_trash_hosted_on_rig_card(state, &removed));
+            events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
             Ok(events)
         }
 
@@ -1907,40 +1926,45 @@ pub(crate) fn trash_card(
 /// Keyed by the host's `InstallId`, so with two copies of one ICE installed
 /// only the trojans on the copy that left go — `hosted_on_ice` used to be a
 /// `CardId` and both copies' trojans went together.
+/// `Effect::TrashCard(CardTarget::HostedOnThisCard)` — Bling's "trash all
+/// hosted cards". Each card goes to its owner's discard pile
+/// (`trash_hosted_card`).
+fn trash_hosted_cards(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
+    let position = acting_rig_position(state, ctx).ok_or(RulesError::UnresolvedCardTarget)?;
+    let hosted = std::mem::take(&mut state.runner.rig[position].hosted_cards);
+    Ok(hosted.into_iter().map(|card| trash_hosted_card(state, registry, card)).collect())
+}
+
+/// Trashes one card hosted uninstalled on a rig card to its *owner's*
+/// discard pile: "Trashing is the act of moving an object to its owner's
+/// discard pile" (CR 1.19.1). A Runner card goes to the heap; a Corp card
+/// — Detente hosts one from HQ — goes faceup to Archives, since it sat
+/// faceup on the table. One function for Bling's "trash all hosted cards"
+/// and for the host leaving the rig, which sent a Corp card to the heap.
+fn trash_hosted_card(state: &mut GameState, registry: &CardRegistry, card: CardId) -> GameEvent {
+    let side = registry.get(&card).map_or(Side::Runner, |def| def.side);
+    match side {
+        Side::Runner => state.runner.heap.push(card.clone()),
+        Side::Corp => state.corp.archives.push(ArchivedCard::faceup(card.clone())),
+    }
+    GameEvent::CardTrashed { side, card }
+}
+
 /// The rig-side twin of `cascade_trash_hosted_programs`: when the rig card
 /// `host` leaves the rig, every card hosted on it
 /// (`InstalledRunnerCard::hosted_on_program == Some(host)`) is trashed too
 /// — GAMEDRAGON™ Pro goes with the icebreaker it sits on. Called from
 /// every site that removes a rig card. A no-op for the overwhelming
 /// majority of rig cards, which host nothing.
-/// `Effect::TrashCard(CardTarget::HostedOnThisCard)` — Bling's "trash all
-/// hosted cards". Each card returns to its owner's discard pile: a Runner
-/// card to the heap, a Corp card (a Detente-style host) faceup to
-/// Archives, since it sat faceup on the table.
-fn trash_hosted_cards(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
-    let position = acting_rig_position(state, ctx).ok_or(RulesError::UnresolvedCardTarget)?;
-    let hosted = std::mem::take(&mut state.runner.rig[position].hosted_cards);
-    let mut events = Vec::with_capacity(hosted.len());
-    for card in hosted {
-        let side = registry.get(&card).map_or(Side::Runner, |def| def.side);
-        match side {
-            Side::Runner => state.runner.heap.push(card.clone()),
-            Side::Corp => state.corp.archives.push(ArchivedCard::faceup(card.clone())),
-        }
-        events.push(GameEvent::CardTrashed { side, card });
-    }
-    Ok(events)
-}
-
-pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, removed: &InstalledRunnerCard) -> Vec<GameEvent> {
+pub(crate) fn cascade_trash_hosted_on_rig_card(state: &mut GameState, registry: &CardRegistry, removed: &InstalledRunnerCard) -> Vec<GameEvent> {
     let host = removed.install_id;
     let mut events = Vec::new();
-    // Cards hosted *uninstalled* on the host (Madani's programs) are
-    // trashed with it too — they were in no other zone, and they left the
-    // rig inside `removed`, which is why this takes the card and not its id.
+    // Cards hosted *uninstalled* on the host (Madani's programs, Detente's
+    // Corp cards) are trashed with it too — they were in no other zone,
+    // and they left the rig inside `removed`, which is why this takes the
+    // card and not its id.
     for hosted in &removed.hosted_cards {
-        state.runner.heap.push(hosted.clone());
-        events.push(GameEvent::CardTrashed { side: Side::Runner, card: hosted.clone() });
+        events.push(trash_hosted_card(state, registry, hosted.clone()));
     }
     while let Some(position) = state.runner.rig.iter().position(|c| c.hosted_on_program == Some(host)) {
         let removed = state.runner.rig.remove(position);
@@ -1992,7 +2016,7 @@ fn runner_is_accessing(state: &GameState, card_id: &CardId) -> bool {
         })
 }
 
-pub(crate) fn trash_this_card(state: &mut GameState, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
+pub(crate) fn trash_this_card(state: &mut GameState, registry: &CardRegistry, ctx: &ResolutionContext<'_>) -> Result<Vec<GameEvent>, RulesError> {
     let card_id = &ctx.acting_card.ok_or(RulesError::MissingActingCardContext)?.clone();
     if let Some(position) = acting_corp_position(state, ctx) {
         // Same rezzed-or-not rule as `CardTarget::CorpInstalled` above,
@@ -2030,7 +2054,7 @@ pub(crate) fn trash_this_card(state: &mut GameState, ctx: &ResolutionContext<'_>
         let removed = state.runner.rig.remove(position);
         state.runner.heap.push(removed.card.clone());
         let mut events = vec![GameEvent::CardTrashed { side: Side::Runner, card: card_id.clone() }];
-        events.extend(cascade_trash_hosted_on_rig_card(state, &removed));
+        events.extend(cascade_trash_hosted_on_rig_card(state, registry, &removed));
         return Ok(events);
     }
     // An install that has already left play is gone: its hand/deck
@@ -2151,7 +2175,7 @@ pub(crate) fn pay_cost_ctx(
 
         Cost::TrashSelf => {
             acting_card.ok_or(RulesError::MissingActingCardContext)?;
-            trash_this_card(state, ctx)
+            trash_this_card(state, registry, ctx)
         }
 
         Cost::TrashRandomFromHq(count) => {
@@ -2220,6 +2244,15 @@ pub(crate) fn pay_cost_ctx(
             for install in installs {
                 let Some(position) = state.corp.scored_agendas.iter().position(|s| s.install_id == install) else { continue };
                 let forfeited = state.corp.scored_agendas.remove(position);
+                // "The sum of all agenda points on agendas in a player's
+                // score area is that player's score" (CR 1.17.1), so a
+                // forfeited agenda takes its points with it. The win check
+                // recounts the score area and was right; this is the
+                // number the view, the HUD and the bots read, which kept
+                // the forfeited points.
+                let points = crate::rules::win::agenda_value(&forfeited.card, registry).unwrap_or(0);
+                state.corp.resources.agenda_points =
+                    crate::rules::state::AgendaPoints(state.corp.resources.agenda_points.0.saturating_sub(points));
                 // Out of the game rather than to Archives (it was never on
                 // the table), taking its counters with it. Returned, not
                 // dispatched: the payer dispatches (`dispatch_cost_events`),
@@ -2237,7 +2270,7 @@ pub(crate) fn pay_cost_ctx(
                 return Err(RulesError::NotEnoughCardsToTrash { required: *count, available: eligible.len() as u32 });
             }
             let picked = crate::rules::pending_choice::pick_for_cost(state, side, from, &eligible, *count, ctx.acting_install)?;
-            crate::rules::pending_choice::trash_as_cost(state, side, from, &picked, *reveal, ctx.acting_install)
+            crate::rules::pending_choice::trash_as_cost(state, registry, side, from, &picked, *reveal, ctx.acting_install)
         }
 
         Cost::TakeTags(amount) => {
@@ -2815,6 +2848,49 @@ mod tests {
         assert_eq!(state.runner.grip, vec![CardId("only_card".to_string())]);
         assert!(state.runner.stack.is_empty());
         assert_eq!(events, vec![GameEvent::CardDrawn { side: Side::Runner }]);
+    }
+
+    /// CR 1.19.1: "Trashing is the act of moving an object to its owner's
+    /// discard pile." A Corp card Detente hosts goes to Archives when
+    /// Detente is trashed; it went to the Runner's heap, where the Corp's
+    /// Archives-reading cards could never find it.
+    #[test]
+    fn a_corp_card_hosted_on_detente_goes_to_archives_when_detente_is_trashed() {
+        let card = |id: &str, side: Side, card_type: CardType| CardDefinition { id: CardId(id.to_string()), side, card_type, ..CardDefinition::default() };
+        let registry = CardRegistry::from_cards(vec![
+            card("detente", Side::Runner, CardType::Hardware),
+            card("hedge_fund", Side::Corp, CardType::Operation),
+        ]);
+        let mut state = game_state();
+        state.runner.rig = vec![crate::rules::state::InstalledRunnerCard {
+            install_id: fixture_install_id("detente"),
+            card: CardId("detente".to_string()),
+            hosted_cards: vec![CardId("hedge_fund".to_string())],
+            ..Default::default()
+        }];
+        let install = state.runner.rig[0].install_id;
+
+        let events = trash_install(&mut state, &registry, Side::Runner, install);
+
+        assert_eq!(state.runner.heap, vec![CardId("detente".to_string())], "only Detente is the Runner's");
+        assert_eq!(state.corp.archives, vec![ArchivedCard::faceup(CardId("hedge_fund".to_string()))]);
+        assert!(events.contains(&GameEvent::CardTrashed { side: Side::Corp, card: CardId("hedge_fund".to_string()) }));
+    }
+
+    /// CR 1.7.2c: "The Runner wins if the Corp is required to draw a card
+    /// from R&D but cannot because R&D is empty." Drawing what there is
+    /// comes first, so a draw of two from one card takes the card and
+    /// then loses.
+    #[test]
+    fn a_corp_required_to_draw_from_an_empty_r_and_d_loses() {
+        let mut state = game_state();
+        state.corp.r_and_d = vec![CardId("only_card".to_string())];
+
+        let events = evaluate_effect(&mut state, &Effect::DrawCards(Side::Corp, 2), &mut ResolutionContext::for_card(None), &CardRegistry::new()).unwrap();
+
+        assert_eq!(state.corp.hq.last(), Some(&CardId("only_card".to_string())));
+        assert_eq!(state.phase, GamePhase::GameOver(Side::Runner));
+        assert_eq!(events, vec![GameEvent::CardDrawn { side: Side::Corp }, GameEvent::GameOver { winner: Side::Runner }]);
     }
 
     #[test]
@@ -4240,7 +4316,8 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.runner.resources.credits, Credits(5));
-        assert_eq!(events, vec![GameEvent::CreditsGained { side: Side::Runner, amount: 0 }]);
+        // CR 9.12.2b: a "for each" that comes to 0 does not take place.
+        assert!(events.is_empty(), "{events:?}");
     }
 
     #[test]
