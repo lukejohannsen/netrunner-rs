@@ -15,15 +15,32 @@ pub enum ServerId {
     Remote(u32),
 }
 
-/// The 5 states of a run. The doc's finer-grained steps (Rez Window,
-/// Subroutine Resolution, Pass ICE, Jack Out/Continue) are modeled as
-/// `RunAction`-driven transitions within `ApproachIce`/`EncounterIce`, not as
-/// additional phase variants.
+/// Where a run stands: the Comprehensive Rules' phases (6.9), with the
+/// approach of the server kept as the entry to `Success` and the breach as
+/// `AccessingCard`. The steps inside a phase — the rez window, resolving
+/// subroutines, the paid-ability windows — are `RunAction`-driven
+/// transitions and `PaidAbilityWindow`s within it, not further variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum RunPhase {
     Initiation,
     ApproachIce,
     EncounterIce,
+    /// CR 6.9.4, between one piece of ice and whatever is next: entered from
+    /// every pass (`run::engine::pass_current_ice`), from an initiation with
+    /// no ice to approach, and when the ice being approached or encountered
+    /// leaves the table. `position` already names the next ice inward, or
+    /// `ice.len()` when the server is next.
+    ///
+    /// It has two moments and `RunState::jack_out_permitted` says which,
+    /// so nothing new is stored: while it is `true` the Runner owes the
+    /// decision to jack out or go on (6.9.4b); `ContinueRun` shuts it and
+    /// opens the paid-ability window in which the Corp may rez what is not
+    /// ice (6.9.4d); and when that window closes the Runner approaches the
+    /// next ice or the server (6.9.4e). Without this phase the pass *was*
+    /// the next approach, which put the jack-out decision after the rez it
+    /// exists to precede, and a server with no ice was approached in the
+    /// action that began the run — before its upgrades could be rezzed.
+    Movement,
     /// Resolving accessed cards one at a time via `PlayerAction::
     /// StealAgenda`/`TrashAccessedCard`/`PassAccessedCard`. Entered from
     /// `Success` once `PlayerAction::CompleteRun` finds a non-empty access
@@ -227,7 +244,8 @@ impl Default for AccessState {
 ///
 /// Invariant (caller's responsibility when hand-building a `RunState`, same
 /// as `GameState`'s own fields): while `phase` is `ApproachIce` or
-/// `EncounterIce`, `position < ice.len()`; while `phase` is `AccessingCard`,
+/// `EncounterIce`, `position < ice.len()`; while it is `Movement`,
+/// `position <= ice.len()`; while `phase` is `AccessingCard`,
 /// `access_state` is `Some`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RunState {
@@ -236,16 +254,14 @@ pub struct RunState {
     pub ice: Vec<RunIce>,
     pub position: usize,
     pub access_state: Option<AccessState>,
-    /// Whether `PlayerAction::JackOut` is currently legal
-    /// (Netrunner/Null Signal Games-style jack-out windows). `false` while
-    /// initially approaching the outermost
-    /// ICE (`initiate_run`'s starting value) or while committed to an
-    /// encounter/subroutine resolution (`ApproachIce --Continue-->
-    /// EncounterIce` closes it); `true` once an ICE has been passed —
-    /// including an unrezzed one, which counts as "passed" — or once the
-    /// server approach step is reached with no ICE remaining (both via
-    /// `run::engine::pass_current_ice`, the single place an ICE gets left
-    /// behind).
+    /// Whether `PlayerAction::JackOut` is currently legal. The Runner may
+    /// jack out at one step of a run only, CR 6.9.4b in the movement phase,
+    /// so this is `true` exactly while the run is in `RunPhase::Movement`
+    /// and the Runner has not yet chosen to go on: set by every way into
+    /// movement, and shut by the `ContinueRun` that opens movement's
+    /// paid-ability window. It is `false` at every approach, ice or server
+    /// — the jack-out decision comes *before* the Corp's chance to rez
+    /// what lies ahead, never after it.
     pub jack_out_permitted: bool,
     /// Temporary Runner credit pool for this run only, seeded from
     /// `state::CorpState::bad_publicity` at `engine::initiate_run`.

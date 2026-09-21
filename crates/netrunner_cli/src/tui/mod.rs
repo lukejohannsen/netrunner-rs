@@ -1349,16 +1349,16 @@ fn server_label(server: ServerId) -> String {
 /// [Run Timing Guide](https://nullsignal.games/players/learn-to-play/run-guide/)
 /// is the one reference both role guides share, so a player who has read
 /// it should see its words on screen. The engine's `RunPhase` maps onto
-/// them directly except for *Movement*, which is the moment between
-/// passing one piece of ice and approaching the next and is never a
-/// decision point here: it is listed so the strip matches the guide, and
-/// is never lit.
+/// them directly. *Movement* was listed and never lit until the engine had
+/// the phase (Rules Audit item 7): it is where the Runner decides whether
+/// to jack out, before the next approach.
 fn run_phase_strip(phase: RunPhase) -> Line<'static> {
     const NAMES: [&str; 6] = ["Initiation", "Approach ice", "Encounter ice", "Movement", "Success", "Run ends"];
     let lit = match phase {
         RunPhase::Initiation => 0,
         RunPhase::ApproachIce => 1,
         RunPhase::EncounterIce => 2,
+        RunPhase::Movement => 3,
         RunPhase::AccessingCard | RunPhase::Success => 4,
         RunPhase::Ended => 5,
     };

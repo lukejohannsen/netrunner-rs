@@ -155,3 +155,45 @@ pub(crate) fn a_run_succeeded_last_turn(state: &mut GameState) {
     a_run_succeeded_this_turn(state);
     crate::rules::turn_log::rotate(state);
 }
+
+/// Plays the run's movement phase out the way a person who does not jack
+/// out would: `ContinueRun` past the jack-out decision, both players pass
+/// the window that opens, and the Runner approaches what is next — the
+/// next piece of ice (standing in its rez window) or the server
+/// (`RunPhase::Success`). From `Initiation` on a server with no ice it is
+/// the whole way to the server.
+///
+/// Stops early on anything parked (a trigger's choice, a paid choice, a
+/// trace, a payment question), so a test can answer it; and it has the
+/// shape of `apply_action`, so a call site that expected the one
+/// `ContinueRun` this used to take keeps its `.expect(...)`.
+pub(crate) fn through_movement(
+    state: &GameState,
+    registry: &crate::cards::CardRegistry,
+) -> Result<(GameState, Vec<crate::rules::GameEvent>), crate::rules::RulesError> {
+    use crate::rules::{apply_action, run::RunPhase, PlayerAction};
+    let mut state = state.clone();
+    let mut events = Vec::new();
+    let mut continued = false;
+    loop {
+        let parked = state.pending_decision.is_some()
+            || state.pending_paid_choice.is_some()
+            || state.active_trace.is_some()
+            || state.pending_payment.is_some();
+        let Some(phase) = state.active_run.as_ref().map(|run| run.phase) else { break };
+        let in_movement = matches!(phase, RunPhase::Initiation | RunPhase::Movement);
+        if parked || (continued && !in_movement) {
+            break;
+        }
+        let action = match &state.paid_ability_window {
+            Some(window) => PlayerAction::PassPriority { side: window.active_priority },
+            None if in_movement => PlayerAction::ContinueRun,
+            None => break,
+        };
+        continued |= action == PlayerAction::ContinueRun;
+        let (next, more) = apply_action(&state, registry, action)?;
+        state = next;
+        events.extend(more);
+    }
+    Ok((state, events))
+}

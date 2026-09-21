@@ -197,9 +197,11 @@ mod tests {
     /// 2,262 with the per-install board blocks, the run and the parked
     /// decision (ROADMAP Phase 2 §5, item 18): the value head scored the
     /// Corp at 0.469 against a 0.724 chair baseline because it could not
-    /// see an advancement token, a rez, or a run's target.
+    /// see an advancement token, a rez, or a run's target. Grew 2,262 →
+    /// 2,263 when the run gained its movement phase (Rules Audit item 7):
+    /// a seventh run-phase slot, appended to the one-hot.
     #[test]
     fn obs_size_constant_is_pinned() {
-        assert_eq!(OBS_SIZE, 2262);
+        assert_eq!(OBS_SIZE, 2263);
     }
 }

@@ -1,5 +1,6 @@
 //! Paid Ability Windows (PAWs): the priority-passing sub-loop that pauses
-//! the run flow at each checkpoint (ICE approach, ICE encounter, pre-access)
+//! the run flow at each checkpoint (ICE approach, ICE encounter, movement,
+//! pre-access)
 //! so both sides get a chance to fire paid abilities before the engine
 //! auto-advances. See `state::PaidAbilityWindow`'s doc comment for the data
 //! model and `PlayerAction::PassPriority`'s for the player-facing contract.
@@ -45,8 +46,12 @@ pub(crate) fn open_window(state: &mut GameState) -> GameEvent {
 }
 
 /// Opens a fresh window if the run just landed on `ApproachIce`/
-/// `EncounterIce`, or on `AccessingCard` with the access sub-state at
-/// `PendingChoice`/`PendingInteractiveTrigger`. Called both after a
+/// `EncounterIce`, on the second moment of `Movement` (the Runner has
+/// chosen not to jack out: CR 6.9.4d, where the Corp may rez what is not
+/// ice), or on `AccessingCard` with the access sub-state at
+/// `PendingChoice`/`PendingInteractiveTrigger`. The first moment of
+/// `Movement` is not one: the jack-out decision is the Runner's alone and
+/// comes before anyone's window. Called both after a
 /// Runner-driven `ContinueRun`/access-resolution action and from
 /// `close_window`'s own auto-advance (arriving at the *next* ICE or the
 /// *next* accessed card). The `Success` checkpoint's window is opened
@@ -81,6 +86,7 @@ pub(crate) fn open_window_if_at_checkpoint(state: &mut GameState) -> Option<Game
     }
     let is_checkpoint = match state.active_run.as_ref().map(|r| &r.phase) {
         Some(RunPhase::ApproachIce) | Some(RunPhase::EncounterIce) => true,
+        Some(RunPhase::Movement) => state.active_run.as_ref().is_some_and(|r| !r.jack_out_permitted),
         Some(RunPhase::AccessingCard) => matches!(
             state.active_run.as_ref().and_then(|r| r.access_state.as_ref()).map(|a| &a.phase),
             Some(AccessPhase::PendingChoice { .. }) | Some(AccessPhase::PendingInteractiveTrigger { .. })
@@ -302,6 +308,14 @@ fn close_run_window(state: &mut GameState, registry: &CardRegistry) -> Result<Ve
             Ok(events)
         }
         RunPhase::EncounterIce => resolve_encounter_ice(state, registry),
+        RunPhase::Movement => {
+            // Movement's window is over: the Runner approaches the next ice
+            // (whose rez window opens) or the server (which opens none —
+            // `CompleteRun` is the Runner's to take).
+            let mut events = run::advance_run(state, RunAction::Continue, registry)?;
+            events.extend(open_window_if_at_checkpoint(state));
+            Ok(events)
+        }
         RunPhase::Success => {
             // This window was opened by `complete_run`. Now actually
             // access — the logic `complete_run` used to run inline.
@@ -350,9 +364,7 @@ pub(crate) fn resolve_encounter_ice(
     // encountered (`run::reconcile_ice`). If so, the encounter is over: its
     // remaining subroutines do not fire, and the run already stands at its
     // next checkpoint — open that window rather than `Continue` past it.
-    let moved = run::reconcile_ice(state, registry)?;
-    if !moved.is_empty() {
-        let mut events = moved;
+    if let Some(mut events) = run::reconcile_ice(state, registry)? {
         events.extend(open_window_if_at_checkpoint(state));
         return Ok(events);
     }
@@ -666,18 +678,16 @@ mod tests {
         pass_priority(&mut state, &registry(), Side::Runner).expect("first pass should succeed");
         let events = pass_priority(&mut state, &registry(), Side::Corp).expect("second pass should succeed");
 
-        // Only one (unrezzed) ICE, so passing it reaches Success with none
-        // remaining — no new window opens there (Success's window is opened
-        // explicitly by `CompleteRun`, not automatically).
+        // Passing the one (unrezzed) ICE lands in the movement phase, whose
+        // first moment is the Runner's alone — no window opens there.
         assert!(state.paid_ability_window.is_none());
-        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Success);
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Movement);
         assert_eq!(
             events,
             vec![
                 GameEvent::PriorityPassed { side: Side::Corp },
                 GameEvent::PaidAbilityWindowClosed,
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::ServerApproached { server: ServerId::Hq },
             ]
         );
     }
@@ -709,7 +719,6 @@ mod tests {
                 },
                 GameEvent::TagsGiven { side: Side::Runner, amount: 1 },
                 GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::ServerApproached { server: ServerId::Hq },
             ]
         );
     }

@@ -564,6 +564,7 @@ impl Prompt {
                 RunPhase::Initiation => "starting",
                 RunPhase::ApproachIce => "approaching ice",
                 RunPhase::EncounterIce => "encountering ice",
+                RunPhase::Movement => "moving on",
                 RunPhase::AccessingCard => "accessing",
                 RunPhase::Success => "successful",
                 RunPhase::Ended => "over",
@@ -704,6 +705,9 @@ mod tests {
         for action in [
             PlayerAction::PlayEvent { card_id: id("overclock") },
             PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) },
+            // No ice: into the movement phase, then on past it; the window
+            // it opens is passed below, and the server approached.
+            PlayerAction::ContinueRun,
             PlayerAction::ContinueRun,
             PlayerAction::CompleteRun,
             PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") },

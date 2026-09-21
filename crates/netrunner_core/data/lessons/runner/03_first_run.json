@@ -94,7 +94,7 @@
       "hint": "Choose Continue run."
     },
     {
-      "prose": "You are at the server. This is your last chance to jack out; instead, complete the run — it becomes successful and you breach the server.",
+      "prose": "You are at the server; your last chance to jack out was just before you approached it. Complete the run — it becomes successful and you breach the server.",
       "allow": {
         "AnyOf": [
           {

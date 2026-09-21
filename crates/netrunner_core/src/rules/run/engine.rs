@@ -195,45 +195,51 @@ pub fn start_run(state: &mut GameState, registry: &CardRegistry, server: ServerI
     Ok(())
 }
 
-fn phase_for_position(ice: &[RunIce], position: usize) -> RunPhase {
-    if position < ice.len() {
-        RunPhase::ApproachIce
-    } else {
-        RunPhase::Success
-    }
+/// Puts the run into the movement phase at `position` — the next ice
+/// inward, or `ice.len()` when the server is next — with the jack-out
+/// decision open (CR 6.9.4b). Every way into movement goes through here:
+/// a pass, an initiation with nothing to approach, and ice that left the
+/// table while it was being approached or encountered.
+fn enter_movement(run: &mut RunState, position: usize) {
+    run.position = position;
+    run.phase = RunPhase::Movement;
+    run.ice_bypassed = false;
+    run.jack_out_permitted = true;
 }
 
-/// Advances `run.position` past the ICE at `position`, updates `run.phase`
-/// via `phase_for_position`, and returns the `IcePassed`-plus-next-step
-/// events shared by both ways an ICE gets left behind: `EncounterIce
-/// --Continue-->` after every subroutine is handled, and `ApproachIce
-/// --Continue-->` auto-passing an unrezzed ICE.
+/// Leaves the ICE at `position` behind — `EncounterIce --Continue-->` after
+/// every subroutine is handled, and `ApproachIce --Continue-->` past an
+/// unrezzed ICE, which counts as passed — and moves the run into the
+/// movement phase. It approaches nothing: the approach is movement's last
+/// step (`approach_next`), after the Runner has decided whether to jack out
+/// and the Corp has had its window.
 fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
+    let event = GameEvent::IcePassed { server: run.server, position: position as u32 };
+    enter_movement(run, position + 1);
+    vec![event]
+}
+
+/// CR 6.9.4e: the end of the movement phase. The Runner approaches the ice
+/// at `position` if there is one — the window stays shut, since the rez
+/// window of the approach opens next (`paid_ability::open_window_if_at_checkpoint`)
+/// — or else the attacked server, which is `RunPhase::Success`'s entry.
+fn approach_next(run: &mut RunState) -> Vec<GameEvent> {
     let server = run.server;
-    let mut events = vec![GameEvent::IcePassed { server, position: position as u32 }];
-    run.position = position + 1;
-    run.ice_bypassed = false;
-    run.phase = phase_for_position(&run.ice, run.position);
-    // An ICE has now been left behind — including an unrezzed one, which
-    // still counts as "passed" — opening the jack-out window whether the
-    // Runner is about to approach the next ICE or has reached the server
-    // approach step with none remaining (Netrunner/Null Signal Games
-    // jack-out rules 2 & 3).
-    run.jack_out_permitted = true;
-    match run.phase {
-        RunPhase::ApproachIce => {
-            events.push(GameEvent::IceApproached { server, position: run.position as u32 })
-        }
-        RunPhase::Success => events.push(GameEvent::ServerApproached { server }),
-        _ => {}
+    run.jack_out_permitted = false;
+    if run.position < run.ice.len() {
+        run.phase = RunPhase::ApproachIce;
+        vec![GameEvent::IceApproached { server, position: run.position as u32 }]
+    } else {
+        run.phase = RunPhase::Success;
+        vec![GameEvent::ServerApproached { server }]
     }
-    events
 }
 
 /// Brings `run.ice` back into step with the attacked server's ICE in
 /// `corp.installed`, and moves the run if the ICE it was standing on is
-/// gone. Returns the step events (`IceApproached`/`ServerApproached`, or
-/// `pass_current_ice`'s) when the run moved, and nothing otherwise.
+/// gone. Returns `Some` with what the move emitted when the run moved —
+/// possibly nothing, since ice that leaves the table puts the run into the
+/// movement phase without being passed — and `None` when it did not.
 ///
 /// `run.ice` was a snapshot taken by `start_run` and never revisited, which
 /// was fine for as long as nothing changed a server's ICE mid-run. Things
@@ -258,12 +264,18 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
 ///   while being *encountered* → the encounter ends and the ICE counts as
 ///   passed, the same transition `continue_run` makes for an unrezzed
 ///   approach.
-/// - gone → the run stands on the first ICE it has not passed, or reaches
-///   the server if there is none. Netrunner: the encounter ends, nothing
-///   more of that ICE resolves (`resolve_unbroken_subroutines` stops when
-///   the phase is no longer `EncounterIce`), the Runner is not said to have
-///   *passed* it (no `IcePassed`), and the jack-out window that a passed
-///   ICE would open opens here too.
+/// - gone → the run moves into the movement phase in front of the first
+///   ICE it has not passed (or the server, if there is none). Netrunner:
+///   the approach or encounter ends, nothing more of that ICE resolves
+///   (`resolve_unbroken_subroutines` stops when the phase is no longer
+///   `EncounterIce`), the Runner is not said to have *passed* it (no
+///   `IcePassed`), and the movement phase follows as it would a pass —
+///   jack-out decision, window, approach.
+///
+/// In the movement phase the run is standing on nothing, so it never
+/// moves: `position` is re-read as the place just inward of the last ICE
+/// passed, so an ICE installed between that one and the next is approached
+/// in turn and one installed outward is not.
 ///
 /// Called from the `engine::apply_action` choke point after the deferred
 /// drain (so a trigger's trash or derez is seen), from `advance_run` before
@@ -272,27 +284,27 @@ fn pass_current_ice(run: &mut RunState, position: usize) -> Vec<GameEvent> {
 /// from `paid_ability::resolve_encounter_ice` before firing subroutines.
 /// When the run moved, a `WindowCheckpoint::Run` window left open belonged
 /// to a step that no longer exists and is cleared — closing it normally
-/// would have resumed into a phase it was never opened for — and
-/// `ServerApproached` is dispatched so `Trigger::OnApproachServer` fires,
-/// as `advance_run` does for the ordinary path. It opens no window itself;
-/// every caller already opens one at the checkpoint it lands on.
+/// would have resumed into a phase it was never opened for. It approaches
+/// nothing and opens no window itself: every move lands in the movement
+/// phase, whose next step is the Runner's.
 ///
 /// Phases `AccessingCard`/`Ended` are left alone: the list is never read
 /// again. `Initiation` re-anchors at 0 (nothing has been approached; a
 /// newly-outermost ICE is approached first); `Success` re-anchors at the
 /// end (ICE installed after the approach is not approached — the rules
 /// agree).
-pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<GameEvent>, RulesError> {
+pub(crate) fn reconcile_ice(
+    state: &mut GameState,
+    registry: &CardRegistry,
+) -> Result<Option<Vec<GameEvent>>, RulesError> {
     // A finished game has no run to move (`win::end_game` clears it), but
-    // say so explicitly: moving a run and dispatching `ServerApproached`
-    // into a finished game could return an `Err` that rejected the very
-    // action that ended it.
+    // say so explicitly.
     if state.is_over() {
-        return Ok(Vec::new());
+        return Ok(None);
     }
-    let Some(run) = state.active_run.as_ref() else { return Ok(Vec::new()) };
+    let Some(run) = state.active_run.as_ref() else { return Ok(None) };
     if matches!(run.phase, RunPhase::AccessingCard | RunPhase::Ended) {
-        return Ok(Vec::new());
+        return Ok(None);
     }
 
     let mut rebuilt = Vec::new();
@@ -314,43 +326,39 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
         }
     }
     if rebuilt == run.ice {
-        return Ok(Vec::new());
+        return Ok(None);
     }
 
     let mut run = state.active_run.take().expect("checked Some above");
-    let server = run.server;
     let old_phase = run.phase;
     let anchor = run.ice.get(run.position).map(|ice| ice.install_id);
     let passed: Vec<_> = run.ice.iter().take(run.position).map(|ice| ice.install_id).collect();
     run.ice = rebuilt;
 
-    let mut events = Vec::new();
+    let mut moved = None;
     match old_phase {
         RunPhase::Initiation => run.position = 0,
         RunPhase::Success => run.position = run.ice.len(),
+        RunPhase::Movement => {
+            run.position = run
+                .ice
+                .iter()
+                .rposition(|ice| passed.contains(&ice.install_id))
+                .map_or(0, |last_passed| last_passed + 1);
+        }
         RunPhase::ApproachIce | RunPhase::EncounterIce => {
             match anchor.and_then(|id| run.ice.iter().position(|ice| ice.install_id == id)) {
                 Some(index) => {
                     run.position = index;
                     if old_phase == RunPhase::EncounterIce && !run.ice[index].rezzed {
-                        events.extend(pass_current_ice(&mut run, index));
+                        moved = Some(pass_current_ice(&mut run, index));
                     }
                 }
                 None => {
                     let position =
                         run.ice.iter().position(|ice| !passed.contains(&ice.install_id)).unwrap_or(run.ice.len());
-                    run.position = position;
-                    run.phase = phase_for_position(&run.ice, position);
-                    if old_phase == RunPhase::EncounterIce {
-                        run.jack_out_permitted = true;
-                    }
-                    match run.phase {
-                        RunPhase::Success => {
-                            run.jack_out_permitted = true;
-                            events.push(GameEvent::ServerApproached { server });
-                        }
-                        _ => events.push(GameEvent::IceApproached { server, position: position as u32 }),
-                    }
+                    enter_movement(&mut run, position);
+                    moved = Some(Vec::new());
                 }
             }
         }
@@ -358,24 +366,15 @@ pub(crate) fn reconcile_ice(state: &mut GameState, registry: &CardRegistry) -> R
     }
     state.active_run = Some(run);
 
-    if !events.is_empty() {
+    if moved.is_some() {
         // Same staleness rule as `paid_ability::note_window_action`: a run
         // window is scoped to the step it was opened at, and that step is
         // gone. Cleared silently, as there; the caller opens the next one.
         if matches!(state.paid_ability_window.as_ref().map(|w| w.checkpoint), Some(WindowCheckpoint::Run)) {
             state.paid_ability_window = None;
         }
-        apply_approach_redirect(state, registry, &mut events)?;
-        let approached: Vec<GameEvent> = events
-            .iter()
-            .filter(|e| matches!(e, GameEvent::ServerApproached { .. } | GameEvent::IceApproached { .. }))
-            .cloned()
-            .collect();
-        for event in approached {
-            events.extend(dispatcher::dispatch_event(state, registry, &event)?);
-        }
     }
-    Ok(events)
+    Ok(moved)
 }
 
 pub fn advance_run(
@@ -384,30 +383,25 @@ pub fn advance_run(
     registry: &CardRegistry,
 ) -> Result<Vec<GameEvent>, RulesError> {
     let phase = state.active_run.as_ref().ok_or(RulesError::NoActiveRun)?.phase;
-    // `JackOut` alone is legal from `RunPhase::Success` (the "approach
-    // server" jack-out window, Netrunner/Null Signal Games rule 3) — every
-    // other action still
-    // treats `Success` as concluded, since there's nothing left to
-    // continue/resolve/break through.
-    let already_concluded = match action {
-        RunAction::JackOut => matches!(phase, RunPhase::AccessingCard | RunPhase::Ended),
-        _ => matches!(phase, RunPhase::Success | RunPhase::AccessingCard | RunPhase::Ended),
-    };
-    if already_concluded {
+    // Once the server is approached there is nothing left to continue,
+    // resolve, break through or jack out of: the jack-out decision was the
+    // movement phase's (CR 6.9.4b), and `CompleteRun` is what remains. It
+    // used to let `JackOut` through at `Success`, when the server approach
+    // was also the last place to leave.
+    if matches!(phase, RunPhase::Success | RunPhase::AccessingCard | RunPhase::Ended) {
         return Err(RulesError::RunAlreadyConcluded { phase });
     }
 
     // A `Continue` steps off whatever the run is standing on, so the list
     // must be current first: Brân 1.0's install lands in the same handler
-    // that then passes Brân, and `pass_current_ice` computes the next phase
-    // from the list's length. If reconciling itself moved the run (the
-    // encountered ICE is gone), that *was* this step — taking `continue_run`
-    // as well would enter the next encounter with no rez window.
-    if matches!(action, RunAction::Continue) {
-        let moved = reconcile_ice(state, registry)?;
-        if !moved.is_empty() {
-            return Ok(moved);
-        }
+    // that then passes Brân, and the movement that follows must see the ice
+    // inward of it. If reconciling itself moved the run (the encountered
+    // ICE is gone), that *was* this step — taking `continue_run` as well
+    // would skip the movement phase it just entered.
+    if matches!(action, RunAction::Continue)
+        && let Some(moved) = reconcile_ice(state, registry)?
+    {
+        return Ok(moved);
     }
 
     let mut events = match action {
@@ -446,11 +440,10 @@ pub fn advance_run(
     Ok(events)
 }
 
-/// Resolves `PlayerAction::JackOut`, per its doc comment's four
-/// Netrunner/Null Signal Games-style legality windows — gated entirely by
-/// `RunState::jack_out_permitted`
-/// (`RulesError::IllegalJackOutWindow` if `false`), which `continue_run`/
-/// `pass_current_ice` keep in sync at every transition.
+/// Resolves `PlayerAction::JackOut` — gated entirely by
+/// `RunState::jack_out_permitted` (`RulesError::IllegalJackOutWindow` if
+/// `false`), which is `true` only in the movement phase before the Runner
+/// has chosen to go on.
 fn jack_out(state: &mut GameState) -> Result<Vec<GameEvent>, RulesError> {
     // Safe: advance_run already confirmed active_run is Some before dispatching here.
     let run = state.active_run.as_mut().expect("active_run checked by advance_run");
@@ -516,9 +509,10 @@ fn apply_approach_redirect(
 /// Shares its shape with `apply_approach_redirect` (Maintenance Access)
 /// and differs in exactly one thing, which is the point of the card:
 /// that one lands at the server having passed every piece of ice, this
-/// one lands in front of them. With no ice on the target the Runner is at
-/// the server approach instead, so `ServerApproached` is emitted and
-/// dispatched — that server's own root reactions must still fire.
+/// one lands in front of them. With no ice on the target the Runner is in
+/// its movement phase instead, in front of the server: the jack-out
+/// decision and the Corp's window come before that server is approached,
+/// exactly as in a run that began there.
 ///
 /// A no-op outside a run, and outside the phases a move makes sense in:
 /// once the Runner is accessing, the run is past moving.
@@ -542,23 +536,25 @@ pub(crate) fn move_run_to_outermost(
         .into_iter()
         .flatten()
         .collect();
-    let phase = phase_for_position(&ice, 0);
     let run = state.active_run.as_mut().expect("checked above");
     run.server = target;
-    run.position = 0;
     run.ice = ice;
-    run.phase = phase;
-    // Rule 3 opens the jack-out window at the server approach and rule 1
-    // keeps it shut while ice is being approached — the same two cases
-    // `continue_run` sets from `Initiation`.
-    run.jack_out_permitted = phase == RunPhase::Success;
     let mut events = vec![GameEvent::RunRedirected { from, to: target }];
+    // "They approach any ice in that position": a run moved in front of
+    // ice approaches it at once, and one moved in front of none is in the
+    // movement phase — the same two cases `continue_run` takes from
+    // `Initiation`.
+    if run.ice.is_empty() {
+        enter_movement(run, 0);
+    } else {
+        run.position = 0;
+        let approached = approach_next(run);
+        for event in approached {
+            crate::rules::dispatcher::emit(state, registry, &mut events, event)?;
+        }
+    }
     if !state.runner.servers_run_this_turn.contains(&target) {
         state.runner.servers_run_this_turn.push(target);
-    }
-    if phase == RunPhase::Success {
-        let approached = GameEvent::ServerApproached { server: target };
-        crate::rules::dispatcher::emit(state, registry, &mut events, approached)?;
     }
     Ok(events)
 }
@@ -633,7 +629,7 @@ pub(crate) fn swap_approached_ice_with_card(
     // The run's own copy of the ice is stale now; rebuilding it here rather
     // than waiting for the next step keeps the approach pointed at the card
     // that is actually there.
-    events.extend(reconcile_ice(state, registry)?);
+    events.extend(reconcile_ice(state, registry)?.unwrap_or_default());
     Ok(events)
 }
 
@@ -642,21 +638,31 @@ fn continue_run(state: &mut GameState, registry: &CardRegistry) -> Result<Vec<Ga
 
     match run.phase {
         RunPhase::Initiation => {
-            let server = run.server;
-            run.phase = phase_for_position(&run.ice, 0);
-            if run.phase == RunPhase::Success {
-                // Reached the server approach step immediately (no ICE to
-                // pass) — the window opens here too (Netrunner/Null Signal
-                // Games rule 3).
-                run.jack_out_permitted = true;
-                Ok(vec![GameEvent::ServerApproached { server }])
+            if run.ice.is_empty() {
+                // CR 6.9.1: with no ice protecting the server the run goes
+                // straight to the movement phase, so the Corp has its
+                // window to rez an upgrade before the server is approached
+                // — and the Runner their jack-out decision before that.
+                enter_movement(run, 0);
+                Ok(Vec::new())
             } else {
-                // Initial approach of the outermost ICE — window stays
-                // closed (already `false` from `initiate_run`;
-                // Netrunner/Null Signal Games rule 1).
-                Ok(vec![GameEvent::IceApproached { server, position: 0 }])
+                // Initial approach of the outermost ICE — no jack-out
+                // (already `false` from `start_run`).
+                Ok(approach_next(run))
             }
         }
+        // The first moment of the movement phase: the Runner goes on rather
+        // than jack out, which shuts that door and opens the window the
+        // `ContinueRun` handler asks for (CR 6.9.4d). No events — nothing
+        // has happened that a card can hear, or a log line would say.
+        RunPhase::Movement if run.jack_out_permitted => {
+            run.jack_out_permitted = false;
+            Ok(Vec::new())
+        }
+        // The second: the window has closed (`paid_ability::close_run_window`)
+        // — or was cleared under a run that stood still — and the Runner
+        // approaches what is next (6.9.4e).
+        RunPhase::Movement => Ok(approach_next(run)),
         RunPhase::ApproachIce => {
             let position = run.position;
             let ice = run.ice.get(position).ok_or(RulesError::NotInEncounter)?;
@@ -942,8 +948,7 @@ mod tests {
         let (ib, rb) = ice_pair("b", 2, true);
         let mut state = reconciling_state(vec![ia, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 1));
         let before = state.clone();
-        let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert!(events.is_empty());
+        assert_eq!(reconcile_ice(&mut state, &CardRegistry::new()).unwrap(), None);
         assert_eq!(state, before);
     }
 
@@ -955,7 +960,7 @@ mod tests {
         // `a` (outermost, already passed) has left play.
         let mut state = reconciling_state(vec![ib, ic], run_state(RunPhase::EncounterIce, vec![ra, rb, rc], 2));
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert!(events.is_empty(), "the Runner is still on c: {events:?}");
+        assert_eq!(events, None, "the Runner is still on c");
         let run = hq(&state);
         assert_eq!(run.ice.iter().map(|i| i.card_id.0.as_str()).collect::<Vec<_>>(), vec!["b", "c"]);
         assert_eq!(run.position, 1);
@@ -963,7 +968,7 @@ mod tests {
     }
 
     #[test]
-    fn reconcile_ends_the_encounter_when_the_encountered_ice_leaves_play_and_approaches_the_next() {
+    fn reconcile_ends_the_encounter_when_the_encountered_ice_leaves_play_and_moves_to_the_next() {
         let (_ia, ra) = ice_pair("a", 1, true);
         let (ib, rb) = ice_pair("b", 2, true);
         let mut state =
@@ -974,26 +979,54 @@ mod tests {
         state.lingering.push(pump(breaker, 2, Until::EndOfEncounter(encountered)));
 
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert_eq!(events, vec![GameEvent::IceApproached { server: ServerId::Hq, position: 0 }], "not `IcePassed`");
+        assert_eq!(events, Some(vec![]), "moved, and not `IcePassed`");
         let run = hq(&state);
         assert_eq!(run.ice.len(), 1);
         assert_eq!(run.ice[0].card_id.0, "b");
-        assert_eq!(run.position, 0);
-        assert_eq!(run.phase, RunPhase::ApproachIce);
-        assert!(run.jack_out_permitted, "an ended encounter opens the jack-out window like a passed ICE");
+        assert_eq!(run.position, 0, "in front of b");
+        assert_eq!(run.phase, RunPhase::Movement);
+        assert!(run.jack_out_permitted, "an ended encounter leads into movement like a passed ICE");
         assert_eq!(lingering::strength(&state, breaker), 0, "what was bought for the encounter ends with it");
     }
 
     #[test]
-    fn reconcile_approaches_the_server_when_the_encountered_ice_was_the_last() {
+    fn reconcile_moves_in_front_of_the_server_when_the_encountered_ice_was_the_last() {
         let (_ia, ra) = ice_pair("a", 1, true);
         let mut state = reconciling_state(vec![], run_state_with_jack_out(RunPhase::EncounterIce, vec![ra], 0, false));
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert_eq!(events, vec![GameEvent::ServerApproached { server: ServerId::Hq }]);
+        assert_eq!(events, Some(vec![]), "the server is not approached until movement ends");
         let run = hq(&state);
         assert!(run.ice.is_empty());
         assert_eq!(run.position, 0);
-        assert_eq!(run.phase, RunPhase::Success);
+        assert_eq!(run.phase, RunPhase::Movement);
+        assert!(run.jack_out_permitted);
+    }
+
+    #[test]
+    fn in_the_movement_phase_the_run_stands_just_inward_of_the_last_ice_passed() {
+        let (ia, ra) = ice_pair("a", 1, true);
+        let (ib, rb) = ice_pair("b", 2, true);
+        let (inward, _) = ice_pair("inward", 8, false);
+        let (outward, _) = ice_pair("outward", 9, false);
+        let mut registry = CardRegistry::new();
+        for id in ["inward", "outward"] {
+            registry.insert(crate::dsl::CardDefinition {
+                id: CardId(id.to_string()),
+                card_type: CardType::Ice(IceType::Barrier),
+                ..Default::default()
+            });
+        }
+        // `a` passed, `b` next; one ice arrives outward of everything and
+        // one between `a` and `b`.
+        let mut state = reconciling_state(
+            vec![outward, ia, inward, ib],
+            run_state_with_jack_out(RunPhase::Movement, vec![ra, rb], 1, true),
+        );
+        let events = reconcile_ice(&mut state, &registry).unwrap();
+        assert_eq!(events, None, "movement stands on no ice, so nothing moved it");
+        let run = hq(&state);
+        assert_eq!(run.phase, RunPhase::Movement);
+        assert_eq!(run.ice[run.position].card_id.0, "inward", "the ice just inward of a is approached next");
         assert!(run.jack_out_permitted);
     }
 
@@ -1011,7 +1044,7 @@ mod tests {
         // Brân's shape: installed directly inward of the encountered `a`.
         let mut state = reconciling_state(vec![ia, inew, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 0));
         let events = reconcile_ice(&mut state, &registry).unwrap();
-        assert!(events.is_empty(), "the Runner is still encountering a");
+        assert_eq!(events, None, "the Runner is still encountering a");
         let run = hq(&state);
         assert_eq!(run.ice.iter().map(|i| i.card_id.0.as_str()).collect::<Vec<_>>(), vec!["a", "new_ice", "b"]);
         assert_eq!(run.position, 0);
@@ -1033,7 +1066,7 @@ mod tests {
         });
         let mut state = reconciling_state(vec![inew, ia, ib], run_state(RunPhase::ApproachIce, vec![ra, rb], 1));
         let events = reconcile_ice(&mut state, &registry).unwrap();
-        assert!(events.is_empty());
+        assert_eq!(events, None);
         let run = hq(&state);
         assert_eq!(run.ice.len(), 3);
         assert_eq!(run.position, 2, "still approaching b");
@@ -1047,16 +1080,10 @@ mod tests {
         let (ib, rb) = ice_pair("b", 2, true);
         let mut state = reconciling_state(vec![ia, ib], run_state(RunPhase::EncounterIce, vec![ra, rb], 0));
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::IceApproached { server: ServerId::Hq, position: 1 },
-            ]
-        );
+        assert_eq!(events, Some(vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }]));
         let run = hq(&state);
         assert_eq!(run.position, 1);
-        assert_eq!(run.phase, RunPhase::ApproachIce);
+        assert_eq!(run.phase, RunPhase::Movement);
         assert!(!run.ice[0].rezzed, "the flag follows the install");
     }
 
@@ -1066,7 +1093,7 @@ mod tests {
         ia.rezzed = false;
         let mut state = reconciling_state(vec![ia], run_state(RunPhase::ApproachIce, vec![ra], 0));
         let events = reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
-        assert!(events.is_empty(), "`continue_run` will pass it as unrezzed");
+        assert_eq!(events, None, "`continue_run` will pass it as unrezzed");
         assert!(!hq(&state).ice[0].rezzed);
         assert_eq!(hq(&state).phase, RunPhase::ApproachIce);
     }
@@ -1078,12 +1105,8 @@ mod tests {
         let mut state =
             reconciling_state(vec![ib], run_state_with_jack_out(RunPhase::EncounterIce, vec![ra, rb], 0, false));
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).unwrap();
-        assert_eq!(
-            events,
-            vec![GameEvent::IceApproached { server: ServerId::Hq, position: 0 }],
-            "approaching b *is* the step; b must not be encountered without its rez window"
-        );
-        assert_eq!(hq(&state).phase, RunPhase::ApproachIce);
+        assert!(events.is_empty(), "moving in front of b *is* the step: {events:?}");
+        assert_eq!(hq(&state).phase, RunPhase::Movement, "b is approached only after the movement phase");
     }
 
     #[test]
@@ -1098,7 +1121,7 @@ mod tests {
         });
         reconcile_ice(&mut state, &CardRegistry::new()).unwrap();
         assert!(state.paid_ability_window.is_none(), "the encounter window's step no longer exists");
-        assert_eq!(hq(&state).phase, RunPhase::Success);
+        assert_eq!(hq(&state).phase, RunPhase::Movement);
     }
 
     #[test]
@@ -1108,7 +1131,7 @@ mod tests {
         run.access_state = Some(Default::default());
         let mut state = reconciling_state(vec![], run);
         let before = state.clone();
-        assert!(reconcile_ice(&mut state, &CardRegistry::new()).unwrap().is_empty());
+        assert_eq!(reconcile_ice(&mut state, &CardRegistry::new()).unwrap(), None);
         assert_eq!(state, before);
     }
 
@@ -1129,13 +1152,15 @@ mod tests {
     }
 
     #[test]
-    fn initiation_continue_with_no_ice_is_immediate_success() {
+    fn a_run_on_an_iceless_server_begins_in_movement() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::Initiation, vec![], 0));
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
-        assert_eq!(state.active_run.unwrap().phase, RunPhase::Success);
-        assert_eq!(events, vec![GameEvent::ServerApproached { server: ServerId::Hq }]);
+        let run = state.active_run.unwrap();
+        assert_eq!(run.phase, RunPhase::Movement);
+        assert!(run.jack_out_permitted, "the Runner may leave before the server is approached");
+        assert!(events.is_empty(), "no server approached yet: {events:?}");
     }
 
     #[test]
@@ -1165,20 +1190,14 @@ mod tests {
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
-        assert_eq!(run.phase, RunPhase::Success);
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::ServerApproached { server: ServerId::Hq },
-            ]
-        );
+        assert_eq!(run.phase, RunPhase::Movement);
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }]);
         // Never encountered — its subroutines were never touched.
         assert!(run.ice[0].subroutines.iter().all(|s| s.status == SubroutineStatus::Pending));
     }
 
     #[test]
-    fn approach_ice_continue_with_unrezzed_ice_advances_to_next_ice_when_more_remain() {
+    fn approach_ice_continue_with_unrezzed_ice_moves_in_front_of_the_next_when_more_remain() {
         let mut state = game_state();
         state.active_run = Some(run_state(
             RunPhase::ApproachIce,
@@ -1189,15 +1208,40 @@ mod tests {
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
-        assert_eq!(run.phase, RunPhase::ApproachIce);
+        assert_eq!(run.phase, RunPhase::Movement);
         assert_eq!(run.position, 1);
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::IceApproached { server: ServerId::Hq, position: 1 },
-            ]
-        );
+        assert!(run.jack_out_permitted);
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }], "nothing approached yet");
+    }
+
+    /// CR 6.9.4 end to end at the engine's run level: the jack-out decision,
+    /// then the window (the `ContinueRun` handler opens it; `advance_run`
+    /// alone just shuts the door), then the approach.
+    #[test]
+    fn passing_ice_moves_the_run_rather_than_approaching_the_next() {
+        let mut state = game_state();
+        state.active_run = Some(run_state(
+            RunPhase::EncounterIce,
+            vec![test_ice("ice_wall_0", 0, true), test_ice("ice_wall_1", 1, true)],
+            0,
+        ));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
+        let registry = CardRegistry::new();
+
+        let passed = advance_run(&mut state, RunAction::Continue, &registry).unwrap();
+        assert_eq!(passed, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }]);
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!((run.phase, run.position, run.jack_out_permitted), (RunPhase::Movement, 1, true));
+
+        let went_on = advance_run(&mut state, RunAction::Continue, &registry).unwrap();
+        assert!(went_on.is_empty(), "declining to jack out is nothing a card can hear: {went_on:?}");
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!((run.phase, run.jack_out_permitted), (RunPhase::Movement, false));
+
+        let approached = advance_run(&mut state, RunAction::Continue, &registry).unwrap();
+        assert_eq!(approached, vec![GameEvent::IceApproached { server: ServerId::Hq, position: 1 }]);
+        let run = state.active_run.as_ref().unwrap();
+        assert_eq!((run.phase, run.position, run.jack_out_permitted), (RunPhase::ApproachIce, 1, false));
     }
 
     #[test]
@@ -1307,15 +1351,9 @@ mod tests {
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
         let run = state.active_run.unwrap();
-        assert_eq!(run.phase, RunPhase::ApproachIce);
+        assert_eq!(run.phase, RunPhase::Movement);
         assert_eq!(run.position, 1);
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::IceApproached { server: ServerId::Hq, position: 1 },
-            ]
-        );
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }]);
     }
 
     #[test]
@@ -1342,20 +1380,15 @@ mod tests {
     }
 
     #[test]
-    fn encounter_ice_continue_after_last_ice_reaches_success() {
+    fn encounter_ice_continue_after_last_ice_moves_in_front_of_the_server() {
         let mut state = game_state();
         state.active_run = Some(run_state(RunPhase::EncounterIce, vec![test_ice("ice_wall", 0, true)], 0));
         crate::rules::test_support::install_the_runs_ice(&mut state);
         let events = advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should succeed");
 
-        assert_eq!(state.active_run.unwrap().phase, RunPhase::Success);
-        assert_eq!(
-            events,
-            vec![
-                GameEvent::IcePassed { server: ServerId::Hq, position: 0 },
-                GameEvent::ServerApproached { server: ServerId::Hq },
-            ]
-        );
+        let run = state.active_run.unwrap();
+        assert_eq!((run.phase, run.position), (RunPhase::Movement, 1));
+        assert_eq!(events, vec![GameEvent::IcePassed { server: ServerId::Hq, position: 0 }], "the server is not yet approached");
     }
 
     #[test]
@@ -1425,7 +1458,7 @@ mod tests {
         ));
         crate::rules::test_support::install_the_runs_ice(&mut state);
         advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("should auto-pass the unrezzed ICE");
-        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::ApproachIce);
+        assert_eq!(state.active_run.as_ref().unwrap().phase, RunPhase::Movement);
         assert_eq!(state.active_run.as_ref().unwrap().position, 1);
 
         let events = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new()).expect("should succeed");
@@ -1460,13 +1493,21 @@ mod tests {
     }
 
     #[test]
-    fn jack_out_after_reaching_success_succeeds() {
+    fn jack_out_is_illegal_at_success() {
         let mut state = game_state();
-        state.active_run = Some(run_state_with_jack_out(RunPhase::Success, vec![], 0, true));
-        let events = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new()).expect("should succeed");
+        state.active_run = Some(run_state_with_jack_out(RunPhase::Success, vec![], 0, false));
+        let result = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new());
+        assert_eq!(result, Err(RulesError::RunAlreadyConcluded { phase: RunPhase::Success }));
+    }
 
-        assert_eq!(state.active_run.unwrap().phase, RunPhase::Ended);
-        assert_eq!(events, vec![GameEvent::RunJackedOut { server: ServerId::Hq }]);
+    #[test]
+    fn jack_out_is_illegal_once_the_runner_has_chosen_to_go_on() {
+        let mut state = game_state();
+        state.active_run = Some(run_state_with_jack_out(RunPhase::Movement, vec![test_ice("ice_wall", 1, true)], 0, true));
+        crate::rules::test_support::install_the_runs_ice(&mut state);
+        advance_run(&mut state, RunAction::Continue, &CardRegistry::new()).expect("go on");
+        let result = advance_run(&mut state, RunAction::JackOut, &CardRegistry::new());
+        assert_eq!(result, Err(RulesError::IllegalJackOutWindow { phase: RunPhase::Movement }));
     }
 
     #[test]
