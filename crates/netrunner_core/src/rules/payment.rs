@@ -324,6 +324,31 @@ pub(crate) fn sources(state: &GameState, registry: &CardRegistry, side: Side, pu
     sources
 }
 
+/// Whether any payment made from `state` could have to ask — a cheap,
+/// allocation-free *necessary* condition, for `engine::apply_action`, which
+/// has to keep a copy of the action if it might park and would rather not
+/// otherwise: the copy was measured at 2.4% of a whole heuristic pass, all
+/// of stage 3's cost, because the legal-action probe applies every
+/// candidate and most fail at the first guard.
+///
+/// **Sound because of what a source is.** `plan` asks only about two
+/// non-wallet pools of different classes. Every non-wallet `Source` holds
+/// credits (`sources` leaves empty ones out) and is one of: the run's two
+/// pools, which are one class and so count once between them; the Corp
+/// identity's hosted credits; a rezzed Corp install's counters; a rig
+/// card's counters. Fewer than two of those on a side means fewer than two
+/// classes for any purpose, and nothing to ask. It over-counts on purpose
+/// — a counter need not be a credit, a pool need not cover the purpose —
+/// since a wrong `true` costs one clone and a wrong `false` would lose the
+/// question. Which side pays is not known until the action is applied, so
+/// both are counted.
+pub(crate) fn could_ask(state: &GameState) -> bool {
+    let run_pool = state.active_run.as_ref().is_some_and(|run| run.bad_publicity_credits > 0 || run.bonus_run_credits > 0);
+    let runner = usize::from(run_pool) + state.runner.rig.iter().filter(|card| card.counters > 0).count();
+    let corp = usize::from(state.corp.identity_counters > 0) + state.corp.installed.iter().filter(|card| card.rezzed && card.counters > 0).count();
+    runner >= 2 || corp >= 2
+}
+
 /// A pool's class, read off the state: what its credits may be spent on and
 /// how long they last. A hosted pool's breadth is the words its card prints,
 /// and it lasts the turn if the card prints recurring credits
@@ -679,5 +704,20 @@ mod tests {
         let table = [azimat(2), run_credits(5), wallet(3)];
         assert_eq!(plan(&table, 2, &[AZIMAT, Pool::Run]).map(|p| p.answers_used), Ok(1), "one question, one answer taken; the second is the next payment's");
         assert_eq!(plan(&table, 7, &[AZIMAT]).map(|p| p.answers_used), Ok(0), "no question, so the answer is left for whoever asks");
+    }
+
+    #[test]
+    fn a_question_is_possible_only_with_two_places_that_could_hold_credits_on_one_side() {
+        let rig_card = |counters| InstalledRunnerCard { install_id: fixture_install_id("azimat"), card: CardId("azimat".to_string()), counters, ..Default::default() };
+        let mut state = runner_turn(9);
+        assert!(!could_ask(&state), "a credit pool and nothing else");
+        state.runner.rig = vec![rig_card(2)];
+        assert!(!could_ask(&state), "one hosted pool: it goes before the credit pool, unasked");
+        state.active_run = Some(RunState { bad_publicity_credits: 1, bonus_run_credits: 5, ..Default::default() });
+        assert!(could_ask(&state), "a hosted pool and the run's");
+        state.runner.rig = vec![rig_card(0)];
+        assert!(!could_ask(&state), "the run's two pools are one class, and an empty host is no pool");
+        state.corp.identity_counters = 2;
+        assert!(!could_ask(&state), "one place on each side is not two on either");
     }
 }

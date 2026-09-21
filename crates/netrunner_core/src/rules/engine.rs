@@ -53,10 +53,19 @@ pub fn apply_action(
     action: PlayerAction,
 ) -> Result<(GameState, Vec<GameEvent>), RulesError> {
     let Some(pending) = &state.pending_payment else {
-        // The common path, and the reason the action is cloned on it: what
-        // asks is known only once the action has been moved into a handler.
-        // A `PlayerAction` is an enum over ids; the `GameState` every
-        // handler clones is what an action costs.
+        // What asks is known only once the action has been moved into a
+        // handler, so parking needs a copy made beforehand — and a copy on
+        // every application was the whole measured cost of this mechanism
+        // (the legal-action probe applies every candidate). It is made only
+        // where a question is possible at all (`payment::could_ask`).
+        if !crate::rules::payment::could_ask(state) {
+            let applied = apply_action_once(state, registry, action);
+            debug_assert!(
+                !matches!(applied, Err(RulesError::PaymentChoiceNeeded { .. })),
+                "a payment asked where `payment::could_ask` said none could: its necessary condition is not one"
+            );
+            return applied;
+        }
         return match apply_action_once(state, registry, action.clone()) {
             Err(RulesError::PaymentChoiceNeeded { side, amount, options }) => Ok(park_payment(state, action, side, Vec::new(), amount, options)),
             other => other,

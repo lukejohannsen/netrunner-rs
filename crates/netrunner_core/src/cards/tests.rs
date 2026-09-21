@@ -6743,6 +6743,9 @@ mod system_gateway {
         let before = overclock_run_with_azimat_accessing_a_pad_campaign(&registry);
         let trash = PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) };
         assert!(crate::rules::legal_actions(&before, &registry).contains(&trash), "a question is not a refusal: the trash is legal");
+        // (That it parks at all, below, is also the test that `payment::
+        // could_ask` did not rule this question out: had it, nothing would
+        // have kept the action to park.)
 
         let (parked, events) = apply_action(&before, &registry, trash.clone()).expect("the trash parks a question");
         assert_eq!(events, vec![crate::rules::GameEvent::PaymentChoiceOffered { side: Side::Runner }]);
