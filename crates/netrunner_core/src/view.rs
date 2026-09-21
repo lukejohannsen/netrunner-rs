@@ -152,6 +152,10 @@ pub struct ClientView {
     pub pending_prevention: Option<PendingPrevention>,
     pub pending_paid_choice: Option<crate::rules::PendingPaidChoice>,
     pub pending_decision: Option<crate::rules::PendingDecision>,
+    /// See `masking::PublicPendingPayment`: who is choosing where a payment
+    /// comes from, and — in the payer's own view only — the payment.
+    #[serde(default)]
+    pub pending_payment: Option<crate::rules::PublicPendingPayment>,
     /// `PublicGameState::lingering` verbatim — the boosts, Leech's -1, a
     /// rez cost raised for a run and the prohibitions ([`ClientView::cannot`])
     /// that hold right now. The strengths in this view already include
@@ -347,6 +351,7 @@ pub fn build_client_view(state: &GameState, registry: &CardRegistry, viewer: imp
         pending_prevention: public.pending_prevention,
         pending_paid_choice: public.pending_paid_choice,
         pending_decision: public.pending_decision,
+        pending_payment: public.pending_payment,
         lingering: public.lingering,
         selection,
         legal_actions: viewer.side().map(|side| legal_actions_for(state, registry, side)).unwrap_or_default(),

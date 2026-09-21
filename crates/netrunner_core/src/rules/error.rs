@@ -287,6 +287,18 @@ pub enum RulesError {
     #[error("Cost::AnyOf cannot be paid directly — the payer's choice must be resolved first")]
     CostRequiresChoice,
 
+    /// Not a refusal: a payment found pools the payer has to choose between
+    /// (`rules::payment::plan`) and unwound the action to ask. `engine::
+    /// apply_action` catches it and parks a `PendingPayment`; it never
+    /// leaves the engine. **Its own variant on purpose** — `Effect::
+    /// RezInstalled` swallows `NotEnoughCredits`, and a question that read
+    /// as one would be quietly dropped there.
+    #[error("{side:?} must choose which credits to spend first")]
+    PaymentChoiceNeeded { side: Side, amount: u32, options: Vec<crate::rules::payment::Pool> },
+
+    #[error("{side:?} is choosing which credits to spend; nothing else may happen until they have")]
+    ActionBlockedByPendingPayment { side: Side },
+
     #[error("no pending paid choice is currently awaiting a decision")]
     NoPendingPaidChoice,
 

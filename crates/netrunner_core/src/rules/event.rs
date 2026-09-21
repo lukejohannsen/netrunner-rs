@@ -301,6 +301,11 @@ pub enum GameEvent {
     /// `masking::mask_event_for_player` already strips an unrezzed one
     /// from the Runner's copy of this list.
     VirusCountersPurged { cards: Vec<CardId> },
+    /// A payment found pools its payer has to choose between, and the
+    /// action that owes it is parked until they have (`PendingPayment`).
+    /// The whole record of that step: nothing else has happened yet. What
+    /// was chosen is said by the spend events of the step that follows.
+    PaymentChoiceOffered { side: Side },
     BadPublicityCreditsSpent { amount: u32 },
     BonusRunCreditsSpent { amount: u32 },
     /// A `PendingDecision::ChooseCards` was confirmed — `cards` is the
@@ -447,6 +452,7 @@ impl GameEvent {
             | GameEvent::StrengthBoosted { .. } | GameEvent::TagRemoved { .. } | GameEvent::TagsRemoved { .. }
             | GameEvent::TriggerOrderPending { .. } | GameEvent::TriggerOrderChosen { .. }
             | GameEvent::TriggerFired { .. } | GameEvent::VirusCountersPurged { .. }
+            | GameEvent::PaymentChoiceOffered { .. }
             | GameEvent::BadPublicityCreditsSpent { .. } | GameEvent::BonusRunCreditsSpent { .. }
             | GameEvent::CardsSelected { .. } | GameEvent::PendingCardSelectionOffered { .. }
             | GameEvent::MemoryLimitExceeded { .. } | GameEvent::PendingServerChoiceOffered { .. }

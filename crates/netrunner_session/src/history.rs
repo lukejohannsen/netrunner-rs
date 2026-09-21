@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use netrunner_core::cards::CardRegistry;
 use netrunner_core::rules::{
-    mask_action_for_player, mask_event_for_player, Deck, DeckOrder, GameEvent, GameState, MatchRules, PlayerAction,
+    mask_logged_action_for_player, mask_event_for_player, Deck, DeckOrder, GameEvent, GameState, MatchRules, PlayerAction,
     PublicAction, RulesError, Side, Viewer,
 };
 
@@ -50,7 +50,10 @@ impl HistoryEntry {
         PublicHistoryEntry {
             turn_number: self.turn_number,
             side: self.side,
-            action: mask_action_for_player(&self.action, self.side, viewer),
+            // With the step's own events: an action that parked on a
+            // payment was submitted, not applied, and must not name its
+            // card to the other seat yet.
+            action: mask_logged_action_for_player(&self.action, self.side, &self.events, viewer),
             events: self.events.iter().filter_map(|event| mask_event_for_player(event, state, viewer)).collect(),
         }
     }

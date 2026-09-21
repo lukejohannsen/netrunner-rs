@@ -6720,6 +6720,96 @@ mod system_gateway {
         assert_eq!(state.runner.resources.credits, Credits(2), "nothing from the wallet");
     }
 
+    // The payer chooses the pool (`rules::payment::plan`, `PendingPayment`).
+
+    /// An Overclock run (5 credits, anything, gone with the run) by a Runner
+    /// with Azimat installed (2 credits, trash costs only, back next turn),
+    /// parked on the access of a PAD Campaign: trash cost 4, wallet empty.
+    fn overclock_run_with_azimat_accessing_a_pad_campaign(registry: &CardRegistry) -> GameState {
+        let mut state = runner_turn(1, 4);
+        state.runner.grip = vec![CardId("overclock".to_string())];
+        state.runner.rig = vec![rig_card_with_counters("azimat", 2)];
+        state.corp.installed = vec![corp_root("pad_campaign", ServerId::Remote(0))];
+        corp_rd_filler(&mut state);
+        let state = act(state, registry, PlayerAction::PlayEvent { card_id: CardId("overclock".to_string()) });
+        let state = act(state, registry, PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) });
+        let state = act(state, registry, PlayerAction::ContinueRun);
+        act(state, registry, PlayerAction::CompleteRun)
+    }
+
+    #[test]
+    fn a_payment_two_pools_could_make_is_put_to_the_payer_and_nothing_happens_until_they_answer() {
+        let registry = sg_registry();
+        let before = overclock_run_with_azimat_accessing_a_pad_campaign(&registry);
+        let trash = PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) };
+        assert!(crate::rules::legal_actions(&before, &registry).contains(&trash), "a question is not a refusal: the trash is legal");
+        // (That it parks at all, below, is also the test that `payment::
+        // could_ask` did not rule this question out: had it, nothing would
+        // have kept the action to park.)
+
+        let (parked, events) = apply_action(&before, &registry, trash.clone()).expect("the trash parks a question");
+        assert_eq!(events, vec![crate::rules::GameEvent::PaymentChoiceOffered { side: Side::Runner }]);
+        let payment = parked.pending_payment.clone().expect("parked");
+        assert_eq!((payment.side, payment.amount, payment.action.clone()), (Side::Runner, 4, trash));
+        let azimat = crate::rules::Pool::Hosted(parked.runner.rig[0].install_id);
+        assert_eq!(payment.options, vec![azimat, crate::rules::Pool::Run], "Azimat's pay less and last longer; the run's pay anything and are gone sooner");
+
+        // Nothing has happened: the state is the one the action was applied
+        // to, but for the question.
+        let mut unparked = parked.clone();
+        unparked.pending_payment = None;
+        assert_eq!(unparked, before);
+
+        assert_eq!(crate::rules::current_actor(&parked), Some(Side::Runner));
+        assert_eq!(
+            crate::rules::legal_actions(&parked, &registry),
+            vec![PlayerAction::ResolvePendingChoice { option_index: 0 }, PlayerAction::ResolvePendingChoice { option_index: 1 }]
+        );
+        assert_eq!(
+            apply_action(&parked, &registry, PlayerAction::PassAccessedCard { card_id: CardId("pad_campaign".to_string()) }).unwrap_err(),
+            crate::rules::RulesError::ActionBlockedByPendingPayment { side: Side::Runner }
+        );
+        assert_eq!(
+            apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 2 }).unwrap_err(),
+            crate::rules::RulesError::InvalidChoiceIndex(2)
+        );
+    }
+
+    #[test]
+    fn the_answer_applies_the_parked_action_with_the_chosen_pool_spent_first() {
+        let registry = sg_registry();
+        let before = overclock_run_with_azimat_accessing_a_pad_campaign(&registry);
+        let trash = PlayerAction::TrashAccessedCard { card_id: CardId("pad_campaign".to_string()) };
+        let parked = act(before, &registry, trash);
+
+        // The run ends with the breach, so what it had left is read off the
+        // record, which is where a log reads it too.
+        let from_the_run = |events: &[crate::rules::GameEvent]| {
+            events.iter().find_map(|event| match event {
+                crate::rules::GameEvent::BonusRunCreditsSpent { amount } => Some(*amount),
+                _ => None,
+            })
+        };
+
+        // Azimat first: its 2, then 2 of the run's 5.
+        let (azimat_first, events) =
+            apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 0 }).expect("Azimat first");
+        assert_eq!(azimat_first.runner.rig[0].counters, 0);
+        assert_eq!(from_the_run(&events), Some(2));
+
+        // The run's first: 4 of its 5, and Azimat keeps its 2 for a second run this turn.
+        let (run_first, events) =
+            apply_action(&parked, &registry, PlayerAction::ResolvePendingChoice { option_index: 1 }).expect("the run's first");
+        assert_eq!(run_first.runner.rig[0].counters, 2);
+        assert_eq!(from_the_run(&events), Some(4));
+
+        for after in [&azimat_first, &run_first] {
+            assert!(after.pending_payment.is_none() && after.payment_answers.is_empty(), "nothing of the question is left behind");
+            assert_eq!(after.corp.archives, vec![ArchivedCard::faceup(CardId("pad_campaign".to_string()))], "and the action it was parked on happened");
+            assert_eq!(after.runner.resources.credits, Credits(0));
+        }
+    }
+
     // Recurring credits are a declaration (`CardDefinition::
     // recurring_credits`, Comprehensive Rules 1.10.5): placed when the card
     // becomes active, refilled as a step of the turn.

@@ -38,11 +38,12 @@ pub use dispatcher::dispatch_event;
 pub use engine::apply_action;
 pub use error::RulesError;
 pub use event::GameEvent;
+pub use payment::Pool;
 pub use legal_actions::{apply_sampled_legal_action, current_actor, legal_actions, legal_actions_for};
 pub use masking::{
-    mask_action_for_player, mask_event_for_player, mask_state_for_player, ConcealedAction, MaskedZone, PublicAction, PublicAccessPhase, PublicAccessState, PublicArchivedCard, PublicCorpState,
+    mask_action_for_player, mask_logged_action_for_player, mask_event_for_player, mask_state_for_player, ConcealedAction, MaskedZone, PublicAction, PublicAccessPhase, PublicAccessState, PublicArchivedCard, PublicCorpState,
     PublicGameState,
-    PublicInstalledCard, PublicInstalledRunnerCard, PublicRunIce, PublicRunIceIdentity, PublicRunState,
+    PublicPendingPayment, PublicInstalledCard, PublicInstalledRunnerCard, PublicRunIce, PublicRunIceIdentity, PublicRunState,
     PublicRunnerState, Viewer,
 };
 pub use run::{
@@ -54,7 +55,7 @@ pub use setup::DeckOrder;
 pub use state::{MatchRules, DEFAULT_WINNING_AGENDA_POINTS, 
     ArchivedCard, DeferredTrigger,
     AgendaPoints, Clicks, CorpState, Credits, GamePhase, GameState, InstallId, InstallSlot, InstalledCard, InstalledRunnerCard,
-    MemoryUnits, OncePerTurnKey, PaidAbilityWindow, PendingChoiceResume, PendingDecision, PendingPaidChoice, PendingPaidChoiceResume,
+    MemoryUnits, OncePerTurnKey, PaidAbilityWindow, PendingChoiceResume, PendingDecision, PendingPaidChoice, PendingPaidChoiceResume, PendingPayment,
     PendingPrevention, PlayerResources, PreventionResume, RunnerState, ScoredAgenda, Side,
     TraceResume, TraceState, WindowCheckpoint, WouldHappen,
 };

@@ -1482,6 +1482,112 @@ one.
    `OnAgendaStolen` went 27 → 33 in random. Drift in a count of one, not a
    trigger lost. Both 256-seed sweeps pass, `cargo test --workspace`
    green, clippy silent.
+   **Stage 3 — the payer chooses the pool**
+   (`feat/the-payer-chooses-the-pool`). `payment::plan` is a pure function
+   over the sources. A pool has a class — what its credits may be spent on
+   (`Breadth`: the words its card prints, or anything) and how long they
+   last (`Life`: the run, the turn for recurring credits, or until spent) —
+   and **the payer is asked only when the answer changes what they are
+   left with**: a pool whose credits are never worth more than another's is
+   spent before it unasked (every pool before the credit pool), two pools
+   of one class go in table order, and a payment large enough to empty
+   every pool that could go first has no order to choose. What is left is
+   two pools neither the other's lesser and a payment too small for both —
+   today, Azimat's (trash costs only, back next turn) against a run's
+   (anything, gone with it), where the old fixed order drained Azimat on a
+   run whose own credits were about to vanish. The answer is the existing
+   `ResolvePendingChoice`, one option per class, capped at
+   `MAX_PENDING_CHOICE_OPTIONS`: **no `ActionSpace` growth.** *Named
+   simplification:* the chosen class is emptied as far as the payment goes;
+   splitting one payment credit by credit needs a number for an answer,
+   which is item 6.
+   **Parked by replay, not by continuation.** A payment is owed from deep
+   inside some thirty handlers. It unwinds the whole action with
+   `RulesError::PaymentChoiceNeeded`; `engine::apply_action` — now a
+   wrapper over `apply_action_once` — returns the *untouched* state with a
+   `PendingPayment { action, answers, amount, options }` on it, and the
+   answer applies the action again with the answers recorded
+   (`GameState::payment_answers`, taken from the front by `payment::pay`).
+   `apply_action` is a pure function of its inputs, so the second
+   application reaches the same payment in the same state. Rejected:
+   splitting every paying handler into pay-then-continue, and a payment
+   field on every `PlayerAction` (an `ActionSpace` break). *What made it
+   viable was checked before it was built:* in `rules/`, two sites handle
+   an error without propagating it, and neither can eat a new variant —
+   `EffectRequirement::Not` is inside the read-only requirement check, and
+   `Effect::RezInstalled` matches only `NotEnoughCredits` and ends `other =>
+   other` — which is why the signal is a variant of its own. A parked
+   payment comes ahead of any decision parked beneath it (`current_actor`,
+   the action list, both clients' prompt), because the parked action can
+   itself be the answer to a card's choice.
+   **Two things reading found that no test would have.** (1) *The planner
+   could loop forever:* an answer naming a pool that exists but was not on
+   offer took nothing and changed nothing. An answer must be one of the
+   classes offered, or the question is put again. (2) **The log was a second
+   channel.** A parked action has been submitted, not applied, so only its
+   payer may see it (`masking::PublicPendingPayment { side, own }` — the
+   first parked state that is not fully public, because it is parked
+   *ahead* of the thing rather than by it). But the action is logged at the
+   step it was submitted in, and `mask_action_for_player` shows a
+   `PlayEvent` or a Runner install whole, on the ground that a faceup play
+   is public — so the other seat's log would have named a card still in the
+   grip while their view withheld it. `mask_logged_action_for_player` reads
+   the step's own events (a park's are `PaymentChoiceOffered` and nothing
+   else) and conceals the entry (`ConcealedAction::ChoosingPayment`), which
+   keeps the log mask's contract of never reading the state. Not reachable
+   with today's pool — a payment parks only mid-run, on actions that name
+   public cards — and reachable the moment Cyberfeeder pays for an install
+   from the grip. Both masks are tested on the serialised form, and each
+   test was shown able to fail by breaking its mask on purpose.
+   The view carries the payment, so `determinize` — whose `GameState`
+   literal is exhaustive and would not compile until told — copies it from
+   the payer's own view, the only one a decision is sampled from while one
+   is parked. The words are `netrunner_client`'s, for both clients: "Pay 4
+   credits", a button a pool named by its card ("Spend credits from Azimat
+   first"), and for the other chair "The Runner is choosing which credits
+   to spend". `Session` counts the question as the person still answering
+   their own move, as it does any prompt — **untested, and not testable by
+   play today**: a take-back is never free mid-run, and mid-run is the only
+   place a payment parks until stage 4's cards.
+   *Measured against what was written down first.* The premise was checked
+   before building — two decks play both Azimat and Overclock, and the
+   heuristic Runner never installs Azimat — and the prediction recorded
+   before any run: heuristic reports identical, random ones differing by a
+   handful of questions at most. `coverage_identical.py main`, 192 games a
+   report, pinned binaries: **heuristic identical, by view and by index;
+   random differs by one question in 192 games and by nothing else** —
+   `PaymentChoiceOffered` 0 → 1, steps 67,597 → 67,598 (the park),
+   `ResolvePendingChoice` 1,002 → 1,003 (the answer), and the random seat
+   answered "the run first": `BonusRunCreditsSpent` 10 → 11,
+   `CountersRemoved` 1,455 → 1,454, Azimat keeping what the fixed order
+   took. End reasons and every other key unmoved. Both 256-seed sweeps
+   pass; `cargo test --workspace` green, clippy silent. **So the mechanism
+   is carried by its scripted tests, not by the sweeps:** one question in
+   192 games is reach, not coverage, and the gate entry that holds the
+   prompt to having been *used* belongs to stage 4, whose decks must make
+   pools compete on every break. (The sweeps are release builds, where the
+   `debug_assert` that a replay used every answer is compiled out; the
+   debug-build suite is what exercises it.)
+   **What it costs, measured because the PR had to admit it was not.**
+   Parking needs a copy of the action made *before* it is applied — what
+   asks is known only once the action has been moved into a handler — and
+   the first version copied it on every application. On a byte-identical
+   heuristic pass (192 games, seed 1, one report hash across every binary,
+   three alternating rounds, pinned binaries): `main` 17.19–17.39 s, stage
+   3 **+2.4% and +3.8%** in two sessions, the ranges never overlapping. A
+   throwaway build with only the clone removed ran at 0.9998 of `main`:
+   **the clone was the whole cost** — the planner, the classes and the two
+   new `GameState` fields cost nothing measurable — because the
+   legal-action probe applies every candidate and most fail at the first
+   guard. `payment::could_ask` is an allocation-free *necessary* condition
+   (a question needs two non-wallet pools of different classes, and every
+   such pool is credits on the run, the Corp identity, a rezzed install or
+   a rig card; fewer than two on either side and nothing can ask), and the
+   copy is made only where it holds. It over-counts on purpose — a wrong
+   yes costs a clone, a wrong no would lose the question, which a debug
+   build refuses (forced to "no", the parking test fails on that
+   assertion). With it: **+1.0%** (17.29–17.40 s against 17.15–17.22 s),
+   still not overlapping — the scan itself, left there.
 6. **A numeric decision** (§6.4; new). `PendingDecision` has no "choose a
    number", so X costs and "pay up to N" have nowhere to park. One variant,
    and an `ActionSpace` segment appended at the end (the append-never-shift

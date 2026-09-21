@@ -442,6 +442,20 @@ impl Prompt {
     pub fn of(view: &ClientView, registry: &CardRegistry) -> Option<Prompt> {
         let title = |card: &Option<CardId>| card.as_ref().map_or_else(|| "A card".to_string(), |id| card_title(id, registry));
         let asked_by = |prompting: &Option<CardId>, source: &Option<CardId>| title(if prompting.is_some() { prompting } else { source });
+        // Ahead of everything: the engine answers a parked payment before
+        // whatever is parked beneath it, so the buttons on show are the
+        // payment's, and a card's own question here would be asked over
+        // them. The payer's view has the payment; the other seat is told
+        // who is deciding, which is public, and why the table has paused.
+        if let Some(payment) = &view.pending_payment {
+            return Some(match &payment.own {
+                Some(own) => Prompt {
+                    title: format!("Pay {} credit{}", own.amount, if own.amount == 1 { "" } else { "s" }),
+                    detail: "More than one card could pay. Whose credits are spent first?".to_string(),
+                },
+                None => Prompt { title: format!("The {:?} is choosing which credits to spend", payment.side), detail: String::new() },
+            });
+        }
         if let Some(decision) = &view.pending_decision {
             return Some(match decision {
                 PendingDecision::ChooseEffect { source_card, prompting_card, .. } => {
@@ -565,6 +579,12 @@ impl Prompt {
     /// resolves *as*, which after a selection is the selected card.
     pub fn card(view: &ClientView, registry: &CardRegistry) -> Option<CardId> {
         let asked_by = |prompting: &Option<CardId>, source: &Option<CardId>| prompting.clone().or_else(|| source.clone());
+        // No one card asks where a payment comes from — and it is asked
+        // ahead of a decision parked beneath it, whose card must not be
+        // shown over the payment's buttons.
+        if view.pending_payment.is_some() {
+            return None;
+        }
         if let Some(decision) = &view.pending_decision {
             return match decision {
                 PendingDecision::ChooseEffect { chooser, source_card, prompting_card, .. } => {
@@ -643,6 +663,64 @@ mod tests {
     use netrunner_bots::RandomAgent;
     use netrunner_core::rules::GameState;
     use netrunner_session::{sweep_decks_for_seed, Seat, Session, SessionStep};
+
+    /// A real parked payment, reached by real actions: a Runner with Azimat
+    /// installed plays Overclock, breaches a remote and trashes a PAD
+    /// Campaign for 4 — Azimat's 2 against the run's 5.
+    fn a_parked_payment() -> (CardRegistry, GameState) {
+        use netrunner_core::dsl::CardId;
+        use netrunner_core::rules::{apply_action, Clicks, Credits, GamePhase, InstallId, InstalledCard, InstalledRunnerCard, ServerId};
+        let mut registry = CardRegistry::new();
+        netrunner_core::cards::register_playable_cards(&mut registry);
+        let id = |name: &str| CardId(name.to_string());
+        let mut state = GameState::new(7);
+        state.phase = GamePhase::Action(Side::Runner);
+        state.runner.resources.credits = Credits(1);
+        state.runner.resources.clicks = Clicks(4);
+        state.runner.grip = vec![id("overclock")];
+        state.runner.rig = vec![InstalledRunnerCard { install_id: InstallId(901), card: id("azimat"), counters: 2, ..Default::default() }];
+        state.corp.installed =
+            vec![InstalledCard { install_id: InstallId(902), card: id("pad_campaign"), server: ServerId::Remote(0), rezzed: true, ..Default::default() }];
+        state.corp.r_and_d = (0..4).map(|i| id(&format!("filler_{i}"))).collect();
+        for action in [
+            PlayerAction::PlayEvent { card_id: id("overclock") },
+            PlayerAction::ChooseServerForPendingDecision { server: ServerId::Remote(0) },
+            PlayerAction::ContinueRun,
+            PlayerAction::CompleteRun,
+            PlayerAction::TrashAccessedCard { card_id: id("pad_campaign") },
+        ] {
+            state = apply_action(&state, &registry, action.clone()).unwrap_or_else(|error| panic!("{action:?}: {error}")).0;
+            // Both seats pass any window the step opened, as play would.
+            while let Some(side) = state.paid_ability_window.as_ref().map(|window| window.active_priority) {
+                state = apply_action(&state, &registry, PlayerAction::PassPriority { side }).expect("a pass").0;
+            }
+        }
+        assert!(state.pending_payment.is_some(), "the trash parked a payment");
+        (registry, state)
+    }
+
+    /// Both clients get every word of a parked payment from here, so this
+    /// is the one place they are checked: the prompt, a button per pool
+    /// named by the card it is on, and no card shown as the one asking.
+    #[test]
+    fn a_parked_payment_is_a_prompt_with_a_button_for_each_pool_named_by_its_card() {
+        let (registry, state) = a_parked_payment();
+
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Runner);
+        let map = ActionMap::build(&view, &registry);
+        let labels: Vec<&str> = map.decisions().into_iter().map(|index| map.entries[index].label.as_str()).collect();
+        assert_eq!(labels, vec!["Spend credits from Azimat first", "Spend credits from the run first"]);
+        assert_eq!(map.entries.len(), 2, "and nothing else is on offer while it is parked");
+        let prompt = Prompt::of(&view, &registry).expect("the payer is prompted");
+        assert_eq!(prompt.title, "Pay 4 credits");
+        assert_eq!(Prompt::card(&view, &registry), None, "no one card asks where a payment comes from");
+        assert_eq!(crate::prose::decision_prompt(&view, &registry).as_deref(), Some("Pay 4 credits — whose credits first?"));
+
+        // The other chair: nothing to press, and told why the table paused.
+        let view = netrunner_core::view::build_client_view(&state, &registry, Side::Corp);
+        assert!(ActionMap::build(&view, &registry).is_empty());
+        assert_eq!(Prompt::of(&view, &registry).expect("told who is deciding").title, "The Runner is choosing which credits to spend");
+    }
 
     /// A text choice shows the card whose text is asking, and only to the
     /// side being asked; the asking card wins over the one the decision

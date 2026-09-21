@@ -516,7 +516,10 @@ impl Session {
             && match &next.pending_decision {
                 Some(PendingDecision::ChooseCards { source, .. }) => !source.shows_the_chooser_hidden_cards(),
                 Some(_) => true,
-                None => next.pending_paid_choice.is_some(),
+                // Which credits a payment comes from is the person's own
+                // move asking, and shows them nothing: the pools are public
+                // and the state is the one the move was made from.
+                None => next.pending_paid_choice.is_some() || next.pending_payment.is_some(),
             };
         point.free = point.free
             && side == point.side

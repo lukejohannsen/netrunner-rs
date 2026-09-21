@@ -341,6 +341,25 @@ pub struct PublicRunState {
 /// likewise never masked — both sides always see the trace strength and
 /// whose bid is pending, matching the real game. `pending_prevention` gets
 /// the same treatment, same rationale.
+/// `GameState::pending_payment` as one player sees it.
+///
+/// **That a payment is being chosen, and by whom, is public; what it is for
+/// is the payer's.** The parked `action` has not been applied: a Runner
+/// paying for an event has not played it yet, and the card is still hidden
+/// in their grip. The other parked decisions are fully public because each
+/// is parked by something that already happened on the table; this one is
+/// parked *ahead* of the thing, so it is the first that needs a mask. The
+/// pools themselves are public (installed cards, the run's credits), but
+/// which of them are on offer follows from what is being paid for, and the
+/// amount is a price — both go with the action. A spectator is not the
+/// payer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PublicPendingPayment {
+    pub side: Side,
+    /// The whole parked payment, in the payer's own view only.
+    pub own: Option<crate::rules::state::PendingPayment>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PublicGameState {
     pub corp: PublicCorpState,
@@ -355,6 +374,11 @@ pub struct PublicGameState {
     /// `active_trace`/`pending_prevention`.
     pub pending_paid_choice: Option<crate::rules::state::PendingPaidChoice>,
     pub pending_decision: Option<crate::rules::state::PendingDecision>,
+    /// A payment whose payer is choosing where it comes from — see
+    /// `PublicPendingPayment`. The one parked state here that is *not*
+    /// fully public.
+    #[serde(default)]
+    pub pending_payment: Option<PublicPendingPayment>,
     /// The effects with a duration that hold right now
     /// (`GameState::lingering`, filtered by `LingeringEffect::holds`).
     /// Public to both viewers and a spectator: each is a flat number on an
@@ -439,6 +463,10 @@ pub fn mask_state_for_player(state: &GameState, registry: &CardRegistry, viewer:
         pending_prevention: state.pending_prevention.clone(),
         pending_paid_choice: state.pending_paid_choice.clone(),
         pending_decision: state.pending_decision.as_ref().map(|decision| mask_pending_decision(decision, state, viewer)),
+        pending_payment: state.pending_payment.as_ref().map(|payment| PublicPendingPayment {
+            side: payment.side,
+            own: viewer.is(payment.side).then(|| payment.clone()),
+        }),
         lingering: state.lingering.iter().filter(|effect| effect.holds(state)).cloned().collect(),
         this_turn: state.this_turn,
         last_turn: state.last_turn,
@@ -488,6 +516,39 @@ pub enum ConcealedAction {
     PassAccessedCard,
     PayAccessTrigger,
     DeclineAccessTrigger,
+    /// Any action at all, logged at the step where it *parked* on a payment
+    /// (`PendingPayment`) instead of being applied. The one residue here
+    /// that is not a variant's: see `mask_logged_action_for_player`.
+    ChoosingPayment,
+}
+
+/// `mask_action_for_player` for an action as the log holds it: with the
+/// events of the step it was submitted in.
+///
+/// **An action that parked has not happened.** `mask_action_for_player`
+/// shows the other seat a `PlayEvent` or a Runner install whole, on the
+/// ground that a faceup play is public — true of an action that was
+/// applied. One that stopped to ask its payer where the credits come from
+/// (`PendingPayment`) was only *submitted*: the event is still in the grip,
+/// and the log entry for that step would have named it to the other seat a
+/// step before the table did — while `PublicPendingPayment` was carefully
+/// withholding the same card from their view. The step's own record says
+/// which it was: a park's events are `PaymentChoiceOffered` and nothing
+/// else. The answer's entry is an index and its events are the action's
+/// real ones, masked as ever, so the log catches up the moment the card is
+/// actually played.
+///
+/// Read off the entry rather than the state, which keeps
+/// `mask_action_for_player`'s contract: concealment follows from the
+/// variant, who is looking and whether the action was applied — never from
+/// what a card turned out to be.
+pub fn mask_logged_action_for_player(action: &PlayerAction, actor: Side, events: &[GameEvent], viewer: impl Into<Viewer>) -> PublicAction {
+    let viewer = viewer.into();
+    let parked = events.iter().any(|event| matches!(event, GameEvent::PaymentChoiceOffered { .. }));
+    if parked && !viewer.is(actor) {
+        return PublicAction::Concealed(ConcealedAction::ChoosingPayment);
+    }
+    mask_action_for_player(action, actor, viewer)
 }
 
 /// Masks `actor`'s `action` for `viewer`. State-free on purpose: every
@@ -780,6 +841,7 @@ pub fn mask_event_for_player(event: &GameEvent, state: &GameState, viewer: impl 
         | GameEvent::TriggerOrderChosen { .. }
         | GameEvent::TriggerFired { .. }
         | GameEvent::BadPublicityCreditsSpent { .. }
+        | GameEvent::PaymentChoiceOffered { .. }
         | GameEvent::BonusRunCreditsSpent { .. }
         | GameEvent::MemoryLimitExceeded { .. }
         | GameEvent::PendingServerChoiceOffered { .. }
@@ -1338,6 +1400,56 @@ mod tests {
                 Some(InstallId(77)),
                 "{side:?} should see where a Trojan is hosted"
             );
+        }
+    }
+
+    /// The log's half of the same promise. A parked action is recorded at
+    /// the step it was submitted in, and the log mask shows a played event
+    /// whole — because an event that was *applied* is public.
+    #[test]
+    fn an_action_that_parked_on_a_payment_is_not_named_in_the_other_seats_log() {
+        let secret = CardId("a_card_only_the_runner_has_seen".to_string());
+        let play = PlayerAction::PlayEvent { card_id: secret.clone() };
+        let parked = [GameEvent::PaymentChoiceOffered { side: Side::Runner }];
+        let applied = [GameEvent::ClickSpent { side: Side::Runner }];
+
+        assert_eq!(mask_logged_action_for_player(&play, Side::Runner, &parked, Side::Runner), PublicAction::Visible(play.clone()), "their own");
+        for viewer in [Viewer::Player(Side::Corp), Viewer::Spectator] {
+            let logged = mask_logged_action_for_player(&play, Side::Runner, &parked, viewer);
+            assert_eq!(logged, PublicAction::Concealed(ConcealedAction::ChoosingPayment), "{viewer:?}");
+            assert!(!serde_json::to_string(&logged).expect("serialises").contains(&secret.0), "{viewer:?} was sent the unplayed card");
+            // Applied, it is a faceup play like any other.
+            assert_eq!(mask_logged_action_for_player(&play, Side::Runner, &applied, viewer), PublicAction::Visible(play.clone()), "{viewer:?}");
+        }
+    }
+
+    /// The one parked state that is not fully public: the action behind a
+    /// parked payment has not been applied, so a card it names may still be
+    /// hidden. Checked on the serialised view, which is what crosses the
+    /// wire — a field added to `PublicPendingPayment` later cannot leak past
+    /// a test that only compared the fields it knew about.
+    #[test]
+    fn a_parked_payment_shows_the_other_seat_who_is_paying_and_nothing_of_what_for() {
+        let mut state = game_state_with_runner(runner_state_with_cards());
+        let secret = CardId("a_card_only_the_runner_has_seen".to_string());
+        state.pending_payment = Some(crate::rules::state::PendingPayment {
+            side: Side::Runner,
+            action: PlayerAction::PlayEvent { card_id: secret.clone() },
+            answers: vec![crate::rules::payment::Pool::Run],
+            amount: 3,
+            options: vec![crate::rules::payment::Pool::BadPublicity, crate::rules::payment::Pool::Run],
+        });
+
+        let own = mask_state_for_player(&state, Side::Runner).pending_payment.expect("the payer sees it");
+        assert_eq!(own.own, state.pending_payment, "whole: it is their own action");
+
+        for viewer in [Viewer::Player(Side::Corp), Viewer::Spectator] {
+            let masked = mask_state_for_player(&state, viewer);
+            let payment = masked.pending_payment.clone().expect("that a payment is being chosen is public");
+            assert_eq!((payment.side, payment.own), (Side::Runner, None), "{viewer:?}");
+            let wire = serde_json::to_string(&masked.pending_payment).expect("serialises");
+            assert!(!wire.contains(&secret.0), "{viewer:?} was sent the unplayed card: {wire}");
+            assert!(!wire.contains("PlayEvent") && !wire.contains("BadPublicity"), "{viewer:?} was sent the action or its options: {wire}");
         }
     }
 
